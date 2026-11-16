@@ -31,7 +31,7 @@ public sealed class ScheduledJobProducerSnapshotPostgreSqlTests(PostgreSqlTenant
     public async Task Scheduler_QueuesTheSameJobsForASeededMultiConnectionTenant()
     {
         Assert.NotNull(fixture);
-        await using var db = fixture.CreateContext();
+        await using var db = fixture.CreateStrictContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         await SeedAsync(db);
 

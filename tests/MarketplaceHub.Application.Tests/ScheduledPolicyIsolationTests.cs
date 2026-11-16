@@ -84,7 +84,8 @@ public sealed class ScheduledPolicyIsolationPostgreSqlTests(PostgreSqlTenantIsol
         var healthy = NewConnection(tenant.Id, "policy-healthy");
         var failing = new FailingReferenceRead(broken.Id);
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).AddInterceptors(failing).Options);
+            .UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).AddInterceptors(failing)
+            .ConfigureWarnings(warnings => warnings.Throw(CoreEventId.RowLimitingOperationWithoutOrderByWarning)).Options);
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.AddRange(broken, healthy);

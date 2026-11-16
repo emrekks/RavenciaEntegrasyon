@@ -201,7 +201,7 @@ public sealed class JobTransitionCharacterizationPostgreSqlTests(PostgreSqlTenan
         var products = NewJob(tenant.Id, MarketplaceJobTypes.ProductSync);
         products.ConnectionId = connection.Id;
         products.JobDedupKey = $"scheduled:products:{connection.Id:N}:1";
-        await using var db = fixture.CreateContext();
+        await using var db = fixture.CreateStrictContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);

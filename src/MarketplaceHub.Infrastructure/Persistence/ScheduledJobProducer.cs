@@ -457,25 +457,26 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private sealed record PlannedPolicy(ConnectionSyncPolicy Policy, PlatformConnection Connection, string JobType, string ReservationKey,
         bool Active, bool MayQueueBehindOrderLane, bool OrderBackgroundMayQueue, IReadOnlyList<(string Dedup, string PayloadJson)> Jobs);
 
-    // How many connections one batched read covers (one UNION ALL branch each).
+    // How many connections one batched read covers.
     private const int BatchedReadSize = 100;
 
-    // The latest question of each connection (the MaxAsync the loop ran per policy), in one round trip per batch: one
-    // UNION ALL branch per connection, each an index-backed "latest row" read.
+    // The latest question of each connection: the MaxAsync the loop ran per policy, as one correlated MAX per connection
+    // in one query (an aggregate needs no ordering; PostgreSQL answers each from the connection's index). A question
+    // without a creation time is ignored, as Max ignored it.
     private async Task<Dictionary<Guid, DateTimeOffset>> LatestQuestionAtAsync(IEnumerable<DuePolicy> policies, CancellationToken cancellationToken)
     {
         var latest = new Dictionary<Guid, DateTimeOffset>();
-        foreach (var batch in policies.Select(due => (due.Policy.TenantId, due.Connection.Id)).Distinct().Chunk(BatchedReadSize))
+        foreach (var batch in policies.Select(due => due.Connection.Id).Distinct().Chunk(BatchedReadSize))
         {
-            IQueryable<LatestAt>? union = null;
-            foreach (var (tenantId, connectionId) in batch)
-            {
-                // Max ignored a question without a creation time; so does this read (PostgreSQL sorts NULL first when descending).
-                var one = db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.CreatedAt != null)
-                    .OrderByDescending(x => x.CreatedAt).Select(x => new LatestAt { ConnectionId = x.ConnectionId, At = x.CreatedAt!.Value }).Take(1);
-                union = union is null ? one : union.Concat(one);
-            }
-            foreach (var row in await union!.ToListAsync(cancellationToken)) latest[row.ConnectionId] = row.At;
+            var rows = await db.PlatformConnections.AsNoTracking().Where(connection => batch.Contains(connection.Id))
+                .Select(connection => new
+                {
+                    connection.Id,
+                    At = db.MarketplaceQuestions.Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id).Max(x => (DateTimeOffset?)x.CreatedAt)
+                })
+                .ToListAsync(cancellationToken);
+            foreach (var row in rows)
+                if (row.At is { } at) latest[row.Id] = at;
         }
         return latest;
     }
@@ -484,22 +485,25 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     private async Task<Dictionary<Guid, DateTimeOffset>> LatestReturnAtAsync(IEnumerable<DuePolicy> policies, CancellationToken cancellationToken)
     {
         var latest = new Dictionary<Guid, DateTimeOffset>();
-        foreach (var batch in policies.Select(due => (due.Policy.TenantId, due.Connection.Id)).Distinct().Chunk(BatchedReadSize))
+        foreach (var batch in policies.Select(due => due.Connection.Id).Distinct().Chunk(BatchedReadSize))
         {
-            IQueryable<LatestAt>? union = null;
-            foreach (var (tenantId, connectionId) in batch)
-            {
-                var one = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId)
-                    .OrderByDescending(x => x.CreatedAt).Select(x => new LatestAt { ConnectionId = x.ConnectionId, At = x.CreatedAt }).Take(1);
-                union = union is null ? one : union.Concat(one);
-            }
-            foreach (var row in await union!.ToListAsync(cancellationToken)) latest[row.ConnectionId] = row.At;
+            var rows = await db.PlatformConnections.AsNoTracking().Where(connection => batch.Contains(connection.Id))
+                .Select(connection => new
+                {
+                    connection.Id,
+                    At = db.ReturnClaims.Where(x => x.TenantId == connection.TenantId && x.ConnectionId == connection.Id).Max(x => (DateTimeOffset?)x.CreatedAt)
+                })
+                .ToListAsync(cancellationToken);
+            foreach (var row in rows)
+                if (row.At is { } at) latest[row.Id] = at;
         }
         return latest;
     }
 
     // The connections with an open return claim, by the open-return scan's own rule (ReturnLifecycleCandidates, as
-    // OpenReturnClaimsExistAsync asks it per connection), one UNION ALL branch per connection.
+    // OpenReturnClaimsExistAsync asks it per connection), one UNION ALL branch per connection. Only whether a connection has
+    // one matters: each branch yields its connection at most once (Distinct), with no row limit (a Take without an ordering
+    // was what EF warned about; harmless for an existence check, but a warning on every new query shape).
     private async Task<HashSet<Guid>> OpenReturnClaimConnectionsAsync(IEnumerable<DuePolicy> policies, CancellationToken cancellationToken)
     {
         var open = new HashSet<Guid>();
@@ -508,7 +512,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             IQueryable<Guid>? union = null;
             foreach (var (tenantId, connectionId, platformCode) in batch)
             {
-                var one = MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).Select(x => x.ConnectionId).Take(1);
+                var one = MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).Select(x => x.ConnectionId).Distinct();
                 union = union is null ? one : union.Concat(one);
             }
             open.UnionWith(await union!.ToListAsync(cancellationToken));
@@ -535,11 +539,6 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         return taken;
     }
 
-    private sealed class LatestAt
-    {
-        public Guid ConnectionId { get; init; }
-        public DateTimeOffset At { get; init; }
-    }
 
     // The order status scans that only follow open packages (Pazarama, PTT AVM, Shopify: MarketplaceJobProcessor.SyncOpenOrders
     // reads nothing else for them). Trendyol's scan also closes "0" placeholders by order number and Hepsiburada's reads
