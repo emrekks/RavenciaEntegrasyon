@@ -15,6 +15,7 @@ internal sealed class JobRunServices(
     IConnectionPort connections,
     IReferenceDataPort references,
     IProductPort products,
+    IInventoryPricePort inventoryPrice,
     IOrderPort orders,
     IOrderPackageReadPort orderPackages,
     IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus,
@@ -69,6 +70,10 @@ internal sealed class JobRunServices(
     // ISLEYICI-9 stage 5 step 3: the write services open, send and close their effect records through the processor's
     // one ExternalEffectGuard and check the same write switches.
     private ActionJobService? actionJobs;
+
+    private PriceStockService? priceStock;
+
+    public PriceStockService PriceStock => priceStock ??= new(db, issues, products, inventoryPrice, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, ListingVerification, run);
 
     private LabelJobService? labelJobs;
 

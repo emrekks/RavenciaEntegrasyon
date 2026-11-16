@@ -119,46 +119,6 @@ public sealed partial class MarketplaceJobProcessor
         return id.Length > 0 && id.All(char.IsAsciiDigit) ? id : null;
     }
 
-    // A price/stock answer for one line: a code the marketplace does not know breaks the link, and an explicit
-    // acceptance heals one a refusal broke. A code saved by hand after the push was sent is left alone.
-    private async Task RecordPushedVariantLinkHealth(Guid tenantId, Guid connectionId, IReadOnlyDictionary<Guid, string> rejected, IReadOnlyCollection<Guid> accepted, DateTimeOffset? sentAt, CancellationToken cancellationToken)
-    {
-        var now = timeProvider.GetUtcNow();
-        var since = sentAt ?? now;
-        var broken = 0;
-        foreach (var (variantId, reason) in rejected)
-        {
-            var safeReason = Short(reason, 200);
-            var target = db.MarketplaceVariantLinks
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId && (x.HealthChangedAt == null || x.HealthChangedAt < since));
-            // A second refusal for an unknown code breaks the link; the first only makes it suspect (still linked).
-            broken += await target.Where(x => x.HealthStatus == MarketplaceVariantLinkHealth.Suspect)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.Rejected)
-                    .SetProperty(x => x.HealthReason, safeReason)
-                    .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
-            await target.Where(x => x.HealthStatus == null || x.HealthStatus == MarketplaceVariantLinkHealth.Unverified)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.HealthStatus, MarketplaceVariantLinkHealth.Suspect)
-                    .SetProperty(x => x.HealthReason, safeReason)
-                    .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
-        }
-        if (accepted.Count > 0)
-            await db.MarketplaceVariantLinks
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && accepted.Contains(x.VariantId)
-                    && (x.HealthStatus == MarketplaceVariantLinkHealth.Rejected || x.HealthStatus == MarketplaceVariantLinkHealth.Suspect))
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.HealthStatus, (string?)null)
-                    .SetProperty(x => x.HealthReason, (string?)null)
-                    .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
-        if (broken > 0)
-        {
-            var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
-            await RecordIssue(tenantId, $"variant-link-rejected:{connectionId}", "VARIANT_LINK_REJECTED",
-                $"{MarketplacePlatformName(platformCode)}: {broken:N0} varyantın kodu fiyat-stok gönderiminde art arda iki kez pazaryerinde bulunamadı; bu varyantlara toplu fiyat ve stok gönderilmez. Kodu ürünün Varyant Eşleştirme penceresinden düzeltin.", cancellationToken);
-        }
-    }
-
     // onlyPayloadHash: a create job writes only the variants it sent (those carrying its payload hash); a variant already
     // live from an earlier publication of the card keeps its state when only its refused siblings are sent again.
     private async Task<JobExecutionResult> MarkPublicationResult(Guid tenantId, Guid connectionId, ChannelListingProfile profile, string status, string? rejectionCode, JobExecutionResult result, CancellationToken cancellationToken, string? onlyPayloadHash = null, bool keepLiveStates = false)
@@ -191,7 +151,7 @@ public sealed partial class MarketplaceJobProcessor
         }
     }
 
-    private static string? SafeCode(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(256, value.Trim().Length)];
+    internal static string? SafeCode(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(256, value.Trim().Length)];
 
     // A refused line's reasons as the marketplace wrote them: every failure reason (Trendyol), the line's status text
     // (n11, Pazarama) and its error code.

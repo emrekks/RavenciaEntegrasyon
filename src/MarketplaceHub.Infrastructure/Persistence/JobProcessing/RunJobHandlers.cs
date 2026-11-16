@@ -146,6 +146,23 @@ internal sealed class LabelJobRunHandler(Func<JobRunContext, JobRunServices> ser
     };
 }
 
+// The price and stock writes and the automatic stock paths (PriceStockService); automatic writes stay off while their
+// switches are off, which they are on every live connection.
+internal sealed class PriceStockRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.PriceInventorySync => services(run).PriceStock.SyncPriceInventory(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.StockProjectionDispatch => services(run).PriceStock.DispatchStockProjection(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, request.JobId, cancellationToken),
+        MarketplaceJobTypes.StockReconciliation => services(run).PriceStock.ReconcileStock(request.TenantId, request.ConnectionId, request.CorrelationId, request.JobId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a price or stock job.")
+    };
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

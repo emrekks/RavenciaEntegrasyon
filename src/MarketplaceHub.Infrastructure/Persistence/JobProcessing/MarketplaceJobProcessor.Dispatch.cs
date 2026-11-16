@@ -58,10 +58,15 @@ public sealed partial class MarketplaceJobProcessor
 
     private LabelJobRunHandler LabelJobHandler => labelJobHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 3c: the price and stock writes and the automatic stock paths.
+    private PriceStockRunHandler? priceStockHandler;
+
+    private PriceStockRunHandler PriceStockHandler => priceStockHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
     internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
         OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler,
-        ActionJobHandler, LabelJobHandler];
+        ActionJobHandler, LabelJobHandler, PriceStockHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -89,9 +94,9 @@ public sealed partial class MarketplaceJobProcessor
         [MarketplaceJobTypes.ProductApprovalReconcile] = async (p, a, cancellationToken) => await p.ReconcileProductApproval(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.ProductUpdate] = async (p, a, cancellationToken) => await p.UpdateProduct(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.ProductArchive] = async (p, a, cancellationToken) => await p.ArchiveProduct(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.PriceInventorySync] = async (p, a, cancellationToken) => await p.SyncPriceInventory(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.StockProjectionDispatch] = async (p, a, cancellationToken) => await p.DispatchStockProjection(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken),
-        [MarketplaceJobTypes.StockReconciliation] = async (p, a, cancellationToken) => await p.ReconcileStock(a.TenantId, a.ConnectionId, a.CorrelationId, a.JobId, cancellationToken),
+        [MarketplaceJobTypes.PriceInventorySync] = RunDirect(p => p.PriceStockHandler),
+        [MarketplaceJobTypes.StockProjectionDispatch] = RunDirect(p => p.PriceStockHandler),
+        [MarketplaceJobTypes.StockReconciliation] = RunDirect(p => p.PriceStockHandler),
         [MarketplaceJobTypes.CommonLabel] = RunDirect(p => p.LabelJobHandler),
         [MarketplaceJobTypes.CapabilityProbe] = RunDirect(p => p.LabelJobHandler),
         [MarketplaceJobTypes.StageTestOrder] = RunDirect(p => p.LabelJobHandler),

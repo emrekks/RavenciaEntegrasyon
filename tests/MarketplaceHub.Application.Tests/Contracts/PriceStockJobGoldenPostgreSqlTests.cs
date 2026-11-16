@@ -142,7 +142,7 @@ public sealed class PriceStockJobGoldenPostgreSqlTests(PostgreSqlTenantIsolation
             {
                 "rejected-unknown-code" => [Line("869200000001", true), Line("869200000002", false, "TRENDYOL_BARCODE_NOT_FOUND", status: "Ürün bulunamadı")],
                 "line-unconfirmed" => [Line("869200000001", true)],
-                "not-sent-and-price-only" => [Line("869200000001", false, "PRICE_INVENTORY_NOT_SENT", retryable: true, status: MarketplaceJobProcessor.NotSentLineStatus), Line("869200000002", false, MarketplaceJobProcessor.PriceOnlyAppliedCode, retryable: true)],
+                "not-sent-and-price-only" => [Line("869200000001", false, "PRICE_INVENTORY_NOT_SENT", retryable: true, status: PriceStockService.NotSentLineStatus), Line("869200000002", false, PriceStockService.PriceOnlyAppliedCode, retryable: true)],
                 "accepted" when platform == "HEPSIBURADA" => [],
                 _ => [Line("869200000001", true), Line("869200000002", true)]
             };
