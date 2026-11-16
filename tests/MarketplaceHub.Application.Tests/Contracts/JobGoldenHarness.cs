@@ -57,7 +57,7 @@ internal static partial class JobGolden
 
     // Compares the summary with Fixtures/<goldenPath> after naming the ids: the known ones by the given names, the others
     // id1, id2, ... in the order they first appear.
-    public static void Matches(string goldenPath, object summary, IReadOnlyDictionary<Guid, string> known)
+    public static void Matches(string goldenPath, object summary, IReadOnlyDictionary<Guid, string> known, bool maskPayloadHashes = false)
     {
         var text = JsonSerializer.Serialize(summary, summary.GetType(), Options);
         var names = new Dictionary<Guid, string>(known);
@@ -69,6 +69,15 @@ internal static partial class JobGolden
         });
         // A SHA-256 written into a key (a dedup key over lines that carry ids) changes with the ids: only its place is pinned.
         labelled = Sha256Pattern().Replace(labelled, "<sha256>");
+        // A product payload's hash covers the run's own store and card ids (the model-composer seed): only its place is pinned.
+        // Shopify's handle carries a hash of those ids too, and a payload quotes the seed's real time in its own text.
+        if (maskPayloadHashes)
+        {
+            labelled = PayloadHashPattern().Replace(labelled, "<sha256>");
+            labelled = ShopifyHandlePattern().Replace(labelled, "-model-<handle>");
+            labelled = TimestampPattern().Replace(labelled, match =>
+                DateTimeOffset.TryParse(match.Value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at) && Math.Abs((at - DateTimeOffset.UtcNow).TotalDays) < 2 ? "<now>" : match.Value);
+        }
         ContractFixture.MatchesGolden(goldenPath, JsonNode.Parse(labelled));
     }
 
@@ -81,11 +90,20 @@ internal static partial class JobGolden
             if (Guid.TryParse(match.Value, out var id) && !known.ContainsKey(id)) known[id] = $"fixture-id{++index}";
     }
 
-    [GeneratedRegex("(?<![0-9a-fA-F])[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}(?![0-9a-fA-F])")]
+    [GeneratedRegex("(?:(?<![0-9a-fA-F])|(?<=u0022))[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}(?![0-9a-fA-F])")]
     private static partial Regex GuidPattern();
 
     [GeneratedRegex("(?<=:)[0-9A-F]{64}(?![0-9A-Fa-f])")]
     private static partial Regex Sha256Pattern();
+
+    [GeneratedRegex("(?:(?<![0-9A-Fa-f])|(?<=u0022))[0-9A-F]{64}(?![0-9A-Fa-f])")]
+    private static partial Regex PayloadHashPattern();
+
+    [GeneratedRegex("-model-[0-9a-f]{20}")]
+    private static partial Regex ShopifyHandlePattern();
+
+    [GeneratedRegex(@"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})")]
+    private static partial Regex TimestampPattern();
 
     // Every table of the tenant (each entity type with a TenantId column) that holds rows, with every mapped scalar column,
     // ordered by their text with the known ids named and the others masked. The outbox is summed by kind instead (its rows
