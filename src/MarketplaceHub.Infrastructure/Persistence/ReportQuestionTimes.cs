@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -26,8 +27,8 @@ internal static class ReportQuestionTimes
             hours.Add((answered - asked).TotalHours);
         }
         hours.Sort();
-        decimal? median = hours.Count == 0 ? null : Math.Round((decimal)(hours.Count % 2 == 1 ? hours[hours.Count / 2] : (hours[hours.Count / 2 - 1] + hours[hours.Count / 2]) / 2), 1);
-        return new(hours.Count, waiting, hours.Count == 0 ? null : Math.Round((decimal)hours.Average(), 1), median, platforms);
+        decimal? median = hours.Count == 0 ? null : MeasureRounding.Round((decimal)(hours.Count % 2 == 1 ? hours[hours.Count / 2] : (hours[hours.Count / 2 - 1] + hours[hours.Count / 2]) / 2), 1);
+        return new(hours.Count, waiting, hours.Count == 0 ? null : MeasureRounding.Round((decimal)hours.Average(), 1), median, platforms);
     }
 
     private static List<(bool Customer, DateTimeOffset? At)>? Read(string history)

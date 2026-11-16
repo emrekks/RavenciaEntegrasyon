@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -18,12 +19,11 @@ internal static class UnitProfit
     {
         if (facts is not { Cost: { } cost, VatRate: { } vat, Cargo: { } cargo }) return (null, null);
         var fee = ReportCosts.PlatformServiceFeePerOrder;
-        var stoppage = Round((price - ReportCosts.Vat(price, vat)) * ReportCosts.StoppageRate);
-        var netVat = Round(ReportCosts.Vat(price, vat)) - Round(ReportCosts.Vat(cost, vat)) - Round(ReportCosts.Vat(commission, ReportCosts.ExpenseVatRate))
-            - Round(ReportCosts.Vat(cargo, ReportCosts.ExpenseVatRate)) - Round(ReportCosts.Vat(fee, ReportCosts.ExpenseVatRate));
-        var costs = new UnitProfitCostsView(cost, Round(cargo), fee, stoppage, netVat, vat);
-        return (Round(price - commission - cost - costs.Cargo - fee - stoppage - netVat), costs);
+        var stoppage = MoneyRounding.Round((price - ReportCosts.Vat(price, vat)) * ReportCosts.StoppageRate);
+        var netVat = MoneyRounding.Round(ReportCosts.Vat(price, vat)) - MoneyRounding.Round(ReportCosts.Vat(cost, vat)) - MoneyRounding.Round(ReportCosts.Vat(commission, ReportCosts.ExpenseVatRate))
+            - MoneyRounding.Round(ReportCosts.Vat(cargo, ReportCosts.ExpenseVatRate)) - MoneyRounding.Round(ReportCosts.Vat(fee, ReportCosts.ExpenseVatRate));
+        var costs = new UnitProfitCostsView(cost, MoneyRounding.Round(cargo), fee, stoppage, netVat, vat);
+        return (MoneyRounding.Round(price - commission - cost - costs.Cargo - fee - stoppage - netVat), costs);
     }
 
-    private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 }
