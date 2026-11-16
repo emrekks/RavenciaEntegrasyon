@@ -26,7 +26,7 @@ public sealed class ReturnRequestSortTests
     [InlineData("APPROVED_ASC", "APPROVED_ASC")]
     [InlineData("ID", "ID")]
     public void The_default_sort_is_the_newest_return_request(string? sort, string expected) =>
-        Assert.Equal(expected, MarketplaceSalesService.NormalizeReturnSort(sort));
+        Assert.Equal(expected, ReturnQueryService.NormalizeReturnSort(sort));
 
     [Fact]
     public void Request_dates_sort_both_ways_with_undated_claims_last()
@@ -38,7 +38,7 @@ public sealed class ReturnRequestSortTests
         var items = new (DateTimeOffset? Date, Guid ClaimId, int Kind)[] { (oct14, First, 0), (null, Second, 0), (oct24, Third, 0), (oct20, Second, 1) };
 
         List<(DateTimeOffset? Date, Guid ClaimId, int Kind)> Sorted(string sort) =>
-            items.OrderBy(x => x, Comparer<(DateTimeOffset?, Guid, int)>.Create((left, right) => MarketplaceSalesService.CompareReturnCards(left, right, sort))).ToList();
+            items.OrderBy(x => x, Comparer<(DateTimeOffset?, Guid, int)>.Create((left, right) => ReturnQueryService.CompareReturnCards(left, right, sort))).ToList();
 
         Assert.Equal([(oct24, Third, 0), (oct20, Second, 1), (oct14, First, 0), (null, Second, 0)], Sorted("REQUESTED_DESC"));
         Assert.Equal([(oct14, First, 0), (oct20, Second, 1), (oct24, Third, 0), (null, Second, 0)], Sorted("REQUESTED_ASC"));
@@ -51,7 +51,7 @@ public sealed class ReturnRequestSortTests
         var ordered = new (DateTimeOffset? Date, Guid ClaimId, int Kind)[] { (day.AddDays(2), Third, 0), (day, First, 0), (day, Second, 0), (null, First, 0) };
         var cursor = (Date: (DateTimeOffset?)day, ClaimId: First, Kind: 0);
 
-        var next = Array.FindIndex(ordered, item => MarketplaceSalesService.CompareReturnCards(item, cursor, "REQUESTED_DESC") > 0);
+        var next = Array.FindIndex(ordered, item => ReturnQueryService.CompareReturnCards(item, cursor, "REQUESTED_DESC") > 0);
 
         Assert.Equal(2, next);
     }

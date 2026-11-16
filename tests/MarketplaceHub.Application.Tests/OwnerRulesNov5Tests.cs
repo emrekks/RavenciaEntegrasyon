@@ -73,9 +73,9 @@ public sealed class OwnerRulesNov5Tests
         Assert.True(ReturnClaimPartialApprovalPolicy.IsPartiallyApproved(ReturnClaimStatus.Approved, ["Accepted", "Rejected"]));
         Assert.False(ReturnClaimPartialApprovalPolicy.IsPartiallyApproved(ReturnClaimStatus.Approved, ["Accepted", "Accepted"]));
         Assert.False(ReturnClaimPartialApprovalPolicy.IsPartiallyApproved(ReturnClaimStatus.Rejected, ["Accepted", "Rejected"]));
-        Assert.Equal("PARTIALLY_APPROVED", MarketplaceSalesService.ReturnStatusWire(ReturnClaimStatus.Approved, ["Accepted", "Rejected"]));
-        Assert.Equal("APPROVED", MarketplaceSalesService.ReturnStatusWire(ReturnClaimStatus.Approved, ["Accepted", null]));
-        Assert.Equal("APPROVED", MarketplaceSalesService.ReturnTabGroup("PARTIALLY_APPROVED"));
+        Assert.Equal("PARTIALLY_APPROVED", ReturnQueryService.ReturnStatusWire(ReturnClaimStatus.Approved, ["Accepted", "Rejected"]));
+        Assert.Equal("APPROVED", ReturnQueryService.ReturnStatusWire(ReturnClaimStatus.Approved, ["Accepted", null]));
+        Assert.Equal("APPROVED", ReturnQueryService.ReturnTabGroup("PARTIALLY_APPROVED"));
         // Its approved line counts as returned for the invoice; the rejected one does not.
         Assert.True(ReturnDecisionLinePolicy.StockDispositionAllowed(ReturnClaimStatus.Approved, "Accepted"));
         Assert.False(ReturnDecisionLinePolicy.StockDispositionAllowed(ReturnClaimStatus.Approved, "Rejected"));

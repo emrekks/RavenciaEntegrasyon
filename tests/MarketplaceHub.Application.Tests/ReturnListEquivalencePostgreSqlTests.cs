@@ -34,7 +34,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             var cursors = NewCursors();
             var service = NewService(db, cursors);
             // The seed's saves filled the card columns: the pages below are read through them.
-            Assert.True((await service.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh);
+            Assert.True((await service.ReturnQueries.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh);
             var compared = 0;
             foreach (var sort in Sorts)
                 foreach (var tab in Tabs)
@@ -110,12 +110,12 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             foreach (var option in options)
             {
                 var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, option, CancellationToken.None);
-                var actual = await service.BuildReturnSummaryAsync(tenantId, option, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+                var actual = await service.ReturnQueries.BuildReturnSummaryAsync(tenantId, option, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
                 Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
             }
-            var all = await service.BuildReturnSummaryAsync(tenantId, new ReturnListQuery(), MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+            var all = await service.ReturnQueries.BuildReturnSummaryAsync(tenantId, new ReturnListQuery(), ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
             // The seed has split claims, so the cards outnumber the claims.
-            Assert.True(all.TabCounts["ALL"] > await service.ReturnBaseQuery(tenantId).CountAsync());
+            Assert.True(all.TabCounts["ALL"] > await service.ReturnQueries.ReturnBaseQuery(tenantId).CountAsync());
             Assert.True(all.TabCounts["APPROVED"] > 0 && all.TabCounts["ACTION_REQUIRED"] > 0 && all.TabCounts["REJECTED"] > 0);
         }
         finally
@@ -147,9 +147,9 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             foreach (var filter in filters)
             {
                 var query = db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId);
-                service.ApplyReturnRefinements(ref query, tenantId, filter);
+                service.ReturnQueries.ApplyReturnRefinements(ref query, tenantId, filter);
                 var kept = (await query.Select(x => x.Id).ToListAsync()).ToHashSet();
-                var expected = all.Where(x => MarketplaceSalesService.MatchesReturnRefinements(connections[x.ConnectionId], x.CargoProviderName, x.ReasonCode, x.ReasonText, filter)).Select(x => x.Id).ToHashSet();
+                var expected = all.Where(x => ReturnQueryService.MatchesReturnRefinements(connections[x.ConnectionId], x.CargoProviderName, x.ReasonCode, x.ReasonText, filter)).Select(x => x.Id).ToHashSet();
                 Assert.True(expected.SetEquals(kept), $"{JsonSerializer.Serialize(filter)}: {expected.Count} expected, {kept.Count} kept");
                 Assert.True(expected.Count > 0, $"{JsonSerializer.Serialize(filter)} keeps no claim");
             }
@@ -199,10 +199,10 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             foreach (var (name, breakIt) in states)
             {
                 await breakIt();
-                Assert.False((await service.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh, name);
+                Assert.False((await service.ReturnQueries.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh, name);
                 compared += await CompareAllAsync();
                 await ReturnCardColumns.RepairAsync(db, CancellationToken.None);
-                Assert.True((await service.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh, $"{name} repaired");
+                Assert.True((await service.ReturnQueries.ReturnColumnStateAsync(tenantId, CancellationToken.None)).Fresh, $"{name} repaired");
                 compared += await CompareAllAsync();
             }
             output.WriteLine($"{compared} pages and summaries compared");
@@ -219,7 +219,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
                 foreach (var option in summaries)
                 {
                     var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, option, CancellationToken.None);
-                    var actual = await service.BuildReturnSummaryAsync(tenantId, option, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+                    var actual = await service.ReturnQueries.BuildReturnSummaryAsync(tenantId, option, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
                     Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
                     pages++;
                 }
@@ -272,7 +272,7 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
                     foreach (var option in new ReturnListQuery[] { new(InvoiceStatus: label), new(InvoiceStatus: label, Status: "APPROVED", Search: "eq") })
                     {
                         var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, option, CancellationToken.None);
-                        var actual = await service.BuildReturnSummaryAsync(tenantId, option, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+                        var actual = await service.ReturnQueries.BuildReturnSummaryAsync(tenantId, option, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None);
                         Assert.True(JsonSerializer.Serialize(expected) == JsonSerializer.Serialize(actual), $"{name}: {JsonSerializer.Serialize(option)}");
                         compared++;
                     }
@@ -303,40 +303,40 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
             }
             var options = new ReturnListQuery();
             var oldPage = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, options, CancellationToken.None));
-            var newPage = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options, CancellationToken.None));
+            var newPage = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options, CancellationToken.None));
             var oldTab = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, options with { Status = "APPROVED", Sort = "APPROVED_DESC" }, CancellationToken.None));
-            var newTab = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Status = "APPROVED", Sort = "APPROVED_DESC" }, CancellationToken.None));
+            var newTab = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Status = "APPROVED", Sort = "APPROVED_DESC" }, CancellationToken.None));
             var oldSearch = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
-            var newSearch = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
+            var newSearch = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
             var oldSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options with { Status = "APPROVED" }, CancellationToken.None));
-            var newSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
-            var newCargo = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
-            var newAllSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var newSummary = await MeasureAsync((service, _) => service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var newCargo = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
+            var newAllSummary = await MeasureAsync((service, _) => service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
             // SIPARIS-STOK-9 round 5: the search, the invoice label filter and the summary of every tab, old and new.
             var oldAllSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options, CancellationToken.None));
             var invoiceOptions = options with { InvoiceStatus = "FATURA_KONTROLDE" };
             var oldInvoice = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, invoiceOptions, CancellationToken.None));
-            var newInvoice = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, invoiceOptions, CancellationToken.None));
+            var newInvoice = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, invoiceOptions, CancellationToken.None));
             var oldInvoiceSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, invoiceOptions, CancellationToken.None));
-            var newInvoiceSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, invoiceOptions, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var newInvoiceSummary = await MeasureAsync((service, _) => service.ReturnQueries.BuildReturnSummaryAsync(tenantId, invoiceOptions, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
             var nameOptions = options with { Search = "Ayşe" };
             var oldName = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, nameOptions, CancellationToken.None));
-            var newName = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, nameOptions, CancellationToken.None));
+            var newName = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, nameOptions, CancellationToken.None));
             var numberOptions = options with { Search = "EQ-1042" };
             var oldNumber = await MeasureAsync((service, db) => LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, 20, 1, null, numberOptions, CancellationToken.None));
-            var newNumber = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, numberOptions, CancellationToken.None));
+            var newNumber = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, numberOptions, CancellationToken.None));
             var oldSearchSummary = await MeasureAsync((service, db) => LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options with { Search = "eq" }, CancellationToken.None));
-            var newSearchSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Search = "eq" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var newSearchSummary = await MeasureAsync((service, _) => service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options with { Search = "eq" }, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
             // The same requests with the card columns not filled (the claims the old code wrote): the computation of
             // 15 Nov 2026 wave 3 plus the staleness check.
             await using (var clear = fixture.CreateContext())
                 await clear.ReturnClaims.Where(x => x.TenantId == tenantId).ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null));
-            var bareSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
-            var bareAllSummary = await MeasureAsync((service, _) => service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
-            var barePage = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options, CancellationToken.None));
-            var bareTab = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Status = "APPROVED", Sort = "APPROVED_DESC" }, CancellationToken.None));
-            var bareSearch = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
-            var bareCargo = await MeasureAsync((service, _) => service.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
+            var bareSummary = await MeasureAsync((service, _) => service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options with { Status = "APPROVED" }, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var bareAllSummary = await MeasureAsync((service, _) => service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options, ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal), CancellationToken.None));
+            var barePage = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options, CancellationToken.None));
+            var bareTab = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Status = "APPROVED", Sort = "APPROVED_DESC" }, CancellationToken.None));
+            var bareSearch = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Search = "eq" }, CancellationToken.None));
+            var bareCargo = await MeasureAsync((service, _) => service.ReturnQueries.ReturnCardPageAsync(tenantId, 20, 1, null, options with { Cargo = "Aras Kargo" }, CancellationToken.None));
             await using (var count = fixture.CreateContext())
                 output.WriteLine($"seed: {await count.ReturnClaims.CountAsync(x => x.TenantId == tenantId)} claims, {await count.ReturnLines.CountAsync(x => x.TenantId == tenantId)} lines");
             output.WriteLine($"page (all tabs, newest request): old {oldPage.Queries} queries / {oldPage.Rows} rows, columns unfilled {barePage.Queries} / {barePage.Rows}, filled {newPage.Queries} / {newPage.Rows}");
@@ -373,17 +373,17 @@ public sealed class ReturnListEquivalencePostgreSqlTests(PostgreSqlTenantIsolati
         for (var guard = 0; guard < 200; guard++)
         {
             var expected = await LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, limit, 1, after, options, CancellationToken.None);
-            var actual = await service.ReturnCardPageAsync(tenantId, limit, 1, after, options, CancellationToken.None);
+            var actual = await service.ReturnQueries.ReturnCardPageAsync(tenantId, limit, 1, after, options, CancellationToken.None);
             AssertSamePage(cursors, expected, actual, $"{JsonSerializer.Serialize(options)} limit {limit} after page {compared}");
             compared++;
             if (actual.NextCursor is null) break;
             after = actual.NextCursor;
         }
-        var pages = (int)Math.Ceiling((await service.ReturnCardPageAsync(tenantId, limit, 1, null, options, CancellationToken.None)).TotalCount!.Value / (double)limit);
+        var pages = (int)Math.Ceiling((await service.ReturnQueries.ReturnCardPageAsync(tenantId, limit, 1, null, options, CancellationToken.None)).TotalCount!.Value / (double)limit);
         for (var page = 2; page <= pages + 1; page++)
         {
             var expected = await LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, limit, page, null, options, CancellationToken.None);
-            var actual = await service.ReturnCardPageAsync(tenantId, limit, page, null, options, CancellationToken.None);
+            var actual = await service.ReturnQueries.ReturnCardPageAsync(tenantId, limit, page, null, options, CancellationToken.None);
             AssertSamePage(cursors, expected, actual, $"{JsonSerializer.Serialize(options)} limit {limit} page {page}");
             compared++;
         }

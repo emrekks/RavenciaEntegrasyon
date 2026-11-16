@@ -5,6 +5,7 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -13,7 +14,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // the page's cards first show them (the cards are in claim id order) and a platform's name and a reason's code and text
 // are those of its last card, as the card-by-card summary had them: each group sends back its count and its first and
 // last claim id. The few accepted cards of claims that split are added from memory.
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     internal async Task<ReturnSummaryView> BuildReturnSummaryAsync(Guid tenantId, ReturnListQuery options, Dictionary<string, int> counts, CancellationToken cancellationToken)
     {

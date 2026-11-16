@@ -53,12 +53,12 @@ public sealed class ReturnLifecycleReconciliationTests
     {
         IReadOnlyList<ReturnIssueReason> reasons = [new("10", "İade paketi boş geldi", false), new("2", "Gelen ürün defolu", true)];
 
-        Assert.False(MarketplaceSalesService.RejectEvidenceRequired("10", reasons, "PAZARAMA"));
-        Assert.True(MarketplaceSalesService.RejectEvidenceRequired("2", reasons, "PAZARAMA"));
+        Assert.False(ReturnQueryService.RejectEvidenceRequired("10", reasons, "PAZARAMA"));
+        Assert.True(ReturnQueryService.RejectEvidenceRequired("2", reasons, "PAZARAMA"));
         // A Trendyol reason id means nothing on another marketplace.
-        Assert.True(MarketplaceSalesService.RejectEvidenceRequired("1651", reasons, "PAZARAMA"));
-        Assert.False(MarketplaceSalesService.RejectEvidenceRequired("1651", null, "TRENDYOL"));
-        Assert.True(MarketplaceSalesService.RejectEvidenceRequired("1651", null, "N11"));
+        Assert.True(ReturnQueryService.RejectEvidenceRequired("1651", reasons, "PAZARAMA"));
+        Assert.False(ReturnQueryService.RejectEvidenceRequired("1651", null, "TRENDYOL"));
+        Assert.True(ReturnQueryService.RejectEvidenceRequired("1651", null, "N11"));
     }
 
     [Fact]
@@ -69,10 +69,10 @@ public sealed class ReturnLifecycleReconciliationTests
         var storedEstimate = new ReturnClaim { ExternalClaimId = "c2", RawStatus = "Created", ActionDueAt = modifiedAt.AddDays(7), ActionDueAtEstimated = true, LastRemoteModifiedAt = modifiedAt };
         var fromMarketplace = new ReturnClaim { ExternalClaimId = "c3", RawStatus = "WaitingInAction", ActionDueAt = modifiedAt.AddHours(24), LastRemoteModifiedAt = modifiedAt };
 
-        Assert.True(MarketplaceSalesService.IsEstimatedReturnDueAt("TRENDYOL", derived));
-        Assert.True(MarketplaceSalesService.IsEstimatedReturnDueAt("TRENDYOL", storedEstimate));
-        Assert.False(MarketplaceSalesService.IsEstimatedReturnDueAt("TRENDYOL", fromMarketplace));
-        Assert.False(MarketplaceSalesService.IsEstimatedReturnDueAt("HEPSIBURADA", derived));
+        Assert.True(ReturnQueryService.IsEstimatedReturnDueAt("TRENDYOL", derived));
+        Assert.True(ReturnQueryService.IsEstimatedReturnDueAt("TRENDYOL", storedEstimate));
+        Assert.False(ReturnQueryService.IsEstimatedReturnDueAt("TRENDYOL", fromMarketplace));
+        Assert.False(ReturnQueryService.IsEstimatedReturnDueAt("HEPSIBURADA", derived));
     }
 
     [Fact]

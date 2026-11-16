@@ -39,8 +39,8 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
             {
                 await using var read = fixture.CreateContext();
                 var raws = await read.ReturnLines.Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync();
-                var accepted = raws.Where(MarketplaceSalesService.IsAcceptedSplitLineStatus).ToArray();
-                var waiting = raws.Where(raw => raw is not null && MarketplaceSalesService.IsWaitingSplitLineStatus(raw)).ToArray();
+                var accepted = raws.Where(ReturnQueryService.IsAcceptedSplitLineStatus).ToArray();
+                var waiting = raws.Where(raw => raw is not null && ReturnQueryService.IsWaitingSplitLineStatus(raw)).ToArray();
                 Assert.False(await ReturnCardColumns.Stale(read, tenantId, accepted, waiting).AnyAsync());
             }
 
@@ -289,13 +289,13 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
         {
             await using var db = fixture.CreateContext();
             var service = new MarketplaceSalesService(db, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), TimeProvider.System), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
-            var fresh = await service.ReturnColumnStateAsync(tenantId, CancellationToken.None);
+            var fresh = await service.ReturnQueries.ReturnColumnStateAsync(tenantId, CancellationToken.None);
             Assert.True(fresh.Fresh);
             await db.ReturnClaims.Where(x => x.Id == claimId).ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, (string?)null));
-            var counts = MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
+            var counts = ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
             var options = new ReturnListQuery(Status: "APPROVED");
-            var set = await service.ReturnCardSetAsync(tenantId, options, applyTab: false, applyRefinements: true, fresh, CancellationToken.None);
-            await service.CountReturnCardsAsync(tenantId, set!, counts, CancellationToken.None);
+            var set = await service.ReturnQueries.ReturnCardSetAsync(tenantId, options, applyTab: false, applyRefinements: true, fresh, CancellationToken.None);
+            await service.ReturnQueries.CountReturnCardsAsync(tenantId, set!, counts, CancellationToken.None);
             var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options, CancellationToken.None);
             Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected.TabCounts), System.Text.Json.JsonSerializer.Serialize(counts));
             Assert.True(counts["ALL"] > 0);

@@ -100,22 +100,22 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
             var orders = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id);
             var lines = (await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId).ToListAsync()).ToLookup(x => x.ClaimId);
             var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id);
-            var views = await service.ReturnViewsByIdAsync(tenantId, [.. claims.Select(x => x.Id)], CancellationToken.None);
+            var views = await service.ReturnQueries.ReturnViewsByIdAsync(tenantId, [.. claims.Select(x => x.Id)], CancellationToken.None);
             var compared = 0;
             foreach (var term in Terms)
             {
-                var search = MarketplaceSalesService.ReturnSearchTermOf(term)!;
+                var search = ReturnQueryService.ReturnSearchTermOf(term)!;
                 var needle = ReturnSearchText.Needle(term);
                 bool Has(string? value) => value is not null && ReturnSearchText.Fold(value).Contains(needle, StringComparison.Ordinal);
                 var expected = claims.Where(claim => Has(claim.ExternalClaimId) || Has(claim.ReasonText) || Has(claim.ReasonCode)
                         || (orders.TryGetValue(claim.OrderId, out var order) ? Has(order.OrderNumber) : Has("—"))
                         || lines[claim.Id].Any(line => orderLines.TryGetValue(line.OrderLineId, out var orderLine) && (Has(orderLine.Sku) || Has(orderLine.Barcode) || Has(orderLine.TitleSnapshot))))
                     .Select(claim => claim.Id).ToHashSet();
-                var actual = (await db.ReturnClaims.Where(x => x.TenantId == tenantId).Where(service.ReturnSearchInDatabase(tenantId, search)).Select(x => x.Id).ToListAsync()).ToHashSet();
+                var actual = (await db.ReturnClaims.Where(x => x.TenantId == tenantId).Where(service.ReturnQueries.ReturnSearchInDatabase(tenantId, search)).Select(x => x.Id).ToListAsync()).ToHashSet();
                 Assert.True(expected.SetEquals(actual), $"'{term}': {expected.Count} expected, {actual.Count} matched");
                 // Sound: whatever the columns match, the page's matcher matches on the whole card.
                 foreach (var id in actual)
-                    Assert.True(MarketplaceSalesService.MatchesReturnSearch(views[id], [.. (views[id].Lines ?? []).Select(line => line.Id)], term), $"'{term}': {id}");
+                    Assert.True(ReturnQueryService.MatchesReturnSearch(views[id], [.. (views[id].Lines ?? []).Select(line => line.Id)], term), $"'{term}': {id}");
                 compared += claims.Count;
             }
             output.WriteLine($"{compared} claim and term pairs compared");
@@ -144,11 +144,11 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
                     var options = new ReturnListQuery(Search: term, Status: tab);
                     compared += await ReturnInvoiceLabelPostgreSqlTests.ComparePagesAsync(service, db, cursors, tenantId, 3, options);
                     var expected = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options, CancellationToken.None);
-                    var actual = await service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(x => x, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+                    var actual = await service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options, ReturnQueryService.ReturnTabs.ToDictionary(x => x, _ => 0, StringComparer.Ordinal), CancellationToken.None);
                     Assert.Equal(System.Text.Json.JsonSerializer.Serialize(expected), System.Text.Json.JsonSerializer.Serialize(actual));
                 }
             foreach (var (term, what) in new[] { ("Kırmızı kazak%_", "a line"), ("ORD-77001", "the order number"), ("Şükrü", "the customer"), ("Çağlayan", "the customer"), ("SKU-ONLY-9", "a line's SKU") })
-                Assert.True((await service.ReturnCardPageAsync(tenantId, 50, 1, null, new ReturnListQuery(Search: term), CancellationToken.None)).TotalCount > 0, $"'{term}' finds no claim by {what}");
+                Assert.True((await service.ReturnQueries.ReturnCardPageAsync(tenantId, 50, 1, null, new ReturnListQuery(Search: term), CancellationToken.None)).TotalCount > 0, $"'{term}' finds no claim by {what}");
             output.WriteLine($"{compared} pages compared");
 
             // SIPARIS-STOK-9: every order keeps its customer name; a snapshot written outside the tracker empties it (the
@@ -170,7 +170,7 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
                 var options = new ReturnListQuery(Search: term);
                 await ReturnInvoiceLabelPostgreSqlTests.ComparePagesAsync(service, db, cursors, tenantId, 3, options);
             }
-            Assert.True((await service.ReturnCardPageAsync(tenantId, 50, 1, null, new ReturnListQuery(Search: "nurşen"), CancellationToken.None)).TotalCount > 0);
+            Assert.True((await service.ReturnQueries.ReturnCardPageAsync(tenantId, 50, 1, null, new ReturnListQuery(Search: "nurşen"), CancellationToken.None)).TotalCount > 0);
             Assert.True(await OrderCustomerSearchNames.BackfillAsync(db, CancellationToken.None) >= 1);
             Assert.Equal("Nurşen Kaya", await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009").Select(x => x.CustomerSearchName).SingleAsync());
             await ReturnInvoiceLabelPostgreSqlTests.ComparePagesAsync(service, db, cursors, tenantId, 3, new ReturnListQuery(Search: "nurşen"));

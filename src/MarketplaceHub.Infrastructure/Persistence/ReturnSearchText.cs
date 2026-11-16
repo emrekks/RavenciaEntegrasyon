@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // SIPARIS-STOK-9: exact PostgreSQL forms of the Returns page's text rules, built from .NET's own character tables so the
 // database and the in-memory rules can never disagree, whatever the database locale (the live one is en_US, the test
 // clusters C):
-// - the page search (MarketplaceSalesService.MatchesReturnSearch): a value matches when its Turkish lower case with the
+// - the page search (ReturnQueryService.MatchesReturnSearch): a value matches when its Turkish lower case with the
 //   four i letters folded (Fold) contains the folded term. Folding is one code point to one code point, so the folded
 //   value contains the needle exactly when the value has a run of code points each folding to the needle's code point at
 //   that place: one bracket expression per needle code point, listing every code point that folds to it.

@@ -89,7 +89,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
             var expected = await LabelsAsync(service, db, seed.TenantId);
             foreach (var label in expected.Values.Distinct().Append("FATURA_YOK"))
             {
-                var filtered = (await service.ApplyReturnInvoiceFilterAsync(db.ReturnClaims.Where(x => x.TenantId == seed.TenantId), seed.TenantId, label, CancellationToken.None)).Select(x => x.Id);
+                var filtered = (await service.ReturnQueries.ApplyReturnInvoiceFilterAsync(db.ReturnClaims.Where(x => x.TenantId == seed.TenantId), seed.TenantId, label, CancellationToken.None)).Select(x => x.Id);
 
                 var kept = await filtered.ToListAsync();
                 Assert.True(expected.Where(x => x.Value == label).Select(x => x.Key).ToHashSet().SetEquals(kept), label);
@@ -146,11 +146,11 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
     {
         db.ChangeTracker.Clear();
         var rows = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id)
-            .Select(x => new MarketplaceSalesService.ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit))
+            .Select(x => new ReturnQueryService.ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit))
             .ToListAsync();
         var expected = await LegacyReturnListQueries.ReturnInvoiceLabelsAsync(db, tenantId, rows, CancellationToken.None);
-        var actual = await service.ReturnInvoiceLabelsAsync(tenantId, rows, CancellationToken.None);
-        var views = await service.ReturnViewsByIdAsync(tenantId, [.. rows.Select(x => x.Id)], CancellationToken.None);
+        var actual = await service.ReturnQueries.ReturnInvoiceLabelsAsync(tenantId, rows, CancellationToken.None);
+        var views = await service.ReturnQueries.ReturnViewsByIdAsync(tenantId, [.. rows.Select(x => x.Id)], CancellationToken.None);
         foreach (var row in rows)
         {
             Assert.True(expected[row.Id] == actual[row.Id], $"{what}: claim {row.ExternalClaimId}: {expected[row.Id]} expected, {actual[row.Id]} read");
@@ -163,7 +163,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
             pages += await ComparePagesAsync(service, db, Cursors, tenantId, 80, new ReturnListQuery(InvoiceStatus: label, Sort: "ID"));
             var options = new ReturnListQuery(InvoiceStatus: label);
             var expectedSummary = await LegacyReturnListQueries.BuildReturnSummaryAsync(service, db, tenantId, options, CancellationToken.None);
-            var actualSummary = await service.BuildReturnSummaryAsync(tenantId, options, MarketplaceSalesService.ReturnTabs.ToDictionary(x => x, _ => 0, StringComparer.Ordinal), CancellationToken.None);
+            var actualSummary = await service.ReturnQueries.BuildReturnSummaryAsync(tenantId, options, ReturnQueryService.ReturnTabs.ToDictionary(x => x, _ => 0, StringComparer.Ordinal), CancellationToken.None);
             Assert.True(System.Text.Json.JsonSerializer.Serialize(expectedSummary) == System.Text.Json.JsonSerializer.Serialize(actualSummary), $"{what}: summary of {label}");
         }
         Assert.True(pages > AllLabels.Length, $"{what}: {pages} pages");
@@ -177,7 +177,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
     private static async Task<Dictionary<Guid, string>> LabelsAsync(MarketplaceSalesService service, AppDbContext db, Guid tenantId)
     {
         var rows = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId)
-            .Select(x => new MarketplaceSalesService.ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit))
+            .Select(x => new ReturnQueryService.ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit))
             .ToListAsync();
         return await LegacyReturnListQueries.ReturnInvoiceLabelsAsync(db, tenantId, rows, CancellationToken.None);
     }
@@ -190,7 +190,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
         for (var guard = 0; guard < 100; guard++)
         {
             var expected = await LegacyReturnListQueries.ReturnCardPageAsync(service, db, cursors, tenantId, limit, 1, after, options, CancellationToken.None);
-            var actual = await service.ReturnCardPageAsync(tenantId, limit, 1, after, options, CancellationToken.None);
+            var actual = await service.ReturnQueries.ReturnCardPageAsync(tenantId, limit, 1, after, options, CancellationToken.None);
             Assert.True(System.Text.Json.JsonSerializer.Serialize(expected.Items) == System.Text.Json.JsonSerializer.Serialize(actual.Items), $"items differ: {System.Text.Json.JsonSerializer.Serialize(options)} page {compared}");
             Assert.True((expected.HasMore, expected.TotalCount) == (actual.HasMore, actual.TotalCount), $"counts differ: {System.Text.Json.JsonSerializer.Serialize(options)} page {compared}");
             Assert.Equal(Decode(cursors, expected.NextCursor), Decode(cursors, actual.NextCursor));

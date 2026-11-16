@@ -4,18 +4,19 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // SIPARIS-STOK-9: the Returns page's invoice label ("fatura etiketi") read by the database. The rule is InvoiceLabel over
 // the claim's order, the order's latest original invoice from an operational provider connection, and its latest package
-// (MarketplaceSalesService.ReturnInvoiceLabelsAsync before 16 Nov 2026), written as one expression per claim: a
+// (ReturnQueryService.ReturnInvoiceLabelsAsync before 16 Nov 2026), written as one expression per claim: a
 // correlated sub-query per input (each an index read of the claim's own order), so the cost follows the claims read, not
 // the tenant's orders. Everything but the customer snapshot is decided there. The snapshot is read (JsonText, a
 // depth-first search of every property in document order) only when nothing else decides; the database then gives
 // BILINMIYOR unless the snapshot's raw text may hold one of the invoice words (ReturnSearchText.JsonWordsPattern, a
 // superset), and marks the few others (SnapshotLabel) for JsonText itself, whose labels go back in as id lists.
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     internal sealed class ReturnLabelRow
     {

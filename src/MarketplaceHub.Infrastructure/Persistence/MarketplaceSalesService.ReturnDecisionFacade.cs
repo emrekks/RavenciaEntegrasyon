@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed partial class MarketplaceSalesService
 {
     private ReturnDecisionService? returnDecisions;
-    internal ReturnDecisionService ReturnDecisions => returnDecisions ??= new(Sales, this);
+    internal ReturnDecisionService ReturnDecisions => returnDecisions ??= new(Sales, ReturnQueries);
 
     private static readonly IReadOnlyList<string> ReturnActions = ReturnDecisionService.ReturnActions;
     private IQueryable<MarketplaceHub.Domain.ReturnDecision> OpenReturnDecisions(Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => ReturnDecisions.OpenReturnDecisions(tenantId, claimId, sentDecisionHoldsClaim);
