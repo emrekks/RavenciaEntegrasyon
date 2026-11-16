@@ -1969,11 +1969,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     // KATALOG-5: a save that lost a race the checks could not see: a unique code taken meanwhile (409, nothing saved) or a
     // serializable / deadlock conflict (409, try again). Anything else stays an error.
-    private static ServiceResult<T>? SaveConflict<T>(Exception exception)
+    internal static ServiceResult<T>? SaveConflict<T>(Exception exception)
     {
-        var sqlState = (exception as Npgsql.PostgresException ?? exception.InnerException as Npgsql.PostgresException)?.SqlState;
+        var postgres = exception as Npgsql.PostgresException ?? exception.InnerException as Npgsql.PostgresException;
+        var sqlState = postgres?.SqlState;
         return sqlState switch
         {
+            // VERITABANI-DAGITIM-10: the NULLS NOT DISTINCT uniques of attribute rows and picture places are hit only by a
+            // second save of the same card at the same moment, not by a code another product holds.
+            Npgsql.PostgresErrorCodes.UniqueViolation when exception is DbUpdateException && postgres?.TableName is "product_attribute_assignments" or "product_model_attributes" or "product_media" =>
+                Conflict<T>("SAVE_CONFLICT_RETRY", "Bu ürün aynı anda başka bir kayıtla değişti (öznitelik ya da görsel sırası); hiçbir değişiklik kaydedilmedi. Sayfayı yenileyip tekrar deneyin."),
             Npgsql.PostgresErrorCodes.UniqueViolation when exception is DbUpdateException =>
                 Conflict<T>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod kayıt sırasında başka bir ürüne verildi; hiçbir değişiklik kaydedilmedi. Sayfayı yenileyip tekrar deneyin."),
             Npgsql.PostgresErrorCodes.SerializationFailure or Npgsql.PostgresErrorCodes.DeadlockDetected =>
