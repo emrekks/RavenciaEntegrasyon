@@ -1,10 +1,11 @@
 // What the editor reads from the server (the product, its copy source, categories, brands, connections, category
 // requirements) and what follows from it and the form at render time.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
 import { categoryRequirementsStaleTimeMs } from '../category-requirements-query'
-import { publicationRequirementSets, type CategoryRequirement } from './publication-readiness'
+import { publicationRequirementSets, readCategoryRequirements } from './publication-readiness'
 import { usePttAvmManualWrites } from '../use-pttavm-manual-writes'
 import { cardPrices } from './card-prices'
 import { type RequiredEditorField } from './required-fields'
@@ -36,7 +37,7 @@ export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPo
   // are in: the empty defaults and the single-product SKU, barcode and price fields must not show before the variant
   // rows turn them into the varyantlı state.
   const editorHydrating = editorAwaitingSeed({ seeding: Boolean(editProductId || duplicateProductId), productPending: editProductId ? productToEdit.isPending : productToCopy.isPending, listsPending: categories.isPending || brands.isPending })
-  const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: ({ signal }) => hubApi<CategoryRequirement[]>(`/catalog/categories/${form.categoryId}/attribute-requirements`, { signal }), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
+  const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: async ({ signal }) => readCategoryRequirements(await hubApi<ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>>(`/catalog/categories/${form.categoryId}/attribute-requirements`, { signal })), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
   const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : parseEditorNumber(form.costPrice); const initialStock = parseEditorNumber(form.initialStock || 0)

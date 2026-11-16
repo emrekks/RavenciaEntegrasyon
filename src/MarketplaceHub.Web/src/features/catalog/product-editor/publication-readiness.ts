@@ -11,7 +11,15 @@ import { queryKeys } from '../../../shared/api/query-keys'
 // publish runs it on each selected record (publicationReadinessDraftFromProduct fills the same input the editor's form
 // holds right after it opened that record), so both screens list the same gaps for the same product.
 
-export type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; isWebColor?: boolean; attribute: Attribute }
+type CategoryRequirementAnswer = ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>[number]
+// CONTRACT: the API declares a requirement's role as a string; CategoryRequirementRoles writes ATTRIBUTE or OPTION.
+export type CategoryRequirement = Omit<CategoryRequirementAnswer, 'role' | 'attribute'> & { role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
+
+// The category's requirements as the editor reads them. A role the panel does not know is read as ATTRIBUTE, an
+// ordinary field: a required one still asks for its value and blocks the send, instead of being dropped from the form.
+export function readCategoryRequirements(rows: ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>): CategoryRequirement[] {
+  return rows.map(row => ({ ...row, role: row.role === 'OPTION' ? 'OPTION' : 'ATTRIBUTE' }))
+}
 
 export function isOptionAttribute(attribute: Pick<Attribute, 'code' | 'name' | 'roles'>) {
   const normalizedName = normalizeVariantOptionName(attribute.name)

@@ -7,7 +7,7 @@ const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Raven
 const live = (platform: string, platformCode: string) => ({ platform, platformCode, status: 'ACTIVE', matchedVariantCount: 3, variantCount: 3 })
 const unlinked = (platform: string, platformCode: string) => ({ platform, platformCode, status: 'UNLINKED' })
 
-function record(id: string, statuses: Product['platformStatuses'], extra: Partial<BulkUpdateRecord> = {}): BulkUpdateRecord {
+function record(id: string, statuses: BulkUpdateRecord['platformStatuses'], extra: Partial<BulkUpdateRecord> = {}): BulkUpdateRecord {
   return { id, title: `Ürün ${id}`, status: 'ACTIVE', platformStatuses: statuses, gaps: [], ...extra }
 }
 

@@ -61,7 +61,7 @@ const inlineAnswerCalls = (files: Record<string, string>) => answerCalls(files, 
 // an alias of the contract (`= ApiAnswer<…>`, a narrowed `Omit<…> & …`) does not count. The number may only go down;
 // what is left is a type the panel narrows (string unions the contract gives as strings) and has not yet split into
 // the contract's alias and a narrowing function at the fetch boundary.
-const handWrittenAnswerTypes = 29
+const handWrittenAnswerTypes = 0
 function handWrittenNames(files: Record<string, string>) {
   const names = new Set<string>()
   for (const text of Object.values(files)) for (const match of text.matchAll(/^(?:export )?type (\w+)(?:<[^=]*>)? = \{/gm)) names.add(match[1])
