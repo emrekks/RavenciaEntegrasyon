@@ -11,7 +11,8 @@ import { takePendingCreateMedia } from './pending-create-media'
 import { editorStatusFor } from '../product-draft'
 import { withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { editorCustomChannelPrices, panelPrices } from '../quick-price-edit'
-import { editorDataStamp, editorSeedKey, editorSnapshotWithWebColor, editorOpenedDesi, editorVat } from '../product-editor-state'
+import { editorDataStamp, editorSeedKey, editorOpenedDesi, editorVat } from '../product-editor-state'
+import { baselineWithWebColor } from './editor-reducer'
 import { copiedChannelPricing } from './marketplace-channel-pricing'
 import { Product, normalizeVariantOptionName, variantOptionEntries } from '../shared'
 import { PendingProductMediaFile } from './editor-types'
@@ -25,7 +26,7 @@ import type { VariantCodeMenusResult } from './use-variant-code-menus'
 import type { EditorDataResult } from './use-editor-data'
 
 export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult) {
-  const { editProductId, duplicateProductId, copyRemovedMedia, setForm, setAttributeSelections, setAttributeTextValues, setVariantAttributeIds, setVariantRows, setChannelPricing, setSeededProductId, initializedEditProductKey, initializedEditOptionsKey, initializedEditWebColorKey, setMediaFiles, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, setRemovedVariantIds, setRemovedVariantRows, setReplacedPlaceholderIds, setSnapshotRequest, setSeedSnapshot, setWebColorAutoEnabled, setManualWebColorValueId, webColorSeed, webColorSeedRequest, setWebColorSeedRequest, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, mediaFilesKeptOnReseed, initialCustomChannelIds, channelPricingBase, setFieldErrors, initialEditMediaUrl, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, mediaAutoSaveInFlight, editorDirty, editorDirtyRef, restoreAfterSnapshot, productToEdit, seedProduct, requirements, allRequirements, webColorRequirement, optionRequirements } = c
+  const { editProductId, duplicateProductId, copyRemovedMedia, setForm, setAttributeSelections, setAttributeTextValues, setVariantAttributeIds, setVariantRows, setChannelPricing, setSeededProductId, initializedEditProductKey, initializedEditOptionsKey, initializedEditWebColorKey, setMediaFiles, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, setRemovedVariantIds, setRemovedVariantRows, setReplacedPlaceholderIds, requestBaseline, adjustBaseline, setWebColorAutoEnabled, setManualWebColorValueId, webColorSeed, webColorBaselineRequest, requestWebColorBaseline, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, mediaFilesKeptOnReseed, initialCustomChannelIds, channelPricingBase, setFieldErrors, initialEditMediaUrl, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, mediaAutoSaveInFlight, editorDirty, editorDirtyRef, restoreAfterSnapshot, productToEdit, seedProduct, requirements, allRequirements, webColorRequirement, optionRequirements } = c
   const seedForm = useEffectEvent(() => {
     const product = seedProduct
     if (!product) return
@@ -98,7 +99,7 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
     setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
-    setSnapshotRequest(value => value + 1)
+    requestBaseline()
   })
   const [reseedRequest, setReseedRequest] = useState(0)
   const seedStamp = seedProduct ? editorDataStamp(seedProduct.variants) : ''
@@ -116,7 +117,7 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
   }
   // A form with other unsaved edits stands on the version the editor's own write left, and that version is not a seed:
   // the Web Color and option inference below do not run for it, since both refill the user's fields and retake the
-  // snapshot, which made the unsaved edits read as saved (W1, scan 2026-11-15). The write moves the snapshot itself,
+  // baseline, which made the unsaved edits read as saved (W1, scan 2026-11-15). The write moves the baseline itself,
   // for the fields it saved.
   function standOnOwnWrite(productKey: string) {
     initializedEditProductKey.current = productKey
@@ -142,20 +143,20 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
     setWebColorAutoEnabled(!savedManualColor)
     setManualWebColorValueId(savedManualColor)
     webColorSeed.current = { autoEnabled: !savedManualColor, manualValueId: savedManualColor }
-    setWebColorSeedRequest(value => value + 1)
+    requestWebColorBaseline()
   // The page's own dependency list, unchanged by the split: the names it leaves out are useEditorState's setters and refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [duplicateProductId, editProductId, requirements.isLoading, seedProduct, webColorRequirement])
-  // Runs after the render that holds the seeded Web Color and after any snapshot taken before it: the snapshot takes the
+  // Runs after the render that holds the seeded Web Color and after any baseline taken before it: the baseline takes the
   // seeded Web Color as its own, so filling it is never an unsaved change while a real change still is.
   useEffect(() => {
     const seeded = webColorSeed.current
-    if (!webColorSeedRequest || !seeded) return
+    if (!webColorBaselineRequest || !seeded) return
     webColorSeed.current = null
-    setSeedSnapshot(current => current == null ? current : editorSnapshotWithWebColor(current, seeded))
+    adjustBaseline(current => baselineWithWebColor(current, seeded))
   // The page's own dependency list, unchanged by the split: the names it leaves out are useEditorState's setters and refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [webColorSeedRequest])
+  }, [webColorBaselineRequest])
 
   useLayoutEffect(() => {
     const product = seedProduct
@@ -184,7 +185,7 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
       }))
       return { ...row, optionSignature: optionSignatureFromOptions(options) || (source.optionSignature && source.optionSignature !== '-' ? source.optionSignature : row.optionSignature), options, attributeValueIds }
     }))
-    setSnapshotRequest(value => value + 1)
+    requestBaseline()
   // The page's own dependency list, unchanged by the split: the names it leaves out are useEditorState's setters and refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRequirements, duplicateProductId, editProductId, optionRequirements, requirements.isLoading, seedProduct])

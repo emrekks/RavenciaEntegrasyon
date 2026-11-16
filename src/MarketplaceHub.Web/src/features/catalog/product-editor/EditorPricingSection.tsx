@@ -8,6 +8,7 @@ import { channelPricingInputs } from './marketplace-channel-pricing'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { EditorFieldError, RequiredLabel } from './EditorBits'
 import type { EditorContext } from './editor-context'
+import { parseEditorNumber } from './editor-number'
 
 export function EditorPricingSection({ editor }: { editor: EditorContext }) {
   const { editProductId, form, variantRows, setVariantRows, selectedChannelIds, channelPricing, fieldErrors, setFieldErrors, updateField, requiredError, requiredFieldInvalid, variantStockTotal, marketplacePricingOpen, setMarketplacePricingOpen, platformCards, sizeChartSizes, sizeChartDisabledReason, showVariantStockTotal, updateVariantRow, applySizeChart, toggleCustomChannelPrice, updateChannelPrice } = editor
@@ -19,7 +20,7 @@ export function EditorPricingSection({ editor }: { editor: EditorContext }) {
                 (each row's list price is raised to it only when lower); the cost comes from the card or its first costed row. */}
             <PriceSuggestionLink fields={{ cost: form.costPrice.trim() !== '' ? form.costPrice : String(variantRows.find(row => row.costPrice != null && row.costPrice > 0)?.costPrice ?? ''), vatRate: form.vatRate, vatIncluded: form.vatIncluded !== 'EXCLUDED', listPrice: form.listPrice }} onApply={prices => {
               updateField('salePrice', prices.salePrice); updateField('listPrice', prices.listPrice)
-              const sale = Number(prices.salePrice)
+              const sale = parseEditorNumber(prices.salePrice)
               if (variantRows.length && Number.isFinite(sale)) setVariantRows(rows => rows.map(row => ({ ...row, salePrice: sale, listPrice: row.listPrice >= sale ? row.listPrice : sale })))
             }} /></div></div>
           <div className="product-step-grid">

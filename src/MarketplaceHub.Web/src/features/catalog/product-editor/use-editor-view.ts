@@ -35,6 +35,7 @@ import type { EditorDataResult } from './use-editor-data'
 import type { EditorSeedResult } from './use-editor-seed'
 import type { VariantRowDragResult } from './use-variant-row-drag'
 import type { VariantMediaAutoSaveResult } from './use-variant-media-autosave'
+import { parseEditorNumber } from './editor-number'
 
 export function useEditorView(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult) {
   const { editProductId, publishOnly, duplicateProductId, setNotice, form, attributeSelections, attributeTextValues, variantAttributeIds, variantRows, channelPricing, automaticBarcodeGeneration, wizardStep, setWizardStep, variantMediaModal, setVariantMobileGroup, pendingVariantCodeGeneration, variantBulkEditFilterSelections, mediaFiles, pendingFamilyMediaRemovals, familyMediaOrder, mediaStripOrder, sizeChartUrl, chartKey, removedVariantIds, webColorAutoEnabled, manualWebColorValueId, productAtSave, variantCodeConflicts, variantPlatformPricing, showFeedback, productToEdit, connections, pttAvmManualWrites, requirements, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, mediaUrls, sizeChartPickRequested, allRequirements, mappedRequirements, optionRequirements } = c
@@ -97,8 +98,8 @@ export function useEditorView(c: EditorProps & EditorStateResult & EditorMediaPo
       isLinked: true,
       status: connection.status,
       connectionId: connection.id,
-      listPrice: Number(pricing?.listPrice ?? fallbackListPrice),
-      salePrice: Number(pricing?.salePrice ?? fallbackSalePrice),
+      listPrice: parseEditorNumber(pricing?.listPrice ?? fallbackListPrice),
+      salePrice: parseEditorNumber(pricing?.salePrice ?? fallbackSalePrice),
       currency: form.currency
     }
   }), [channelPricing, connections.data?.items, fallbackListPrice, fallbackSalePrice, form.currency])
