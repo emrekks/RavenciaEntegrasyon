@@ -517,7 +517,7 @@ internal static class ReportBuilder
         var lines = orders.SelectMany(x => x.Lines).Where(x => x.Commission is not null).ToList();
         var covered = MoneyRounding.Round(lines.Sum(x => x.KeptAmount));
         var commission = MoneyRounding.Round(lines.Sum(x => x.Commission!.Value));
-        return new(covered, netRevenue > 0 ? MeasureRounding.Round(Math.Min(1m, covered / netRevenue), 4) : null, commission, covered - commission, covered > 0 ? MeasureRounding.Round(commission / covered, 4) : null);
+        return new(covered, netRevenue > 0 ? PercentRounding.Rate(Math.Min(1m, covered / netRevenue)) : null, commission, covered - commission, covered > 0 ? PercentRounding.Rate(commission / covered) : null);
     }
 
     private static ReportCostView CostView(IReadOnlyList<OrderFact> orders)
@@ -547,10 +547,10 @@ internal static class ReportBuilder
         }
         var grossProfit = costedRevenue - costTotal;
         var netProfit = profitRevenue - profitCost - profitCommission;
-        return new(kept, costed, kept > 0 ? MeasureRounding.Round(costed / kept, 4) : null, MoneyRounding.Round(costTotal), MoneyRounding.Round(costedRevenue), MoneyRounding.Round(grossProfit),
-            costedRevenue > 0 ? MeasureRounding.Round(grossProfit / costedRevenue, 4) : null,
-            profitUnits, kept > 0 ? MeasureRounding.Round(profitUnits / kept, 4) : null, MoneyRounding.Round(profitRevenue), MoneyRounding.Round(profitCost), MoneyRounding.Round(profitCommission),
-            MoneyRounding.Round(netProfit), profitRevenue > 0 ? MeasureRounding.Round(netProfit / profitRevenue, 4) : null, variants.Count, MoneyRounding.Round(costedSales), MoneyRounding.Round(keptRevenue));
+        return new(kept, costed, kept > 0 ? PercentRounding.Rate(costed / kept) : null, MoneyRounding.Round(costTotal), MoneyRounding.Round(costedRevenue), MoneyRounding.Round(grossProfit),
+            costedRevenue > 0 ? PercentRounding.Rate(grossProfit / costedRevenue) : null,
+            profitUnits, kept > 0 ? PercentRounding.Rate(profitUnits / kept) : null, MoneyRounding.Round(profitRevenue), MoneyRounding.Round(profitCost), MoneyRounding.Round(profitCommission),
+            MoneyRounding.Round(netProfit), profitRevenue > 0 ? PercentRounding.Rate(netProfit / profitRevenue) : null, variants.Count, MoneyRounding.Round(costedSales), MoneyRounding.Round(keptRevenue));
     }
 
     // Order-level buckets (platform, store, city, district): every order falls in exactly one, so they add up.
@@ -677,10 +677,10 @@ internal static class ReportBuilder
                 var deliver = group.Select(x => Hours(x.ShippedAt, x.DeliveredAt)).Where(x => x is not null).Select(x => x!.Value).ToList();
                 var late = group.Where(x => x.ShippedAt is not null && byOrder[x.OrderId].Order.ShipmentDueAt is not null).ToList();
                 var lateCount = late.Count(x => x.ShippedAt > byOrder[x.OrderId].Order.ShipmentDueAt);
-                return new ReportCargoView(group.Key, group.Key != Unknown, group.Count(), total > 0 ? MeasureRounding.Round((decimal)group.Count() / total, 4) : null,
+                return new ReportCargoView(group.Key, group.Key != Unknown, group.Count(), total > 0 ? PercentRounding.Rate((decimal)group.Count() / total) : null,
                     ship.Count > 0 ? MeasureRounding.Round((decimal)ship.Average(), 1) : null, ship.Count,
                     deliver.Count > 0 ? MeasureRounding.Round((decimal)deliver.Average(), 1) : null, deliver.Count,
-                    lateCount, late.Count, late.Count > 0 ? MeasureRounding.Round((decimal)lateCount / late.Count, 4) : null);
+                    lateCount, late.Count, late.Count > 0 ? PercentRounding.Rate((decimal)lateCount / late.Count) : null);
             })
             .OrderBy(x => x.Known ? 0 : 1).ThenByDescending(x => x.Packages).ThenBy(x => x.Label, StringComparer.Ordinal)
             .ToList();
@@ -704,7 +704,7 @@ internal static class ReportBuilder
         var byCustomer = identified.GroupBy(x => x.CustomerKey!, StringComparer.Ordinal).Select(x => x.Count()).ToList();
         var repeat = byCustomer.Count(x => x > 1);
         return new(identified.Count, orders.Count - identified.Count, byCustomer.Count, repeat,
-            byCustomer.Count > 0 ? MeasureRounding.Round((decimal)repeat / byCustomer.Count, 4) : null,
+            byCustomer.Count > 0 ? PercentRounding.Rate((decimal)repeat / byCustomer.Count) : null,
             byCustomer.Count > 0 ? MeasureRounding.Round((decimal)identified.Count / byCustomer.Count, 2) : null);
     }
 
@@ -876,7 +876,7 @@ internal static class ReportBuilder
 
     private static decimal Sold(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Active));
     private static decimal Back(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Back));
-    private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? MeasureRounding.Round(part / whole, 4) : null;
+    private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? PercentRounding.Rate(part / whole) : null;
 
     internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, decimal ListUnitPrice = 0m)
     {
