@@ -1,4 +1,5 @@
 import { kurus, unitProfit, type UnitProfitCosts } from '../../marketplace/integrations/unit-profit'
+import { parseEditorNumber } from './editor-number'
 
 // The product editor's "Hesapla" window: the selling price that leaves a wanted profit, worked out with the commission
 // tariff's own profit calculation (unitProfit: commission, cost, cargo, service fee, 1 % withholding tax, net VAT).
@@ -92,6 +93,6 @@ export function suggestPrice(input: PriceSuggestionInput): PriceSuggestion | nul
 // Fiyatı Uygula: the sale price, and a list price raised to it when it is empty or lower (left alone otherwise).
 export function appliedPrices(suggested: number, listPrice: string): { salePrice: string; listPrice: string } {
   const sale = String(kurus(suggested))
-  const list = Number(listPrice.replace(',', '.'))
+  const list = parseEditorNumber(listPrice)
   return { salePrice: sale, listPrice: listPrice.trim() === '' || !Number.isFinite(list) || list < kurus(suggested) ? sale : listPrice }
 }
