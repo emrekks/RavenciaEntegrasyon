@@ -11,7 +11,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //   value contains the needle exactly when the value has a run of code points each folding to the needle's code point at
 //   that place: one bracket expression per needle code point, listing every code point that folds to it.
 // - a trimmed, case-insensitive equality (IsInvoicedRemoteStatus) and a superset of the invoice words a customer snapshot
-//   can carry (MarketplaceSalesService.InvoiceLabel), for the invoice label.
+//   can carry (InvoiceLabelPolicy.InvoiceLabel), for the invoice label.
 // Every code point is written as a \u or \U escape, which PostgreSQL's advanced regular expressions read alike inside and
 // outside a bracket expression, so no character of a value or term is ever special.
 internal static class ReturnSearchText

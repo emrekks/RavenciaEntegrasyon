@@ -22,9 +22,9 @@ internal sealed class OrderLineCatalog
         variants = variantRows.ToDictionary(x => x.Id);
         variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
         variantsByNormalizedSku = variantRows.GroupBy(x => x.SkuNormalized, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
-        variantsByBarcode = MarketplaceSalesService.BarcodeVariantLookup(variantRows);
+        variantsByBarcode = OrderSnapshotReader.BarcodeVariantLookup(variantRows);
         variantsByMarketplaceIdentity = links
-            .SelectMany(link => MarketplaceSalesService.LinkIdentities(link).Select(identity => (Key: (link.ConnectionId, ExternalId: identity), link.VariantId)))
+            .SelectMany(link => OrderSnapshotReader.LinkIdentities(link).Select(identity => (Key: (link.ConnectionId, ExternalId: identity), link.VariantId)))
             .GroupBy(entry => entry.Key)
             .ToDictionary(group => group.Key, group => group.First().VariantId);
         this.imageUrls = imageUrls;
@@ -35,10 +35,10 @@ internal sealed class OrderLineCatalog
     {
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
-        var lineSkuKeys = lines.SelectMany(x => MarketplaceSalesService.CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
+        var lineSkuKeys = lines.SelectMany(x => OrderSnapshotReader.CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
         var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
-        var lineBarcodeKeys = lines.SelectMany(x => MarketplaceSalesService.CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var identityKeys = lines.SelectMany(MarketplaceSalesService.LineMarketplaceIdentities).Distinct().ToArray();
+        var lineBarcodeKeys = lines.SelectMany(x => OrderSnapshotReader.CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var identityKeys = lines.SelectMany(OrderSnapshotReader.LineMarketplaceIdentities).Distinct().ToArray();
         var connectionIds = lines.Select(connectionOf).Where(x => x is not null).Select(x => x!.Value).Distinct().ToArray();
         var links = identityKeys.Length == 0 || connectionIds.Length == 0
             ? []
@@ -61,12 +61,12 @@ internal sealed class OrderLineCatalog
     {
         if (line.VariantId is { } variantId) return variants.GetValueOrDefault(variantId);
         if (variantsBySku.TryGetValue(line.Sku, out var bySku)) return bySku;
-        foreach (var key in MarketplaceSalesService.CatalogLookupKeys(line.Sku, 160))
+        foreach (var key in OrderSnapshotReader.CatalogLookupKeys(line.Sku, 160))
             if (variantsByNormalizedSku.TryGetValue(key, out var byNormalizedSku)) return byNormalizedSku;
-        foreach (var key in MarketplaceSalesService.CatalogLookupKeys(line.Barcode, 160))
+        foreach (var key in OrderSnapshotReader.CatalogLookupKeys(line.Barcode, 160))
             if (variantsByBarcode.TryGetValue(key, out var byBarcode)) return byBarcode;
         if (connectionOf(line) is not { } connectionId) return null;
-        foreach (var identity in MarketplaceSalesService.LineMarketplaceIdentities(line))
+        foreach (var identity in OrderSnapshotReader.LineMarketplaceIdentities(line))
             if (variantsByMarketplaceIdentity.TryGetValue((connectionId, identity), out var linkedId) && variants.GetValueOrDefault(linkedId) is { } linked) return linked;
         return null;
     }
@@ -76,7 +76,7 @@ internal sealed class OrderLineCatalog
 
     // The line's photo: the marketplace's own address when the line carries one, with the catalog's as the fallback.
     public (string? ImageUrl, string? FallbackImageUrl) Images(OrderLine line, ProductVariant? variant) =>
-        MarketplaceSalesService.LineImageUrls(MarketplaceSalesService.SourceLineImageUrl(line.SourceSnapshotJson), CatalogImageUrl(variant));
+        OrderSnapshotReader.LineImageUrls(OrderSnapshotReader.SourceLineImageUrl(line.SourceSnapshotJson), CatalogImageUrl(variant));
 
     public static async Task<Dictionary<Guid, string>> MediaUrlsAsync(AppDbContext db, Guid tenantId, IEnumerable<Guid> variantIds, CancellationToken cancellationToken)
     {

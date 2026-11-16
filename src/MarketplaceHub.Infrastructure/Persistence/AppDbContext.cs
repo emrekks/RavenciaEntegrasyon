@@ -168,13 +168,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         var returnClaims = ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, CancellationToken.None), []).GetAwaiter().GetResult();
         var models = ProductModelLinks.Capture(ChangeTracker);
+        // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
+        var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
         int saved;
         _saving = true;
         try { saved = base.SaveChanges(acceptAllChangesOnSuccess); }
         finally { _saving = false; }
+        CatalogListGenerations.Bump(catalogTenants);
         ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
         if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
         RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
@@ -183,16 +186,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         // SIPARIS-STOK-9: the Returns page's card columns of every return claim this save touches: the claims it changes in
         // the save itself (after the outbox events, so the columns raise none), the others right after it, outside the
         // tracker (ReturnCardColumns).
         var returnClaims = await ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, cancellationToken), []);
         var models = ProductModelLinks.Capture(ChangeTracker);
+        // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
+        var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
         int saved;
         _saving = true;
         try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
         finally { _saving = false; }
+        CatalogListGenerations.Bump(catalogTenants);
         await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
         if (models is not null) await LinkProductModelsAsync(models);
         await RefreshDeferredModelValuesAsync();
@@ -351,7 +357,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             // A row whose only change is a "last checked" time is still saved, but the screens have nothing new to show.
             if (SyncNoOpWrites.IsCheckOnly(entry)) continue;
-            var change = OutboxChange(entry.Entity);
+            // A deleted return claim is announced as a change of its order (as CancelledReturnClaimCleanup does): the report
+            // cache can no longer find the claim to place it in a period, but it finds the order (ReportCache).
+            var change = entry.State == EntityState.Deleted && entry.Entity is ReturnClaim deletedClaim
+                ? (deletedClaim.TenantId, "returns", "Order", deletedClaim.OrderId, (long?)null)
+                : OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
             var now = _timeProvider.GetUtcNow();
             IntegrationOutboxEvents.Add(new IntegrationOutboxEvent

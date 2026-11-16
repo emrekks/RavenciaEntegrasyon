@@ -70,6 +70,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             }
             catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
             db.ChangeTracker.Clear();
+            // Orders without a kept customer name (older ones, or snapshots written outside the tracker) get it, so the
+            // Returns search decides them in the database (SIPARIS-STOK-9).
+            try
+            {
+                await OrderCustomerSearchNames.BackfillAsync(db, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
+            db.ChangeTracker.Clear();
         }
     }
 

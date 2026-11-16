@@ -13,7 +13,7 @@ public sealed class N11OrderInfoTests
     [Fact]
     public void TrackingCommissionAndDiscountsAreListed()
     {
-        var info = MarketplaceSalesService.N11OrderInfo([Line(60, 0, 20.34m, 0)], Customer);
+        var info = OrderSnapshotReader.N11OrderInfo([Line(60, 0, 20.34m, 0)], Customer);
 
         Assert.Equal(["Kargo takip no", "Teslimat tipi", "Komisyon oranı", "N11 indirimi"], info.Select(x => x.Label));
         Assert.Equal("6508248937060", info[0].Value);
@@ -25,7 +25,7 @@ public sealed class N11OrderInfoTests
     [Fact]
     public void CampaignCommissionIsSubtractedAndDiscountsAreSummedAcrossLines()
     {
-        var info = MarketplaceSalesService.N11OrderInfo([Line(10, 5, 20, 2.5m), Line(20, 7.5m, 20, 2.5m)], "{}");
+        var info = OrderSnapshotReader.N11OrderInfo([Line(10, 5, 20, 2.5m), Line(20, 7.5m, 20, 2.5m)], "{}");
 
         Assert.Equal("%17,5", info.Single(x => x.Label == "Komisyon oranı").Value);
         Assert.Equal("30,00 ₺", info.Single(x => x.Label == "N11 indirimi").Value);
@@ -35,7 +35,7 @@ public sealed class N11OrderInfoTests
     [Fact]
     public void DifferentLineRatesAreShownTogether()
     {
-        var info = MarketplaceSalesService.N11OrderInfo([Line(0, 0, 12, 0), Line(0, 0, 20, 0)], "{}");
+        var info = OrderSnapshotReader.N11OrderInfo([Line(0, 0, 12, 0), Line(0, 0, 20, 0)], "{}");
 
         Assert.Equal("%12 / %20", info.Single().Value);
     }
@@ -45,7 +45,7 @@ public sealed class N11OrderInfoTests
     [InlineData("""{"cargoSenderNumber":"123","cargoTrackingLink":"javascript:alert(1)"}""")]
     public void OnlyHttpsTrackingLinksAreOffered(string customer)
     {
-        var info = MarketplaceSalesService.N11OrderInfo([], customer);
+        var info = OrderSnapshotReader.N11OrderInfo([], customer);
 
         Assert.Equal("123", info.Single().Value);
         Assert.Null(info.Single().Url);
@@ -54,6 +54,6 @@ public sealed class N11OrderInfoTests
     [Fact]
     public void BrokenOrMissingSnapshotsAreIgnored()
     {
-        Assert.Empty(MarketplaceSalesService.N11OrderInfo([null, "", "not json"], "{}"));
+        Assert.Empty(OrderSnapshotReader.N11OrderInfo([null, "", "not json"], "{}"));
     }
 }

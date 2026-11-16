@@ -358,6 +358,8 @@ public static class ProductModelLinks
             await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.FamilyId != familyId)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, familyId), cancellationToken);
         }
+        // KATALOG-10: the links moved; the product list's cached rule check of the tenant is dropped.
+        CatalogListGenerations.Bump(tenantId);
         // Faz 2: the pictures follow their card's model.
         await SyncMediaFamiliesAsync(db, tenantId, keyArray is null ? null : [.. desired.Keys], cancellationToken);
         // Models left without a card go.

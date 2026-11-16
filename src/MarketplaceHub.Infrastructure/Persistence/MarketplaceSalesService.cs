@@ -3,6 +3,8 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
+using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -67,6 +69,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             ? ServiceResult<T>.Fail(error.Code, error.Message, error.Status, error.FieldErrors)
             : ServiceResult<T>.Fail("ACTION_QUEUED", "Pazaryeri istek kotası şu an dolu; işlem sıraya alındı ve birkaç saniye içinde gönderilecek.", 409);
     }
+
+    private Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken) =>
+        OrderLineCatalog.MediaUrlsAsync(db, tenantId, variantIds.Where(x => x is not null).Select(x => x!.Value), cancellationToken);
 
     private static bool IsAmbiguous(AdapterError error) => WriteOutcomePolicy.IsUncertain(error);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });

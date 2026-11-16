@@ -22,13 +22,13 @@ public sealed class MarketplaceSalesImageUrlTests
     [InlineData("https://cdn.example.test/image.jpg", "https://cdn.example.test/image.jpg")]
     public void NormalizeImageUrlResolvesHepsiburadaSizeToken(string source, string expected)
     {
-        Assert.Equal(expected, MarketplaceSalesService.NormalizeImageUrl(source));
+        Assert.Equal(expected, OrderSnapshotReader.NormalizeImageUrl(source));
     }
 
     [Fact]
     public void NormalizeImageUrlRejectsNonHttpsImages()
     {
-        Assert.Null(MarketplaceSalesService.NormalizeImageUrl("http://productimages.hepsiburada.net/s/777/{size}/image.jpg"));
+        Assert.Null(OrderSnapshotReader.NormalizeImageUrl("http://productimages.hepsiburada.net/s/777/{size}/image.jpg"));
     }
 
     [Theory]
@@ -38,8 +38,8 @@ public sealed class MarketplaceSalesImageUrlTests
     {
         var snapshot = $$"""{"{{fieldName}}":"https://productimages.hepsiburada.net/s/777/{size}/image.jpg"}""";
 
-        Assert.Equal("https://productimages.hepsiburada.net/s/777/{size}/image.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
-        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/{size}/image.jpg", OrderSnapshotReader.SourceImageUrl(snapshot));
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", OrderSnapshotReader.NormalizeImageUrl(OrderSnapshotReader.SourceImageUrl(snapshot)));
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class MarketplaceSalesImageUrlTests
     {
         const string snapshot = """{"product":{"images":[{"url":"https://productimages.hepsiburada.net/s/777/{size}/image.jpg"}]}}""";
 
-        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/image.jpg", OrderSnapshotReader.NormalizeImageUrl(OrderSnapshotReader.SourceImageUrl(snapshot)));
     }
 
     // Live 2026-10-29: a Hepsiburada line built from a claim lists the customer's photo (Reports[].ImageUrl) before the
@@ -63,7 +63,7 @@ public sealed class MarketplaceSalesImageUrlTests
              "imageUrl":"https://productimages.hepsiburada.net/s/777/{size}/110000846862267.jpg"}
             """;
 
-        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/110000846862267.jpg", MarketplaceSalesService.NormalizeImageUrl(MarketplaceSalesService.SourceImageUrl(snapshot)));
+        Assert.Equal("https://productimages.hepsiburada.net/s/777/500/110000846862267.jpg", OrderSnapshotReader.NormalizeImageUrl(OrderSnapshotReader.SourceImageUrl(snapshot)));
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class MarketplaceSalesImageUrlTests
     {
         const string snapshot = """{"Reports":[{"ImageUrl":"https://images.hepsiburada.net/oms/claim/photo.jpeg"}],"images":[]}""";
 
-        Assert.Null(MarketplaceSalesService.SourceImageUrl(snapshot));
+        Assert.Null(OrderSnapshotReader.SourceImageUrl(snapshot));
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class MarketplaceSalesImageUrlTests
     {
         const string snapshot = """{"imageUrl":"https://cdn.example.test/generic.jpg","productImageUrl":"https://cdn.example.test/product.jpg"}""";
 
-        Assert.Equal("https://cdn.example.test/product.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
+        Assert.Equal("https://cdn.example.test/product.jpg", OrderSnapshotReader.SourceImageUrl(snapshot));
     }
 
     [Fact]
@@ -87,20 +87,20 @@ public sealed class MarketplaceSalesImageUrlTests
     {
         const string snapshot = """{"productImageUrl":"http://insecure.example.test/a.jpg","imageUrl":"https://cdn.example.test/b.jpg"}""";
 
-        Assert.Equal("https://cdn.example.test/b.jpg", MarketplaceSalesService.SourceImageUrl(snapshot));
+        Assert.Equal("https://cdn.example.test/b.jpg", OrderSnapshotReader.SourceImageUrl(snapshot));
     }
 
     [Fact]
     public void LineImageUrlsUseTheCatalogPhotoWhenTheMarketplaceGaveNone()
     {
-        Assert.Equal<(string?, string?)>(("/api/v1/files/product-media/1/content", null), MarketplaceSalesService.LineImageUrls(null, "/api/v1/files/product-media/1/content"));
+        Assert.Equal<(string?, string?)>(("/api/v1/files/product-media/1/content", null), OrderSnapshotReader.LineImageUrls(null, "/api/v1/files/product-media/1/content"));
     }
 
     [Fact]
     public void LineImageUrlsKeepTheCatalogPhotoAsFallbackBehindTheMarketplaceImage()
     {
-        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", "https://cdn.example.test/catalog.jpg"), MarketplaceSalesService.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/catalog.jpg"));
-        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), MarketplaceSalesService.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/a.jpg"));
+        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", "https://cdn.example.test/catalog.jpg"), OrderSnapshotReader.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/catalog.jpg"));
+        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), OrderSnapshotReader.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/a.jpg"));
     }
 
     // Live 6 Nov 2026: Pazarama return 674544454's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok"
@@ -109,9 +109,9 @@ public sealed class MarketplaceSalesImageUrlTests
     public void ReturnDetailLineKeepsTheCatalogPhotoBehindTheMarketplaceImage()
     {
         Assert.Equal<(string?, string?)>(("https://img.pzrmcdn.com/asset/x.jpg", "/api/v1/files/product-media/1/content"),
-            MarketplaceSalesService.ReturnDetailLineImageUrls("https://img.pzrmcdn.com/asset/x.jpg", "/api/v1/files/product-media/1/content", "MZ028IH6"));
+            OrderSnapshotReader.ReturnDetailLineImageUrls("https://img.pzrmcdn.com/asset/x.jpg", "/api/v1/files/product-media/1/content", "MZ028IH6"));
         Assert.Equal<(string?, string?)>(("/api/v1/files/product-media/1/content", null),
-            MarketplaceSalesService.ReturnDetailLineImageUrls(null, "/api/v1/files/product-media/1/content", "MZ028IH6"));
+            OrderSnapshotReader.ReturnDetailLineImageUrls(null, "/api/v1/files/product-media/1/content", "MZ028IH6"));
     }
 
     // Live 14 Nov 2026: the catalog held no variant, so return list rows (unlike the order list, whose thumbnails ask the
@@ -120,39 +120,39 @@ public sealed class MarketplaceSalesImageUrlTests
     public void ReturnLineLookupCarriesTheClaimStoreAndSkipsAnEmptyOne()
     {
         var store = Guid.Parse("01a05a69-86cd-7a57-af4f-d9d7276a5437");
-        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=KRL11010103&connectionId=01a05a69-86cd-7a57-af4f-d9d7276a5437", null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "KRL11010103", store));
-        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=KRL11010103", null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "KRL11010103", Guid.Empty));
-        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), MarketplaceSalesService.ReturnDetailLineImageUrls("https://cdn.example.test/a.jpg", null, "KRL11010103", store));
+        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=KRL11010103&connectionId=01a05a69-86cd-7a57-af4f-d9d7276a5437", null), OrderSnapshotReader.ReturnDetailLineImageUrls(null, null, "KRL11010103", store));
+        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=KRL11010103", null), OrderSnapshotReader.ReturnDetailLineImageUrls(null, null, "KRL11010103", Guid.Empty));
+        Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), OrderSnapshotReader.ReturnDetailLineImageUrls("https://cdn.example.test/a.jpg", null, "KRL11010103", store));
     }
 
     [Fact]
     public void ReturnDetailLineLooksTheBarcodeUpOnlyWhenNoPhotoIsKnown()
     {
-        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=MZ%20028", null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "MZ 028"));
-        Assert.Equal<(string?, string?)>((null, null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, " "));
+        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=MZ%20028", null), OrderSnapshotReader.ReturnDetailLineImageUrls(null, null, "MZ 028"));
+        Assert.Equal<(string?, string?)>((null, null), OrderSnapshotReader.ReturnDetailLineImageUrls(null, null, " "));
     }
 
     [Fact]
     public void LineImageUrlsStayEmptyWhenNothingIsKnown()
     {
-        Assert.Equal<(string?, string?)>((null, null), MarketplaceSalesService.LineImageUrls(null, null));
+        Assert.Equal<(string?, string?)>((null, null), OrderSnapshotReader.LineImageUrls(null, null));
     }
 
     [Fact]
     public void LineMarketplaceIdentitiesNameTheStockCodeThenTheListingIds()
     {
         const string trendyol = """{"sku":"MZ052BOD-16","productCode":1696621714,"contentId":1696621714,"id":6139565733}""";
-        Assert.Equal(["MZ052BOD-16", "1696621714"], MarketplaceSalesService.LineMarketplaceIdentities(" mz052bod-16 ", trendyol));
-        Assert.Equal(["HBV0000ABC", "123-LISTING"], MarketplaceSalesService.LineMarketplaceIdentities("HBV0000ABC", """{"hbSku":"hbv0000abc","listingId":"123-listing"}"""));
-        Assert.Equal(["SKU-1"], MarketplaceSalesService.LineMarketplaceIdentities("SKU-1", """{"productCode":0,"listingId":"","variantId":null}"""));
-        Assert.Equal(["SKU-1"], MarketplaceSalesService.LineMarketplaceIdentities("SKU-1", "not json"));
-        Assert.Empty(MarketplaceSalesService.LineMarketplaceIdentities(null, null));
+        Assert.Equal(["MZ052BOD-16", "1696621714"], OrderSnapshotReader.LineMarketplaceIdentities(" mz052bod-16 ", trendyol));
+        Assert.Equal(["HBV0000ABC", "123-LISTING"], OrderSnapshotReader.LineMarketplaceIdentities("HBV0000ABC", """{"hbSku":"hbv0000abc","listingId":"123-listing"}"""));
+        Assert.Equal(["SKU-1"], OrderSnapshotReader.LineMarketplaceIdentities("SKU-1", """{"productCode":0,"listingId":"","variantId":null}"""));
+        Assert.Equal(["SKU-1"], OrderSnapshotReader.LineMarketplaceIdentities("SKU-1", "not json"));
+        Assert.Empty(OrderSnapshotReader.LineMarketplaceIdentities(null, null));
     }
 
     [Fact]
     public void CatalogLookupKeysRemoveHepsiburadaZeroPaddingForAlphaNumericBarcodes()
     {
-        Assert.Equal(["0000MZ029YD22", "MZ029YD22"], MarketplaceSalesService.CatalogLookupKeys("0000MZ029YD22"));
+        Assert.Equal(["0000MZ029YD22", "MZ029YD22"], OrderSnapshotReader.CatalogLookupKeys("0000MZ029YD22"));
     }
 
     [Theory]
@@ -160,6 +160,6 @@ public sealed class MarketplaceSalesImageUrlTests
     [InlineData("000000")]
     public void CatalogLookupKeysKeepNumericBarcodesUnchanged(string barcode)
     {
-        Assert.Equal([barcode], MarketplaceSalesService.CatalogLookupKeys(barcode));
+        Assert.Equal([barcode], OrderSnapshotReader.CatalogLookupKeys(barcode));
     }
 }

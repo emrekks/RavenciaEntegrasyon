@@ -122,14 +122,14 @@ public sealed class ReturnListCardTests
     {
         Assert.False(MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(null, marketplaceStatus, rawStatus));
         Assert.Equal(
-            MarketplaceSalesService.InvoiceLabel(null, null, marketplaceStatus, "{}", [rawStatus]),
-            MarketplaceSalesService.InvoiceLabel(null, null, marketplaceStatus, """{"invoiceStatus":"REJECTED"}""", [rawStatus]));
+            InvoiceLabelPolicy.InvoiceLabel(null, null, marketplaceStatus, "{}", [rawStatus]),
+            InvoiceLabelPolicy.InvoiceLabel(null, null, marketplaceStatus, """{"invoiceStatus":"REJECTED"}""", [rawStatus]));
         foreach (var invoiceStatus in Enum.GetValues<InvoiceStatus>())
         {
             Assert.False(MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(invoiceStatus, MarketplaceInvoiceStatus.Unknown, null));
             Assert.Equal(
-                MarketplaceSalesService.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, "{}", [null]),
-                MarketplaceSalesService.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, """{"invoiceStatus":"REJECTED"}""", [null]));
+                InvoiceLabelPolicy.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, "{}", [null]),
+                InvoiceLabelPolicy.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, """{"invoiceStatus":"REJECTED"}""", [null]));
         }
         Assert.True(MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(null, MarketplaceInvoiceStatus.Unknown, "Delivered"));
     }
