@@ -41,12 +41,13 @@ public static partial class TrendyolJsonMapper
         }
         return JsonSerializer.Serialize(map);
     }
-    // Text, NullText, Decimal, TryDecimal, Bool and BoolAny stay Trendyol's own, not RemoteFields': text is any non-null
-    // value as written (untrimmed, true/false and objects as their JSON), a missing text or amount is "" or 0 for the
-    // mapper's non-null fields, a "true"/1 reads as true, and a non-object element throws instead of reading as
-    // missing. The golden contract fixtures pin these readings. Whole numbers go through RemoteFields.Long.
+    // Trendyol's readings are named RemoteFields variants (ADAPTOR-TY-HB-8): raw text (any non-null value as written,
+    // untrimmed, true/false and objects as their JSON), the first readable dot-decimal amount, loose truth ("true"/1)
+    // and loose yes/no; "" and 0 stand for a missing text or amount in the mapper's non-null fields. Each throws on a
+    // non-object element, as these readers always did. The golden contract fixtures pin the readings. ScalarText
+    // (a cargoProvider object) and DecimalNullable (a price object) read Trendyol's own shapes and stay here.
     private static string Text(JsonElement value, params string[] names) => NullText(value, names) ?? "";
-    private static string? NullText(JsonElement value, params string[] names) { foreach (var name in names) if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)) return item.ToString(); return null; }
+    private static string? NullText(JsonElement value, params string[] names) => RemoteFields.RawText(value, names);
     private static string? NestedText(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? NullText(nested, names) : null;
     private static string? ScalarText(JsonElement value, params string[] names)
     {
@@ -62,14 +63,13 @@ public static partial class TrendyolJsonMapper
         }
         return null;
     }
-    private static decimal Decimal(JsonElement value, params string[] names) => TryDecimal(value, out var result, names) ? result : 0;
+    // O5: a text amount is read dot-decimal only; "1234,50" stays unknown instead of becoming 123450.
+    private static decimal Decimal(JsonElement value, params string[] names) => RemoteFields.FirstDecimal(value, names) ?? 0;
     private static bool TryDecimal(JsonElement value, out decimal result, params string[] names)
     {
-        foreach (var name in names)
-            // O5: a text amount is read dot-decimal only; "1234,50" stays unknown instead of becoming 123450.
-            if (value.TryGetProperty(name, out var item) && RemoteJson.Decimal(item) is { } number) { result = number; return true; }
-        result = 0;
-        return false;
+        var found = RemoteFields.FirstDecimal(value, names);
+        result = found ?? 0;
+        return found is not null;
     }
     private static decimal? NestedDecimalNullable(JsonElement value, string objectName, params string[] names) => value.TryGetProperty(objectName, out var nested) && nested.ValueKind == JsonValueKind.Object ? DecimalNullable(nested, names) : null;
     private static decimal? DecimalNullable(JsonElement value, params string[] names)
@@ -93,25 +93,9 @@ public static partial class TrendyolJsonMapper
             if (RemoteFields.Long(value, name) is { } result) return result;
         return null;
     }
-    private static bool Bool(JsonElement value, string name)
-    {
-        if (!value.TryGetProperty(name, out var item)) return false;
-        return item.ValueKind == JsonValueKind.True
-            || item.ValueKind == JsonValueKind.String && bool.TryParse(item.GetString(), out var parsed) && parsed
-            || item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number) && number != 0;
-    }
+    private static bool Bool(JsonElement value, string name) => RemoteFields.LooseTrue(value, name);
 
-    private static bool? BoolAny(JsonElement value, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (!value.TryGetProperty(name, out var item)) continue;
-            if (item.ValueKind == JsonValueKind.True) return true;
-            if (item.ValueKind == JsonValueKind.False) return false;
-            if (bool.TryParse(item.ToString(), out var parsed)) return parsed;
-        }
-        return null;
-    }
+    private static bool? BoolAny(JsonElement value, params string[] names) => RemoteFields.LooseBool(value, names);
     // orderDate is Trendyol's "GMT+3" epoch: the Turkey wall-clock time written as if it were UTC, three hours ahead of
     // the real instant (C13; proven on live 2 Nov 2026: order 11776722829 arrived 19:01:53Z with orderDate 22:01:41Z).
     // lastModifiedDate, createdDate, claimDate (documented as GMT) and agreedDeliveryDate (23:59 Istanbul) are real

@@ -19,13 +19,8 @@ public sealed partial class HepsiburadaHttpClient(
 {
     private readonly HepsiburadaOptions settings = options.Value;
     private bool GlobalWritesEnabled => ExternalWriteGate.GlobalWritesEnabled(configuration);
-    private static string? Text(JsonElement element, params string[] names)
-    {
-        foreach (var property in element.EnumerateObject())
-            if (names.Any(name => string.Equals(name, property.Name, StringComparison.OrdinalIgnoreCase)) && property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
-                return property.Value.ToString();
-        return null;
-    }
+    // The first listed property matching any name (ignoring case) with a string or number (RemoteFields).
+    private static string? Text(JsonElement element, params string[] names) => RemoteFields.FirstListedTextIgnoringCase(element, names);
 
     // Hepsiburada's documented page limits: paid orders 100, the status and missing-invoice lists 50,
     // the package lists 10 (the default for everything else).
