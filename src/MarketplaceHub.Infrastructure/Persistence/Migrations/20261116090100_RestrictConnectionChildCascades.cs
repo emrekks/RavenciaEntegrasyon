@@ -8,12 +8,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
     public partial class RestrictConnectionChildCascades : Migration
     {
         // VERITABANI-DAGITIM-16, the optional part: the last five foreign keys to platform_connections that cascaded become
-        // RESTRICT. Every path that deletes a connection row deletes these children first (ConnectionLeftovers.PurgeAsync;
-        // PanelFactoryResetService removes the two sync states with the connection's settings and the tariffs and report
-        // files with the Promotions category), so nothing relied on the cascade. One did by accident: a factory reset
-        // without Promotions removed a deleted connection's tariffs and report files through it; now that connection row
-        // stays until they go, as the reset already does for the other categories. Live 16 Nov 2026 (read-only SQL): 0
-        // tariffs, 0 report files, 1 finance and 4 question sync states, all of active connections.
+        // RESTRICT. Both paths that delete a connection row delete these children first: the hourly sweep
+        // (ConnectionLeftovers.PurgeAsync) removes a deleted connection's tariffs, report files and sync states, then the row;
+        // the factory reset's Eski Bağlantı Kayıtları (PanelFactoryResetService.CleanUpLegacyConnectionsAsync) removes the
+        // same tables for deleted connections only, whether or not Promotions is chosen, then the row. Before, that reset
+        // left the tariffs and files to the cascade. A deleted connection still holding orders or invoices of a category
+        // not chosen stays, and the reset's note counts it. Live 16 Nov 2026 (read-only SQL): 0 tariffs, 0 report files,
+        // 1 finance and 4 question sync states, all of active connections.
         // Same swap as ScanFixesSchema: per table one short transaction (lock_timeout 5 s) drops the key and adds it again
         // NOT VALID, unless it already restricts; VALIDATE in its own statement does not block writes. No row changes.
         private static readonly (string Table, string Key)[] Keys =
