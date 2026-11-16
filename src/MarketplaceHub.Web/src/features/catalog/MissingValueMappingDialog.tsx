@@ -1,15 +1,16 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { UiIcon, DialogSurface, TitleHint } from '../../shared/components'
 import type { PublicationValueMappingFix } from './publication-attribute-readiness'
-import { filterValueCandidates, rankValueCandidates, type ValueCandidate } from './value-mapping-suggestions'
+import { filterValueCandidates, rankValueCandidates } from './value-mapping-suggestions'
 import { mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from '../marketplace/mappings/mapping-refresh'
 import './missing-value-mapping-dialog.css'
 import { queryKeys } from '../../shared/api/query-keys'
 
-type ValueList = { snapshotId: string; items: Array<ValueCandidate & { isActive: boolean }> }
+type ValueList = ApiAnswer<'getReferenceDataCategoriesByCategoryIdAttributesByAttributeIdValues'>
 type ValueMapping = { localId: string; externalId: string; version: number }
 
 // "Şimdi eşle": maps the panel values a publish card reports as unmapped without leaving the

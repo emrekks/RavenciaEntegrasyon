@@ -1,6 +1,7 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 // The texts of a catalog delete: the confirmation names the publication and price/stock jobs it cancels, and the
 // notice after it says how many records went and how many of those jobs were cancelled with them.
-export type ProductDeleteResponse = { deletedCount?: number; cancelledJobCount?: number }
+export type ProductDeleteResponse = ApiAnswer<'deleteProductsById'>
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 
@@ -26,7 +27,8 @@ export function productDeleteMoreText(moreCount: number) {
   return moreCount > 0 ? `ve ${count(moreCount)} ürün daha` : null
 }
 
-export function productDeleteResultMessage(responses: ProductDeleteResponse[], requestedCount: number): string {
+// Partial: an answer without counts (none the contract allows today) still reads as the requested count.
+export function productDeleteResultMessage(responses: ReadonlyArray<Partial<ProductDeleteResponse>>, requestedCount: number): string {
   const deleted = responses.reduce((sum, response) => sum + (response.deletedCount ?? 0), 0) || requestedCount
   const cancelled = responses.reduce((sum, response) => sum + (response.cancelledJobCount ?? 0), 0)
   const records = deleted === 1 ? 'Ürün ve varyantları yerel katalogdan silindi.' : `${count(deleted)} katalog kaydı yerel katalogdan silindi.`

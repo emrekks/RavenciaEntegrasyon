@@ -24,8 +24,18 @@ export type StatusExtras = {
   sourceHint: string
   attention: boolean
 }
-export type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
-export type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
+type MatrixRowAnswer = ApiAnswer<'getDashboardIntegrationMatrix'>[number]
+// CONTRACT: the API declares a cell's state as a string; DashboardReadService writes ok, warn, bad or off.
+export type MatrixCell = Omit<MatrixRowAnswer['cells'][string], 'state'> & { state: 'ok' | 'warn' | 'bad' | 'off' }
+export type MatrixRow = Omit<MatrixRowAnswer, 'cells'> & { cells: Record<string, MatrixCell> }
+const cellStates: ReadonlySet<string> = new Set<MatrixCell['state']>(['ok', 'warn', 'bad', 'off'])
+const isMatrixCell = (cell: MatrixRowAnswer['cells'][string]): cell is MatrixCell => cellStates.has(cell.state)
+
+// The matrix as the panel reads it: a cell in a state the panel does not know is left out (shown as no data), never
+// shown as another state.
+export function readIntegrationMatrix(rows: ApiAnswer<'getDashboardIntegrationMatrix'>): MatrixRow[] {
+  return rows.map(row => ({ ...row, cells: Object.fromEntries(Object.entries(row.cells).filter((entry): entry is [string, MatrixCell] => isMatrixCell(entry[1]))) }))
+}
 
 // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
 const MARKETPLACES: readonly string[] = platformDisplayOrder
@@ -72,7 +82,7 @@ export const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) 
 
 /** The matrix rows with each store's credentials and webhook as the integration page shows them, and whether it needs a look. */
 export function useIntegrationHealth() {
-  const matrix = useQuery({ queryKey: queryKeys.dashboard('integration-matrix'), queryFn: ({ signal }) => hubApi<MatrixRow[]>('/dashboard/integration-matrix', { ...poll, signal }), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
+  const matrix = useQuery({ queryKey: queryKeys.dashboard('integration-matrix'), queryFn: async ({ signal }) => readIntegrationMatrix(await hubApi<ApiAnswer<'getDashboardIntegrationMatrix'>>('/dashboard/integration-matrix', { ...poll, signal })), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
   const rows = (matrix.data ?? []).filter(row => MARKETPLACES.includes(row.platformCode.toUpperCase()))
   // The webhook status of a Trendyol or Shopify store asks the marketplace, so it is read again only every five minutes.
   const connections = useQuery({ ...connectionQueries.list<Connection>(), staleTime: 120_000 })

@@ -21,7 +21,7 @@ export type EditorProps = {
 // quick: sent by Hızlı Güncelle (else by the settings window's Gönder); the store prices name it as their reason.
 export type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[]; quick?: boolean }
 export type PublicationStatus = ApiAnswer<'getProductsByIdPublicationStatusByConnectionId'>
-export type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
+export type PublicationJobDetail = ApiAnswer<'getJobsById'>
 export type ProductFamilyMediaItem = NonNullable<Product['familyMediaItems']>[number]
 export type MediaRemovalConfirmation = { kind: 'product'; url: string } | { kind: 'all'; ownCount: number; familyItems: ProductFamilyMediaItem[]; keptCount: number }
 export type PendingProductMediaFile = { id: string; file: File }
