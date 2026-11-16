@@ -108,14 +108,16 @@ public static class JobEnqueueSites
         new("ScheduledJobProducer.RunNowAsync", "TRENDYOL_ORDER_RECOVERY_SYNC", 6, true, true, null, CallerChecked,
             "A leased or due pending job on the scheduled or manual prefix is returned; Guid key."),
         new("StockProjectionOutbox.AddDispatchesAsync", "STOCK_PROJECTION_DISPATCH", 1, true, true, null, CallerChecked,
-            "Existing keys of the tenant (any type, any status) and the change tracker.")
+            "Existing keys of the tenant (any type, any status) and the change tracker."),
+        new("MarketplaceJobProcessor.QueueProductImportRetryAsync", "PRODUCT_SYNC", 5, false, true, null, CallerChecked,
+            "A job of the type with the try's key in any status; the key names the connection, the model and the attempt (ISLEYICI-1).")
     ];
 
     // How many job-creating calls (JobEnqueuer.EnqueueAsync / JobEnqueuer.Add / IntegrationJobFactory.New, or a raw insert)
     // each file holds today. A helper used by several sites counts once in its own file.
     public static readonly IReadOnlyDictionary<string, int> CreatingCallsPerFile = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["src/MarketplaceHub.Api/Invoicing/InvoicingEndpoints.cs"] = 1,
+        ["src/MarketplaceHub.Api/Invoicing/InvoicingEndpoints.ManualDocumentDelivery.cs"] = 1,
         ["src/MarketplaceHub.Application/SynchronizationPolicies.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Imports/ImportService.cs"] = 2,
         ["src/MarketplaceHub.Infrastructure/Persistence/CatalogService.PttAvmProductUpdate.cs"] = 1,
@@ -130,6 +132,7 @@ public static class JobEnqueueSites
         ["src/MarketplaceHub.Infrastructure/Persistence/JobOperationsService.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/MarketplaceJobProcessor.ListingVerify.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/MarketplaceJobProcessor.ProductCreate.cs"] = 1,
+        ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/MarketplaceJobProcessor.ProductImportRetry.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/MarketplaceJobProcessor.StockProjection.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/JobProcessing/MarketplaceJobProcessor.Webhooks.cs"] = 1,
         ["src/MarketplaceHub.Infrastructure/Persistence/MarketplaceConnectionService.cs"] = 1,

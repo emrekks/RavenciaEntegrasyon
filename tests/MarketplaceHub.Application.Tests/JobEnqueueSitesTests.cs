@@ -26,7 +26,7 @@ public sealed partial class JobEnqueueSitesTests
     [Fact]
     public void EachSitesAutoFillVerdictMatchesThePriorityPolicy()
     {
-        Assert.Equal(46, JobEnqueueSites.All.Count);
+        Assert.Equal(47, JobEnqueueSites.All.Count);
         foreach (var site in JobEnqueueSites.All)
             Assert.True(site.AutoFillIdentical == (site.PriorityToday == JobPriorityPolicy.For(site.SampleJobType, site.UserInitiated)),
                 $"{site.Location}: today {site.PriorityToday}, policy {JobPriorityPolicy.For(site.SampleJobType, site.UserInitiated)}, table says identical={site.AutoFillIdentical}");
