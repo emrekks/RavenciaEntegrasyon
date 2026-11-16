@@ -10,6 +10,7 @@ public static class FilterContract
     private static readonly Dictionary<string, string> PlatformCodes = new(StringComparer.Ordinal) { ["platformCodes"] = "platforms" };
     private static readonly Dictionary<string, string> Period = new(StringComparer.Ordinal) { ["from"] = "dateFrom", ["to"] = "dateTo" };
     private static readonly Dictionary<string, string> PeriodAndPlatforms = new(StringComparer.Ordinal) { ["from"] = "dateFrom", ["to"] = "dateTo", ["platformCodes"] = "platforms" };
+    private static readonly Dictionary<string, string> Platform = new(StringComparer.Ordinal) { ["platform"] = "platforms" };
     private static readonly Dictionary<string, string> Since = new(StringComparer.Ordinal) { ["since"] = "dateFrom" };
 
     // Old name → unified name, by the operation's document route.
@@ -31,6 +32,9 @@ public static class FilterContract
         ["/api/v1/reports/profit-rate"] = PlatformCodes,
         ["/api/v1/reports/sales"] = PeriodAndPlatforms,
         ["/api/v1/reports/stock"] = PeriodAndPlatforms,
+        // Round 8: these filter by one platform; platforms takes a single code there (several are refused).
+        ["/api/v1/products"] = Platform,
+        ["/api/v1/questions"] = Platform,
     };
 
     /// <summary>The operations that renamed a filter, with each old name's unified replacement.</summary>

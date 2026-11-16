@@ -233,6 +233,12 @@ public sealed class ApiUnifiedPagingTests(ApiEndToEndFixture fixture) : IClassFi
                 ($"/api/v1/invoice-workspace/page?platformCodes=TRENDYOL&from={moment}", $"/api/v1/invoice-workspace/page?platforms=TRENDYOL&dateFrom={moment}"),
             })
                 Assert.Equal(Stamped(await ReadAsync(client, old)), Stamped(await ReadAsync(client, unified)));
+            // Round 8: the single-platform lists take platforms as one code; several are refused.
+            foreach (var list in new[] { "/api/v1/products", "/api/v1/questions" })
+            {
+                Assert.Equal(Stamped(await ReadAsync(client, $"{list}?platform=TRENDYOL")), Stamped(await ReadAsync(client, $"{list}?platforms=TRENDYOL")));
+                await RefusedAsync(client, $"{list}?platforms=TRENDYOL,N11");
+            }
             // When both come, the unified name wins.
             Assert.Equal(Stamped(await ReadAsync(client, $"/api/v1/reports/sales?dateFrom={from}&dateTo={to}")), Stamped(await ReadAsync(client, $"/api/v1/reports/sales?from=2020-01-01&to=2020-01-02&dateFrom={from}&dateTo={to}")));
         }

@@ -30,6 +30,17 @@ public static class EndpointHelpers
     /// </summary>
     public static string? Unified(string? unified, string? deprecated) => string.IsNullOrEmpty(unified) ? deprecated : unified;
 
+    /// <summary>
+    /// The one platform of a list that filters by a single platform, named by the unified platforms (a single code: a
+    /// list of several is refused, 400) or by the old platform.
+    /// </summary>
+    public static string? SinglePlatform(string? platforms, string? platform)
+    {
+        if (string.IsNullOrWhiteSpace(platforms)) return platform;
+        var codes = platforms.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return codes.Length <= 1 ? codes.FirstOrDefault() : throw new ArgumentException("Bu liste tek bir platforma göre süzülür; platforms tek bir platform kodu olmalıdır.");
+    }
+
     /// <inheritdoc cref="Unified(string?, string?)"/>
     public static DateTimeOffset? Unified(DateTimeOffset? unified, DateTimeOffset? deprecated) => unified ?? deprecated;
 

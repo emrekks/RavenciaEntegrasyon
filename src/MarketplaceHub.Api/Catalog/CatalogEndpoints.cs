@@ -73,8 +73,8 @@ public static partial class CatalogEndpoints
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<IReadOnlyList<AttributeRequirementCommand>>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
 
-        api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock, string? sort) =>
-            Tenant(http) is { } tenant ? Results.Json(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, sort, http.RequestAborted), ProductListJson) : Unauthorized(http)).Produces<PageResult<ProductView>>();
+        api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, string? platforms) =>
+            Tenant(http) is { } tenant ? Results.Json(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, SinglePlatform(platforms, platform), stock, sort, http.RequestAborted), ProductListJson) : Unauthorized(http)).Produces<PageResult<ProductView>>();
         api.MapGet("/products/summary", async (HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<ProductSummaryView>();
         api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>

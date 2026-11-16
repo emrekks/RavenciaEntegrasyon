@@ -14623,6 +14623,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -14636,6 +14638,13 @@
           },
           {
             "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
             "in": "query",
             "schema": {
               "type": "string"
@@ -17004,6 +17013,8 @@
           {
             "name": "platform",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -17094,6 +17105,13 @@
               ],
               "format": "int32",
               "default": 50
+            }
+          },
+          {
+            "name": "platforms",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],

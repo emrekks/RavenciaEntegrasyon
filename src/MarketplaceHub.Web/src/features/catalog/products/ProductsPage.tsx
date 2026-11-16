@@ -97,7 +97,7 @@ async function fetchProductPage(limit: number, filters: ProductListFilters, afte
   if (after) params.set('after', after)
   if (filters.search) params.set('search', filters.search)
   if (filters.status) params.set('status', filters.status)
-  if (filters.platform) params.set('platform', filters.platform)
+  if (filters.platform) params.set('platforms', filters.platform)
   if (filters.stock) params.set('stock', filters.stock)
   if (filters.sort) params.set('sort', filters.sort)
   // Not the contract's ApiResponse<'getProducts'>: GET /products leaves a row's null members out (ProductListJson), so
@@ -604,7 +604,7 @@ export function ProductsPage() {
       const params = new URLSearchParams()
       if (productFilters.search) params.set('search', productFilters.search)
       if (productFilters.status) params.set('status', productFilters.status)
-      if (productFilters.platform) params.set('platform', productFilters.platform)
+      if (productFilters.platform) params.set('platforms', productFilters.platform)
       if (productFilters.stock) params.set('stock', productFilters.stock)
       const all = await loadAllPages<Product>(`/products?${params.toString()}`, 200)
       const ids = all.items.map(product => product.id)
