@@ -33,6 +33,10 @@ export const personalStorageKeyPrefixes = [
 // choices, the remembered sign-in e-mail ("Beni Hatırla" is for the next sign-in), label settings and templates, the
 // labels printed on this device, and the answered idempotency keys (a resend after sign-in must not repeat an answered
 // request).
+// ravencia.printedShippingLabels is kept here although the 15 Nov 2026 scan (WEB-ALTYAPI-9) proposed clearing it at
+// sign-out: it records which labels this device printed (order ids and a format, no buyer data, a bounded recent list)
+// and only backs up the server's labelPrintedAt when the label-printed call failed (label-printed.ts); clearing it would
+// drop that backup for the next person at the same packing desk. Open owner question: personal or device record.
 export const deviceStorageKeyPrefixes = [
   'ravencia.sidebarPinned', 'ravencia.rememberedEmail', 'ravencia.rememberMe', 'ravencia.visualTheme',
   'ravencia.shippingLabelSettings', 'ravencia.shippingLabelTemplates', 'ravencia.printedShippingLabels',
