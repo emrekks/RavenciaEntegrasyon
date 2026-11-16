@@ -1,0 +1,344 @@
+diff --git a/deploy/caddy/Caddyfile b/deploy/caddy/Caddyfile
+index c39e2bb47..8c63d5e24 100644
+--- a/deploy/caddy/Caddyfile
++++ b/deploy/caddy/Caddyfile
+@@ -54,9 +54,15 @@ http://127.0.0.1:8081 {
+   }
+ 
+   # Only a 401 from the authentication endpoints clears the browser cache.
+-  # Kept in step with Caddyfile.production: both reverse_proxy blocks wait up to 45 s for a restarting API.
++  # Kept in step with Caddyfile.production: both reverse_proxy blocks send to every api container (Docker DNS, read
++  # every second), skip one that refuses connections for 10 s and wait up to 45 s for a restarting API.
+   handle /api/v1/auth/* {
+-    reverse_proxy api:8080 {
++    reverse_proxy {
++      dynamic a api 8080 {
++        refresh 1s
++      }
++      lb_policy round_robin
++      fail_duration 10s
+       lb_try_duration 45s
+       lb_try_interval 500ms
+       @unauthenticated status 401
+@@ -70,7 +76,12 @@ http://127.0.0.1:8081 {
+   # SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
+   @backend path /api/* /health/* /hubs/* /internal/*
+   handle @backend {
+-    reverse_proxy api:8080 {
++    reverse_proxy {
++      dynamic a api 8080 {
++        refresh 1s
++      }
++      lb_policy round_robin
++      fail_duration 10s
+       lb_try_duration 45s
+       lb_try_interval 500ms
+     }
+diff --git a/deploy/caddy/Caddyfile.production b/deploy/caddy/Caddyfile.production
+index a872985af..720c948f6 100644
+--- a/deploy/caddy/Caddyfile.production
++++ b/deploy/caddy/Caddyfile.production
+@@ -133,12 +133,19 @@ http://127.0.0.1:8081 {
+ 
+ 	# Only a 401 from the authentication endpoints clears the browser cache; a 401
+ 	# elsewhere (expired session on a data call) must not wipe the whole site cache.
+-	# Both reverse_proxy blocks wait up to 45 s for the API (VERITABANI-DAGITIM-4): a full deploy replaces the single api
+-	# container, and until the new one listens a request would get 502 at once. Caddy retries a request it could not
+-	# connect upstream (any method: nothing was sent yet) every 500 ms; tests/ops/test-caddy-proxy.sh keeps both blocks
+-	# and both Caddyfiles in step.
++	# Both reverse_proxy blocks send to every api container Docker DNS names "api" (VERITABANI-DAGITIM-4): a full deploy
++	# starts the new api next to the old one (deploy/scripts/api-rollover.sh) and stops the old one once the new one is
++	# healthy; the list is read again every second. Active health checks do not run for dynamic upstreams, so an api that
++	# refuses connections (the old one shutting down) is skipped for 10 s (fail_duration) and the request goes to the
++	# other one. Caddy retries a request it could not connect upstream (any method: nothing was sent yet) every 500 ms for
++	# up to 45 s; tests/ops/test-caddy-proxy.sh keeps both blocks and both Caddyfiles in step.
+ 	handle /api/v1/auth/* {
+-		reverse_proxy api:8080 {
++		reverse_proxy {
++			dynamic a api 8080 {
++				refresh 1s
++			}
++			lb_policy round_robin
++			fail_duration 10s
+ 			lb_try_duration 45s
+ 			lb_try_interval 500ms
+ 			@unauthenticated status 401
+@@ -153,7 +160,12 @@ http://127.0.0.1:8081 {
+ 	# /internal/* is the host's alert settings sync (private sources only, see above, plus a host token).
+ 	@backend path /api/* /health/* /hubs/* /internal/*
+ 	handle @backend {
+-		reverse_proxy api:8080 {
++		reverse_proxy {
++			dynamic a api 8080 {
++				refresh 1s
++			}
++			lb_policy round_robin
++			fail_duration 10s
+ 			lb_try_duration 45s
+ 			lb_try_interval 500ms
+ 		}
+diff --git a/deploy/compose/compose.production.yaml b/deploy/compose/compose.production.yaml
+index 80cfefa6b..463bc96ac 100644
+--- a/deploy/compose/compose.production.yaml
++++ b/deploy/compose/compose.production.yaml
+@@ -1,7 +1,7 @@
+ # Production logging: journald instead of json-file. Every deploy re-creates the
+ # containers, which deleted their json-file logs; journald keeps them across
+ # releases. Read with e.g.
+-#   journalctl CONTAINER_NAME=marketplacehub-api-1 --since -1h
++#   journalctl CONTAINER_NAME=marketplacehub-api-1 + COM_DOCKER_COMPOSE_SERVICE=api --since -1h
+ #   journalctl CONTAINER_NAME=marketplacehub-worker-1 -f
+ # Retention follows the host journald limits (docs/CI-CD-DEPLOY.md).
+ # `!override` replaces the base json-file block (its max-size/max-file options
+@@ -44,7 +44,8 @@ services:
+     secrets: [app_db_connection, credential_key, dp_certificate, dp_certificate_password, alert_sync_token]
+     logging: !override
+       driver: journald
+-      options: { tag: "{{.Name}}" }
++      # VERITABANI-DAGITIM-4: the api runs as marketplacehub-api-<n>; its entries also carry COM_DOCKER_COMPOSE_SERVICE=api.
++      options: { tag: "{{.Name}}", labels: "com.docker.compose.service" }
+   worker:
+     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
+     build: null
+diff --git a/deploy/scripts/api-rollover.sh b/deploy/scripts/api-rollover.sh
+new file mode 100644
+index 000000000..632e52b3f
+--- /dev/null
++++ b/deploy/scripts/api-rollover.sh
+@@ -0,0 +1,82 @@
++#!/usr/bin/env bash
++# VERITABANI-DAGITIM-4: a full deploy replaces the api without a pause (docs/RUNBOOK-GERI-ALMA.md section 10). Sourced by
++# fast-deploy.sh after the migration ran; uses its `compose` and `sudo_cmd` arrays. The new api container starts next to
++# the running one (Compose scale +1, the running one is not recreated); once Docker reports it healthy, Caddy (dynamic
++# upstreams from Docker DNS, refreshed every second) already sends it requests, and the old one is stopped with the same
++# 45 s grace as compose.yaml's stop_grace_period, so requests under way finish. A new container that never gets healthy
++# is removed and the old one keeps serving. Containers are found by their Compose labels, never by the -1 name.
++# Settings (the tests set them to zero): API_ROLLOVER_HEALTH_ATTEMPTS (60), API_ROLLOVER_HEALTH_INTERVAL (2 s),
++# API_ROLLOVER_SETTLE (5 s: Caddy's DNS refresh sees the new copy before the old one goes), API_ROLLOVER_STOP_TIME (45 s).
++
++api_container_ids() {
++  "${sudo_cmd[@]}" docker ps -q \
++    --filter label=com.docker.compose.project=marketplacehub \
++    --filter label=com.docker.compose.service=api
++}
++
++# The api containers now running that were not in the given list (one id per line).
++api_new_container_ids() {
++  local known="$1" current id
++  current="$(api_container_ids)"
++  while IFS= read -r id; do
++    [[ -n "$id" ]] || continue
++    grep -qxF -- "$id" <<<"$known" || printf '%s\n' "$id"
++  done <<<"$current"
++}
++
++api_remove_containers() {
++  local id
++  for id in "$@"; do
++    "${sudo_cmd[@]}" docker rm -f "$id" >/dev/null || echo "Could not remove api container $id." >&2
++  done
++}
++
++# 0: the new api serves and the old ones are gone. 1: the new one did not start or never got healthy; it was removed and
++# the old one still serves (nothing else was touched).
++api_rollover() {
++  local attempts="${API_ROLLOVER_HEALTH_ATTEMPTS:-60}" interval="${API_ROLLOVER_HEALTH_INTERVAL:-2}"
++  local settle="${API_ROLLOVER_SETTLE:-5}" stop_time="${API_ROLLOVER_STOP_TIME:-45}"
++  local old_ids old_count new_id state attempt healthy=false
++  local -a new_ids=()
++  old_ids="$(api_container_ids)"
++  if [[ -z "$old_ids" ]]; then
++    echo "No api container is running; starting it the ordinary way."
++    "${compose[@]}" up -d --no-build --no-deps api
++    return
++  fi
++  old_count="$(grep -c . <<<"$old_ids")"
++  if ! "${compose[@]}" up -d --no-build --no-deps --no-recreate --scale "api=$((old_count + 1))" api; then
++    echo "The new api container could not be started; the running one keeps serving." >&2
++    mapfile -t new_ids < <(api_new_container_ids "$old_ids")
++    api_remove_containers "${new_ids[@]}"
++    return 1
++  fi
++  mapfile -t new_ids < <(api_new_container_ids "$old_ids")
++  if (( ${#new_ids[@]} != 1 )); then
++    echo "Expected one new api container, found ${#new_ids[@]}; the running one keeps serving." >&2
++    api_remove_containers "${new_ids[@]}"
++    return 1
++  fi
++  new_id="${new_ids[0]}"
++  for (( attempt = 1; attempt <= attempts; attempt++ )); do
++    state="$("${sudo_cmd[@]}" docker inspect -f '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$new_id" 2>/dev/null || echo missing)"
++    case "$state" in
++      "running healthy") healthy=true; break ;;
++      "running unhealthy" | exited* | dead* | missing) break ;;
++    esac
++    sleep "$interval"
++  done
++  if [[ "$healthy" != true ]]; then
++    echo "The new api container $new_id did not become healthy ($state); it was removed and the running one keeps serving." >&2
++    "${sudo_cmd[@]}" docker logs --tail 40 "$new_id" >&2 || true
++    api_remove_containers "$new_id"
++    return 1
++  fi
++  sleep "$settle"
++  # shellcheck disable=SC2086 # one container id per word
++  "${sudo_cmd[@]}" docker stop --time "$stop_time" $old_ids >/dev/null \
++    || { echo "The previous api container(s) could not be stopped; both copies are running." >&2; return 1; }
++  # shellcheck disable=SC2086 # one container id per word
++  "${sudo_cmd[@]}" docker rm $old_ids >/dev/null || echo "The stopped api container(s) could not be removed." >&2
++  echo "The api now runs as $new_id; the previous container stopped after its requests finished."
++}
+diff --git a/deploy/scripts/fast-deploy.sh b/deploy/scripts/fast-deploy.sh
+index 577513716..ccedd170c 100755
+--- a/deploy/scripts/fast-deploy.sh
++++ b/deploy/scripts/fast-deploy.sh
+@@ -82,6 +82,8 @@ fi
+ # changed, e.g. production.env), takes the full path below. A redeploy of the serving revision is always full.
+ # shellcheck source=/dev/null
+ source "$script_dir/release-scope.sh"
++# shellcheck source=/dev/null
++source "$script_dir/api-rollover.sh"
+ deploy_mode="${RAVENCIA_DEPLOY_MODE:-auto}"
+ [[ "$deploy_mode" =~ ^(auto|full)$ ]] || { echo "RAVENCIA_DEPLOY_MODE must be auto or full (got '$deploy_mode')." >&2; exit 1; }
+ # Compose's config hash of api/worker as they would be created now, with the image they run, must equal the hash
+@@ -319,10 +321,19 @@ rollback_attempted=false
+ 
+ site_address="${MARKETPLACEHUB_SITE_ADDRESS:-https://panel.ravencia.com}"
+ release_status=0
+-release_services=(api worker caddy)
+-# --no-deps: a web-only release recreates caddy alone; api, worker and the migration stay as they are.
+-[[ "$web_only" == false ]] || release_services=(--no-deps caddy)
+-"${compose[@]}" up -d --no-build "${release_services[@]}" || release_status=$?
++if [[ "$web_only" == true ]]; then
++  # --no-deps: a web-only release recreates caddy alone; api, worker and the migration stay as they are.
++  release_services=(--no-deps caddy)
++else
++  # VERITABANI-DAGITIM-4: the new api starts next to the old one, which stops only once the new one is healthy
++  # (api-rollover.sh); worker and caddy are recreated as before. A new api that never gets healthy fails the release
++  # with the old api still serving.
++  api_rollover || release_status=$?
++  release_services=(worker caddy)
++fi
++if (( release_status == 0 )); then
++  "${compose[@]}" up -d --no-build "${release_services[@]}" || release_status=$?
++fi
+ if (( release_status == 0 )) && [[ "$verify" == true ]]; then
+   verify_stack "$site_address" || release_status=$?
+ fi
+diff --git a/deploy/scripts/healthwatch.sh b/deploy/scripts/healthwatch.sh
+index 04420d539..3745c117d 100755
+--- a/deploy/scripts/healthwatch.sh
++++ b/deploy/scripts/healthwatch.sh
+@@ -156,7 +156,7 @@ if [[ "$api_health" == "unhealthy" ]]; then
+       "${sudo_cmd[@]}" docker restart --time 30 "$(service_container api)" >/dev/null
+       write_state api_last_restart "$now"
+       write_state api_unhealthy_runs 0
+-      alert "API was unhealthy for two checks and has been restarted automatically; check: journalctl CONTAINER_NAME=marketplacehub-api-1 --since -30min"
++      alert "API was unhealthy for two checks and has been restarted automatically; check: journalctl COM_DOCKER_COMPOSE_SERVICE=api --since -30min"
+     else
+       echo "API is unhealthy but PostgreSQL is $postgres_health; not restarting the API."
+     fi
+diff --git a/deploy/scripts/readonly-entrypoint.sh b/deploy/scripts/readonly-entrypoint.sh
+index b56279266..57f4531d5 100755
+--- a/deploy/scripts/readonly-entrypoint.sh
++++ b/deploy/scripts/readonly-entrypoint.sh
+@@ -13,7 +13,7 @@ set -Eeuo pipefail
+ #                                              sets with sizes, CrowdSec simulation/alerts/decisions/metrics
+ #   logs <service> <since> [<tail>|-] [<b64>]  docker logs, optionally filtered by a base64 extended regex
+ #   errors <since>                             Error/Fatal lines of api and worker
+-#   journal <service> <since> [<b64>]          journalctl CONTAINER_NAME=marketplacehub-<service>-1 -o cat
++#   journal <service> <since> [<b64>]          journalctl of the service's containers (by name and Compose label) -o cat
+ #   top-queries [<limit>]                      the slowest statements by total time from pg_stat_statements
+ #                                              (says so when the extension is not installed; RUNBOOK §8)
+ # <service> is api, worker, caddy or postgres; <since> is like 30m, 2h or 2026-11-03T09:00:00.
+@@ -46,6 +46,16 @@ pattern_arg() {
+   decoded="$(printf '%s' "$1" | base64 -d 2>/dev/null)" || fail "pattern must be base64"
+   printf '%s' "$decoded"
+ }
++# VERITABANI-DAGITIM-4: a deploy starts the new api next to the old one, so its container is marketplacehub-api-<n>; every
++# container is found by its Compose service label (all of them, running first), never by the -1 name.
++service_containers() {
++  docker ps -a --filter label=com.docker.compose.project=marketplacehub --filter "label=com.docker.compose.service=$1" \
++    --format '{{.State}} {{.Names}}' | sort -k1,1r | cut -d' ' -f2
++}
++running_container() {
++  docker ps --filter label=com.docker.compose.project=marketplacehub --filter "label=com.docker.compose.service=$1" \
++    --format '{{.Names}}' | sort | head -n 1
++}
+ filter() {
+   if [[ -n "$1" ]]; then grep -E -i -- "$1" || true; else cat; fi
+ }
+@@ -97,7 +107,7 @@ case "$verb" in
+     ;;
+   images)
+     (( ${#words[@]} == 1 )) || fail "usage: images"
+-    docker inspect -f '{{.Config.Image}}' marketplacehub-caddy-1 marketplacehub-api-1 marketplacehub-worker-1
++    docker inspect -f '{{.Config.Image}}' "$(running_container caddy)" "$(running_container api)" "$(running_container worker)"
+     ;;
+   logs)
+     (( ${#words[@]} >= 3 && ${#words[@]} <= 5 )) || fail "usage: logs <service> <since> [<tail>|-] [<base64 regex>]"
+@@ -108,15 +118,18 @@ case "$verb" in
+     pattern="$(pattern_arg "${words[4]:-}")"
+     args=(--timestamps --since "$since")
+     [[ "$tail_n" == - ]] || args+=(--tail "$tail_n")
+-    docker logs "${args[@]}" "marketplacehub-$service-1" 2>&1 | filter "$pattern" | tail -n 400
++    service_containers "$service" | while read -r container; do
++      docker logs "${args[@]}" "$container" 2>&1
++    done | filter "$pattern" | tail -n 400
+     ;;
+   errors)
+     (( ${#words[@]} == 2 )) || fail "usage: errors <since>"
+     since="$(since_arg "${words[1]}")"
+     for service in api worker; do
+       echo "== $service"
+-      docker logs --timestamps --since "$since" "marketplacehub-$service-1" 2>&1 \
+-        | grep -E '"@l":"(Error|Fatal)"' | cut -c1-500 | tail -n 80 || true
++      service_containers "$service" | while read -r container; do
++        docker logs --timestamps --since "$since" "$container" 2>&1
++      done | grep -E '"@l":"(Error|Fatal)"' | cut -c1-500 | tail -n 80 || true
+     done
+     ;;
+   journal)
+@@ -125,7 +138,13 @@ case "$verb" in
+     since="$(since_arg "${words[2]}")"
+     pattern="$(pattern_arg "${words[3]:-}")"
+     [[ "$since" =~ ^[0-9]+[smhd]$ ]] && since="-$since"
+-    journalctl --no-pager -o cat --since "${since/T/ }" "CONTAINER_NAME=marketplacehub-$service-1" | filter "$pattern" | tail -n 400
++    # Entries of every container the service had: the -1 name (entries from before the rollover), the current names and,
++    # ORed in with "+", the Compose service field compose.production.yaml's journald "labels" option adds.
++    fields=("CONTAINER_NAME=marketplacehub-$service-1")
++    while read -r container; do
++      [[ -z "$container" ]] || fields+=("CONTAINER_NAME=$container")
++    done < <(service_containers "$service")
++    journalctl --no-pager -o cat --since "${since/T/ }" "${fields[@]}" + "COM_DOCKER_COMPOSE_SERVICE=$service" | filter "$pattern" | tail -n 400
+     ;;
+   host)
+     (( ${#words[@]} == 1 || ${#words[@]} == 2 )) || fail "usage: host [<since>]"
+diff --git a/tests/ops/test-caddy-proxy.sh b/tests/ops/test-caddy-proxy.sh
+index 3aa879c2f..3fbe95179 100644
+--- a/tests/ops/test-caddy-proxy.sh
++++ b/tests/ops/test-caddy-proxy.sh
+@@ -36,7 +36,10 @@ for name in Caddyfile Caddyfile.production; do
+   while IFS='|' read -r line settings; do
+     assert_contains "$settings" "lb_try_duration 45s" "$name:$line reverse_proxy waits up to 45 s for a restarting API"
+     assert_contains "$settings" "lb_try_interval 500ms" "$name:$line reverse_proxy retries every 500 ms"
++    assert_contains "$settings" "dynamic a api 8080 { refresh 1s }" "$name:$line reverse_proxy sends to every api container"
++    assert_contains "$settings" "fail_duration 10s" "$name:$line reverse_proxy skips an api that refuses connections"
+   done <<<"$blocks"
++  assert_not_contains "$(cat "$file")" "api:8080" "$name: no fixed single api upstream"
+   assert_eq "1" "$(grep -c "img-src " "$file")" "$name: one img-src list"
+ done
+ 
+diff --git a/tests/ops/test-fast-deploy-web-only.sh b/tests/ops/test-fast-deploy-web-only.sh
+index fc5bf2547..84e3d05d8 100644
+--- a/tests/ops/test-fast-deploy-web-only.sh
++++ b/tests/ops/test-fast-deploy-web-only.sh
+@@ -21,7 +21,7 @@ repo="$work/repo"
+ git init --quiet --initial-branch=main "$repo"
+ mkdir -p -- "$repo/deploy/scripts" "$repo/deploy/compose" "$repo/deploy/caddy" "$repo/src/MarketplaceHub.Web/src" \
+   "$repo/src/MarketplaceHub.Api" "$repo/docs"
+-cp -- "$repository_root"/deploy/scripts/{fast-deploy.sh,lib.sh,release-scope.sh} "$repo/deploy/scripts/"
++cp -- "$repository_root"/deploy/scripts/{fast-deploy.sh,lib.sh,release-scope.sh,api-rollover.sh} "$repo/deploy/scripts/"
+ : > "$repo/deploy/compose/compose.yaml"
+ : > "$repo/deploy/compose/compose.production.yaml"
+ echo web > "$repo/src/MarketplaceHub.Web/src/app.ts"

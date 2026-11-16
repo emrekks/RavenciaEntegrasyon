@@ -147,7 +147,7 @@ public sealed partial class PazaramaHttpClient(
             }
             var response = exchange.Response!;
             var text = exchange.Body;
-            var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+            var retryAfter = RetryAfterHeader.Delay(response.Headers.RetryAfter, timeProvider.GetUtcNow());
             var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
             // A token revoked by "Yeni API Key Üret" in the seller panel is answered with 401; one
             // fresh token is tried before the credentials count as rejected.

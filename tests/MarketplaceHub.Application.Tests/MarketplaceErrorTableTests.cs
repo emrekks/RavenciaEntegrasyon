@@ -125,6 +125,34 @@ public sealed class MarketplaceErrorTableTests
         Assert.Equal(expectedWaitSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null, error.RetryAfter);
     }
 
+    // ADAPTOR-DIGER-5: the errors of the shared send step itself (no answer came back). Shopify sends through it without a
+    // quota and keeps its earlier codes with no wait; the quota-paced adapters wait 15 s.
+    [Theory]
+    [InlineData("N11", 15)]
+    [InlineData("PAZARAMA", 15)]
+    [InlineData("PTTAVM", 15)]
+    [InlineData("HEPSIBURADA", 15)]
+    [InlineData("SHOPIFY", null)]
+    public void TheSharedSendStepClassesATimeoutAndANetworkErrorAsTheTableSays(string adapter, int? expectedWaitSeconds)
+    {
+        var transport = adapter switch
+        {
+            "N11" => N11HttpClient.Transport,
+            "PAZARAMA" => PazaramaHttpClient.Transport,
+            "PTTAVM" => PttAvmHttpClient.Transport,
+            "HEPSIBURADA" => HepsiburadaHttpClient.Transport,
+            _ => ShopifyHttpClient.Transport
+        };
+        var wait = expectedWaitSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : (TimeSpan?)null;
+
+        var timeout = transport.Timeout();
+        Assert.Equal((AdapterErrorClass.TransientNetwork, $"{adapter}_TIMEOUT", (int?)null, wait), (timeout.Class, timeout.Code, timeout.HttpStatus, timeout.RetryAfter));
+        var network = transport.NetworkError();
+        Assert.Equal((AdapterErrorClass.TransientNetwork, $"{adapter}_NETWORK_ERROR", (int?)null, wait), (network.Class, network.Code, network.HttpStatus, network.RetryAfter));
+        var quotaWait = transport.LocalQuotaWait();
+        Assert.Equal((AdapterErrorClass.RateLimit, $"{adapter}_LOCAL_QUOTA_WAIT", (int?)429, (TimeSpan?)TimeSpan.FromSeconds(15)), (quotaWait.Class, quotaWait.Code, quotaWait.HttpStatus, quotaWait.RetryAfter));
+    }
+
     [Theory]
     [InlineData("N11")]
     [InlineData("PAZARAMA")]

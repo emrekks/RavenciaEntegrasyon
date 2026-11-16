@@ -172,7 +172,7 @@ public sealed partial class N11HttpClient(
         }
         var response = exchange.Response!;
         var body = exchange.Body;
-        var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        var retryAfter = RetryAfterHeader.Delay(response.Headers.RetryAfter, timeProvider.GetUtcNow());
         var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
         if (!response.IsSuccessStatusCode)
         {

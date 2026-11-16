@@ -14,25 +14,37 @@ namespace MarketplaceHub.Infrastructure.Adapters.Http;
 // The caller's own cancellation still escapes as OperationCanceledException. What an answer means (status, body,
 // local circuit, gateway page) stays with each adapter's classifier.
 //
-// Trendyol (its own resilience handler, a ten-minute quota cap, ResponseHeadersRead), Shopify (the client's timeout)
-// and E-Faturam (a linked timeout, ResponseHeadersRead) keep their own send step: their timeout models differ (a drift
-// the owner can unify later).
+// ADAPTOR-DIGER-5: Shopify sends through it too, in its "no quota" mode (WaitsForQuota false; it has no rate-limit
+// handler): the token counts as taken at once (QuotaAwareTimeout.WithoutQuota), so no five-minute quota wait is added and
+// a cancellation is a timeout as before; its client's own 45 s HttpClient.Timeout stays the request timeout (requestTimeout
+// Timeout.InfiniteTimeSpan) and its timeout and network errors keep carrying no wait (TransportErrorWait null).
+// Trendyol (its own resilience handler, a ten-minute quota cap, ResponseHeadersRead) and E-Faturam (the invoice provider:
+// a linked timeout, ResponseHeadersRead, its own error texts and 5 s waits, and no shutdown stop in front of an invoice
+// submit) keep their own send step.
 internal sealed record MarketplaceTransport(string ClientName, string CodePrefix, string DisplayName, HttpRequestOptionsKey<Action> QuotaAcquiredKey)
 {
     internal static readonly TimeSpan TransportRetryAfter = TimeSpan.FromSeconds(15);
+
+    // False for a client without a rate-limit handler: see QuotaAwareTimeout.WithoutQuota.
+    internal bool WaitsForQuota { get; init; } = true;
+
+    // The wait a timeout or network error carries.
+    internal TimeSpan? TransportErrorWait { get; init; } = TransportRetryAfter;
 
     internal AdapterError LocalQuotaWait() =>
         new(AdapterErrorClass.RateLimit, $"{CodePrefix}_LOCAL_QUOTA_WAIT", $"{DisplayName} istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TransportRetryAfter, null);
 
     internal AdapterError Timeout() =>
-        new(AdapterErrorClass.TransientNetwork, $"{CodePrefix}_TIMEOUT", $"{DisplayName} isteği zaman aşımına uğradı.", null, TransportRetryAfter, null);
+        new(AdapterErrorClass.TransientNetwork, $"{CodePrefix}_TIMEOUT", $"{DisplayName} isteği zaman aşımına uğradı.", null, TransportErrorWait, null);
 
     internal AdapterError NetworkError() =>
-        new(AdapterErrorClass.TransientNetwork, $"{CodePrefix}_NETWORK_ERROR", $"{DisplayName} bağlantısı geçici olarak kurulamadı.", null, TransportRetryAfter, null);
+        new(AdapterErrorClass.TransientNetwork, $"{CodePrefix}_NETWORK_ERROR", $"{DisplayName} bağlantısı geçici olarak kurulamadı.", null, TransportErrorWait, null);
 
     internal async Task<MarketplaceExchange> SendAsync(IHttpClientFactory clients, HttpRequestMessage request, TimeSpan requestTimeout, CancellationToken cancellationToken)
     {
-        using var timeout = new QuotaAwareTimeout(request, QuotaAcquiredKey, requestTimeout, cancellationToken);
+        using var timeout = WaitsForQuota
+            ? new QuotaAwareTimeout(request, QuotaAcquiredKey, requestTimeout, cancellationToken)
+            : QuotaAwareTimeout.WithoutQuota(request, requestTimeout, cancellationToken);
         // KUYRUK-1: the worker is shutting down and this write job's request has not started: it is not sent.
         if (timeout.StoppedBeforeStart) return new(null, "", LocalQuotaWait(), null);
         HttpResponseMessage? response = null;

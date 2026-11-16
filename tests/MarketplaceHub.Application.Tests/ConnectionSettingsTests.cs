@@ -26,7 +26,17 @@ public sealed class ConnectionSettingsTests
         if (settings is not null) Assert.Equal(expected, ExternalWriteGate.ConnectionWritesEnabled(settings));
     }
 
+    // ADAPTOR-DIGER-9: one write rule; a VERIFIED production connection with both switches on does not write.
     [Fact]
-    public void TheVerifiedProductionDifferenceIsOneNamedSwitch() =>
-        Assert.True(ExternalWriteGate.ProductionRuleWritesOnVerifiedConnections);
+    public void AVerifiedProductionConnectionDoesNotWrite() =>
+        Assert.False(ExternalWriteGate.AllowsProductionWrite(new MarketplaceHub.Domain.PlatformConnection
+        {
+            PlatformCode = "N11",
+            Environment = "PRODUCTION",
+            Status = "VERIFIED",
+            SettingsJson = """{"ExternalWritesEnabled":true}""",
+            DisplayName = "N11",
+            ExternalStoreId = "x",
+            ApiVersion = "V1"
+        }, globalWritesEnabled: true));
 }
