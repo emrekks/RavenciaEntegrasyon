@@ -109,7 +109,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     }
                     directResult = outcome.Result;
                 }
-                else if (DirectJobDispatch.TryGetValue(jobType, out var direct)) directResult = await direct(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);
+                else if (DirectJobDispatch.TryGetValue(jobType, out var direct)) directResult = await direct(this, new JobDispatchArgs(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, platform), cancellationToken);
                 if (directResult is not null)
                 {
                     // A finished slice of a long job is progress, not a failure; it is recorded as a slice, and
@@ -132,7 +132,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, directResult, cancellationToken);
                     return directResult;
                 }
-                var succeeded = BoolJobDispatch.TryGetValue(jobType, out var boolJob) && await boolJob(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);
+                var succeeded = BoolJobDispatch.TryGetValue(jobType, out var boolJob) && await boolJob(this, new JobDispatchArgs(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, platform), cancellationToken);
                 if (telemetryResource is not null)
                 {
                     if (succeeded) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);

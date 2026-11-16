@@ -31,6 +31,20 @@ public sealed class MarketplaceJobDispatchTests
         Assert.All(listed, jobType => Assert.DoesNotContain(Handlers, handler => handler.Handles(jobType)));
     }
 
+    // ISLEYICI-9 stage 4: each run job handler's types are dispatched through the processor's tables (so they keep the
+    // processor's lock, telemetry and read records), no type has two run handlers, and none has a public IJobHandler too.
+    [Fact]
+    public void RunJobHandlersRunTypesOfTheDispatchTablesOnly()
+    {
+        var processor = new MarketplaceJobProcessor(null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), TimeProvider.System);
+        var types = processor.RunJobHandlers.SelectMany(handler => handler.JobTypes).ToList();
+        Assert.NotEmpty(types);
+        Assert.Equal(types.Count, types.Distinct(StringComparer.Ordinal).Count());
+        var tables = MarketplaceJobProcessor.DirectDispatchJobTypes.Concat(MarketplaceJobProcessor.BoolDispatchJobTypes).ToHashSet(StringComparer.Ordinal);
+        Assert.All(types, jobType => Assert.Contains(jobType, tables));
+        Assert.All(types, jobType => Assert.DoesNotContain(Handlers, handler => handler.Handles(jobType)));
+    }
+
     [Fact]
     public void OnlyTheTrendyolOnlyPathsAreInBothTables()
     {

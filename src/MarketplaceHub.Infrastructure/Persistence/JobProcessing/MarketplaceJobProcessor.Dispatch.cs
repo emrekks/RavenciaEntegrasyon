@@ -7,7 +7,26 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // Blocked F3_JOB_REJECTED, as the switch's `_ => false` did.
 public sealed partial class MarketplaceJobProcessor
 {
-    private sealed record JobDispatchArgs(Guid TenantId, Guid ConnectionId, string PayloadJson, string CorrelationId, Guid? JobId, string? Platform);
+    private sealed record JobDispatchArgs(Guid TenantId, Guid ConnectionId, string JobType, string PayloadJson, string CorrelationId, Guid? JobId, string? Platform);
+
+    // ISLEYICI-9 stage 4: the job families that run in a run job handler (IRunJobHandler), made from this processor's ports
+    // and AppDbContext and given its run; the tables below map their types to them.
+    private ProductSyncRunHandler? productSyncHandler;
+    private CatalogStructureImportRunHandler? catalogStructureImportHandler;
+
+    private ProductSyncRunHandler ProductSyncHandler => productSyncHandler ??= new(ServicesFor);
+
+    private CatalogStructureImportRunHandler CatalogStructureImportHandler => catalogStructureImportHandler ??= new(ServicesFor);
+
+    // The run handlers the dispatch tables use, for the dispatch tests.
+    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler];
+
+    // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
+    private JobRequest RunRequest(JobDispatchArgs a) =>
+        new(a.TenantId, a.ConnectionId, a.JobType, a.PayloadJson, a.CorrelationId, a.JobId, run.ReadRecordingEnabled ? run.ReadRecorder : null);
+
+    private static BoolJob RunBool(Func<MarketplaceJobProcessor, IRunBoolJobHandler> handler) =>
+        (p, a, cancellationToken) => handler(p).HandleAsync(p.RunRequest(a), p.run, cancellationToken);
 
     private delegate Task<JobExecutionResult?> DirectJob(MarketplaceJobProcessor processor, JobDispatchArgs a, CancellationToken cancellationToken);
 
@@ -63,16 +82,14 @@ public sealed partial class MarketplaceJobProcessor
             async (p, a, cancellationToken) => await p.ReconcileOrders(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation],
             async (p, a, cancellationToken) => (await p.ReconcileOrderInvoices(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)).Succeeded),
-        ([MarketplaceJobTypes.ProductSync, MarketplaceJobTypes.ShopifyProductSync, MarketplaceJobTypes.HepsiburadaProductSync],
-            async (p, a, cancellationToken) => await p.SyncProducts(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)),
+        ([.. ProductSyncRunHandler.Types], RunBool(p => p.ProductSyncHandler)),
         ([MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync],
             async (p, a, cancellationToken) => await p.SyncReturns(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.ReturnStatusSync],
             async (p, a, cancellationToken) => await p.SyncOpenReturns(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.ReturnReconciliation],
             async (p, a, cancellationToken) => await p.ReconcileReturns(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
-        ([MarketplaceJobTypes.CatalogStructureImport],
-            async (p, a, cancellationToken) => await p.ImportCatalogStructure(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)),
+        ([.. CatalogStructureImportRunHandler.Types], RunBool(p => p.CatalogStructureImportHandler)),
         ([MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.HepsiburadaWebhookIngest],
             async (p, a, cancellationToken) => await p.IngestWebhook(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
         ([MarketplaceJobTypes.ShipmentAction],

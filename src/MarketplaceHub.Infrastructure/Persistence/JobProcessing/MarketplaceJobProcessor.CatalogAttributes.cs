@@ -6,18 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // reference job calls into it.
 public sealed partial class MarketplaceJobProcessor
 {
-    private CatalogAttributeService? catalogAttributes;
-    private ReferenceSyncService? referenceSync;
-
-    private ReferenceSyncService ReferenceSync =>
-        referenceSync is { } current && ReferenceEquals(current.Run, run)
-            ? current
-            : referenceSync = new ReferenceSyncService(db, references, timeProvider, OrderIngestion, run);
-
-    private CatalogAttributeService CatalogAttributes =>
-        catalogAttributes is { } current && ReferenceEquals(current.Run, run)
-            ? current
-            : catalogAttributes = new CatalogAttributeService(db, timeProvider, ReferenceSync, run);
+    private ReferenceSyncService ReferenceSync => Services.ReferenceSync;
 
     private Task<bool> SyncReferenceJob(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken) =>
         ReferenceSync.SyncReferenceJob(tenantId, connectionId, payloadJson, correlationId, jobId, cancellationToken);

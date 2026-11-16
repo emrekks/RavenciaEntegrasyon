@@ -6,18 +6,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // per run like the ingestion services they store through; the processor's methods of the same names call into them.
 public sealed partial class MarketplaceJobProcessor
 {
-    private OrderReadService? orderRead;
-    private ReturnReadService? returnRead;
+    private OrderReadService OrderRead => Services.OrderRead;
 
-    private OrderReadService OrderRead =>
-        orderRead is { } current && ReferenceEquals(current.Run, run)
-            ? current
-            : orderRead = new OrderReadService(db, issues, cursors, orders, orderPackages, hepsiburadaInvoiceStatus, configuration, timeProvider, OrderIngestion, run);
-
-    private ReturnReadService ReturnRead =>
-        returnRead is { } current && ReferenceEquals(current.Run, run)
-            ? current
-            : returnRead = new ReturnReadService(db, issues, cursors, returns, orders, configuration, timeProvider, OrderIngestion, ReturnIngestion, run);
+    private ReturnReadService ReturnRead => Services.ReturnRead;
 
     private Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken) =>
         OrderRead.SyncOrdersAndMatchLines(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
