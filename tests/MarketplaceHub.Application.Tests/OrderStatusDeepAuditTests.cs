@@ -73,13 +73,13 @@ public sealed class OrderStatusDeepAuditTests
         var line = Guid.CreateVersion7();
         var rows = new[]
         {
-            new MarketplaceSalesService.PackageLineAllocationRow(package, line, "P1:1760000000000", 2, 0),
-            new MarketplaceSalesService.PackageLineAllocationRow(package, line, "P1:1760000500000", 1, 1),
-            new MarketplaceSalesService.PackageLineAllocationRow(package, line, "seed", 9, 0),
-            new MarketplaceSalesService.PackageLineAllocationRow(other, line, "P2:1760000000001", 1, 0)
+            new ShipmentService.PackageLineAllocationRow(package, line, "P1:1760000000000", 2, 0),
+            new ShipmentService.PackageLineAllocationRow(package, line, "P1:1760000500000", 1, 1),
+            new ShipmentService.PackageLineAllocationRow(package, line, "seed", 9, 0),
+            new ShipmentService.PackageLineAllocationRow(other, line, "P2:1760000000001", 1, 0)
         };
 
-        var latest = MarketplaceSalesService.LatestPackageLineAllocations(rows);
+        var latest = ShipmentService.LatestPackageLineAllocations(rows);
 
         Assert.Equal(2, latest.Count);
         Assert.Equal("P1:1760000500000", Assert.Single(latest, row => row.PackageId == package).SourceEventId);
@@ -210,7 +210,7 @@ public sealed class OrderStatusDeepAuditTests
     {
         var package = new ShipmentPackage { ExternalPackageId = "P", RawStatus = status.ToString(), Status = status };
 
-        Assert.Equal(allowed, MarketplaceSalesService.ShipmentActionStateError(package, action) is null);
+        Assert.Equal(allowed, ShipmentService.ShipmentActionStateError(package, action) is null);
     }
 
     // S18: the shipments page filter takes the wire names; an unknown value is refused, not ignored.
@@ -223,7 +223,7 @@ public sealed class OrderStatusDeepAuditTests
     [InlineData("LATE", null)]
     public void Shipment_status_filter_maps_wire_names(string value, ShipmentPackageStatus? expected)
     {
-        Assert.Equal(expected, MarketplaceSalesService.ShipmentStatusFilter(value));
+        Assert.Equal(expected, ShipmentService.ShipmentStatusFilter(value));
     }
 
     [Fact]
@@ -232,6 +232,6 @@ public sealed class OrderStatusDeepAuditTests
         var id = Guid.Parse("0199f5b4-0000-7000-8000-000000000001");
 
         Assert.Equal("HEPSIBURADA_PACKAGE_CREATE:a:b:reconciled:0199f5b4000070008000000000000001",
-            MarketplaceSalesService.HepsiburadaPackageReservationSettledKey("HEPSIBURADA_PACKAGE_CREATE:a:b", id));
+            ShipmentService.HepsiburadaPackageReservationSettledKey("HEPSIBURADA_PACKAGE_CREATE:a:b", id));
     }
 }

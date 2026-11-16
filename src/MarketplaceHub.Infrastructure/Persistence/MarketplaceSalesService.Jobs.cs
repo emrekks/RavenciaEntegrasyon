@@ -402,7 +402,7 @@ public sealed partial class MarketplaceSalesService
         }
         catch (JsonException) { return null; }
     }
-    private IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => IntegrationJobFactory.New(new IntegrationJobRequest(tenantId, connectionId, type, payload, dedup, correlationId, timeProvider.GetUtcNow()) { Priority = Priority(type), TriggerType = "user" });
+    internal IntegrationJob NewJob(Guid tenantId, Guid connectionId, string type, string dedup, string payload, string correlationId) => IntegrationJobFactory.New(new IntegrationJobRequest(tenantId, connectionId, type, payload, dedup, correlationId, timeProvider.GetUtcNow()) { Priority = Priority(type), TriggerType = "user" });
     internal static int Priority(string type) => JobPriorityPolicy.ForUser(type);
     internal Task<bool> Supported(Guid tenantId, Guid connectionId, string code, CancellationToken cancellationToken) => Sales.Supported(tenantId, connectionId, code, cancellationToken);
 }

@@ -18,7 +18,7 @@ internal sealed partial class OrderQueryService(SalesContext sales)
 
     private IQueryable<ShipmentPackage> CurrentShipmentPackages() => sales.CurrentShipmentPackages();
     private Task<Dictionary<Guid, decimal>> ActiveAllocatedQuantitiesAsync(Guid tenantId, Guid[] orderLineIds, CancellationToken cancellationToken) =>
-        MarketplaceSalesService.ActiveAllocatedQuantitiesAsync(db, tenantId, orderLineIds, cancellationToken);
+        ShipmentService.ActiveAllocatedQuantitiesAsync(db, tenantId, orderLineIds, cancellationToken);
     private static readonly System.Globalization.CultureInfo TurkishCulture = System.Globalization.CultureInfo.GetCultureInfo("tr-TR");
     private Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken) => sales.MediaUrls(tenantId, variantIds, cancellationToken);
 }

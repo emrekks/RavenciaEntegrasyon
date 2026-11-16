@@ -3,10 +3,11 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ShipmentService
 {
     // The shipments page: live packages only (no split parent, resent original or placeholder),
     // the latest status change first, paged by (StatusOccurredAt, Id) (audit 2026-10-20 S18).
