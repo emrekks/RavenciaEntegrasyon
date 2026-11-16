@@ -2956,6 +2956,7 @@
       "Table": "ProductModelSizeChart",
       "Rows": [
         {
+          "FileAssetId": null,
           "Id": "id60",
           "MeasurementsJson": {
             "rows": [
