@@ -1,0 +1,502 @@
+{
+  "Runs": [
+    {
+      "Run": "send",
+      "JobType": "RETURN_ACTION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "returns.Get key=golden-return-decision:readback \"id1\""
+      ]
+    },
+    {
+      "Run": "same-job-again",
+      "JobType": "RETURN_ACTION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "ExternalEffectRecord",
+      "Rows": [
+        {
+          "Action": "RETURN_APPROVE",
+          "CompletedAt": "T-01:00:00",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-02:00:00",
+          "EffectType": "RETURN_ACTION",
+          "ExpectedValue": null,
+          "Id": "effect",
+          "IdempotencyKey": "golden-return-decision",
+          "LastCheckedAt": null,
+          "Outcome": "APPLIED",
+          "SentAt": "T-02:00:00",
+          "TargetId": "claim",
+          "TenantId": "tenant",
+          "UnclearChecks": 0,
+          "VerificationSeconds": 0
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Test Musteri",
+          "CustomerSearchStamp": "id2",
+          "CustomerSnapshotJson": {
+            "id": "id1",
+            "claimId": "id1",
+            "orderNumber": "65745805",
+            "orderDate": 1524826343886,
+            "customerFirstName": "Test",
+            "customerLastName": "Musteri",
+            "claimDate": 1525844162827,
+            "cargoTrackingNumber": 72602420957047276000,
+            "cargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",
+            "cargoSenderNumber": "8106459254413",
+            "cargoProviderName": "Aras Kargo Marketplace",
+            "orderShipmentPackageId": 3853354,
+            "replacementOutboundpackageinfo": {
+              "cargoTrackingNumber": 72602420957047276000,
+              "cargoProviderName": "Aras Kargo Marketplace",
+              "cargoSenderNumber": "733861966410",
+              "cargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",
+              "packageid": 28717254,
+              "items": [
+                "id3"
+              ]
+            },
+            "rejectedpackageinfo": {
+              "cargoTrackingNumber": 72602420957047276000,
+              "cargoSenderNumber": "12345754875355",
+              "cargoProviderName": "Aras Kargo Marketplace",
+              "cargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",
+              "packageid": 28717254,
+              "items": [
+                "id3"
+              ],
+              "dontShipBack": false
+            },
+            "items": [
+              {
+                "orderLine": {
+                  "id": 28717254,
+                  "productName": "Erkek Bebek Sandalet 8S5280Z1/GREEN CS4, 21",
+                  "barcode": "99999999999",
+                  "merchantSku": "2083667",
+                  "productColor": "GREEN CS4",
+                  "productSize": " 21",
+                  "price": 12.95,
+                  "vatBaseAmount": 8,
+                  "vatRate": 8,
+                  "salesCampaignId": 183631,
+                  "productCategory": "Sandalet"
+                },
+                "claimItems": [
+                  {
+                    "id": "id4",
+                    "orderLineItemId": 29815493,
+                    "customerClaimItemReason": {
+                      "name": "Beden uymama",
+                      "externalReasonId": 23,
+                      "code": "UNFIT"
+                    },
+                    "trendyolClaimItemReason": {
+                      "name": "Beden uymama",
+                      "externalReasonId": 23,
+                      "code": "UNFIT"
+                    },
+                    "claimItemStatus": {
+                      "name": "Created"
+                    },
+                    "note": "",
+                    "customerNote": "Customer note",
+                    "resolved": false,
+                    "autoAccepted": false,
+                    "acceptedBySeller": true,
+                    "acceptDetail": "SUPPLIER"
+                  }
+                ]
+              },
+              {
+                "orderLine": {
+                  "id": 28717255,
+                  "productName": "Erkek Bebek Soket Corap 4'lu 8S7346Z1/MIX YARN DYED K00, 6-12 Ay",
+                  "barcode": "99999999999",
+                  "merchantSku": "2052551",
+                  "productColor": "MIX YARN DYED K00",
+                  "productSize": " 17-18 (6-12 Ay)",
+                  "price": 9.95,
+                  "vatBaseAmount": 8,
+                  "vatRate": 8,
+                  "salesCampaignId": 183631,
+                  "productCategory": "Corap"
+                },
+                "claimItems": [
+                  {
+                    "id": "id3",
+                    "orderLineItemId": 29815494,
+                    "customerClaimItemReason": {
+                      "name": "Beden uymama",
+                      "externalReasonId": 23,
+                      "code": "UNFIT"
+                    },
+                    "trendyolClaimItemReason": {
+                      "name": "Beden uymama",
+                      "externalReasonId": 23,
+                      "code": "UNFIT"
+                    },
+                    "claimItemStatus": {
+                      "name": "Created"
+                    },
+                    "note": "",
+                    "customerNote": "Customer note",
+                    "resolved": false,
+                    "autoAccepted": false,
+                    "acceptedBySeller": true,
+                    "acceptDetail": "SUPPLIER"
+                  }
+                ]
+              }
+            ],
+            "lastModifiedDate": 1723275767111,
+            "orderOutboundPackageId": 58835111,
+            "_ravenciaReadModelSource": "RETURN_CLAIM"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "65745805",
+          "GrossAmount": 22.9000,
+          "Id": "order-65745805",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-21915.09:00:00",
+          "NetAmount": 22.9000,
+          "OrderNumber": "65745805",
+          "OrderedAt": "T-4267.01:07:36.1140000",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "99999999999",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 1.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "28717254",
+          "Id": "order-line-28717254",
+          "OrderId": "order-65745805",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Delivered",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "Sku": "2083667",
+          "SourceSnapshotJson": "<raw 433 chars sha256:e848a2fe0139>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Erkek Bebek Sandalet 8S5280Z1/GREEN CS4, 21",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 12.9500,
+          "VariantId": null,
+          "VatRate": 8.0000,
+          "Version": 1
+        },
+        {
+          "Barcode": "99999999999",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 1.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "28717255",
+          "Id": "order-line-28717255",
+          "OrderId": "order-65745805",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Delivered",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "Sku": "2052551",
+          "SourceSnapshotJson": "<raw 471 chars sha256:e916337cc9fe>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Erkek Bebek Soket Corap 4'lu 8S7346Z1/MIX YARN DYED K00, 6-12 Ay",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 9.9500,
+          "VariantId": null,
+          "VatRate": 8.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "DELIVERED",
+          "Id": "id5",
+          "OccurredAt": "T-1970.01:17:12.8890000",
+          "OrderId": "order-65745805",
+          "PackageId": "package-58835111",
+          "RawStatus": "Delivered",
+          "RecordedAt": "T-00:30:00",
+          "SourceEventId": "58835111:1723275767111",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 1.0000,
+          "Id": "id6",
+          "OrderLineId": "order-line-28717254",
+          "PackageId": "package-58835111",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "SourceEventId": "58835111:1723275767111",
+          "TenantId": "tenant"
+        },
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 1.0000,
+          "Id": "id7",
+          "OrderLineId": "order-line-28717255",
+          "PackageId": "package-58835111",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "SourceEventId": "58835111:1723275767111",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ReturnClaim",
+      "Rows": [
+        {
+          "ActionDueAt": "T-4248.03:23:57.1730000",
+          "ActionDueAtEstimated": true,
+          "ApprovedAt": "T+00:00:04",
+          "CardSplit": false,
+          "CargoProviderName": "Aras Kargo Marketplace",
+          "CargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",
+          "CargoTrackingNumber": "72602420957047276000",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CustomerRequest": null,
+          "DecidedAt": null,
+          "ExternalClaimId": "id1",
+          "Id": "claim",
+          "LastRemoteModifiedAt": "T-00:01:00",
+          "OrderId": "order-65745805",
+          "RawStatus": "Accepted",
+          "ReasonCode": "UNFIT",
+          "ReasonText": "Customer note",
+          "RejectedPackageState": null,
+          "RequestedAt": "T-4255.03:23:57.1730000",
+          "ResolvedWith": null,
+          "Status": "Approved",
+          "TabGroup": "APPROVED",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:04",
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "ReturnDecision",
+      "Rows": [
+        {
+          "Action": "APPROVE",
+          "ActorUserId": "actor",
+          "ClaimId": "claim",
+          "CompletedAt": "T+00:00:04",
+          "CreatedAt": "T-00:01:00",
+          "ErrorCode": null,
+          "Explanation": "golden karar",
+          "ExternalOperationId": null,
+          "Id": "decision",
+          "IdempotencyKey": "golden-return-decision",
+          "ReasonCode": null,
+          "ReturnLineIds": null,
+          "Status": "SUCCEEDED",
+          "StockLinesJson": null,
+          "StockSettledAt": null,
+          "StockStatus": null,
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "ReturnLine",
+      "Rows": [
+        {
+          "AcceptDetail": "SUPPLIER",
+          "AcceptedBySeller": true,
+          "ClaimId": "claim",
+          "ExternalLineId": "id4",
+          "Id": "return-line-b71461e3-d1a0-4c1d-9a6d-18ecbcb5158c",
+          "MarketplaceNote": null,
+          "OrderLineId": "order-line-28717254",
+          "Quantity": 1.0000,
+          "RawStatus": "Accepted",
+          "Resolved": false,
+          "TenantId": "tenant"
+        },
+        {
+          "AcceptDetail": "SUPPLIER",
+          "AcceptedBySeller": true,
+          "ClaimId": "claim",
+          "ExternalLineId": "id3",
+          "Id": "return-line-b71461e3-d1a0-4c1d-9a6d-18ecbcb5432d",
+          "MarketplaceNote": null,
+          "OrderLineId": "order-line-28717255",
+          "Quantity": 1.0000,
+          "RawStatus": "Accepted",
+          "Resolved": false,
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "Aras Kargo Marketplace",
+          "CargoTrackingNumber": "72602420957047276000",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "58835111",
+          "GrossAmount": 22.9000,
+          "Id": "package-58835111",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 22.9000,
+          "OrderId": "order-65745805",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-1970.01:17:12.8890000",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id8",
+          "LastAttemptAt": "T+00:01:06",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:07",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "RETURN_ACTION",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1",
+        "returns ReturnClaim created x1",
+        "returns ReturnClaim updated x1"
+      ]
+    }
+  ]
+}
