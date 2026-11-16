@@ -1,0 +1,383 @@
+{
+  "Runs": [
+    {
+      "Run": "ingest",
+      "JobType": "SHOPIFY_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=shopify-webhook:connection:sh-msg-2 \"1001\""
+      ]
+    },
+    {
+      "Run": "ingest-again",
+      "JobType": "SHOPIFY_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=shopify-webhook:connection:sh-msg-2 \"1001\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "InboxMessage",
+      "Rows": [
+        {
+          "ExternalMessageId": "sh-msg-2",
+          "Id": "inbox",
+          "PayloadHash": "<hash>",
+          "ProcessedAt": "T+00:01:14",
+          "ReceivedAt": "T-00:01:00",
+          "Source": "SHOPIFY_WEBHOOK",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:03",
+          "Currency": "TRY",
+          "CustomerSearchName": "Test Musteri",
+          "CustomerSearchStamp": "id1",
+          "CustomerSnapshotJson": {
+            "id": null,
+            "customerName": "Test Musteri",
+            "customerFirstName": "Test",
+            "customerLastName": "Musteri",
+            "email": "customer@example.test",
+            "phone": null,
+            "shopPrimaryDomainUrl": "https://fake-shop.example.test"
+          },
+          "DerivedStatus": "NEW",
+          "DiscountAmount": 40.0000,
+          "ExternalOrderId": "1001",
+          "GrossAmount": 300.0000,
+          "Id": "id2",
+          "InvoiceAddressSnapshotJson": {
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "address1": "Fake Sokak 5",
+            "city": "İstanbul",
+            "country": "Turkey",
+            "company": null
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-1152.21:00:00",
+          "NetAmount": 260.0000,
+          "OrderNumber": "#1001",
+          "OrderedAt": "T-1152.23:30:00",
+          "ShipmentAddressSnapshotJson": {
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "address1": "Fake Sokak 5",
+            "city": "İstanbul",
+            "country": "Turkey",
+            "phone": "+905550000000"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:03",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderFinancialAllocation",
+      "Rows": [
+        {
+          "AllocationType": "CANCELLATION_STATUS:NOT_CANCELLED",
+          "Amount": 0.0000,
+          "Currency": "TRY",
+          "Id": "id3",
+          "OrderId": "id2",
+          "OrderLineId": null,
+          "SourceKey": "shopify:cancellation-status",
+          "TenantId": "tenant"
+        },
+        {
+          "AllocationType": "PAYMENT_STATUS:PAID",
+          "Amount": 0.0000,
+          "Currency": "TRY",
+          "Id": "id4",
+          "OrderId": "id2",
+          "OrderLineId": null,
+          "SourceKey": "shopify:payment-status",
+          "TenantId": "tenant"
+        },
+        {
+          "AllocationType": "REFUND_STATUS:NOT_REFUNDED",
+          "Amount": 0.0000,
+          "Currency": "TRY",
+          "Id": "id5",
+          "OrderId": "id2",
+          "OrderLineId": null,
+          "SourceKey": "shopify:refund-summary",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "0000000000601",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "2001",
+          "Id": "id6",
+          "OrderId": "id2",
+          "OrderedQuantity": 2.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "PAID",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 2.0000,
+          "Sku": "SKU-FAKE-SH1",
+          "SourceSnapshotJson": "<raw 347 chars sha256:30a74ea56ad3>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Fake Shopify Ürün 1",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 120.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        },
+        {
+          "Barcode": null,
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "2002",
+          "Id": "id7",
+          "OrderId": "id2",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "PAID",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-FAKE-SH2",
+          "SourceSnapshotJson": "<raw 261 chars sha256:98cdadcfe986>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Fake Shopify Ürün 2",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 60.0000,
+          "VariantId": null,
+          "VatRate": 10.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "NEW",
+          "Id": "id8",
+          "OccurredAt": "T-1152.21:00:00",
+          "OrderId": "id2",
+          "PackageId": "id9",
+          "RawStatus": "UNFULFILLED",
+          "RecordedAt": "T+00:00:03",
+          "SourceEventId": "order:1001:remainder:1793880000000",
+          "TenantId": "tenant"
+        },
+        {
+          "CanonicalStatus": "SHIPPED",
+          "Id": "id10",
+          "OccurredAt": "T-1152.21:55:00",
+          "OrderId": "id2",
+          "PackageId": "id11",
+          "RawStatus": "SHIPPED",
+          "RecordedAt": "T+00:00:03",
+          "SourceEventId": "4001:1793876700000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id12",
+          "OrderLineId": "id7",
+          "PackageId": "id9",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "SourceEventId": "order:1001:remainder:1793880000000",
+          "TenantId": "tenant"
+        },
+        {
+          "AllocatedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id13",
+          "OrderLineId": "id6",
+          "PackageId": "id11",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 2.0000,
+          "SourceEventId": "4001:1793876700000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "SHOPIFY",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "SHOPIFY",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "Yurtiçi Kargo",
+          "CargoTrackingNumber": "TRACK-FAKE-SH1",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:03",
+          "CreatedBy": null,
+          "DiscountAmount": 32.0000,
+          "ExternalPackageId": "4001",
+          "GrossAmount": 240.0000,
+          "Id": "id11",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 208.0000,
+          "OrderId": "id2",
+          "OriginExternalPackageId": null,
+          "RawStatus": "SHIPPED",
+          "RemoteVersion": null,
+          "Status": "Shipped",
+          "StatusOccurredAt": "T-1152.21:55:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:03",
+          "Version": 1
+        },
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:03",
+          "CreatedBy": null,
+          "DiscountAmount": 8.0000,
+          "ExternalPackageId": "order:1001:remainder",
+          "GrossAmount": 60.0000,
+          "Id": "id9",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 52.0000,
+          "OrderId": "id2",
+          "OriginExternalPackageId": null,
+          "RawStatus": "UNFULFILLED",
+          "RemoteVersion": null,
+          "Status": "New",
+          "StatusOccurredAt": "T-1152.21:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:03",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id14",
+          "LastAttemptAt": "T+00:01:09",
+          "LastChangedCount": 1,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 1,
+          "LastRequestCount": 1,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:15",
+          "LastUpdatedCount": 1,
+          "OpaqueCursor": null,
+          "ResourceType": "WEBHOOK_INGEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x2"
+      ]
+    }
+  ]
+}

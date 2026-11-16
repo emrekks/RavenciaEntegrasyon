@@ -1,0 +1,212 @@
+{
+  "Runs": [
+    {
+      "Run": "ingest",
+      "JobType": "HEPSIBURADA_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "REMOTE_ORDER_NOT_FOUND",
+        "ErrorSummary": "golden: REMOTE_ORDER_NOT_FOUND",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=hepsiburada-order-get:4000000101 \"4000000101\""
+      ]
+    },
+    {
+      "Run": "ingest-again",
+      "JobType": "HEPSIBURADA_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "REMOTE_ORDER_NOT_FOUND",
+        "ErrorSummary": "golden: REMOTE_ORDER_NOT_FOUND",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=hepsiburada-order-get:4000000101 \"4000000101\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "InboxMessage",
+      "Rows": [
+        {
+          "ExternalMessageId": "golden-connection:order_event:packages/PKG-UNPACK/unpack:h3",
+          "Id": "inbox",
+          "PayloadHash": "<hash>",
+          "ProcessedAt": null,
+          "ReceivedAt": "T-00:01:00",
+          "Source": "HEPSIBURADA_WEBHOOK",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationJob",
+      "Rows": [
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:02",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "rjg-ingest",
+          "CreatedAt": "T+00:00:02",
+          "EffectIdempotencyKey": "hepsiburada-webhook-order:connection:<sha256>",
+          "HeartbeatAt": null,
+          "Id": "id1",
+          "JobDedupKey": "hepsiburada-webhook-order:connection:<sha256>",
+          "JobType": "HEPSIBURADA_ORDER_SYNC",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "sync",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "connectionId": "connection",
+            "externalOrderId": "4000000112",
+            "packageNumber": null
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "orders",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "Pending",
+          "TenantId": "tenant",
+          "TriggerType": "scheduled",
+          "Version": 1,
+          "WaitingChecks": 0
+        },
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:02",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "rjg-ingest",
+          "CreatedAt": "T+00:00:02",
+          "EffectIdempotencyKey": "hepsiburada-webhook-order:connection:<sha256>",
+          "HeartbeatAt": null,
+          "Id": "id2",
+          "JobDedupKey": "hepsiburada-webhook-order:connection:<sha256>",
+          "JobType": "HEPSIBURADA_ORDER_SYNC",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "sync",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "connectionId": "connection",
+            "externalOrderId": "4000000111",
+            "packageNumber": null
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "orders",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "Pending",
+          "TenantId": "tenant",
+          "TriggerType": "scheduled",
+          "Version": 1,
+          "WaitingChecks": 0
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 2,
+          "CursorStagnantSince": null,
+          "Id": "id3",
+          "LastAttemptAt": "T+00:01:05",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "REMOTE_ORDER_NOT_FOUND",
+          "LastErrorAt": "T+00:01:08",
+          "LastFailedCount": 2,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 1,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "WEBHOOK_INGEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1"
+      ]
+    }
+  ]
+}

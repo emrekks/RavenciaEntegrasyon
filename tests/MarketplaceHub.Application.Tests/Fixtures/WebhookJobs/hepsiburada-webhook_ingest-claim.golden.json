@@ -1,0 +1,231 @@
+{
+  "Runs": [
+    {
+      "Run": "ingest",
+      "JobType": "HEPSIBURADA_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    },
+    {
+      "Run": "ingest-again",
+      "JobType": "HEPSIBURADA_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "InboxMessage",
+      "Rows": [
+        {
+          "ExternalMessageId": "hb-claim-1",
+          "Id": "inbox",
+          "PayloadHash": "<hash>",
+          "ProcessedAt": "T+00:01:13",
+          "ReceivedAt": "T-00:01:00",
+          "Source": "HEPSIBURADA_WEBHOOK",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:02",
+          "Currency": "TRY",
+          "CustomerSearchName": "Test Musteri",
+          "CustomerSearchStamp": "id1",
+          "CustomerSnapshotJson": {
+            "name": "Test Musteri",
+            "customerId": "id2",
+            "_ravenciaReadModelSource": "RETURN_CLAIM"
+          },
+          "DerivedStatus": "UNVERIFIED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "2152988946",
+          "GrossAmount": 56.0000,
+          "Id": "id3",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-21915.09:00:00",
+          "NetAmount": 56.0000,
+          "OrderNumber": "2152988946",
+          "OrderedAt": "T-3000.21:59:40",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:02",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": null,
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "id4",
+          "Id": "id5",
+          "OrderId": "id3",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "ClaimCreated",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "KIVIRCIK20",
+          "SourceSnapshotJson": "<raw 342 chars sha256:1ce0aa97d100>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "George Adams Erkek Klasik Gömlek",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 56.0000,
+          "VariantId": null,
+          "VatRate": 0.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ReturnClaim",
+      "Rows": [
+        {
+          "ActionDueAt": null,
+          "ActionDueAtEstimated": false,
+          "ApprovedAt": null,
+          "CardSplit": false,
+          "CargoProviderName": null,
+          "CargoTrackingLink": null,
+          "CargoTrackingNumber": "6225816234669",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:06",
+          "CustomerRequest": "CHANGE",
+          "DecidedAt": null,
+          "ExternalClaimId": "356189794",
+          "Id": "id8",
+          "LastRemoteModifiedAt": "T-3000.21:56:42.3240000",
+          "OrderId": "id3",
+          "RawStatus": "AwaitingAction",
+          "ReasonCode": "",
+          "ReasonText": "",
+          "RejectedPackageState": null,
+          "RequestedAt": "T-3000.21:56:42.3240000",
+          "ResolvedWith": null,
+          "Status": "ActionRequired",
+          "TabGroup": "ACTION_REQUIRED",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:06",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ReturnLine",
+      "Rows": [
+        {
+          "AcceptDetail": null,
+          "AcceptedBySeller": null,
+          "ClaimId": "id8",
+          "ExternalLineId": "id4",
+          "Id": "id9",
+          "MarketplaceNote": null,
+          "OrderLineId": "id5",
+          "Quantity": 1.0000,
+          "RawStatus": null,
+          "Resolved": null,
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id10",
+          "LastAttemptAt": "T+00:01:10",
+          "LastChangedCount": 1,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 1,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:14",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "WEBHOOK_INGEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "returns ReturnClaim created x1"
+      ]
+    }
+  ]
+}

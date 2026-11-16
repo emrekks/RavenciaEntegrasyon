@@ -1,0 +1,191 @@
+{
+  "Runs": [
+    {
+      "Run": "ingest",
+      "JobType": "HEPSIBURADA_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "REMOTE_ORDER_NOT_FOUND",
+        "ErrorSummary": "golden: REMOTE_ORDER_NOT_FOUND",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=hepsiburada-order-get:4000000001 \"4000000001\""
+      ]
+    },
+    {
+      "Run": "ingest-again",
+      "JobType": "HEPSIBURADA_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "REMOTE_ORDER_NOT_FOUND",
+        "ErrorSummary": "golden: REMOTE_ORDER_NOT_FOUND",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=hepsiburada-order-get:4000000001 \"4000000001\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "InboxMessage",
+      "Rows": [
+        {
+          "ExternalMessageId": "golden-connection:order_event:orders/4000000001/shippingaddress:h4",
+          "Id": "inbox",
+          "PayloadHash": "<hash>",
+          "ProcessedAt": null,
+          "ReceivedAt": "T-00:01:00",
+          "Source": "HEPSIBURADA_WEBHOOK",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id1",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "4000000001",
+          "GrossAmount": 100.0000,
+          "Id": "order-4000000001",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-1.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "4000000001",
+          "OrderedAt": "T-1.00:00:00",
+          "ShipmentAddressSnapshotJson": {
+            "address": "Yeni Mahalle 1",
+            "city": "İzmir"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:02",
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "PKG-UNPACK",
+          "GrossAmount": 100.0000,
+          "Id": "package-PKG-UNPACK",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-4000000001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-05:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 2,
+          "CursorStagnantSince": null,
+          "Id": "id2",
+          "LastAttemptAt": "T+00:01:06",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "REMOTE_ORDER_NOT_FOUND",
+          "LastErrorAt": "T+00:01:09",
+          "LastFailedCount": 2,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 1,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "WEBHOOK_INGEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders Order updated x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}
