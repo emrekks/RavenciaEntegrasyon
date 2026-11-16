@@ -17,6 +17,15 @@ export function writeStoredItem(key: string, value: string) {
   }
 }
 
+// The same for this tab's sessionStorage: kept until the tab closes or sign-out clears it (storage-scope.ts).
+export function readSessionItem(key: string): string | null {
+  try { return sessionStorage.getItem(key) } catch { return null }
+}
+
+export function writeSessionItem(key: string, value: string) {
+  try { sessionStorage.setItem(key, value) } catch { /* blocked storage: the choice lasts for this page only */ }
+}
+
 export function removeStoredItem(key: string) {
   try { localStorage.removeItem(key) } catch { /* blocked storage: nothing was kept */ }
 }

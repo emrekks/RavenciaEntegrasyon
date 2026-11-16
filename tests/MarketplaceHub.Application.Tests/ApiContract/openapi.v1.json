@@ -125,6 +125,159 @@
         }
       }
     },
+    "/api/v1/auth/invitations": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "getAuthInvitations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MyInvitationView"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invitations/{id}/accept": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "postAuthInvitationsByIdAccept",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationAcceptedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/invitations/{id}/decline": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "postAuthInvitationsByIdDecline",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -16262,7 +16415,8 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters.",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -16785,7 +16939,8 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters.",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -20990,7 +21145,8 @@
           {
             "name": "Idempotency-Key",
             "in": "header",
-            "description": "Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters.",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -21025,6 +21181,71 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/settings/users/invitations/{invitationId}": {
+      "delete": {
+        "tags": [
+          "settings"
+        ],
+        "operationId": "deleteSettingsUsersInvitationsByInvitationId",
+        "parameters": [
+          {
+            "name": "invitationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
@@ -26807,6 +27028,22 @@
           }
         }
       },
+      "InvitationAcceptedView": {
+        "required": [
+          "tenantId",
+          "workspaceName"
+        ],
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceName": {
+            "type": "string"
+          }
+        }
+      },
       "InvoiceAttemptView": {
         "required": [
           "attemptNumber",
@@ -30256,6 +30493,40 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "MyInvitationView": {
+        "required": [
+          "id",
+          "workspaceName",
+          "invitedBy",
+          "role",
+          "invitedAt",
+          "expiresAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "invitedBy": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "invitedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -41971,11 +42242,50 @@
           }
         }
       },
+      "TenantInvitationView": {
+        "required": [
+          "id",
+          "displayName",
+          "email",
+          "role",
+          "invitedAt",
+          "expiresAt",
+          "expired"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "invitedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expired": {
+            "type": "boolean"
+          }
+        }
+      },
       "TenantUsersView": {
         "required": [
           "currentUserId",
           "currentRole",
-          "items"
+          "items",
+          "invitations"
         ],
         "type": "object",
         "properties": {
@@ -41990,6 +42300,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TenantUserView"
+            }
+          },
+          "invitations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TenantInvitationView"
             }
           }
         }
@@ -43248,6 +43564,9 @@
     },
     {
       "name": "UserManagementEndpoints"
+    },
+    {
+      "name": "WorkspaceInvitationEndpoints"
     }
   ]
 }

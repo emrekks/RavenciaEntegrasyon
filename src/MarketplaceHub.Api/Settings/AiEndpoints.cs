@@ -35,7 +35,9 @@ public static class AiEndpoints
 
         var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart").WithGates(ApiGate.SignedIn, ApiGate.Operations);
         products.MapGet("", GetSizeChartAsync).Produces<SizeChartView>();
-        products.MapPost("/generate", GenerateSizeChartAsync).NotIdempotent("each call is a new paid Claude generation and stores a new picture").Produces<SizeChartGenerated>();
+        // Each call is a paid Claude generation that stores a new picture, so a repeat must not run again: the key makes a
+        // repeat replay the first answer (IdempotencyMiddleware), and one still running answers IDEMPOTENCY_IN_PROGRESS.
+        products.MapPost("/generate", GenerateSizeChartAsync).RequireIdempotencyKey().Produces<SizeChartGenerated>();
         products.MapPut("", MarkSizeChartAsync).Idempotent("sets the card's size chart to the address the body names").Produces<SizeChartMarkedView>();
         return endpoints;
     }
@@ -128,6 +130,7 @@ public static class AiEndpoints
     private static async Task<IResult> GenerateSizeChartAsync(Guid id, SizeChartInput request, HttpContext http, SizeChartService service, AiRunGate gate)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         // API-GUVENLIK-3: a second press, tab or user does not start another billed run for the same card, and a tenant
         // runs at most AiRunGate.PerTenant charts at once.
         using var lease = gate.TryEnter(tenant.TenantId, $"size-chart:{id:N}", out var refusal);

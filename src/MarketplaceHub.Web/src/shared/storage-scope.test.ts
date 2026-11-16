@@ -41,6 +41,14 @@ describe('per-person browser storage', () => {
     expect(Object.keys(localStorage)).toEqual(['ravencia.rememberedEmail'])
   })
 
+  it('sign-out removes the tab’s "Sonra Karar Ver" on workspace invitations from sessionStorage, keeps the build reload mark', () => {
+    sessionStorage.setItem('rv-invitations-later@tenant-a:user-1', '1')
+    sessionStorage.setItem('rv-reloaded-for-new-build', '1')
+    clearPersonalStorage()
+    expect(Object.keys(sessionStorage)).toEqual(['rv-reloaded-for-new-build'])
+    sessionStorage.clear()
+  })
+
   it('names every browser-storage key the app writes as personal (cleared at sign-out) or as this device’s', () => {
     // Every localStorage.setItem / writeStoredItem call of the sources, with its key resolved from a literal, a constant
     // of the same file, a template's fixed start or scopedStorageKey(...) around one of those.
@@ -69,7 +77,7 @@ describe('per-person browser storage', () => {
     let writes = 0
     for (const [file, text] of Object.entries(sources)) {
       if (keyTakingHelpers.some(helper => file.endsWith(helper))) continue
-      for (const match of text.matchAll(/(?:localStorage\.setItem|writeStoredItem)\(\s*([^,]+),/g)) {
+      for (const match of text.matchAll(/(?:localStorage\.setItem|sessionStorage\.setItem|writeStoredItem|writeSessionItem)\(\s*([^,]+),/g)) {
         writes++
         const key = resolve(match[1], text)
         if (key === null) unresolved.push(`${file}: ${match[1]}`)

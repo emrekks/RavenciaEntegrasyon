@@ -22,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantSetting> TenantSettings => Set<TenantSetting>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+    public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
     public DbSet<UserSecurity> UserSecurities => Set<UserSecurity>();
     public DbSet<RecoveryCode> RecoveryCodes => Set<RecoveryCode>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
@@ -468,6 +469,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(x => x.Role).HasConversion(MembershipRoleConverter).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(RecordStatusConverter).HasMaxLength(24);
             entity.Property(x => x.Version).IsConcurrencyToken();
+        });
+        builder.Entity<TenantInvitation>(entity =>
+        {
+            entity.ToTable("tenant_invitations", "iam"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(x => x.Role).HasConversion(MembershipRoleConverter).HasMaxLength(24);
+            entity.Property(x => x.Email).HasMaxLength(256); entity.Property(x => x.DisplayName).HasMaxLength(160);
         });
         builder.Entity<UserSecurity>(entity =>
         {

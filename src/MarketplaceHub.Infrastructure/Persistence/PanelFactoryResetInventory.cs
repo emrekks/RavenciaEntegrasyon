@@ -182,7 +182,7 @@ public static class PanelFactoryResetInventory
         // iam
         S("iam.tenant_settings", Invoices, "ayarlar kalır; yalnız fatura çalışma alanının gizlenen paket listesi silinir"),
         K("iam.user_sessions", "tam sıfırlamada isteyen oturum kalır, diğerleri silinir"),
-        K("iam.tenants", "hesap"), K("iam.tenant_memberships", "kullanıcı üyelikleri"), K("iam.bootstrap_state", "ilk kurulum kaydı"),
+        K("iam.tenants", "hesap"), K("iam.tenant_memberships", "kullanıcı üyelikleri"), K("iam.tenant_invitations", "bekleyen kullanıcı davetleri"), K("iam.bootstrap_state", "ilk kurulum kaydı"),
         K("iam.users", "kullanıcılar"), K("iam.roles", "roller"), K("iam.user_roles", "roller"), K("iam.role_claims", "roller"),
         K("iam.user_claims", "kullanıcı"), K("iam.user_logins", "kullanıcı"), K("iam.user_tokens", "kullanıcı (doğrulayıcı anahtarı)"),
         K("iam.user_security", "iki adımlı doğrulama"), K("iam.recovery_codes", "kurtarma kodları"),

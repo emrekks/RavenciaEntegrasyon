@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assignableRoles, availableUserActions, reauthBody, userLockReason, type ManagedUser } from './user-management'
+import { assignableRoles, availableUserActions, canWithdrawInvitation, invitationSentMessage, reauthBody, userLockReason, type ManagedUser, type PendingInvitation } from './user-management'
 
 const user = (overrides: Partial<ManagedUser> = {}): ManagedUser => ({
   id: 'u1', displayName: 'Ayşe', email: 'ayse@example.com', role: 'OPERATIONS', active: true, lockedOut: false, mfaEnabled: false,
@@ -29,5 +29,15 @@ describe('user management rules', () => {
     expect(reauthBody('pw', '')).toEqual({ password: 'pw' })
     expect(reauthBody('pw', '123 456')).toEqual({ password: 'pw', code: '123456' })
     expect(reauthBody('pw', 'ABCD-EFGH-JKMN')).toEqual({ password: 'pw', recoveryCode: 'ABCD-EFGH-JKMN' })
+  })
+
+  // API-GUVENLIK-6: an existing account is invited; only an owner withdraws an invitation to the owner role.
+  it('lets only an owner withdraw an owner invitation and tells the inviter an invitation was sent', () => {
+    const invitation = (role: PendingInvitation['role']): PendingInvitation => ({ id: 'i1', displayName: 'Davetli', email: 'davetli@example.com', role, invitedAt: '2026-11-16T00:00:00Z', expiresAt: '2026-11-30T00:00:00Z', expired: false })
+    expect(canWithdrawInvitation(invitation('OPERATIONS'), 'ADMINISTRATOR')).toBe(true)
+    expect(canWithdrawInvitation(invitation('OWNER'), 'ADMINISTRATOR')).toBe(false)
+    expect(canWithdrawInvitation(invitation('OWNER'), 'OWNER')).toBe(true)
+    expect(invitationSentMessage('davetli@example.com', 'READONLY')).toContain('Salt Okunur rolüyle davet gönderildi')
+    expect(invitationSentMessage('davetli@example.com', 'READONLY')).toContain('kabul edene kadar bu çalışma alanına erişemez')
   })
 })

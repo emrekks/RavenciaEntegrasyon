@@ -86,14 +86,11 @@ public sealed class ApiEndpointRulesTests(ApiRouteProbeHost fixture) : IClassFix
         "POST /api/v1/auth/mfa/confirm",
         "POST /api/v1/auth/mfa/setup",
         "POST /api/v1/auth/recovery-codes/regenerate",
-        "POST /api/v1/products/{id:guid}/size-chart/generate",
-        "POST /api/v1/question-templates",
         "POST /api/v1/settings/ai/skills/{key}/upload",
         "POST /api/v1/settings/ai/test",
         "POST /api/v1/settings/alert-email/test",
         "POST /api/v1/settings/offsite-backup/google/authorize",
         "POST /api/v1/settings/offsite-backup/google/complete",
-        "POST /api/v1/settings/users/",
         "POST /api/v1/settings/users/{id:guid}/password-reset",
     ];
 

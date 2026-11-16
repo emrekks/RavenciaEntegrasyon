@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage } from './size-chart-outcome'
 import { Button, FieldHelp, IconButton, Modal, UiIcon } from '../../../shared/components'
 import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft } from './size-chart-measurements'
@@ -47,6 +47,7 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SizeChartResult | null>(null)
   const abort = useRef<AbortController | null>(null)
+  const [drawKey, setDrawKey] = useState(() => newIdempotencyKey('draw'))
 
   // The panel's Beden order wins; the server's list covers a size the editor does not show.
   const rowSizes = sizes.length ? sizes : info.data?.sizes ?? []
@@ -75,8 +76,12 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
     const lastGeneratedBefore = info.data?.lastGeneratedUrl ?? null
     setRunning(true); setElapsed(0); setError(null); setResult(null)
     try {
-      // A fresh key on every press: a lost answer is never sent again under the same key (size-chart-outcome.ts).
-      const generated = await hubApi<SizeChartResult>(`/products/${productId}/size-chart/generate`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('size-chart') }, body: JSON.stringify(checked.payload), signal: controller.signal })
+      // One key per drawing (size-chart-outcome.ts): a press after a lost answer sends the same key, so the server
+      // replays the chart it drew (or answers that it is still drawing) instead of a second paid run; a drawn chart or
+      // an answered error renews it.
+      const body = JSON.stringify(checked.payload)
+      const generated = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('size-chart', productId, drawKey, body), key => hubApi<SizeChartResult>(`/products/${productId}/size-chart/generate`, { method: 'POST', headers: { 'Idempotency-Key': key }, body, signal: controller.signal }))
+      setDrawKey(newIdempotencyKey('draw'))
       if (controller.signal.aborted) return
       setResult(generated)
     } catch (reason) {
