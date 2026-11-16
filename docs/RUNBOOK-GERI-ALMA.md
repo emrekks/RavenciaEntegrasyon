@@ -376,10 +376,12 @@ yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karard�
 
 - **VERITABANI-DAGITIM-11, `billing.invoices."SequenceNumber"` sütununu silmek (genişlet-daralt 2. aşama):**
   hiç yazılmayan ve okunmayan sütun 16 Kasım 2026'da modelden çıkarıldı (`20261116090000_StopMappingInvoiceSequenceNumber`,
-  boş `Up`; canlıda 2 faturanın hiçbirinde değer yok). **Yazıldı:** `20261116180000_DropInvoiceSequenceNumber`
+  boş `Up`; 1. aşama yazılırken canlıda 2 faturanın hiçbirinde değer yoktu). **Yazıldı:** `20261116180000_DropInvoiceSequenceNumber`
   (`DROP COLUMN IF EXISTS`, `SET LOCAL lock_timeout = '5s'`, `Down` boş nullable sütunu geri ekler). Yazıldığı an
   canlı `ce8d854e99b4` ve bir önceki sürüm sütunu hiç anmıyor (16 Kasım, salt okuma: 7 faturanın 0'ında değer var);
-  imaj geri alındığında da sütun okunmaz. Canlıya çıkınca: `/prod-sql --columns billing.invoices` listesinde
+  imaj geri alındığında da sütun okunmaz. `6802b4706b64` öncesi bir imaja ELLE dönülecekse önce bu migration'ın
+  `Down`'ı çalıştırılır: o imajlar sütunu eşler, sütun yokken her fatura sorgusu 42703 ile düşer (otomatik geri alma
+  bu durumu üretmez). Canlıya çıkınca: `/prod-sql --columns billing.invoices` listesinde
   `SequenceNumber` olmamalı.
 
 ## 10. Kesintisiz deploy: iki API kopyası (hazır yama, uygulanmamış; VERITABANI-DAGITIM-4)
