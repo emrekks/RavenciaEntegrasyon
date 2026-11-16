@@ -66,7 +66,8 @@ public static class DatabaseMigrator
                 }
                 // KATALOG-14 phase B backfill: every model takes its cards' shared values (the desi and the size chart
                 // included) and the models whose cards disagree are reported. Same rule as every save's write-through;
-                // idempotent, one short transaction per model.
+                // idempotent, one short transaction per model. Phase D2: the name and description move only when every
+                // colour agrees, a colour that differs gets its own text as an override (the colour overrides' backfill).
                 try
                 {
                     var (models, written, differing) = await ProductModelValues.RefreshAllAsync(migrationContext, DateTimeOffset.UtcNow, cancellationToken);

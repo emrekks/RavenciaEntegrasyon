@@ -18,6 +18,16 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // HoldsSavedAttributes, the editor's own rule) are left as saved: the editor shows them, so writing the majority (which
 // may count cards the editor does not show) would flip the value between editor saves and nightly scans. The desi and
 // the size chart are always the cards'.
+// KATALOG-14 phase D2 (owner, 16 Nov 2026): the name and the description are no longer voted on. They move to the
+// model only when every colour holds one value (Unanimous; the name without its colour word); otherwise the model keeps
+// its own and every colour whose text is not the model's keeps that text as its override (products.TitleOverride /
+// DescriptionOverride, OverridesOf). The cards keep their copies (dual write), so readers (EffectiveCatalog) and the
+// marketplaces see the same text as before. The warning now names only what has no per-colour value: category, VAT,
+// warranty, delivery days and the category attributes.
+// Timing: inside a caller's transaction the refresh still runs right after its commit (AppDbContext.DeferModelValues),
+// so a serializable editor save meets no new write; a refresh lost to a crash between the commit and it is repaired by
+// the next save of the model, the nightly scan (ProductModelScan) and every deploy (self-healing, not durable). Until
+// it runs the card copies, which every reader reads, already hold the saved text.
 // Callers: AppDbContext's save hook (ProductModelLinks.AfterSaveAsync) for every save that changes a card's shared field,
 // a variant's desi, a card-level attribute or a card's chart, so every EF write path (editor, create, Toplu Değer Ata,
 // Excel aktarımı, marketplace product imports, model-code correction, family save) writes through without code of its
@@ -40,7 +50,7 @@ public static class ProductModelValues
     public const string Desi = "desi";
     public const string SizeChart = "beden tablosu";
 
-    public sealed record Card(Guid Id, DateTimeOffset CreatedAt, string? Color, string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays);
+    public sealed record Card(Guid Id, DateTimeOffset CreatedAt, string? Color, string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays, string? TitleOverride = null, string? DescriptionOverride = null);
 
     // The model's desi: the one most variants hold (above 0), on a tie the smaller; null when none holds one.
     public static decimal? ModelDesi(IEnumerable<decimal?> desis) => desis.OfType<decimal>().Where(desi => desi > 0)
@@ -106,7 +116,7 @@ public static class ProductModelValues
         var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && (modelIds == null || modelIds.Contains(x.Id))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var ids = models.Select(x => x.Id).ToArray();
         var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId != null && ids.Contains(x.FamilyId.Value))
-            .Select(x => new { x.Id, FamilyId = x.FamilyId!.Value, x.CreatedAt, x.UpdatedAt, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+            .Select(x => new { x.Id, FamilyId = x.FamilyId!.Value, x.CreatedAt, x.UpdatedAt, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays, x.TitleOverride, x.DescriptionOverride })
             .ToListAsync(cancellationToken);
         var cardIds = cards.Select(x => x.Id).ToArray();
         var variants = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId))
@@ -128,7 +138,7 @@ public static class ProductModelValues
         {
             Models = models,
             CardsByModel = cards.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
-                .ToLookup(x => x.FamilyId, x => new Card(x.Id, x.CreatedAt, colorOf.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays)),
+                .ToLookup(x => x.FamilyId, x => new Card(x.Id, x.CreatedAt, colorOf.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays, x.TitleOverride, x.DescriptionOverride)),
             CardUpdatedAt = cards.ToDictionary(x => x.Id, x => x.UpdatedAt),
             VariantsByCard = variants,
             AttributesByCard = attributes.ToLookup(x => x.ProductId),
@@ -145,10 +155,25 @@ public static class ProductModelValues
     private static string AttributeSetKey(IEnumerable<ProductModelAttribute> rows) =>
         string.Join(";", rows.Select(x => ProductModelLinks.AttributeKey(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
 
+    // KATALOG-14 phase D2: a colour's own name / description, as it should be stored (null: the colour takes the model's).
+    private sealed record CardOverride(Guid CardId, string Title, string Description, string? TitleOverride, string? DescriptionOverride);
+
     // What one model should hold, and where its cards disagree.
     private sealed record Target(
-        ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string? TitleColor, bool KeepTitle, bool FieldsSaved,
-        decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, bool ChartDiffers, IReadOnlyList<string> Differing);
+        ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string Title, string? TitleColor, string Description, bool FieldsSaved,
+        decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, bool ChartDiffers, IReadOnlyList<string> Differing,
+        IReadOnlyList<CardOverride> Overrides);
+
+    // KATALOG-14 phase D2 (owner, 16 Nov 2026): the name and the description are the model's when every colour holds the
+    // same one (the name compared without its colour word), and stay as the model holds them otherwise; no majority
+    // moves them. A colour whose own text is not what the model gives it keeps that text as its override, so no colour's
+    // text is ever changed or lost (the cards keep their copies too).
+    internal static bool Unanimous(IReadOnlyList<Card> cards, Func<Card, string> key) => cards.Select(key).Distinct(StringComparer.Ordinal).Count() == 1;
+
+    // The override a colour should hold: its own text where the model's (the name with the colour's word) is not that text.
+    internal static (string? Title, string? Description) OverridesOf(Card card, string modelTitle, string? modelTitleColor, string modelDescription) =>
+        (card.Title == ProductFamilySharedFields.TitleFor(modelTitle, modelTitleColor, card.Color) ? null : card.Title,
+         card.Description == modelDescription ? null : card.Description);
 
     private static Target? Compute(Snapshot snapshot, ProductModel model)
     {
@@ -156,11 +181,18 @@ public static class ProductModelValues
         if (cards.Count == 0) return null;
         var fields = ProductFamilySharedFields.ModelValues([.. cards.Select(x => new ProductFamilySharedFields.CardFields(x.Id, x.Color, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))], null);
         var titleCard = cards.FirstOrDefault(x => x.Title.Trim() == fields.Title);
-        var title = Short(fields.Title, 320);
-        var titleColor = titleCard?.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null;
+        var cardsTitle = Short(fields.Title, 320);
+        var cardsTitleColor = titleCard?.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null;
         // The stored name stays when it gives every colour of the model the same name the cards' name does.
         var keepTitle = cards.Select(x => x.Color).Append(null).All(color =>
-            ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, color) == ProductFamilySharedFields.TitleFor(title, titleColor, color));
+            ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, color) == ProductFamilySharedFields.TitleFor(cardsTitle, cardsTitleColor, color));
+        var colors = Colors(cards);
+        var titleUnanimous = Unanimous(cards, card => TitleKey(card, colors));
+        var (title, titleColor) = titleUnanimous && !keepTitle ? (cardsTitle, cardsTitleColor) : (model.Title, model.TitleColor);
+        var description = Unanimous(cards, card => card.Description.Trim()) ? fields.Description : model.Description;
+        var overrides = cards.Select(card => (card, own: OverridesOf(card, title, titleColor, description)))
+            .Where(item => item.own != (item.card.TitleOverride, item.card.DescriptionOverride))
+            .Select(item => new CardOverride(item.card.Id, item.card.Title, item.card.Description, item.own.Title, item.own.Description)).ToList();
 
         var desi = ModelDesi(cards.SelectMany(card => snapshot.VariantsByCard[card.Id]).Select(x => x.Desi));
 
@@ -175,17 +207,17 @@ public static class ProductModelValues
         // only on a difference.
         var chartDiffers = snapshot.ModelCharts.TryGetValue(model.Id, out var modelChart) ? chart is null || modelChart != chart : chart is not null;
 
-        var differing = DifferingFields(cards).ToList();
+        // KATALOG-14 phase D2: what is still worth telling the owner. A colour's own name or description is a deliberate
+        // override, a variant's own desi and a colour's own size chart are its own; what has no per-colour value (category,
+        // VAT, warranty, delivery days, the category attributes) yet differs between colours is still reported.
+        var differing = DifferingFields(cards).Where(field => field is not (Title or Description)).ToList();
         if (setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any()) differing.Add(Attributes);
-        // Variants of the model holding different desis (a variant with none only waits for one: the editor fills it).
-        if (cards.SelectMany(card => snapshot.VariantsByCard[card.Id]).Select(x => x.Desi).OfType<decimal>().Where(x => x > 0).Distinct().Skip(1).Any()) differing.Add(Desi);
-        if (charts.OfType<string>().Distinct(StringComparer.Ordinal).Skip(1).Any()) differing.Add(SizeChart);
         // What the owner saved in the editor after the last change of every card stays (the editor's own rule).
         var updatedAt = cards.Select(card => snapshot.CardUpdatedAt[card.Id]).ToList();
         var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, cards.Select(card => (snapshot.CardUpdatedAt[card.Id], card.CategoryId)));
         var attributesDiffer = !ProductModelLinks.HoldsSavedAttributes(model.AttributesSavedAt, updatedAt)
             && AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
-        return new Target(model, cards, fields, titleColor, keepTitle, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing);
+        return new Target(model, cards, fields, title, titleColor, description, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing, overrides);
     }
 
     // Skipped: models left for the next run because their refresh failed (a lock wait timeout, a deadlock).
@@ -265,30 +297,31 @@ public static class ProductModelValues
     private static async Task<bool> WriteAsync(AppDbContext db, Target target, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var model = target.Model;
-        var fields = target.Fields;
-        var title = target.KeepTitle ? model.Title : Short(fields.Title, 320);
-        var titleColor = target.KeepTitle ? model.TitleColor : target.TitleColor;
+        var title = target.Title;
+        var titleColor = target.TitleColor;
+        var description = target.Description;
+        // The fields other than the name and the description: the cards' (the editor's majority) unless the owner saved
+        // them in the editor after every card's last change.
+        var fields = target.FieldsSaved
+            ? new ProductFamilySharedFields.ModelFields(title, description, model.BrandId, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays)
+            : target.Fields;
         var wrote = false;
-        if (target.FieldsSaved)
-        {
-            if (model.Desi != target.Desi)
-            {
-                await db.ProductModels.Where(x => x.TenantId == model.TenantId && x.Id == model.Id)
-                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Desi, target.Desi).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
-                wrote = true;
-            }
-        }
-        else if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays, model.Desi)
-            != (title, titleColor, fields.Description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays, target.Desi))
+        if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays, model.Desi)
+            != (title, titleColor, description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays, target.Desi))
         {
             await db.ProductModels.Where(x => x.TenantId == model.TenantId && x.Id == model.Id)
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, titleColor).SetProperty(x => x.Description, fields.Description)
+                    .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, titleColor).SetProperty(x => x.Description, description)
                     .SetProperty(x => x.CategoryId, fields.CategoryId).SetProperty(x => x.VatRate, fields.VatRate).SetProperty(x => x.VatInclusion, fields.VatInclusion)
                     .SetProperty(x => x.WarrantyMonths, fields.WarrantyMonths).SetProperty(x => x.DeliveryDays, fields.DeliveryDays).SetProperty(x => x.Desi, target.Desi)
                     .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
             wrote = true;
         }
+        // The colours' overrides follow (only where they change). Only the override columns are written: the card's own
+        // text, Version and UpdatedAt stay, and a card whose text changed since it was read is left for the next refresh.
+        foreach (var item in target.Overrides)
+            wrote |= await db.Products.Where(x => x.TenantId == model.TenantId && x.Id == item.CardId && x.FamilyId == model.Id && x.Title == item.Title && x.Description == item.Description)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.TitleOverride, item.TitleOverride).SetProperty(x => x.DescriptionOverride, item.DescriptionOverride), cancellationToken) > 0;
         if (target.AttributesDiffer)
             wrote |= await ProductModelLinks.ReplaceModelAttributesAsync(db, model.TenantId, model.Id, target.Attributes, cancellationToken);
         if (target.ChartDiffers) wrote |= await WriteChartAsync(db, model.TenantId, model.Id, target.Chart, now, cancellationToken);

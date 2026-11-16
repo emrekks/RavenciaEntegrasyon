@@ -410,17 +410,23 @@ public static class ProductModelLinks
             var fields = ProductFamilySharedFields.ModelValues(
                 [.. linked.Select(x => new ProductFamilySharedFields.CardFields(x.Id, signatures.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))],
                 null);
+            // KATALOG-14 phase D2: the name and the description are not voted on; they move only when every colour holds
+            // one value (the name without its colour word), as in ProductModelValues.
+            var asCards = linked.Select(x => new ProductModelValues.Card(x.Id, x.CreatedAt, signatures.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays)).ToList();
+            var colors = asCards.Select(x => x.Color?.Trim()).OfType<string>().Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var titleCard = linked.FirstOrDefault(x => x.Title.Trim() == fields.Title);
-            var titleColor = titleCard is not null && signatures.GetValueOrDefault(titleCard.Id) is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null;
-            var title = Short(fields.Title, 320);
+            var (title, titleColor) = ProductModelValues.Unanimous(asCards, card => ProductModelValues.TitleKey(card, colors))
+                ? (Short(fields.Title, 320), titleCard is not null && signatures.GetValueOrDefault(titleCard.Id) is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null)
+                : (model.Title, model.TitleColor);
+            var description = ProductModelValues.Unanimous(asCards, card => card.Description.Trim()) ? fields.Description : model.Description;
             if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays)
-                == (title, titleColor, fields.Description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays)) continue;
+                == (title, titleColor, description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays)) continue;
             // One model at a time: a model a save holds locked is left for the next deploy, the rest go on.
             try
             {
                 written += await db.ProductModels.Where(x => x.Id == model.Id && x.Version == model.Version && x.FieldsSavedAt == null)
                     .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, titleColor).SetProperty(x => x.Description, fields.Description)
+                        .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, titleColor).SetProperty(x => x.Description, description)
                         .SetProperty(x => x.CategoryId, fields.CategoryId).SetProperty(x => x.VatRate, fields.VatRate).SetProperty(x => x.VatInclusion, fields.VatInclusion)
                         .SetProperty(x => x.WarrantyMonths, fields.WarrantyMonths).SetProperty(x => x.DeliveryDays, fields.DeliveryDays)
                         .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
