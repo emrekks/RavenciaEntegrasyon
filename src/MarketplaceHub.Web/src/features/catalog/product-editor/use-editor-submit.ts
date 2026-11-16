@@ -7,21 +7,20 @@ import { type FormEvent } from 'react'
 import { ApiRequestError } from '../../../shared/api'
 import { appendNotification, productNotificationSubject } from '../../../shared/notifications'
 import { followJobOutcomes, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
-import { publicProductMediaUrls } from '../product-media-editor'
 import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT } from '../variant-row-removal'
 import { mediaFilesLeftAfterFailedSave, newColoursWithoutPictures } from './product-media-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs } from './pending-create-media'
 import { withLatestVariantLinks } from './publish-card-variants'
 import { requiredEditorFieldLabels } from './required-fields'
-import { productMediaUrlIssue } from '../product-media-url'
-import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, isDraftStatus, variantCodeRulesStopSave } from '../product-draft'
-import { editorFieldErrors, editorOpeningStock, editorVatRateIssue, rekeySavedVariantRows, variantCodeConflictsFrom } from '../product-editor-state'
+import { canSaveAsDraft, draftMissingSummary, isDraftStatus, variantCodeRulesStopSave } from '../product-draft'
+import { editorFieldErrors, editorOpeningStock, rekeySavedVariantRows, variantCodeConflictsFrom } from '../product-editor-state'
 import { chosenGapSkipped, productPublicationTargets, productSaveFeedback, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
 import { Product, isColorOptionName } from '../shared'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { VariantDraft } from './editor-types'
 import { productSaveToastKey, PLACEHOLDER_KEPT_MESSAGE, publishPlatformName } from './editor-helpers'
 import { readSubmitIntent } from './submit-intent'
+import { requiredFieldsOutcome } from './validate-editor'
 import { buildCreatePayload, buildGlobalAttributes, buildUpdatePayload, optionRequirementsForSubmit, placeholderIdsToDelete, saveProductCreate, saveProductUpdate, savedProductFields, type ProductPayloadInput } from './submit-product-payload'
 import { mediaStepParts, newMediaStepProgress, rowsBySku, runMediaStep, skuKey } from './submit-media-step'
 import { runStockStep } from './submit-stock-step'
@@ -46,7 +45,7 @@ import type { EditorChecksResult } from './use-editor-checks'
 import { sendToMarketplaces } from './editor-marketplace-sends'
 
 export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult & EditorChecksResult) {
-  const { editProductId, publishOnly, client, navigate, setError, setNotice, operationToasts, setFeedback, setSubmitting, calculateDesi, form, attributeSelections, attributeTextValues, variantAttributeIds, setVariantRows, selectedChannelIds, blockedPublishCards, channelPricing, variantChannelPricing, wizardStep, setWizardStep, pendingPlatformUpdate, mediaFiles, setMediaFiles, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrderDirty, setFamilyMediaOrderDirty, sizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, chartKey, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, replacedPlaceholderIds, setReplacedPlaceholderIds, setSnapshotRequest, webColorAutoEnabled, manualWebColorValueId, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, setProductAtSave, setVariantCodeConflicts, mediaFilesKeptOnReseed, initialCustomChannelIds, setFieldErrors, productCreateKey, leavingAfterSave, initialEditModelCode, initialEditVariantMediaRefs, showFeedback, mediaAutoSave, editorDirty, productToEdit, connections, requirements, fallbackListPrice, fallbackSalePrice, missingRequiredFields, desi, mediaUrls, mappedRequirements, webColorRequirement, setReseedRequest, draftCodeSaveBlock, codeRuleSaveBlock, modelCodeHolder, blockedByVariantCodeRules, draftMediaKeys, pendingRemovalMediaKeys, mediaStrip, trendyolMixedColours, channelPriceDraft, channelPriceEdited, rowsForSubmit, validate, stopOnRequiredFields } = c
+  const { editProductId, publishOnly, client, navigate, setError, setNotice, operationToasts, setFeedback, setSubmitting, calculateDesi, form, attributeSelections, attributeTextValues, variantAttributeIds, setVariantRows, selectedChannelIds, blockedPublishCards, channelPricing, variantChannelPricing, wizardStep, setWizardStep, pendingPlatformUpdate, mediaFiles, setMediaFiles, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrderDirty, setFamilyMediaOrderDirty, sizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, chartKey, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, replacedPlaceholderIds, setReplacedPlaceholderIds, setSnapshotRequest, webColorAutoEnabled, manualWebColorValueId, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, setProductAtSave, setVariantCodeConflicts, mediaFilesKeptOnReseed, initialCustomChannelIds, setFieldErrors, productCreateKey, leavingAfterSave, initialEditModelCode, initialEditVariantMediaRefs, showFeedback, mediaAutoSave, editorDirty, productToEdit, connections, requirements, fallbackListPrice, fallbackSalePrice, missingRequiredFields, desi, mediaUrls, mappedRequirements, webColorRequirement, setReseedRequest, draftCodeSaveBlock, codeRuleSaveBlock, modelCodeHolder, blockedByVariantCodeRules, draftMediaKeys, pendingRemovalMediaKeys, mediaStrip, trendyolMixedColours, channelPriceDraft, channelPriceEdited, rowsForSubmit, validate, draftBlockingIssues, stopOnRequiredFields, vatRateIssue } = c
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const platformUpdate = pendingPlatformUpdate.current
@@ -61,9 +60,8 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
     // a platform update stop with each field framed red. A card on sale or closed is not turned into a draft (the server
     // moves the whole colour family with a status change): its save stops the same way until the fields are filled.
     const plainSave = !platformUpdate && !explicitDraft && (intent.save || (!editProductId && intent.create))
-    const missingRequired = explicitDraft ? [] : missingRequiredFields
-    const autoDraft = missingRequired.length > 0 && plainSave && canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status)
-    if (missingRequired.length && !autoDraft) { stopOnRequiredFields(missingRequired, Boolean(editProductId) && !editingDraft && plainSave); return }
+    const { missing: missingRequired, autoDraft, stop } = requiredFieldsOutcome(missingRequiredFields, { explicitDraft, plainSave, draftAllowed: canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status) })
+    if (stop) { stopOnRequiredFields(missingRequired, Boolean(editProductId) && !editingDraft && plainSave); return }
     const saveDraft = explicitDraft || autoDraft
     const saveAndStay = saveDraft || intent.save
     const createOnly = !editProductId && !saveDraft && intent.create
@@ -79,8 +77,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       return
     }
     // KDV Oranı is required on every card (the server refuses a card without one): stop here, on the first step where
-    // the field is, with its message under it. A draft may be saved without it.
-    const vatRateIssue = editorVatRateIssue(form.vatRate)
+    // the field is, with its message under it. A draft may be saved without it (vatRateIssue: validate-editor.ts).
     if (vatRateIssue && !saveDraft) {
       setFieldErrors(current => ({ ...current, vatRate: vatRateIssue }))
       if (!publishOnly) setWizardStep(1)
@@ -132,10 +129,7 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
         try { validate(rowsForSubmit(true), true, true) } catch (reason) { draftMissing = reason instanceof Error ? reason.message : '' }
         if (vatRateIssue) draftMissing = `${vatRateIssue} ${draftMissing}`.trim()
         rows = rowsForSubmit(false)
-        const blocking = draftBlockingIssues(rows, form)
-        const invalidMediaUrl = publicProductMediaUrls([...mediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))]).map(productMediaUrlIssue).find((issue): issue is string => issue !== null)
-        if (invalidMediaUrl) blocking.push(`Görsel bağlantısı geçersiz: ${invalidMediaUrl} Ürün kaydedilmeden önce düzeltin veya kaldırın.`)
-        if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) blocking.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
+        const blocking = draftBlockingIssues(rows)
         if (blocking.length) throw new Error(blocking.join(' '))
       } else {
         rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog, !createOnly)

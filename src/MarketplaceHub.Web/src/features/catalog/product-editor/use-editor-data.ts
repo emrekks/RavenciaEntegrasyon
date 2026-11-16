@@ -7,7 +7,8 @@ import { categoryRequirementsStaleTimeMs } from '../category-requirements-query'
 import { publicationRequirementSets, type CategoryRequirement } from './publication-readiness'
 import { usePttAvmManualWrites } from '../use-pttavm-manual-writes'
 import { cardPrices } from './card-prices'
-import { missingRequiredEditorFields, type RequiredEditorField } from './required-fields'
+import { type RequiredEditorField } from './required-fields'
+import { validateEditor } from './validate-editor'
 import { pinSizeChartLast } from './size-chart-order'
 import { editorAwaitingSeed } from '../product-editor-state'
 import { isProductUpdateConnection } from '../platform-update-targets'
@@ -39,7 +40,8 @@ export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPo
   // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
   const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
   // Required fields left empty (required-fields.ts): a save stops on them; a saved card that opens with one is framed red.
-  const missingRequiredFields = missingRequiredEditorFields(form, { automaticBarcodes: automaticBarcodeGeneration, hasVariants: variantRows.length > 1 })
+  // KDV Oranı is checked beside them (vatRateIssue): required on every card but a draft (validate-editor.ts).
+  const { missingRequired: missingRequiredFields, vatRateIssue } = validateEditor({ form, automaticBarcodes: automaticBarcodeGeneration, hasVariants: variantRows.length > 1 }, { kind: 'live' })
   // A stopped save's message under a required field stays only while the field is still empty.
   const requiredError = (field: RequiredEditorField) => missingRequiredFields.includes(field) ? requiredErrors[field] : undefined
   // An opened card frames its empty required fields red only once its data is in the form: before that every field is
@@ -72,6 +74,6 @@ export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPo
   }, [optionRequirements])
   const visibleOptionRequirements = optionRequirements
 
-  return { productToEdit, productToCopy, seedProduct, categories, brands, connections, pttAvmManualWrites, editorHydrating, requirements, leafCategories, activeBrands, cardPriceDefaults, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, missingRequiredFields, requiredError, editorSeeded, requiredFieldInvalid, variantStockTotal, desi, mediaUrls, sizeChartPickRequested, allRequirements, requirementSets, mappedRequirements, colorOptionRequirement, webColorRequirement, optionRequirements, webColorValues, visibleOptionRequirements }
+  return { productToEdit, productToCopy, seedProduct, categories, brands, connections, pttAvmManualWrites, editorHydrating, requirements, leafCategories, activeBrands, cardPriceDefaults, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, missingRequiredFields, vatRateIssue, requiredError, editorSeeded, requiredFieldInvalid, variantStockTotal, desi, mediaUrls, sizeChartPickRequested, allRequirements, requirementSets, mappedRequirements, colorOptionRequirement, webColorRequirement, optionRequirements, webColorValues, visibleOptionRequirements }
 }
 export type EditorDataResult = ReturnType<typeof useEditorData>
