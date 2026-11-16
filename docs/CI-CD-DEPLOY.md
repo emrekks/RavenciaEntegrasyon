@@ -400,6 +400,8 @@ silebilir; sunucuyu ele geçiren bu kopyaları da silebilir. Silinemez hedef ger
 | `ravencia-maintenance.timer` | ayın ilk Pazar'ı 01:00 UTC (04:00 TR), kaçan pencere sonradan yapılmaz | `monthly-maintenance.sh` (root'a ait kopyadan, `/usr/local/lib/ravencia`): deploy kilidini bekler ve tutar, `apt-get full-upgrade`; yalnız `/var/run/reboot-required` varsa yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat, bakım) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 | `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
+| `ravencia-secrets-escrow.timer` | 08:40 UTC; yalnız `deploy/secrets/secrets_escrow.enabled` varsa kurulur | `deploy/backup/secrets-escrow.sh`: gizli dosyaların age ile şifreli emaneti, Drive kopyasına eklenir (RUNBOOK-GERI-ALMA.md bölüm 5) |
+| `ravencia-wal-basebackup.timer`, `ravencia-wal-ship.timer` | 02:30 UTC; 08:45 ve 20:45 UTC; yalnız WAL arşivi yaması uygulanınca | `deploy/backup/wal-archive.sh basebackup` / `ship` (RUNBOOK-GERI-ALMA.md bölüm 9a) |
 
 Yedek, tatbikat, healthwatch, bakım ve alarm birimleri 3 Kasım 2026'dan beri `ubuntu` değil **root** olarak
 çalışır (`sudo` kullanmazlar; `NoNewPrivileges`, `ProtectSystem=full`, `ProtectHome=read-only`, çekirdek

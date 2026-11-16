@@ -10,6 +10,8 @@ set -Eeuo pipefail
 #   ravencia-alert@.service       alert sender used by OnFailure= and the watch
 #   ravencia-offsite-copy.timer   age-encrypted off-site copy after each scheduled backup, installed
 #                                 only once deploy/secrets holds its recipient key and remote
+#   ravencia-secrets-escrow.timer age-encrypted secrets escrow for the off-site copy, installed only once
+#                                 deploy/secrets/secrets_escrow.enabled exists
 #   ravencia-deploy-guard.service holds a host shutdown while a deploy holds its lock
 #                                 (with the session-.scope.d ordering drop-in)
 # Backup, restore drill, health watch, maintenance and alerts run as root with systemd
