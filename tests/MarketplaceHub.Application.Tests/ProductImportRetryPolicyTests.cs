@@ -58,7 +58,7 @@ public sealed class ProductImportRetryPolicyTests
         Assert.NotEqual(ProductImportRetryPolicy.JobDedupKey(connection, "MZ1", 0), ProductImportRetryPolicy.JobDedupKey(connection, "MZ1", 1));
         Assert.True(ProductImportRetryPolicy.JobDedupKey(connection, new string('x', 400), 2).Length <= 256);
 
-        using var payload = JsonDocument.Parse(MarketplaceJobProcessor.ProductImportRetryPayload("""{"full":true,"updateExistingProducts":false}""", connection, "MZ1"));
+        using var payload = JsonDocument.Parse(CatalogImportService.ProductImportRetryPayload("""{"full":true,"updateExistingProducts":false}""", connection, "MZ1"));
         Assert.False(payload.RootElement.GetProperty("full").GetBoolean());
         Assert.False(payload.RootElement.GetProperty("updateExistingProducts").GetBoolean());
         Assert.Equal("MZ1", payload.RootElement.GetProperty("productLookup").GetString());
@@ -67,6 +67,6 @@ public sealed class ProductImportRetryPolicyTests
 
         Assert.True(ProductImportRetryPolicy.Supports("TRENDYOL"));
         Assert.False(ProductImportRetryPolicy.Supports("N11"));
-        Assert.Null(MarketplaceJobProcessor.RetryLookupKey("not json"));
+        Assert.Null(CatalogImportService.RetryLookupKey("not json"));
     }
 }

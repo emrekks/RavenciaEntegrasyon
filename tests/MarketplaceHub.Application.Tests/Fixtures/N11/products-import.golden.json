@@ -1,0 +1,76 @@
+{
+  "Products": [
+    {
+      "Title": "Test Ürünü Kontrol Amaçlı Gri",
+      "Status": "Active"
+    }
+  ],
+  "Models": 1,
+  "Variants": [
+    {
+      "Sku": "TestSKU123",
+      "Barcode": null,
+      "ModelCode": "GrupKoduModellemeİçin",
+      "OptionSignature": "Renk: Gri | Ölçüler: 0.5 CMx 1 M",
+      "Status": "Active"
+    },
+    {
+      "Sku": "TestSKU124",
+      "Barcode": null,
+      "ModelCode": "GrupKoduModellemeİçin",
+      "OptionSignature": "Renk: Siyah",
+      "Status": "Active"
+    }
+  ],
+  "Offers": [
+    {
+      "SalePrice": 149.9000,
+      "ListPrice": 199.9000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "ACTIVE"
+    },
+    {
+      "SalePrice": 10000.0000,
+      "ListPrice": 10000.0000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "ACTIVE"
+    }
+  ],
+  "Inventory": [
+    {
+      "LocationCode": "MAIN",
+      "OnHand": 0.0000,
+      "Available": 0.0000
+    },
+    {
+      "LocationCode": "MAIN",
+      "OnHand": 0.0000,
+      "Available": 0.0000
+    }
+  ],
+  "AttributeAssignments": 0,
+  "ModelLinks": [
+    "main:GrupKoduModellemeİçin"
+  ],
+  "ProductLinks": [
+    {
+      "ExternalId": "main:GrupKoduModellemeİçin",
+      "ExternalCode": null
+    }
+  ],
+  "VariantLinks": [
+    {
+      "ExternalId": "TestSKU123",
+      "ExternalBarcode": null,
+      "ExternalSku": "TestSKU123"
+    },
+    {
+      "ExternalId": "TestSKU124",
+      "ExternalBarcode": null,
+      "ExternalSku": "TestSKU124"
+    }
+  ],
+  "Issues": []
+}

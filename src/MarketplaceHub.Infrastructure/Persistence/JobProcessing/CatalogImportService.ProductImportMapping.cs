@@ -4,9 +4,12 @@ using MarketplaceHub.Infrastructure.Adapters.Pazarama;
 using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using Microsoft.EntityFrameworkCore;
 
+using CategoryAttributeContext = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.CategoryAttributeContext;
+using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.LocalCategoryAttribute;
+
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     // crossMatchCodes (n11): the seller stock code may be the panel barcode
     // and the n11 barcode the panel SKU. Model-code candidates are narrowed

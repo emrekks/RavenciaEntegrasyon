@@ -5,15 +5,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
+using CategoryAttributeContext = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.CategoryAttributeContext;
+using ImportSummaryMode = MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ImportSummaryMode;
+using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.LocalCategoryAttribute;
+
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     // ISLEYICI-11 (16 Nov 2026): catalog pages of 100 in one import (half a million products), a guard against a list
     // that never ends.
     internal const int ProductImportPageCap = 5_000;
 
-    private async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    internal async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
@@ -681,7 +685,7 @@ public sealed partial class MarketplaceJobProcessor
 
     // The listing profiles of the products this batch matched (ImportedListingProfiles). The batch is already saved; a
     // failure here leaves the import as it is (the next run completes the profile; an update never makes one).
-    private async Task CompleteImportedListingProfiles(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    internal async Task CompleteImportedListingProfiles(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
     {
         var codes = snapshots.SelectMany(snapshot => snapshot.Variants)
             .SelectMany(variant => new[] { Short(variant.ExternalVariantId, 256), string.IsNullOrWhiteSpace(variant.Barcode) ? null : Short(variant.Barcode.Trim(), 160) })

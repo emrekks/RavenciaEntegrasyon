@@ -67,7 +67,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.CatalogStructureImport, $$"""{"runId":"{{run.Id}}"}""", products: port);
             Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
             Assert.Equal(code, result.ErrorCode);
-            Assert.Equal(repeat ? 2 : MarketplaceJobProcessor.CatalogStructurePageCap, port.Calls);
+            Assert.Equal(repeat ? 2 : CatalogImportService.CatalogStructurePageCap, port.Calls);
             await using var check = fixture.CreateContext();
             var saved = await check.CatalogStructureRuns.AsNoTracking().SingleAsync(x => x.Id == run.Id);
             Assert.Equal("FAILED", saved.Status);

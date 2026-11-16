@@ -86,12 +86,12 @@ public sealed class N11ProductMapperTests
     {
         var remote = new Dictionary<string, string> { ["Renk"] = "Mavi", ["Beden"] = "XL", ["Materyal"] = "Pamuk" };
 
-        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.SameColorAndSize(localSignature, remote));
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.CatalogImportService.SameColorAndSize(localSignature, remote));
     }
 
     [Fact]
     public void OptionsWithoutColourOrSizeCannotNarrowAMatch() =>
-        Assert.False(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.SameColorAndSize("Materyal: Pamuk", new Dictionary<string, string> { ["Materyal"] = "Pamuk" }));
+        Assert.False(MarketplaceHub.Infrastructure.Persistence.CatalogImportService.SameColorAndSize("Materyal: Pamuk", new Dictionary<string, string> { ["Materyal"] = "Pamuk" }));
 
     [Fact]
     public void ProductQueryCarriesPageSizeAndLookupFilters()

@@ -5,9 +5,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogAttributeService
 {
-    private async Task<ReferenceSnapshot?> EnsureReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
+    internal async Task<ReferenceSnapshot?> EnsureReferenceSnapshot(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, string correlationId, CancellationToken cancellationToken)
     {
         var scope = string.IsNullOrWhiteSpace(parentExternalId) ? "" : parentExternalId.Trim();
         var current = await db.ReferenceSnapshots
@@ -33,7 +33,7 @@ public sealed partial class MarketplaceJobProcessor
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private async Task<CategoryAttributeContext?> EnsureCategoryAttributeContext(
+    internal async Task<CategoryAttributeContext?> EnsureCategoryAttributeContext(
         Guid tenantId,
         Guid connectionId,
         ReferenceSnapshot categorySnapshot,
@@ -145,7 +145,7 @@ public sealed partial class MarketplaceJobProcessor
         return result;
     }
 
-    private async Task EnsureObservedVariantAttributeValues(
+    internal async Task EnsureObservedVariantAttributeValues(
         Guid tenantId,
         CategoryAttributeContext categoryContext,
         RemoteCatalogProduct snapshot,
@@ -248,7 +248,7 @@ public sealed partial class MarketplaceJobProcessor
         return category;
     }
 
-    private async Task<LocalCategoryAttribute> EnsureMappedAttribute(
+    internal async Task<LocalCategoryAttribute> EnsureMappedAttribute(
         Guid tenantId,
         Guid connectionId,
         Category category,
@@ -426,7 +426,7 @@ public sealed partial class MarketplaceJobProcessor
         return new LocalCategoryAttribute(attribute, remoteAttribute, values, role);
     }
 
-    private async Task EnsureExactWebColorValueMappings(
+    internal async Task EnsureExactWebColorValueMappings(
         Guid tenantId,
         Guid connectionId,
         string categoryExternalId,
@@ -497,7 +497,7 @@ public sealed partial class MarketplaceJobProcessor
         }
     }
 
-    private async Task EnsureExactWebColorValueMappings(
+    internal async Task EnsureExactWebColorValueMappings(
         Guid tenantId,
         Guid connectionId,
         CategoryAttributeContext categoryContext,
@@ -516,7 +516,7 @@ public sealed partial class MarketplaceJobProcessor
         }
     }
 
-    private async Task UpsertProductAttributeAssignments(Guid tenantId, Guid connectionId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
+    internal async Task UpsertProductAttributeAssignments(Guid tenantId, Guid connectionId, Product product, ProductVariant variant, IReadOnlyDictionary<string, string> options, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
     {
         var sortOrder = 0;
         foreach (var pair in options)
@@ -681,7 +681,7 @@ public sealed partial class MarketplaceJobProcessor
         return null;
     }
 
-    private async Task PromoteCommonImportedAttributes(Guid tenantId, Product product, IReadOnlyList<ProductVariant> importedVariants, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
+    internal async Task PromoteCommonImportedAttributes(Guid tenantId, Product product, IReadOnlyList<ProductVariant> importedVariants, CategoryAttributeContext categoryContext, CancellationToken cancellationToken)
     {
         var variantIds = importedVariants.Select(x => x.Id).Distinct().ToArray();
         if (variantIds.Length == 0) return;
@@ -766,7 +766,7 @@ public sealed partial class MarketplaceJobProcessor
         && left.NumberValue == right.NumberValue
         && left.BooleanValue == right.BooleanValue;
 
-    private async Task<AttributeValue?> ResolveMappedAttributeValue(
+    internal async Task<AttributeValue?> ResolveMappedAttributeValue(
         Guid tenantId,
         Guid connectionId,
         CategoryAttributeContext categoryContext,
@@ -827,7 +827,7 @@ public sealed partial class MarketplaceJobProcessor
             ?? await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && x.AttributeId == mapped.Definition.Id && x.IsActive && normalizedKeys.Contains(x.NormalizedValue)).OrderBy(x => x.NormalizedValue == normalized ? 0 : 1).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
     }
 
-    private sealed class CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes)
+    internal sealed class CategoryAttributeContext(Category LocalCategory, string ExternalCategoryId, IReadOnlyDictionary<string, LocalCategoryAttribute> Attributes)
     {
         public Category LocalCategory { get; } = LocalCategory;
         public string ExternalCategoryId { get; } = ExternalCategoryId;
@@ -836,5 +836,5 @@ public sealed partial class MarketplaceJobProcessor
         public HashSet<Guid> ExactWebColorInitializedAttributeIds { get; } = [];
         public HashSet<Guid> ExactWebColorValueIds { get; } = [];
     }
-    private sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
+    internal sealed record LocalCategoryAttribute(AttributeDefinition Definition, ReferenceItem Remote, IReadOnlyList<ReferenceItem> Values, string Role);
 }

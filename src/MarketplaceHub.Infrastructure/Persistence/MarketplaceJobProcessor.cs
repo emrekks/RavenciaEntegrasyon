@@ -26,7 +26,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     internal enum ImportSummaryMode { Standard, FocusedPriceStock, NewOnly, Mapping }
 
-    private enum FocusedPriceStockOutcome { NotInPanel, Conflict, Unchanged, Changed }
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {

@@ -208,10 +208,10 @@ public sealed class ImportFileReaderTests
         static RemoteCatalogVariant Variant(string id, decimal? vatRate) => new(id, id, null, null, new Dictionary<string, string>(), false, 100m, 120m, vatRate, 1m, "TRY", "{}");
         static RemoteCatalogProduct Listing(params RemoteCatalogVariant[] variants) => new("p", null, "Ürün", "", null, null, null, null, [], variants, "{}");
 
-        Assert.Equal(20m, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", 20m), Variant("b", null), Variant("c", 20m), Variant("d", 10m))));
-        Assert.Equal(10m, MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", null), Variant("b", 10m))));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing(Variant("a", null), Variant("b", 150m))));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.ListingVatRate(Listing()));
+        Assert.Equal(20m, MarketplaceHub.Infrastructure.Persistence.CatalogImportService.ListingVatRate(Listing(Variant("a", 20m), Variant("b", null), Variant("c", 20m), Variant("d", 10m))));
+        Assert.Equal(10m, MarketplaceHub.Infrastructure.Persistence.CatalogImportService.ListingVatRate(Listing(Variant("a", null), Variant("b", 10m))));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.CatalogImportService.ListingVatRate(Listing(Variant("a", null), Variant("b", 150m))));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.CatalogImportService.ListingVatRate(Listing()));
     }
 
     // Garanti Süresi (Ay) and Teslimat Süresi (Gün) columns (owner, 13 Nov 2026): the editor's limits, 0-240 months and

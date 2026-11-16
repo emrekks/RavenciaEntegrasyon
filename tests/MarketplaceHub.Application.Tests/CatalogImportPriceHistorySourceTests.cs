@@ -19,6 +19,6 @@ public sealed class CatalogImportPriceHistorySourceTests
     [InlineData(null, false, "TRENDYOL")]
     public void The_source_is_the_connections_marketplace(string? platformCode, bool observeOnly, string expected)
     {
-        Assert.Equal(expected, MarketplaceJobProcessor.CatalogImportSource(platformCode, observeOnly));
+        Assert.Equal(expected, CatalogImportService.CatalogImportSource(platformCode, observeOnly));
     }
 }

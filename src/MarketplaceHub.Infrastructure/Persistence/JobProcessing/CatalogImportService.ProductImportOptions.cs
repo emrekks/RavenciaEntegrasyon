@@ -2,9 +2,12 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
+using CategoryAttributeContext = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.CategoryAttributeContext;
+using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.LocalCategoryAttribute;
+
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     private static string NormalizeCurrency(string? value)
     {
@@ -70,28 +73,16 @@ public sealed partial class MarketplaceJobProcessor
         return OptionSignature(fallbackOptions);
     }
 
-    private static bool IsWebColorOptionKey(string value)
-    {
-        var normalized = NormalizeCatalogKey(value, 320).Replace("-", "", StringComparison.Ordinal);
-        return normalized is "WEBCOLOR" or "WEBCOLOUR" or "WEBRENK";
-    }
+    // ISLEYICI-9 3d step 1: the option-key helpers live in CatalogAttributeService (shared with the catalog structure).
+    private static bool IsWebColorOptionKey(string value) => CatalogAttributeService.IsWebColorOptionKey(value);
 
-    private static string? VariantOptionAxis(string value)
-    {
-        if (IsColorOptionKey(value)) return "COLOR";
-        if (IsSizeOptionKey(value)) return "SIZE";
-        return null;
-    }
+    private static string? VariantOptionAxis(string value) => CatalogAttributeService.VariantOptionAxis(value);
 
-    private static string? ObservedVariantValueAxis(string value) => VariantOptionAxis(value);
+    private static string? ObservedVariantValueAxis(string value) => CatalogAttributeService.ObservedVariantValueAxis(value);
 
-    private static bool IsColorOptionKey(string value)
-    {
-        var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
-        return normalized is "RENK" or "COLOR" or "COLOUR";
-    }
+    private static bool IsColorOptionKey(string value) => CatalogAttributeService.IsColorOptionKey(value);
 
-    private static bool IsRealColorOptionKey(string value) => IsColorOptionKey(value) && !IsWebColorOptionKey(value);
+    private static bool IsRealColorOptionKey(string value) => CatalogAttributeService.IsRealColorOptionKey(value);
 
     // True when the local option signature carries the same colour and size values as the remote options.
     // It reads both stored forms ("Renk: Mavi | Beden: XL" and the old panel "RENK=MAVI|BEDEN=XL"). Remote
@@ -181,50 +172,14 @@ public sealed partial class MarketplaceJobProcessor
         return products;
     }
 
-    private static bool IsVariantOptionName(string value) => VariantOptionAxis(value) is not null;
+    private static bool IsVariantOptionName(string value) => CatalogAttributeService.IsVariantOptionName(value);
 
-    private static bool IsCatalogProductOption(LocalCategoryAttribute mapped, string remoteName) =>
-        mapped.Role == "OPTION" || IsVariantOptionName(remoteName);
+    private static bool IsCatalogProductOption(LocalCategoryAttribute mapped, string remoteName) => CatalogAttributeService.IsCatalogProductOption(mapped, remoteName);
 
-    private static bool TryGetMappedAttribute(IReadOnlyDictionary<string, LocalCategoryAttribute> attributes, string remoteName, out LocalCategoryAttribute mapped)
-    {
-        if (attributes.TryGetValue(NormalizeCatalogKey(remoteName, 320), out var direct)
-            && (IsWebColorOptionKey(remoteName) || !IsWebColorOptionKey(direct.Remote.Name)))
-        {
-            mapped = direct;
-            return true;
-        }
+    private static bool TryGetMappedAttribute(IReadOnlyDictionary<string, LocalCategoryAttribute> attributes, string remoteName, out LocalCategoryAttribute mapped) =>
+        CatalogAttributeService.TryGetMappedAttribute(attributes, remoteName, out mapped);
 
-        var axis = VariantOptionAxis(remoteName);
-        if (axis is null)
-        {
-            mapped = null!;
-            return false;
-        }
-
-        var wantsWebColor = IsWebColorOptionKey(remoteName);
-        mapped = attributes.Values
-            .Where(item => VariantOptionAxis(item.Remote.Name) == axis || VariantOptionAxis(item.Definition.Name) == axis)
-            .OrderByDescending(item => IsWebColorOptionKey(item.Remote.Name) == wantsWebColor)
-            .ThenByDescending(item => item.Role == "OPTION")
-            .FirstOrDefault()!;
-        // If the feed contains the real Renk field but only Web Color is
-        // mapped locally, do not silently replace the real value with the
-        // marketplace presentation value. The caller can preserve the raw
-        // Renk value instead.
-        if (mapped is not null && !wantsWebColor && IsWebColorOptionKey(mapped.Remote.Name))
-        {
-            mapped = null!;
-            return false;
-        }
-        return mapped is not null;
-    }
-
-    private static bool IsSizeOptionKey(string value)
-    {
-        var normalized = NormalizeCatalogKey(value, 320).Replace(" ", "", StringComparison.Ordinal);
-        return normalized is "BEDEN" or "SIZE" or "SIZ" or "NUMARA" or "NUMBER";
-    }
+    private static bool IsSizeOptionKey(string value) => CatalogAttributeService.IsSizeOptionKey(value);
 
     private async Task<string> PanelOptionValueAsync(Guid tenantId, Guid connectionId, CategoryAttributeContext categoryContext, LocalCategoryAttribute mapped, string remoteValue, CancellationToken cancellationToken)
     {
@@ -382,18 +337,11 @@ public sealed partial class MarketplaceJobProcessor
     private static string CleanCatalogOptionValue(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Trim('"', '“', '”').Trim();
     private static string OptionSignature(IReadOnlyDictionary<string, string> options) => VariantOptionSignature.Build(options);
 
-    private static string CategoryLeafName(string? name, string? path)
-    {
-        var source = string.IsNullOrWhiteSpace(path) ? name : path;
-        var segments = source?.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
-        return Short(segments.Length > 0 ? segments[^1] : name, 160);
-    }
+    private static string CategoryLeafName(string? name, string? path) => CatalogAttributeService.CategoryLeafName(name, path);
 
-    internal static string Short(string? value, int maximum) => string.IsNullOrWhiteSpace(value) ? "" : value.Trim().Length <= maximum ? value.Trim() : value.Trim()[..maximum];
-    // The shared catalog key (CatalogKeyNormalizer); the panel uses the same one, so SKU, barcode, option,
-    // brand and category keys written here and there agree.
-    private static string NormalizeCatalogKey(string? value, int maximum) => CatalogKeyNormalizer.Key(value, maximum);
-    private static string[] CatalogLookupKeys(string? value, int maximum = CatalogKeyNormalizer.DefaultMaximum) => CatalogKeyNormalizer.LookupKeys(value, maximum);
+    internal static string Short(string? value, int maximum) => CatalogAttributeService.Short(value, maximum);
+    private static string NormalizeCatalogKey(string? value, int maximum) => CatalogAttributeService.NormalizeCatalogKey(value, maximum);
+    private static string[] CatalogLookupKeys(string? value, int maximum = CatalogKeyNormalizer.DefaultMaximum) => CatalogAttributeService.CatalogLookupKeys(value, maximum);
     private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
     private static string ImageMime(string url) => new Uri(url).AbsolutePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
 }

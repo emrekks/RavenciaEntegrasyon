@@ -1,0 +1,106 @@
+{
+  "Products": [
+    {
+      "Title": "Fake Pazarama Ürün 1 Siyah",
+      "Status": "Active"
+    },
+    {
+      "Title": "test asd 2 3123",
+      "Status": "Active"
+    }
+  ],
+  "Models": 0,
+  "Variants": [
+    {
+      "Sku": "123asd",
+      "Barcode": "ta213xxse1",
+      "ModelCode": "",
+      "OptionSignature": "",
+      "Status": "Active"
+    },
+    {
+      "Sku": "SKU-FAKE-PZ1",
+      "Barcode": "0000000000401",
+      "ModelCode": "",
+      "OptionSignature": "Renk: Siyah",
+      "Status": "Active"
+    },
+    {
+      "Sku": "SKU-FAKE-PZ2",
+      "Barcode": "0000000000402",
+      "ModelCode": "",
+      "OptionSignature": "",
+      "Status": "Active"
+    }
+  ],
+  "Offers": [
+    {
+      "SalePrice": 40.0000,
+      "ListPrice": 45.0000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "ACTIVE"
+    },
+    {
+      "SalePrice": 100.0000,
+      "ListPrice": 120.0000,
+      "Currency": "TRY",
+      "VatRate": 20.0000,
+      "Status": "ACTIVE"
+    },
+    {
+      "SalePrice": 111.0000,
+      "ListPrice": 113.0000,
+      "Currency": "TRY",
+      "VatRate": 10.0000,
+      "Status": "ACTIVE"
+    }
+  ],
+  "Inventory": [
+    {
+      "LocationCode": "MAIN",
+      "OnHand": 0.0000,
+      "Available": 0.0000
+    },
+    {
+      "LocationCode": "MAIN",
+      "OnHand": 0.0000,
+      "Available": 0.0000
+    },
+    {
+      "LocationCode": "MAIN",
+      "OnHand": 0.0000,
+      "Available": 0.0000
+    }
+  ],
+  "AttributeAssignments": 0,
+  "ModelLinks": [],
+  "ProductLinks": [
+    {
+      "ExternalId": "group:00000000-0000-4000-8000-000000000801",
+      "ExternalCode": null
+    },
+    {
+      "ExternalId": "group:254abe46-2ab5-4fbf-bc5d-f6fafc0f5323",
+      "ExternalCode": null
+    }
+  ],
+  "VariantLinks": [
+    {
+      "ExternalId": "0000000000401",
+      "ExternalBarcode": "0000000000401",
+      "ExternalSku": "SKU-FAKE-PZ1"
+    },
+    {
+      "ExternalId": "0000000000402",
+      "ExternalBarcode": "0000000000402",
+      "ExternalSku": "SKU-FAKE-PZ2"
+    },
+    {
+      "ExternalId": "ta213xxse1",
+      "ExternalBarcode": "ta213xxse1",
+      "ExternalSku": "123asd"
+    }
+  ],
+  "Issues": []
+}

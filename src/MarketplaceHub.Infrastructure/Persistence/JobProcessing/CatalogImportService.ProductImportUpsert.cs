@@ -3,9 +3,12 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
+using CategoryAttributeContext = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.CategoryAttributeContext;
+using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.LocalCategoryAttribute;
+
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     private async Task<bool> UpdateCatalogOptionsOnly(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
     {
@@ -534,19 +537,6 @@ public sealed partial class MarketplaceJobProcessor
     // Takes back a product this import added and has not saved yet, with every row added for it (its link, options,
     // media). Shared rows the import may have added beside it (a category, a brand another row uses) stay; a brand added
     // for this product alone (an observe-only read opens a brand only for a product it opens) goes with it.
-    // Pazarama order pages: at most this many in one window (100 orders a page; a 28-day window of 50,000 orders), and a
-    // page that repeats the one before ends the window; either is named in an issue instead of looping until the lease.
-    internal const int PazaramaOrderPageCap = 500;
-
-    internal static string? PazaramaOrderPageKey(IReadOnlyList<RemoteOrder> items) =>
-        items.Count == 0 ? null : string.Join(',', items.Select(item => item.ExternalOrderId).Order(StringComparer.Ordinal));
-
-    internal static bool PazaramaOrderPageRepeated(string? previousPageKey, string? pageKey) =>
-        pageKey is not null && string.Equals(previousPageKey, pageKey, StringComparison.Ordinal);
-
-    // Pazarama's order list: at most PazaramaOrderPageCap pages per window, and a page that repeats the one before ends it.
-    private static readonly PageGuard PazaramaOrderPageGuard = new(MaxPages: PazaramaOrderPageCap, PageRepeated: PazaramaOrderPageRepeated);
-
     // The mapped panel category an observe-only read gives a product it opens; null otherwise (an existing product, a
     // plain or add-only read, which choose their category themselves, or no mapped category).
     internal static Category? ObservedProductCategory(bool observeOnly, bool addOnly, bool isNewProduct, Category? mapped) =>
