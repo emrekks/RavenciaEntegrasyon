@@ -584,7 +584,15 @@ public sealed partial class MarketplaceJobProcessor
             var storeFrontCode = order.StoreFrontCode;
             // Written outside the change tracker, so the buyer kind (OrderBuyerTypes) is set here from the new snapshots.
             order.BuyerType = OrderBuyerTypes.Resolve(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+            // SIPARIS-STOK-9: the customer search name goes with the snapshots it is read from; the trigger keeps a name
+            // that arrives with a new stamp (it would empty it until the hourly backfill otherwise).
+            order.CustomerSearchName = OrderCustomerSearchNames.Resolve(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
+            order.CustomerSearchStamp = Guid.CreateVersion7();
+            var customerSearchName = order.CustomerSearchName;
+            var customerSearchStamp = order.CustomerSearchStamp;
             await db.Orders.Where(x => x.TenantId == order.TenantId && x.Id == order.Id).ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.CustomerSearchName, customerSearchName)
+                .SetProperty(x => x.CustomerSearchStamp, customerSearchStamp)
                 // An order never changes storefront: a storefront an order read stored meanwhile stays.
                 .SetProperty(x => x.StoreFrontCode, x => x.StoreFrontCode ?? storeFrontCode)
                 .SetProperty(x => x.CustomerSnapshotJson, order.CustomerSnapshotJson)
