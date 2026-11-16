@@ -52,7 +52,7 @@ import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyStat
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
-type ProductSyncJob = { id: string; connectionId: string | null; jobType: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; progressReceived: number; progressProcessed: number; progressSkipped: number; progressFailed: number; createdAt: string; completedAt: string | null }
+type ProductSyncJob = ApiAnswer<'getJobs'>[number]
 const isProductImportConnection = productImportConnection
 type ProductGroup = {
   id: string
