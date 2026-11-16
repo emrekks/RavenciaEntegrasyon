@@ -39800,7 +39800,8 @@
           "decisionPending",
           "actionDueAtEstimated",
           "wholeClaimDecision",
-          "rejectNeedsReturnShipment"
+          "rejectNeedsReturnShipment",
+          "stockPendingNextSync"
         ],
         "type": "object",
         "properties": {
@@ -39946,6 +39947,10 @@
             "default": false
           },
           "rejectNeedsReturnShipment": {
+            "type": "boolean",
+            "default": false
+          },
+          "stockPendingNextSync": {
             "type": "boolean",
             "default": false
           }

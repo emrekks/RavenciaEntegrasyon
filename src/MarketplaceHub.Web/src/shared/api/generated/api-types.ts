@@ -3758,6 +3758,7 @@ export type ReturnDetailView = {
   customerRequest?: null | string
   wholeClaimDecision: boolean
   rejectNeedsReturnShipment: boolean
+  stockPendingNextSync: boolean
 }
 
 export type ReturnDispositionCommand = {

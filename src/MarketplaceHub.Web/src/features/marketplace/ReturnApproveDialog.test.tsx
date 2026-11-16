@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ReturnApproveDialog, type ReturnApproveOrderInfo, type ReturnApproveRow } from './ReturnApproveDialog'
+import { approvalStockSentence, ReturnApproveDialog, type ReturnApproveOrderInfo, type ReturnApproveRow } from './ReturnApproveDialog'
 
 vi.mock('../../shared/api', async importOriginal => ({
   ...await importOriginal<typeof import('../../shared/api')>(),
@@ -77,5 +77,13 @@ describe('ReturnApproveDialog', () => {
     expect(document.querySelector('.rr-finalized select')).toBeNull()
     expect(document.body.textContent).toContain('Shopify kararı bu talepteki tüm ürün satırlarına uygulanır.')
     expect(approveButton().disabled).toBe(false)
+  })
+
+  // SIPARIS-STOK-5: the approval notice's stock sentence, the third case being the stock the next read of the return adds.
+  it('says the stock is added at the next sync when the answer says so', () => {
+    expect(approvalStockSentence(false, 0, false)).toBe('')
+    expect(approvalStockSentence(true, 2, false)).toBe(' Stok 2 adet artırıldı.')
+    expect(approvalStockSentence(true, 0, false)).toBe(' Stok artırılamadı; stok kararını iade detayından verin.')
+    expect(approvalStockSentence(true, 0, true)).toBe(' Stok bir sonraki eşitlemede eklenecek.')
   })
 })

@@ -74,6 +74,14 @@ const unitCount = (rows: ReturnApproveRow[]) => rows.reduce((sum, row) => sum + 
 
 // The approval dialog: order summary on top, then one framed row per product with a unit dropdown
 // and its own "put back in stock" switch, and a single confirmation.
+// The stock sentence of the approval notice. SIPARIS-STOK-5: when the approval went through but its stock could not be
+// written now (the answer's stockPendingNextSync), the next read of the return adds it.
+export function approvalStockSentence(stockRequested: boolean, added: number, pendingNextSync: boolean) {
+  if (!stockRequested) return ''
+  if (added > 0) return ` Stok ${added.toLocaleString('tr-TR')} adet artırıldı.`
+  return pendingNextSync ? ' Stok bir sonraki eşitlemede eklenecek.' : ' Stok artırılamadı; stok kararını iade detayından verin.'
+}
+
 export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, wholeClaim = false, finalizedWithChoice = false, customerRequest = null, onClose, onDone }: Props) {
   const client = useQueryClient()
   const groups = useMemo(() => groupByProduct(rows), [rows])
@@ -119,7 +127,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
       // not the units that were asked for.
       const added = stockedUnits(result, stockRequests.map(request => request.returnLineId))
       const stockShort = stockRequests.length > 0 && added < stockQuantity
-      const stock = stockRequests.length === 0 ? '' : added > 0 ? ` Stok ${added.toLocaleString('tr-TR')} adet artırıldı.` : ' Stok artırılamadı; stok kararını iade detayından verin.'
+      const stock = approvalStockSentence(stockRequests.length > 0, added, result.stockPendingNextSync === true)
       onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${stock}`, stockShort ? 'info' : 'success', [
         { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}`, tone: 'success' },
         ...chosenRows.map(row => ({ label: 'Ürün', value: `${row.title} (${row.quantity} adet)` })),

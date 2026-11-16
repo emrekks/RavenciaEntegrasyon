@@ -118,6 +118,7 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
                     new("APPROVE", null, null, [], seed.LineIds, StockLineIds: [seed.LineIds[1]]), "ps-now:approve", "ps-now", CancellationToken.None);
                 Assert.Null(result.Error);
                 Assert.All(result.Value!.Lines!, line => Assert.False(line.StockPending));
+                Assert.False(result.Value.StockPendingNextSync);
             }
             await using var verify = fixture.CreateContext();
             Assert.Equal(ReturnPendingStockPolicy.Applied, (await verify.ReturnDecisions.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId)).StockStatus);
@@ -162,6 +163,49 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
         }
         finally
         {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // SIPARIS-STOK-5: the marketplace takes the approval, but the stock row keeps refusing the write (every attempt a
+    // serialization failure): the answer is the claim, marked StockPendingNextSync, the decision stays SUBMITTED with its
+    // stock choice and no stock has moved yet; an approval whose stock goes in at once is not marked.
+    [PostgreSqlFact]
+    public async Task AnAcceptedApproval_WhoseStockKeepsColliding_SaysTheNextReadAddsIt()
+    {
+        var seed = await SeedAsync("ps-pend");
+        var port = new UnclearReturnPort("PS-CLAIM", "ps-pend-order", seed.ExternalLineIds, answers: true);
+        var function = $"test_refuse_stock_{seed.TenantId:N}";
+        // Test-only DDL built from the test's own tenant id (no outside input).
+        var install = $$"""
+                CREATE FUNCTION inventory.{{function}}() RETURNS trigger LANGUAGE plpgsql AS $f$
+                BEGIN
+                    IF NEW."TenantId" = '{{seed.TenantId}}' THEN RAISE EXCEPTION 'busy' USING ERRCODE = '40001'; END IF;
+                    RETURN NEW;
+                END $f$;
+                CREATE TRIGGER {{function}} BEFORE UPDATE ON inventory.inventory_items FOR EACH ROW EXECUTE FUNCTION inventory.{{function}}();
+                """;
+        var uninstall = $"DROP TRIGGER IF EXISTS {function} ON inventory.inventory_items; DROP FUNCTION IF EXISTS inventory.{function}();";
+        await using (var setup = fixture.CreateContext())
+            await setup.Database.ExecuteSqlRawAsync(install);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await Service(db, port).ProcessReturnActionInstantAsync(seed.TenantId, seed.UserId, seed.ClaimId, await VersionAsync(seed.ClaimId),
+                    new("APPROVE", null, null, [], seed.LineIds, StockLineIds: [seed.LineIds[0]]), "ps-pend:approve", "ps-pend", CancellationToken.None);
+                Assert.Null(result.Error);
+                Assert.True(result.Value!.StockPendingNextSync);
+            }
+            await using var verify = fixture.CreateContext();
+            var decision = await verify.ReturnDecisions.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId);
+            Assert.Equal(("SUBMITTED", ReturnPendingStockPolicy.Pending), (decision.Status, decision.StockStatus));
+            Assert.Equal([0m, 0m], await OnHandAsync(verify, seed));
+        }
+        finally
+        {
+            await using (var teardown = fixture.CreateContext())
+                await teardown.Database.ExecuteSqlRawAsync(uninstall);
             await CleanupAsync(seed.TenantId);
         }
     }

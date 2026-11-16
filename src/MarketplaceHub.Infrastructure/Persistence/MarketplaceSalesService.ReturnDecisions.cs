@@ -270,7 +270,12 @@ public sealed partial class MarketplaceSalesService
         if (!settled)
         {
             db.ChangeTracker.Clear();
-            return await ReturnAsync(tenantId, claimId, cancellationToken);
+            var answer = await ReturnAsync(tenantId, claimId, cancellationToken);
+            // SIPARIS-STOK-5: an approval with a stock choice whose stock could not be written now: the panel says the next
+            // read of the claim adds it (ReturnPendingStock.SettleClaimAsync).
+            return action == "APPROVE" && stockTargets.Count > 0 && answer.Value is { } view
+                ? ServiceResult<ReturnDetailView>.Ok(view with { StockPendingNextSync = true })
+                : answer;
         }
 
         // The action itself is already complete. Read-back is best-effort and
