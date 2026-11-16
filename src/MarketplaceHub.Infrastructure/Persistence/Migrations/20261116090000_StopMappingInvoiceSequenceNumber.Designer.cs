@@ -1779,6 +1779,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("TargetId")
                         .HasColumnType("uuid");
 
@@ -4429,6 +4432,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("char(3)");
 
+                    b.Property<string>("CustomerSearchName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("CustomerSearchStamp")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("CustomerSnapshotJson")
                         .IsRequired()
                         .HasColumnType("text");
@@ -4654,6 +4663,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "OrderId", "ExternalLineId")
                         .IsUnique();
+
+                    b.HasIndex(new[] { "TenantId", "Id" }, "IX_order_lines_TenantId_Id_Unmatched")
+                        .HasFilter("\"VariantId\" IS NULL");
 
                     b.ToTable("order_lines", "sales", t =>
                         {

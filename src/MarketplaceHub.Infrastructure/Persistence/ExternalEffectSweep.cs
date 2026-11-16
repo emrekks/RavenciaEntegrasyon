@@ -78,7 +78,7 @@ public sealed class ExternalEffectSweep(AppDbContext db, TimeProvider timeProvid
         // read made before its request went out would take the action for not applied and drop the record.
         var ownerJobs = OpenOwnerJobs(db);
         var candidates = await db.ExternalEffectRecords.AsNoTracking()
-            .Where(x => x.CompletedAt == null && x.CreatedAt <= verifyBefore
+            .Where(x => x.CompletedAt == null && (x.SentAt ?? x.CreatedAt) <= verifyBefore
                 && !ownerJobs.Any(job => job.TenantId == x.TenantId && job.JobType == x.EffectType && job.EffectIdempotencyKey == x.IdempotencyKey))
             .Select(x => new { x.Id, x.TenantId, x.CreatedAt, x.ConnectionId, Verifiable = x.ConnectionId != null && x.Action != null })
             .ToListAsync(cancellationToken);

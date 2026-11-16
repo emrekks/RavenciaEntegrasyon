@@ -1776,6 +1776,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("TargetId")
                         .HasColumnType("uuid");
 

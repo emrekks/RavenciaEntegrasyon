@@ -12,17 +12,24 @@ internal static class ScheduledPolicyIsolation
 {
     public static async Task<int?> RunAsync(DbContext db, Func<Task<int>> schedule, Action<Exception> onFailure)
     {
+        var (succeeded, value) = await TryAsync(db, schedule, onFailure);
+        return succeeded ? value : null;
+    }
+
+    // The same for a step that returns what it decided: Succeeded false when it failed (and was reported).
+    public static async Task<(bool Succeeded, T? Value)> TryAsync<T>(DbContext db, Func<Task<T>> schedule, Action<Exception> onFailure)
+    {
         var addedBefore = AddedEntities(db).ToHashSet(ReferenceEqualityComparer.Instance);
         try
         {
-            return await schedule();
+            return (true, await schedule());
         }
         catch (Exception exception) when (Isolated(exception))
         {
             foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Added && !addedBefore.Contains(entry.Entity)).ToList())
                 entry.State = EntityState.Detached;
             onFailure(exception);
-            return null;
+            return (false, default);
         }
     }
 

@@ -342,8 +342,21 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     public async Task OperationsRealtimeBroadcaster_RedeliversStableEventId_WhenStoppedAfterSendBeforePublishMark()
     {
         var tenant = NewTenant("outbox-send-before-mark");
-        var now = fixture.Now;
-        var outboxEvent = NewOutboxEvent(tenant.Id, now, publishedAt: null);
+        // The dispatcher publishes every unpublished event of the database oldest first, 250 a pass and one pass a second,
+        // and in the shared test database nothing else publishes them: inside the full suite about 2,000 other tests'
+        // events (data changes, deletes, job leases) wait in front of a new one, which then came out after ~9 of the
+        // 10 seconds the waits allow (measured 16 Nov 2026). This test's event is therefore made the oldest unpublished
+        // one, so it is in the first batch whatever the backlog; it stays well inside the outbox retention (3 days).
+        DateTimeOffset createdAt;
+        await using (var db = fixture.CreateContext())
+        {
+            var oldestWaiting = await db.IntegrationOutboxEvents.AsNoTracking().Where(x => x.PublishedAt == null)
+                .MinAsync(x => (DateTimeOffset?)x.CreatedAt);
+            var floor = DateTimeOffset.UtcNow.AddDays(-1);
+            createdAt = (oldestWaiting is { } oldest && oldest < fixture.Now ? oldest : fixture.Now).AddMinutes(-1);
+            if (createdAt < floor) createdAt = floor;
+        }
+        var outboxEvent = NewOutboxEvent(tenant.Id, createdAt, publishedAt: null);
         await using (var db = fixture.CreateContext())
         {
             db.Tenants.Add(tenant);
@@ -351,8 +364,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             await db.SaveChangesAsync();
         }
 
-        // The dispatcher publishes every unpublished event in the database (job leases add one each), so only
-        // the deliveries of this test's event are counted.
+        // Other events go out in the same passes; only the deliveries of this test's event are counted.
         var deliveredIds = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
         using var firstStop = new CancellationTokenSource();
         var firstHub = new RecordingOperationsHubContext((arguments, _) =>

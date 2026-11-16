@@ -20,7 +20,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private readonly Guid? singleJobId = Guid.TryParse(configuration["Worker:SingleJobId"], out var parsedJobId) ? parsedJobId : null;
     private readonly string? singleJobType = string.IsNullOrWhiteSpace(configuration["Worker:SingleJobType"]) ? null : configuration["Worker:SingleJobType"]!.Trim();
     private long lastDatabaseContactUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    // Pulsed on every job notification: the due-time wake reads the next due moment again.
     private readonly JobWakeSignal wakeSignal = new();
+    // KUYRUK-6: wakes the idle slots of the lanes a notification concerns (set up with the lanes in ExecuteAsync).
+    private JobWakeRouter wakeRouter = new([]);
     // Asks the due-time wake to read the next due moment again (a scheduler pass enqueued jobs).
     private readonly JobWakeSignal dueRecheck = new();
     private static readonly TimeSpan DueRecheckDebounce = TimeSpan.FromSeconds(1);
@@ -46,11 +49,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // lock group are deferred without consuming an attempt.
         var loops = new List<Task>();
         var totalSlots = 0;
-        foreach (var lane in MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All(hotPriorityCeiling))
+        var lanes = MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All(hotPriorityCeiling);
+        wakeRouter = new JobWakeRouter(lanes);
+        foreach (var lane in lanes)
         {
             var slots = LaneSlots(configuration, lane.Name, lane.DefaultSlots);
             totalSlots += slots;
-            loops.AddRange(Lane(lane.Name, slots, slot => RunLeaseLaneAsync(slot, lane.MaximumPriority, lane.MinimumPriority, stoppingToken,
+            var laneWake = wakeRouter.SignalFor(lane.Name);
+            loops.AddRange(Lane(lane.Name, slots, slot => RunLeaseLaneAsync(slot, lane.MaximumPriority, lane.MinimumPriority, laneWake, stoppingToken,
                 includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes])));
         }
         await WarnWhenPoolIsTooSmallAsync(totalSlots, stoppingToken);
@@ -177,72 +183,123 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>() is ScheduledJobProducer producer)
                 await producer.MaintainPoliciesAsync(includeDefaults, token);
             if (includeDefaults) lastDefaultsPass = DateTimeOffset.UtcNow;
-        }, exception => logger.LogError(exception, "Sync policy maintenance pass failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Sync policy maintenance pass failed"), stoppingToken, "policy-maintenance");
     }
 
     // Runs a maintenance pass every period (first after firstPassAfter when given, else after one period) until
     // shutdown. A failed pass is logged and the loop goes on, also when it failed with a cancellation that did not
     // come from the shutdown (a library timeout surfacing as TaskCanceledException): such a pass used to end the
     // loop for good, silently, until the worker restarted.
-    internal static async Task RunPeriodicAsync(TimeSpan? firstPassAfter, TimeSpan period, Func<CancellationToken, Task> pass, Action<Exception> onFailure, CancellationToken stoppingToken)
+    // KUYRUK-5: each pass is timed and each failed pass counted under the loop's name (maintenance.pass.duration /
+    // maintenance.pass.failures), so a loop that keeps failing or has stopped running shows in the metrics.
+    internal static async Task RunPeriodicAsync(TimeSpan? firstPassAfter, TimeSpan period, Func<CancellationToken, Task> pass, Action<Exception> onFailure, CancellationToken stoppingToken, string loop = "unnamed")
     {
         try
         {
             if (firstPassAfter is { } delay) await Task.Delay(delay, stoppingToken);
             using var timer = new PeriodicTimer(period);
-            if (firstPassAfter is not null) await RunPassAsync(pass, onFailure, stoppingToken);
+            if (firstPassAfter is not null) await RunPassAsync(loop, pass, onFailure, stoppingToken);
             while (await timer.WaitForNextTickAsync(stoppingToken))
-                await RunPassAsync(pass, onFailure, stoppingToken);
+                await RunPassAsync(loop, pass, onFailure, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
-    private static async Task RunPassAsync(Func<CancellationToken, Task> pass, Action<Exception> onFailure, CancellationToken stoppingToken)
+    private static async Task RunPassAsync(string loop, Func<CancellationToken, Task> pass, Action<Exception> onFailure, CancellationToken stoppingToken)
     {
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var outcome = "succeeded";
         try
         {
             await pass(stoppingToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
+            outcome = "failed";
+            MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.MaintenancePassFailures.Add(1, new System.Diagnostics.TagList { { "loop", loop } });
             onFailure(exception);
+        }
+        catch (OperationCanceledException)
+        {
+            outcome = "cancelled";
+            throw;
+        }
+        finally
+        {
+            MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.MaintenancePassDuration.Record(System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds,
+                new System.Diagnostics.TagList { { "loop", loop }, { "outcome", outcome } });
         }
     }
 
-    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
+    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, LaneWakeSignal laneWake, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
     {
-        var idleDelay = JobIdleWait.First;
+        await RunSlotAsync(laneWake, async token =>
+        {
+            var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes);
+            // Health is refreshed only after a successful lease database cycle.
+            // A live process that cannot reach the database must not remain healthy.
+            TouchHealthFile();
+            if (job is null) return null;
+            return async () =>
+            {
+                RecordQueueWait(job, lane);
+                await ExecuteLeasedJobAsync(job, stoppingToken);
+            };
+        }, exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
+    }
+
+    // One lease slot of a lane: lease and run jobs until none is left, then wait for a wake of its lane (or the idle delay)
+    // and poll again. lease returns how to run the job it leased, or null when the queue had nothing for the lane.
+    // KUYRUK-6 (review A): PostgreSQL delivers identical notifications of one transaction once, so a scheduler pass that
+    // queues the same job type for many connections wakes one slot per lane. A slot whose wait ended by a wake and that
+    // then finds a job wakes the next idle slot, so the wake travels on until a slot finds nothing.
+    internal static async Task RunSlotAsync(LaneWakeSignal laneWake, Func<CancellationToken, Task<Func<Task>?>> lease, Action<Exception> onFailure, CancellationToken stoppingToken,
+        TimeSpan? firstDelay = null, Func<TimeSpan, bool, TimeSpan>? nextDelay = null)
+    {
+        var first = firstDelay ?? JobIdleWait.First;
+        nextDelay ??= JobIdleWait.Next;
+        var idleDelay = first;
+        var wokenLast = false;
         while (!stoppingToken.IsCancellationRequested)
         {
-            var wake = wakeSignal.Current;
+            // Registered before the poll, so a wake that comes between the poll and the wait is not lost.
+            var wake = laneWake.Register();
+            var idle = false;
             try
             {
-                var job = await LeaseNextAsync(maximumPriority, minimumPriority, stoppingToken, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes);
-                // Health is refreshed only after a successful lease database cycle.
-                // A live process that cannot reach the database must not remain healthy.
-                TouchHealthFile();
-                if (job is not null)
+                var run = await lease(stoppingToken);
+                if (run is not null)
                 {
-                    RecordQueueWait(job, lane);
-                    await ExecuteLeasedJobAsync(job, stoppingToken);
-                    idleDelay = JobIdleWait.First;
+                    // A wake this slot got while it polled goes to the lane's next idle slot, and so does the wake that
+                    // ended its last wait: more jobs of the same notification may be waiting.
+                    laneWake.Leave(wake, forward: true);
+                    if (wokenLast) laneWake.WakeOne();
+                    wokenLast = false;
+                    await run();
+                    idleDelay = first;
                     continue;
                 }
+                idle = true;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception exception)
             {
-                logger.LogError(exception, "Worker {Lane} lease loop failed", lane);
-                idleDelay = JobIdleWait.First;
+                onFailure(exception);
+                idleDelay = first;
             }
+            if (!idle) laneWake.Leave(wake, forward: true);
+            wokenLast = false;
 
             if (!stoppingToken.IsCancellationRequested)
             {
-                // Polling stays as the fallback; a notification for a runnable job, or the due-time wake when a
+                // Polling stays as the fallback; a notification for a job this lane can lease, or the due-time wake when a
                 // waiting job's time comes, ends the wait early.
-                var woken = await JobWakeSignal.WaitAsync(wake, idleDelay, stoppingToken);
-                idleDelay = JobIdleWait.Next(idleDelay, woken);
+                var woken = await JobWakeSignal.WaitAsync(wake.Woken, idleDelay, stoppingToken);
+                if (idle) laneWake.Leave(wake, forward: false);
+                idleDelay = nextDelay(idleDelay, woken);
+                wokenLast = woken;
             }
+            else if (idle) laneWake.Leave(wake, forward: false);
         }
     }
 
@@ -305,7 +362,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 // Pulsed whether the wait ended by time or by a notification: the moment read above has passed
                 // either way, and the next read only looks at later ones.
                 if (nextDue is { } due && due <= DateTimeOffset.UtcNow + JobIdleWait.MinimumDueWait)
-                    wakeSignal.Pulse();
+                    wakeRouter.WakeAll();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
         }
@@ -576,7 +633,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await using var scope = scopeFactory.CreateAsyncScope();
             var reaped = await scope.ServiceProvider.GetRequiredService<IJobLeaseService>().ReapExpiredAsync(token);
             if (reaped > 0) logger.LogWarning("Lease reaper recovered {Count} expired job leases", reaped);
-        }, exception => logger.LogError(exception, "Lease reaper pass failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Lease reaper pass failed"), stoppingToken, "lease-reaper");
 
     // Hourly purge of old finished jobs and processed webhook inbox rows so the queue tables stop growing forever.
     private Task RunJobRetentionAsync(CancellationToken stoppingToken)
@@ -631,7 +688,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await PurgeHistoryAsync(HistoryRetentionPolicy.ChannelPriceHistory, priceHistoryRetention, period => retention.PurgeChannelPriceHistoryAsync(period, maximumBatches: 25, token));
             await PurgeHistoryAsync(HistoryRetentionPolicy.ProductChangeEntries, productChangeRetention, period => retention.PurgeProductChangeEntriesAsync(period, maximumBatches: 25, token));
             await PurgeHistoryAsync(HistoryRetentionPolicy.OrderStatusHistory, orderStatusRetention, period => retention.PurgeOrderStatusHistoryAsync(period, maximumBatches: 25, token));
-        }, exception => logger.LogError(exception, "Job retention pass failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Job retention pass failed"), stoppingToken, "job-retention");
     }
 
     // An open operational issue not seen for a month is closed daily, so the operations page shows what is
@@ -656,7 +713,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
             var deleted = await issues.DeleteResolvedAsync(resolvedRetention, token);
             if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
-        }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken, "issue-retention");
     }
 
     // KATALOG-6: half an hour after start and then daily, every card is linked to its model again (a link that failed after
@@ -670,7 +727,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var result = await MarketplaceHub.Infrastructure.Persistence.ProductModelScan.RunAsync(db, DateTimeOffset.UtcNow, token);
             logger.LogInformation("Product model scan: {Tenants} tenant(s), coded unlinked cards {UnlinkedBefore} -> {UnlinkedAfter}, {Written} model(s) written, {Differing} model(s) whose cards disagree",
                 result.Tenants, result.UnlinkedCodedBefore, result.UnlinkedCodedAfter, result.ModelsWritten, result.ModelsDiffering);
-        }, exception => logger.LogError(exception, "Product model scan failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Product model scan failed"), stoppingToken, "product-model-scan");
 
     // SIPARIS-STOK-9: a few minutes after start (after a deploy, the claims the previous code wrote while it migrated) and
     // then every six hours, return claims whose Returns page card columns are missing or differ from the rule are written
@@ -686,7 +743,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // A tenant still off the columns has its Returns page computed the slow way until the next pass.
             foreach (var tenantId in await MarketplaceHub.Infrastructure.Persistence.ReturnCardColumns.StaleTenantsAsync(db, token))
                 logger.LogWarning("Return card columns are still missing or stale for tenant {TenantId} after the repair pass; its Returns page reads every claim until they are right", tenantId);
-        }, exception => logger.LogError(exception, "Return card columns repair failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Return card columns repair failed"), stoppingToken, "return-card-columns");
 
     // Garanti Süresi (15 Nov 2026): two minutes after start (after a deploy, once the previous API and Worker are gone),
     // a card on sale or closed whose warranty the previous code left empty while the deploy migrated takes 0, which is
@@ -705,7 +762,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 logger.LogInformation("Product warranty repair: {Cards} card(s) and {Models} model record(s) with an empty warranty took 0", result.CardsWritten, result.ModelsWritten);
             if (result.EmptyCardsNotDraft > 0)
                 logger.LogWarning("Product warranty check: {Count} card(s) on sale or closed have an empty Garanti Süresi; they are left as they are (a marketplace send of them stops with WARRANTY_REQUIRED)", result.EmptyCardsNotDraft);
-        }, exception => logger.LogError(exception, "Product warranty repair failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Product warranty repair failed"), stoppingToken, "product-warranty");
     }
 
     // Trendyol passivates a webhook whose deliveries keep failing (for example while the server is
@@ -720,7 +777,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             if (reactivated > 0) logger.LogInformation("Reactivated {Count} passive marketplace webhook(s)", reactivated);
             var retried = await notifications.RetryConnectionWebhooksAsync(token);
             if (retried > 0) logger.LogInformation("Closed or reopened {Count} webhook(s) of passive or reactivated connections", retried);
-        }, exception => logger.LogError(exception, "Webhook upkeep pass failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "Webhook upkeep pass failed"), stoppingToken, "webhook-upkeep");
 
     // Every two minutes, marketplace actions whose outcome is still open get a verification job.
     private Task RunExternalEffectSweepAsync(CancellationToken stoppingToken) =>
@@ -729,7 +786,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await using var scope = scopeFactory.CreateAsyncScope();
             var changed = await scope.ServiceProvider.GetRequiredService<ExternalEffectSweep>().SweepAsync(token);
             if (changed > 0) logger.LogInformation("External effect sweep queued or closed {Count} open marketplace action(s)", changed);
-        }, exception => logger.LogError(exception, "External effect sweep failed"), stoppingToken);
+        }, exception => logger.LogError(exception, "External effect sweep failed"), stoppingToken, "external-effect-sweep");
 
     // Holds one dedicated connection that LISTENs for runnable jobs and wakes the idle lanes.
     // Any failure only costs latency: the lanes keep polling while the listener reconnects.
@@ -746,12 +803,18 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 var builder = new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false, KeepAlive = 30 };
                 await using var connection = new NpgsqlConnection(builder.ConnectionString);
                 await connection.OpenAsync(stoppingToken);
-                connection.Notification += (_, _) => wakeSignal.Pulse();
+                // KUYRUK-6: the payload names the job, so only the lanes that can lease it wake (one slot each).
+                connection.Notification += (_, notification) =>
+                {
+                    wakeSignal.Pulse();
+                    wakeRouter.Route(notification.Payload);
+                };
                 await using (var listen = new NpgsqlCommand($"LISTEN {IntegrationJobNotifications.Channel}", connection))
                     await listen.ExecuteNonQueryAsync(stoppingToken);
                 logger.LogInformation("Listening for runnable job notifications on {Channel}", IntegrationJobNotifications.Channel);
                 // Jobs queued while the listener was down are picked up right away.
                 wakeSignal.Pulse();
+                wakeRouter.WakeAll();
                 while (!stoppingToken.IsCancellationRequested)
                     await connection.WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
             }

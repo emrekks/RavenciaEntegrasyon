@@ -1,7 +1,8 @@
 namespace MarketplaceHub.Worker;
 
-// Wakes every idle lease loop at once. A loop takes Current before it polls the queue, so a
-// pulse that arrives between the poll and the wait is not lost.
+// Wakes everything waiting on it at once (the due-time wake's recheck; the lease loops wait on their lane's
+// LaneWakeSignal since KUYRUK-6). A waiter takes Current before it reads, so a pulse that arrives between the read and
+// the wait is not lost.
 public sealed class JobWakeSignal
 {
     private TaskCompletionSource current = NewSource();
