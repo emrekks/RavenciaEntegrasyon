@@ -317,7 +317,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             {
                 removed += await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.platform_connections WHERE "TenantId" = {tenantId} AND "Id" = {connectionId} AND "Status" = 'DELETED'""", cancellationToken);
             }
-            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+            catch (PostgresException exception) when (exception.SqlState is PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.RestrictViolation)
             {
                 logger.LogInformation("Silinmiş bağlantının kayıtları başka bir veri türünde duruyor; bağlantı satırı kaldı. ConnectionId: {ConnectionId}", connectionId);
                 kept++;
