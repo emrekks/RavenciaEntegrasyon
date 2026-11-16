@@ -86,6 +86,19 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
+    // Pazarama order pages: at most this many in one window (100 orders a page; a 28-day window of 50,000 orders), and a
+    // page that repeats the one before ends the window; either is named in an issue instead of looping until the lease.
+    internal const int PazaramaOrderPageCap = 500;
+
+    internal static string? PazaramaOrderPageKey(IReadOnlyList<RemoteOrder> items) =>
+        items.Count == 0 ? null : string.Join(',', items.Select(item => item.ExternalOrderId).Order(StringComparer.Ordinal));
+
+    internal static bool PazaramaOrderPageRepeated(string? previousPageKey, string? pageKey) =>
+        pageKey is not null && string.Equals(previousPageKey, pageKey, StringComparison.Ordinal);
+
+    // Pazarama's order list: at most PazaramaOrderPageCap pages per window, and a page that repeats the one before ends it.
+    private static readonly PageGuard PazaramaOrderPageGuard = new(MaxPages: PazaramaOrderPageCap, PageRepeated: PazaramaOrderPageRepeated);
+
     // n11 order pages in one window (100 packages a page, 15 days a window): far above real traffic, a guard against a list
     // that never ends. A window walked twice (a count change) counts both walks.
     internal const int N11OrderPageCap = 1_000;

@@ -4,6 +4,9 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
+using CategoryAttributeContext = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.CategoryAttributeContext;
+using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.LocalCategoryAttribute;
+
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // Reads the products already listed on a marketplace and brings their category,
