@@ -57,6 +57,8 @@ if [[ -n "$escrow_file" ]]; then
   chmod 0700 "$escrow_root"
   escrow_file="$(cd -- "$(dirname -- "$escrow_file")" && pwd -P)/${escrow_file##*/}"
   escrow_identity="$(cd -- "$(dirname -- "$escrow_identity")" && pwd -P)/${escrow_identity##*/}"
+  # The escrow file is read by the calling user on purpose; only docker needs sudo.
+  # shellcheck disable=SC2024
   sudo docker run --rm -i --network none --entrypoint age -v "$escrow_identity:/run/age-identity:ro" "$app_image" \
     --decrypt --identity /run/age-identity < "$escrow_file" \
     | tar -x -C "$escrow_root" -- credential_key.txt dp_certificate.pfx dp_certificate_password.txt
