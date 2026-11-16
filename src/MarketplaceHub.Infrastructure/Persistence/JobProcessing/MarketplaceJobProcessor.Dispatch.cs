@@ -63,10 +63,15 @@ public sealed partial class MarketplaceJobProcessor
 
     private PriceStockRunHandler PriceStockHandler => priceStockHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 3d: the product writes and the approval check.
+    private ProductJobRunHandler? productJobHandler;
+
+    private ProductJobRunHandler ProductJobHandler => productJobHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
     internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
         OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler,
-        ActionJobHandler, LabelJobHandler, PriceStockHandler];
+        ActionJobHandler, LabelJobHandler, PriceStockHandler, ProductJobHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -90,10 +95,10 @@ public sealed partial class MarketplaceJobProcessor
     // (a Trendyol-only path), and the job goes on to BoolJobDispatch.
     private static readonly IReadOnlyDictionary<string, DirectJob> DirectJobDispatch = new Dictionary<string, DirectJob>(StringComparer.Ordinal)
     {
-        [MarketplaceJobTypes.ProductCreate] = async (p, a, cancellationToken) => await p.CreateProduct(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.ProductApprovalReconcile] = async (p, a, cancellationToken) => await p.ReconcileProductApproval(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.ProductUpdate] = async (p, a, cancellationToken) => await p.UpdateProduct(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.ProductArchive] = async (p, a, cancellationToken) => await p.ArchiveProduct(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
+        [MarketplaceJobTypes.ProductCreate] = RunDirect(p => p.ProductJobHandler),
+        [MarketplaceJobTypes.ProductApprovalReconcile] = RunDirect(p => p.ProductJobHandler),
+        [MarketplaceJobTypes.ProductUpdate] = RunDirect(p => p.ProductJobHandler),
+        [MarketplaceJobTypes.ProductArchive] = RunDirect(p => p.ProductJobHandler),
         [MarketplaceJobTypes.PriceInventorySync] = RunDirect(p => p.PriceStockHandler),
         [MarketplaceJobTypes.StockProjectionDispatch] = RunDirect(p => p.PriceStockHandler),
         [MarketplaceJobTypes.StockReconciliation] = RunDirect(p => p.PriceStockHandler),

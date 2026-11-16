@@ -71,6 +71,10 @@ internal sealed class JobRunServices(
     // one ExternalEffectGuard and check the same write switches.
     private ActionJobService? actionJobs;
 
+    private ProductJobService? productJobs;
+
+    public ProductJobService ProductJobs => productJobs ??= new(db, issues, products, references, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, variantLinks, run);
+
     private PriceStockService? priceStock;
 
     public PriceStockService PriceStock => priceStock ??= new(db, issues, products, inventoryPrice, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, ListingVerification, run);

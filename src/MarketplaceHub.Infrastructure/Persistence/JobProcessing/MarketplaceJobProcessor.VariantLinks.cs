@@ -18,9 +18,4 @@ public sealed partial class MarketplaceJobProcessor
 
     internal Task<bool> AddListingLookupJobAsync(Guid tenantId, Guid connectionId, string dedup, ListingVerificationService.ListingLookupJobPayload payload, DateTimeOffset now, CancellationToken cancellationToken) =>
         Services.ListingVerification.AddListingLookupJobAsync(tenantId, connectionId, dedup, payload, now, cancellationToken);
-
-    private Task<bool> ExternalIdTaken(Guid tenantId, Guid connectionId, string externalId, Guid? exceptLinkId, CancellationToken cancellationToken) =>
-        VariantLinks.ExternalIdTaken(tenantId, connectionId, externalId, exceptLinkId, cancellationToken);
-
-    private static string MarketplacePlatformName(string? platformCode) => VariantLinkBookkeeping.MarketplacePlatformName(platformCode);
 }

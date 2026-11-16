@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ProductJobService
 {
     // "Platformlarda Güncelle" on PTT AVM: one UpdateProductsV3 request (SUBMIT_UNAPPROVED), then its tracking result
     // (POLL_UNAPPROVED). The write is manual: the master switch and the connection's MANUAL_WRITE policy are checked

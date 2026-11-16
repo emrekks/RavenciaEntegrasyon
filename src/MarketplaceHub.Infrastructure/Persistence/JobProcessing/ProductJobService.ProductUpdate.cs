@@ -7,9 +7,9 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ProductJobService
 {
-    private async Task<JobExecutionResult> UpdateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> UpdateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         ProductUpdateJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<ProductUpdateJobPayload>(payloadJson, JsonOptions); }
@@ -289,7 +289,7 @@ public sealed partial class MarketplaceJobProcessor
             : JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_PARTIAL_FAILURE", "Pazarama satışa açma/kapatma isteği kısmi başarısızlıkla tamamlandı.", submit.Value.ExternalOperationId);
     }
 
-    private async Task<JobExecutionResult> ArchiveProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> ArchiveProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         if (payloadJson.Contains("\"SaleStatusBarcodes\"", StringComparison.Ordinal))
             return await ChangePazaramaSaleStatus(tenantId, connectionId, payloadJson, correlationId, cancellationToken);

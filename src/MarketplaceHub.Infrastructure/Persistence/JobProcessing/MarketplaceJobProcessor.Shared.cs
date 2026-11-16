@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 
@@ -6,8 +5,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed partial class MarketplaceJobProcessor
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
-
     // ISLEYICI-9 stage 1 (16 Nov 2026): cursors and issues are kept by their own classes on this job's AppDbContext.
     private readonly SyncCursorStore cursors = new(db);
     private readonly IssueRecorder issues = new(db);
@@ -21,8 +18,6 @@ public sealed partial class MarketplaceJobProcessor
         issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
 
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
-    // The product create's unclear answer is summed up as the price/stock send's is (PriceStockService).
-    internal static string AmbiguousCreateSummary(AdapterError error) => PriceStockService.AmbiguousCreateSummary(error);
     private static string Hash(string value) => TextValues.Sha256Hex(value);
     internal static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

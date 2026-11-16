@@ -25,7 +25,7 @@ public sealed class MissingPublicationResetJobEventTests
         var finished = Job(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.Succeeded);
         var create = Job(MarketplaceJobTypes.ProductCreate, JobStatus.Succeeded);
 
-        var closed = MarketplaceJobProcessor.CloseApprovalChecksOfMissingPublication(db, Tenant, [current, waiting, retrying, finished, create], current.Id, Now);
+        var closed = ProductJobService.CloseApprovalChecksOfMissingPublication(db, Tenant, [current, waiting, retrying, finished, create], current.Id, Now);
 
         Assert.Equal(2, closed);
         Assert.Equal(JobStatus.Cancelled, waiting.Status);
@@ -48,7 +48,7 @@ public sealed class MissingPublicationResetJobEventTests
     {
         using var db = Context();
         var current = Job(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.Leased);
-        Assert.Equal(0, MarketplaceJobProcessor.CloseApprovalChecksOfMissingPublication(db, Tenant, [current], current.Id, Now));
+        Assert.Equal(0, ProductJobService.CloseApprovalChecksOfMissingPublication(db, Tenant, [current], current.Id, Now));
         Assert.Empty(db.ChangeTracker.Entries<IntegrationOutboxEvent>());
     }
 

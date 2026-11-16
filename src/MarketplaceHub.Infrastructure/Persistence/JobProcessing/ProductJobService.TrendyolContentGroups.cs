@@ -7,7 +7,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // The Trendyol content request of a product update, turned from per barcode into per content right before the send:
 // each barcode's content is read from the approved list (read only), then each content goes once with its own variants'
 // data (TrendyolContentGroups). A barcode whose content was already read with another barcode costs no request.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ProductJobService
 {
     private async Task<(string? ContentPayloadJson, IReadOnlyList<string> NotFound, JobExecutionResult? Stop)> ResolveTrendyolContentGroupsAsync(Guid tenantId, Guid connectionId, IntegrationJob job, ChannelListingProfile profile, string contentPayloadJson, string correlationId, CancellationToken cancellationToken)
     {

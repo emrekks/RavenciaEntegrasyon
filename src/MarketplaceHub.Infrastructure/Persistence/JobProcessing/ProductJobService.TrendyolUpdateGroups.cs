@@ -9,7 +9,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // phase and one poll of its batch id. Product jobs of a connection run one at a time under its product lock, so while a
 // card sends or polls for the group no other card's job runs; the other cards' payloads are written in place (their
 // lease and attempt columns stay their runner's) and each card's own next run carries on from what was written.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ProductJobService
 {
     private sealed record GroupCard(IntegrationJob Job, ProductUpdateJobPayload Payload);
 
