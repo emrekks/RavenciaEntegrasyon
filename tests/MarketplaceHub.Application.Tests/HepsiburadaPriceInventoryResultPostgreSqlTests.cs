@@ -79,8 +79,8 @@ public sealed class HepsiburadaPriceInventoryResultPostgreSqlTests(PostgreSqlTen
 
         var result = await Poll(seed, new RemoteOperationStatus("shopify-completed:x", "COMPLETED",
         [
-            new RemoteOperationLine(seed.Lines[0].Barcode, false, null, "SHOPIFY_THROTTLED", true, MarketplaceJobProcessor.NotSentLineStatus),
-            new RemoteOperationLine(seed.Lines[1].Barcode, false, "gid://shopify/ProductVariant/2", MarketplaceJobProcessor.PriceOnlyAppliedCode, true, "PRICE_ONLY_APPLIED")
+            new RemoteOperationLine(seed.Lines[0].Barcode, false, null, "SHOPIFY_THROTTLED", true, PriceStockService.NotSentLineStatus),
+            new RemoteOperationLine(seed.Lines[1].Barcode, false, "gid://shopify/ProductVariant/2", PriceStockService.PriceOnlyAppliedCode, true, "PRICE_ONLY_APPLIED")
         ]));
 
         Assert.Equal(JobCompletionKind.Succeeded, result.Kind);

@@ -115,6 +115,54 @@ internal sealed class ExternalEffectReconcileRunHandler(Func<JobRunContext, JobR
         services(run).ExternalEffectReconcile.ReconcileExternalEffect(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
 }
 
+// The package actions and the return decisions (ActionJobService): marketplace writes the user started.
+internal sealed class ActionJobRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.ShipmentAction, MarketplaceJobTypes.ReturnAction];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.ShipmentAction => services(run).ActionJobs.ShipmentAction(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.ReturnAction => services(run).ActionJobs.ReturnAction(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a package or return action.")
+    };
+}
+
+// The common label, the stage capability probe and the stage test order (LabelJobService); each answers with a result of its own.
+internal sealed class LabelJobRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.CommonLabel, MarketplaceJobTypes.CapabilityProbe, MarketplaceJobTypes.StageTestOrder];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.CommonLabel => services(run).LabelJobs.CommonLabel(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.CapabilityProbe => services(run).LabelJobs.LabelCapabilityProbe(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.StageTestOrder => services(run).LabelJobs.CreateStageTestOrder(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a label job.")
+    };
+}
+
+// The price and stock writes and the automatic stock paths (PriceStockService); automatic writes stay off while their
+// switches are off, which they are on every live connection.
+internal sealed class PriceStockRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.StockReconciliation];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.PriceInventorySync => services(run).PriceStock.SyncPriceInventory(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.StockProjectionDispatch => services(run).PriceStock.DispatchStockProjection(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, request.JobId, cancellationToken),
+        MarketplaceJobTypes.StockReconciliation => services(run).PriceStock.ReconcileStock(request.TenantId, request.ConnectionId, request.CorrelationId, request.JobId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a price or stock job.")
+    };
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

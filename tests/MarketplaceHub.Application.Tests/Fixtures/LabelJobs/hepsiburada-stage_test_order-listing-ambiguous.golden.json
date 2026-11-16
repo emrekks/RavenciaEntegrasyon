@@ -1,0 +1,83 @@
+{
+  "Runs": [
+    {
+      "Run": "create",
+      "JobType": "TRENDYOL_STAGE_TEST_ORDER",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "HEPSIBURADA_STAGE_LISTING_AMBIGUOUS",
+        "ErrorSummary": "Test sipariş barkodu için tek bir Hepsiburada hbSku eşleşmesi bulunamadı.",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "STAGE",
+          "ExternalStoreId": "2738",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 1,
+          "CursorStagnantSince": null,
+          "Id": "id1",
+          "LastAttemptAt": "T+00:00:01",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "HEPSIBURADA_STAGE_LISTING_AMBIGUOUS",
+          "LastErrorAt": "T+00:00:02",
+          "LastFailedCount": 1,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "STAGE_TEST_ORDER",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1"
+      ]
+    }
+  ]
+}

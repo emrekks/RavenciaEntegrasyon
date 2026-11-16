@@ -30,7 +30,7 @@ internal sealed partial class ReturnIngestionService(
     private Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken) =>
         orderIngestion.UpsertOrder(tenantId, connectionId, remote, cancellationToken);
 
-    private static string? SafeReturnTrackingLink(string? value) => MarketplaceJobProcessor.SafeReturnTrackingLink(value);
+    private static string? SafeReturnTrackingLink(string? value) => ActionJobService.SafeReturnTrackingLink(value);
 
     private static string Wire<T>(T value) where T : Enum => MarketplaceJobProcessor.Wire(value);
 }

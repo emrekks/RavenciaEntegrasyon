@@ -1870,22 +1870,26 @@ bağlantı), bağlantının yürütme kilidi, akış telemetrisi ve çekilen kay
   hatalar işlemcinin kendi yakalama bloklarına düşer (`JobProcessing/RunJobHandlers.cs`). Taşınanlar: ürün çekme ×3 ve
   ürün yapısı çekme (`CatalogImportService`), referans listeleri ×5 (`ReferenceSyncService`), sipariş okumaları — yeni
   sipariş, geçmiş, açık sipariş, uzlaştırma (`OrderReadService`), iade okumaları — yeni iade, açık iade, uzlaştırma
-  (`ReturnReadService`). Sipariş ve iade okumalarının pazaryerine sorduğu her istek altın testlerle sabitlendi
-  (`ReadLoopGoldenPostgreSqlTests`).
+  (`ReturnReadService`); 16 Kas akşamı (ISLEYICI-9 aşama 5): paket fatura durumu kontrolü ×3
+  (`InvoiceReconciliationService`), Trendyol kargo bilgisi tamamlama (`OrderReadService`), günlük yayın doğrulaması ve
+  tekil varyant sorgusu (`ListingVerificationService`), bağlantı testi ×6 (`ConnectionTestService`), gönderim sonucu
+  doğrulama (`ExternalEffectReconcileService`), paket işlemi ve iade kararı gönderme (`ActionJobService`), ortak kargo
+  etiketi, Stage yetki kontrolü ve Stage test siparişi (`LabelJobService`). Yazma işlerinin tamamı işlemcinin tek
+  `ExternalEffectGuard`'ını ve aynı dış yazma anahtarlarını (`JobWriteSwitches`) kullanır.
+- **Altın testler**: taşınan her işin pazaryerine yaptığı her çağrı (yöntem, idempotency anahtarı, gönderilen komutun
+  bütün alanları), iş sonucu, etki kaydı ve kiracının taşımadan sonraki bütün tabloları sabitlendi: `ReadLoopGolden…`,
+  `ReadJobGolden…` (fatura, kargo bilgisi, yayın doğrulaması, bağlantı testi), `EffectReconcileGolden…`,
+  `ActionJobGolden…`, `LabelJobGolden…` (`tests/…/Contracts/`, ortak düzenek `JobGoldenHarness.cs`). Metinler bellekte
+  `StringComparer.Ordinal` ile sıralanır; testler hem C hem en-US harmanlamalı veritabanında koşar.
 - **Mantığı hâlâ işlemcide olan işler**: aşağıdaki tablo. Bunlar sırayla, her biri önce altın testle sabitlenip kendi
   servisine, sonra bir çalıştırma işleyicisine taşınacak; işlemci en sonda yalnız ön kontrol, kilit, telemetri ve
   yönlendirme olarak kalacak.
 
 | Sıra | İş tipleri | Mantığın yeri | Taşımak için gereken |
 |---|---|---|---|
-| 1 | `TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION`, `*ORDER_INVOICE_RECONCILIATION` ×3 | `OrderReadService.OrderLifecycle` (kargo bilgisi), `MarketplaceJobProcessor.InvoiceReconciliation` | Okuma işleri; fatura kontrolü `OrderInvoiceState` ve Hepsiburada eksik fatura listesine dayanır. Önce paket başına okunan fatura durumunun altın testi, sonra `InvoiceReconciliationService` ve sipariş okuma işleyicisine ekleme. |
-| 2 | `LISTING_VERIFY`, `LISTING_LOOKUP` | `MarketplaceJobProcessor.ListingVerify` | Okuma; `ListingVerificationRules` ve `VariantLinkBookkeeping` hazır. Kalan: tarama durumu (imleç) ve arama işinin kuyruğa eklenmesi (`AddListingLookupJobAsync`, `JobEnqueueSites` satırıyla). |
-| 3 | `*_WEBHOOK_INGEST` ×3 | `MarketplaceJobProcessor.WebhookIngest`, `.Webhooks` | Okuma servislerini zaten çağırır; kalan gelen kutusu işleme, Hepsiburada sipariş okuma kuyruğu (`QueueHepsiburadaOrderReadsAsync`) ve webhook boşluk notu. |
-| 4 | `EXTERNAL_EFFECT_RECONCILE` | `MarketplaceJobProcessor.EffectReconcile` | `ExternalEffectGuard` kayıtlarını okur; yazma işlerinden önce taşınmalı ki yazmalar aynı guard'ı kullanan servise geçebilsin. |
-| 5 | `STOCK_PROJECTION_DISPATCH`, `STOCK_RECONCILIATION`, `PRICE_INVENTORY_SYNC` | `.StockProjection`, `.PriceInventory`, `.PttAvmProductUpdate` | **Yazma** işleri (otomatik fiyat/stok yazması canlıda kapalı). Önce gönderilen fiyat/stok gövdelerinin altın testi; `ExternalEffectGuard` ve sürüm/hash yazımları aynen korunmalı. |
-| 6 | `PRODUCT_CREATE`, `PRODUCT_UPDATE`, `PRODUCT_ARCHIVE`, `PRODUCT_APPROVAL_RECONCILE` | `.ProductCreate`, `.ProductUpdate`, `.TrendyolContentGroups`, `.TrendyolUpdateGroups`, `.ProductLinks` (yayın tarafı) | Yazma; yayın tarafı bağ yazımları (`ProductLinks`) ve onay takibi işi (`EnsureApprovalReconciliationJob`) birlikte taşınır. Gönderilen ürün gövdelerinin altın testi şart. |
-| 7 | `SHIPMENT_ACTION`, `RETURN_ACTION`, `TRENDYOL_COMMON_LABEL`, `TRENDYOL_CAPABILITY_PROBE`, `TRENDYOL_STAGE_TEST_ORDER` | `.Actions`, `.Labels` | Yazma; paket/iade kararı ve etiket. `ExternalEffectGuard` ile belirsiz sonuç kuralları değişmeden taşınmalı. |
-| 8 | `*_CONNECTION_TEST` ×6 | `.ConnectionTest` | Okuma; bağlantı kimlik hatası kaydı (`RecordConnectionAuthenticationFailureAsync`) işlemcide kaldığı için en son ve küçük. |
+| 1 | `STOCK_PROJECTION_DISPATCH`, `STOCK_RECONCILIATION`, `PRICE_INVENTORY_SYNC` | `.StockProjection`, `.PriceInventory` (Pazarama ve tekrar-istek yolları dahil) | **Yazma** işleri (otomatik fiyat/stok yazması canlıda kapalı; bu taşıma hiçbir anahtarı açmaz). Önce `PriceInventoryComposer`'ın kurduğu gövdeyle SUBMIT/POLL, belirsiz sonuç, tekrar istek reddi, süre aşımı ve otomatik gönderim kuyruğunun altın testi; `PttAvmProductUpdate` ürün güncellemesiyle birlikte taşınır. |
+| 2 | `PRODUCT_CREATE`, `PRODUCT_UPDATE`, `PRODUCT_ARCHIVE`, `PRODUCT_APPROVAL_RECONCILE` | `.ProductCreate`, `.ProductUpdate`, `.PttAvmProductUpdate`, `.TrendyolContentGroups`, `.TrendyolUpdateGroups`, `.ProductLinks` (yayın tarafı) | Yazma; yayın tarafı bağ yazımları (`ProductLinks`, fiyat/stok yanıtları da kullanır) ve onay takibi işi (`EnsureApprovalReconciliationJob`, `JobEnqueueSites` satırıyla) birlikte taşınır. Gönderilen ürün gövdelerinin, Trendyol içerik/güncelleme gruplarının ve onay okumalarının altın testi şart. |
+| 3 | `*_WEBHOOK_INGEST` ×3 | `.WebhookIngest`, `.Webhooks` | Okuma servislerini çağırır; kalan gelen kutusu işleme, Hepsiburada sipariş okuma kuyruğu (`QueueHepsiburadaOrderReadsAsync`, `JobEnqueueSites` satırıyla) ve paket açma işareti (`ActionJobService.MarkHepsiburadaPackageUnpackedAsync`'e yönlendirilir). |
 
 Kural: her adım tek commit, davranış değişmez; taşınan döngünün pazaryerine sorduğu her istek ve yazdığı her gövde önce
 altın testle sabitlenir, testler hem C hem en-US harmanlamalı veritabanında koşar.

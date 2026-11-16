@@ -12,5 +12,5 @@ public sealed partial class MarketplaceJobProcessor
     private JobRunServices ServicesFor(JobRunContext forRun) =>
         runServices is { } current && ReferenceEquals(current.Run, forRun)
             ? current
-            : runServices = new JobRunServices(db, issues, cursors, connections, references, products, orders, orderPackages, hepsiburadaInvoiceStatus, returns, configuration, timeProvider, invoiceBilling, logger, VariantLinks, forRun);
+            : runServices = new JobRunServices(db, issues, cursors, connections, references, products, inventoryPrice, orders, orderPackages, hepsiburadaInvoiceStatus, returns, configuration, timeProvider, invoiceBilling, logger, VariantLinks, files, effectGuard, WriteSwitches, forRun);
 }

@@ -67,11 +67,25 @@ internal static partial class JobGolden
             if (!names.TryGetValue(id, out var name)) names[id] = name = $"id{names.Count - known.Count + 1}";
             return name;
         });
+        // A SHA-256 written into a key (a dedup key over lines that carry ids) changes with the ids: only its place is pinned.
+        labelled = Sha256Pattern().Replace(labelled, "<sha256>");
         ContractFixture.MatchesGolden(goldenPath, JsonNode.Parse(labelled));
+    }
+
+    // The ids a fixture payload carries (a claim's item ids) get names in their order in the fixture, so where a row that
+    // holds one sorts never changes which name it gets.
+    public static void KnowFixtureIds(IDictionary<Guid, string> known, string fixtureText)
+    {
+        var index = 0;
+        foreach (Match match in GuidPattern().Matches(fixtureText))
+            if (Guid.TryParse(match.Value, out var id) && !known.ContainsKey(id)) known[id] = $"fixture-id{++index}";
     }
 
     [GeneratedRegex("(?<![0-9a-fA-F])[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}(?![0-9a-fA-F])")]
     private static partial Regex GuidPattern();
+
+    [GeneratedRegex("(?<=:)[0-9A-F]{64}(?![0-9A-Fa-f])")]
+    private static partial Regex Sha256Pattern();
 
     // Every table of the tenant (each entity type with a TenantId column) that holds rows, with every mapped scalar column,
     // ordered by their text with the known ids named and the others masked. The outbox is summed by kind instead (its rows
