@@ -14,7 +14,10 @@ vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string) => {
     if (path.startsWith('/invoice-workspace/page?')) {
       apiState.pageRequests.push(path)
-      const requestedPage = Math.min(3, Number(new URLSearchParams(path.split('?')[1]).get('pageNumber') ?? 1))
+      // The page asks in the cursor form: limit, and from the second page on the offset cursor ("o" + offset, base64url).
+      const asked = new URLSearchParams(path.split('?')[1])
+      const after = asked.get('after')
+      const requestedPage = Math.min(3, after ? Number(atob(after.replace(/-/g, '+').replace(/_/g, '/')).slice(1)) / Number(asked.get('limit') ?? 20) + 1 : 1)
       const items = requestedPage > 1 ? [item(9)] : [item(1), ...(apiState.withSecond ? [item(2)] : [])]
       return { items, totalCount: 60, pageNumber: requestedPage, pageSize: 20, totalPages: 3, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
     }
@@ -87,12 +90,12 @@ const events: Record<SelectionEvent, () => Promise<void>> = {
     act(() => container.querySelector<HTMLButtonElement>('button.rr-psize-btn')!.click())
     act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(option => option.textContent === '50')!.click())
     await settle()
-    expect(lastPage()).toContain('pageSize=50')
+    expect(lastPage()).toContain('limit=50')
   },
   async page() {
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await settle()
-    expect(lastPage()).toContain('pageNumber=2')
+    expect(lastPage()).toContain(`after=${btoa('o20')}`)
     act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Önceki"]')!.click())
     await settle()
   },
