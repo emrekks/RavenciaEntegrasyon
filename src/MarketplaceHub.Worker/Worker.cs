@@ -233,7 +233,33 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
     private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, LaneWakeSignal laneWake, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
     {
-        var idleDelay = JobIdleWait.First;
+        await RunSlotAsync(laneWake, async token =>
+        {
+            var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes);
+            // Health is refreshed only after a successful lease database cycle.
+            // A live process that cannot reach the database must not remain healthy.
+            TouchHealthFile();
+            if (job is null) return null;
+            return async () =>
+            {
+                RecordQueueWait(job, lane);
+                await ExecuteLeasedJobAsync(job, stoppingToken);
+            };
+        }, exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
+    }
+
+    // One lease slot of a lane: lease and run jobs until none is left, then wait for a wake of its lane (or the idle delay)
+    // and poll again. lease returns how to run the job it leased, or null when the queue had nothing for the lane.
+    // KUYRUK-6 (review A): PostgreSQL delivers identical notifications of one transaction once, so a scheduler pass that
+    // queues the same job type for many connections wakes one slot per lane. A slot whose wait ended by a wake and that
+    // then finds a job wakes the next idle slot, so the wake travels on until a slot finds nothing.
+    internal static async Task RunSlotAsync(LaneWakeSignal laneWake, Func<CancellationToken, Task<Func<Task>?>> lease, Action<Exception> onFailure, CancellationToken stoppingToken,
+        TimeSpan? firstDelay = null, Func<TimeSpan, bool, TimeSpan>? nextDelay = null)
+    {
+        var first = firstDelay ?? JobIdleWait.First;
+        nextDelay ??= JobIdleWait.Next;
+        var idleDelay = first;
+        var wokenLast = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             // Registered before the poll, so a wake that comes between the poll and the wait is not lost.
@@ -241,17 +267,16 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var idle = false;
             try
             {
-                var job = await LeaseNextAsync(maximumPriority, minimumPriority, stoppingToken, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes);
-                // Health is refreshed only after a successful lease database cycle.
-                // A live process that cannot reach the database must not remain healthy.
-                TouchHealthFile();
-                if (job is not null)
+                var run = await lease(stoppingToken);
+                if (run is not null)
                 {
-                    // A wake this slot got while it polled goes to the lane's next idle slot.
+                    // A wake this slot got while it polled goes to the lane's next idle slot, and so does the wake that
+                    // ended its last wait: more jobs of the same notification may be waiting.
                     laneWake.Leave(wake, forward: true);
-                    RecordQueueWait(job, lane);
-                    await ExecuteLeasedJobAsync(job, stoppingToken);
-                    idleDelay = JobIdleWait.First;
+                    if (wokenLast) laneWake.WakeOne();
+                    wokenLast = false;
+                    await run();
+                    idleDelay = first;
                     continue;
                 }
                 idle = true;
@@ -259,10 +284,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception exception)
             {
-                logger.LogError(exception, "Worker {Lane} lease loop failed", lane);
-                idleDelay = JobIdleWait.First;
+                onFailure(exception);
+                idleDelay = first;
             }
             if (!idle) laneWake.Leave(wake, forward: true);
+            wokenLast = false;
 
             if (!stoppingToken.IsCancellationRequested)
             {
@@ -270,7 +296,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 // waiting job's time comes, ends the wait early.
                 var woken = await JobWakeSignal.WaitAsync(wake.Woken, idleDelay, stoppingToken);
                 if (idle) laneWake.Leave(wake, forward: false);
-                idleDelay = JobIdleWait.Next(idleDelay, woken);
+                idleDelay = nextDelay(idleDelay, woken);
+                wokenLast = woken;
             }
             else if (idle) laneWake.Leave(wake, forward: false);
         }

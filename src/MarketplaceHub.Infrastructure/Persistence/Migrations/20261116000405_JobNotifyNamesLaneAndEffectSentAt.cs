@@ -57,6 +57,7 @@ public partial class JobNotifyNamesLaneAndEffectSentAt : Migration
             $function$;
             """);
 
+        // The SentAt values written meanwhile are dropped with the column and not restored by a later Up.
         migrationBuilder.DropColumn(
             name: "SentAt",
             schema: "integration",

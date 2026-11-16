@@ -70,7 +70,7 @@ public sealed class LaneWakeSignal
 
 // Routes a job notification to the lanes that can lease the job. The trigger names the job ("job:<type>:<priority>") when
 // a job becomes runnable, and sends "freed" when a leased job ends (a lock group may have opened for a job of any lane).
-// Any other payload (the trigger before migration 20261116090000 sent an empty one) wakes every slot, as before.
+// Any other payload (the trigger before migration 20261116000405 sent an empty one) wakes every slot, as before.
 public sealed class JobWakeRouter
 {
     public const string JobPrefix = "job:";

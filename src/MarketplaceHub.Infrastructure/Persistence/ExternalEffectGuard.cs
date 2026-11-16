@@ -70,6 +70,15 @@ internal sealed class ExternalEffectGuard(AppDbContext db, TimeProvider timeProv
     private async Task MarkSentAsync(IReadOnlyList<ExternalEffectRecord> effects, DateTimeOffset answeredAt)
     {
         var ids = effects.Select(effect => effect.Id).ToArray();
+        // Inside the caller's open transaction a failed or cancelled statement would abort that transaction even with its
+        // exception swallowed; there the time is only set on the tracked records and goes with the caller's own save.
+        // (No caller sends inside a transaction today: the processors hold a session advisory lock, the instant actions
+        // send before theirs.)
+        if (db.Database.CurrentTransaction is not null)
+        {
+            foreach (var effect in effects) effect.SentAt ??= answeredAt;
+            return;
+        }
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
