@@ -105,7 +105,7 @@ internal sealed partial class CatalogImportService(
 
     private static string MarketplacePlatformName(string? platformCode) => VariantLinkBookkeeping.MarketplacePlatformName(platformCode);
 
-    private static (string? State, string? Reason) PttAvmModelSaleState(RemoteCatalogProduct product) => MarketplaceJobProcessor.PttAvmModelSaleState(product);
+    private static (string? State, string? Reason) PttAvmModelSaleState(RemoteCatalogProduct product) => ListingVerificationService.PttAvmModelSaleState(product);
 
     // A product the catalog read pulled: its model code (or the marketplace's product id), its first barcode and how many
     // variants came with it. A failed batch marks each of its products with the error.

@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 namespace MarketplaceHub.Domain;
 
 public enum ProductStatus { Draft = 0, Archived = 1, Active = 2 }
@@ -34,6 +36,12 @@ public sealed class Product
     // The model (ProductModel) this colour card belongs to; null while it is not linked (a model code shared by several
     // brands, a card without a model code). Kept by ProductModelLinks only: never set by hand, never part of Version.
     public Guid? FamilyId { get; set; }
+    // KATALOG-14 phase D: this colour's own name / description where it really differs from its model's ("Bu renge
+    // özel"); null = the colour takes the model's. Only the name and the description may differ per colour: brand,
+    // category, VAT, warranty and delivery days are one value per model (owner, 14 Nov 2026: "her varyantında eşit
+    // olmalı"), and prices, stock, codes and desi stay on the variant rows. Read only through EffectiveCatalog.
+    public string? TitleOverride { get; set; }
+    public string? DescriptionOverride { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
@@ -518,7 +526,10 @@ public static class ListingSaleState
 
     // Closed for a reason other than zero stock (or for a reason the marketplace does not name): what the products
     // list's "Satışa Kapalı" filter finds. A listing closed only because its stock is 0 is found by the stock filter.
-    public static bool ClosedBeyondStock(string? state, string? reason) => state == OffSale && reason != StockZero;
+    // KATALOG-10: written once as an expression; the products filter runs it in the database, the views compile it.
+    public static readonly Expression<Func<string?, string?, bool>> ClosedBeyondStockRule = (state, reason) => state == OffSale && reason != StockZero;
+    private static readonly Func<string?, string?, bool> ClosedBeyondStockCompiled = ClosedBeyondStockRule.Compile();
+    public static bool ClosedBeyondStock(string? state, string? reason) => ClosedBeyondStockCompiled(state, reason);
 
     // The closures beyond a stock of 0 by their named reason (owner, 6 Nov 2026: a variant closed only for a stock of 0
     // reads as on sale on every screen). A closure without a named reason is left out; callers count it as the rest.
@@ -539,7 +550,10 @@ public static class MarketplaceVariantLinkHealth
     public const string Unverified = "UNVERIFIED";
     public const string NotFoundReason = "Art arda iki tam ürün taramasında pazaryerinde bulunamadı.";
 
-    public static bool IsBroken(string? healthStatus) => healthStatus is NotFound or Rejected;
+    // KATALOG-10: written once as an expression; the products filter runs it in the database, the views compile it.
+    public static readonly Expression<Func<string?, bool>> IsBrokenRule = healthStatus => healthStatus == NotFound || healthStatus == Rejected;
+    private static readonly Func<string?, bool> IsBrokenCompiled = IsBrokenRule.Compile();
+    public static bool IsBroken(string? healthStatus) => IsBrokenCompiled(healthStatus);
 
     public const string NotFoundByLookupReason = "Pazaryeri tekil sorguda bu kodu bulamadı.";
     public const string MissedByScanReason = "Son tam ürün taramasında görülmedi.";

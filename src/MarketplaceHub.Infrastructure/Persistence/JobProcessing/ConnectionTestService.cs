@@ -4,9 +4,21 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+// ISLEYICI-9 stage 5 step 1 (16 Nov 2026): the connection test of every marketplace (*_CONNECTION_TEST), moved out of the
+// job processor as it was. It asks the marketplace who the credentials belong to and what they may do, and records the
+// answer on the connection and its capabilities; nothing is sent. The processor still records a refused credential of
+// any other job on the connection (RecordConnectionAuthenticationFailureAsync); this test records its own outcome.
+internal sealed class ConnectionTestService(AppDbContext db, IConnectionPort connections, TimeProvider timeProvider, JobRunContext run)
 {
-    private async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived() => run.TrackReceived();
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    internal async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
         // KUYRUK-9 (16 Nov 2026): named instead of the generic F3_JOB_REJECTED; still blocked, a missing connection stays missing.

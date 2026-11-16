@@ -156,6 +156,8 @@ app.UseMiddleware<SessionStateBoundaryMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 app.UseMiddleware<ElevatedRoleMfaMiddleware>();
 app.UseMiddleware<IdempotencyMiddleware>();
+// API-GUVENLIK-8: the old query parameters, accepted (counted and logged) or refused by Api:AcceptDeprecatedParameters.
+app.UseMiddleware<MarketplaceHub.Api.Common.DeprecatedParameterMiddleware>();
 app.MapAuthEndpoints();
 app.MapCatalogEndpoints();
 app.MapDashboardEndpoints();

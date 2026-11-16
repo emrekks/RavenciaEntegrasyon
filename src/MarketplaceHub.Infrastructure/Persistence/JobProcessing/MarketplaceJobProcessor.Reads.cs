@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -15,17 +16,12 @@ public sealed partial class MarketplaceJobProcessor
     private Task<bool> SyncHepsiburadaOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken) =>
         OrderRead.SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
 
-    private Task<bool> ReconcileTrendyolCargoInfo(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) =>
-        OrderRead.ReconcileTrendyolCargoInfo(tenantId, connectionId, correlationId, cancellationToken);
-
-    private Task<OrderLookupHint?> OrderHint(Guid tenantId, Guid connectionId, string externalOrderId, CancellationToken cancellationToken) =>
-        OrderRead.OrderHint(tenantId, connectionId, externalOrderId, cancellationToken);
-
-    private Task ReadMissingHepsiburadaOrdersAsync(Guid tenantId, Guid connectionId, string correlationId, IEnumerable<(string OrderNumber, string? PackageNumber)> references, CancellationToken cancellationToken) =>
-        OrderRead.ReadMissingHepsiburadaOrdersAsync(tenantId, connectionId, correlationId, references, cancellationToken);
-
     private Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         OrderRead.SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
+
+    // The package actions judge an effect closed as unresolved with the effect check's own read.
+    private Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken) =>
+        Services.ExternalEffectReconcile.PackageEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken);
 
     private static string? TrendyolWebhookStorefront(string rawPackageJson) => OrderReadService.TrendyolWebhookStorefront(rawPackageJson);
 

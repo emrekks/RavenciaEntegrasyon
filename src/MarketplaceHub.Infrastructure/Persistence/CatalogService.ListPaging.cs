@@ -62,7 +62,8 @@ public sealed partial class CatalogService
     }
 
     // The cards of the filtered catalog whose model is in the platform state on the marketplace (or on any, "ALL"), by the
-    // narrow card and variant rows: the families are grouped by the model-code rule, as the list groups them.
+    // narrow card and variant rows: the families are grouped by the model-code rule, as the list groups them. The
+    // in-memory path's filter, and the reference the database filter (ApplyPlatformStateFilterInSqlAsync) is tested against.
     private async Task<HashSet<Guid>> PlatformStateProductIdsAsync(Guid tenantId, IReadOnlyList<Product> allProducts, IReadOnlyList<ProductVariant> allVariants, string platformFilterCode, string platformFilterState, CancellationToken cancellationToken)
     {
         var allProductIds = allProducts.Select(x => x.Id).ToArray();
@@ -99,6 +100,134 @@ public sealed partial class CatalogService
             .Where(product => matchingFamilyKeys.Contains(ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? [])))
             .Select(product => product.Id)
             .ToHashSet();
+    }
+
+    // KATALOG-10: the platform-state filter decided in the database, by the rules the in-memory reference
+    // (PlatformStateProductIdsAsync, PlatformVariantStatesAsync) compiles: ImportedApprovalStates.IsHeldListingRule,
+    // ProductListingHealth.KnownOnMarketplace and CountsAsMissingRule (MarketplaceVariantLinkHealth.IsBrokenRule inside),
+    // ListingSaleState.ClosedBeyondStockRule and ProductListingHealth.MatchesFilterRule, each written once as an
+    // expression. Runs only while the stored model links give the model-code grouping, so a model is
+    // COALESCE(FamilyId, Id). "ALL": the model is in the state on any of the marketplaces.
+    private async Task<IQueryable<Product>> ApplyPlatformStateFilterInSqlAsync(Guid tenantId, IQueryable<Product> query, string platformFilterCode, string platformFilterState, CancellationToken cancellationToken)
+    {
+        // The models in the state are read once (the list then counts and pages over them several times).
+        var families = await PlatformStateFamiliesInSql(tenantId, query, platformFilterCode, platformFilterState).Distinct().ToArrayAsync(cancellationToken);
+        return query.Where(product => families.Contains(product.FamilyId ?? product.Id));
+    }
+
+    private IQueryable<Guid> PlatformStateFamiliesInSql(Guid tenantId, IQueryable<Product> query, string platformFilterCode, string platformFilterState)
+    {
+        IQueryable<Guid>? families = null;
+        foreach (var code in platformFilterCode == AllPlatformsFilterCode ? ProductFilterPlatformCodes : [platformFilterCode])
+        {
+            IQueryable<Guid> codeFamilies;
+            if (platformFilterState is ProductListingHealth.Error or ProductListingHealth.Waiting)
+            {
+                // Hatalı / Onay Bekliyor: a card of the model is flagged there.
+                var statuses = platformFilterState == ProductListingHealth.Error ? ProductListingHealth.ErrorStatuses : ProductListingHealth.WaitingStatuses;
+                var productIds = query.Select(product => product.Id);
+                var flagged = PlatformFlaggedByProfile(tenantId, code, productIds, statuses).Concat(PlatformFlaggedByListing(tenantId, code, productIds, statuses));
+                codeFamilies = query.Where(product => flagged.Contains(product.Id)).Select(product => product.FamilyId ?? product.Id);
+            }
+            else
+                codeFamilies = PlatformStateFamilies(tenantId, query, code, platformFilterState);
+            families = families is null ? codeFamilies : families.Concat(codeFamilies);
+        }
+        return families!;
+    }
+
+    // The models of the filtered cards whose variants on the marketplace's active connections are in the state.
+    private IQueryable<Guid> PlatformStateFamilies(Guid tenantId, IQueryable<Product> query, string platformCode, string platformState)
+    {
+        var connectionIds = PlatformActiveConnectionIds(tenantId, platformCode);
+        var listings = from listing in db.ChannelListingVariants.AsNoTracking()
+                       join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+                       where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId)
+                       select new PlatformListingRow { VariantId = listing.VariantId, ConnectionId = profile.ConnectionId, ActualStatus = listing.ActualStatus };
+        // A variant the marketplace still reviews or refused is not matched there, by link or listing.
+        var held = listings.Where(PolicyExpressions.On<PlatformListingRow, string?>(ImportedApprovalStates.IsHeldListingRule, row => row.ActualStatus));
+        var links = db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(link => link.TenantId == tenantId && connectionIds.Contains(link.ConnectionId))
+            .KnownOnMarketplace(db, tenantId)
+            .Where(link => !held.Any(row => row.VariantId == link.VariantId && row.ConnectionId == link.ConnectionId))
+            .Select(link => new PlatformLinkRow { LinkId = link.Id, VariantId = link.VariantId, ConnectionId = link.ConnectionId, HealthStatus = link.HealthStatus, SaleState = link.SaleState, SaleStateReason = link.SaleStateReason });
+        var heldFreeListings = listings.Where(listing => !held.Any(row => row.VariantId == listing.VariantId && row.ConnectionId == listing.ConnectionId));
+        // The links the marketplace no longer knows, unless the card or its listing there is archived (a link is one per
+        // variant and connection, so a missing link is that pair).
+        var missing = (from link in links
+                       from variant in db.ProductVariants.Where(variant => variant.TenantId == tenantId && variant.Id == link.VariantId)
+                       from product in db.Products.Where(product => product.TenantId == tenantId && product.Id == variant.ProductId)
+                       select new PlatformMissingRow
+                       {
+                           LinkId = link.LinkId,
+                           VariantId = link.VariantId,
+                           ConnectionId = link.ConnectionId,
+                           HealthStatus = link.HealthStatus,
+                           ProductArchived = product.Status == ProductStatus.Archived,
+                           ProfileArchived = db.ChannelListingProfiles.Any(profile => profile.TenantId == tenantId && profile.Enabled && profile.ActualStatus == "ARCHIVED" && profile.ProductId == product.Id && profile.ConnectionId == link.ConnectionId)
+                       })
+            .Where(PolicyExpressions.On<PlatformMissingRow, string?, bool, bool>(ProductListingHealth.CountsAsMissingRule, row => row.HealthStatus, row => row.ProductArchived, row => row.ProfileArchived));
+        var missingLinkIds = missing.Select(row => row.LinkId);
+        var closed = links.Where(PolicyExpressions.On<PlatformLinkRow, string?, string?>(ListingSaleState.ClosedBeyondStockRule, row => row.SaleState, row => row.SaleStateReason));
+        // The variant sets, each read once as an uncorrelated set (a sub-query per variant in the select list ran once
+        // per variant and timed out on 20,000 variants).
+        var matchedVariantIds = links.Where(link => !missingLinkIds.Contains(link.LinkId)).Select(link => link.VariantId)
+            .Concat(heldFreeListings.Where(listing => !missing.Any(row => row.VariantId == listing.VariantId && row.ConnectionId == listing.ConnectionId)).Select(listing => listing.VariantId));
+        var missingVariantIds = missing.Select(row => row.VariantId);
+        var offSaleVariantIds = closed.Where(link => !missingLinkIds.Contains(link.LinkId)).Select(link => link.VariantId);
+        var facts = from product in query
+                    from variant in db.ProductVariants.Where(variant => variant.TenantId == tenantId && variant.ProductId == product.Id)
+                    select new
+                    {
+                        Key = product.FamilyId ?? product.Id,
+                        Matched = matchedVariantIds.Contains(variant.Id),
+                        Missing = !matchedVariantIds.Contains(variant.Id) && missingVariantIds.Contains(variant.Id),
+                        OffSale = offSaleVariantIds.Contains(variant.Id)
+                    };
+        var families = facts.GroupBy(fact => fact.Key)
+            .Select(group => new PlatformStateCounts
+            {
+                FamilyKey = group.Key,
+                VariantCount = group.Count(),
+                MatchedVariantCount = group.Sum(fact => fact.Matched ? 1 : 0),
+                MissingVariantCount = group.Sum(fact => fact.Missing ? 1 : 0),
+                OffSaleVariantCount = group.Sum(fact => fact.OffSale ? 1 : 0)
+            })
+            .Where(ProductListingHealth.MatchesFilterRule(platformState))
+            .Select(counts => counts.FamilyKey);
+        // A model without a variant has no row above: it is in the state when the rule holds for no variants at all.
+        if (ProductListingHealth.MatchesFilter(platformState, 0, 0, 0, 0))
+            families = families.Concat(query
+                .Where(product => !query.Any(other => (other.FamilyId ?? other.Id) == (product.FamilyId ?? product.Id) && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.ProductId == other.Id)))
+                .Select(product => product.FamilyId ?? product.Id));
+        return families;
+    }
+
+    private sealed class PlatformListingRow
+    {
+        public Guid VariantId { get; init; }
+        public Guid ConnectionId { get; init; }
+        public string? ActualStatus { get; init; }
+    }
+
+    private sealed class PlatformLinkRow
+    {
+        public Guid LinkId { get; init; }
+        public Guid VariantId { get; init; }
+        public Guid ConnectionId { get; init; }
+        public string? HealthStatus { get; init; }
+        public string? SaleState { get; init; }
+        public string? SaleStateReason { get; init; }
+    }
+
+    private sealed class PlatformMissingRow
+    {
+        public Guid LinkId { get; init; }
+        public Guid VariantId { get; init; }
+        public Guid ConnectionId { get; init; }
+        public string? HealthStatus { get; init; }
+        public bool ProductArchived { get; init; }
+        public bool ProfileArchived { get; init; }
     }
 
     // The stock filter as the in-memory list applies it (never a draft): OUT and GAP decided in the database from the MAIN
@@ -186,7 +315,7 @@ public sealed partial class CatalogService
             .ToListAsync(cancellationToken);
         var order = keys.Select((key, index) => (key, index)).ToDictionary(item => item.key, item => item.index);
         var pageProductIds = members.OrderBy(member => order[member.Key]).ThenByDescending(member => member.CreatedAt).ThenByDescending(member => member.Id).Select(member => member.Id).ToArray();
-        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var fullProducts = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);
@@ -221,7 +350,7 @@ public sealed partial class CatalogService
         // The cards model by model, each model's cards newest first (the in-memory list's order).
         var order = keys.Select((key, index) => (key, index)).ToDictionary(item => item.key, item => item.index);
         var pageProductIds = members.OrderBy(member => order[member.Key]).ThenByDescending(member => member.CreatedAt).ThenByDescending(member => member.Id).Select(member => member.Id).ToArray();
-        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var fullProducts = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);

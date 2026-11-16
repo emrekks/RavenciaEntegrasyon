@@ -453,7 +453,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                join line in db.OrderLines.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { line.TenantId, line.OrderId }
                join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId } equals new { variant.TenantId, Id = (Guid?)variant.Id } into variants
                from variant in variants.DefaultIfEmpty()
-               join product in db.Products.AsNoTracking() on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
+               join product in EffectiveCatalog.Products(db) on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
                from product in products.DefaultIfEmpty()
                join acceptedLine in DashboardReadService.AcceptedReturnQuantities(db, tenantId) on line.Id equals acceptedLine.OrderLineId into acceptedLines
                from acceptedLine in acceptedLines.DefaultIfEmpty()
@@ -684,7 +684,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                                    join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
                                    join variant in db.ProductVariants.AsNoTracking() on new { line.TenantId, Id = line.VariantId ?? Guid.Empty } equals new { variant.TenantId, variant.Id } into variants
                                    from variant in variants.DefaultIfEmpty()
-                                   join product in db.Products.AsNoTracking() on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
+                                   join product in EffectiveCatalog.Products(db) on new { TenantId = (Guid?)variant.TenantId, Id = (Guid?)variant.ProductId } equals new { TenantId = (Guid?)product.TenantId, Id = (Guid?)product.Id } into products
                                    from product in products.DefaultIfEmpty()
                                    select new
                                    {
@@ -920,7 +920,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
 
         // The products the product list shows (VisibleProducts there): not only linked to removed stores. A draft is not
         // counted in the stock figures (ProductDraftPolicy).
-        var products = db.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.Status != ProductStatus.Draft
+        var products = EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && product.Status != ProductStatus.Draft
             && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id)
                 || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))));

@@ -18,7 +18,7 @@ internal static class CatalogModelConfiguration
         builder.Entity<Product>(entity =>
         {
             entity.ToTable("products", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
-            entity.Property(x => x.Title).HasMaxLength(320); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.Title).HasMaxLength(320); entity.Property(x => x.TitleOverride).HasMaxLength(320); entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(24);
             entity.Property(x => x.DefaultListPrice).HasPrecision(19, 4); entity.Property(x => x.DefaultSalePrice).HasPrecision(19, 4);
             entity.Property(x => x.VatRate).HasPrecision(7, 4); entity.Property(x => x.VatInclusion).HasMaxLength(16);
             entity.Property(x => x.Version).IsConcurrencyToken(); entity.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });

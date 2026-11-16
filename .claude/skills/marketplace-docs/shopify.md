@@ -18,7 +18,7 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ the `ShopifyHttpClient.*
   Remote5xx (`SHOPIFY_INTERNAL_ERROR`, 30 s); then MAX_COST_EXCEEDED, ACCESS_DENIED, the first message.
   (`ShopifyHttpClient.GraphQlError`, 2026-11-05)
   Repo doc: Standard 100 points/s, Advanced 200, Plus 1000.
-- HTTP 429 → `SHOPIFY_RATE_LIMITED`, Retry-After or 5 s. Single-query cost ceiling 1000; on `MAX_COST_EXCEEDED`
+- HTTP 429 → `SHOPIFY_RATE_LIMITED`, Retry-After or 5 s (a Retry-After of 0 or a past date counts as none, `RetryAfterHeader.Delay`, ADAPTOR-TY-HB-7). Single-query cost ceiling 1000; on `MAX_COST_EXCEEDED`
   the page size is quartered down to 1. Timeout 45 s.
 
 ## Windows and paging

@@ -67,7 +67,7 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         var lostLinks = linkHealth.Count == 0 ? [] : await (
                 from link in db.MarketplaceVariantLinks.AsNoTracking()
                 join variant in db.ProductVariants.AsNoTracking() on link.VariantId equals variant.Id
-                join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where link.TenantId == tenantId && variant.TenantId == tenantId && product.TenantId == tenantId && ids.Contains(link.ConnectionId)
                     && (link.HealthStatus == MarketplaceVariantLinkHealth.NotFound || link.HealthStatus == MarketplaceVariantLinkHealth.Rejected)
                 select new LostLink(link.ConnectionId, product.Id, product.Title, link.HealthStatus!, variant.Sku, link.HealthChangedAt))

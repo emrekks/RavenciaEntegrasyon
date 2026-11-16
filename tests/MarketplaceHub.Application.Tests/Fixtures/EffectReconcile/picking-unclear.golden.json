@@ -1,0 +1,320 @@
+{
+  "Runs": [
+    {
+      "Run": "check",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    },
+    {
+      "Run": "check-1",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    },
+    {
+      "Run": "check-2",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    },
+    {
+      "Run": "check-3",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    },
+    {
+      "Run": "check-4",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    },
+    {
+      "Run": "check-5",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    },
+    {
+      "Run": "check-6",
+      "JobType": "EXTERNAL_EFFECT_RECONCILE",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "SLICE_CONTINUES",
+        "ErrorSummary": "İşlemin sonucu pazaryerinden kısa süre içinde yeniden okunacak.",
+        "RetryAfter": "00:00:30",
+        "RemoteRequestId": null,
+        "RefundAttempt": true,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": true
+      },
+      "Calls": [
+        "orders.GetHinted key=golden-effect:picking:verify \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":null}"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "ExternalEffectRecord",
+      "Rows": [
+        {
+          "Action": "PICKING",
+          "CompletedAt": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:20:00",
+          "EffectType": "SHIPMENT_ACTION",
+          "ExpectedValue": null,
+          "Id": "effect",
+          "IdempotencyKey": "golden-effect:picking",
+          "LastCheckedAt": "T+00:48:13",
+          "Outcome": null,
+          "SentAt": "T-00:19:00",
+          "TargetId": "package-P1",
+          "TenantId": "tenant",
+          "UnclearChecks": 7,
+          "VerificationSeconds": 0
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id1",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "NEW",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "5001",
+          "GrossAmount": 100.0000,
+          "Id": "order-5001",
+          "InvoiceAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-03:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "5001",
+          "OrderedAt": "T-1.00:00:00",
+          "ShipmentAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "8690000000001",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "L1",
+          "Id": "order-line-L1",
+          "OrderId": "order-5001",
+          "OrderedQuantity": 2.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Created",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-1",
+          "SourceSnapshotJson": "<raw 2 chars sha256:44136fa355b3>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Ürün",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 50.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "NEW",
+          "Id": "id2",
+          "OccurredAt": "T-03:00:00",
+          "OrderId": "order-5001",
+          "PackageId": "package-P1",
+          "RawStatus": "Created",
+          "RecordedAt": "T-00:30:00",
+          "SourceEventId": "P1:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id3",
+          "OrderLineId": "order-line-L1",
+          "PackageId": "package-P1",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "SourceEventId": "P1:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "ARAS",
+          "CargoTrackingNumber": "TRK1",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "P1",
+          "GrossAmount": 100.0000,
+          "Id": "package-P1",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-5001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Created",
+          "RemoteVersion": null,
+          "Status": "New",
+          "StatusOccurredAt": "T-03:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}

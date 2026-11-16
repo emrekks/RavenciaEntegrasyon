@@ -20,7 +20,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         await SeedTenantAndConnectionAsync(tenant, connection);
         var runJobId = Guid.CreateVersion7();
         var dedup = $"listing-lookup:{connection.Id:N}:scan:{runJobId:N}";
-        var payload = new MarketplaceJobProcessor.ListingLookupJobPayload(connection.Id, [Guid.CreateVersion7()], MarketplaceJobProcessor.ListingLookupScanSource, false, runJobId);
+        var payload = new ListingVerificationService.ListingLookupJobPayload(connection.Id, [Guid.CreateVersion7()], ListingVerificationService.ListingLookupScanSource, false, runJobId);
         try
         {
             foreach (var expectedCreated in new[] { true, false })

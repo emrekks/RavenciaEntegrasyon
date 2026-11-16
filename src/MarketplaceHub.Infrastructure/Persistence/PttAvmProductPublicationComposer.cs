@@ -23,7 +23,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
 {
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
@@ -56,7 +56,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
         // Card order is creation order (the id breaks a tie), so the family keeps one order on every publication.
-        var members = await db.Products.AsNoTracking()
+        var members = await EffectiveCatalog.Products(db)
             .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active) // never an archived card or a draft
             .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);

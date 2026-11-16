@@ -61,6 +61,7 @@ public static class ApiErrorCatalog
         new("INVALID_CREDENTIALS", 401, "E-posta veya parola hatalı."),
         new("INVALID_CURSOR", 400, "Sayfa imleci geçersiz; listeyi baştan yükleyin."),
         new("INVALID_ETAG", 400, "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\"."),
+        new("DEPRECATED_PARAMETER", 400, "Bu parametre artık kabul edilmiyor; yanıttaki replacement parametresini gönderin."),
         new("INVALID_REQUEST", 400, "İstek geçersiz; değerleri kontrol edip yeniden deneyin."),
         new("INVALID_REQUEST_BODY", 400, "İstek gövdesi veya parametreleri okunamadı; değerleri kontrol edip yeniden deneyin."),
         new("INVITATION_EXPIRED", 409, "Bu davetin süresi doldu; çalışma alanının yöneticisinden yeniden davet isteyin."),

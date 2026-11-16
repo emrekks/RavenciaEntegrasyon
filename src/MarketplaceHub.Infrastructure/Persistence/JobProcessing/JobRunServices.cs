@@ -12,6 +12,7 @@ internal sealed class JobRunServices(
     AppDbContext db,
     IssueRecorder issues,
     SyncCursorStore cursors,
+    IConnectionPort connections,
     IReferenceDataPort references,
     IProductPort products,
     IOrderPort orders,
@@ -32,6 +33,9 @@ internal sealed class JobRunServices(
     private ReferenceSyncService? referenceSync;
     private CatalogAttributeService? catalogAttributes;
     private CatalogImportService? catalogImport;
+    private InvoiceReconciliationService? invoiceReconciliation;
+    private ListingVerificationService? listingVerification;
+    private ConnectionTestService? connectionTest;
 
     public JobRunContext Run => run;
 
@@ -48,4 +52,14 @@ internal sealed class JobRunServices(
     public CatalogAttributeService CatalogAttributes => catalogAttributes ??= new(db, timeProvider, ReferenceSync, run);
 
     public CatalogImportService CatalogImport => catalogImport ??= new(db, issues, cursors, products, timeProvider, logger, CatalogAttributes, variantLinks, OrderIngestion, run);
+
+    public InvoiceReconciliationService InvoiceReconciliation => invoiceReconciliation ??= new(db, issues, cursors, orders, hepsiburadaInvoiceStatus, configuration, timeProvider, OrderIngestion, OrderRead, run);
+
+    public ListingVerificationService ListingVerification => listingVerification ??= new(db, issues, cursors, products, timeProvider, variantLinks, CatalogImport, OrderIngestion, run);
+
+    public ConnectionTestService ConnectionTest => connectionTest ??= new(db, connections, timeProvider, run);
+
+    private ExternalEffectReconcileService? externalEffectReconcile;
+
+    public ExternalEffectReconcileService ExternalEffectReconcile => externalEffectReconcile ??= new(db, issues, orders, returns, timeProvider, OrderIngestion, ReturnIngestion, run);
 }
