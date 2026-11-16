@@ -163,7 +163,7 @@ public sealed partial class MarketplaceJobProcessor
         var sendLog = await PriceStockSendLogRecorder.PendingAsync(db, tenantId, job.Id, payload.ExternalOperationId, timeProvider.GetUtcNow(), cancellationToken);
         if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             return await RecordPazaramaPriceInventory(tenantId, connectionId, job.Id, payload, offers, lineByBarcode, sendLog, StockCurrent, PriceCurrent, cancellationToken);
-        var success = 0; var failed = 0; var superseded = 0; var uncertain = 0;
+        var success = 0; var failed = 0; var superseded = 0; var uncertain = 0; var notSent = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
         foreach (var line in payload.Lines)
@@ -202,6 +202,28 @@ public sealed partial class MarketplaceJobProcessor
                 continue;
             }
             var offer = offers[line.OfferId];
+            // ADAPTOR-DIGER-1: a send cut off part-way names the lines it never sent (NOT_SENT): failed, not refused, no
+            // issue, the offer's marks stay, so the same values go with the next send.
+            if (found.Found && found.Remote!.Retryable && string.Equals(found.Remote.Status, NotSentLineStatus, StringComparison.Ordinal))
+            {
+                notSent++;
+                sendLog.Settle(line, PriceStockSendResults.Failed, "PRICE_INVENTORY_NOT_SENT", "Gönderim yarıda kesildi; bu satır pazaryerine gönderilmedi, aynı değerler sonraki gönderimde yeniden gidecek.");
+                continue;
+            }
+            // A line whose price was written before its stock write was cut off: the price mark moves on (where it still
+            // names the price the line carried), the stock mark stays, so the stock goes again with the next send.
+            if (found.Found && string.Equals(found.Remote!.ErrorCode, PriceOnlyAppliedCode, StringComparison.Ordinal))
+            {
+                notSent++;
+                if (PriceCurrent(line) && !line.PriceHeld && !line.PriceOmitted)
+                {
+                    offer.LastPriceHash = line.PriceHash;
+                    PriceInventorySendPolicy.RecordSent(offer, line with { QuantityOmitted = true }, payload.SubmittedAt ?? timeProvider.GetUtcNow());
+                    offer.Version++;
+                }
+                sendLog.Settle(line, PriceStockSendResults.Failed, PriceOnlyAppliedCode, "Fiyat yazıldı, stok gönderilmedi; stok sonraki gönderimde yeniden gidecek.");
+                continue;
+            }
             // Trendyol refuses a line it took with the same values within 15 minutes; values it last confirmed are held.
             var repeatOfConfirmed = found.Found && !found.Remote!.Succeeded && isTrendyol
                 && (TrendyolStockRules.IsRepeatRequestRefusal(found.Remote.ErrorCode) || TrendyolStockRules.IsRepeatRequestRefusal(found.Remote.Status))
@@ -246,9 +268,17 @@ public sealed partial class MarketplaceJobProcessor
         // the link at once, one with it heals the link, and anything else leaves the strikes above to decide.
         await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
         if (uncertain > 0) return UncertainLinesResult(uncertain, failed, payload.ExternalOperationId);
-        if (failed == 0) return SupersededNote(superseded) ?? JobExecutionResult.Success();
+        if (failed == 0) return NotSentNote(notSent) ?? SupersededNote(superseded) ?? JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
+
+    // ADAPTOR-DIGER-1: the line answers of a send cut off part-way (ShopifyHttpClient.InterruptedPriceInventory).
+    internal const string NotSentLineStatus = "NOT_SENT";
+    internal const string PriceOnlyAppliedCode = "SHOPIFY_PRICE_ONLY_APPLIED";
+
+    // A send cut off part-way: done for what it sent, with a note naming what goes again with the next send.
+    private static JobExecutionResult? NotSentNote(int notSent) => notSent == 0 ? null
+        : JobExecutionResult.SuccessWithNote("PRICE_INVENTORY_LINES_NOT_SENT", $"Gönderim yarıda kesildi; {notSent} satırın fiyatı veya stoğu gönderilmedi ve sonraki gönderimde yeniden gidecek.");
 
     // A batch the marketplace took whole, some of whose lines changed while it was polled: done, with a note.
     private static JobExecutionResult? SupersededNote(int superseded) => superseded == 0 ? null

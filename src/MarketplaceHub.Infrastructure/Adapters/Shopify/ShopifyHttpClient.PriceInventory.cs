@@ -39,22 +39,25 @@ public sealed partial class ShopifyHttpClient
             if (!payload.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0)
                 return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok gönderimi en az bir ürün satırı içermelidir.", HttpStatusCode.BadRequest);
             var results = new List<RemoteOperationLine>();
+            var itemList = items.EnumerateArray().ToList();
             // ADAPTOR-DIGER-1: an error part-way through the list (a rate limit, network or server error, and also a lasting
             // one such as a refused token or a refused request) keeps what was already written. With at least one line
-            // applied, the answer is those lines' results: the interrupted line (its price may already be written) and the
-            // ones after it are left out, so the job records them as unconfirmed and not sent, and the same values go again
-            // with the next send (where a lasting error, with nothing applied before it, fails the send). With none
-            // applied, the whole send fails as before.
-            AdapterResult<RemoteOperationRef> Interrupted(AdapterError error, RateLimitMetadata? rateLimit)
+            // applied (a price written alone counts), the answer is those lines' results, the interrupted line and the ones
+            // after it named NOT_SENT (the job records them as failed, not sent, and the same values go with the next send),
+            // and a line whose price was written before its stock write was cut off named SHOPIFY_PRICE_ONLY_APPLIED (the job
+            // records the price as sent and sends the stock again). With nothing applied, the whole send fails as before.
+            AdapterResult<RemoteOperationRef> Interrupted(int index, AdapterError error, RateLimitMetadata? rateLimit, RemoteOperationLine? priceOnly = null)
             {
-                var answer = InterruptedPriceInventory(results, error, rateLimit, timeProvider.GetUtcNow());
+                var notSent = itemList.Skip(priceOnly is null ? index : index + 1).Select(item => TextValue(item, "barcode")?.Trim() ?? "").ToList();
+                var answer = InterruptedPriceInventory(results, notSent, priceOnly, error, rateLimit, timeProvider.GetUtcNow());
                 if (answer.IsSuccess)
-                    logger.LogWarning("Shopify fiyat-stok gönderimi {Applied} satır yazıldıktan sonra {ErrorClass} {ErrorCode} ile kesildi; kalan satırlar doğrulanmadı.",
-                        results.Count(line => line.Succeeded), error.Class, error.Code);
+                    logger.LogWarning("Shopify fiyat-stok gönderimi {Applied} satır yazıldıktan sonra {ErrorClass} {ErrorCode} ile kesildi; {NotSent} satır gönderilmedi.",
+                        results.Count(line => line.Succeeded), error.Class, error.Code, notSent.Count);
                 return answer;
             }
-            foreach (var item in items.EnumerateArray())
+            for (var index = 0; index < itemList.Count; index++)
             {
+                var item = itemList[index];
                 cancellationToken.ThrowIfCancellationRequested();
                 var barcode = TextValue(item, "barcode")?.Trim();
                 var quantity = DecimalOrNull(item, "quantity");
@@ -73,7 +76,7 @@ public sealed partial class ShopifyHttpClient
                 if (VariantGid(TextValue(item, "variantId")) is { } knownVariantId)
                 {
                     var byId = await QueryAsync(shop, "query($id:ID!){productVariant(id:$id){" + PriceInventoryVariantFields + "}}", new { id = knownVariantId }, cancellationToken);
-                    if (!byId.IsSuccess) return Interrupted(byId.Error!, byId.RateLimit);
+                    if (!byId.IsSuccess) return Interrupted(index, byId.Error!, byId.RateLimit);
                     if (!byId.Value!.RootElement.TryGetProperty("productVariant", out var found) || found.ValueKind != JsonValueKind.Object)
                     {
                         results.Add(new(barcode, false, null, "SHOPIFY_VARIANT_NOT_FOUND", false, "REJECTED"));
@@ -84,7 +87,7 @@ public sealed partial class ShopifyHttpClient
                 else
                 {
                     var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{" + PriceInventoryVariantFields + "}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
-                    if (!lookup.IsSuccess) return Interrupted(lookup.Error!, lookup.RateLimit);
+                    if (!lookup.IsSuccess) return Interrupted(index, lookup.Error!, lookup.RateLimit);
                     var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
                     if (variants.GetArrayLength() != 1)
                     {
@@ -124,7 +127,7 @@ public sealed partial class ShopifyHttpClient
                 if (priced)
                 {
                     var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice!.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice!.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
-                    if (!priceMutation.IsSuccess) return Interrupted(priceMutation.Error!, priceMutation.RateLimit);
+                    if (!priceMutation.IsSuccess) return Interrupted(index, priceMutation.Error!, priceMutation.RateLimit);
                     if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
                     {
                         results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
@@ -132,7 +135,9 @@ public sealed partial class ShopifyHttpClient
                     }
                 }
                 var stockMutation = await SetAvailableQuantityAsync(shop, context, barcode, inventoryItemId, locationId, (int)quantity.Value, compareQuantity, cancellationToken);
-                if (!stockMutation.IsSuccess) return Interrupted(stockMutation.Error!, stockMutation.RateLimit);
+                if (!stockMutation.IsSuccess)
+                    return Interrupted(index, stockMutation.Error!, stockMutation.RateLimit,
+                        priced ? new RemoteOperationLine(barcode, false, variantId, PriceOnlyAppliedCode, true, PriceOnlyAppliedStatus) : null);
                 if (HasUserErrors(stockMutation.Value!.RootElement.GetProperty("inventorySetQuantities"), out var stockError))
                 {
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_REJECTED", false, stockError));
@@ -145,13 +150,24 @@ public sealed partial class ShopifyHttpClient
         }
     }
 
+    // A line of an interrupted send that was never sent (retryable): the same values go with the next send.
+    internal const string NotSentStatus = "NOT_SENT";
+    // A line whose price was written before its stock write was cut off: the price is Shopify's, the stock goes again.
+    internal const string PriceOnlyAppliedCode = "SHOPIFY_PRICE_ONLY_APPLIED";
+    internal const string PriceOnlyAppliedStatus = "PRICE_ONLY_APPLIED";
+
     // The answer of a price-stock send cut off by an error after `results` (ADAPTOR-DIGER-1, see PushPriceAndInventoryAsync).
     // Whatever the error's class: a line Shopify applied stays applied, so a lasting error (Authentication, Validation)
-    // no longer throws away the results of the lines written before it.
-    internal static AdapterResult<RemoteOperationRef> InterruptedPriceInventory(IReadOnlyList<RemoteOperationLine> results, AdapterError error, RateLimitMetadata? rateLimit, DateTimeOffset now) =>
-        results.Any(line => line.Succeeded)
-            ? AdapterResult<RemoteOperationRef>.Success(new(EncodeCompletedOperation(results), "SHOPIFY_PRICE_INVENTORY", now), rateLimit)
-            : AdapterResult<RemoteOperationRef>.Failure(error, rateLimit);
+    // no longer throws away the results of the lines written before it. notSent: the barcodes from the interrupted line
+    // on, named NOT_SENT with the interrupting error's code; priceOnly: the interrupted line when its price was written.
+    internal static AdapterResult<RemoteOperationRef> InterruptedPriceInventory(IReadOnlyList<RemoteOperationLine> results, IReadOnlyList<string> notSent, RemoteOperationLine? priceOnly, AdapterError error, RateLimitMetadata? rateLimit, DateTimeOffset now)
+    {
+        if (!results.Any(line => line.Succeeded) && priceOnly is null) return AdapterResult<RemoteOperationRef>.Failure(error, rateLimit);
+        var lines = results.ToList();
+        if (priceOnly is not null) lines.Add(priceOnly);
+        lines.AddRange(notSent.Select(barcode => new RemoteOperationLine(barcode, false, null, error.Code, true, NotSentStatus)));
+        return AdapterResult<RemoteOperationRef>.Success(new(EncodeCompletedOperation(lines), "SHOPIFY_PRICE_INVENTORY", now), rateLimit);
+    }
 
     // The level's "available" quantity from its quantities list; null when Shopify did not return it.
     internal static int? AvailableQuantity(JsonElement level) =>
