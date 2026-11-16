@@ -1,5 +1,5 @@
 /* İşlem Takibi's filter card (filter-fields.tsx). Everything else (fields, triggers, popovers, buttons, the phone sheet)
-   comes from the shared rr- card of returns-sade.css; this file only lays the fields out. */
+   comes from the shared rr- card of styles/components/rr-components.css; this file only lays the fields out. */
 
 /* One row when the card is wide enough: the search, the four (is-wide: five) fields, Temizle and Filtrele. */
 main .rr.rr.ops-filters .rr-filters.ops-filter-grid { grid-template-columns: minmax(200px, 1.2fr) repeat(4, minmax(172px, 1fr)) auto; }

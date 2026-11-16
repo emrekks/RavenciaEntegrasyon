@@ -1,5 +1,5 @@
 /* The order summary row has six cards in a grid of three by two (761 px and wider); two per row, three rows, on a phone
-   (≤760 px). Builds on the shared .rr-metrics rules in returns-sade.css. */
+   (≤760 px). Builds on the shared .rr-metrics rules in styles/components/rr-components.css. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 760px) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-6 { grid-template-columns: 1fr 1fr; }
