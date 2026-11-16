@@ -52,7 +52,8 @@ public sealed partial class MarketplaceJobProcessor
             if (send.Outcome == ExternalEffectSendOutcome.Uncertain) throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Paket aksiyonunun uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.", send.Error.RemoteRequestId));
             await effectGuard.ReleaseAsync(effect, cancellationToken); throw JobProcessingException.FromAdapter(send.Error);
         }
-        await db.SaveChangesAsync(cancellationToken);
+        // KUYRUK-2 step 4: a record an effect check removed meanwhile is put back as applied instead of failing the save.
+        await effectGuard.SaveAcceptedAsync([effect], cancellationToken);
         if (string.Equals(payload.Action, "UNPACK", StringComparison.OrdinalIgnoreCase))
             await MarkHepsiburadaPackageUnpackedAsync(tenantId, connectionId, package.Id, effect.CompletedAt!.Value, cancellationToken);
         await RecordN11ShipmentWriteEvidenceAsync(tenantId, connectionId, payload.Action, cancellationToken);
