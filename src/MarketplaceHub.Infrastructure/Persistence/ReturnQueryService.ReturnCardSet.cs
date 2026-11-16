@@ -4,6 +4,7 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -14,7 +15,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // (ReturnInvoiceLabelAsync); the search is decided by the database for a whole card on its columns
 // (ReturnSearchInDatabase) and from the view for the rest. Only the claims that split, and the claims the search leaves to
 // their view, are read row by row.
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     // Claims: every claim the filters keep (the tab's database filter included). FirstCard: the claims whose first card is
     // listed. SplitCards: the cards of every claim of Claims that splits. Extras: their accepted cards that are listed.

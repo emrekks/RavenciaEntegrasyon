@@ -5,13 +5,14 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // The Returns page's list, tab counts and filter choices (audit 2026-10-19 W4). The page used to load
 // every return and split, filter, count and page them in the browser; the server now does the same
 // work with the same rules and sends one page of cards plus a summary.
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     internal const int WholeCard = 0;
     internal const int WaitingCard = 1;

@@ -3,10 +3,11 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {

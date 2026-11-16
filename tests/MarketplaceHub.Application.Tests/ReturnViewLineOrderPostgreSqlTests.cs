@@ -47,7 +47,7 @@ public sealed class ReturnViewLineOrderPostgreSqlTests(PostgreSqlTenantIsolation
                 var service = new MarketplaceSalesService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
                 for (var attempt = 0; attempt < 3; attempt++)
                 {
-                    var view = (await service.ReturnViewsByIdAsync(tenant.Id, [claim.Id], CancellationToken.None))[claim.Id];
+                    var view = (await service.ReturnQueries.ReturnViewsByIdAsync(tenant.Id, [claim.Id], CancellationToken.None))[claim.Id];
                     Assert.Equal(orderLines.Select(x => x.Id), view.Lines!.Select(x => x.Id));
                     Assert.Equal("BC-0", view.PrimaryBarcode);
                 }

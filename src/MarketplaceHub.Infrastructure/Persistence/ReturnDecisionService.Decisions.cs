@@ -384,7 +384,10 @@ internal sealed partial class ReturnDecisionService
     // is not settled. A sent decision on line-level marketplaces is closed once the marketplace accepted it (the
     // decided lines are no longer actionable); Hepsiburada decides the whole claim and its sent decision holds the
     // claim until the claim read confirms it, as before.
-    internal IQueryable<ReturnDecision> OpenReturnDecisions(Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => db.ReturnDecisions.AsNoTracking()
+    internal IQueryable<ReturnDecision> OpenReturnDecisions(Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => OpenReturnDecisions(db, tenantId, claimId, sentDecisionHoldsClaim);
+
+    // Also read by the return detail (ReturnQueryService).
+    internal static IQueryable<ReturnDecision> OpenReturnDecisions(AppDbContext db, Guid tenantId, Guid claimId, bool sentDecisionHoldsClaim) => db.ReturnDecisions.AsNoTracking()
         .Where(x => x.TenantId == tenantId && x.ClaimId == claimId
             && (x.Status == "PENDING" || x.Status == "RETRY_SCHEDULED" || x.Status == "MANUAL_REVIEW"
                 || x.Status == "SUBMITTED" && db.ExternalEffectRecords.Any(effect => effect.TenantId == x.TenantId && effect.IdempotencyKey == x.IdempotencyKey && (sentDecisionHoldsClaim || effect.CompletedAt == null))));

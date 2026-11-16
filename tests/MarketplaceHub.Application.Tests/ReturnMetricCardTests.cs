@@ -75,9 +75,9 @@ public sealed class ReturnMetricCardTests
     [Fact]
     public void TodayStartsAtMidnightIstanbul()
     {
-        Assert.Equal(DateTimeOffset.Parse("2026-11-01T21:00:00Z"), MarketplaceSalesService.IstanbulDayStart(DateTimeOffset.Parse("2026-11-02T08:00:00Z")));
+        Assert.Equal(DateTimeOffset.Parse("2026-11-01T21:00:00Z"), ReturnQueryService.IstanbulDayStart(DateTimeOffset.Parse("2026-11-02T08:00:00Z")));
         // 22:30 UTC is already the next day in Istanbul.
-        Assert.Equal(DateTimeOffset.Parse("2026-11-02T21:00:00Z"), MarketplaceSalesService.IstanbulDayStart(DateTimeOffset.Parse("2026-11-02T22:30:00Z")));
+        Assert.Equal(DateTimeOffset.Parse("2026-11-02T21:00:00Z"), ReturnQueryService.IstanbulDayStart(DateTimeOffset.Parse("2026-11-02T22:30:00Z")));
     }
 
     [Theory]
@@ -87,5 +87,5 @@ public sealed class ReturnMetricCardTests
     [InlineData(ReturnClaimStatus.Rejected, null, false, true)]
     [InlineData(ReturnClaimStatus.Cancelled, null, false, false)]
     public void OnlyARejectedReturnWhosePackageHasNotLeftWaitsForCargo(ReturnClaimStatus status, string? packageState, bool awaiting, bool unknown) =>
-        Assert.Equal((awaiting, unknown), MarketplaceSalesService.RejectedCargoState(status, packageState));
+        Assert.Equal((awaiting, unknown), ReturnQueryService.RejectedCargoState(status, packageState));
 }

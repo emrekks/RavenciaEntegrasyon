@@ -69,7 +69,7 @@ public sealed class OrderPackageDeepAuditPostgreSqlTests(PostgreSqlTenantIsolati
             Assert.Null(result.Error);
             await using var verify = fixture.CreateContext();
             var settled = await verify.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == reservationId);
-            Assert.Equal(MarketplaceSalesService.HepsiburadaPackageReservationSettledKey(prefix, reservationId), settled.IdempotencyKey);
+            Assert.Equal(ShipmentService.HepsiburadaPackageReservationSettledKey(prefix, reservationId), settled.IdempotencyKey);
             Assert.True(await verify.ExternalEffectRecords.AnyAsync(x => x.TenantId == seed.TenantId && x.EffectType == $"{prefix}:PKG-NEW" && x.CompletedAt != null));
         }
         finally

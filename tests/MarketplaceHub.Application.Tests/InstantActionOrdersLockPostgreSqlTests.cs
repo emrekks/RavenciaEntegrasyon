@@ -78,7 +78,7 @@ public sealed class InstantActionOrdersLockPostgreSqlTests(PostgreSqlTenantIsola
             stopwatch.Stop();
 
             Assert.Null(result.Error);
-            Assert.True(stopwatch.Elapsed >= MarketplaceSalesService.InstantProjectionLockWait - TimeSpan.FromMilliseconds(300), stopwatch.Elapsed.ToString());
+            Assert.True(stopwatch.Elapsed >= ShipmentService.InstantProjectionLockWait - TimeSpan.FromMilliseconds(300), stopwatch.Elapsed.ToString());
             await using var verify = fixture.CreateContext();
             Assert.Equal(ShipmentPackageStatus.Processing, (await verify.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == seed.PackageId)).Status);
             Assert.True(await verify.ExternalEffectRecords.AnyAsync(x => x.TenantId == seed.TenantId && x.CompletedAt != null));

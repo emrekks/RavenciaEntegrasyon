@@ -13,13 +13,13 @@ internal static class LegacyReturnListQueries
 {
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
 
-    internal static async Task<MarketplaceSalesService.ReturnCardScan> ScanReturnCardsAsync(MarketplaceSalesService service, AppDbContext db, Guid tenantId, ReturnListQuery options, bool applyTab, bool applyRefinements, CancellationToken cancellationToken)
+    internal static async Task<ReturnQueryService.ReturnCardScan> ScanReturnCardsAsync(MarketplaceSalesService service, AppDbContext db, Guid tenantId, ReturnListQuery options, bool applyTab, bool applyRefinements, CancellationToken cancellationToken)
     {
-        var query = service.ReturnBaseQuery(tenantId);
-        service.ApplyReturnFilters(ref query, applyTab ? options : options with { Status = null });
-        if (applyRefinements) service.ApplyReturnRefinements(ref query, tenantId, options);
+        var query = service.ReturnQueries.ReturnBaseQuery(tenantId);
+        service.ReturnQueries.ApplyReturnFilters(ref query, applyTab ? options : options with { Status = null });
+        if (applyRefinements) service.ReturnQueries.ApplyReturnRefinements(ref query, tenantId, options);
         var rows = await query.OrderBy(x => x.Id)
-            .Select(x => new MarketplaceSalesService.ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt))
+            .Select(x => new ReturnQueryService.ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt))
             .ToListAsync(cancellationToken);
         var claims = rows.ToDictionary(x => x.Id);
         if (rows.Count == 0) return new([], claims, null);
@@ -36,29 +36,29 @@ internal static class LegacyReturnListQueries
             .Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
         var linesByClaim = lines.Select(x => new { x.ClaimId, x.OrderLineId, x.RawStatus, HasOrderLine = existingLineIds.Contains(x.OrderLineId) }).ToLookup(x => x.ClaimId);
 
-        var cards = new List<MarketplaceSalesService.ReturnCard>();
+        var cards = new List<ReturnQueryService.ReturnCard>();
         foreach (var row in rows)
         {
             var connection = connections.GetValueOrDefault(row.ConnectionId);
             var platformCode = connection?.PlatformCode ?? "TRENDYOL";
-            if (applyRefinements && !MarketplaceSalesService.MatchesReturnRefinements(platformCode, row.CargoProviderName, row.ReasonCode, row.ReasonText, options)) continue;
+            if (applyRefinements && !ReturnQueryService.MatchesReturnRefinements(platformCode, row.CargoProviderName, row.ReasonCode, row.ReasonText, options)) continue;
             var claimLines = linesByClaim[row.Id].ToList();
             var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
                 .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
-            var status = MarketplaceSalesService.ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
-            foreach (var (kind, cardLines) in MarketplaceSalesService.SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
-                cards.Add(new(row.Id, kind, kind == MarketplaceSalesService.ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
+            var status = ReturnQueryService.ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
+            foreach (var (kind, cardLines) in ReturnQueryService.SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
+                cards.Add(new(row.Id, kind, kind == ReturnQueryService.ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }
 
         var tab = applyTab ? options.Status?.Trim().ToUpperInvariant() : null;
         if (!string.IsNullOrEmpty(tab) && tab != "ALL")
-            cards = cards.Where(card => MarketplaceSalesService.ReturnTabGroup(card.Status) == tab).ToList();
+            cards = cards.Where(card => ReturnQueryService.ReturnTabGroup(card.Status) == tab).ToList();
 
         IReadOnlyDictionary<Guid, ReturnListView>? views = null;
         if (!string.IsNullOrWhiteSpace(options.Search) && cards.Count > 0)
         {
-            views = await service.ReturnViewsByIdAsync(tenantId, cards.Select(card => card.ClaimId).Distinct().ToArray(), cancellationToken);
-            cards = cards.Where(card => views.TryGetValue(card.ClaimId, out var view) && MarketplaceSalesService.MatchesReturnSearch(view, card.LineIds, options.Search!)).ToList();
+            views = await service.ReturnQueries.ReturnViewsByIdAsync(tenantId, cards.Select(card => card.ClaimId).Distinct().ToArray(), cancellationToken);
+            cards = cards.Where(card => views.TryGetValue(card.ClaimId, out var view) && ReturnQueryService.MatchesReturnSearch(view, card.LineIds, options.Search!)).ToList();
         }
 
         var invoice = applyRefinements ? options.InvoiceStatus?.Trim().ToUpperInvariant() : null;
@@ -70,11 +70,11 @@ internal static class LegacyReturnListQueries
         return new(cards, claims, views);
     }
 
-    // MarketplaceSalesService.ReturnInvoiceLabelsAsync before 16 Nov 2026 (SIPARIS-STOK-9): the order's latest package and
+    // ReturnQueryService.ReturnInvoiceLabelsAsync before 16 Nov 2026 (SIPARIS-STOK-9): the order's latest package and
     // invoice read and the label computed in memory, the customer snapshot only when the label falls back on it. Ties of
     // date had no order of their own (the rows came back unordered); this copy reads them by id, newest first, as the
     // database label and the views do now.
-    internal static async Task<Dictionary<Guid, string>> ReturnInvoiceLabelsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<MarketplaceSalesService.ReturnClaimRow> claims, CancellationToken cancellationToken)
+    internal static async Task<Dictionary<Guid, string>> ReturnInvoiceLabelsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<ReturnQueryService.ReturnClaimRow> claims, CancellationToken cancellationToken)
     {
         var orderIds = claims.Select(x => x.OrderId).Distinct().ToArray();
         var existingOrders = (await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.Id)).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet();
@@ -87,7 +87,7 @@ internal static class LegacyReturnListQueries
                 .Select(x => new { x.OrderId, x.CreatedAt, x.Status, x.InvoiceNumber }).ToListAsync(cancellationToken))
             .GroupBy(x => x.OrderId).ToDictionary(group => group.Key, group => group.OrderByDescending(x => x.CreatedAt).First());
         var snapshotOrderIds = orderIds.Where(id => existingOrders.Contains(id) && !invoices.ContainsKey(id)
-            && MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(null, packages.GetValueOrDefault(id)?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, packages.GetValueOrDefault(id)?.RawStatus)).ToArray();
+            && ReturnQueryService.ReturnInvoiceLabelReadsSnapshot(null, packages.GetValueOrDefault(id)?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, packages.GetValueOrDefault(id)?.RawStatus)).ToArray();
         var snapshots = snapshotOrderIds.Length == 0
             ? new Dictionary<Guid, string>()
             : await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && snapshotOrderIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.CustomerSnapshotJson, cancellationToken);
@@ -105,25 +105,25 @@ internal static class LegacyReturnListQueries
 
     internal static async Task<PageResult<ReturnListView>> ReturnCardPageAsync(MarketplaceSalesService service, AppDbContext db, CursorCodec cursors, Guid tenantId, int limit, int page, string? after, ReturnListQuery options, CancellationToken cancellationToken)
     {
-        var sort = MarketplaceSalesService.NormalizeReturnSort(options.Sort);
+        var sort = ReturnQueryService.NormalizeReturnSort(options.Sort);
         var scan = await ScanReturnCardsAsync(service, db, tenantId, options, applyTab: true, applyRefinements: true, cancellationToken);
-        var dates = sort == "ID" ? null : await service.ReturnSortDatesAsync(tenantId, scan.Cards.Select(card => scan.Claims[card.ClaimId]).Distinct().ToList(), sort, cancellationToken);
+        var dates = sort == "ID" ? null : await service.ReturnQueries.ReturnSortDatesAsync(tenantId, scan.Cards.Select(card => scan.Claims[card.ClaimId]).Distinct().ToList(), sort, cancellationToken);
         var ordered = scan.Cards.Select(card => (Card: card, Key: (Date: dates?.GetValueOrDefault(card.ClaimId), card.ClaimId, card.Kind))).ToList();
-        ordered.Sort((left, right) => MarketplaceSalesService.CompareReturnCards(left.Key, right.Key, sort));
+        ordered.Sort((left, right) => ReturnQueryService.CompareReturnCards(left.Key, right.Key, sort));
 
         int start;
         if (!string.IsNullOrWhiteSpace(after))
         {
             if (!cursors.TryDecodeReturn(after, out var cursorSort, out var cursorDate, out var cursorClaimId, out var cursorKind) || cursorSort != sort)
                 throw new ArgumentException("Cursor geçersiz veya seçili sıralamayla uyuşmuyor.", nameof(after));
-            start = ordered.FindIndex(item => MarketplaceSalesService.CompareReturnCards(item.Key, (cursorDate, cursorClaimId, cursorKind), sort) > 0);
+            start = ordered.FindIndex(item => ReturnQueryService.CompareReturnCards(item.Key, (cursorDate, cursorClaimId, cursorKind), sort) > 0);
             if (start < 0) start = ordered.Count;
         }
         else start = page > 1 ? (int)Math.Min(ordered.Count, (long)(page - 1) * limit) : 0;
 
         var pageCards = ordered.Skip(start).Take(limit).ToList();
-        var views = scan.Views ?? await service.ReturnViewsByIdAsync(tenantId, pageCards.Select(item => item.Card.ClaimId).Distinct().ToArray(), cancellationToken);
-        var items = pageCards.Where(item => views.ContainsKey(item.Card.ClaimId)).Select(item => MarketplaceSalesService.ReturnCardView(views[item.Card.ClaimId], item.Card)).ToList();
+        var views = scan.Views ?? await service.ReturnQueries.ReturnViewsByIdAsync(tenantId, pageCards.Select(item => item.Card.ClaimId).Distinct().ToArray(), cancellationToken);
+        var items = pageCards.Where(item => views.ContainsKey(item.Card.ClaimId)).Select(item => ReturnQueryService.ReturnCardView(views[item.Card.ClaimId], item.Card)).ToList();
         var hasMore = start + pageCards.Count < ordered.Count;
         var last = pageCards.LastOrDefault();
         var next = hasMore && pageCards.Count > 0 ? cursors.EncodeReturn(sort, last.Key.Date, last.Key.ClaimId, last.Key.Kind) : null;
@@ -132,12 +132,12 @@ internal static class LegacyReturnListQueries
 
     internal static async Task<ReturnSummaryView> BuildReturnSummaryAsync(MarketplaceSalesService service, AppDbContext db, Guid tenantId, ReturnListQuery options, CancellationToken cancellationToken)
     {
-        var counts = MarketplaceSalesService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
+        var counts = ReturnQueryService.ReturnTabs.ToDictionary(tab => tab, _ => 0, StringComparer.Ordinal);
         var counted = await ScanReturnCardsAsync(service, db, tenantId, options, applyTab: false, applyRefinements: true, cancellationToken);
         foreach (var card in counted.Cards)
         {
             counts["ALL"]++;
-            counts[MarketplaceSalesService.ReturnTabGroup(card.Status)]++;
+            counts[ReturnQueryService.ReturnTabGroup(card.Status)]++;
         }
 
         var tab = options.Status?.Trim().ToUpperInvariant();
@@ -157,7 +157,7 @@ internal static class LegacyReturnListQueries
             if (!platformNames.ContainsKey(card.PlatformCode)) platforms.Add(card.PlatformCode);
             platformNames[card.PlatformCode] = card.PlatformName;
             if (card.CargoProviderName?.Trim() is { Length: > 0 } provider && !cargo.Contains(provider, StringComparer.Ordinal)) cargo.Add(provider);
-            var reason = MarketplaceSalesService.ReturnReasonKey(card.ReasonCode, card.ReasonText);
+            var reason = ReturnQueryService.ReturnReasonKey(card.ReasonCode, card.ReasonText);
             if (reason.Length == 0) continue;
             if (!reasonSources.ContainsKey(reason)) reasons.Add(reason);
             reasonSources[reason] = new(reason, card.ReasonCode, card.ReasonText);
@@ -167,16 +167,16 @@ internal static class LegacyReturnListQueries
             : await ReturnInvoiceLabelsAsync(db, tenantId, listed.Cards.Select(card => listed.Claims[card.ClaimId]).Distinct().ToList(), cancellationToken);
         var invoiceStatuses = listed.Cards.Select(card => labels.GetValueOrDefault(card.ClaimId)).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
         var invoice = options.InvoiceStatus?.Trim().ToUpperInvariant();
-        bool InvoiceMatches(MarketplaceSalesService.ReturnCard card) => string.IsNullOrEmpty(invoice) || invoice == "ALL" || labels.GetValueOrDefault(card.ClaimId) == invoice;
-        bool Matches(MarketplaceSalesService.ReturnCard card, ReturnListQuery refinements) => MarketplaceSalesService.MatchesReturnRefinements(card.PlatformCode, card.CargoProviderName, card.ReasonCode, card.ReasonText, refinements);
-        Dictionary<string, int> CountBy(Func<MarketplaceSalesService.ReturnCard, bool> keep, Func<MarketplaceSalesService.ReturnCard, string?> key) => listed.Cards.Where(keep)
+        bool InvoiceMatches(ReturnQueryService.ReturnCard card) => string.IsNullOrEmpty(invoice) || invoice == "ALL" || labels.GetValueOrDefault(card.ClaimId) == invoice;
+        bool Matches(ReturnQueryService.ReturnCard card, ReturnListQuery refinements) => ReturnQueryService.MatchesReturnRefinements(card.PlatformCode, card.CargoProviderName, card.ReasonCode, card.ReasonText, refinements);
+        Dictionary<string, int> CountBy(Func<ReturnQueryService.ReturnCard, bool> keep, Func<ReturnQueryService.ReturnCard, string?> key) => listed.Cards.Where(keep)
             .Select(key).Where(value => !string.IsNullOrEmpty(value)).GroupBy(value => value!, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
         var platformCounts = CountBy(card => Matches(card, options with { Platforms = null }) && InvoiceMatches(card), card => card.PlatformCode);
         var cargoCounts = CountBy(card => Matches(card, options with { Cargo = null }) && InvoiceMatches(card), card => card.CargoProviderName?.Trim());
-        var reasonCounts = CountBy(card => Matches(card, options with { ReasonKey = null }) && InvoiceMatches(card), card => MarketplaceSalesService.ReturnReasonKey(card.ReasonCode, card.ReasonText));
+        var reasonCounts = CountBy(card => Matches(card, options with { ReasonKey = null }) && InvoiceMatches(card), card => ReturnQueryService.ReturnReasonKey(card.ReasonCode, card.ReasonText));
         var invoiceCounts = CountBy(card => Matches(card, options), card => labels.GetValueOrDefault(card.ClaimId));
-        var metrics = await service.ReturnMetricsAsync(tenantId, counted, cancellationToken);
+        var metrics = await service.ReturnQueries.ReturnMetricsAsync(tenantId, counted, cancellationToken);
         return new(counts, platforms.Select(code => new ReturnPlatformOption(code, platformNames[code])).ToList(), cargo,
             reasons.Select(reason => reasonSources[reason]).ToList(), invoiceStatuses, listed.Cards.Count, platformCounts, cargoCounts, reasonCounts, invoiceCounts, metrics);
     }

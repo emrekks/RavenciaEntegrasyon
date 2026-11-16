@@ -46,5 +46,5 @@ public sealed class ReturnClaimDecisionPolicyTests
     [InlineData("HEPSIBURADA", true)]
     [InlineData("SHOPIFY", true)]
     public void ReturnReceipt_OnlyForWholeClaimMarketplaces(string platformCode, bool allowed) =>
-        Assert.Equal(allowed, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.ReturnReceiptAllowed(platformCode));
+        Assert.Equal(allowed, MarketplaceHub.Infrastructure.Persistence.ReturnQueryService.ReturnReceiptAllowed(platformCode));
 }

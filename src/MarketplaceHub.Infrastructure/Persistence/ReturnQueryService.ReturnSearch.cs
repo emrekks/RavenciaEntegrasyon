@@ -4,6 +4,7 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -14,7 +15,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // Customer) and a barcode the catalog lends a line without one are worked out only when the view is built: a claim the
 // database's columns do not match is decided from its view, as before. The page's database pre-filter
 // (ApplyReturnFilters) still applies in front of both, as it always did.
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     // The term the page searches for, ready for the database: the pattern (null when the term cannot be sent: a lone
     // surrogate or a NUL) and whether the "—" an order-less claim shows matches it.

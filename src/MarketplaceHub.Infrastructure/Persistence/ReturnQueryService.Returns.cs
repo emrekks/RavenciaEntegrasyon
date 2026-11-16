@@ -3,11 +3,13 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
+using static MarketplaceHub.Infrastructure.Persistence.OrderQueryService;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal sealed partial class ReturnQueryService
 {
     // The Returns page reads cards (a claim with accepted and waiting lines is two cards), filtered,
     // counted and paged by the server (MarketplaceSalesService.ReturnList.cs). "latest" keeps the

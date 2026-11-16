@@ -10,7 +10,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // SIPARIS-STOK-9: the Returns page's card columns of a return claim (ReturnClaim.TabGroup, CardSplit, ApprovedAt), so the
 // database can count, filter and page the page's cards instead of the server reading every claim and line of the tenant.
-// The rules stay the page's own C# rules (MarketplaceSalesService.ReturnTabGroup, ReturnStatusWire, MaySplitReturnClaim and
+// The rules stay the page's own C# rules (ReturnQueryService.ReturnTabGroup, ReturnStatusWire, MaySplitReturnClaim and
 // the approval date ReturnSortDatesAsync reads); this class is the one place that writes the columns:
 //   - every save (AppDbContext.SaveChanges) of a claim, of its lines or of its decisions: a claim the save itself adds or
 //     changes takes them in the same save (BeforeSaveAsync); any other claim whose lines or decisions it saves is written
@@ -27,9 +27,9 @@ public static class ReturnCardColumns
     private const string Succeeded = "SUCCEEDED";
 
     public static string TabGroup(ReturnClaimStatus status, IReadOnlyCollection<string?> lineRawStatuses) =>
-        MarketplaceSalesService.ReturnTabGroup(MarketplaceSalesService.ReturnStatusWire(status, lineRawStatuses));
+        ReturnQueryService.ReturnTabGroup(ReturnQueryService.ReturnStatusWire(status, lineRawStatuses));
 
-    public static bool CardSplit(IEnumerable<string?> lineRawStatuses) => MarketplaceSalesService.MaySplitReturnClaim(lineRawStatuses);
+    public static bool CardSplit(IEnumerable<string?> lineRawStatuses) => ReturnQueryService.MaySplitReturnClaim(lineRawStatuses);
 
     // As the page sorts by approval: an approved or completed claim's last successful approval, else its last change.
     public static DateTimeOffset? ApprovedAt(ReturnClaimStatus status, DateTimeOffset? lastApproval, DateTimeOffset? lastRemoteModifiedAt) =>
@@ -189,8 +189,8 @@ public static class ReturnCardColumns
         foreach (var tenantId in await db.ReturnClaims.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken))
         {
             var rawStatuses = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync(cancellationToken);
-            var accepted = rawStatuses.Where(MarketplaceSalesService.IsAcceptedSplitLineStatus).ToArray();
-            var waiting = rawStatuses.Where(raw => raw is not null && MarketplaceSalesService.IsWaitingSplitLineStatus(raw)).ToArray();
+            var accepted = rawStatuses.Where(ReturnQueryService.IsAcceptedSplitLineStatus).ToArray();
+            var waiting = rawStatuses.Where(raw => raw is not null && ReturnQueryService.IsWaitingSplitLineStatus(raw)).ToArray();
             if (await Stale(db, tenantId, accepted, waiting).AnyAsync(cancellationToken)) stale.Add(tenantId);
         }
         return stale;

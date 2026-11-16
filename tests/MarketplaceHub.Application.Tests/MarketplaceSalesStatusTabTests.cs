@@ -65,8 +65,8 @@ public sealed class MarketplaceSalesStatusTabTests
             ModelCode = "MODEL-1"
         };
 
-        Assert.Equal("MODEL-1", MarketplaceSalesService.ReturnLineModelCode(variant, "OLD-MODEL"));
-        Assert.Equal("OLD-MODEL", MarketplaceSalesService.ReturnLineModelCode(null, "OLD-MODEL"));
+        Assert.Equal("MODEL-1", ReturnQueryService.ReturnLineModelCode(variant, "OLD-MODEL"));
+        Assert.Equal("OLD-MODEL", ReturnQueryService.ReturnLineModelCode(null, "OLD-MODEL"));
     }
 
     [Fact]
@@ -74,9 +74,9 @@ public sealed class MarketplaceSalesStatusTabTests
     {
         var lastModifiedAt = new DateTimeOffset(2026, 10, 3, 9, 30, 0, TimeSpan.Zero);
 
-        Assert.Equal(lastModifiedAt.AddHours(48), MarketplaceSalesService.ReturnActionDueAt(
+        Assert.Equal(lastModifiedAt.AddHours(48), ReturnQueryService.ReturnActionDueAt(
             "TRENDYOL", "WaitingInAction", null, lastModifiedAt));
-        Assert.Equal(lastModifiedAt.AddHours(48), MarketplaceSalesService.ReturnActionDueAt(
+        Assert.Equal(lastModifiedAt.AddHours(48), ReturnQueryService.ReturnActionDueAt(
             "TRENDYOL", "WAITING_IN_ACTION", null, lastModifiedAt));
     }
 
@@ -86,11 +86,11 @@ public sealed class MarketplaceSalesStatusTabTests
         var lastModifiedAt = new DateTimeOffset(2026, 10, 3, 9, 30, 0, TimeSpan.Zero);
         var explicitDueAt = lastModifiedAt.AddHours(24);
 
-        Assert.Equal(explicitDueAt, MarketplaceSalesService.ReturnActionDueAt(
+        Assert.Equal(explicitDueAt, ReturnQueryService.ReturnActionDueAt(
             "TRENDYOL", "WaitingInAction", explicitDueAt, lastModifiedAt));
-        Assert.Null(MarketplaceSalesService.ReturnActionDueAt(
+        Assert.Null(ReturnQueryService.ReturnActionDueAt(
             "HEPSIBURADA", "WaitingInAction", null, lastModifiedAt));
-        Assert.Null(MarketplaceSalesService.ReturnActionDueAt(
+        Assert.Null(ReturnQueryService.ReturnActionDueAt(
             "TRENDYOL", "Accepted", null, lastModifiedAt));
     }
 
@@ -99,7 +99,7 @@ public sealed class MarketplaceSalesStatusTabTests
     {
         var lastModifiedAt = new DateTimeOffset(2026, 10, 2, 10, 8, 0, TimeSpan.Zero);
 
-        Assert.Equal(lastModifiedAt.AddDays(7), MarketplaceSalesService.ReturnActionDueAt(
+        Assert.Equal(lastModifiedAt.AddDays(7), ReturnQueryService.ReturnActionDueAt(
             "TRENDYOL", "Rejected", null, lastModifiedAt));
     }
 
