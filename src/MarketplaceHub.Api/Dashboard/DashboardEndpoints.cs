@@ -14,10 +14,10 @@ public static class DashboardEndpoints
             Tenant(http) is { } tenant ? Results.Ok(await service.BootstrapAsync(tenant.TenantId, http.RequestAborted)) : MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http)).Produces<DashboardBootstrapView>();
         // The performance panel in one request: the chosen calendar days (tenant time zone, yyyy-MM-dd) and the
         // previous period of equal elapsed time, per day × store × currency.
-        api.MapGet("/dashboard/performance", async (HttpContext http, IDashboardReadService service, string? from, string? to) =>
+        api.MapGet("/dashboard/performance", async (HttpContext http, IDashboardReadService service, string? from, string? to, string? dateFrom, string? dateTo) =>
         {
             if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
-            if (!TryDay(from, out var start) || !TryDay(to, out var end))
+            if (!TryDay(EndpointHelpers.Unified(dateFrom, from), out var start) || !TryDay(EndpointHelpers.Unified(dateTo, to), out var end))
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REVENUE_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
             var result = await service.PerformanceAsync(tenant.TenantId, start, end, http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);

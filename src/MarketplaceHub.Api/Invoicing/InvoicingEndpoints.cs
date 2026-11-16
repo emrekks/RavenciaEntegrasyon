@@ -49,7 +49,7 @@ public static partial class InvoicingEndpoints
         api.MapGet("/invoice-workspace/summary", async (HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Results.Ok(await service.WorkspaceSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<InvoiceWorkspaceSummaryView>();
         // Unified paging (PagingContract): limit wins over pageSize (read the same way: 20, 50, 100 or 200) and after, the
         // nextCursor of the previous page, over pageNumber. Every sort ends on the package id, so the order is total.
-        api.MapGet("/invoice-workspace/page", async (HttpContext http, IInvoicingBillingService service, int? pageNumber, int? pageSize, string? tab, string? search, string? platformCodes, string? shipmentStatus, string? cargoProviderName, string? invoiceStatus, string? invoiceAction, DateTimeOffset? from, DateTimeOffset? to, bool? providerHasCredential, string? sort, int? limit, string? after) =>
+        api.MapGet("/invoice-workspace/page", async (HttpContext http, IInvoicingBillingService service, int? pageNumber, int? pageSize, string? tab, string? search, string? platformCodes, string? shipmentStatus, string? cargoProviderName, string? invoiceStatus, string? invoiceAction, DateTimeOffset? from, DateTimeOffset? to, bool? providerHasCredential, string? sort, int? limit, string? after, string? platforms, DateTimeOffset? dateFrom, DateTimeOffset? dateTo) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var size = limit ?? pageSize ?? 20;
@@ -59,13 +59,13 @@ public static partial class InvoicingEndpoints
                 size,
                 tab ?? "UNINVOICED",
                 search,
-                platformCodes?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                Unified(platforms, platformCodes)?.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
                 shipmentStatus,
                 cargoProviderName,
                 invoiceStatus,
                 invoiceAction,
-                from,
-                to,
+                Unified(dateFrom, from),
+                Unified(dateTo, to),
                 providerHasCredential ?? false,
                 sort);
             var page = MarketplaceHub.Api.Security.InvoiceLinkVisibility.ForRole(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted), tenant.Role);

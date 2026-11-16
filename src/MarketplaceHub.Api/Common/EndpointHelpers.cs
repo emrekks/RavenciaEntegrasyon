@@ -24,6 +24,15 @@ public static class EndpointHelpers
     /// <summary>The cursor lists' limit: 50 when omitted, else 1-200 (an ArgumentException answered 400 INVALID_REQUEST).</summary>
     public static int PageSize(int? limit) => limit is null ? DefaultPageSize : limit is >= 1 and <= MaximumPageSize ? limit.Value : throw new ArgumentException("limit 1-200 arasında olmalıdır.");
 
+    /// <summary>
+    /// A filter sent under its unified name (platforms, dateFrom, dateTo) or its old one (FilterContract): the unified
+    /// name wins when both come; the old one keeps working for browser tabs on an older bundle.
+    /// </summary>
+    public static string? Unified(string? unified, string? deprecated) => string.IsNullOrEmpty(unified) ? deprecated : unified;
+
+    /// <inheritdoc cref="Unified(string?, string?)"/>
+    public static DateTimeOffset? Unified(DateTimeOffset? unified, DateTimeOffset? deprecated) => unified ?? deprecated;
+
     /// <summary>A 1-based page number: 1 when omitted, else 1-100000.</summary>
     public static int PageNumber(int? page) => page is null ? 1 : page is >= 1 and <= MaximumPageNumber ? page.Value : throw new ArgumentException("page 1-100000 arasında olmalıdır.");
 

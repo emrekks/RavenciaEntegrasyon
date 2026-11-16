@@ -1041,6 +1041,9 @@ public sealed record MarketplaceQuestionListPage(IReadOnlyList<MarketplaceQuesti
 
     /// <summary>Unified paging: whether a page follows this one.</summary>
     public bool HasMore { get; init; }
+
+    /// <summary>NumberedPage: the page size (the same as <see cref="Limit"/>, its older name).</summary>
+    public int PageSize { get; init; }
 }
 
 public interface IMarketplaceQuestionService
