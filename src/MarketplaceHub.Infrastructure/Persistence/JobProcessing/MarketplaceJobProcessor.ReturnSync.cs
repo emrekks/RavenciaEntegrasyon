@@ -235,7 +235,9 @@ public sealed partial class MarketplaceJobProcessor
             await db.SaveChangesAsync(cancellationToken);
             return true;
         }
-        return false;
+        // KUYRUK-9 (16 Nov 2026): a run stopped between pages names its stop instead of the generic F3_JOB_REJECTED; it ends
+        // as it did (blocked), the page saved before stays and the watermark does not move.
+        throw new JobProcessingException(JobExecutionResult.Blocked("SHOPIFY_RETURN_READ_CANCELLED", "Shopify iade okuması tamamlanmadan durduruldu; okunmayan sayfalar okunmuş sayılmadı ve sonraki okuma kaldığı sayfadan devam edecek."));
     }
 
     // n11 lists claims by request date only, so a 45-day request window is re-read (every 30 minutes, see ReturnRereadPolicy) to
