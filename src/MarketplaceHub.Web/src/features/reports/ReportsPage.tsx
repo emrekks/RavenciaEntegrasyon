@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
@@ -11,7 +12,7 @@ import { PlatformFilter } from '../../shared/PlatformFilter'
 import '../../shared/PanelSelect' // keeps its stylesheet's place in this page's CSS order
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import { TabSlidePanel } from '../../shared/tab-slide'
-import { bySalesChannel, isSalesChannel, formatPercent, platformName, reportQuery, periodPresets, type ReportSales } from './report-format'
+import { bySalesChannel, isSalesChannel, formatPercent, platformName, readReportSales, reportQuery, periodPresets, type ReportSales } from './report-format'
 import './AdReport' // keeps its stylesheet's place in this page's CSS order
 import { OrderProfitability } from './OrderProfitability'
 import './SalesMap' // keeps its stylesheet's place in this page's CSS order
@@ -91,7 +92,7 @@ export function ReportsPage() {
   const [platforms, setPlatforms] = useState<string[] | null>(null)
   const metricSource = useMetricSource({ platforms })
   const query = reportQuery({ from: range.from, to: range.to, platforms, granularity: '', includeTest: false })
-  const report = useQuery({ queryKey: queryKeys.reportsSales(query), queryFn: ({ signal }) => hubApi<ReportSales>(`/reports/sales?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
+  const report = useQuery({ queryKey: queryKeys.reportsSales(query), queryFn: async ({ signal }) => readReportSales(await hubApi<ApiAnswer<'getReportsSales'>>(`/reports/sales?${query}`, { signal })), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
   // A tab change slides the body in from the tab's side and starts the page from its top (shared/tab-slide.tsx).
