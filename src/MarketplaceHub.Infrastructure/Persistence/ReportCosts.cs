@@ -281,12 +281,12 @@ internal static class ReportCosts
         var estimatedCargo = new Dictionary<Guid, decimal>();
         foreach (var (storeId, count) in unbilledByStore)
             if (finance.CargoSamples.GetValueOrDefault(storeId)?.PerOrder is { } perOrder)
-                estimatedCargo[storeId] = Round(count * perOrder);
+                estimatedCargo[storeId] = MoneyRounding.Round(count * perOrder);
         var unestimatedOrders = unbilledShipments.Concat(unbilledReturns).Where(order => !estimatedCargo.ContainsKey(order.Order.ConnectionId))
             .Select(order => order.Order.Id).Distinct().Count();
         var samples = finance.CargoSamples.Where(sample => financeOrders.Any(order => order.Order.ConnectionId == sample.Key) && sample.Value.Orders > 0).Select(sample => sample.Value).ToList();
         var sampleOrders = samples.Sum(sample => sample.Orders);
-        var realCargo = Round(lines.TryGetValue(MarketplaceFinanceCategories.Cargo, out var cargoLine) ? cargoLine.Amount : 0m);
+        var realCargo = MoneyRounding.Round(lines.TryGetValue(MarketplaceFinanceCategories.Cargo, out var cargoLine) ? cargoLine.Amount : 0m);
         var unbilledCount = unbilledByStore.Values.Sum();
         decimal? cargoEstimate = unbilledCount == 0 ? 0m : estimatedCargo.Count > 0 ? estimatedCargo.Values.Sum() : null;
 
@@ -320,17 +320,17 @@ internal static class ReportCosts
         }
         foreach (var category in new[] { MarketplaceFinanceCategories.ServiceFee, MarketplaceFinanceCategories.Stoppage, MarketplaceFinanceCategories.PaymentFee })
             if (lines.TryGetValue(category, out var empty) && empty.Amount == 0m && empty.Records == 0) lines.Remove(category);
-        platformCargo = Round(platformCargo);
-        foreach (var store in estimatedCargo.Keys.ToList()) estimatedCargo[store] = Round(estimatedCargo[store]);
+        platformCargo = MoneyRounding.Round(platformCargo);
+        foreach (var store in estimatedCargo.Keys.ToList()) estimatedCargo[store] = MoneyRounding.Round(estimatedCargo[store]);
         var allEstimated = (cargoEstimate ?? 0m) + platformCargo;
         var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledShipments.Count,
-            sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders,
+            sampleOrders > 0 ? MoneyRounding.Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders,
             cargoEstimate is null && platformOrders.Count == 0 ? null : allEstimated, realCargo + allEstimated, platformOrders.Count, platformCargo,
             platformOrders.Count == 0 ? null : new ReportDesiSourcesView(
                 desiSources.GetValueOrDefault(ReportParcelDesi.Marketplace), desiSources.GetValueOrDefault(ReportParcelDesi.Manual),
                 desiSources.GetValueOrDefault(ReportParcelDesi.Measured), desiSources.GetValueOrDefault(ReportParcelDesi.Default), desiInput.Learned.Parcels),
             unbilledReturns.Count, unestimatedOrders,
-            Round(returnCargo), financeOrders.Count(order => returnBilled.Contains(order.Order.Id)), Round(returnOperationFees), returnOperationRecords);
+            MoneyRounding.Round(returnCargo), financeOrders.Count(order => returnBilled.Contains(order.Order.Id)), MoneyRounding.Round(returnOperationFees), returnOperationRecords);
 
         // The service fees and the withholding tax of the period's Trendyol orders. Trendyol bills them on invoices of a
         // payment day tied to no order (those are in Unlinked, by their date), so every order without a record of its own
@@ -340,8 +340,8 @@ internal static class ReportCosts
             var feeOrders = store.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))).ToList();
             var taxOrders = store.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.Stoppage))).ToList();
             if (feeOrders.Count == 0 && taxOrders.Count == 0) continue;
-            var serviceFee = Round(feeOrders.Sum(TrendyolServiceFee));
-            var stoppage = Round(taxOrders.Sum(TrendyolStoppageBase) * StoppageRate);
+            var serviceFee = MoneyRounding.Round(feeOrders.Sum(TrendyolServiceFee));
+            var stoppage = MoneyRounding.Round(taxOrders.Sum(TrendyolStoppageBase) * StoppageRate);
             Line(MarketplaceFinanceCategories.ServiceFee).Estimate(serviceFee);
             Line(MarketplaceFinanceCategories.Stoppage).Estimate(stoppage);
             channelCosts[(store.Key, MarketplaceFinanceCategories.ServiceFee)] = channelCosts.GetValueOrDefault((store.Key, MarketplaceFinanceCategories.ServiceFee)) + serviceFee;
@@ -356,34 +356,34 @@ internal static class ReportCosts
         decimal RealAmount(ReportBuilder.OrderFact order) => settled.Contains(order.Order.Id) ? realCommission.GetValueOrDefault(order.Order.Id) : Estimated(order);
         var settledFacts = orders.Where(order => settled.Contains(order.Order.Id)).ToList();
         var realFacts = orders.Where(Real).ToList();
-        var trendyolReal = Round(settledFacts.Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
-        var real = Round(realFacts.Sum(RealAmount));
-        var estimatedSettled = Round(realFacts.Sum(order => settled.Contains(order.Order.Id) ? Estimated(order) : order.EstimatedCommission ?? 0m));
-        var estimatedOther = Round(orders.Where(order => !Real(order)).Sum(Estimated));
+        var trendyolReal = MoneyRounding.Round(settledFacts.Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
+        var real = MoneyRounding.Round(realFacts.Sum(RealAmount));
+        var estimatedSettled = MoneyRounding.Round(realFacts.Sum(order => settled.Contains(order.Order.Id) ? Estimated(order) : order.EstimatedCommission ?? 0m));
+        var estimatedOther = MoneyRounding.Round(orders.Where(order => !Real(order)).Sum(Estimated));
         var commissionView = new ReportRealCommissionView(real, realFacts.Count, estimatedSettled, estimatedOther, real + estimatedOther,
             orders.Count(order => !Real(order) && CommissionUnknown(order)));
         var settledFinanceOrders = financeOrders.Count(order => settled.Contains(order.Order.Id));
 
         var lineViews = MarketplaceFinanceCategories.All.Where(lines.ContainsKey)
-            .Select(category => new ReportCostLineView(category, Labels.GetValueOrDefault(category, category), TrendyolFinanceCategorizer.IsCost(category), Round(lines[category].Amount), lines[category].Records,
-                Round(lines[category].Linked), Round(lines[category].Estimated)))
+            .Select(category => new ReportCostLineView(category, Labels.GetValueOrDefault(category, category), TrendyolFinanceCategorizer.IsCost(category), MoneyRounding.Round(lines[category].Amount), lines[category].Records,
+                MoneyRounding.Round(lines[category].Linked), MoneyRounding.Round(lines[category].Estimated)))
             .ToList();
-        var unlinkedViews = MarketplaceFinanceCategories.All.Where(category => unlinked.TryGetValue(category, out var line) && Round(line.Amount) != 0m)
-            .Select(category => new ReportUnlinkedCostView(category, Labels.GetValueOrDefault(category, category), TrendyolFinanceCategorizer.IsCost(category), Round(unlinked[category].Amount), unlinked[category].Records))
+        var unlinkedViews = MarketplaceFinanceCategories.All.Where(category => unlinked.TryGetValue(category, out var line) && MoneyRounding.Round(line.Amount) != 0m)
+            .Select(category => new ReportUnlinkedCostView(category, Labels.GetValueOrDefault(category, category), TrendyolFinanceCategorizer.IsCost(category), MoneyRounding.Round(unlinked[category].Amount), unlinked[category].Records))
             .ToList();
         var unlinkedTotal = unlinkedViews.Where(line => line.IsCost).Sum(line => line.Amount);
-        var coveredViews = MarketplaceFinanceCategories.All.Where(category => covered.TryGetValue(category, out var line) && Round(line.Amount) != 0m)
-            .Select(category => new ReportUnlinkedCostView(category, Labels.GetValueOrDefault(category, category), true, Round(covered[category].Amount), covered[category].Records))
+        var coveredViews = MarketplaceFinanceCategories.All.Where(category => covered.TryGetValue(category, out var line) && MoneyRounding.Round(line.Amount) != 0m)
+            .Select(category => new ReportUnlinkedCostView(category, Labels.GetValueOrDefault(category, category), true, MoneyRounding.Round(covered[category].Amount), covered[category].Records))
             .ToList();
         var channels = input.Channels.Values
             .Where(channel => orders.Any(order => order.Order.ConnectionId == channel.Id) || financeStores.Contains(channel.Id))
             .Select(channel =>
             {
                 var own = orders.Where(order => order.Order.ConnectionId == channel.Id).ToList();
-                var channelReal = Round(own.Where(Real).Sum(RealAmount));
-                var channelEstimate = Round(own.Where(order => !Real(order)).Sum(Estimated));
+                var channelReal = MoneyRounding.Round(own.Where(Real).Sum(RealAmount));
+                var channelEstimate = MoneyRounding.Round(own.Where(order => !Real(order)).Sum(Estimated));
                 var amounts = MarketplaceFinanceCategories.Costs.Where(category => category != MarketplaceFinanceCategories.Commission && channelCosts.ContainsKey((channel.Id, category)))
-                    .Select(category => new ReportCostAmountView(category, Round(channelCosts[(channel.Id, category)])))
+                    .Select(category => new ReportCostAmountView(category, MoneyRounding.Round(channelCosts[(channel.Id, category)])))
                     .ToList();
                 var channelCargo = estimatedCargo.GetValueOrDefault(channel.Id);
                 return new ReportCostChannelView(channel.Id, channel.PlatformCode, channel.DisplayName, financeStores.Contains(channel.Id) ? FinanceSource : EstimateSource,
@@ -394,25 +394,25 @@ internal static class ReportCosts
         var productViews = products.Values
             .OrderByDescending(product => product.Commission).ThenBy(product => product.Line.Title, StringComparer.Ordinal)
             .Take(ProductCount)
-            .Select(product => new ReportCostProductView(product.Line.VariantId, product.Line.Title, product.Line.Sku, product.Barcode, Round(product.Commission),
-                Round(product.Discount), Round(product.Coupon), product.Records))
+            .Select(product => new ReportCostProductView(product.Line.VariantId, product.Line.Title, product.Line.Sku, product.Barcode, MoneyRounding.Round(product.Commission),
+                MoneyRounding.Round(product.Discount), MoneyRounding.Round(product.Coupon), product.Records))
             .ToList();
-        var total = Round(lineViews.Where(line => line.IsCost).Sum(line => line.Amount));
+        var total = MoneyRounding.Round(lineViews.Where(line => line.IsCost).Sum(line => line.Amount));
 
         // The net VAT of the Trendyol orders: the VAT in the domestic sales, less the VAT in their product cost and in
         // Trendyol's VAT-inclusive charges (the international service fee and the withholding tax carry none) on the
         // period's orders; a record tied to no order of the period (Unlinked) carries no VAT of theirs.
-        var trendyolCommission = trendyolReal + Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
+        var trendyolCommission = trendyolReal + MoneyRounding.Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
         var trendyolFees = linkedDomesticFees + financeOrders.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))).Sum(TrendyolVatFee);
         var advertising = lines.TryGetValue(MarketplaceFinanceCategories.Advertising, out var adLine) ? adLine.Amount : 0m;
         var vatOrders = financeOrders.Concat(platformOrders).ToList();
-        var platformCommission = Round(platformOrders.Sum(Estimated));
+        var platformCommission = MoneyRounding.Round(platformOrders.Sum(Estimated));
         var salesVat = vatOrders.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(line => Vat(line.KeptAmount, line.Row.VatRate));
         var costVat = vatOrders.SelectMany(order => order.Lines).Where(line => line.Row.CostPrice is > 0).Sum(line => Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
         var expenseVat = Vat(trendyolCommission + platformCommission + cargoView.Combined + trendyolFees + platformVatFees + advertising, ExpenseVatRate);
-        var netVat = new ReportNetVatView(Round(salesVat), Round(costVat), Round(expenseVat), Round(salesVat - costVat - expenseVat));
+        var netVat = new ReportNetVatView(MoneyRounding.Round(salesVat), MoneyRounding.Round(costVat), MoneyRounding.Round(expenseVat), MoneyRounding.Round(salesVat - costVat - expenseVat));
         return new(read ? FinanceSource : EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
-            financeOrders.Count > 0 ? Math.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
+            financeOrders.Count > 0 ? MeasureRounding.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
             total, commissionView, cargoView, lineViews, channels, productViews, netVat, unlinkedViews, unlinkedTotal, coveredViews);
     }
 
@@ -537,7 +537,6 @@ internal static class ReportCosts
     internal static bool IsInternationalFee(ReportFinanceRow row) =>
         TrendyolFinanceCategorizer.Fold(row.TransactionType).Contains("uluslararasi", StringComparison.Ordinal);
 
-    private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
     private sealed class LineTotal
     {
