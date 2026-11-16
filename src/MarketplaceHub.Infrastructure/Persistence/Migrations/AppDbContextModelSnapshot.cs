@@ -5192,6 +5192,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("DescriptionOverride")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("FamilyId")
                         .HasColumnType("uuid");
 
@@ -5208,6 +5211,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("TitleOverride")
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)");
 

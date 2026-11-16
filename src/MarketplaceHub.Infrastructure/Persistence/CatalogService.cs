@@ -436,18 +436,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // KATALOG-10: newest first without a stock or platform-state filter, the models are paged in SQL while the stored
         // model links give the model-code rule's grouping; otherwise the in-memory grouping below.
         // KATALOG-10 (round 7): the stock filters, the platform-state filters and the price and stock sorts too: the filters
-        // narrow the cards in the database (a platform state is decided on the narrow link rows, as below), the sorts read
-        // one metric per model from the database and order those rows.
+        // narrow the cards in the database, the sorts read one metric per model from the database and order those rows.
+        // KATALOG-10 (round 8): the platform state too, by the same rules written once as expressions
+        // (ApplyPlatformStateFilterInSqlAsync); the in-memory path below keeps them compiled as the reference.
         if (sqlPaging && await FamilyIdMatchesModelCodeRuleCachedAsync(tenantId, cancellationToken))
         {
             if (!string.IsNullOrWhiteSpace(stock)) query = await ApplyStockFilterInSqlAsync(tenantId, query, stock, cancellationToken);
-            if (hasPlatformStatusFilter)
-            {
-                var narrowProducts = await query.Select(ProductShape).ToListAsync(cancellationToken);
-                var narrowVariants = await VariantShapes(tenantId).Where(x => query.Any(product => product.Id == x.ProductId)).ToListAsync(cancellationToken);
-                var kept = (await PlatformStateProductIdsAsync(tenantId, narrowProducts, narrowVariants, platformFilterCode, platformFilterState, cancellationToken)).ToArray();
-                query = query.Where(product => kept.Contains(product.Id));
-            }
+            if (hasPlatformStatusFilter) query = await ApplyPlatformStateFilterInSqlAsync(tenantId, query, platformFilterCode, platformFilterState, cancellationToken);
             return catalogSort is null
                 ? await ListProductFamiliesInSqlAsync(tenantId, query, afterCreatedAt, afterId, limit, countKey, cachedCount as int?, cancellationToken)
                 : await ListSortedProductFamiliesInSqlAsync(tenantId, query, catalogSort, afterSortKey, limit, countKey, cachedCount as int?, cancellationToken);
@@ -511,7 +506,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Take(limit)
             .ToList();
         var pageProductIds = pageFamilies.SelectMany(x => x.Products).Select(x => x.Id).ToArray();
-        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var fullProducts = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);
@@ -553,7 +548,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Take(limit)
             .ToList();
         var pageProductIds = pageItems.SelectMany(item => item.Family.Products).Select(x => x.Id).ToArray();
-        var fullProducts = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var fullProducts = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var products = pageProductIds.Where(fullProducts.ContainsKey).Select(productId => fullProducts[productId]).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && pageProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var views = await WithFamilyImagesAsync(tenantId, await BuildProductViewsAsync(tenantId, products, variants, cancellationToken, listShape: true), cancellationToken);
@@ -682,7 +677,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     }
 
     private static RequiredFieldsSkippedProduct SkippedFor(IncompleteCard card) =>
-        new(card.Product.Id, card.Product.Title.Trim(), card.ModelCode, [.. card.Gaps.Select(gap => gap.Label)]);
+        new(card.Product.Id, EffectiveCatalog.Of(card.Product).Title.Trim(), card.ModelCode, [.. card.Gaps.Select(gap => gap.Label)]);
 
     private sealed record IncompleteCard(Product Product, IReadOnlyList<ProductRequiredFields.Gap> Gaps, string? ModelCode);
 
@@ -697,12 +692,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(x => new { x.ProductId, Row = new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice) }).ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.Select(x => x.Row).ToList());
         var result = new List<IncompleteCard>();
-        foreach (var product in products)
+        foreach (var stored in products)
         {
+            // The card's shared values as every reader sees them (EffectiveCatalog); the caller keeps the tracked card.
+            var product = EffectiveCatalog.Of(stored);
             var productRows = rows.GetValueOrDefault(product.Id) ?? [];
             var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: product.WarrantyMonths is not null, DeliveryDaysGiven: product.DeliveryDays is not null,
                 product.DefaultListPrice, product.DefaultSalePrice, productRows, VatGiven: product.VatRate is not null && !string.IsNullOrWhiteSpace(product.VatInclusion)));
-            if (gaps.Count > 0) result.Add(new(product, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
+            if (gaps.Count > 0) result.Add(new(stored, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
         }
         return result;
     }
@@ -1793,7 +1790,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var siblingTargetIds = newVariantProductIds.Where(productId => productId != id).Distinct().ToArray();
             var siblingStatuses = siblingTargetIds.Length == 0
                 ? []
-                : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && siblingTargetIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Status, cancellationToken);
+                : await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && siblingTargetIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Status, cancellationToken);
             ProductStatus StatusOnCard(Guid productId) => productId == id || !siblingStatuses.TryGetValue(productId, out var siblingStatus) || siblingStatus == product.Status ? newVariantStatus : siblingStatus;
             if (newColorCards.Count > 0) await AddNewColorCardsAsync(tenantId, product, command, existingVariants.Where(variant => variant.ProductId == id).ToList(), globalAssignments, newColorCards, newVariantStatus, now, cancellationToken);
             var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = newVariantProductIds[index], SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = StatusOnCard(newVariantProductIds[index]), Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = PositiveOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
@@ -1812,14 +1809,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var productStatus = requestedStatus ?? previousStatus;
         var statusChanged = requestedStatus is not null && productStatus != previousStatus;
         var familyStatusProductIds = statusChanged
-            ? (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.Id) && x.Id != id && x.Status == previousStatus).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet()
+            ? (await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.Id) && x.Id != id && x.Status == previousStatus).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet()
             : [];
         // KATALOG-11: a save that sends no rows checked only the opened card's stored rows above. A colour card that would
         // go on sale with it but misses a required field keeps its status (as Toplu Satışa Aç skips it); the editor sends
         // every row of the model, which the check above covers.
         if (statusChanged && productStatus == ProductStatus.Active && variantUpdates.Count == 0 && variantsToCreate.Count == 0 && familyStatusProductIds.Count > 0)
         {
-            var movingSiblings = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyStatusProductIds.Contains(x.Id)).ToListAsync(cancellationToken);
+            var movingSiblings = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && familyStatusProductIds.Contains(x.Id)).ToListAsync(cancellationToken);
             foreach (var incomplete in await IncompleteCardsAsync(tenantId, movingSiblings, cancellationToken)) familyStatusProductIds.Remove(incomplete.Product.Id);
         }
         // K5: other products of the model-code family whose rows this save changes are local edits too.
@@ -2107,7 +2104,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var connectionIds = (command.ConnectionIds ?? []).Distinct().ToList();
         if (productIds.Count == 0 || connectionIds.Count == 0) return Invalid<BulkPublicationResult>("productIds", "En az bir ürün ve bir platform seçin.");
         if (productIds.Count > 1000) return Invalid<BulkPublicationResult>("productIds", "Tek seferde en fazla 1000 ürün kartı yayınlanabilir.");
-        var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        var selected = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).Select(x => new { x.Id, x.PlatformCode, x.SettingsJson }).ToListAsync(cancellationToken);
         if (connections.Count != connectionIds.Count) return Invalid<BulkPublicationResult>("connectionIds", "Seçilen platform bulunamadı.");
         var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>(); var jobs = new List<BulkPublicationJob>();
@@ -2124,7 +2121,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 familyIds.UnionWith(await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken));
         familyIds.ExceptWith(selectedIds);
         var products = familyIds.Count == 0 ? selected
-            : [.. selected, .. await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active).ToListAsync(cancellationToken)];
+            : [.. selected, .. await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active).ToListAsync(cancellationToken)];
         // A selected draft is refused on its own (no price, profile or job is written for it); the other cards go on.
         foreach (var draftCard in products.Where(x => ProductDraftPolicy.IsDraft(x.Status)))
             foreach (var connectionId in connectionIds)
@@ -2231,7 +2228,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // Whether a variant of the card is one the marketplace no longer knows there (ProductListingHealth.CountsAsMissing).
     private async Task<bool> HasMissingVariantAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Status }).SingleOrDefaultAsync(cancellationToken);
+        var product = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Status }).SingleOrDefaultAsync(cancellationToken);
         if (product is null || product.Status == ProductStatus.Archived) return false;
         var brokenHealth = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId
@@ -2250,7 +2247,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     // A draft is never sent to a marketplace (ProductDraftPolicy): no publication, product update or price/stock send.
     private Task<bool> IsDraftProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken) =>
-        db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId && x.Status == ProductStatus.Draft, cancellationToken);
+        EffectiveCatalog.Products(db).AnyAsync(x => x.TenantId == tenantId && x.Id == productId && x.Status == ProductStatus.Draft, cancellationToken);
 
     private static ServiceResult<T> DraftSendBlocked<T>() => ServiceResult<T>.Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage, 422);
 
@@ -2455,7 +2452,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var profile = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId)
             .Select(x => new { x.Source, x.DeliveryTimeDays, x.Warranty }).SingleOrDefaultAsync(cancellationToken);
         if (profile?.Source != ChannelListingProfileSource.MarketplaceImport) return null;
-        var product = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Title, x.DeliveryDays, x.WarrantyMonths }).SingleOrDefaultAsync(cancellationToken);
+        var product = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Title, x.DeliveryDays, x.WarrantyMonths }).SingleOrDefaultAsync(cancellationToken);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (product is null || platformCode is null) return null;
         var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ModelCode != null).OrderBy(x => x.SortOrder).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
@@ -2548,7 +2545,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // this connection gets its own read-only check (one that cannot is skipped).
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleAsync(cancellationToken);
         if (platformCode is not ("SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM")) return result;
-        var product = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         var familyIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
         // On PTT AVM a card the family's send carried may have no listing profile at all: it is taken into that send.
         var siblings = platformCode == "PTTAVM" ? familyIds.Where(id => id != productId).ToList() : await db.ChannelListingProfiles.AsNoTracking()
@@ -2689,7 +2686,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // it is. Runs in the refresh's transaction; a refusal is returned while the family is being sent.
     private async Task<ServiceResult<Guid>?> AdoptPttAvmFamilySendAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null || product.Status == ProductStatus.Archived) return null;
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is not null && await db.ChannelListingVariants.AnyAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id, cancellationToken)) return null;
@@ -2745,7 +2742,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     public async Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
-        if (!await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken) || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<PublicationStatusView>();
+        if (!await EffectiveCatalog.Products(db).AnyAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken) || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken)) return NotFound<PublicationStatusView>();
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         IReadOnlyList<PublicationLineView> lines = profile is null ? Array.Empty<PublicationLineView>() : await (from listing in db.ChannelListingVariants.AsNoTracking()
                                                                                                                  join variant in db.ProductVariants.AsNoTracking() on new { listing.TenantId, listing.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
@@ -3454,7 +3451,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (id is not Guid categoryId) return; var parent = await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == categoryId, cancellationToken); if (parent is not null) parent.IsLeaf = !await db.Categories.AnyAsync(x => x.TenantId == tenantId && x.ParentId == categoryId && x.IsActive, cancellationToken);
     }
 
-    private IQueryable<Product> VisibleProducts(Guid tenantId) => db.Products.AsNoTracking().Where(product =>
+    private IQueryable<Product> VisibleProducts(Guid tenantId) => EffectiveCatalog.Products(db).Where(product =>
         product.TenantId == tenantId
         && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id)
             || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id
@@ -3568,24 +3565,41 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     {
         if (productIds.Count == 0) return [];
         var ids = productIds.ToArray();
+        var byProfile = await PlatformFlaggedByProfile(tenantId, platformCode, db.Products.Where(product => product.TenantId == tenantId && ids.Contains(product.Id)).Select(product => product.Id), statuses).ToListAsync(cancellationToken);
+        var byListing = await PlatformFlaggedByListing(tenantId, platformCode, db.Products.Where(product => product.TenantId == tenantId && ids.Contains(product.Id)).Select(product => product.Id), statuses).ToListAsync(cancellationToken);
+        return [.. byProfile, .. byListing];
+    }
+
+    private IQueryable<Guid> PlatformActiveConnectionIds(Guid tenantId, string platformCode) => db.PlatformConnections
+        .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+        .Select(connection => connection.Id);
+
+    // The products (of productIds) whose enabled publication on one of the marketplace's active connections is in one of
+    // these states (KATALOG-10: one query, run as it is by the in-memory reference and inside the database filter).
+    private IQueryable<Guid> PlatformFlaggedByProfile(Guid tenantId, string platformCode, IQueryable<Guid> productIds, IReadOnlyCollection<string> statuses)
+    {
         var states = statuses.ToArray();
-        var connectionIds = db.PlatformConnections
-            .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-            .Select(connection => connection.Id);
-        var byProfile = await db.ChannelListingProfiles.AsNoTracking()
-            .Where(profile => profile.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId) && states.Contains(profile.ActualStatus))
-            .Select(profile => profile.ProductId).ToListAsync(cancellationToken);
-        // A refused variant whose card's update is on its way was sent again (the list mark's "Onaya Gönderildi"): it is
-        // waiting, not failed, until the marketplace answers.
+        var connectionIds = PlatformActiveConnectionIds(tenantId, platformCode);
+        return db.ChannelListingProfiles.AsNoTracking()
+            .Where(profile => profile.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && productIds.Contains(profile.ProductId) && states.Contains(profile.ActualStatus))
+            .Select(profile => profile.ProductId);
+    }
+
+    // The products (of productIds) with a listing in one of these states under an enabled publication there. A refused
+    // variant whose card's update is on its way was sent again (the list mark's "Onaya Gönderildi"): it is waiting, not
+    // failed, until the marketplace answers.
+    private IQueryable<Guid> PlatformFlaggedByListing(Guid tenantId, string platformCode, IQueryable<Guid> productIds, IReadOnlyCollection<string> statuses)
+    {
+        var states = statuses.ToArray();
+        var connectionIds = PlatformActiveConnectionIds(tenantId, platformCode);
         var inFlight = ProductListingHealth.UpdateInFlightStatuses.ToArray();
         var waiting = states.Contains(ImportedApprovalStates.Pending);
-        var byListing = await (from listing in db.ChannelListingVariants.AsNoTracking()
-                               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
-                               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId)
-                                   && (states.Contains(listing.ActualStatus) && !(listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
-                                       || waiting && listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
-                               select profile.ProductId).ToListAsync(cancellationToken);
-        return [.. byProfile, .. byListing];
+        return from listing in db.ChannelListingVariants.AsNoTracking()
+               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && productIds.Contains(profile.ProductId)
+                   && (states.Contains(listing.ActualStatus) && !(listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
+                       || waiting && listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
+               select profile.ProductId;
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));

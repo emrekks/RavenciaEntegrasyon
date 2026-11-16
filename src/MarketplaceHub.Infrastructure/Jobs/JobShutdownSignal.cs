@@ -73,9 +73,14 @@ internal sealed class QuotaWaitShutdown : IDisposable
 
     public bool StoppedBeforeStart { get; }
 
-    public void QuotaAcquired()
+    // False when the shutdown had already stopped the wait (the request must then not be sent).
+    public bool QuotaAcquired()
     {
-        lock (gate) quotaAcquired = true;
+        lock (gate)
+        {
+            quotaAcquired = true;
+            return !stopped;
+        }
     }
 
     private void Stop()

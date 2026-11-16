@@ -168,7 +168,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
             pattern = $"%{CatalogService.EscapeLike(term)}%";
             // A search that names no variant lists nothing: one row is enough to know, the list itself finds them all.
             var matches = await (from variant in db.ProductVariants.AsNoTracking()
-                                 join product in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
+                                 join product in EffectiveCatalog.Products(db) on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
                                  where variant.TenantId == tenantId
                                      && (EF.Functions.ILike(variant.Sku, pattern, LikeEscape)
                                          || (variant.Barcode != null && EF.Functions.ILike(variant.Barcode, pattern, LikeEscape))
@@ -351,7 +351,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
             .Select(x => new { x.Id, x.ProductId, x.Sku, x.Barcode, x.ModelCode, x.OptionSignature })
             .ToDictionaryAsync(x => x.Id, cancellationToken);
         var productIds = rows.Select(x => x.ProductId).Concat(variants.Values.Select(x => (Guid?)x.ProductId)).Where(x => x is not null).Select(x => x!.Value).Distinct().ToArray();
-        var products = await db.Products.AsNoTracking()
+        var products = await EffectiveCatalog.Products(db)
             .Where(x => x.TenantId == tenantId && productIds.Contains(x.Id))
             .Select(x => new { x.Id, x.Title })
             .ToDictionaryAsync(x => x.Id, x => x.Title, cancellationToken);

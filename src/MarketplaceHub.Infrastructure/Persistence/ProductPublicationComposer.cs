@@ -45,7 +45,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     // 10.11.2026 (MZ052BOD, 7 colours): an images-only send refused two colours for variants without a price.
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false, bool desiRequired = true, bool salesDataOptional = false)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);

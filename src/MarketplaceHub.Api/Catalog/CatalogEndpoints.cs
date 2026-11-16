@@ -174,7 +174,7 @@ public static partial class CatalogEndpoints
         api.MapGet("/public/product-media/{assetId:guid}/content", async (Guid assetId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
         {
             var asset = await (from media in db.ProductMedia.AsNoTracking()
-                               join product in db.Products.AsNoTracking() on new { media.TenantId, media.ProductId } equals new { product.TenantId, ProductId = product.Id }
+                               join product in EffectiveCatalog.Products(db) on new { media.TenantId, media.ProductId } equals new { product.TenantId, ProductId = product.Id }
                                join file in db.FileAssets.AsNoTracking() on new { media.TenantId, FileAssetId = media.FileAssetId } equals new { file.TenantId, FileAssetId = file.Id }
                                where media.FileAssetId == assetId && media.Status == "ACTIVE" && product.Status != ProductStatus.Archived
                                    && file.Classification == "PRODUCT_MEDIA" && file.Status == "ACTIVE" && file.ArchivedAt == null

@@ -27,7 +27,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
 
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);

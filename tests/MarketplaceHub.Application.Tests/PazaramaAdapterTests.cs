@@ -188,7 +188,6 @@ public sealed class PazaramaAdapterTests
     }
 
     [Theory]
-    [InlineData("PRODUCTION", "VERIFIED")]
     [InlineData("PRODUCTION", "ACTIVE")]
     public void WritesPassOnlyWhenEverySwitchIsOn(string environment, string status) =>
         Assert.Null(Client(true).WriteBlocked<bool>(Account(environment, status, true), "test"));
@@ -196,6 +195,7 @@ public sealed class PazaramaAdapterTests
     [Theory]
     [InlineData(false, "PRODUCTION", "VERIFIED", true)]
     [InlineData(true, "PRODUCTION", "VERIFIED", false)]
+    [InlineData(true, "PRODUCTION", "VERIFIED", true)]
     [InlineData(true, "STAGE", "VERIFIED", true)]
     [InlineData(true, "PRODUCTION", "DRAFT", true)]
     public void AnyClosedSwitchBlocksTheWrite(bool global, string environment, string status, bool connectionWrites)

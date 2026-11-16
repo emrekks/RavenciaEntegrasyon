@@ -38,7 +38,7 @@ internal sealed class N11ProductUpdateComposer(AppDbContext db, IConfiguration c
     {
         var picks = Picks(fields);
         if (!picks.Any) return Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri N11'e gönderilemiyor: N11 API ile yalnız açıklama, kategori özellikleri, KDV oranı ve teslimat süresi güncellenir.");
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", status: 404);
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün güncellenemez.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "N11", cancellationToken);

@@ -82,7 +82,7 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
         {
             // Teslimat Süresi: the listing's own override, else the product card's days (as Trendyol's deliveryDuration).
             var listingDays = await db.ChannelListingProfiles.AsNoTracking().Where(profile => profile.TenantId == tenantId && profile.Id == draft.ProfileId).Select(profile => profile.DeliveryTimeDays).SingleOrDefaultAsync(cancellationToken);
-            var productDays = await db.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.Id == productId).Select(product => product.DeliveryDays).SingleOrDefaultAsync(cancellationToken);
+            var productDays = await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && product.Id == productId).Select(product => product.DeliveryDays).SingleOrDefaultAsync(cancellationToken);
             dispatchJson = DispatchTimePayload(merchantId, draft.Variants.Select(variant => (remoteLinks[variant.VariantId], variant.Sku)), ProductPublicationComposer.DeliveryDays(listingDays, productDays));
         }
         if (payloadJson is null && dispatchJson is null)

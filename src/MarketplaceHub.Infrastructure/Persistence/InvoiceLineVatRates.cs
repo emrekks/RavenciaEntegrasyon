@@ -20,7 +20,7 @@ internal static class InvoiceLineVatRates
         var productIds = variants.Values.Where(variant => variant is not null).Select(variant => variant!.ProductId).Distinct().ToArray();
         var cardRates = productIds.Length == 0
             ? new Dictionary<Guid, decimal?>()
-            : await db.Products.AsNoTracking().Where(product => product.TenantId == tenantId && productIds.Contains(product.Id))
+            : await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && productIds.Contains(product.Id))
                 .ToDictionaryAsync(product => product.Id, product => product.VatRate, cancellationToken);
         foreach (var line in unknown)
         {

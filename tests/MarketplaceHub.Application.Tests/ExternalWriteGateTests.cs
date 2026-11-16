@@ -5,9 +5,9 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// One table for the two write rules the adapters use (see ExternalWriteGate). The deliberate difference is written out:
-// a VERIFIED production connection writes under the n11/Pazarama/PTT AVM rule and does not under the runtime rule; a
-// manual write to an operational STAGE connection passes the runtime rule only.
+// One table for the two write rules the adapters use (see ExternalWriteGate). ADAPTOR-DIGER-9 (owner, 16 Nov 2026): a
+// VERIFIED production connection writes under neither rule (it used to under the n11/Pazarama/PTT AVM rule); the one
+// difference left is that a manual write to an operational STAGE connection passes the runtime rule only.
 public sealed class ExternalWriteGateTests
 {
     private const string On = """{"ExternalWritesEnabled":true}""";
@@ -17,8 +17,8 @@ public sealed class ExternalWriteGateTests
     //          environment   status      global  settings  manual  production  runtime
     [InlineData("PRODUCTION", "ACTIVE", true, On, false, true, true)]
     [InlineData("PRODUCTION", "ACTIVE", true, On, true, true, true)]
-    [InlineData("PRODUCTION", "VERIFIED", true, On, false, true, false)]
-    [InlineData("PRODUCTION", "VERIFIED", true, On, true, true, false)]
+    [InlineData("PRODUCTION", "VERIFIED", true, On, false, false, false)]
+    [InlineData("PRODUCTION", "VERIFIED", true, On, true, false, false)]
     [InlineData("PRODUCTION", "ACTIVE", false, On, false, false, false)]
     [InlineData("PRODUCTION", "ACTIVE", true, Off, false, false, false)]
     [InlineData("PRODUCTION", "ACTIVE", true, "bozuk", false, false, false)]
