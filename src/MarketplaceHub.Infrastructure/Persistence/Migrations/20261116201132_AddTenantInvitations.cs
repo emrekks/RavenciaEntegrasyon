@@ -24,7 +24,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     DisplayName = table.Column<string>(type: "character varying(160)", maxLength: 160, nullable: false),
                     InvitedByUserId = table.Column<Guid>(type: "uuid", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    ExpiresAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    DeclinedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {

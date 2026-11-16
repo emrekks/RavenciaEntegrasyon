@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261116175342_AddTenantInvitations")]
+    [Migration("20261116201132_AddTenantInvitations")]
     partial class AddTenantInvitations
     {
         /// <inheritdoc />
@@ -5195,6 +5195,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("DescriptionOverride")
+                        .HasColumnType("text");
+
                     b.Property<Guid?>("FamilyId")
                         .HasColumnType("uuid");
 
@@ -5211,6 +5214,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Title")
                         .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("TitleOverride")
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)");
 
@@ -7119,6 +7126,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeclinedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
