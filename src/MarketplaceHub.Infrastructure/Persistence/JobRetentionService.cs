@@ -291,7 +291,11 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
             """, cancellationToken), maximumBatches);
     }
 
-    // Order ingestion reads an order's history (picked-at time, a manual status); the newest row of every order stays.
+    // Rows the code reads stay whatever their age: the newest row of every order; SHIPPED and DELIVERED (shipping and
+    // delivery times in reports and the order list); the collection request (OrderIngestion's picked-at time); the manual
+    // Shopify statuses (OrderIngestion, Shipments, OrderQueries); and every row with a SourceEventId, which order ingestion
+    // and the manual-status replay check use to recognise an event they already stored (a deleted one would be stored
+    // again). Live 16 Nov 2026 every row carries a SourceEventId, so in practice nothing goes: keep this table off.
     public Task<int> PurgeOrderStatusHistoryAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken)
     {
         var cutoff = timeProvider.GetUtcNow().ToUniversalTime() - retention;
@@ -299,6 +303,10 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
             WITH doomed AS (
                 SELECT history."Id" FROM sales.order_status_history history
                 WHERE history."RecordedAt" < {cutoff}
+                  AND history."SourceEventId" = ''
+                  AND history."CanonicalStatus" NOT IN ('SHIPPED', 'DELIVERED')
+                  AND history."RawStatus" <> {PackageIngestionSafety.InstantPickingRawStatus}
+                  AND history."RawStatus" NOT LIKE {ShopifyManualStatusPolicy.RawStatusPrefix + "%"}
                   AND EXISTS (SELECT 1 FROM sales.order_status_history newer
                               WHERE newer."TenantId" = history."TenantId" AND newer."OrderId" = history."OrderId"
                                 AND (newer."OccurredAt", newer."Id") > (history."OccurredAt", history."Id"))
