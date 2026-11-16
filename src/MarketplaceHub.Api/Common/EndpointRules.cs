@@ -58,6 +58,35 @@ public sealed class IdempotencyKeyRequired
     private IdempotencyKeyRequired() { }
 }
 
+/// <summary>How a write that takes no required Idempotency-Key behaves when the same request comes twice.</summary>
+public enum WriteRepeat
+{
+    /// <summary>Repeating it leaves the same state (a replacing PUT, a DELETE, a version-guarded change, a read-only POST).</summary>
+    Repeatable,
+    /// <summary>Each call has its own effect (a new secret, a sent message, a created record, a paid call).</summary>
+    NotIdempotent
+}
+
+/// <summary>
+/// Endpoint metadata (API-GUVENLIK-8 c): what a second identical call of a write does, with the reason. Every /api/v1
+/// write declares either this or <see cref="IdempotencyKeyRequired"/> (ApiEndpointRulesTests). Declaring only: nothing
+/// here makes a write require a key.
+/// </summary>
+public sealed class WriteIdempotency(WriteRepeat repeat, string reason)
+{
+    public WriteRepeat Repeat { get; } = repeat;
+    public string Reason { get; } = reason;
+}
+
+/// <summary>The reasons most writes share (<see cref="EndpointRules.Idempotent{TBuilder}"/>).</summary>
+public static class WriteReasons
+{
+    public const string VersionGuarded = "If-Match names the version it changes; a repeat is refused as stale (412/409)";
+    public const string Replaces = "sets the state the body names; a repeat writes the same state";
+    public const string Removes = "removes the record; a repeat finds it removed";
+    public const string ReadOnly = "a read with a body: it changes nothing";
+}
+
 /// <summary>
 /// Endpoint metadata (documentation only): the write reads If-Match "v{version}". Required: 428 PRECONDITION_REQUIRED
 /// without it (EndpointHelpers.TryIfMatch); optional: a blind write when absent (OptionalIfMatch). Either way a stale
@@ -131,6 +160,30 @@ public static class EndpointRules
     /// </summary>
     public static TBuilder RequireIdempotencyKey<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>
         builder.WithMetadata(IdempotencyKeyRequired.Instance);
+
+    /// <summary>Declares a write without a required key whose repeat leaves the same state, and why.</summary>
+    public static TBuilder Idempotent<TBuilder>(this TBuilder builder, string reason) where TBuilder : IEndpointConventionBuilder =>
+        builder.WithMetadata(new WriteIdempotency(WriteRepeat.Repeatable, reason));
+
+    /// <summary>Declares a write without a required key whose every call has its own effect, and why.</summary>
+    public static TBuilder NotIdempotent<TBuilder>(this TBuilder builder, string reason) where TBuilder : IEndpointConventionBuilder =>
+        builder.WithMetadata(new WriteIdempotency(WriteRepeat.NotIdempotent, reason));
+
+    /// <summary>
+    /// The declaration of every write of the group that makes none itself and requires no key: for groups whose writes
+    /// all behave alike (settings that replace a stored document, mapping writes guarded by their version).
+    /// </summary>
+    public static TBuilder WithWriteIdempotency<TBuilder>(this TBuilder builder, WriteRepeat repeat, string reason) where TBuilder : IEndpointConventionBuilder
+    {
+        builder.Finally(endpoint =>
+        {
+            if (endpoint.Metadata.OfType<WriteIdempotency>().Any() || endpoint.Metadata.OfType<IdempotencyKeyRequired>().Any()) return;
+            var methods = endpoint.Metadata.OfType<HttpMethodMetadata>().LastOrDefault()?.HttpMethods ?? [];
+            if (methods.Count == 0 || methods.All(method => HttpMethods.IsGet(method) || HttpMethods.IsHead(method))) return;
+            endpoint.Metadata.Add(new WriteIdempotency(repeat, reason));
+        });
+        return builder;
+    }
 
     /// <summary>Documents the If-Match header the handler reads (the check itself stays in the handler).</summary>
     public static TBuilder IfMatch<TBuilder>(this TBuilder builder, bool required = true) where TBuilder : IEndpointConventionBuilder =>

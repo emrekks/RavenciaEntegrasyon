@@ -28,8 +28,8 @@ public static class AlertEmailEndpoints
     {
         var api = endpoints.MapGroup("/api/v1/settings/alert-email").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         api.MapGet("", GetAsync).Produces<AlertEmailSettingsView>();
-        api.MapPut("", SaveAsync).Produces<AlertEmailSettingsView>().IfMatch(required: false);
-        api.MapPost("/test", TestAsync).Produces<AlertEmailTestView>();
+        api.MapPut("", SaveAsync).Idempotent("replaces the stored alert e-mail settings; If-Match refuses a stale repeat").Produces<AlertEmailSettingsView>().IfMatch(required: false);
+        api.MapPost("/test", TestAsync).NotIdempotent("each call sends a test e-mail").Produces<AlertEmailTestView>();
         endpoints.MapGet("/internal/alert-settings", HostReadAsync);
         endpoints.MapPost("/internal/alert-settings/import", HostImportAsync);
         return endpoints;

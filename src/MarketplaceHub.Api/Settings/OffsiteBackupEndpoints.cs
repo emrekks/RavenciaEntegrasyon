@@ -36,12 +36,12 @@ public static class OffsiteBackupEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/settings/offsite-backup").WithGates(ApiGate.Elevated, ApiGate.Owner);
         group.MapGet("", GetAsync).Produces<OffsiteBackupSettingsView>();
-        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).IfMatch(required: false).Produces<OffsiteBackupSettingsView>();
-        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupAuthorizationView>();
-        group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupSettingsView>();
-        group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<OffsiteBackupSettingsView>();
-        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Produces<OffsiteBackupTestView>();
-        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Produces<OffsiteBackupRunRequestedView>(StatusCodes.Status202Accepted);
+        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("replaces the stored backup settings; If-Match refuses a stale repeat").IfMatch(required: false).Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("each call issues a new one-time consent state").Produces<OffsiteBackupAuthorizationView>();
+        group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("redeems Google's one-time authorization code, which works once").Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("forgets the Google connection; a repeat finds none").Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Idempotent("reads a fresh token and the Drive folder; a repeat finds the same folder").Produces<OffsiteBackupTestView>();
+        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Idempotent("sets the run-requested mark the host timer reads; a repeat sets it again").Produces<OffsiteBackupRunRequestedView>(StatusCodes.Status202Accepted);
         return endpoints;
     }
 

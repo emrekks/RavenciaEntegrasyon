@@ -36,7 +36,7 @@ public static partial class MarketplaceEndpoints
             var result = await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
             // The role refusal is the panel's own 403, not a marketplace's (which WithEtag reports as 502).
             return result.Error is { Code: "PERMISSION_DENIED" } denied ? Problem(http, denied) : WithEtag(http, result, x => x.Version);
-        }).Produces<ConnectionView>().IfMatch();
+        }).Produces<ConnectionView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapPut("/connections/{id:guid}/credential", async (Guid id, CredentialCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RotateCredentialAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ConnectionView>().IfMatch();
         // Instant work below runs with the server's budget as http.RequestAborted, not the browser's connection.
         api.MapPost("/connections/{id:guid}/test-jobs", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceJobProcessor marketplaceProcessor, IInvoicingJobProcessor invoicingProcessor) =>
@@ -98,7 +98,7 @@ public static partial class MarketplaceEndpoints
             var result = await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
             if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
             return Result(result, value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
-        }).Produces<SyncPolicyView>().IfMatch(required: false);
+        }).Produces<SyncPolicyView>().IfMatch(required: false).Idempotent(WriteReasons.Replaces);
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant
@@ -108,7 +108,7 @@ public static partial class MarketplaceEndpoints
         api.MapPost("/orders/{id:guid}/label-printed", async (Guid id, HttpContext http, IMarketplaceSalesService service) =>
             Tenant(http) is { } tenant
                 ? await service.MarkLabelPrintedAsync(tenant.TenantId, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound()
-                : Unauthorized(http)).RequireGate(ApiGate.Working).Produces(StatusCodes.Status204NoContent);
+                : Unauthorized(http)).RequireGate(ApiGate.Working).Produces(StatusCodes.Status204NoContent).Idempotent("marks the order's label printed; a repeat marks it again");
         // Tab counters for the same filters as GET /orders (the status tab itself is ignored).
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted, string? tabs, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant
@@ -213,10 +213,10 @@ public static partial class MarketplaceEndpoints
         }).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
         api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
-        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireGate(ApiGate.Open).Produces<WebhookAcceptedView>();
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireGate(ApiGate.Open).Produces<WebhookAcceptedView>().Idempotent("a repeated delivery of the same marketplace message is queued once (deduplicated by its message id)");
         // An event path answers as Hepsiburada's contracts show: a POST 201, a PUT 204, both without a body.
         api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery().RequireGate(ApiGate.Open)
-            .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status204NoContent);
+            .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status204NoContent).Idempotent("a repeated delivery of the same marketplace message is queued once (deduplicated by its message id)");
         return endpoints;
     }
 

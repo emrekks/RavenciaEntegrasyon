@@ -40,9 +40,9 @@ public static partial class CatalogEndpoints
         api.MapGet("/connections/{connectionId:guid}/attribute-defaults", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.ListAttributeDefaultsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<ConnectionAttributeDefaultView>>();
         api.MapPut("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ConnectionAttributeDefaultView>();
+            Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ConnectionAttributeDefaultView>().Idempotent(WriteReasons.Replaces);
         api.MapDelete("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<bool>();
+            Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<bool>().Idempotent(WriteReasons.Removes);
         api.MapGet("/mappings/name-hints", async (Guid attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<MarketplaceNameHintsView>();
         api.MapGet("/mappings/attribute-name-hints", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
@@ -56,7 +56,7 @@ public static partial class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.ListAttributeValueMappingsAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>();
         // "Birebir Eşle" (Shopify): apply=false counts for the confirmation, apply=true maps; it never changes a mapping.
         api.MapPost("/mappings/categories/exact-match", async (Guid connectionId, bool? apply, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ExactMatchShopifyCategoriesAsync(tenant.TenantId, connectionId, apply == true, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ShopifyExactCategoryMatchView>();
+            Tenant(http) is { } tenant ? Result(await service.ExactMatchShopifyCategoriesAsync(tenant.TenantId, connectionId, apply == true, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ShopifyExactCategoryMatchView>().Idempotent("maps only categories still unmapped to a same-named type; a repeat finds none left (apply=false only counts)");
         foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
         {
             var routeType = type;
@@ -69,9 +69,9 @@ public static partial class CatalogEndpoints
             {
                 if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
                 return WithEtag(http, await service.UpsertMappingAsync(tenant.TenantId, routeType, localId, expected, command, http.RequestAborted), x => x.Version);
-            }).Produces<CatalogMappingView>();
+            }).Produces<CatalogMappingView>().Idempotent(WriteReasons.Replaces);
             api.MapDelete($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<bool>();
+                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<bool>().Idempotent(WriteReasons.Removes);
         }
     }
 

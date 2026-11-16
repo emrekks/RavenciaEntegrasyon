@@ -58,6 +58,54 @@ public sealed class ApiEndpointRulesTests(ApiRouteProbeHost fixture) : IClassFix
             + "\nDeclare it but the probe did not meet the check:\n" + string.Join("\n", unchecked_));
     }
 
+    // API-GUVENLIK-8 c: every write says what a second identical call does: it requires an Idempotency-Key (the key
+    // replays the first answer), or it declares itself Idempotent or NotIdempotent with a reason. Never both.
+    [Fact]
+    public void EveryWriteDeclaresWhatARepeatDoes()
+    {
+        var wrong = new List<string>();
+        foreach (var (method, pattern, endpoint) in PanelRoutes().Where(route => route.Method is "POST" or "PUT" or "PATCH" or "DELETE"))
+        {
+            var keyed = endpoint.Metadata.GetMetadata<IdempotencyKeyRequired>() is not null;
+            var declared = endpoint.Metadata.GetOrderedMetadata<WriteIdempotency>();
+            if (!keyed && declared.Count == 0) wrong.Add($"{method} {pattern}: no declaration (.RequireIdempotencyKey(), .Idempotent(why) or .NotIdempotent(why))");
+            else if (keyed && declared.Count > 0) wrong.Add($"{method} {pattern}: requires a key and also declares {declared[0].Repeat}");
+            else if (declared.Count > 1) wrong.Add($"{method} {pattern}: declared {declared.Count} times");
+            else if (declared.Count == 1 && string.IsNullOrWhiteSpace(declared[0].Reason)) wrong.Add($"{method} {pattern}: no reason");
+        }
+        Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+    }
+
+    // The writes whose every call has its own effect and that take no key, named one by one so a new one is a decision
+    // (the owner decides which of them should require a key).
+    private static readonly string[] NotIdempotentWrites =
+    [
+        "POST /api/v1/auth/change-password",
+        "POST /api/v1/auth/login",
+        "POST /api/v1/auth/mfa/challenge",
+        "POST /api/v1/auth/mfa/confirm",
+        "POST /api/v1/auth/mfa/setup",
+        "POST /api/v1/auth/recovery-codes/regenerate",
+        "POST /api/v1/products/{id:guid}/size-chart/generate",
+        "POST /api/v1/question-templates",
+        "POST /api/v1/settings/ai/skills/{key}/upload",
+        "POST /api/v1/settings/ai/test",
+        "POST /api/v1/settings/alert-email/test",
+        "POST /api/v1/settings/offsite-backup/google/authorize",
+        "POST /api/v1/settings/offsite-backup/google/complete",
+        "POST /api/v1/settings/users/",
+        "POST /api/v1/settings/users/{id:guid}/password-reset",
+    ];
+
+    [Fact]
+    public void TheNotIdempotentWritesAreTheListedOnes()
+    {
+        var declared = PanelRoutes()
+            .Where(route => route.Endpoint.Metadata.GetMetadata<WriteIdempotency>()?.Repeat == WriteRepeat.NotIdempotent)
+            .Select(route => $"{route.Method} {route.Pattern}").Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(NotIdempotentWrites.Order(StringComparer.Ordinal), declared);
+    }
+
     // The live marketplace reads are the routes the path rule names (RoleAuthorizationMiddleware.IsLiveMarketplaceRead);
     // each declares itself one, which gives it the Working gate and the same-origin filter.
     [Fact]

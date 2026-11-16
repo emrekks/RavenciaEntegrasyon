@@ -28,15 +28,15 @@ public static class AiEndpoints
     {
         var settings = endpoints.MapGroup("/api/v1/settings/ai").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         settings.MapGet("", GetAsync).Produces<AiSettingsView>();
-        settings.MapPut("", SaveAsync).Produces<AiSettingsView>().IfMatch(required: false);
-        settings.MapPost("/test", TestAsync).Produces<AiConnectionTestView>();
-        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery().Produces<AiSettingsView>();
+        settings.MapPut("", SaveAsync).Idempotent("replaces the stored AI settings; If-Match refuses a stale repeat").Produces<AiSettingsView>().IfMatch(required: false);
+        settings.MapPost("/test", TestAsync).NotIdempotent("each call makes a small paid request to Claude and records its usage").Produces<AiConnectionTestView>();
+        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery().NotIdempotent("uploads the skill file to Anthropic as a new skill version each time").Produces<AiSettingsView>();
         settings.MapGet("/usage", UsageAsync).Produces<AiUsageView>();
 
         var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart").WithGates(ApiGate.SignedIn, ApiGate.Operations);
         products.MapGet("", GetSizeChartAsync).Produces<SizeChartView>();
-        products.MapPost("/generate", GenerateSizeChartAsync).Produces<SizeChartGenerated>();
-        products.MapPut("", MarkSizeChartAsync).Produces<SizeChartMarkedView>();
+        products.MapPost("/generate", GenerateSizeChartAsync).NotIdempotent("each call is a new paid Claude generation and stores a new picture").Produces<SizeChartGenerated>();
+        products.MapPut("", MarkSizeChartAsync).Idempotent("sets the card's size chart to the address the body names").Produces<SizeChartMarkedView>();
         return endpoints;
     }
 

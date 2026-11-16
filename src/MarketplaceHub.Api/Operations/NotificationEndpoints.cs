@@ -35,11 +35,11 @@ public static class NotificationEndpoints
                 item.CreatedAt, Shared: false, item.Read)).ToList();
             var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, items, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { saved = result.Value }) : Problem(http, result.Error!);
-        }).Produces<NotificationsSavedView>();
+        }).Idempotent("stores each notice under its client key; a repeat writes the same rows").Produces<NotificationsSavedView>();
         api.MapPost("/read", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
-            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
+            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Idempotent("marks the selection read").Produces<NotificationsUpdatedView>();
         api.MapPost("/dismiss", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
-            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.DismissAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
+            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.DismissAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Idempotent("dismisses the selection").Produces<NotificationsUpdatedView>();
         return endpoints;
     }
 

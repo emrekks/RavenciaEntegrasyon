@@ -118,7 +118,7 @@ public static class QuestionEndpoints
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.SaveTemplateAsync(tenant.TenantId, null, null, command, http.RequestAborted);
             return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created);
+        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created).NotIdempotent("creates a new answer template each time");
         api.MapPut("/question-templates/{id:guid}", async (Guid id, SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -128,7 +128,7 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        }).Produces<MarketplaceQuestionTemplateView>().IfMatch();
+        }).Produces<MarketplaceQuestionTemplateView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapDelete("/question-templates/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -136,7 +136,7 @@ public static class QuestionEndpoints
             if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Silme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.DeleteTemplateAsync(tenant.TenantId, id, version, http.RequestAborted);
             return result.Succeeded ? Results.NoContent() : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).Produces(StatusCodes.Status204NoContent).IfMatch();
+        }).Produces(StatusCodes.Status204NoContent).IfMatch().Idempotent(WriteReasons.VersionGuarded);
         return endpoints;
     }
 
