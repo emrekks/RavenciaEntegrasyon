@@ -298,7 +298,7 @@ Sessiz bir saatte, tek seferde:
    (yedek ve geri yükleme `marketplacehub` ile çalıştığı için uzantı yedekten de geri gelir).
 3. Sık güncellenen tabloların autovacuum ayarı **sahip adımı değil, migration ile geliyor**:
    `20261116090200_HotTableAutovacuum` (`integration.jobs`, `job_attempts`, `rate_limit_usage`, `inbox_messages`,
-   `reference_items`, `inventory.inventory_items`, `channel_offers` için `autovacuum_vacuum_scale_factor` ve
+   `inventory.inventory_items`, `channel_offers` için `autovacuum_vacuum_scale_factor` ve
    `autovacuum_analyze_scale_factor` 0.02; yazmaları bloke etmez, postgres yeniden başlamaz). Adım 1'den bağımsızdır.
    Doğrulama: `/prod-sql "select relname, reloptions from pg_class where relname in ('jobs','channel_offers') and relkind='r'"`.
 4. Salt-okunur rol: `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro` artık
