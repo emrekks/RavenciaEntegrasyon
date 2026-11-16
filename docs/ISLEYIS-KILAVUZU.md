@@ -1857,6 +1857,39 @@ işlenmiş 30 gün, en geç 90 gün; kota kullanım satırları 2 gün. (canlı,
 | `CONNECTION_FULL_RESET` | Tam Sıfırlama | Panel İçi | Kullanıcı |
 | `PANEL_FACTORY_RESET` | (panel kataloğunda adı yok) | Panel İçi | Kullanıcı (Sistem Ayarları › Veri) |
 
+#### 6.4.1 İşleri kim çalıştırır: işleyiciler ve kalan plan (ISLEYICI-9)
+
+Pazaryeri işlerini `MarketplaceJobProcessor.ProcessAsync` alır: ön kontroller (bağlantı, kapsam, ilk aktarım, pasif
+bağlantı), bağlantının yürütme kilidi, akış telemetrisi ve çekilen kayıtlar orada kalır; işin kendisi üç yoldan birine gider
+(`MarketplaceJobProcessor.cs`; `MarketplaceJobProcessor.Dispatch.cs`):
+
+- **Kendi işleyici sınıfı olan işler** (`IJobHandler`, kendi `JobOutcome` telemetrisiyle): soru çekme, dört finans çekimi,
+  Tam Sıfırlama (`Jobs/Handlers/`).
+- **Çalıştırma işleyicileri** (`IRunJobHandler`, 16 Kas 2026): işlemcinin çalıştırma durumunu (`JobRunContext`) ve
+  çalıştırma servislerini (`JobRunServices`) paylaşır; kilit, sayaçlar, telemetri ve çekilen kayıtlar işlemcide kalır,
+  hatalar işlemcinin kendi yakalama bloklarına düşer (`JobProcessing/RunJobHandlers.cs`). Taşınanlar: ürün çekme ×3 ve
+  ürün yapısı çekme (`CatalogImportService`), referans listeleri ×5 (`ReferenceSyncService`), sipariş okumaları — yeni
+  sipariş, geçmiş, açık sipariş, uzlaştırma (`OrderReadService`), iade okumaları — yeni iade, açık iade, uzlaştırma
+  (`ReturnReadService`). Sipariş ve iade okumalarının pazaryerine sorduğu her istek altın testlerle sabitlendi
+  (`ReadLoopGoldenPostgreSqlTests`).
+- **Mantığı hâlâ işlemcide olan işler**: aşağıdaki tablo. Bunlar sırayla, her biri önce altın testle sabitlenip kendi
+  servisine, sonra bir çalıştırma işleyicisine taşınacak; işlemci en sonda yalnız ön kontrol, kilit, telemetri ve
+  yönlendirme olarak kalacak.
+
+| Sıra | İş tipleri | Mantığın yeri | Taşımak için gereken |
+|---|---|---|---|
+| 1 | `TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION`, `*ORDER_INVOICE_RECONCILIATION` ×3 | `OrderReadService.OrderLifecycle` (kargo bilgisi), `MarketplaceJobProcessor.InvoiceReconciliation` | Okuma işleri; fatura kontrolü `OrderInvoiceState` ve Hepsiburada eksik fatura listesine dayanır. Önce paket başına okunan fatura durumunun altın testi, sonra `InvoiceReconciliationService` ve sipariş okuma işleyicisine ekleme. |
+| 2 | `LISTING_VERIFY`, `LISTING_LOOKUP` | `MarketplaceJobProcessor.ListingVerify` | Okuma; `ListingVerificationRules` ve `VariantLinkBookkeeping` hazır. Kalan: tarama durumu (imleç) ve arama işinin kuyruğa eklenmesi (`AddListingLookupJobAsync`, `JobEnqueueSites` satırıyla). |
+| 3 | `*_WEBHOOK_INGEST` ×3 | `MarketplaceJobProcessor.WebhookIngest`, `.Webhooks` | Okuma servislerini zaten çağırır; kalan gelen kutusu işleme, Hepsiburada sipariş okuma kuyruğu (`QueueHepsiburadaOrderReadsAsync`) ve webhook boşluk notu. |
+| 4 | `EXTERNAL_EFFECT_RECONCILE` | `MarketplaceJobProcessor.EffectReconcile` | `ExternalEffectGuard` kayıtlarını okur; yazma işlerinden önce taşınmalı ki yazmalar aynı guard'ı kullanan servise geçebilsin. |
+| 5 | `STOCK_PROJECTION_DISPATCH`, `STOCK_RECONCILIATION`, `PRICE_INVENTORY_SYNC` | `.StockProjection`, `.PriceInventory`, `.PttAvmProductUpdate` | **Yazma** işleri (otomatik fiyat/stok yazması canlıda kapalı). Önce gönderilen fiyat/stok gövdelerinin altın testi; `ExternalEffectGuard` ve sürüm/hash yazımları aynen korunmalı. |
+| 6 | `PRODUCT_CREATE`, `PRODUCT_UPDATE`, `PRODUCT_ARCHIVE`, `PRODUCT_APPROVAL_RECONCILE` | `.ProductCreate`, `.ProductUpdate`, `.TrendyolContentGroups`, `.TrendyolUpdateGroups`, `.ProductLinks` (yayın tarafı) | Yazma; yayın tarafı bağ yazımları (`ProductLinks`) ve onay takibi işi (`EnsureApprovalReconciliationJob`) birlikte taşınır. Gönderilen ürün gövdelerinin altın testi şart. |
+| 7 | `SHIPMENT_ACTION`, `RETURN_ACTION`, `TRENDYOL_COMMON_LABEL`, `TRENDYOL_CAPABILITY_PROBE`, `TRENDYOL_STAGE_TEST_ORDER` | `.Actions`, `.Labels` | Yazma; paket/iade kararı ve etiket. `ExternalEffectGuard` ile belirsiz sonuç kuralları değişmeden taşınmalı. |
+| 8 | `*_CONNECTION_TEST` ×6 | `.ConnectionTest` | Okuma; bağlantı kimlik hatası kaydı (`RecordConnectionAuthenticationFailureAsync`) işlemcide kaldığı için en son ve küçük. |
+
+Kural: her adım tek commit, davranış değişmez; taşınan döngünün pazaryerine sorduğu her istek ve yazdığı her gövde önce
+altın testle sabitlenir, testler hem C hem en-US harmanlamalı veritabanında koşar.
+
 ### 6.5 Kilit grupları
 
 Bir bağlantıda aynı **kilit grubundaki** iki iş aynı anda çalışmaz (`MarketplaceSyncExecutionLock.cs:89-165`):

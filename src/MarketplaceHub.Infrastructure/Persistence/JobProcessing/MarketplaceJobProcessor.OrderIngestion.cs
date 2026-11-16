@@ -7,12 +7,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // per run (bound to that run's context) and its methods of the same names call into it.
 public sealed partial class MarketplaceJobProcessor
 {
-    private OrderIngestionService? orderIngestion;
-
-    private OrderIngestionService OrderIngestion =>
-        orderIngestion is { } current && ReferenceEquals(current.Run, run)
-            ? current
-            : orderIngestion = new OrderIngestionService(db, issues, cursors, timeProvider, invoiceBilling, run);
+    private OrderIngestionService OrderIngestion => Services.OrderIngestion;
 
     internal Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken) =>
         OrderIngestion.UpsertOrders(tenantId, connectionId, remotes, cancellationToken);
