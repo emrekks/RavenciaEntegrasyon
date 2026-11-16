@@ -64,11 +64,12 @@ extra_publish() {
     [[ "$(head -c 22 -- "$file")" == "age-encryption.org/v1" ]] || { echo "Refusing to publish ${file##*/}: it is not age-encrypted." >&2; return 1; }
   done
   (cd -- "$staged" && sha256sum -- *.age > SHA256SUMS)
-  date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.verified"
   "${sudo_cmd[@]}" install -d -m 0750 -g "$extra_reader_gid" -- "$root/offsite-extra"
   local target="$root/offsite-extra/$part" incoming="$root/offsite-extra/.$part.incoming-$$"
   "${sudo_cmd[@]}" rm -rf -- "$incoming"
   "${sudo_cmd[@]}" cp -R -- "$staged" "$incoming"
+  # The marker goes in last, once every file is complete and readable by the worker.
+  date -u +%Y-%m-%dT%H:%M:%SZ | "${sudo_cmd[@]}" tee "$incoming/.verified" >/dev/null
   "${sudo_cmd[@]}" chgrp -R "$extra_reader_gid" -- "$incoming"
   "${sudo_cmd[@]}" chmod 0750 -- "$incoming"
   "${sudo_cmd[@]}" find "$incoming" -type f -exec chmod 0640 {} +

@@ -156,6 +156,8 @@ public sealed class BackupSetDirectory(string root) : IBackupSetSource
         foreach (var part in parts)
         {
             var partName = Path.GetFileName(part);
+            // A part being published (".escrow.incoming-<pid>") or replaced ("escrow.old") is not a part.
+            if (!partName.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-')) continue;
             var taken = new List<(string, FileStream)>();
             try
             {

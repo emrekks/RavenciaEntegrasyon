@@ -20,6 +20,8 @@ public sealed class OffsiteBackupExtrasTests
         WritePart(root, "named-wrong", ("credential_key.txt", Age("x")));
         WritePart(root, "unverified", false, ("a.tar.age", Age("a")));
         WritePart(root, "changed", ("b.tar.age", Age("b")));
+        WritePart(root, ".escrow.incoming-42", ("ravencia-secrets.tar.age", Age("half published")));
+        WritePart(root, "escrow.old", ("ravencia-secrets.tar.age", Age("replaced")));
         File.AppendAllText(Path.Combine(root.Path, BackupSetDirectory.ExtraFolder, "changed", "b.tar.age"), "tampered");
 
         var (set, notes) = await new BackupSetDirectory(root.Path).OpenNewestVerifiedAsync(CancellationToken.None);
