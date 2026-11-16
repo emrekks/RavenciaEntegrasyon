@@ -18,7 +18,9 @@ import { loadPrintedShippingLabels, useShippingLabelSettings, type ShippingLabel
 import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformOptions } from '../marketplace-platform-support'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatDateTime, istanbulDateKey, istanbulDayBoundary } from '../../../shared/format-date'
-import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
+import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
+import { useCursorPager } from '../../../shared/list/useCursorPager'
+import { useListSelection } from '../../../shared/list/useListSelection'
 import { OrderMetricCards } from './OrderMetricCards'
 import { useMetricSource } from '../use-metric-source'
 import { useResendReminder } from './resend-reminder'
@@ -132,7 +134,7 @@ export function OrdersPage() {
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null)
   const [hepsiburadaPackageOrder, setHepsiburadaPackageOrder] = useState<Order | null>(null)
   const [bulkShopifyStatus, setBulkShopifyStatus] = useState<{ kind: 'order' | 'invoice'; items: Order[] } | null>(null)
-  const [searchParams, setSearchParams] = useSearchParams(); const requestedSearch = searchParams.get('search') ?? ''; const [initialList] = useState(() => orderListFromUrl(searchParams)); const [filterForm, setFilterForm] = useState<OrderFilters>(initialList.filters); const [filters, setFilters] = useState<OrderFilters>(initialList.filters); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [pageSize, setPageSize] = useState(initialList.pageSize); const [page, setPage] = useState(initialList.page); const [jumpPage, setJumpPage] = useState(''); const [selectedIds, setSelectedIds] = useState<string[]>([]); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkNotice, setBulkNotice] = useState(''); const [bulkNoticeKind, setBulkNoticeKind] = useState<IntegrationFeedback['kind'] | 'pending'>('success'); const [bulkNoticeVersion, setBulkNoticeVersion] = useState(0); const [exporting, setExporting] = useState(false); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceViewerOrder, setInvoiceViewerOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [shopifyStatusOrder, setShopifyStatusOrder] = useState<Order | null>(null); const [shopifyCsvImportOpen, setShopifyCsvImportOpen] = useState(false); const [courierOrder, setCourierOrder] = useState<{ item: Order; items: Order[] } | null>(null); const [shippingLabel, setShippingLabel] = useState<{ item: Order; format: ShippingLabelFormat } | null>(null); const [shippingLabelBatch, setShippingLabelBatch] = useState<{ items: Order[]; format: ShippingLabelFormat } | null>(null); const [singleSyncOpen, setSingleSyncOpen] = useState(false); const [previewImage, setPreviewImage] = useState<ProductImagePreview | null>(null); const [, setColumnFilterOpen] = useState<'cargo' | 'invoice' | 'label' | 'status' | null>(null); const { settings: labelSettings } = useShippingLabelSettings(); const [printedLabels, setPrintedLabels] = useState<Set<string>>(() => new Set(loadPrintedShippingLabels()))
+  const [searchParams, setSearchParams] = useSearchParams(); const requestedSearch = searchParams.get('search') ?? ''; const [initialList] = useState(() => orderListFromUrl(searchParams)); const [filterForm, setFilterForm] = useState<OrderFilters>(initialList.filters); const [filters, setFilters] = useState<OrderFilters>(initialList.filters); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [pageSize, setPageSize] = useState(initialList.pageSize); const [jumpPage, setJumpPage] = useState(''); const [menu, setMenu] = useState<{ orderId: string; kind: 'invoice' | 'actions' } | null>(null); const [bulkNotice, setBulkNotice] = useState(''); const [bulkNoticeKind, setBulkNoticeKind] = useState<IntegrationFeedback['kind'] | 'pending'>('success'); const [bulkNoticeVersion, setBulkNoticeVersion] = useState(0); const [exporting, setExporting] = useState(false); const [invoiceInfoOrder, setInvoiceInfoOrder] = useState<Order | null>(null); const [invoiceViewerOrder, setInvoiceViewerOrder] = useState<Order | null>(null); const [invoiceDraftOrder, setInvoiceDraftOrder] = useState<Order | null>(null); const [invoiceUploadOrder, setInvoiceUploadOrder] = useState<Order | null>(null); const [shopifyStatusOrder, setShopifyStatusOrder] = useState<Order | null>(null); const [shopifyCsvImportOpen, setShopifyCsvImportOpen] = useState(false); const [courierOrder, setCourierOrder] = useState<{ item: Order; items: Order[] } | null>(null); const [shippingLabel, setShippingLabel] = useState<{ item: Order; format: ShippingLabelFormat } | null>(null); const [shippingLabelBatch, setShippingLabelBatch] = useState<{ items: Order[]; format: ShippingLabelFormat } | null>(null); const [singleSyncOpen, setSingleSyncOpen] = useState(false); const [previewImage, setPreviewImage] = useState<ProductImagePreview | null>(null); const [, setColumnFilterOpen] = useState<'cargo' | 'invoice' | 'label' | 'status' | null>(null); const { settings: labelSettings } = useShippingLabelSettings(); const [printedLabels, setPrintedLabels] = useState<Set<string>>(() => new Set(loadPrintedShippingLabels()))
   useEffect(() => {
     const refreshPrintedLabels = () => setPrintedLabels(new Set(loadPrintedShippingLabels()))
     window.addEventListener('storage', refreshPrintedLabels)
@@ -152,11 +154,20 @@ export function OrdersPage() {
     const timeout = window.setTimeout(() => setBulkNotice(''), 5000)
     return () => window.clearTimeout(timeout)
   }, [bulkNotice, bulkNoticeKind, bulkNoticeVersion])
-  const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
+  // Another filter, tab, search, sort, platform or page size goes back to page 1, forgets the cursors and clears the
+  // selection; a page change clears the selection too (W6: Siparişler counts only the rows on screen).
+  const orderListKey = JSON.stringify([filters, selectedPlatforms, pageSize])
+  const pager = useCursorPager({ resetKey: orderListKey, initialPage: initialList.page })
+  const page = pager.page
+  const setPage = pager.setPage
+  const { rememberCursor } = pager
+  const selection = useListSelection({ filterKey: orderListKey, page, keepAcrossPages: false })
+  const selectedIds = selection.selectedIds
+  const setSelectedIds = selection.set
   // "Etiket Durumu" is filtered by the server (labelPrintedAt kept per package), like every other list filter: an address
   // opened with it reads one page (WEB-SAYFALAR-8: it read the whole order history first, until the first answer said
   // the server filters it).
-  const orderCursor = pageCursors[page] ?? null
+  const orderCursor = pager.cursor
   const orderQueryFilters: OrderFilters = { ...filters, sort: keepSort(filters.status, filters.sort), platform: 'ALL', platforms: selectedPlatforms ?? [] }
   const ordersQuery = useQuery({ queryKey: queryKeys.orders('page', orderQueryFilters, pageSize, page, orderCursor), queryFn: ({ signal }) => loadOrderPage(orderQueryFilters, pageSize, orderCursor, page, signal), placeholderData: keepPreviousData, staleTime: 30_000, refetchOnWindowFocus: true })
   // The tab counters count the orders each tab lists for the same filters (date, search, platforms, cargo,
@@ -266,15 +277,14 @@ export function OrdersPage() {
   const totalPages = Math.max(1, Math.ceil(totalOrderCount / pageSize))
   const pageItems = items.map(item => ({ ...item, invoiceCreationEnabled: connections.data?.items.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = pageItems.filter(item => selectedIds.includes(item.id)); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
   const hasNextPage = Boolean(ordersQuery.data?.nextCursor)
-  function goToPreviousPage() { setPage(current => Math.max(1, current - 1)); setSelectedIds([]) }
-  function goToNextPage() { if (!hasNextPage) return; const next = ordersQuery.data?.nextCursor; if (next) setPageCursors(current => ({ ...current, [page + 1]: next })); setPage(current => current + 1); setSelectedIds([]) }
-  function goToPage(nextPage: number) { const target = Math.min(Math.max(1, nextPage), totalPages); if (target === page) return; setPage(target); setSelectedIds([]) }
+  function goToPreviousPage() { setPage(current => Math.max(1, current - 1)) }
+  function goToNextPage() { if (!hasNextPage) return; const next = ordersQuery.data?.nextCursor; if (next) rememberCursor(page + 1, next); setPage(current => current + 1) }
+  function goToPage(nextPage: number) { const target = Math.min(Math.max(1, nextPage), totalPages); if (target === page) return; setPage(target) }
+  // As before the move, the cursor is kept from the answer shown, a placeholder (the page before) included.
   useEffect(() => {
     const next = ordersQuery.data?.nextCursor
-    if (!next || pageCursors[page + 1] === next) return
-    setPageCursors(current => ({ ...current, [page + 1]: next }))
-  }, [ordersQuery.data?.nextCursor, page, pageCursors])
-  useChangeEffect(JSON.stringify([filters, selectedPlatforms, pageSize]), () => { setPageCursors({ 1: null }); setPage(1); setSelectedIds([]) })
+    if (next) rememberCursor(page + 1, next)
+  }, [ordersQuery.data?.nextCursor, page, rememberCursor])
   useListUrlSync({ search: filters.search, status: filters.status, platforms: selectedPlatforms, listing: filters.listing, cargo: filters.cargo, invoice: filters.invoice, invoiceType: filters.invoiceType, invoiceRegion: filters.invoiceRegion, label: filters.label, sort: filters.sort, from: filters.dateFrom, to: filters.dateTo, cancelFrom: filters.cancelFrom, cancelTo: filters.cancelTo, cancelPart: filters.cancelPart, kind: filters.kind, size: pageSize, page }, { status: 'ALL', listing: 'ALL', cancelPart: 'ALL', kind: 'ALL', cargo: 'ALL', invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL', label: 'ALL', sort: 'DATE_DESC', size: 50, page: 1 })
   // A link that brings a search (the quick search) while the list is open; the list's own address is not one.
   const applyRequestedSearch = useEffectEvent((value: string) => { if (!value || value === filters.search) return; setFilterForm(current => ({ ...current, search: value })); setFilters(current => ({ ...current, search: value })); setPage(1) })

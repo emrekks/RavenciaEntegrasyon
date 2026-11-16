@@ -43,6 +43,8 @@ import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../use-metric-source'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
+import { useCursorPager } from '../../../shared/list/useCursorPager'
+import { useListSelection } from '../../../shared/list/useListSelection'
 
 // Empty text of the tabs that list a special state, instead of the generic "sync the returns" line.
 const tabEmptyCopy: Record<string, [string, string]> = {
@@ -398,7 +400,7 @@ export function ReturnsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedStatus = searchParams.get('status') ?? 'ALL'
   const initialStatus = resolveReturnStatus(requestedStatus)
-  const [status, setStatus] = useState<string>(initialStatus); const [initialList] = useState(() => returnListFromUrl(searchParams)); const [search, setSearch] = useState(() => searchParams.get('search') ?? ''); const [from, setFrom] = useState(initialList.from); const [to, setTo] = useState(initialList.to); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [jumpPage, setJumpPage] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [cargoFilter, setCargoFilter] = useState(initialList.cargo); const [reasonFilter, setReasonFilter] = useState(initialList.reason); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState(initialList.invoice); const [returnSort, setReturnSort] = useState<ReturnSort>(initialList.sort)
+  const [status, setStatus] = useState<string>(initialStatus); const [initialList] = useState(() => returnListFromUrl(searchParams)); const [search, setSearch] = useState(() => searchParams.get('search') ?? ''); const [from, setFrom] = useState(initialList.from); const [to, setTo] = useState(initialList.to); const [pageSize, setPageSize] = useState(initialList.pageSize); const [jumpPage, setJumpPage] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [cargoFilter, setCargoFilter] = useState(initialList.cargo); const [reasonFilter, setReasonFilter] = useState(initialList.reason); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState(initialList.invoice); const [returnSort, setReturnSort] = useState<ReturnSort>(initialList.sort)
   const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   // A bulk approval that did not fully go through keeps its toast until it is closed: the popups are gone by then.
   const [noticeSticky, setNoticeSticky] = useState(false)
@@ -419,25 +421,24 @@ export function ReturnsPage() {
   const refinements: ReturnRefinements = { platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoiceStatus: invoiceStatusFilter }
   // The server sorts by the default (the newest return request) when the address names no order.
   const sort = effectiveReturnSort(appliedFilters.status, returnSort)
-  const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
   const listKey = JSON.stringify([appliedFilters, refinements, sort, pageSize])
-  const [cursorKey, setCursorKey] = useState(listKey)
-  if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
-  const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
+  // Another tab, filter, sort or page size goes back to page 1 and forgets the cursors (useCursorPager).
+  const pager = useCursorPager({ resetKey: listKey, initialPage: initialList.pageNumber })
+  const pageNumber = pager.page
+  const setPageNumber = pager.setPage
+  const cursor = pager.cursor
   useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: DEFAULT_RETURN_SORT, size: 20, page: 1 })
   const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getReturns'>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getReturnsSummary'>>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
-  if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
+  if (nextCursor && !query.isPlaceholderData) pager.rememberCursor(pageNumber + 1, nextCursor)
   const connections = useQuery(connectionQueries.list<Connection>())
   const returnConnections = activeReturnSyncConnections(connections.data?.items ?? [])
   const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: queryKeys.returns() }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
-  const [bulkIds, setBulkIds] = useState<string[]>([])
   // The bulk selection belongs to the cards on screen: another tab, filter, page or page size starts it empty, so a
   // return that is no longer shown is never approved or rejected by mistake.
-  const selectionKey = `${listKey}|${pageNumber}`
-  const [bulkSelectionKey, setBulkSelectionKey] = useState(selectionKey)
-  if (bulkSelectionKey !== selectionKey) { setBulkSelectionKey(selectionKey); setBulkIds([]) }
+  const bulk = useListSelection({ filterKey: listKey, page: pageNumber, keepAcrossPages: false })
+  const setBulkIds = bulk.set
   const [bulkMode, setBulkMode] = useState<'APPROVE' | 'REJECT' | null>(null)
   // On 1025-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
@@ -452,7 +453,7 @@ export function ReturnsPage() {
   // Bulk approval is offered only for returns that wait for the seller; Hepsiburada's pre-approval review keeps its own step.
   const bulkEligible = (claim: ReturnClaim) => status === 'ACTION_REQUIRED' && returnGroup(claim.status) === 'ACTION_REQUIRED' && claim.rawStatus.replace(/[_-]/gu, '').toUpperCase() !== 'AWAITINGPREAPPROVAL'
   const bulkItems = visibleItems.filter(bulkEligible)
-  const bulkSelected = bulkItems.filter(claim => bulkIds.includes(claim.id))
+  const bulkSelected = bulk.selectedVisible(bulkItems, claim => claim.id)
   const allBulkSelected = bulkItems.length > 0 && bulkSelected.length === bulkItems.length
   const bulkOverLimit = bulkDecisionLimitText(bulkSelected.length)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages)
@@ -521,7 +522,7 @@ export function ReturnsPage() {
           <ReturnHeadCell label="Durum" active={status !== 'ALL'} pop={close => <ReturnColumnPop label="İade Durumu" options={statusPopOptions} value={status} right onPick={value => { selectStatus(value); close() }} />} />
           <ReturnHeadCell label="İşlemler" />
         </tr></thead>
-        <tbody>{visibleItems.map(item => <ReturnReferenceRow key={item.rowKey ?? item.id} selectColumn={selectColumn} noBuyer={noBuyer} selection={bulkEligible(item) ? { checked: bulkIds.includes(item.id), onChange: () => setBulkIds(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id]) } : undefined} item={item} order={null} onNotice={setNotice} />)}{!visibleItems.length && <tr><td className="rr-empty-row" colSpan={noBuyer ? 8 : 9}><EmptyState icon="returns" title={summary.data?.unfilteredCount ? 'İade Bulunamadı' : tabEmptyCopy[status]?.[0] ?? 'Henüz İade Yok'} onClearFilters={summary.data?.unfilteredCount ? clearFilters : undefined}>{summary.data?.unfilteredCount ? 'Seçili filtreyle eşleşen gösterilebilir iade yok.' : tabEmptyCopy[status]?.[1] ?? "Güncel talepleri çekmek için İade Senkronizasyonu'na basın."}</EmptyState></td></tr>}</tbody>
+        <tbody>{visibleItems.map(item => <ReturnReferenceRow key={item.rowKey ?? item.id} selectColumn={selectColumn} noBuyer={noBuyer} selection={bulkEligible(item) ? { checked: bulk.has(item.id), onChange: () => bulk.toggle(item.id) } : undefined} item={item} order={null} onNotice={setNotice} />)}{!visibleItems.length && <tr><td className="rr-empty-row" colSpan={noBuyer ? 8 : 9}><EmptyState icon="returns" title={summary.data?.unfilteredCount ? 'İade Bulunamadı' : tabEmptyCopy[status]?.[0] ?? 'Henüz İade Yok'} onClearFilters={summary.data?.unfilteredCount ? clearFilters : undefined}>{summary.data?.unfilteredCount ? 'Seçili filtreyle eşleşen gösterilebilir iade yok.' : tabEmptyCopy[status]?.[1] ?? "Güncel talepleri çekmek için İade Senkronizasyonu'na basın."}</EmptyState></td></tr>}</tbody>
       </table>}</div>
       {!query.isLoading && !query.isError && visibleItems.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={currentPage <= 1} onClick={() => setPageNumber(Math.max(1, currentPage - 1))}><RrIcon name="left" /></button>{pageList.map(page => <button key={page} type="button" className={page === currentPage ? 'rr-on' : undefined} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button>)}<button type="button" aria-label="Sonraki" disabled={currentPage >= totalPages} onClick={() => setPageNumber(Math.min(totalPages, currentPage + 1))}><RrIcon name="right" /></button></div><label className="rr-jump"><span className="rr-jump-label">Sayfaya Git</span><input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } } }} /><button type="button" className="rr-btn" onClick={() => { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } }}>Git</button></label></div>}
     </div>

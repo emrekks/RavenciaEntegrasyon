@@ -25,7 +25,9 @@ import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-st
 import { requiredFieldsSkipNotice, type RequiredFieldsSkipped } from '../required-fields-skip'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
-import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
+import { readUrlNumber, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
+import { useCursorPager } from '../../../shared/list/useCursorPager'
+import { useListSelection } from '../../../shared/list/useListSelection'
 import { useLacksElevatedRole } from '../../elevated-role'
 import { ProductTransferDialog } from './ProductTransferDialog'
 import { ModelCodeCopy } from './ModelCodeCopy'
@@ -383,7 +385,7 @@ function productListFromUrl(params: URLSearchParams) {
   const pageSize = readUrlNumber(params, 'size', 20, productPageSizes)
   const after = readUrlText(params, 'after')
   const pageNumber = after ? readUrlNumber(params, 'page', 1) : 1
-  return { filters, pageSize, pageNumber, pageCursors: pageNumber > 1 ? { [JSON.stringify(filters)]: { [pageNumber]: after } } : {} }
+  return { filters, pageSize, pageNumber, pageCursors: pageNumber > 1 ? { [pageNumber]: after } : {} }
 }
 
 export function ProductsPage() {
@@ -392,14 +394,25 @@ export function ProductsPage() {
   const [initialList] = useState(() => productListFromUrl(searchParams))
   const [trackedProductImportJobIds, setTrackedProductImportJobIds] = useState<string[]>([])
   const [confirmImport, confirmImportDialog] = useConfirmDialog()
-  const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const toastStack = useToastStack(); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED'; skippedCount?: number; draftCount?: number } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(false); const [productImportUpdatePrices, setProductImportUpdatePrices] = useState(false); const [productImportUpdateStock, setProductImportUpdateStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null); const [lowStockOpen, setLowStockOpen] = useState(() => searchParams.get('details') === 'low-stock'); const [transferOpen, setTransferOpen] = useState(false); const [bulkPublishOpen, setBulkPublishOpen] = useState(false); const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false); const [bulkFieldOpen, setBulkFieldOpen] = useState(false);const [publishProductId, setPublishProductId] = useState<string | null>(null); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [pageCursors, setPageCursors] = useState<Record<string, Record<number, string | null>>>(initialList.pageCursors)
+  const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const toastStack = useToastStack(); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED'; skippedCount?: number; draftCount?: number } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(false); const [productImportUpdatePrices, setProductImportUpdatePrices] = useState(false); const [productImportUpdateStock, setProductImportUpdateStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null); const [lowStockOpen, setLowStockOpen] = useState(() => searchParams.get('details') === 'low-stock'); const [transferOpen, setTransferOpen] = useState(false); const [bulkPublishOpen, setBulkPublishOpen] = useState(false); const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false); const [bulkFieldOpen, setBulkFieldOpen] = useState(false);const [publishProductId, setPublishProductId] = useState<string | null>(null); const [pageSize, setPageSize] = useState(initialList.pageSize)
   const [pageJumping, setPageJumping] = useState(false)
   const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(() => parseProductCatalogSort(initialList.filters.sort))
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
   const [expandedPlatformGroup, setExpandedPlatformGroup] = useState<string | null>(null)
   const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock, sort: productCatalogSortValue(catalogSort) }), [searchFilter, status, platform, stock, catalogSort])
   const productFilterKey = JSON.stringify(productFilters)
-  const pageCursor = pageCursors[productFilterKey]?.[pageNumber] ?? null
+  // Another filter, search, status tab, sort or page size goes back to page 1 and forgets the cursors (useCursorPager),
+  // and clears the selection with the copies of the picked cards; the picks stay across the pages of the same list (W6:
+  // Ürünler on purpose, its bulk actions work on every card picked).
+  const productListKey = `${productFilterKey}|${pageSize}`
+  const pager = useCursorPager({ resetKey: productListKey, initialPage: initialList.pageNumber, initialCursors: initialList.pageCursors })
+  const pageNumber = pager.page
+  const setPageNumber = pager.setPage
+  const pageCursor = pager.cursor
+  const { rememberCursor } = pager
+  const selection = useListSelection({ filterKey: productListKey, page: pageNumber, keepAcrossPages: true, onReset: () => { setSelectedProductCache({}); setAllProductsSelected(false) } })
+  const selectedProductIds = selection.selectedIds
+  const setSelectedProductIds = selection.set
   const query = useQuery({
     queryKey: queryKeys.products(productFilters, pageSize, pageNumber, pageCursor),
     queryFn: ({ signal }) => fetchProductPage(pageSize, productFilters, pageCursor, signal),
@@ -457,20 +470,19 @@ export function ProductsPage() {
     setTrackedProductImportJobIds(remaining)
   }, [client, productSyncJobsQuery.data, trackedProductImportJobIds])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
-  useChangeEffect(`${productFilterKey}|${pageSize}`, () => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) })
   useListUrlSync({ q: searchFilter, status, platform, stock, sort: productFilters.sort, size: pageSize, page: pageNumber, after: pageNumber > 1 ? pageCursor : null, details: lowStockOpen ? 'low-stock' : null }, { size: 20, page: 1 })
   useEffect(() => {
     if (query.data?.totalCount == null) return
     const nextTotalPages = Math.max(1, Math.ceil(query.data.totalCount / pageSize))
     setPageNumber(value => value > nextTotalPages ? nextTotalPages : value)
-  }, [pageSize, query.data?.totalCount])
+  }, [pageSize, query.data?.totalCount, setPageNumber])
   useEffect(() => {
     if (query.isPlaceholderData || !nextPageCursor || !query.data?.hasMore) return
     const nextPage = currentPage + 1
-    setPageCursors(current => current[productFilterKey]?.[nextPage] === nextPageCursor ? current : { ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [nextPage]: nextPageCursor } })
+    rememberCursor(nextPage, nextPageCursor)
     // Read ahead only after this page's pictures (or near the list's end), so it does not take their bandwidth.
     return scheduleDeferredPrefetch(() => void client.prefetchQuery({ queryKey: queryKeys.products(productFilters, pageSize, nextPage, nextPageCursor), queryFn: ({ signal }) => fetchProductPage(pageSize, productFilters, nextPageCursor, signal), staleTime: 30_000 }), { root: productListRef.current, nearEnd: productPagerRef.current })
-  }, [client, currentPage, nextPageCursor, pageSize, productFilterKey, productFilters, query.data?.hasMore, query.isPlaceholderData])
+  }, [client, currentPage, nextPageCursor, pageSize, productFilters, query.data?.hasMore, query.isPlaceholderData, rememberCursor])
   useEffect(() => {
     if (!products.length || !selectedProductIds.length) return
     setSelectedProductCache(current => {
@@ -609,24 +621,25 @@ export function ProductsPage() {
   function goToNextPage() {
     if (!nextPageCursor || currentPage >= totalPages) return
     const nextPage = currentPage + 1
-    setPageCursors(current => current[productFilterKey]?.[nextPage] === nextPageCursor ? current : { ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [nextPage]: nextPageCursor } })
+    rememberCursor(nextPage, nextPageCursor)
     setPageNumber(nextPage)
   }
 
   async function goToPage(nextPage: number) {
     const target = Math.min(Math.max(1, nextPage), totalPages)
     if (pageJumping || target === currentPage) return
-    if (target === 1 || pageCursors[productFilterKey]?.[target] !== undefined) { setPageNumber(target); return }
+    if (pager.knows(target)) { setPageNumber(target); return }
     setPageJumping(true)
+    // The cursors read on the way belong to this list; a filter changed meanwhile drops them.
+    const jumpListKey = productListKey
     try {
-      let cursor = pageCursors[productFilterKey]?.[2] ?? null
+      let cursor = pager.cursorOf(2)
       for (let page = 2; page <= target; page += 1) {
-        const knownCursor = pageCursors[productFilterKey]?.[page]
-        if (knownCursor !== undefined) { cursor = knownCursor; continue }
+        if (pager.knows(page)) { cursor = pager.cursorOf(page); continue }
         const result = await fetchProductPage(pageSize, productFilters, cursor)
         if (!result.nextCursor) return
         cursor = result.nextCursor
-        setPageCursors(current => ({ ...current, [productFilterKey]: { ...(current[productFilterKey] ?? {}), [page]: result.nextCursor } }))
+        rememberCursor(page, result.nextCursor, jumpListKey)
       }
       setPageNumber(target)
     } catch (err) {
