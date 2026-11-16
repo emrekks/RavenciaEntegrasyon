@@ -71,6 +71,10 @@ internal sealed class JobRunServices(
     // one ExternalEffectGuard and check the same write switches.
     private ActionJobService? actionJobs;
 
+    private WebhookIngestService? webhookIngest;
+
+    public WebhookIngestService WebhookIngest => webhookIngest ??= new(db, issues, orders, orderPackages, configuration, timeProvider, OrderIngestion, ReturnIngestion, OrderRead, ReturnRead, ActionJobs, run);
+
     private ProductJobService? productJobs;
 
     public ProductJobService ProductJobs => productJobs ??= new(db, issues, products, references, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, variantLinks, run);

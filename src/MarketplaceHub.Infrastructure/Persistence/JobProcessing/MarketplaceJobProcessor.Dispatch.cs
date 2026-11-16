@@ -68,10 +68,15 @@ public sealed partial class MarketplaceJobProcessor
 
     private ProductJobRunHandler ProductJobHandler => productJobHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 3e: the webhook ingests.
+    private WebhookIngestRunHandler? webhookIngestHandler;
+
+    private WebhookIngestRunHandler WebhookIngestHandler => webhookIngestHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
     internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
         OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler,
-        ActionJobHandler, LabelJobHandler, PriceStockHandler, ProductJobHandler];
+        ActionJobHandler, LabelJobHandler, PriceStockHandler, ProductJobHandler, WebhookIngestHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -128,8 +133,7 @@ public sealed partial class MarketplaceJobProcessor
         ([.. ProductSyncRunHandler.Types], RunBool(p => p.ProductSyncHandler)),
         ([.. ReturnReadRunHandler.Types], RunBool(p => p.ReturnReadHandler)),
         ([.. CatalogStructureImportRunHandler.Types], RunBool(p => p.CatalogStructureImportHandler)),
-        ([MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.HepsiburadaWebhookIngest],
-            async (p, a, cancellationToken) => await p.IngestWebhook(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken)),
+        ([.. WebhookIngestRunHandler.Types], RunBool(p => p.WebhookIngestHandler)),
         ([.. ActionJobRunHandler.Types], RunBool(p => p.ActionJobHandler)));
 
     // The job types each table lists, for the test that every processor job type has a way to run.

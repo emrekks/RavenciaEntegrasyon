@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class WebhookIngestService
 {
     // A Hepsiburada order event (new order, package, cancellation, shipping, delivery, address) is a
     // trigger: the order it names is read again, so every event kind is handled the same way and a

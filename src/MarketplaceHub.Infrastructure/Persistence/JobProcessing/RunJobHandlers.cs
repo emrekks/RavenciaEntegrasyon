@@ -180,6 +180,17 @@ internal sealed class ProductJobRunHandler(Func<JobRunContext, JobRunServices> s
     };
 }
 
+// The webhook ingests of every marketplace that sends notices (WebhookIngestService).
+internal sealed class WebhookIngestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.HepsiburadaWebhookIngest];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        services(run).WebhookIngest.IngestWebhook(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {
