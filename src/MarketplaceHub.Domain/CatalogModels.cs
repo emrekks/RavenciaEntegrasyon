@@ -36,6 +36,12 @@ public sealed class Product
     // The model (ProductModel) this colour card belongs to; null while it is not linked (a model code shared by several
     // brands, a card without a model code). Kept by ProductModelLinks only: never set by hand, never part of Version.
     public Guid? FamilyId { get; set; }
+    // KATALOG-14 phase D: this colour's own name / description where it really differs from its model's ("Bu renge
+    // özel"); null = the colour takes the model's. Only the name and the description may differ per colour: brand,
+    // category, VAT, warranty and delivery days are one value per model (owner, 14 Nov 2026: "her varyantında eşit
+    // olmalı"), and prices, stock, codes and desi stay on the variant rows. Read only through EffectiveCatalog.
+    public string? TitleOverride { get; set; }
+    public string? DescriptionOverride { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

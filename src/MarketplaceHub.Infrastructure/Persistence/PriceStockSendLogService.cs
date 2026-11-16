@@ -95,7 +95,7 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
     {
         var pattern = $"%{CatalogService.EscapeLike(term)}%";
         var byProduct = await (from variant in db.ProductVariants.AsNoTracking()
-                               join product in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
+                               join product in EffectiveCatalog.Products(db) on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
                                where variant.TenantId == tenantId
                                    && (EF.Functions.ILike(variant.Sku, pattern, LikeEscape)
                                        || (variant.Barcode != null && EF.Functions.ILike(variant.Barcode, pattern, LikeEscape))
@@ -121,7 +121,7 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
         var variantIds = rows.Select(x => x.VariantId).Distinct().ToArray();
         var connectionIds = rows.Select(x => x.ConnectionId).Distinct().ToArray();
         var variants = await (from variant in db.ProductVariants.AsNoTracking()
-                              join product in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
+                              join product in EffectiveCatalog.Products(db) on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
                               where variant.TenantId == tenantId && variantIds.Contains(variant.Id)
                               select new { variant.Id, variant.ProductId, variant.ModelCode, product.Title })
             .ToDictionaryAsync(x => x.Id, cancellationToken);

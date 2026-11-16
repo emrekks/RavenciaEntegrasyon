@@ -39,7 +39,7 @@ public sealed partial class CatalogService
             display = categoryPath;
         }
 
-        var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
+        var selected = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
             .Select(x => new BulkFieldCard(x.Id, x.BrandId, x.Title)).ToListAsync(cancellationToken);
         if (selected.Count != ids.Length) return ServiceResult<BulkProductFieldResult>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         // A selected card's model is its brand's cards of its code; a card of the code under another brand (KENE01) takes
