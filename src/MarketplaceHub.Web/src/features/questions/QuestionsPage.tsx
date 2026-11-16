@@ -191,6 +191,8 @@ export function QuestionsPage() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const fail = (error: unknown, fallback: string) => setNotice({ message: error instanceof Error ? error.message : fallback, kind: 'error' })
   const [templateTitle, setTemplateTitle] = useState('')
+  // One key per new template: a double click or a resend after a lost answer creates it once; a saved template renews it.
+  const [templateCreateKey, setTemplateCreateKey] = useState(() => newIdempotencyKey('question-template'))
   const [templateText, setTemplateText] = useState('')
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const requestedSync = useRef(false)
@@ -250,8 +252,12 @@ export function QuestionsPage() {
   })
   const startSync = sync.mutate
   const saveTemplate = useMutation({
-    mutationFn: () => hubApi<Template>(editingTemplate ? `/question-templates/${editingTemplate.id}` : '/question-templates', { method: editingTemplate ? 'PUT' : 'POST', headers: editingTemplate ? { 'If-Match': `"v${editingTemplate.version}"` } : undefined, body: JSON.stringify({ title: templateTitle, text: templateText }) }),
-    onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) },
+    mutationFn: () => {
+      const body = JSON.stringify({ title: templateTitle, text: templateText })
+      if (editingTemplate) return hubApi<Template>(`/question-templates/${editingTemplate.id}`, { method: 'PUT', headers: { 'If-Match': `"v${editingTemplate.version}"` }, body })
+      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-template', templateCreateKey, 0, body), key => hubApi<Template>('/question-templates', { method: 'POST', headers: { 'Idempotency-Key': key }, body }))
+    },
+    onSuccess: async () => { if (!editingTemplate) setTemplateCreateKey(newIdempotencyKey('question-template')); setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) },
     onError: error => fail(error, 'Hazır cevap kaydedilemedi.'),
   })
   const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })

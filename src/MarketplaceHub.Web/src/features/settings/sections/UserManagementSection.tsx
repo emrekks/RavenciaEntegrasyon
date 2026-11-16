@@ -6,7 +6,8 @@ import { LoadingState, Modal } from '../../../shared/components'
 import { SettingsNotice, type SettingsNoticeState } from '../SettingsNotifications'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { copyText } from '../../../shared/copy-text'
-import { assignableRoles, availableUserActions, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type UserAction, type UserRole } from '../user-management'
+import { addAlreadyDoneMessage, assignableRoles, availableUserActions, canWithdrawInvitation, invitationSentMessage, isEmailAddress, reauthBody, userLockReason, userRoleHints, userRoleLabel, userRoleLabels, type ManagedUser, type ManagedUserList, type PendingInvitation, type UserAction, type UserRole } from '../user-management'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { type SettingsIconName, formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, ReauthFields } from '../settings-ui'
 
@@ -45,6 +46,9 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
   const [busy, setBusy] = useState(false)
   const [oneTime, setOneTime] = useState<OneTimePassword | null>(null)
   const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
+  // One Idempotency-Key per Kullanıcı Ekle window: a double click or a resend after a lost answer adds the person once.
+  const [addKey, setAddKey] = useState(() => newIdempotencyKey('user-add'))
+  const [withdrawing, setWithdrawing] = useState<string | null>(null)
   const list = query.data
   const actorRole = list?.currentRole ?? ''
   const roles = assignableRoles(actorRole)
@@ -52,7 +56,7 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
 
   function open(next: UserDialog) {
     setDialog(next); setStep(null); setPassword(''); setFactor(''); setError('')
-    if (next.kind === 'add') { setEmail(''); setDisplayName(''); setRole('OPERATIONS') }
+    if (next.kind === 'add') { setEmail(''); setDisplayName(''); setRole('OPERATIONS'); setAddKey(newIdempotencyKey('user-add')) }
   }
   function close() { if (!busy) { setDialog(null); setStep(null); setPassword(''); setFactor(''); setError('') } }
   function chooseStep(action: UserAction | null) {
@@ -64,15 +68,35 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
     event.preventDefault()
     if (!isEmailAddress(email)) { setError('Geçerli bir e-posta adresi girin.'); return }
     setBusy(true); setError('')
+    const person = { email: email.trim(), displayName: displayName.trim(), role }
+    // The key's fingerprint covers who is added, never the password typed to confirm it.
+    const versionedKey = versionedIdempotencyKey('user-add', addKey, 0, JSON.stringify(person))
     try {
-      const result = await hubApi<ApiAnswer<'postSettingsUsers'>>('/settings/users', { method: 'POST', body: JSON.stringify({ email: email.trim(), displayName: displayName.trim(), role, ...reauthBody(password, factor) }) })
+      const result = await sendWithVersionedIdempotencyKey(versionedKey, key => hubApi<ApiAnswer<'postSettingsUsers'>>('/settings/users', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ ...person, ...reauthBody(password, factor) }) }))
       await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
       setDialog(null)
-      if (result.temporaryPassword) setOneTime({ title: 'Kullanıcı Eklendi', email: email.trim(), password: result.temporaryPassword })
-      else setNotice({ kind: 'success', message: `${email.trim()} hesabı bu çalışma alanına ${userRoleLabel(role)} olarak eklendi; mevcut parolasıyla girer.` })
+      if (result.temporaryPassword) setOneTime({ title: 'Kullanıcı Eklendi', email: person.email, password: result.temporaryPassword })
+      else setNotice({ kind: 'success', message: invitationSentMessage(person.email, role) })
     } catch (reason) {
+      if (reason instanceof ApiRequestError && reason.code === 'IDEMPOTENCY_RESPONSE_WITHHELD') {
+        await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
+        setDialog(null)
+        setNotice({ kind: 'info', message: addAlreadyDoneMessage })
+        return
+      }
       setError(reason instanceof Error ? reason.message : 'Kullanıcı eklenemedi.')
     } finally { setBusy(false) }
+  }
+
+  async function withdraw(invitation: PendingInvitation) {
+    setWithdrawing(invitation.id)
+    try {
+      await hubApi(`/settings/users/invitations/${invitation.id}`, { method: 'DELETE' })
+      await client.invalidateQueries({ queryKey: queryKeys.managedUsers() })
+      setNotice({ kind: 'success', message: `${invitation.email} için davet geri çekildi.` })
+    } catch (reason) {
+      setNotice({ kind: 'error', message: reason instanceof Error ? reason.message : 'Davet geri çekilemedi.' })
+    } finally { setWithdrawing(null) }
   }
 
   async function submitAction(event: FormEvent) {
@@ -115,7 +139,7 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
     {query.isPending ? <div className="ss-body"><LoadingState>Kullanıcılar yükleniyor…</LoadingState></div>
       : forbidden ? <div className="ss-body"><div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Kullanıcıları yalnız hesap sahibi ve yöneticiler görür ve yönetir.</span></div></div>
         : query.isError || !list ? <div className="ss-body"><div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Kullanıcılar alınamadı.</span></div></div>
-          : <div className="ss-body is-flush"><div className="ss-sess-sub">Etkin <span className="ss-count">{activeCount}</span>{list.items.length > activeCount ? <> · Pasif <span className="ss-count">{list.items.length - activeCount}</span></> : null}</div>
+          : <div className="ss-body is-flush"><div className="ss-sess-sub">Etkin <span className="ss-count">{activeCount}</span>{list.items.length > activeCount ? <> · Pasif <span className="ss-count">{list.items.length - activeCount}</span></> : null}{list.invitations.length ? <> · Davet Bekliyor <span className="ss-count">{list.invitations.length}</span></> : null}</div>
             <table className="ss-users">
               <thead><tr><th scope="col">Ad Soyad ve E-posta</th><th scope="col">Rol</th><th scope="col">2FA</th><th scope="col">Son Giriş</th><th scope="col">Durum</th><th scope="col" aria-label="İşlemler" /></tr></thead>
               <tbody>{list.items.map(user => <tr key={user.id} className={user.active ? undefined : 'is-off'}>
@@ -125,11 +149,22 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
                 <td data-label="Son Giriş" className="is-num">{user.lastLoginAt ? formatSettingsDate(user.lastLoginAt) : 'Hiç Girmedi'}</td>
                 <td data-label="Durum">{userStatusTag(user)}</td>
                 <td className="ss-users-act"><button type="button" className="ss-btn is-xs" onClick={() => open({ kind: 'manage', userId: user.id })} aria-label={`${user.displayName} kullanıcısını yönet`}>Yönet</button></td>
+              </tr>)}
+              {/* Invited, not yet accepted (API-GUVENLIK-6): no access until the person accepts after signing in. */}
+              {list.invitations.map(invitation => <tr key={`invitation-${invitation.id}`} className="is-off">
+                <td className="ss-users-name"><span><b title={invitation.displayName}>{invitation.displayName}</b></span><small title={invitation.email}>{invitation.email}</small></td>
+                <td data-label="Rol">{userRoleLabel(invitation.role)}</td>
+                <td data-label="2FA">—</td>
+                <td data-label="Son Giriş" className="is-num" title={`Davet: ${formatSettingsDate(invitation.invitedAt)} · Son geçerlilik: ${formatSettingsDate(invitation.expiresAt)}`}>Hiç Girmedi</td>
+                <td data-label="Durum">{invitation.expired
+                  ? <span className="ss-tag" title="Kabul süresi doldu; yeniden ekleyerek daveti yenileyebilirsiniz."><SettingsGlyph state="none" />Süresi Doldu</span>
+                  : <span className="ss-tag" title={`Davet ${formatSettingsDate(invitation.expiresAt)} tarihine kadar geçerli; kişi kendi hesabıyla girip kabul edince katılır.`}><SettingsGlyph state="pending" />Bekliyor</span>}</td>
+                <td className="ss-users-act">{canWithdrawInvitation(invitation, actorRole) && <button type="button" className="ss-btn is-xs" disabled={withdrawing === invitation.id} onClick={() => void withdraw(invitation)} aria-label={`${invitation.email} davetini geri çek`}>{withdrawing === invitation.id ? 'Çekiliyor…' : 'Geri Çek'}</button>}</td>
               </tr>)}</tbody>
             </table>
           </div>}
 
-    <Modal open={dialog?.kind === 'add'} title="Kullanıcı Ekle" hint="Panel e-posta daveti göndermez: yeni hesaba tek kullanımlık bir parola üretilir, yalnız size bir kez gösterilir. Kullanıcı ilk girişte kendi parolasını belirler." className="ss-modal is-md" onClose={close} footer={<><button type="button" className="ss-btn" disabled={busy} onClick={close}>Vazgeç</button><button type="submit" form="ss-user-add" className="ss-btn is-primary" disabled={busy}><SettingsIcon name="plus" />{busy ? 'Ekleniyor…' : 'Kullanıcı Ekle'}</button></>}>
+    <Modal open={dialog?.kind === 'add'} title="Kullanıcı Ekle" hint="Panel e-posta göndermez. Bu e-postayla hesap yoksa yeni hesaba tek kullanımlık bir parola üretilir, yalnız size bir kez gösterilir; kullanıcı ilk girişte kendi parolasını belirler. Hesap zaten varsa kişi davet edilir: kendi hesabıyla girdiğinde daveti görür ve kabul edene kadar bu çalışma alanına erişemez. Davet 14 gün geçerlidir." className="ss-modal is-md" onClose={close} footer={<><button type="button" className="ss-btn" disabled={busy} onClick={close}>Vazgeç</button><button type="submit" form="ss-user-add" className="ss-btn is-primary" disabled={busy}><SettingsIcon name="plus" />{busy ? 'Ekleniyor…' : 'Kullanıcı Ekle'}</button></>}>
       <form id="ss-user-add" className="ss-stack" onSubmit={event => void submitAdd(event)}>
         <div className="ss-pair">
           <label className="ss-fld"><small>Ad Soyad</small><input className="ss-in" required maxLength={160} autoComplete="off" value={displayName} onChange={event => setDisplayName(event.target.value)} data-autofocus /></label>

@@ -92,6 +92,7 @@ export const queryKeys = {
   marketplaceNameHints: queryRoot('marketplace-name-hints', []),
   me: queryRoot('me', []),
   modelCodeHolder: queryRoot('model-code-holder', []),
+  myInvitations: queryRoot('my-invitations', []),
   n11ShipmentTemplates: queryRoot('n11-shipment-templates', []),
   notificationCenter: queryRoot('notification-center', []),
   offsiteBackup: queryRoot('offsite-backup', []),

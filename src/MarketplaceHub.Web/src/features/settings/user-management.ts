@@ -12,7 +12,27 @@ export type ManagedUser = Omit<ManagedUserAnswer['items'][number], 'role'> & {
   role: UserRole
 }
 
-export type ManagedUserList = Omit<ManagedUserAnswer, 'items'> & { items: ManagedUser[] }
+// An existing account invited to the workspace, not yet answered (API-GUVENLIK-6): the name and e-mail the inviter typed.
+export type PendingInvitation = Omit<ManagedUserAnswer['invitations'][number], 'role'> & {
+  // CONTRACT: the API declares a string; the offered role is one of the five membership roles.
+  role: UserRole
+}
+
+export type ManagedUserList = Omit<ManagedUserAnswer, 'items' | 'invitations'> & { items: ManagedUser[]; invitations: PendingInvitation[] }
+
+// Only an owner withdraws an invitation to the owner role (the server refuses an administrator, OWNER_PROTECTED).
+export function canWithdrawInvitation(invitation: PendingInvitation, actorRole: string) {
+  return invitation.role !== 'OWNER' || actorRole.toUpperCase() === 'OWNER'
+}
+
+// What the inviter is told after Kullanıcı Ekle: a new account comes with its one-time password (the one-time window);
+// without one, the e-mail belongs to an existing account that was invited and joins only when it accepts.
+export function invitationSentMessage(email: string, role: string) {
+  return `${email} adresine ${userRoleLabel(role)} rolüyle davet gönderildi. Kişi kendi hesabıyla giriş yaptığında daveti görür; kabul edene kadar bu çalışma alanına erişemez.`
+}
+
+// A repeat of an add that already went through (same Idempotency-Key): the one-time password is shown only once.
+export const addAlreadyDoneMessage = 'Bu ekleme daha önce tamamlandı. Tek kullanımlık parola yalnız ilk yanıtta gösterilir; gerekirse kullanıcıyı listeden açıp Şifre Sıfırla ile yeni parola üretin.'
 
 export type UserAction = 'role' | 'password-reset' | 'mfa-reset' | 'sessions' | 'disable' | 'enable'
 

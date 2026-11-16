@@ -1,10 +1,11 @@
 import { ApiRequestError } from '../../../shared/api'
 
-// "Oluştur" sends one generate request with a fresh Idempotency-Key per press. When its answer is lost (the proxy's
-// 502/503/504 without a problem body, a dropped connection, or the server holding that key as unknown/in progress), the
-// outcome is not known: the dialog asks the server for the newest drawn chart and shows it when this try drew one;
-// otherwise it says so in plain words and the next press is a new request (never the same key again).
-export const unknownSizeChartOutcomeMessage = 'Sunucudan yanıt alınamadı; beden tablosu oluşmadı ya da hâlâ hazırlanıyor. Biraz bekleyip Oluştur\'a yeniden basabilirsiniz; yeni deneme ayrı bir istek olarak çalışır.'
+// "Oluştur" sends one generate request per drawing under one Idempotency-Key (SizeChartDialog): a press after a dropped
+// connection sends the same key, so the server replays the chart it drew, or answers that it is still drawing, instead
+// of a second paid run; an answered error or a drawn chart renews the key. When the outcome is not known (the proxy's
+// 502/503/504 without a problem body, a dropped connection, the server holding the key as unknown or in progress), the
+// dialog asks the server for the newest drawn chart and shows it when this try drew one; otherwise it says so.
+export const unknownSizeChartOutcomeMessage = 'Sunucudan yanıt alınamadı; beden tablosu oluşmadı ya da hâlâ hazırlanıyor. Biraz bekleyip Oluştur\'a yeniden basabilirsiniz; aynı deneme tamamlandıysa tablosu yeniden çizilmeden gösterilir.'
 
 const unknownCodes = new Set(['IDEMPOTENCY_RESULT_UNKNOWN', 'IDEMPOTENCY_IN_PROGRESS'])
 
