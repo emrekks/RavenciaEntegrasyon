@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ErrorToast } from '../components/NoticeToast'
 import { failedWithHttpAnswer, sendWithVersionedIdempotencyKey, resetAnsweredIdempotencyKeys } from '../idempotency'
 import { isAbortedRequest } from './abort'
-import { ApiRequestError, clientTimeoutCode, defaultReadTimeoutMs, hubApi, loadAllPages } from './client'
+import { ApiRequestError, clientTimeoutCode, clientWriteTimeoutMessage, defaultReadTimeoutMs, defaultWriteTimeoutMs, hubApi, loadAllPages, setWriteTimeoutHandler } from './client'
 
 // A fetch that never answers on its own: it settles only when its signal is aborted (as a browser's fetch does).
 function hangingFetch() {
@@ -94,17 +94,44 @@ describe('a read with no answer', () => {
     expect(fetch.mock.calls[0][1]).not.toHaveProperty('timeoutMs')
   })
 
-  it('never cuts a write short: a slow POST waits for its answer', async () => {
+  // WEB-ALTYAPI-11: a write gives up after 90 s too, says its result is unknown, has the lists read again and is never
+  // sent again by the client; its key stays reusable (no HTTP answer came).
+  it('gives a slow write up after 90 s: result unknown, the lists refreshed, nothing sent again', async () => {
     vi.useFakeTimers()
-    let answer: (response: Response) => void = () => {}
-    const fetch = vi.fn((_url: string, _init?: RequestInit) => new Promise<Response>(resolve => { answer = resolve }))
+    const fetch = hangingFetch()
     vi.stubGlobal('fetch', fetch)
     // The CSRF token read comes first for a write.
     fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ token: 't' }), { status: 200 }))
+    const refresh = vi.fn()
+    const release = setWriteTimeoutHandler(refresh)
+    try {
+      const write = hubApi<{ id: string }>('/products', { method: 'POST', body: '{}', headers: { 'Idempotency-Key': 'k' } })
+      const settled = write.catch(error => error)
+      await vi.advanceTimersByTimeAsync(defaultWriteTimeoutMs - 1)
+      expect(refresh).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      const error = await settled
+      expect(error).toMatchObject({ code: clientTimeoutCode, status: 0, message: clientWriteTimeoutMessage })
+      expect(error.message).toContain('sonucu bilinmiyor')
+      expect(failedWithHttpAnswer(error)).toBe(false)
+      expect(refresh).toHaveBeenCalledTimes(1)
+      // One write request after the token read: no automatic retry.
+      expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/products'))).toHaveLength(1)
+    } finally {
+      release()
+    }
+  })
+
+  it('lets a write answered in time through', async () => {
+    vi.useFakeTimers()
+    let answer: (response: Response) => void = () => {}
+    // The CSRF token may already be held from the test before; it is read only when it is not.
+    const fetch = vi.fn((url: string, _init?: RequestInit) => url.endsWith('/auth/csrf')
+      ? Promise.resolve(new Response(JSON.stringify({ token: 't' }), { status: 200 }))
+      : new Promise<Response>(resolve => { answer = resolve }))
+    vi.stubGlobal('fetch', fetch)
     const write = hubApi<{ id: string }>('/products', { method: 'POST', body: '{}', headers: { 'Idempotency-Key': 'k' } })
-    await vi.advanceTimersByTimeAsync(defaultReadTimeoutMs * 3)
-    const sent = fetch.mock.calls.at(-1)![1] as RequestInit
-    expect(sent.signal ?? null).toBeNull()
+    await vi.advanceTimersByTimeAsync(defaultWriteTimeoutMs - 1000)
     answer(new Response(JSON.stringify({ id: 'p1' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     await expect(write).resolves.toEqual({ id: 'p1' })
   })

@@ -47,6 +47,13 @@ public sealed class OpenApiOperationContract : IOpenApiOperationTransformer
                 ? "The version read (\"v{version}\", the ETag of the read). Required: 428 PRECONDITION_REQUIRED without it."
                 : "The version read (\"v{version}\"); without it the write does not check the version, unless the service requires one once a value is stored.");
         Paging.Describe(operation, path);
+        // Unified filter names (FilterContract): the old spelling stays, deprecated, naming its replacement.
+        foreach (var parameter in operation.Parameters?.OfType<OpenApiParameter>().Where(parameter => parameter.In == ParameterLocation.Query) ?? [])
+        {
+            if (FilterContract.ReplacementOf(DocumentPath(path), parameter.Name ?? string.Empty) is not { } replacement) continue;
+            parameter.Deprecated = true;
+            parameter.Description = $"Use {replacement}; kept for older browser tabs. When both are sent, {replacement} wins.";
+        }
         foreach (var alternatives in metadata.OfType<ResponseAlternatives>())
             await DescribeAlternativesAsync(operation, context, alternatives, cancellationToken);
 

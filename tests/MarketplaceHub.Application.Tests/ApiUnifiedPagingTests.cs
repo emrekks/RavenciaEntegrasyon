@@ -44,7 +44,8 @@ public sealed class ApiUnifiedPagingTests(ApiEndToEndFixture fixture) : IClassFi
         using (signIn)
         {
             var first = await ReadAsync(client, "/api/v1/questions?limit=2");
-            AssertOldBody(first, "items", "page", "limit", "totalCount");
+            // Round 7: questions also answer the NumberedPage member pageSize, after the cursor members.
+            AssertOldBody(first, ["pageSize"], "items", "page", "limit", "totalCount");
             var cursor = Cursor(first);
             var byPage = await ReadAsync(client, "/api/v1/questions?page=2&limit=2");
             var byCursor = await ReadAsync(client, $"/api/v1/questions?limit=2&after={cursor}");
@@ -62,6 +63,9 @@ public sealed class ApiUnifiedPagingTests(ApiEndToEndFixture fixture) : IClassFi
             Assert.True(updated.GetProperty("hasMore").GetBoolean());
             Assert.Equal(JsonValueKind.Null, updated.GetProperty("nextCursor").ValueKind);
             await RefusedAsync(client, $"/api/v1/questions?limit=2&sort=UPDATED&after={cursor}");
+            // NumberedPage: page with pageSize names the page page with limit always named (the form the panel sends
+            // where there is no cursor).
+            Assert.Equal(await ReadAsync(client, "/api/v1/questions?page=2&limit=2&sort=UPDATED"), await ReadAsync(client, "/api/v1/questions?page=2&pageSize=2&sort=UPDATED"));
             // A cursor cut for another limit, or not a cursor, is refused.
             await RefusedAsync(client, $"/api/v1/questions?limit=3&after={cursor}");
             await RefusedAsync(client, "/api/v1/questions?limit=2&after=bozuk");
@@ -127,6 +131,8 @@ public sealed class ApiUnifiedPagingTests(ApiEndToEndFixture fixture) : IClassFi
             Assert.True(sorted.GetProperty("hasMore").GetBoolean());
             Assert.Equal(JsonValueKind.Null, sorted.GetProperty("nextCursor").ValueKind);
             await RefusedAsync(client, $"{rows}?limit=2&sort=price&after={Cursor(await ReadAsync(client, $"{rows}?limit=2"))}");
+            // NumberedPage under a sort: page with pageSize is page with limit.
+            Assert.Equal(await ReadAsync(client, $"{rows}?page=1&limit=2&sort=price&shape=compact"), await ReadAsync(client, $"{rows}?page=1&pageSize=2&sort=price&shape=compact"));
         }
     }
 
@@ -202,13 +208,48 @@ public sealed class ApiUnifiedPagingTests(ApiEndToEndFixture fixture) : IClassFi
         }
     }
 
+    // API-GUVENLIK-8 b: the unified filter names (platforms, dateFrom, dateTo) answer what the old spellings answered.
+    [PostgreSqlFact]
+    public async Task TheUnifiedFilterNamesAnswerWhatTheOldNamesAnswer()
+    {
+        await ConnectionAsync("TRENDYOL");
+        var (client, signIn) = await SignInAsync();
+        using (client)
+        using (signIn)
+        {
+            const string from = "2026-10-01", to = "2026-10-31";
+            var moment = Uri.EscapeDataString("2026-10-01T00:00:00+03:00");
+            foreach (var (old, unified) in new[]
+            {
+                ($"/api/v1/reports/sales?from={from}&to={to}&platformCodes=TRENDYOL", $"/api/v1/reports/sales?dateFrom={from}&dateTo={to}&platforms=TRENDYOL"),
+                ($"/api/v1/reports/stock?from={from}&to={to}&platformCodes=TRENDYOL", $"/api/v1/reports/stock?dateFrom={from}&dateTo={to}&platforms=TRENDYOL"),
+                ($"/api/v1/reports/order-profitability?from={from}&to={to}&platformCodes=TRENDYOL&limit=20", $"/api/v1/reports/order-profitability?dateFrom={from}&dateTo={to}&platforms=TRENDYOL&pageSize=20"),
+                ("/api/v1/reports/payouts?platformCodes=TRENDYOL", "/api/v1/reports/payouts?platforms=TRENDYOL"),
+                ($"/api/v1/dashboard/performance?from={from}&to={to}", $"/api/v1/dashboard/performance?dateFrom={from}&dateTo={to}"),
+                ($"/api/v1/notifications?from={moment}", $"/api/v1/notifications?dateFrom={moment}"),
+                ($"/api/v1/product-activity/counts?from={moment}", $"/api/v1/product-activity/counts?dateFrom={moment}"),
+                ($"/api/v1/price-stock-send-log/counts?from={moment}", $"/api/v1/price-stock-send-log/counts?dateFrom={moment}"),
+                ($"/api/v1/jobs/counts?since={moment}", $"/api/v1/jobs/counts?dateFrom={moment}"),
+                ($"/api/v1/invoice-workspace/page?platformCodes=TRENDYOL&from={moment}", $"/api/v1/invoice-workspace/page?platforms=TRENDYOL&dateFrom={moment}"),
+            })
+                Assert.Equal(Stamped(await ReadAsync(client, old)), Stamped(await ReadAsync(client, unified)));
+            // When both come, the unified name wins.
+            Assert.Equal(Stamped(await ReadAsync(client, $"/api/v1/reports/sales?dateFrom={from}&dateTo={to}")), Stamped(await ReadAsync(client, $"/api/v1/reports/sales?from=2020-01-01&to=2020-01-02&dateFrom={from}&dateTo={to}")));
+        }
+    }
+
+    // A report says when it was made (a moment with fractions of a second); two reads differ only there.
+    private static string Stamped(string body) => System.Text.RegularExpressions.Regex.Replace(body, @"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+\+00:00", "T");
+
     // The old body: exactly the members it had, in their order, then the two cursor members and nothing else; cut
     // them off and what is left is the rest of the body as written.
-    private void AssertOldBody(string body, params string[] members)
+    private void AssertOldBody(string body, params string[] members) => AssertOldBody(body, [], members);
+
+    private void AssertOldBody(string body, string[] later, params string[] members)
     {
         var root = JsonNode.Parse(body)!.AsObject();
-        Assert.Equal([.. members, .. Added], root.Select(member => member.Key).ToArray());
-        foreach (var added in Added) root.Remove(added);
+        Assert.Equal([.. members, .. Added, .. later], root.Select(member => member.Key).ToArray());
+        foreach (var added in Added.Concat(later)) root.Remove(added);
         var legacy = root.ToJsonString(ApiOptions());
         Assert.True(body.StartsWith(legacy[..^1] + ",\"nextCursor\":", StringComparison.Ordinal), "The added members are not the body's last members.");
     }

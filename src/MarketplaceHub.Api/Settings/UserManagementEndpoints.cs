@@ -50,12 +50,12 @@ public static class UserManagementEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/settings/users").WithGates(ApiGate.Elevated, ApiGate.Elevated);
         group.MapGet("", ListAsync).Produces<TenantUsersView>();
-        group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<AddedBody>();
-        group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces(StatusCodes.Status204NoContent);
-        group.MapPut("/{id:guid}/status", ChangeStatusAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces(StatusCodes.Status204NoContent);
-        group.MapPost("/{id:guid}/password-reset", ResetPasswordAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<TemporaryPasswordView>();
-        group.MapPost("/{id:guid}/mfa-reset", ResetMfaAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces(StatusCodes.Status204NoContent);
-        group.MapPost("/{id:guid}/sessions/revoke", RevokeSessionsAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Produces<SessionsRevokedView>();
+        group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("creates the account (or adds an existing one) and issues a one-time temporary password; a repeat answers the user already exists").Produces<AddedBody>();
+        group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("sets the role the body names").Produces(StatusCodes.Status204NoContent);
+        group.MapPut("/{id:guid}/status", ChangeStatusAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("sets the active state the body names").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/{id:guid}/password-reset", ResetPasswordAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("each call issues a new one-time temporary password and ends the user's sessions").Produces<TemporaryPasswordView>();
+        group.MapPost("/{id:guid}/mfa-reset", ResetMfaAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("clears the user's second factor; a repeat finds it cleared").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/{id:guid}/sessions/revoke", RevokeSessionsAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("ends the user's open sessions; a repeat ends none").Produces<SessionsRevokedView>();
         return endpoints;
     }
 

@@ -166,7 +166,7 @@ afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove
 describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the overview: the six figures, the costs, the bridge, the days and the metric cards', async () => {
     const page = await open()
-    expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
+    expect(requests[0]).toMatch(/^\/reports\/sales\?dateFrom=\d{4}-\d{2}-\d{2}&dateTo=\d{4}-\d{2}-\d{2}$/)
     // One account: 350 of sales, 100 back and an estimated commission of 43 taken off, the product cost of 80, 127 of
     // estimated profit (green); its margin over Net Ciro and over the cost; 4 orders against 2, 4 of 5 units kept.
     const figures = texts(page, '.reports-kpis > div')
@@ -878,7 +878,7 @@ describe('ReportsPage', () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     const now = new Date()
     const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    expect(requests.at(-1)).toContain(`from=${first}`)
+    expect(requests.at(-1)).toContain(`dateFrom=${first}`)
     expect(preset('Bu Ay').getAttribute('aria-pressed')).toBe('true')
     expect(preset('Son 30 Gün').getAttribute('aria-pressed')).toBe('false')
   })
@@ -895,7 +895,7 @@ describe('ReportsPage', () => {
     await act(async () => { day('2').click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     // The first and second day of the month the picker opened on.
-    const [, from, to] = /from=([\d-]+)&to=([\d-]+)/.exec(requests.at(-1) ?? '') ?? []
+    const [, from, to] = /dateFrom=([\d-]+)&dateTo=([\d-]+)/.exec(requests.at(-1) ?? '') ?? []
     expect(from?.slice(8)).toBe('01')
     expect(to).toBe(`${from?.slice(0, 8)}02`)
   })
@@ -975,7 +975,7 @@ describe('ReportsPage', () => {
     // A marketplace card sets the platform filter: the server is asked for it, the other cards stay in view.
     await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts?platformCodes=PAZARAMA')
+    expect(requests).toContain('/reports/payouts?platforms=PAZARAMA')
     expect(page.querySelectorAll('.is-platforms .reports-payout-region')).toHaveLength(2)
     // The picked card again clears the platform filter (there is no Tümü button).
     await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
@@ -1038,7 +1038,7 @@ describe('ReportsPage', () => {
     const trendyol = [...document.querySelectorAll<HTMLLabelElement>('.pf-pop .rr-opt')].find(option => option.textContent?.startsWith('Trendyol'))!
     await act(async () => { trendyol.querySelector('input')!.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts?platformCodes=TRENDYOL')
+    expect(requests).toContain('/reports/payouts?platforms=TRENDYOL')
   })
 
   it('narrows the payments by the filters kept in the address and says so when none is left', async () => {
@@ -1070,7 +1070,7 @@ describe('ReportsPage', () => {
     // The stock report is asked for once the tabs are shown.
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(selectedTab(page)).toContain('Stok')
-    expect(requests.some(path => /^\/reports\/stock\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true)
+    expect(requests.some(path => /^\/reports\/stock\?dateFrom=\d{4}-\d{2}-\d{2}&dateTo=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true)
     const figures = texts(page, '.reports-kpis > div')
     expect(figures[0]).toContain('Stoktaki Sermaye₺1.200')
     expect(figures[0]).toContain('KDV hariç ₺1.091')
@@ -1083,7 +1083,7 @@ describe('ReportsPage', () => {
     expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Stok, .*Ağustos – Ekim: ortalama %158,8$/u)
     // One small request for the rate instead of three whole monthly reports.
     expect(requests).toContain('/reports/profit-rate')
-    expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/.test(path))).toHaveLength(0)
+    expect(requests.filter(path => /^\/reports\/sales\?dateFrom=\d{4}-\d{2}-01&dateTo=\d{4}-\d{2}-\d{2}$/.test(path))).toHaveLength(0)
     expect(figures[4]).toContain('60 gün')
     // Ölü Stok is a table of the tab only, no box of the strip (owner, 7 Nov 2026): five boxes, as the second row.
     expect(page.querySelector('.reports-kpis')?.children).toHaveLength(5)

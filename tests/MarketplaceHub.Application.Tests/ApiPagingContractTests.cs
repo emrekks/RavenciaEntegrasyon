@@ -82,7 +82,7 @@ public sealed class ApiPagingContractTests(ApiPipelineHost fixture) : IClassFixt
                 {
                     foreach (var parameter in new[] { "limit", "after" }.Where(parameter => !query.Contains(parameter))) problems.Add($"{key}: no query parameter {parameter}.");
                     foreach (var parameter in (operation.Parameters ?? []).Where(parameter => parameter.In == ParameterLocation.Query && paging.Contains(parameter.Name!)))
-                        if (parameter.Deprecated != format.Deprecated!.Contains(parameter.Name!)) problems.Add($"{key}: {parameter.Name} deprecated is {parameter.Deprecated}.");
+                        if (parameter.Deprecated != (format.Deprecated?.Contains(parameter.Name!) == true)) problems.Add($"{key}: {parameter.Name} deprecated is {parameter.Deprecated}.");
                     var schema = operation.Responses!["200"].Content!["application/json"].Schema!;
                     var shapes = schema is OpenApiSchemaReference ? [schema] : schema.OneOf!;
                     foreach (var shape in shapes.Cast<OpenApiSchemaReference>())

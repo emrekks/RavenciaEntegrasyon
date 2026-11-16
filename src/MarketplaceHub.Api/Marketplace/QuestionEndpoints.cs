@@ -17,7 +17,7 @@ public static class QuestionEndpoints
         var api = endpoints.MapGroup("/api/v1").WithGates(ApiGate.SignedIn, ApiGate.Operations);
         // Unified paging (PagingContract): after, the nextCursor of the previous page, wins over page. The cursor is given
         // where the order is total: newest and oldest first (ties by id), not UPDATED (ties by the creation time only).
-        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort, string? after) =>
+        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort, string? after, int? pageSize) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
@@ -25,10 +25,12 @@ public static class QuestionEndpoints
             var orderIsTotal = !order.Trim().Equals("UPDATED", StringComparison.OrdinalIgnoreCase);
             OffsetCursor.RefuseWhereOrderIsNotTotal(after, orderIsTotal);
             // The service brings limit into 1-100; the cursor is cut for that size.
-            var cursorPage = OffsetCursor.PageIndex(after, Math.Clamp(limit ?? 50, 1, 100));
-            var result = await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, cursorPage is { } index ? index + 1 : page ?? 1, limit ?? 50, order), http.RequestAborted);
+            // NumberedPage: page with pageSize (limit, its older name, still read); the cursor pages by limit.
+            var size = string.IsNullOrWhiteSpace(after) ? pageSize ?? limit ?? 50 : limit ?? 50;
+            var cursorPage = OffsetCursor.PageIndex(after, Math.Clamp(size, 1, 100));
+            var result = await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, cursorPage is { } index ? index + 1 : page ?? 1, size, order), http.RequestAborted);
             var hasMore = (long)result.Page * result.Limit < result.TotalCount;
-            return Results.Ok(result with { HasMore = hasMore, NextCursor = orderIsTotal ? OffsetCursor.Next(result.Page - 1, result.Limit, result.TotalCount) : null });
+            return Results.Ok(result with { PageSize = result.Limit, HasMore = hasMore, NextCursor = orderIsTotal ? OffsetCursor.Next(result.Page - 1, result.Limit, result.TotalCount) : null });
         }).Produces<MarketplaceQuestionListPage>();
         api.MapGet("/questions/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
@@ -118,7 +120,7 @@ public static class QuestionEndpoints
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var result = await service.SaveTemplateAsync(tenant.TenantId, null, null, command, http.RequestAborted);
             return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created);
+        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created).NotIdempotent("creates a new answer template each time");
         api.MapPut("/question-templates/{id:guid}", async (Guid id, SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -128,7 +130,7 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        }).Produces<MarketplaceQuestionTemplateView>().IfMatch();
+        }).Produces<MarketplaceQuestionTemplateView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapDelete("/question-templates/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -136,7 +138,7 @@ public static class QuestionEndpoints
             if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Silme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.DeleteTemplateAsync(tenant.TenantId, id, version, http.RequestAborted);
             return result.Succeeded ? Results.NoContent() : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        }).Produces(StatusCodes.Status204NoContent).IfMatch();
+        }).Produces(StatusCodes.Status204NoContent).IfMatch().Idempotent(WriteReasons.VersionGuarded);
         return endpoints;
     }
 

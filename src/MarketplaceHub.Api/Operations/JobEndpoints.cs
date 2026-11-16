@@ -9,21 +9,21 @@ public static class JobEndpoints
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1/jobs").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
-        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? platform, string? platforms, string? ids) =>
+        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, DateTimeOffset? dateFrom, string? jobTypes, int? limit, string? platform, string? platforms, string? ids) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.ListAsync(
                     tenant.TenantId,
-                    new JobListQuery(status, since, List(jobTypes), limit, Platforms: Platforms(platform, platforms), Ids: Ids(ids)),
+                    new JobListQuery(status, EndpointHelpers.Unified(dateFrom, since), List(jobTypes), limit, Platforms: Platforms(platform, platforms), Ids: Ids(ids)),
                     http.RequestAborted))
                 : Unauthorized(http)).Produces<IReadOnlyList<JobSummaryView>>();
         // Cursor-paged list for the operations page: { items, nextCursor, hasMore }; after continues a previous page.
         // platform (or platforms, a comma list) keeps the jobs of those connection platforms; search keeps the jobs one
         // identifier names (job id, correlation id, marketplace id), so a job is found by its number at any age.
-        api.MapGet("/page", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? after, string? platform, string? platforms, string? search) =>
+        api.MapGet("/page", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, DateTimeOffset? dateFrom, string? jobTypes, int? limit, string? after, string? platform, string? platforms, string? search) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.PageAsync(
                     tenant.TenantId,
-                    new JobListQuery(status, since, List(jobTypes), limit, after, Platforms(platform, platforms), Search: search),
+                    new JobListQuery(status, EndpointHelpers.Unified(dateFrom, since), List(jobTypes), limit, after, Platforms(platform, platforms), Search: search),
                     http.RequestAborted))
                 : Unauthorized(http)).Produces<PageResult<JobSummaryView>>();
         // The notification center's background notices: reads failing run after run, approvals that ran out of time.
@@ -43,9 +43,9 @@ public static class JobEndpoints
             }
             return Results.Ok(notices);
         }).Produces<IReadOnlyList<AttentionNoticeView>>();
-        api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since, string? platform, string? platforms) =>
+        api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since, DateTimeOffset? dateFrom, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.CountAsync(tenant.TenantId, since, Platforms(platform, platforms), http.RequestAborted))
+                ? Results.Ok(await service.CountAsync(tenant.TenantId, EndpointHelpers.Unified(dateFrom, since), Platforms(platform, platforms), http.RequestAborted))
                 : Unauthorized(http)).Produces<IReadOnlyList<JobCountView>>();
         api.MapGet("/metrics", async (HttpContext http, IJobOperationsService service, int? hours, string? platform, string? platforms) =>
             Tenant(http) is { } tenant

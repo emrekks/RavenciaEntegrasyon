@@ -6,6 +6,7 @@ import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../shared/api'
+import { cursorPageParams } from '../../shared/api/paging'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
@@ -202,14 +203,16 @@ export function QuestionsPage() {
   if (dateTo) filters.set('dateTo', istanbulDayBoundary(dateTo, true))
   if (search.trim()) filters.set('search', search.trim())
   filters.set('sort', sort)
-  filters.set('page', String(page)); filters.set('limit', '50')
+  // Paging (PagingContract): the cursor where the order gives one (a page jump sends that page's cursor), NumberedPage
+  // (page + pageSize) under Son Güncellenen, whose ties give no cursor. The same rows either way.
+  if (sort === 'UPDATED') { filters.set('page', String(page)); filters.set('pageSize', '50') } else cursorPageParams(filters, page - 1, 50)
   // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
   // minutes (sync states every minute) instead of keeping the server busy.
   const questions = useQuery({ queryKey: queryKeys.questions(kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page), queryFn: ({ signal }) => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
   // A count is keyed by the exact request it makes, so the tab's waiting count and the unfiltered status count (the same
   // request when no filter is set) share one cache entry and one request instead of two.
   const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
-    const params = new URLSearchParams({ kind: countKind, status: countStatus, page: '1', limit: '1', sort })
+    const params = new URLSearchParams({ kind: countKind, status: countStatus, limit: '1', sort })
     if (scoped) {
       if (platform !== 'ALL') params.set('platform', platform)
       if (connectionId !== 'ALL') params.set('connectionId', connectionId)

@@ -17,21 +17,21 @@ internal static class CommissionTariffEndpoints
         // The long form, or with shape=compact the short one (CommissionTariffCompactRows).
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync)
             .ProducesOneOf(StatusCodes.Status200OK, typeof(CommissionTariffRowPage), typeof(CommissionTariffCompactRowPage));
-        api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync).Produces<bool>();
+        api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync).Produces<bool>().Idempotent(WriteReasons.Removes);
         // The days a tariff is valid for, picked by the seller (operational roles, as the upload and delete).
-        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync).Produces<IReadOnlyList<CommissionTariffView>>();
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync).Produces<IReadOnlyList<CommissionTariffView>>().Idempotent(WriteReasons.Replaces);
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync).Produces<CommissionTariffFacets>();
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync).ProducesFile(ProductTransferEndpoints.XlsxMediaType);
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync).ProducesFile(ProductTransferEndpoints.XlsxMediaType).Idempotent("builds the tariff's export file; it changes nothing");
         // The seller's saved picks: read by every role, replaced (PUT, the operational roles) after each change on the page.
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync).Produces<CommissionTariffSelectionView>();
-        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync).Produces<CommissionTariffSelectionView>();
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync).Produces<CommissionTariffSelectionView>().Idempotent(WriteReasons.Replaces);
         // Promotion offers (Plus, advantage label, flash): the latest file of each kind, the kind told by its columns.
         api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync).Produces<IReadOnlyList<PromotionOfferSummary>>();
         api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<PromotionOfferUploadResult>();
         api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync).Produces<PromotionOfferDetail>();
-        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync).Produces<bool>();
+        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync).Produces<bool>().Idempotent(WriteReasons.Removes);
         return api;
     }
 
@@ -156,7 +156,7 @@ internal static class CommissionTariffEndpoints
     }
 
     private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, int? tier, string? cost, string? name, string? barcode, string? model,
-        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, string? after, HttpContext http, ICommissionTariffService service)
+        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, string? after, int? pageSize, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         // A comma-separated list of exact barcodes, at most a page's worth.
@@ -164,6 +164,9 @@ internal static class CommissionTariffEndpoints
         if (exact is { Length: > 200 } || exact?.Any(code => code.Length > 120) == true) return Problem(http, new("BARCODES_INVALID", "En fazla 200 barkod, her biri en fazla 120 karakter olabilir.", 400));
         if (page is < 0 or > 100_000) return Problem(http, new("PAGE_INVALID", "page 0 ile 100000 arasında olmalıdır.", 400));
         if (limit is not null and (< 1 or > 200)) return Problem(http, new("LIMIT_INVALID", "limit 1 ile 200 arasında olmalıdır.", 400));
+        if (pageSize is not null and (< 1 or > 200)) return Problem(http, new("LIMIT_INVALID", "pageSize 1 ile 200 arasında olmalıdır.", 400));
+        // NumberedPage: page with pageSize (limit, its older name, still read); the cursor pages by limit.
+        var size = string.IsNullOrWhiteSpace(after) ? pageSize ?? limit ?? 50 : limit ?? 50;
         if (tier is not null and (< 1 or > 4)) return Problem(http, new("TIER_INVALID", "tier 1 ile 4 arasında olmalıdır.", 400));
         if (cost is not (null or "" or "with" or "without")) return Problem(http, new("COST_FILTER_INVALID", "cost with ya da without olmalıdır.", 400));
         if (minStock is < 0 or > 10_000_000 || maxStock is < 0 or > 10_000_000) return Problem(http, new("STOCK_FILTER_INVALID", "Stok 0 ile 10000000 arasında olmalıdır.", 400));
@@ -180,9 +183,9 @@ internal static class CommissionTariffEndpoints
         var orderIsTotal = filter.Sort is null && !filter.FiltersProfit;
         if (!orderIsTotal && !string.IsNullOrWhiteSpace(after)) return Problem(http, new("INVALID_REQUEST", "after bu sıralamada kullanılamaz: sıralama eşit değerleri sabit bir sıraya koymuyor; page kullanın.", 400));
         int? cursorPage;
-        try { cursorPage = OffsetCursor.PageIndex(after, limit ?? 50); }
+        try { cursorPage = OffsetCursor.PageIndex(after, size); }
         catch (ArgumentException exception) { return Problem(http, new("INVALID_REQUEST", exception.Message, 400)); }
-        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, cursorPage ?? page ?? 0, limit ?? 50, filter, http.RequestAborted);
+        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, cursorPage ?? page ?? 0, size, filter, http.RequestAborted);
         if (rows.Succeeded)
         {
             var value = rows.Value!;

@@ -60,7 +60,7 @@ export const regionLabel = (group: Pick<PayoutGroup, 'region' | 'regionName'>) =
 
 export function payoutsQuery(platforms: string[] | null) {
   const query = new URLSearchParams()
-  if (platforms?.length) query.set('platformCodes', platforms.join(','))
+  if (platforms?.length) query.set('platforms', platforms.join(','))
   return query.toString()
 }
 

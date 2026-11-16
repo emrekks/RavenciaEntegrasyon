@@ -3691,7 +3691,6 @@
             "name": "page",
             "in": "query",
             "description": "0-100000; outside it the request is refused (400). Default 0.",
-            "deprecated": true,
             "schema": {
               "maximum": 100000,
               "minimum": 0,
@@ -3893,6 +3892,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
           }
         ],
         "responses": {
@@ -3929,7 +3944,7 @@
             "$ref": "#/components/responses/ServerError"
           }
         },
-        "x-paging": "page+limit|cursor"
+        "x-paging": "page+pageSize|cursor"
       }
     },
     "/api/v1/connections/{connectionId}/commission-tariffs/{tariffId}/selection": {
@@ -6372,12 +6387,30 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "to",
+            "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
             "in": "query",
             "schema": {
               "type": "string"
@@ -8852,6 +8885,8 @@
           {
             "name": "platformCodes",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -8887,6 +8922,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -8895,6 +8932,8 @@
           {
             "name": "to",
             "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -8934,6 +8973,29 @@
             "description": "The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null).",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
             }
           }
         ],
@@ -10232,6 +10294,16 @@
           {
             "name": "since",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -10351,6 +10423,16 @@
         "parameters": [
           {
             "name": "since",
+            "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
             "in": "query",
             "schema": {
               "type": "string",
@@ -10564,6 +10646,16 @@
           },
           {
             "name": "since",
+            "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
             "in": "query",
             "schema": {
               "type": "string",
@@ -12515,6 +12607,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -12522,6 +12616,24 @@
           },
           {
             "name": "to",
+            "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
             "in": "query",
             "schema": {
               "type": "string",
@@ -14024,6 +14136,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -14031,6 +14145,24 @@
           },
           {
             "name": "to",
+            "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
             "in": "query",
             "schema": {
               "type": "string",
@@ -14125,6 +14257,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -14132,6 +14266,24 @@
           },
           {
             "name": "to",
+            "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
             "in": "query",
             "schema": {
               "type": "string",
@@ -14234,6 +14386,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -14241,6 +14395,24 @@
           },
           {
             "name": "to",
+            "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
             "in": "query",
             "schema": {
               "type": "string",
@@ -14320,6 +14492,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string",
               "format": "date-time"
@@ -14327,6 +14501,24 @@
           },
           {
             "name": "to",
+            "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "dateTo",
             "in": "query",
             "schema": {
               "type": "string",
@@ -16851,7 +17043,6 @@
             "name": "page",
             "in": "query",
             "description": "1 or more; the service brings any other value into it. Default 1.",
-            "deprecated": true,
             "schema": {
               "pattern": "^-?(?:0|[1-9]\\d*)$",
               "type": [
@@ -16890,6 +17081,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "1-100; the service brings any other value into it. Default 50.",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
           }
         ],
         "responses": {
@@ -16916,7 +17121,7 @@
             "$ref": "#/components/responses/ServerError"
           }
         },
-        "x-paging": "page+limit|cursor"
+        "x-paging": "page+pageSize|cursor"
       }
     },
     "/api/v1/questions/report-reasons": {
@@ -17843,6 +18048,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -17850,12 +18057,37 @@
           {
             "name": "to",
             "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "platformCodes",
+            "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
             "in": "query",
             "schema": {
               "type": "string"
@@ -17902,6 +18134,23 @@
             "name": "limit",
             "in": "query",
             "description": "1-200; outside it the request is refused (400). Default 50.",
+            "deprecated": true,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 50.",
             "schema": {
               "maximum": 200,
               "minimum": 1,
@@ -17939,7 +18188,7 @@
             "$ref": "#/components/responses/ServerError"
           }
         },
-        "x-paging": "page+limit"
+        "x-paging": "page+pageSize"
       }
     },
     "/api/v1/reports/payouts": {
@@ -17951,6 +18200,15 @@
         "parameters": [
           {
             "name": "platformCodes",
+            "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
             "in": "query",
             "schema": {
               "type": "string"
@@ -18006,6 +18264,15 @@
         "parameters": [
           {
             "name": "platformCodes",
+            "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
             "in": "query",
             "schema": {
               "type": "string"
@@ -18140,6 +18407,15 @@
           {
             "name": "platformCodes",
             "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -18181,6 +18457,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -18188,12 +18466,37 @@
           {
             "name": "to",
             "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "platformCodes",
+            "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
             "in": "query",
             "schema": {
               "type": "string"
@@ -18257,6 +18560,8 @@
           {
             "name": "from",
             "in": "query",
+            "description": "Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
@@ -18264,12 +18569,37 @@
           {
             "name": "to",
             "in": "query",
+            "description": "Use dateTo; kept for older browser tabs. When both are sent, dateTo wins.",
+            "deprecated": true,
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "platformCodes",
+            "in": "query",
+            "description": "Use platforms; kept for older browser tabs. When both are sent, platforms wins.",
+            "deprecated": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "platforms",
             "in": "query",
             "schema": {
               "type": "string"
@@ -29511,7 +29841,8 @@
           "page",
           "limit",
           "totalCount",
-          "hasMore"
+          "hasMore",
+          "pageSize"
         ],
         "type": "object",
         "properties": {
@@ -29541,6 +29872,10 @@
           },
           "hasMore": {
             "type": "boolean"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

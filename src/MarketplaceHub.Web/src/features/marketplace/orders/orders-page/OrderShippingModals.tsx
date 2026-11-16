@@ -121,6 +121,9 @@ export function ShippingLabelBatchModal({ items, settings, format, onClose, onPr
   // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
   const ids = items.map(item => item.id)
   const batchPages = shippingLabelPages(items, format, settings)
+  // WEB-ALTYAPI-5: the server's first-print time (labelPrintedAt) counts on every computer; this device's list, read once
+  // for the window, covers a print whose server call failed (label-printed.ts).
+  const printedHere = new Set(loadPrintedShippingLabels())
   const details = useQuery({ queryKey: queryKeys.orderLabelDetails(ids), queryFn: ({ signal }) => loadOrderLabelDetails(ids, id => hubApi<ApiAnswer<'getOrdersById'>>(`/orders/${id}`, { signal })), staleTime: 30_000 })
   function printLabels() {
     if (!details.data) return
@@ -130,7 +133,7 @@ export function ShippingLabelBatchModal({ items, settings, format, onClose, onPr
   return <RrModal crumb="Toplu Yazdırma" title="Kargo Stickerlarını Yazdır" desc={`${items.length} etiket · Takip numarası bulunan seçili paketler`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal shipping-label-batch-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">{details.data ? `${items.length} etiket yazdırılmaya hazır.` : details.isError ? 'Alıcı bilgileri alınamadı.' : 'Alıcı bilgileri yükleniyor…'}</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!details.data} onClick={printLabels}><RrIcon name="print" />Yazdır</button></>}>
     <style>{shippingLabelPageCss(format, settings)}</style>
     {details.isError && <RrError error={details.error} onRetry={() => void details.refetch()} />}
-    <div className="rr-sum rr-screen-only">{items.map(item => { const shipment = orderDisplayShipment(item); return <div key={item.id}><RrLogo code={item.platformCode} /><span>{displayOrderNumber(item.orderNumber)} · {customerDisplayName(item)}<small>{cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)} · {shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? '—'}</small></span><RrBadge label={(['a4', 'sticker'] as ShippingLabelFormat[]).some(value => loadPrintedShippingLabels().includes(printedShippingLabelKey(item.id, value))) ? 'Yazdırıldı' : 'Bekliyor'} glyph={undefined} /></div> })}</div>
+    <div className="rr-sum rr-screen-only">{items.map(item => { const shipment = orderDisplayShipment(item); return <div key={item.id}><RrLogo code={item.platformCode} /><span>{displayOrderNumber(item.orderNumber)} · {customerDisplayName(item)}<small>{cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)} · {shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? '—'}</small></span><RrBadge label={item.labelPrintedAt || (['a4', 'sticker'] as ShippingLabelFormat[]).some(value => printedHere.has(printedShippingLabelKey(item.id, value))) ? 'Yazdırıldı' : 'Bekliyor'} glyph={undefined} /></div> })}</div>
     {details.data && <div className="shipping-label-batch-preview rr-print-only">{batchPages.pages.map((page, index) => <div key={index} className="shipping-label-page" style={{ '--labels-across': batchPages.across } as CSSProperties}>{page.map(item => <ShippingLabelModal key={item.id} item={item} settings={settings} format={format} onClose={onClose} inline detail={details.data.get(item.id)} />)}</div>)}</div>}
   </RrModal>
 }

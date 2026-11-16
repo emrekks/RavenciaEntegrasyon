@@ -49,9 +49,9 @@ describe('report formatting', () => {
   })
 
   it('asks for the chosen days, platforms and buckets only', () => {
-    expect(reportQuery({ from: '2026-10-01', to: '2026-10-22', platforms: null, granularity: '', includeTest: false })).toBe('from=2026-10-01&to=2026-10-22')
+    expect(reportQuery({ from: '2026-10-01', to: '2026-10-22', platforms: null, granularity: '', includeTest: false })).toBe('dateFrom=2026-10-01&dateTo=2026-10-22')
     expect(reportQuery({ from: '2026-10-01', to: '2026-10-22', platforms: ['TRENDYOL', 'N11'], granularity: 'week', includeTest: true }))
-      .toBe('from=2026-10-01&to=2026-10-22&platformCodes=TRENDYOL%2CN11&granularity=week&includeTest=true')
+      .toBe('dateFrom=2026-10-01&dateTo=2026-10-22&platforms=TRENDYOL%2CN11&granularity=week&includeTest=true')
   })
 
   it('writes an Excel-safe CSV: formulas are quoted out and numbers keep the Turkish decimal comma', () => {

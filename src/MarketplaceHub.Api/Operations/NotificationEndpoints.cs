@@ -15,10 +15,10 @@ public static class NotificationEndpoints
         var api = endpoints.MapGroup("/api/v1/notifications").WithGates(ApiGate.SignedIn, ApiGate.Working);
         // { items, nextCursor, hasMore }, newest first. categories and severities are comma lists; state is UNREAD or READ.
         api.MapGet("", async (HttpContext http, IPanelNotificationService service, int? limit, string? after, string? categories, string? severities,
-            DateTimeOffset? from, DateTimeOffset? to, string? search, string? state) =>
+            DateTimeOffset? from, DateTimeOffset? to, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, string? state) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var result = await service.PageAsync(tenant.TenantId, tenant.UserId, new PanelNotificationQuery(limit, after, List(categories), List(severities), from, to, search, state), http.RequestAborted);
+            var result = await service.PageAsync(tenant.TenantId, tenant.UserId, new PanelNotificationQuery(limit, after, List(categories), List(severities), EndpointHelpers.Unified(dateFrom, from), EndpointHelpers.Unified(dateTo, to), search, state), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : Problem(http, result.Error!);
         }).Produces<PageResult<PanelNotificationView>>();
         api.MapGet("/summary", async (HttpContext http, IPanelNotificationService service) =>
@@ -35,11 +35,11 @@ public static class NotificationEndpoints
                 item.CreatedAt, Shared: false, item.Read)).ToList();
             var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, items, http.RequestAborted);
             return result.Succeeded ? Results.Ok(new { saved = result.Value }) : Problem(http, result.Error!);
-        }).Produces<NotificationsSavedView>();
+        }).Idempotent("stores each notice under its client key; a repeat writes the same rows").Produces<NotificationsSavedView>();
         api.MapPost("/read", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
-            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
+            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.MarkReadAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Idempotent("marks the selection read").Produces<NotificationsUpdatedView>();
         api.MapPost("/dismiss", async (HttpContext http, IPanelNotificationService service, PanelNotificationSelection selection) =>
-            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.DismissAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Produces<NotificationsUpdatedView>();
+            Tenant(http) is { } tenant ? Results.Ok(new { updated = await service.DismissAsync(tenant.TenantId, tenant.UserId, selection, http.RequestAborted) }) : Unauthorized(http)).Idempotent("dismisses the selection").Produces<NotificationsUpdatedView>();
         return endpoints;
     }
 

@@ -12,7 +12,7 @@ import { queryKeys } from '../../shared/api/query-keys'
 
 type RemoteAttribute = { externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }
 export type AttributeDefault = { externalAttributeId: string; attributeName: string; externalValueId: string | null; valueName: string | null; customValue: string | null; sourceField?: string | null; version: number }
-type ValueList = { items: Array<{ externalId: string; name: string; isActive: boolean }> }
+type ValueList = ApiAnswer<'getReferenceDataCategoriesByCategoryIdAttributesByAttributeIdValues'>
 
 export function defaultValueLabel(item: AttributeDefault) {
   if (item.sourceField) return `Ürünün ${productFieldLabel(item.sourceField)} bilgisi`

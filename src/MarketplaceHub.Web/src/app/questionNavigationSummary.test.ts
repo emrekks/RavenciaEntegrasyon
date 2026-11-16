@@ -7,7 +7,8 @@ describe('question navigation summary', () => {
 
     expect(params.get('kind')).toBe('ALL')
     expect(params.get('status')).toBe('WAITING')
-    expect(params.get('page')).toBe('1')
+    // The first row of the cursor form: its totalCount is the count.
+    expect(params.get('page')).toBeNull()
     expect(params.get('limit')).toBe('1')
   })
 })

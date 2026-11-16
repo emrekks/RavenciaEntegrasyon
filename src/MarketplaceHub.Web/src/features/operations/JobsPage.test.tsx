@@ -265,7 +265,7 @@ describe('JobsPage address state (W16)', () => {
 
     const request = pageRequests().at(-1)!
     expect(request.get('status')).toBe('BLOCKED,MANUAL_REVIEW,DEAD')
-    expect(request.get('since')).not.toBeNull()
+    expect(request.get('dateFrom')).not.toBeNull()
     // The filter card shows the range and the phone Filtre count; Sayfa Başına sits beside Yenile.
     expect(trigger('Zaman Aralığı').textContent).toBe('Son 7 Gün')
     expect(container.querySelector('.ops-filters .rr-ftoggle .rr-fcount')!.textContent).toBe('1')
@@ -314,7 +314,7 @@ describe('JobsPage address state (W16)', () => {
     await settle()
     expect(currentSearch).toBe('?ara=corr-job-1')
     expect(rowCount()).toBe(1)
-    expect(pageRequests().some(request => request.get('search') === 'corr-job-1' && !request.has('since'))).toBe(true)
+    expect(pageRequests().some(request => request.get('search') === 'corr-job-1' && !request.has('dateFrom'))).toBe(true)
   })
 
   it('finds a job by its id however old it is and opens its detail (notification links)', async () => {
@@ -511,17 +511,17 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
 
     // The log opens on its whole history whatever range the job list holds.
     expect(trigger('Zaman Aralığı').textContent).toBe('Tüm Zamanlar')
-    expect(logRequests().at(-1)!.get('from')).toBeNull()
+    expect(logRequests().at(-1)!.get('dateFrom')).toBeNull()
     const summary = container.querySelector('[aria-label="Gönderim sonuç özeti"]')!
     expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Başarılı 4', 'Sorunlu 2', 'Bekleyen 1', 'Yeni Sürüm 0'])
 
     const range = await openField('Zaman Aralığı')
     await act(async () => { optionNamed(range, 'Son 24 Saat').click() })
     await settle()
-    const since = Date.parse(logRequests().at(-1)!.get('from')!)
+    const since = Date.parse(logRequests().at(-1)!.get('dateFrom')!)
     expect(Math.abs(Date.now() - 24 * 60 * 60 * 1000 - since)).toBeLessThan(60_000)
     // The counts and the list each work out the range start when they are built; a millisecond apart is the same range.
-    expect(Math.abs(Date.parse(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('from')!) - since)).toBeLessThan(1_000)
+    expect(Math.abs(Date.parse(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('dateFrom')!) - since)).toBeLessThan(1_000)
     expect(trigger('Zaman Aralığı').textContent).toBe('Son 24 Saat')
     // The job list's range in the address is untouched.
     expect(currentSearch).toContain('aralik=7g')

@@ -7,7 +7,7 @@ import { closeAllDismissables, useDismissable } from '../shared/hooks/useDismiss
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
-import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
+import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, setWriteTimeoutHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
 import { Drawer, ErrorBoundary, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, PromotionsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, InvoiceDetailPage, InvoicesPage, JobsPage, ReportsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
@@ -253,6 +253,9 @@ export function App() {
     void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
     client.setQueryData<Me>(queryKeys.me(), { ...current, state: 'REVOKED' })
   }), [client])
+  // A write that got no answer in 90 s may still have gone through (WEB-ALTYAPI-11): the screens read what the server
+  // holds again; the write itself is never sent again by the panel.
+  useEffect(() => setWriteTimeoutHandler(() => { void client.invalidateQueries({ refetchType: 'active' }) }), [client])
   useOperationsRealtime(me.data?.state === 'ACTIVE')
   // Key presses, clicks and scrolling mark the person as present; polls made while nobody is (see hubPoll) leave the
   // session's idle clock alone.

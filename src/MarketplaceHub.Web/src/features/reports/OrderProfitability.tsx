@@ -63,8 +63,8 @@ export const unknownProfit = (order: OrderProfit) => (order.unreadableLines ?? 0
 
 // The query of a page: the period and platforms of the report, the search, the order and the page.
 export function orderProfitQuery(filters: { from: string; to: string; platforms: string[] | null; search: string; sort: Sort; descending: boolean; page: number }) {
-  const query = new URLSearchParams({ from: filters.from, to: filters.to, sort: filters.sort, dir: filters.descending ? 'desc' : 'asc', page: String(filters.page), limit: '50' })
-  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  const query = new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to, sort: filters.sort, dir: filters.descending ? 'desc' : 'asc', page: String(filters.page), pageSize: '50' })
+  if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   if (filters.search.trim()) query.set('search', filters.search.trim())
   return query.toString()
 }

@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 // "Hepsinde Bunu Kullan" for a panel value mapped to different marketplace values across categories: which
 // categories change, which are skipped because the chosen value is not in their current value list, and the saves.
 
@@ -6,7 +7,7 @@ export type ConflictOption = { externalId: string; name: string; version: number
 export type Conflict = { scopeExternalId: string; categoryName: string; attributeName: string; localValueId: string; localValueName: string; options: ConflictOption[]; templateExternalId: string | null }
 export type Conflicts = { sameCategory: Conflict[]; crossCategory: Conflict[] }
 
-export type ValueList = { snapshotId: string; items: Array<{ externalId: string; isActive?: boolean | null }> }
+export type ValueList = ApiAnswer<'getReferenceDataCategoriesByCategoryIdAttributesByAttributeIdValues'>
 
 // One category where the chosen value replaces the others.
 export type UnifyTarget = {

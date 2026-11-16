@@ -1,1 +1,1 @@
-export const questionWaitingSummaryPath = '/questions?kind=ALL&status=WAITING&page=1&limit=1'
+export const questionWaitingSummaryPath = '/questions?kind=ALL&status=WAITING&limit=1'

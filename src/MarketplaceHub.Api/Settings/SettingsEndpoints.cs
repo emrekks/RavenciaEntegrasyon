@@ -86,7 +86,8 @@ public static class SettingsEndpoints
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/settings").WithGates(ApiGate.SignedIn, ApiGate.Elevated);
+        var api = endpoints.MapGroup("/api/v1/settings").WithGates(ApiGate.SignedIn, ApiGate.Elevated)
+            .WithWriteIdempotency(WriteRepeat.Repeatable, "replaces the stored settings document; If-Match refuses a stale repeat");
         api.MapGet("/shipping-label", GetShippingLabelSettingsAsync).Produces<VersionedSettingsView>();
         api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync).Produces<VersionedSettingsView>().IfMatch(required: false);
         api.MapGet("/appearance", GetAppearanceSettingsAsync).Produces<VersionedSettingsView>();

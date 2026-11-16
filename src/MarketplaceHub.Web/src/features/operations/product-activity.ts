@@ -287,15 +287,15 @@ function commonParams(params: URLSearchParams, filters: ActivityFilters, now: nu
   if (hasDays(filters)) {
     const from = istanbulDayToIso(filters.from)
     const to = istanbulDayToIso(filters.to, true)
-    if (from) params.set('from', from)
-    if (to) params.set('to', to)
+    if (from) params.set('dateFrom', from)
+    if (to) params.set('dateTo', to)
     return
   }
   const start = timeRangeStart(filters.range, now)
-  if (start) params.set('from', start)
+  if (start) params.set('dateFrom', start)
 }
 
-/** The request for one page: ?limit=50&kinds=…&search=…&platforms=…&from=…&to=…&after=… */
+/** The request for one page: ?limit=50&kinds=…&search=…&platforms=…&dateFrom=…&dateTo=…&after=… */
 export function activityQueryString(filters: ActivityFilters, after: string | null = null, limit = activityPageSize, now = Date.now()) {
   const params = new URLSearchParams()
   params.set('limit', String(Math.min(Math.max(1, limit), 100)))

@@ -1692,6 +1692,7 @@ export type MarketplaceQuestionListPage = {
   totalCount: number
   nextCursor?: null | string
   hasMore: boolean
+  pageSize: number
 }
 
 export type MarketplaceQuestionSyncStateView = {
@@ -5016,7 +5017,7 @@ export interface ApiOperations {
     }
     query: {
       search?: string
-      /** @deprecated 0-100000; outside it the request is refused (400). Default 0. */
+      /** 0-100000; outside it the request is refused (400). Default 0. */
       page?: number | string
       /** 1-200; outside it the request is refused (400). Default 50. */
       limit?: number | string
@@ -5040,13 +5041,15 @@ export interface ApiOperations {
       shape?: string
       /** The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null). */
       after?: string
+      /** 1-200; outside it the request is refused (400). Default 50. */
+      pageSize?: number | string
     }
     headers: Record<string, never>
     body: never
     status: 200
     response: CommissionTariffRowPage | CommissionTariffCompactRowPage
     errorStatus: 400 | 401 | 404 | 429 | 500
-    paging: "page+limit|cursor"
+    paging: "page+pageSize|cursor"
   }
   getConnectionsByConnectionIdCommissionTariffsByTariffIdSelection: {
     method: "GET"
@@ -5207,8 +5210,12 @@ export interface ApiOperations {
     path: "/api/v1/dashboard/performance"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      dateFrom?: string
+      dateTo?: string
     }
     headers: Record<string, never>
     body: never
@@ -5329,12 +5336,15 @@ export interface ApiOperations {
       pageSize?: number | string
       tab?: string
       search?: string
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
       shipmentStatus?: string
       cargoProviderName?: string
       invoiceStatus?: string
       invoiceAction?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
       providerHasCredential?: boolean
       sort?: string
@@ -5342,6 +5352,9 @@ export interface ApiOperations {
       limit?: number | string
       /** The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null). */
       after?: string
+      platforms?: string
+      dateFrom?: string
+      dateTo?: string
     }
     headers: Record<string, never>
     body: never
@@ -5424,7 +5437,9 @@ export interface ApiOperations {
     pathParams: Record<string, never>
     query: {
       status?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       since?: string
+      dateFrom?: string
       jobTypes?: string
       limit?: number | string
       platform?: string
@@ -5466,7 +5481,9 @@ export interface ApiOperations {
     path: "/api/v1/jobs/counts"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       since?: string
+      dateFrom?: string
       platform?: string
       platforms?: string
     }
@@ -5521,7 +5538,9 @@ export interface ApiOperations {
     pathParams: Record<string, never>
     query: {
       status?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       since?: string
+      dateFrom?: string
       jobTypes?: string
       /** 1-1000; the service brings any other value into it. Default 200. */
       limit?: number | string
@@ -5740,8 +5759,12 @@ export interface ApiOperations {
       after?: string
       categories?: string
       severities?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      dateFrom?: string
+      dateTo?: string
       search?: string
       state?: string
     }
@@ -5921,8 +5944,12 @@ export interface ApiOperations {
       platform?: string
       platforms?: string
       connectionId?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      dateFrom?: string
+      dateTo?: string
       search?: string
       results?: string
       triggers?: string
@@ -5943,8 +5970,12 @@ export interface ApiOperations {
       platform?: string
       platforms?: string
       connectionId?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      dateFrom?: string
+      dateTo?: string
       search?: string
       triggers?: string
     }
@@ -5965,8 +5996,12 @@ export interface ApiOperations {
       kinds?: string
       platform?: string
       platforms?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      dateFrom?: string
+      dateTo?: string
       search?: string
       movements?: string
       includeInitialPrices?: boolean
@@ -5985,8 +6020,12 @@ export interface ApiOperations {
     query: {
       platform?: string
       platforms?: string
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      dateFrom?: string
+      dateTo?: string
       search?: string
       movements?: string
       includeInitialPrices?: boolean
@@ -6210,20 +6249,22 @@ export interface ApiOperations {
       dateFrom?: string
       dateTo?: string
       search?: string
-      /** @deprecated 1 or more; the service brings any other value into it. Default 1. */
+      /** 1 or more; the service brings any other value into it. Default 1. */
       page?: number | string
       /** 1-100; the service brings any other value into it. Default 50. */
       limit?: number | string
       sort?: string
       /** The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null). */
       after?: string
+      /** 1-100; the service brings any other value into it. Default 50. */
+      pageSize?: number | string
     }
     headers: Record<string, never>
     body: never
     status: 200
     response: MarketplaceQuestionListPage
     errorStatus: 400 | 401 | 429 | 500
-    paging: "page+limit|cursor"
+    paging: "page+pageSize|cursor"
   }
   getQuestionsById: {
     method: "GET"
@@ -6420,30 +6461,40 @@ export interface ApiOperations {
     path: "/api/v1/reports/order-profitability"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
+      dateFrom?: string
+      dateTo?: string
+      platforms?: string
       search?: string
       sort?: string
       dir?: string
       /** 0-100000; outside it the request is refused (400). Default 0. */
       page?: number | string
-      /** 1-200; outside it the request is refused (400). Default 50. */
+      /** @deprecated 1-200; outside it the request is refused (400). Default 50. */
       limit?: number | string
+      /** 1-200; outside it the request is refused (400). Default 50. */
+      pageSize?: number | string
     }
     headers: Record<string, never>
     body: never
     status: 200
     response: ReportOrderProfitPage
     errorStatus: 400 | 401 | 429 | 500
-    paging: "page+limit"
+    paging: "page+pageSize"
   }
   getReportsPayouts: {
     method: "GET"
     path: "/api/v1/reports/payouts"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
+      platforms?: string
       connectionIds?: string
       includeTest?: boolean
     }
@@ -6458,7 +6509,9 @@ export interface ApiOperations {
     path: "/api/v1/reports/payouts/lines"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
+      platforms?: string
       connectionId?: string
       payoutId?: string
       day?: string
@@ -6491,7 +6544,9 @@ export interface ApiOperations {
     path: "/api/v1/reports/profit-rate"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
+      platforms?: string
     }
     headers: Record<string, never>
     body: never
@@ -6504,9 +6559,15 @@ export interface ApiOperations {
     path: "/api/v1/reports/sales"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
+      dateFrom?: string
+      dateTo?: string
+      platforms?: string
       connectionIds?: string
       granularity?: string
       includeTest?: boolean
@@ -6522,9 +6583,15 @@ export interface ApiOperations {
     path: "/api/v1/reports/stock"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       from?: string
+      /** @deprecated Use dateTo; kept for older browser tabs. When both are sent, dateTo wins. */
       to?: string
+      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
       platformCodes?: string
+      dateFrom?: string
+      dateTo?: string
+      platforms?: string
       includeTest?: boolean
     }
     headers: Record<string, never>

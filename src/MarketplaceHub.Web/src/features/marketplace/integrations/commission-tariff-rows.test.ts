@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommissionTariffRow } from './CommissionTariffsPanel'
 import { compactRowPage } from './commission-tariff-rows.test-util'
-import { expandRowPage, prefetchLastTariff, rememberTariff } from './commission-tariff-rows'
+import { expandRowPage, prefetchLastTariff, rememberTariff, tariffRowPaging } from './commission-tariff-rows'
 import { setStorageScope } from '../../../shared/storage-scope'
 
 // A live row (RYP004-07, 9 Nov 2026) as the long form gave it, and one whose bands' costs differ and whose band rate
@@ -74,5 +74,16 @@ describe('commission tariff rows in the short form', () => {
       setStorageScope(null, null)
       localStorage.clear()
     }
+  })
+})
+
+describe('tariff row paging', () => {
+  // The name order gives a cursor: page 0 asks limit alone, a later page its offset cursor; a sort or a profit filter
+  // orders the models in memory, so those ask NumberedPage (page + pageSize).
+  it('asks the cursor in the name order and page + pageSize under a sort or a profit filter', () => {
+    expect(tariffRowPaging({ name: 'x' }, 0, 50)).toEqual({ name: 'x', limit: '50' })
+    expect(tariffRowPaging({}, 2, 50)).toEqual({ limit: '50', after: btoa('o100').replace(/=+$/, '') })
+    expect(tariffRowPaging({ sort: 'price', dir: 'asc' }, 2, 50)).toEqual({ sort: 'price', dir: 'asc', page: '2', pageSize: '50' })
+    expect(tariffRowPaging({ profitTier: '1', minProfit: '5' }, 0, 50)).toEqual({ profitTier: '1', minProfit: '5', page: '0', pageSize: '50' })
   })
 })

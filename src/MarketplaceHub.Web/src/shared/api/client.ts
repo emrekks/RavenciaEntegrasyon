@@ -157,42 +157,56 @@ async function fetchThroughRestart(url: string, init?: RequestInit): Promise<Res
 // told calmly that the result will show up, and the key is kept (shared/idempotency.ts isStillRunning).
 export const stillRunningMessage = 'Bu işlem hâlâ sürüyor; birkaç saniye sonra sonucu listede göreceksiniz.'
 
-/** hubApi's options: fetch's own, and how long a read may wait for its answer. */
+/** hubApi's options: fetch's own, and how long the request may wait for its answer. */
 export type HubRequestInit = RequestInit & {
-  /** GET/HEAD only: give up after this many ms (default defaultReadTimeoutMs; 0: no limit). Writes never time out. */
+  /** Give up after this many ms (default defaultReadTimeoutMs for a read, defaultWriteTimeoutMs for a write; 0: no limit). */
   timeoutMs?: number
 }
 
-// A read that gets no answer at all (a stuck proxy, a half-open connection) used to wait forever with the screen on
-// "yükleniyor". Reads give up after a generous limit, well above the slowest report read. Writes never get a limit here:
-// stopping the wait would not stop the server, and the person would be told it failed while it may still go through
-// (the idempotency rules in shared/idempotency.ts decide what a resend does; a timeout is not an HTTP answer).
+// A request that gets no answer at all (a stuck proxy, a half-open connection) used to wait forever with the screen on
+// "yükleniyor" or "Kaydediliyor…". Reads and writes give up after a generous limit, well above the slowest report read
+// and the slowest inline write (WEB-ALTYAPI-11). A write that runs out of time is never sent again by the panel:
+// stopping the wait does not stop the server, so the person is told the result is unknown and the lists are read again
+// (setWriteTimeoutHandler); the idempotency rules in shared/idempotency.ts decide what a resend does (a timeout is not an
+// HTTP answer, so a resend may reuse the key and replays the first answer).
 export const defaultReadTimeoutMs = 90_000
+export const defaultWriteTimeoutMs = 90_000
 export const clientTimeoutCode = 'CLIENT_TIMEOUT'
 export const clientTimeoutMessage = 'Sunucu zamanında yanıt vermedi. Bağlantınızı kontrol edip yeniden deneyin.'
+export const clientWriteTimeoutMessage = 'Sunucu 90 saniye içinde yanıt vermedi; işlemin sonucu bilinmiyor. Liste yenileniyor; yeniden göndermeden önce sonucu kontrol edin.'
 
-// The signal a read goes out with: the caller's (TanStack Query's, so a query that left the screen is aborted) joined
-// with the read's time limit. Built by hand rather than with AbortSignal.any/timeout, which older Safari lacks.
-function readDeadline(init: HubRequestInit | undefined) {
+// The app registers what a timed-out write triggers: reading the lists again, so the screen shows what the server holds.
+type WriteTimeoutHandler = () => void
+let writeTimeoutHandler: WriteTimeoutHandler | null = null
+export function setWriteTimeoutHandler(handler: WriteTimeoutHandler | null) {
+  writeTimeoutHandler = handler
+  return () => { if (writeTimeoutHandler === handler) writeTimeoutHandler = null }
+}
+
+// The signal a request goes out with: the caller's (TanStack Query's, so a query that left the screen is aborted) joined
+// with the request's time limit. Built by hand rather than with AbortSignal.any/timeout, which older Safari lacks.
+function requestDeadline(init: HubRequestInit | undefined) {
   const method = init?.method?.toUpperCase() ?? 'GET'
-  const limit = init?.timeoutMs ?? defaultReadTimeoutMs
-  if ((method !== 'GET' && method !== 'HEAD') || !(limit > 0)) return null
+  const write = method !== 'GET' && method !== 'HEAD'
+  const limit = init?.timeoutMs ?? (write ? defaultWriteTimeoutMs : defaultReadTimeoutMs)
+  if (!(limit > 0)) return null
   const controller = new AbortController()
   const outer = init?.signal ?? null
   let timedOut = false
   const forward = () => controller.abort(outer?.reason)
   if (outer?.aborted) forward()
   else outer?.addEventListener('abort', forward, { once: true })
-  const timer = setTimeout(() => { timedOut = true; controller.abort(new DOMException('Okuma süresi doldu.', 'TimeoutError')) }, limit)
+  const timer = setTimeout(() => { timedOut = true; controller.abort(new DOMException('İstek süresi doldu.', 'TimeoutError')) }, limit)
   return {
     signal: controller.signal,
+    write,
     timedOut: () => timedOut,
     dispose: () => { clearTimeout(timer); outer?.removeEventListener('abort', forward) },
   }
 }
 
 export async function hubApi<T>(path: string, init?: HubRequestInit): Promise<T> {
-  const deadline = readDeadline(init)
+  const deadline = requestDeadline(init)
   let requestInit: RequestInit | undefined = init
   if (init && 'timeoutMs' in init) { const { timeoutMs: _timeoutMs, ...rest } = init; requestInit = rest }
   if (deadline) requestInit = { ...requestInit, signal: deadline.signal }
@@ -208,7 +222,12 @@ export async function hubApi<T>(path: string, init?: HubRequestInit): Promise<T>
     return await readSuccessJson<T>(response)
   } catch (error) {
     // Status 0: no HTTP answer came (failedWithHttpAnswer is false), so a resend may reuse the request's key.
-    if (deadline?.timedOut()) throw new ApiRequestError(clientTimeoutMessage, 0, clientTimeoutCode)
+    if (deadline?.timedOut()) {
+      if (!deadline.write) throw new ApiRequestError(clientTimeoutMessage, 0, clientTimeoutCode)
+      // A write's result is unknown: the lists are read again, nothing is sent again.
+      writeTimeoutHandler?.()
+      throw new ApiRequestError(clientWriteTimeoutMessage, 0, clientTimeoutCode)
+    }
     throw error
   } finally {
     deadline?.dispose()

@@ -13,7 +13,7 @@ using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Catalog;
 
-public static class CatalogEndpoints
+public static partial class CatalogEndpoints
 {
     private const long MaxUploadBytes = 6 * 1024 * 1024;
 
@@ -39,7 +39,7 @@ public static class CatalogEndpoints
         api.MapPost("/catalog/categories", async (CreateCategoryCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateCategoryAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/categories") : MissingContext(http)).RequireIdempotencyKey().Produces<CategoryView>(StatusCodes.Status201Created);
         api.MapPatch("/catalog/categories/{id:guid}", async (Guid id, UpdateCategoryCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateCategoryAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<CategoryView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateCategoryAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<CategoryView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
 
         api.MapGet("/catalog/brands", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListBrandsAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<BrandView>>();
@@ -48,30 +48,30 @@ public static class CatalogEndpoints
         api.MapPost("/catalog/brands", async (CreateBrandCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateBrandAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/brands") : MissingContext(http)).RequireIdempotencyKey().Produces<BrandView>(StatusCodes.Status201Created);
         api.MapPatch("/catalog/brands/{id:guid}", async (Guid id, UpdateBrandCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateBrandAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<BrandView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateBrandAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<BrandView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
 
         api.MapGet("/catalog/attributes", async (HttpContext http, ICatalogService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAttributesAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<AttributeView>>();
         api.MapPost("/catalog/attributes", async (CreateAttributeCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAttributeAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/catalog/attributes") : MissingContext(http)).RequireIdempotencyKey().Produces<AttributeView>(StatusCodes.Status201Created);
         api.MapPatch("/catalog/attributes/{id:guid}", async (Guid id, RenameAttributeCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RenameAttributeAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RenameAttributeAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapDelete("/catalog/attributes/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeactivateAttributeAsync(tenant.TenantId, id, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeactivateAttributeAsync(tenant.TenantId, id, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapPost("/catalog/attributes/{id:guid}/values", async (Guid id, IReadOnlyList<CreateAttributeValueCommand> command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.AddAttributeValuesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http)).RequireIdempotencyKey().Produces<AttributeView>();
         api.MapPut("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, UpdateAttributeValueCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAttributeValueAsync(tenant.TenantId, id, valueId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateAttributeValueAsync(tenant.TenantId, id, valueId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapPut("/catalog/attributes/{id:guid}/values/order", async (Guid id, ReorderAttributeValuesCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ReorderAttributeValuesAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ReorderAttributeValuesAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<AttributeView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapGet("/catalog/attributes/{id:guid}/used-values", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.UsedAttributeValueIdsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<Guid>>();
         api.MapDelete("/catalog/attributes/{id:guid}/values/{valueId:guid}", async (Guid id, Guid valueId, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.DeactivateAttributeValueAsync(tenant.TenantId, id, valueId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<AttributeView>();
+            Tenant(http) is { } tenant ? Result(await service.DeactivateAttributeValueAsync(tenant.TenantId, id, valueId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<AttributeView>().Idempotent("deactivates the value; a repeat finds it inactive");
         api.MapGet("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetRequirementsAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<CategoryAttributeRequirementView>>();
         api.MapPut("/catalog/categories/{id:guid}/attribute-requirements", async (Guid id, IReadOnlyList<AttributeRequirementCommand> command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<IReadOnlyList<AttributeRequirementCommand>>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.ReplaceRequirementsAsync(tenant.TenantId, id, version, command, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<IReadOnlyList<AttributeRequirementCommand>>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
 
         api.MapGet("/products", async (HttpContext http, ICatalogService service, int? limit, string? after, string? status, string? search, string? platform, string? stock, string? sort) =>
             Tenant(http) is { } tenant ? Results.Json(await service.ListProductsAsync(tenant.TenantId, PageSize(limit), after, status, search, platform, stock, sort, http.RequestAborted), ProductListJson) : Unauthorized(http)).Produces<PageResult<ProductView>>();
@@ -86,7 +86,7 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount })) : MissingContext(http)).RequireIdempotencyKey().Produces<ProductDeleteResult>();
         // The jobs a delete would cancel, for its confirmation; it changes nothing.
         api.MapPost("/products/delete-preview", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ProductDeletePreview>();
+            Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ProductDeletePreview>().Idempotent(WriteReasons.ReadOnly);
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ProductView>();
         // Read only: which of the given codes the tenant's catalog already holds as a stock code or a barcode, with the
@@ -98,7 +98,7 @@ public static class CatalogEndpoints
             var excluded = VariantCodeAvailability.ExcludedVariantIds(request.ExcludeVariantIds);
             var taken = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(variant => variant.TenantId == tenant.TenantId && !excluded.Contains(variant.Id)), codes, codes, http.RequestAborted);
             return Results.Ok(new { items = taken });
-        }).Produces<TakenVariantCodesView>();
+        }).Produces<TakenVariantCodesView>().Idempotent(WriteReasons.ReadOnly);
         // Read only: the card that already holds a model code, for the "Yeni Ürün" editor (a new card may not take it).
         api.MapGet("/catalog/model-codes/holder", async (string? code, HttpContext http, AppDbContext db) =>
         {
@@ -115,10 +115,10 @@ public static class CatalogEndpoints
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), "/api/v1/products") : MissingContext(http)).RequireIdempotencyKey().Produces<ProductView>(StatusCodes.Status201Created);
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), x => x.Version) : failure!) : Unauthorized(http)).Produces<ProductView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), x => x.Version) : failure!) : Unauthorized(http)).Produces<ProductView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         // The panel's own price of a variant; If-Match carries the variant version. Nothing is sent to a marketplace.
         api.MapPatch("/variants/{id:guid}/default-prices", async (Guid id, UpdateVariantDefaultPricesCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateVariantDefaultPricesAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<VariantDefaultPricesView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateVariantDefaultPricesAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<VariantDefaultPricesView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapDelete("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -134,7 +134,7 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
             return WithEtag(http, await service.UpsertListingProfileAsync(tenant.TenantId, id, connectionId, expected, command, http.RequestAborted), x => x.Version);
-        }).Produces<ListingProfileView>().IfMatch(required: false);
+        }).Produces<ListingProfileView>().IfMatch(required: false).Idempotent(WriteReasons.Replaces);
         api.MapPost("/products/{id:guid}/publication-jobs", async (Guid id, PublicationRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -263,7 +263,7 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/imports") : MissingContext(http)).RequireIdempotencyKey().Produces<ImportSessionView>(StatusCodes.Status201Created);
         api.MapPost("/imports/{id:guid}/source-file", UploadImportSourceAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ImportSessionView>();
         api.MapPut("/imports/{id:guid}/column-mapping", async (Guid id, UpdateColumnMappingCommand command, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ConfigureColumnsAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ImportSessionView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ConfigureColumnsAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ImportSessionView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapPost("/imports/{id:guid}/preview-jobs", async (Guid id, HttpContext http, IImportService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePreviewAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         api.MapGet("/imports/{id:guid}", async (Guid id, HttpContext http, IImportService service) =>
@@ -271,7 +271,7 @@ public static class CatalogEndpoints
         api.MapGet("/imports/{id:guid}/candidates", async (Guid id, HttpContext http, IImportService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.CandidatesAsync(tenant.TenantId, id, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<ImportCandidateView>>();
         api.MapPut("/imports/{id:guid}/decisions/{candidateId:guid}", async (Guid id, Guid candidateId, ImportDecisionCommand command, HttpContext http, IImportService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.DecideAsync(tenant.TenantId, tenant.UserId, id, candidateId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ImportCandidateView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.DecideAsync(tenant.TenantId, tenant.UserId, id, candidateId, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ImportCandidateView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapPost("/imports/{id:guid}/apply-jobs", async (Guid id, HttpContext http, IImportService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueApplyAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         api.MapGet("/imports/{id:guid}/errors.csv", async (Guid id, HttpContext http, IImportService service) =>
@@ -293,10 +293,10 @@ public static class CatalogEndpoints
         api.MapGet("/channel-offers/{id:guid}", async (Guid id, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetOfferAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ChannelOfferView>();
         api.MapPatch("/channel-offers/{id:guid}", async (Guid id, UpdateChannelOfferCommand command, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ChannelOfferView>().IfMatch();
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ChannelOfferView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         // The "Özel Fiyat" choice of the variants' offers on one connection, stored without a price change.
         api.MapPut("/channel-offers/panel-price-follow", async (SetChannelOfferPanelFollowCommand command, HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ChannelOfferPanelFollowView>();
+            Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ChannelOfferPanelFollowView>().Idempotent(WriteReasons.Replaces);
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, stockCode)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         // The body may name the parts to send ({"price": true, "stock": false}); an empty body sends both, as before.
@@ -307,74 +307,6 @@ public static class CatalogEndpoints
         return endpoints;
     }
 
-    private static void MapReferenceEndpoints(RouteGroupBuilder api)
-    {
-        // ?externalId= reads one category of the list (with the list's snapshot id) instead of the whole tree.
-        api.MapGet("/reference-data/categories", async (Guid connectionId, string? externalId, HttpContext http, IReferenceDataService service) =>
-            externalId is null ? await Reference(http, service, connectionId, "CATEGORIES", null)
-                : Tenant(http) is { } tenant ? Result(await service.FindCategoryAsync(tenant.TenantId, connectionId, externalId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceDataView>();
-        // Several fields' value lists of one category in one read (attributeIds=a,b,c), by field id.
-        api.MapGet("/reference-data/categories/{categoryId}/attribute-values", async (string categoryId, Guid connectionId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueReferencesAsync(tenant.TenantId, connectionId, categoryId, SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, ReferenceDataView>>();
-        api.MapGet("/reference-data/categories/{externalId}/attributes", (string externalId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "CATEGORY_ATTRIBUTES", externalId)).Produces<ReferenceDataView>();
-        api.MapGet("/reference-data/categories/{categoryId}/attributes/{attributeId}/values", (string categoryId, string attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "ATTRIBUTE_VALUES", $"{categoryId}/{attributeId}")).Produces<ReferenceDataView>();
-        api.MapGet("/reference-data/brands", (Guid connectionId, HttpContext http, IReferenceDataService service) => Reference(http, service, connectionId, "BRANDS", null)).Produces<ReferenceDataView>();
-        // A brand list can hold 800k rows: the panel reads its size and age, searches it and resolves saved ids instead.
-        api.MapGet("/reference-data/brands/summary", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.BrandSummaryAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
-        api.MapGet("/reference-data/brands/search", async (Guid connectionId, string? q, int? limit, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.SearchBrandsAsync(tenant.TenantId, connectionId, q, limit, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
-        // Marketplace brands a catalog import met that the user has not mapped yet; the import never maps by name.
-        api.MapGet("/reference-data/brands/unmapped", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.UnmappedBrandsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<UnmappedMarketplaceBrandView>>();
-        api.MapGet("/reference-data/brands/lookup", async (Guid connectionId, string? ids, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.LookupBrandsAsync(tenant.TenantId, connectionId, (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ReferenceSliceView>();
-        api.MapGet("/connections/{connectionId:guid}/attribute-defaults", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListAttributeDefaultsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<ConnectionAttributeDefaultView>>();
-        api.MapPut("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.UpsertAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ConnectionAttributeDefaultView>();
-        api.MapDelete("/connections/{connectionId:guid}/attribute-defaults/{externalAttributeId}", async (Guid connectionId, string externalAttributeId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.DeleteAttributeDefaultAsync(tenant.TenantId, connectionId, externalAttributeId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<bool>();
-        api.MapGet("/mappings/name-hints", async (Guid attributeId, Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.MarketplaceNameHintsAsync(tenant.TenantId, attributeId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<MarketplaceNameHintsView>();
-        api.MapGet("/mappings/attribute-name-hints", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.AttributeNameHintsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<Guid, IReadOnlyList<string>>>();
-        api.MapGet("/mappings/conflicts", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListMappingConflictsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<MappingConflictsView>();
-        api.MapGet("/mappings/attribute-value-progress", async (Guid connectionId, string? categoryExternalId, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.AttributeValueMappingProgressAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, IReadOnlyList<Guid>>>();
-        // Several fields' value mappings of one category in one read (attributeIds=a,b,c), by field id.
-        api.MapGet("/mappings/attribute-values/batch", async (Guid connectionId, string? categoryExternalId, string? attributeIds, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ListAttributeValueMappingsAsync(tenant.TenantId, connectionId, categoryExternalId ?? "", SplitIds(attributeIds), http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyDictionary<string, IReadOnlyList<CatalogMappingView>>>();
-        // "Birebir Eşle" (Shopify): apply=false counts for the confirmation, apply=true maps; it never changes a mapping.
-        api.MapPost("/mappings/categories/exact-match", async (Guid connectionId, bool? apply, HttpContext http, IReferenceDataService service) =>
-            Tenant(http) is { } tenant ? Result(await service.ExactMatchShopifyCategoriesAsync(tenant.TenantId, connectionId, apply == true, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ShopifyExactCategoryMatchView>();
-        foreach (var type in new[] { "categories", "brands", "attributes", "attribute-values" })
-        {
-            var routeType = type;
-            api.MapGet($"/mappings/{routeType}", async (Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? Result(await service.ListMappingsAsync(tenant.TenantId, routeType, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<CatalogMappingView>>();
-            // The local record's mapping, or the JSON null when it has none (MappingOrNull).
-            api.MapGet($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, http.RequestAborted), MappingOrNull) : Unauthorized(http)).ProducesOneOf(StatusCodes.Status200OK, typeof(CatalogMappingView), null);
-            api.MapPut($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, UpsertCatalogMappingCommand command, HttpContext http, IReferenceDataService service) =>
-            {
-                if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
-                return WithEtag(http, await service.UpsertMappingAsync(tenant.TenantId, routeType, localId, expected, command, http.RequestAborted), x => x.Version);
-            }).Produces<CatalogMappingView>();
-            api.MapDelete($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? Result(await service.DeleteMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, version, http.RequestAborted), Results.Ok) : failure!) : Unauthorized(http)).Produces<bool>();
-        }
-    }
-
-    private static string[] SplitIds(string? ids) => (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    private static async Task<IResult> Reference(HttpContext http, IReferenceDataService service, Guid connectionId, string resourceType, string? parent)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        return Result(await service.ListAsync(tenant.TenantId, connectionId, resourceType, parent, http.RequestAborted), Results.Ok);
-    }
-
     private static async Task<IResult> UploadImportSourceAsync(Guid id, HttpContext http, IImportService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
@@ -382,738 +314,6 @@ public static class CatalogEndpoints
         var form = await http.Request.ReadFormAsync(http.RequestAborted); var file = form.Files.GetFile("file"); if (file is null) return Problem(http, new("VALIDATION_FAILED", "file zorunludur.", 422));
         await using var source = file.OpenReadStream(); var result = await service.AttachSourceAsync(tenant.TenantId, id, new(file.FileName, file.ContentType, source, file.Length), http.RequestAborted);
         return WithEtag(http, result, x => x.Version);
-    }
-
-    private static async Task<byte[]> ReadStoredBytesAsync(IPrivateFileStorage storage, Guid tenantId, string relativePath, CancellationToken cancellationToken)
-    {
-        await using var original = await storage.OpenReadAsync(tenantId, relativePath, cancellationToken);
-        using var buffer = new MemoryStream();
-        await original.CopyToAsync(buffer, cancellationToken);
-        return buffer.ToArray();
-    }
-
-    private static async Task<IResult> UploadProductMediaAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, ProductMediaRenditions renditions, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        if (!http.Request.HasFormContentType) return Problem(http, new("VALIDATION_FAILED", "Multipart form-data gereklidir.", 422));
-        var form = await http.Request.ReadFormAsync(http.RequestAborted); var file = form.Files.GetFile("file");
-        if (file is null || !Guid.TryParse(form["productId"], out var productId)) return Problem(http, new("VALIDATION_FAILED", "file ve productId zorunludur.", 422));
-        var variantId = Guid.TryParse(form["variantId"], out var parsedVariant) ? parsedVariant : (Guid?)null;
-        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == productId, http.RequestAborted) || variantId is Guid variant && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.Id == variant, http.RequestAborted)) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün veya varyant bulunamadı.", 404));
-        if (file.Length is <= 0 or > MaxUploadBytes || file.ContentType is not ("image/jpeg" or "image/png")) return Problem(http, new("VALIDATION_FAILED", "Yalnız en fazla 6 MiB JPEG veya PNG kabul edilir.", 422));
-        await using var input = file.OpenReadStream(); await using var buffer = new MemoryStream(); await input.CopyToAsync(buffer, http.RequestAborted); var bytes = buffer.ToArray();
-        var validMagic = file.ContentType == "image/jpeg" ? bytes.Length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff : bytes.Length >= 8 && bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
-        if (!validMagic) return Problem(http, new("VALIDATION_FAILED", "Dosya imzası MIME türüyle eşleşmiyor.", 422));
-        var sortOrder = 0;
-        if (form.ContainsKey("sortOrder") && (!int.TryParse(form["sortOrder"], out sortOrder) || sortOrder is < 0 or > 999))
-            return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
-        var hash = Convert.ToHexString(SHA256.HashData(bytes));
-        var asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
-        if (asset is null)
-        {
-            buffer.Position = 0; var id = Guid.CreateVersion7(); var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{(file.ContentType == "image/jpeg" ? ".jpg" : ".png")}", file.ContentType, buffer, MaxUploadBytes, http.RequestAborted);
-            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
-            db.FileAssets.Add(asset);
-            try { await db.SaveChangesAsync(http.RequestAborted); }
-            catch (DbUpdateException)
-            {
-                // K11: a parallel upload of the same image may have stored it first (the partial unique index
-                // UX_file_assets_active_product_media_sha256 refuses the second); reuse that asset. The file
-                // written here stays unreferenced.
-                db.ChangeTracker.Clear();
-                asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
-                if (asset is null) throw;
-            }
-        }
-        // The thumbnails the panel shows (168 and 480 px WebP). A failure is logged and does not refuse the upload:
-        // the first request for a missing copy makes it.
-        await renditions.TryEnsureAsync(tenant.TenantId, asset.Id, _ => Task.FromResult(bytes), http.RequestAborted);
-        var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
-        // A new picture never takes the place of a live one (another colour's included): it goes after the gallery then.
-        var requestedSortOrder = sortOrder;
-        sortOrder = ProductFamilyMediaOrdering.UploadSortOrder(sortOrder, (await db.ProductMedia.AsNoTracking()
-            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId)
-            .Select(x => new { x.SortOrder, x.Status, x.FileAssetId }).ToListAsync(http.RequestAborted))
-            .Select(x => (x.SortOrder, x.Status == "ACTIVE", x.FileAssetId)), asset.Id);
-        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(sortOrder == requestedSortOrder ? form["mediaRole"].ToString() : "GALLERY");
-        var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.SortOrder == sortOrder, http.RequestAborted);
-        if (media is null) { media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); }
-        else { media.FileAssetId = asset.Id; media.MediaRole = mediaRole; media.AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(); media.Status = "ACTIVE"; }
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Created($"/api/v1/products/{productId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, media.MediaRole, media.SortOrder, media.AltText, media.Status });
-    }
-
-    private static async Task<IResult> ReconcileProductMediaAsync([FromBody] ReconcileProductMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        var items = command.Items ?? [];
-        if (items.Count > 100 || items.Any(item => item.SortOrder is < 0 or > 999) || items.Select(item => item.SortOrder).Distinct().Count() != items.Count)
-            return Problem(http, new("PRODUCT_MEDIA_RECONCILE_INVALID", "Görsel sayısı en fazla 100 olabilir; sıralar 0-999 arasında ve benzersiz olmalıdır.", 422));
-
-        var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
-        if (product is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
-        if (command.VariantId is Guid variantId && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.Id == variantId, http.RequestAborted))
-            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün varyantı bulunamadı.", 404));
-
-        var references = new List<(Guid? AssetId, string? Url, int SortOrder)>();
-        var externalUrls = new HashSet<string>(StringComparer.Ordinal);
-        var storedAssetIds = new HashSet<Guid>();
-        foreach (var item in items)
-        {
-            if (TryGetStoredProductMediaAssetId(item.Url, out var assetId))
-            {
-                storedAssetIds.Add(assetId);
-                references.Add((assetId, null, item.SortOrder));
-                continue;
-            }
-            if (!TryNormalizePublicProductMediaUrl(item.Url, out var url, out var issue))
-                return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", issue!, 422, new Dictionary<string, string[]> { ["url"] = [issue!] }));
-            externalUrls.Add(url!);
-            references.Add((null, url, item.SortOrder));
-        }
-
-        var assets = await db.FileAssets
-            .Where(asset => asset.TenantId == tenant.TenantId && (storedAssetIds.Contains(asset.Id) || externalUrls.Contains(asset.RelativePath)))
-            .ToListAsync(http.RequestAborted);
-        var activeTenantMediaAssetIds = storedAssetIds.Count == 0
-            ? new HashSet<Guid>()
-            : (await db.ProductMedia.AsNoTracking()
-                .Where(media => media.TenantId == tenant.TenantId && storedAssetIds.Contains(media.FileAssetId) && media.Status == "ACTIVE")
-                .Select(media => media.FileAssetId)
-                .Distinct()
-                .ToListAsync(http.RequestAborted)).ToHashSet();
-        // A size chart generated for this card ("Kullan") has no picture row yet; its save attaches it. Any of the card's
-        // tries counts, not only the newest: Kullan, then Yeniden Oluştur without using it, then Kaydet (O8).
-        activeTenantMediaAssetIds.UnionWith(await MarketplaceHub.Infrastructure.SizeCharts.SizeChartService.GeneratedForProductAsync(db, tenant.TenantId, command.ProductId, storedAssetIds, http.RequestAborted));
-        var assetsById = assets.ToDictionary(asset => asset.Id);
-        var assetsByUrl = assets.Where(asset => externalUrls.Contains(asset.RelativePath)).ToDictionary(asset => asset.RelativePath, StringComparer.Ordinal);
-        var desiredAssets = new List<FileAsset>(references.Count);
-        var now = timeProvider.GetUtcNow();
-        foreach (var reference in references)
-        {
-            if (reference.AssetId is Guid storedId)
-            {
-                if (!activeTenantMediaAssetIds.Contains(storedId) || !assetsById.TryGetValue(storedId, out var storedAsset) || storedAsset.Status != "ACTIVE" || storedAsset.Classification != "PRODUCT_MEDIA")
-                    return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Kayıtlı görsellerden biri bulunamadı veya artık kullanılamıyor.", 404));
-                desiredAssets.Add(storedAsset);
-                continue;
-            }
-
-            var url = reference.Url!;
-            if (!assetsByUrl.TryGetValue(url, out var remoteAsset))
-            {
-                var uri = new Uri(url, UriKind.Absolute);
-                var fileName = Path.GetFileName(uri.AbsolutePath);
-                remoteAsset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = string.IsNullOrWhiteSpace(fileName) ? null : fileName[..Math.Min(fileName.Length, 256)], MimeType = "image/remote", SizeBytes = 0, Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url))), Status = "ACTIVE", CreatedAt = now };
-                db.FileAssets.Add(remoteAsset);
-                assetsByUrl[url] = remoteAsset;
-            }
-            else if (remoteAsset.Classification != "PRODUCT_MEDIA_URL")
-                return Problem(http, new("PRODUCT_MEDIA_URL_CONFLICT", "Bu URL farklı bir dosya sınıfında kayıtlı.", 409));
-            else { remoteAsset.Status = "ACTIVE"; remoteAsset.ArchivedAt = null; }
-            desiredAssets.Add(remoteAsset);
-        }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
-        var scopedMedia = await db.ProductMedia
-            .Where(media => media.TenantId == tenant.TenantId && media.ProductId == command.ProductId && media.VariantId == command.VariantId)
-            .OrderBy(media => media.SortOrder)
-            .ToListAsync(http.RequestAborted);
-        var desiredOrder = desiredAssets
-            .Select((asset, index) => new
-            {
-                AssetId = asset.Id,
-                SortOrder = references[index].SortOrder,
-                MediaRole = command.VariantId is null
-                    ? references[index].SortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
-                    : references[index].SortOrder == 0 ? "PRIMARY" : "GALLERY"
-            })
-            .OrderBy(item => item.SortOrder)
-            .ToArray();
-        var activeScopedMedia = scopedMedia.Where(media => media.Status == "ACTIVE").OrderBy(media => media.SortOrder).ToArray();
-        var safeAltText = SafeAltText(command.AltText);
-        if (activeScopedMedia.Length == desiredOrder.Length && activeScopedMedia.Select((media, index) =>
-                media.SortOrder == desiredOrder[index].SortOrder
-                && media.FileAssetId == desiredOrder[index].AssetId
-                && media.MediaRole == desiredOrder[index].MediaRole
-                && media.AltText == safeAltText).All(isSame => isSame))
-        {
-            await transaction.CommitAsync(http.RequestAborted);
-            return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = activeScopedMedia.Length });
-        }
-        var occupiedSortOrders = scopedMedia.Select(media => media.SortOrder).ToHashSet();
-        var temporarySortOrders = new HashSet<int>();
-        var nextTemporarySortOrder = -1;
-        int TemporarySortOrder()
-        {
-            while (occupiedSortOrders.Contains(nextTemporarySortOrder) || !temporarySortOrders.Add(nextTemporarySortOrder))
-            {
-                if (nextTemporarySortOrder == int.MinValue) throw new InvalidOperationException("Geçici görsel sıralama alanı bulunamadı.");
-                nextTemporarySortOrder--;
-            }
-            var value = nextTemporarySortOrder;
-            if (nextTemporarySortOrder != int.MinValue) nextTemporarySortOrder--;
-            return value;
-        }
-
-        foreach (var media in scopedMedia)
-        {
-            var temporarySortOrder = TemporarySortOrder();
-            var updatedCount = await db.ProductMedia
-                .Where(item => item.TenantId == tenant.TenantId && item.Id == media.Id)
-                .ExecuteUpdateAsync(update => update.SetProperty(item => item.SortOrder, temporarySortOrder), http.RequestAborted);
-            if (updatedCount != 1) return Problem(http, new("PRODUCT_MEDIA_CHANGED", "Görsel sırası eşzamanlı olarak değişti. Sayfayı yenileyip tekrar deneyin.", 409));
-            media.SortOrder = temporarySortOrder;
-            var sortOrderEntry = db.Entry(media).Property(item => item.SortOrder);
-            sortOrderEntry.OriginalValue = temporarySortOrder;
-            sortOrderEntry.IsModified = false;
-        }
-
-        var availableMedia = scopedMedia.ToList();
-        var desiredMedia = new List<ProductMedia>(references.Count);
-        foreach (var (asset, index) in desiredAssets.Select((asset, index) => (asset, index)))
-        {
-            var media = availableMedia.FirstOrDefault(candidate => candidate.FileAssetId == asset.Id) ?? availableMedia.FirstOrDefault();
-            if (media is not null) availableMedia.Remove(media);
-            else
-            {
-                media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = "GALLERY", SortOrder = TemporarySortOrder(), Status = "ACTIVE" };
-                db.ProductMedia.Add(media);
-            }
-            media.FileAssetId = asset.Id;
-            media.MediaRole = command.VariantId is null
-                ? references[index].SortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
-                : MediaRole(references[index].SortOrder == 0 ? "PRIMARY" : "GALLERY");
-            media.SortOrder = references[index].SortOrder;
-            db.Entry(media).Property(item => item.SortOrder).IsModified = true;
-            media.AltText = safeAltText;
-            media.Status = "ACTIVE";
-            desiredMedia.Add(media);
-        }
-        foreach (var media in availableMedia) media.Status = "ARCHIVED";
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [product], now, http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        await transaction.CommitAsync(http.RequestAborted);
-        return Results.Ok(new { productId = product.Id, variantId = command.VariantId, mediaCount = desiredMedia.Count });
-    }
-
-    // D9: the products of the same brand whose model code has the same key, among products that are not linked
-    // only to hidden connections. Empty when the model code is empty.
-    private static Task<List<Guid>> VisibleFamilyProductIdsAsync(AppDbContext db, Guid tenantId, Guid? brandId, string? modelCode, CancellationToken cancellationToken) =>
-        ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking()
-            .Where(variant => variant.TenantId == tenantId
-                && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId)
-                    || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == variant.ProductId
-                        && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId
-                            && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))),
-            cancellationToken);
-
-    private static Task<IResult> ReorderProductFamilyMediaAsync([FromBody] ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider) =>
-        command.UrlsInOrder is null
-            ? ReorderProductFamilyMediaLegacyAsync(command, http, db, timeProvider)
-            : ReorderProductFamilyMediaByUrlAsync(command, http, db, timeProvider);
-
-    private static async Task<IResult> ReorderProductFamilyMediaByUrlAsync(ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        var requestedUrls = command.UrlsInOrder ?? [];
-        if (requestedUrls.Count > 1000 || requestedUrls.Any(url => string.IsNullOrWhiteSpace(url) || url.Length > 2048))
-            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "En fazla 1000 adet geçerli ürün görseli sıralanabilir.", 422));
-        var requestedKeys = requestedUrls.Select(CatalogImageIdentity.Key).ToArray();
-        if (requestedKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedKeys.Length)
-            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Görsel sıralama isteğinde aynı görsel birden fazla kez bulunamaz.", 422));
-
-        var sourceProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
-        if (sourceProduct is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
-        var modelCode = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == sourceProduct.Id && x.ModelCode != null && x.ModelCode != "")
-            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
-            .Select(x => x.ModelCode)
-            .FirstOrDefaultAsync(http.RequestAborted);
-        var familyProductIds = await VisibleFamilyProductIdsAsync(db, tenant.TenantId, sourceProduct.BrandId, modelCode, http.RequestAborted);
-        if (!familyProductIds.Contains(sourceProduct.Id)) familyProductIds.Add(sourceProduct.Id);
-
-        var media = await db.ProductMedia
-            .Where(item => item.TenantId == tenant.TenantId && familyProductIds.Contains(item.ProductId))
-            .ToListAsync(http.RequestAborted);
-        var assetIds = media.Select(item => item.FileAssetId).Distinct().ToArray();
-        var assetsById = await db.FileAssets.AsNoTracking()
-            .Where(asset => asset.TenantId == tenant.TenantId && assetIds.Contains(asset.Id))
-            .ToDictionaryAsync(asset => asset.Id, http.RequestAborted);
-        var visibleMedia = media
-            .Where(item => item.Status == "ACTIVE"
-                && assetsById.TryGetValue(item.FileAssetId, out var asset)
-                && asset.Status == "ACTIVE"
-                && asset.Classification is "PRODUCT_MEDIA" or "PRODUCT_MEDIA_URL")
-            .Select(item =>
-            {
-                var asset = assetsById[item.FileAssetId];
-                var url = asset.Classification == "PRODUCT_MEDIA_URL"
-                    ? asset.RelativePath
-                    : $"/api/v1/files/product-media/{asset.Id:D}/content";
-                return new ProductFamilyMediaRow(item, url, CatalogImageIdentity.Key(url));
-            })
-            .ToArray();
-        // The editor combines a product gallery with variant-level color images.
-        // Order every active scope by the same visible URL list; selecting only
-        // product-gallery rows here makes valid variant URLs look stale.
-        var selectedRows = visibleMedia
-            .OrderBy(item => item.Media.SortOrder).ThenBy(item => item.Media.ProductId).ThenBy(item => item.Media.Id)
-            .ToArray();
-        var familyGroups = selectedRows
-            .GroupBy(item => item.ImageKey, StringComparer.OrdinalIgnoreCase)
-            .Select(group => new ProductFamilyImageGroup(group.Key, group.First().Url, group.ToArray(), group.Min(item => item.Media.SortOrder), group.Min(item => item.Media.ProductId), group.Min(item => item.Media.Id)))
-            .OrderBy(group => group.SortOrder).ThenBy(group => group.FirstProductId).ThenBy(group => group.FirstMediaId)
-            .ToArray();
-        var groupKeys = familyGroups.Select(group => group.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (requestedKeys.Any(key => !groupKeys.Contains(key)))
-            return Problem(http, new("PRODUCT_MEDIA_REORDER_STALE", "Görsel listesi değişmiş. Sayfayı yenileyip sıralamayı tekrar yapın.", 409));
-        var orderedGroups = ProductFamilyMediaOrdering.OrderByRequestedKeys(familyGroups, requestedKeys, group => group.Key);
-        if (orderedGroups.Count == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
-
-        var stride = (long)selectedRows.Length + 1;
-        if ((long)orderedGroups.Count * stride + (long)media.Count * 2 + 1 > int.MaxValue)
-            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Ürün görsel ailesi sıralanamayacak kadar büyük.", 422));
-        var orderByImageKey = orderedGroups.Select((group, index) => (group.Key, Index: index))
-            .ToDictionary(item => item.Key, item => item.Index, StringComparer.OrdinalIgnoreCase);
-        var selectedByProduct = selectedRows.GroupBy(item => item.Media.ProductId).ToDictionary(group => group.Key, group => group.ToArray());
-        var visibleByMediaId = selectedRows.ToDictionary(item => item.Media.Id);
-        var planned = new Dictionary<Guid, (int SortOrder, string MediaRole)>();
-        void Plan(ProductMedia item, long sortOrder, string? mediaRole = null) => planned[item.Id] = ((int)sortOrder, mediaRole ?? item.MediaRole);
-
-        foreach (var productId in selectedByProduct.Keys)
-        {
-            var productMedia = media.Where(item => item.ProductId == productId).ToArray();
-            foreach (var scope in productMedia.GroupBy(item => item.VariantId))
-            {
-                var scopeRows = scope.ToArray();
-                var activeRows = scopeRows.Where(item => item.Status == "ACTIVE")
-                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
-                var orderedVisibleRows = activeRows
-                    .Select(item => visibleByMediaId.GetValueOrDefault(item.Id))
-                    .Where(item => item is not null)
-                    .Select(item => item!)
-                    .OrderBy(item => orderByImageKey[item.ImageKey])
-                    .ThenBy(item => item.Media.SortOrder).ThenBy(item => item.Media.Id)
-                    .ToArray();
-                if (orderedVisibleRows.Length == 0) continue;
-
-                var selectedIds = orderedVisibleRows.Select(item => item.Media.Id).ToHashSet();
-                var occurrenceByImage = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                for (var index = 0; index < orderedVisibleRows.Length; index++)
-                {
-                    var row = orderedVisibleRows[index];
-                    occurrenceByImage.TryGetValue(row.ImageKey, out var occurrence);
-                    occurrenceByImage[row.ImageKey] = occurrence + 1;
-                    var rank = (long)orderByImageKey[row.ImageKey] * stride + occurrence;
-                    var role = index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY";
-                    Plan(row.Media, rank, role);
-                }
-                var hiddenActive = activeRows.Where(item => !selectedIds.Contains(item.Id))
-                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
-                var archivedGallery = scopeRows.Where(item => item.Status != "ACTIVE")
-                    .OrderBy(item => item.SortOrder).ThenBy(item => item.Id).ToArray();
-                var hiddenStart = (long)orderedGroups.Count * stride;
-                for (var index = 0; index < hiddenActive.Length; index++)
-                    Plan(hiddenActive[index], hiddenStart + index, scope.Key is null ? "ORDERED_GALLERY" : null);
-                for (var index = 0; index < archivedGallery.Length; index++)
-                    Plan(archivedGallery[index], hiddenStart + hiddenActive.Length + index);
-            }
-        }
-
-        var plannedIds = planned.Keys.ToHashSet();
-        var changedScopes = media
-            .Where(item => plannedIds.Contains(item.Id))
-            .GroupBy(item => (item.ProductId, item.VariantId))
-            .Where(scope => scope.Any(item => item.SortOrder != planned[item.Id].SortOrder || item.MediaRole != planned[item.Id].MediaRole))
-            .ToArray();
-        if (changedScopes.Length == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
-
-        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
-        foreach (var scope in changedScopes)
-        {
-            var occupied = scope.Select(item => item.SortOrder).ToHashSet();
-            var temporary = -1;
-            foreach (var item in scope.OrderBy(item => item.SortOrder).ThenBy(item => item.Id))
-            {
-                while (occupied.Contains(temporary))
-                {
-                    if (temporary == int.MinValue) return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Geçici görsel sıralama alanı bulunamadı.", 422));
-                    temporary--;
-                }
-                item.SortOrder = temporary;
-                occupied.Add(temporary);
-                if (temporary > int.MinValue) temporary--;
-            }
-        }
-        await db.SaveChangesAsync(http.RequestAborted);
-
-        foreach (var scope in changedScopes)
-            foreach (var item in scope)
-            {
-                item.SortOrder = planned[item.Id].SortOrder;
-                item.MediaRole = planned[item.Id].MediaRole;
-            }
-        var changedProductIds = changedScopes.Select(scope => scope.Key.ProductId).Distinct().ToHashSet();
-        var siblingProducts = await db.Products
-            .Where(product => product.TenantId == tenant.TenantId && changedProductIds.Contains(product.Id))
-            .ToListAsync(http.RequestAborted);
-        var now = timeProvider.GetUtcNow();
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, siblingProducts, now, http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        await transaction.CommitAsync(http.RequestAborted);
-        return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Length });
-    }
-
-    private static async Task<IResult> ReorderProductFamilyMediaLegacyAsync(ReorderProductFamilyMediaCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        if (command.SourceIndex is not int sourceIndex || command.TargetIndex is not int targetIndex || sourceIndex is < 0 or > 999 || targetIndex is < 0 or > 999)
-            return Problem(http, new("PRODUCT_MEDIA_REORDER_INVALID", "Görsel sıralama konumları 0-999 arasında olmalıdır.", 422));
-
-        var sourceProduct = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted);
-        if (sourceProduct is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
-        var modelCode = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == sourceProduct.Id && x.ModelCode != null && x.ModelCode != "")
-            .Select(x => x.ModelCode)
-            .FirstOrDefaultAsync(http.RequestAborted);
-        if (string.IsNullOrWhiteSpace(modelCode)) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
-
-        var familyProductIds = await VisibleFamilyProductIdsAsync(db, tenant.TenantId, sourceProduct.BrandId, modelCode, http.RequestAborted);
-        familyProductIds.Remove(sourceProduct.Id);
-        if (familyProductIds.Count == 0) return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
-
-        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
-        var siblingProducts = await db.Products
-            .Where(product => product.TenantId == tenant.TenantId && familyProductIds.Contains(product.Id))
-            .ToListAsync(http.RequestAborted);
-        var siblingMedia = await db.ProductMedia
-            .Where(media => media.TenantId == tenant.TenantId && familyProductIds.Contains(media.ProductId))
-            .ToListAsync(http.RequestAborted);
-
-        var galleryScopes = new List<(Guid ProductId, Guid? VariantId, List<ProductMedia> All, List<ProductMedia> Active)>();
-        foreach (var productGroup in siblingMedia.GroupBy(media => media.ProductId))
-        {
-            var productGallery = productGroup.Where(media => media.VariantId is null).ToList();
-            var activeProductGallery = productGallery.Where(media => media.Status == "ACTIVE")
-                .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
-            if (activeProductGallery.Count > 0)
-            {
-                galleryScopes.Add((productGroup.Key, null, productGallery, activeProductGallery));
-                continue;
-            }
-
-            foreach (var variantGroup in productGroup.Where(media => media.VariantId is not null).GroupBy(media => media.VariantId))
-            {
-                var all = variantGroup.ToList();
-                var active = all.Where(media => media.Status == "ACTIVE")
-                    .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
-                if (active.Count > 0) galleryScopes.Add((productGroup.Key, variantGroup.Key, all, active));
-            }
-        }
-
-        var changedScopes = new List<(Guid ProductId, Guid? VariantId, List<ProductMedia> All, List<ProductMedia> Active, List<ProductMedia> Archived)>();
-        foreach (var scope in galleryScopes)
-        {
-            var originalOrder = scope.Active.ToArray();
-            if (!ProductFamilyMediaOrdering.Move(scope.Active, sourceIndex, targetIndex)
-                || originalOrder.SequenceEqual(scope.Active)) continue;
-            var archived = scope.All.Where(media => media.Status != "ACTIVE")
-                .OrderBy(media => media.SortOrder).ThenBy(media => media.Id).ToList();
-            changedScopes.Add((scope.ProductId, scope.VariantId, scope.All, scope.Active, archived));
-        }
-
-        if (changedScopes.Count == 0)
-        {
-            await transaction.CommitAsync(http.RequestAborted);
-            return Results.Ok(new { changedProductCount = 0, changedGalleryCount = 0 });
-        }
-
-        foreach (var scope in changedScopes)
-        {
-            var occupied = scope.All.Select(media => media.SortOrder).ToHashSet();
-            var temporary = int.MinValue;
-            foreach (var media in scope.All.OrderBy(media => media.SortOrder).ThenBy(media => media.Id))
-            {
-                while (occupied.Contains(temporary)) temporary++;
-                media.SortOrder = temporary;
-                occupied.Add(temporary++);
-            }
-        }
-        await db.SaveChangesAsync(http.RequestAborted);
-
-        foreach (var scope in changedScopes)
-        {
-            for (var index = 0; index < scope.Active.Count; index++)
-            {
-                scope.Active[index].SortOrder = index;
-                scope.Active[index].MediaRole = scope.VariantId is null
-                    ? index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY"
-                    : index == 0 ? "PRIMARY" : "GALLERY";
-            }
-            for (var index = 0; index < scope.Archived.Count; index++)
-                scope.Archived[index].SortOrder = scope.Active.Count + index;
-        }
-        var changedProductIds = changedScopes.Select(scope => scope.ProductId).Distinct().ToHashSet();
-        var now = timeProvider.GetUtcNow();
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, siblingProducts.Where(product => changedProductIds.Contains(product.Id)).ToList(), now, http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        await transaction.CommitAsync(http.RequestAborted);
-        return Results.Ok(new { changedProductCount = changedProductIds.Count, changedGalleryCount = changedScopes.Count });
-    }
-
-    private static async Task<IResult> RegisterProductMediaUrlAsync(RegisterProductMediaUrl command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        if (!Uri.TryCreate(command.Url?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.AbsoluteUri.Length > 512)
-            return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", "Kalıcı, kullanıcı bilgisi içermeyen ve en fazla 512 karakterlik HTTPS görsel URL'si gereklidir.", 422, new Dictionary<string, string[]> { ["url"] = ["Geçerli bir HTTPS görsel URL'si girin."] }));
-        if (uri.IsLoopback || !IsPublicHost(uri.Host) || IPAddress.TryParse(uri.Host, out var address) && !IsPublicAddress(address))
-            return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", "Yerel, özel ağ veya loopback görsel adresi kullanılamaz.", 422, new Dictionary<string, string[]> { ["url"] = ["Trendyol tarafından internet üzerinden erişilebilen bir adres girin."] }));
-        if (command.SortOrder is < 0 or > 999) return Problem(http, new("PRODUCT_MEDIA_SORT_INVALID", "sortOrder 0-999 arasında olmalıdır.", 422));
-        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == command.ProductId, http.RequestAborted) || command.VariantId is Guid variantId && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.Id == variantId, http.RequestAborted))
-            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün veya varyant bulunamadı.", 404));
-
-        var url = uri.AbsoluteUri;
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url)));
-        var asset = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RelativePath == url, http.RequestAborted);
-        if (asset is not null && asset.Classification != "PRODUCT_MEDIA_URL") return Problem(http, new("PRODUCT_MEDIA_URL_CONFLICT", "Bu URL farklı bir dosya sınıfında kayıtlı.", 409));
-        if (asset is null)
-        {
-            var originalName = Path.GetFileName(uri.AbsolutePath);
-            asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA_URL", RelativePath = url, OriginalNameSafe = string.IsNullOrWhiteSpace(originalName) ? null : originalName[..Math.Min(originalName.Length, 256)], MimeType = "image/remote", SizeBytes = 0, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
-            db.FileAssets.Add(asset);
-        }
-        else
-        {
-            asset.Status = "ACTIVE";
-            asset.ArchivedAt = null;
-        }
-
-        // K27: a product gallery the user has ordered keeps its ORDERED_* roles for URL images too, the same
-        // rule the upload path applies.
-        var isCustomProductGallery = command.VariantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
-        // Like an upload: a new link never takes the place of a live picture; it goes after the gallery then.
-        var sortOrder = ProductFamilyMediaOrdering.UploadSortOrder(command.SortOrder, (await db.ProductMedia.AsNoTracking()
-            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId)
-            .Select(x => new { x.SortOrder, x.Status, x.FileAssetId }).ToListAsync(http.RequestAborted))
-            .Select(x => (x.SortOrder, x.Status == "ACTIVE", x.FileAssetId)), asset.Id);
-        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(sortOrder == command.SortOrder ? command.MediaRole : "GALLERY");
-        var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId && x.SortOrder == sortOrder, http.RequestAborted);
-        if (media is null)
-        {
-            media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = SafeAltText(command.AltText), Status = "ACTIVE" };
-            db.ProductMedia.Add(media);
-        }
-        else
-        {
-            media.FileAssetId = asset.Id;
-            media.MediaRole = mediaRole;
-            media.AltText = SafeAltText(command.AltText);
-            media.Status = "ACTIVE";
-        }
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [command.ProductId], timeProvider.GetUtcNow(), http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Created($"/api/v1/products/{command.ProductId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, url, media.MediaRole, media.SortOrder, media.AltText, media.Status });
-    }
-
-    private static async Task<IResult> ClearProductMediaAsync(Guid productId, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == productId))
-            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
-
-        var media = await db.ProductMedia
-            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE")
-            .ToListAsync(http.RequestAborted);
-        foreach (var item in media) item.Status = "ARCHIVED";
-        await ClearLeftSizeChartsAsync(db, tenant.TenantId, media, timeProvider.GetUtcNow(), http.RequestAborted);
-        if (media.Count > 0) await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        return Results.NoContent();
-    }
-
-    // D5 on the bulk paths (scan, 13 Nov 2026): a card's size chart whose picture the card no longer shows on any active
-    // row once these rows are archived is no longer its chart; left set, it went to every variant as the last picture and
-    // kept the file from the purge. Nothing is saved here.
-    private static async Task ClearLeftSizeChartsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<ProductMedia> archived, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        if (archived.Count == 0) return;
-        var productIds = archived.Select(item => item.ProductId).Distinct().ToArray();
-        var assetIds = archived.Select(item => item.FileAssetId).Distinct().ToArray();
-        var archivedIds = archived.Select(item => item.Id).ToArray();
-        var charts = await db.ProductSizeCharts
-            .Where(chart => chart.TenantId == tenantId && productIds.Contains(chart.ProductId) && chart.FileAssetId != null && assetIds.Contains(chart.FileAssetId.Value))
-            .ToListAsync(cancellationToken);
-        foreach (var chart in charts)
-        {
-            var stillShown = await db.ProductMedia.AnyAsync(item => item.TenantId == tenantId && item.ProductId == chart.ProductId && item.FileAssetId == chart.FileAssetId
-                && item.Status == "ACTIVE" && !archivedIds.Contains(item.Id), cancellationToken);
-            if (stillShown) continue;
-            chart.FileAssetId = null;
-            chart.UpdatedAt = now;
-        }
-    }
-
-    private static async Task<IResult> DeleteProductMediaItemsAsync([FromBody] DeleteProductMediaItemsCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        var mediaIds = command.MediaIds?.Distinct().ToArray() ?? [];
-        if (mediaIds.Length is 0 or > 100) return Problem(http, new("PRODUCT_MEDIA_DELETE_LIMIT", "Bir işlemde 1-100 görsel bağlantısı kaldırılabilir.", 422));
-
-        // A row the same save already archived (the variant pictures Kaydet reconciled a moment before) counts as removed;
-        // only an id this tenant never had is refused.
-        var found = await db.ProductMedia.Where(item => item.TenantId == tenant.TenantId && mediaIds.Contains(item.Id)).ToListAsync(http.RequestAborted);
-        if (found.Count != mediaIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel bağlantılarından biri bulunamadı.", 404));
-        var media = found.Where(item => item.Status == "ACTIVE").ToList();
-        if (media.Count == 0) return Results.Ok(new { deletedCount = 0 });
-        var productIds = media.Select(item => item.ProductId).Distinct().ToArray();
-        var products = await db.Products.Where(product => product.TenantId == tenant.TenantId && productIds.Contains(product.Id)).ToListAsync(http.RequestAborted);
-        if (products.Count != productIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görselin kaynak ürünü bulunamadı.", 404));
-
-        foreach (var item in media) item.Status = "ARCHIVED";
-        await ClearLeftSizeChartsAsync(db, tenant.TenantId, media, timeProvider.GetUtcNow(), http.RequestAborted);
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, products, timeProvider.GetUtcNow(), http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        return Results.Ok(new { deletedCount = media.Count });
-    }
-
-    private static async Task<IResult> DeleteProductMediaItemAsync([FromBody] DeleteProductMediaItemCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (RequireIdempotency(http) is { } keyFailure) return keyFailure;
-        if (!TryIfMatch(http, out var expectedVersion, out var versionFailure)) return versionFailure!;
-
-        var product = await db.Products.SingleOrDefaultAsync(item => item.TenantId == tenant.TenantId && item.Id == command.ProductId, http.RequestAborted);
-        if (product is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404));
-        if (product.Version != expectedVersion)
-        {
-            http.Response.Headers.ETag = $"\"v{product.Version}\"";
-            return Problem(http, new("PRECONDITION_FAILED", "Ürün başka bir işlemle değişti. Sayfayı yenileyip tekrar deneyin.", 412));
-        }
-
-        Guid assetId;
-        if (TryGetStoredProductMediaAssetId(command.Url, out var storedAssetId))
-        {
-            assetId = storedAssetId;
-        }
-        else
-        {
-            if (!TryNormalizePublicProductMediaUrl(command.Url, out var normalizedUrl, out var issue))
-                return Problem(http, new("PRODUCT_MEDIA_URL_INVALID", issue!, 422));
-            var remoteAsset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(asset =>
-                asset.TenantId == tenant.TenantId && asset.RelativePath == normalizedUrl && asset.Classification == "PRODUCT_MEDIA_URL" && asset.Status == "ACTIVE",
-                http.RequestAborted);
-            if (remoteAsset is null) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel üründe artık etkin değil.", 404));
-            assetId = remoteAsset.Id;
-        }
-
-        var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(item =>
-            item.TenantId == tenant.TenantId && item.Id == assetId && item.Status == "ACTIVE" && (item.Classification == "PRODUCT_MEDIA" || item.Classification == "PRODUCT_MEDIA_URL"),
-            http.RequestAborted);
-        if (asset is null) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel üründe artık etkin değil.", 404));
-
-        var modelCode = await db.ProductVariants.AsNoTracking()
-            .Where(variant => variant.TenantId == tenant.TenantId && variant.ProductId == product.Id && variant.ModelCode != null && variant.ModelCode != "")
-            .OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id)
-            .Select(variant => variant.ModelCode)
-            .FirstOrDefaultAsync(http.RequestAborted);
-        var familyProductIds = await VisibleFamilyProductIdsAsync(db, tenant.TenantId, product.BrandId, modelCode, http.RequestAborted);
-        if (!familyProductIds.Contains(product.Id)) familyProductIds.Add(product.Id);
-
-        await using var transaction = await db.Database.BeginTransactionAsync(http.RequestAborted);
-        var media = await db.ProductMedia
-            .Where(item => item.TenantId == tenant.TenantId && familyProductIds.Contains(item.ProductId) && item.FileAssetId == assetId && item.Status == "ACTIVE")
-            .ToListAsync(http.RequestAborted);
-        if (media.Count == 0) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel ürün ailesinde artık etkin değil.", 404));
-
-        foreach (var item in media) item.Status = "ARCHIVED";
-        var affectedProductIds = media.Select(item => item.ProductId).Distinct().ToArray();
-        var affectedProducts = await db.Products
-            .Where(item => item.TenantId == tenant.TenantId && affectedProductIds.Contains(item.Id))
-            .ToListAsync(http.RequestAborted);
-        // D5: a picture that leaves its card is no longer the card's size chart.
-        foreach (var chart in await db.ProductSizeCharts.Where(chart => chart.TenantId == tenant.TenantId && affectedProductIds.Contains(chart.ProductId) && chart.FileAssetId == assetId).ToListAsync(http.RequestAborted))
-        {
-            chart.FileAssetId = null;
-            chart.UpdatedAt = timeProvider.GetUtcNow();
-        }
-        await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, affectedProducts, timeProvider.GetUtcNow(), http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        await transaction.CommitAsync(http.RequestAborted);
-        var version = affectedProducts.SingleOrDefault(item => item.Id == product.Id)?.Version ?? product.Version;
-        http.Response.Headers.ETag = $"\"v{version}\"";
-        return Results.Ok(new { deletedCount = media.Count, version, productVersions = affectedProducts.ToDictionary(item => item.Id.ToString("D"), item => item.Version) });
-    }
-
-    // Oldest active upload with this content. The unique index keeps it to one (K11); FirstOrDefault stays so a
-    // database restored from before the index cannot make the lookup throw.
-    private static Task<FileAsset?> FindUploadedAssetAsync(AppDbContext db, Guid tenantId, string hash, CancellationToken cancellationToken) =>
-        db.FileAssets.Where(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA" && x.Sha256 == hash && x.ArchivedAt == null)
-            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-
-    private static bool IsPublicAddress(IPAddress address) => PublicNetwork.IsPublic(address);
-
-    private static bool IsPublicHost(string host)
-    {
-        var normalized = host.TrimEnd('.');
-        return !string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase)
-            && !normalized.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
-            && !normalized.EndsWith(".internal", StringComparison.OrdinalIgnoreCase)
-            && !normalized.EndsWith(".lan", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryGetStoredProductMediaAssetId(string? value, out Guid assetId)
-    {
-        assetId = Guid.Empty;
-        if (string.IsNullOrWhiteSpace(value)) return false;
-        var parts = value.Trim().Split('/', StringSplitOptions.None);
-        return parts.Length == 7
-            && parts[0].Length == 0
-            && parts[1] == "api"
-            && parts[2] == "v1"
-            && parts[3] == "files"
-            && parts[4] == "product-media"
-            && parts[6] == "content"
-            && Guid.TryParseExact(parts[5], "D", out assetId);
-    }
-
-    private static bool TryNormalizePublicProductMediaUrl(string? value, out string? normalized, out string? issue)
-    {
-        normalized = null;
-        issue = null;
-        if (!Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || string.IsNullOrWhiteSpace(uri.Host) || !string.IsNullOrEmpty(uri.UserInfo) || uri.AbsoluteUri.Length > 512)
-        {
-            issue = "Kalıcı, kullanıcı bilgisi içermeyen ve en fazla 512 karakterlik HTTPS görsel URL'si gereklidir.";
-            return false;
-        }
-        if (uri.IsLoopback || !IsPublicHost(uri.Host) || IPAddress.TryParse(uri.Host, out var address) && !IsPublicAddress(address))
-        {
-            issue = "Yerel, özel ağ veya loopback görsel adresi kullanılamaz.";
-            return false;
-        }
-        normalized = uri.AbsoluteUri;
-        return true;
-    }
-
-    internal static string MediaRole(string? value)
-    {
-        var role = string.IsNullOrWhiteSpace(value) ? "GALLERY" : value.Trim().ToUpperInvariant();
-        return role[..Math.Min(role.Length, 32)];
-    }
-
-    private static string? SafeAltText(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var text = value.Trim();
-        return text[..Math.Min(text.Length, 320)];
     }
 
     // No mapping yet is a JSON null, not an empty body: Results.Ok(null) writes nothing, and the panel read that as a
