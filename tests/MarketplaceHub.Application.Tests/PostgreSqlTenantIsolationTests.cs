@@ -342,8 +342,21 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     public async Task OperationsRealtimeBroadcaster_RedeliversStableEventId_WhenStoppedAfterSendBeforePublishMark()
     {
         var tenant = NewTenant("outbox-send-before-mark");
-        var now = fixture.Now;
-        var outboxEvent = NewOutboxEvent(tenant.Id, now, publishedAt: null);
+        // The dispatcher publishes every unpublished event of the database oldest first, 250 a pass and one pass a second,
+        // and in the shared test database nothing else publishes them: inside the full suite about 2,000 other tests'
+        // events (data changes, deletes, job leases) wait in front of a new one, which then came out after ~9 of the
+        // 10 seconds the waits allow (measured 16 Nov 2026). This test's event is therefore made the oldest unpublished
+        // one, so it is in the first batch whatever the backlog; it stays well inside the outbox retention (3 days).
+        DateTimeOffset createdAt;
+        await using (var db = fixture.CreateContext())
+        {
+            var oldestWaiting = await db.IntegrationOutboxEvents.AsNoTracking().Where(x => x.PublishedAt == null)
+                .MinAsync(x => (DateTimeOffset?)x.CreatedAt);
+            var floor = DateTimeOffset.UtcNow.AddDays(-1);
+            createdAt = (oldestWaiting is { } oldest && oldest < fixture.Now ? oldest : fixture.Now).AddMinutes(-1);
+            if (createdAt < floor) createdAt = floor;
+        }
+        var outboxEvent = NewOutboxEvent(tenant.Id, createdAt, publishedAt: null);
         await using (var db = fixture.CreateContext())
         {
             db.Tenants.Add(tenant);
@@ -351,8 +364,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             await db.SaveChangesAsync();
         }
 
-        // The dispatcher publishes every unpublished event in the database (job leases add one each), so only
-        // the deliveries of this test's event are counted.
+        // Other events go out in the same passes; only the deliveries of this test's event are counted.
         var deliveredIds = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
         using var firstStop = new CancellationTokenSource();
         var firstHub = new RecordingOperationsHubContext((arguments, _) =>
@@ -9029,13 +9041,24 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Equal(anchor.AddDays(-29).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedEndDate"));
             Assert.Equal(["AE"], storeFrontCodes);
 
-            // Audit 2026-11-15 ADAPTOR-TY-HB-3: a package of that order with no status time (or one older than the
-            // stream's three months) cannot be asked for. No request goes out and the answer says so instead of "Trendyol
-            // did not find the package"; its class and status stay NotFound/404, so every caller takes the path it took.
-            foreach (var statusTime in new DateTimeOffset?[] { null, anchor.AddMonths(-4) })
+            // ADAPTOR-TY-HB-3 step 2: a package of that order with no status time is looked for in the stream around the
+            // order's last change, as the order itself is.
+            var packageStreamStart = requests.Requests.Count;
+            var undated = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(null, oldOrder), CancellationToken.None);
+            Assert.True(undated.IsSuccess, undated.Error?.SafeMessage);
+            var packageStream = Assert.Single(requests.Requests.Skip(packageStreamStart));
+            Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", packageStream.AbsolutePath);
+            Assert.Equal(anchor.AddDays(-41).ToUnixTimeMilliseconds().ToString(), QueryValue(packageStream, "lastModifiedStartDate"));
+
+            // Audit 2026-11-15 ADAPTOR-TY-HB-3: a package whose status time is older than the stream's three months, or
+            // whose order lies outside every window, cannot be asked for. No request goes out and the answer says so
+            // instead of "Trendyol did not find the package"; its class and status stay NotFound/404, so every caller
+            // takes the path it took.
+            var oldestOrder = new OrderLookupHint(anchor.AddMonths(-4), anchor.AddMonths(-4), "AE");
+            foreach (var (statusTime, order) in new (DateTimeOffset?, OrderLookupHint)[] { (null, oldestOrder), (anchor.AddMonths(-4), oldOrder) })
             {
                 var unaddressableStart = requests.Requests.Count;
-                var unaddressable = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(statusTime, oldOrder), CancellationToken.None);
+                var unaddressable = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(statusTime, order), CancellationToken.None);
                 Assert.Equal(unaddressableStart, requests.Requests.Count);
                 Assert.False(unaddressable.IsSuccess);
                 Assert.Equal(TrendyolHttpClient.PackageNotAddressableCode, unaddressable.Error!.Code);

@@ -40,7 +40,7 @@ public sealed partial class MarketplaceJobProcessor
     // so they count as part of the first import and keep its priority). A retry of the tree read adds none twice.
     private async Task QueueMappedCategoryReferencesAsync(Guid tenantId, Guid connectionId, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (platformCode is null || !ConnectionReferencePlan.SupportsCategoryAttributes(platformCode)) return;
         var now = timeProvider.GetUtcNow();
         var refreshBefore = now - ConnectionReferencePlan.FreshFor;
@@ -110,7 +110,7 @@ public sealed partial class MarketplaceJobProcessor
             }
             catch (JobProcessingException exception) when (ConnectionReferencePlan.SkipsValueListFailure(exception.Result))
             {
-                telemetryFailedCount++;
+                run.FailedCount++;
             }
             finally
             {

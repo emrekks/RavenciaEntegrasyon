@@ -80,7 +80,7 @@ public sealed partial class TrendyolHttpClient
         return await ReadShipmentPackageAsync(authorized, externalPackageId, lookup, cancellationToken);
     }
 
-    private async Task<AdapterResult<RemoteOrderPackage>> ReadShipmentPackageAsync(TrendyolRequestContext authorized, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken)
+    internal async Task<AdapterResult<RemoteOrderPackage>> ReadShipmentPackageAsync(TrendyolRequestContext authorized, string externalPackageId, PackageLookup lookup, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(externalPackageId)) return AdapterResult<RemoteOrderPackage>.Failure(TrendyolErrorMapper.Contract());
         var packageStatusOccurredAt = lookup.StatusOccurredAt;
@@ -88,7 +88,7 @@ public sealed partial class TrendyolHttpClient
         var storefronts = await LookupStorefrontsAsync(authorized, lookup.Order, cancellationToken);
 
         // Order V2 keeps a month of packages and accepts at most two weeks per request. A package
-        // of an order older than a month is read from the stream below, around its status time.
+        // of an order older than a month is read from the stream below, around its status time (or its order's).
         var v2Window = TrendyolLookupPolicy.V2Window(lookup.Order, timeProvider.GetUtcNow());
         var query = v2Window is { } window
             ? $"?startDate={window.Start.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&endDate={window.End.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)}&shipmentPackageIds={Uri.EscapeDataString(externalPackageId.Trim())}&size=200"
@@ -165,21 +165,12 @@ public sealed partial class TrendyolHttpClient
 
         AdapterError? streamError = null;
         var streamRead = false;
-        if (packageStatusOccurredAt is { } statusOccurredAt)
+        if (PackageStreamWindow(packageStatusOccurredAt, lookup.Order, timeProvider.GetUtcNow()) is { } streamWindow)
         {
-            var now = timeProvider.GetUtcNow();
-            var historyCutoff = now.AddMonths(-3);
-            if (statusOccurredAt >= historyCutoff && statusOccurredAt <= now)
-            {
-                streamRead = true;
-                var modifiedStart = statusOccurredAt.AddDays(-6);
-                if (modifiedStart < historyCutoff) modifiedStart = historyCutoff;
-                var modifiedEnd = statusOccurredAt.AddDays(6);
-                if (modifiedEnd > now) modifiedEnd = now;
-                var scan = await ScanPackageStreamAsync(authorized, externalPackageId.Trim(), v2Package, v2RateLimit, modifiedStart, modifiedEnd, storefronts[0], cancellationToken);
-                if (scan.Result is { } found) return found;
-                streamError = scan.StreamError;
-            }
+            streamRead = true;
+            var scan = await ScanPackageStreamAsync(authorized, externalPackageId.Trim(), v2Package, v2RateLimit, streamWindow.Start, streamWindow.End, storefronts[0], cancellationToken);
+            if (scan.Result is { } found) return found;
+            streamError = scan.StreamError;
         }
 
         var selectedPackage = v2Package;
@@ -199,7 +190,7 @@ public sealed partial class TrendyolHttpClient
             return AdapterResult<RemoteOrderPackage>.Success(selectedPackage, v2RateLimit);
         if (streamError is not null)
             return AdapterResult<RemoteOrderPackage>.Failure(streamError, v2RateLimit);
-        // Audit 2026-11-15 ADAPTOR-TY-HB-3: no Order V2 window (an order older than a month) and no status time to read
+        // Audit 2026-11-15 ADAPTOR-TY-HB-3: no Order V2 window (an order older than a month) and no status or order time to read
         // the stream around: nothing was asked, so Trendyol did not say the package is missing. Its own code and summary
         // tell the two apart; the class and status stay NotFound/404, so every caller handles it as it did.
         if (query is null && !streamRead)
@@ -210,6 +201,20 @@ public sealed partial class TrendyolHttpClient
         return error.Class == AdapterErrorClass.NotFound || error.HttpStatus == 404
             ? AdapterResult<RemoteOrderPackage>.Failure(new(AdapterErrorClass.NotFound, "REMOTE_PACKAGE_NOT_FOUND", "Trendyol paket bilgisi bulunamadı.", 404, null, error.RemoteRequestId), v2RateLimit)
             : AdapterResult<RemoteOrderPackage>.Failure(error, v2RateLimit);
+    }
+
+    // The stream window a package is looked for in (the stream keeps three months; trendyol.md "Windows and paging"):
+    // six days either side of its recorded status time; a package without one (ADAPTOR-TY-HB-3 step 2) is looked for
+    // around its order's last recorded change, or its order date (TrendyolLookupPolicy.StreamWindow, the same rule an
+    // order read uses). A status time outside the stream's months is not read, as before; null means nothing to read.
+    internal static (DateTimeOffset Start, DateTimeOffset End)? PackageStreamWindow(DateTimeOffset? statusOccurredAt, OrderLookupHint? order, DateTimeOffset now)
+    {
+        if (statusOccurredAt is not { } status) return TrendyolLookupPolicy.StreamWindow(order, now);
+        var historyCutoff = now.AddMonths(-TrendyolOrderHistoryPolicy.StreamInitialLookbackMonths);
+        if (status < historyCutoff || status > now) return null;
+        var start = status - TrendyolLookupPolicy.StreamMargin;
+        var end = status + TrendyolLookupPolicy.StreamMargin;
+        return (start < historyCutoff ? historyCutoff : start, end > now ? now : end);
     }
 
     // A stream page is 200 packages and pages are spaced 5 s apart; twenty pages (4,000 packages, about two

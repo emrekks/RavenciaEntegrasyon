@@ -64,7 +64,11 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
                 return response;
             }
             var status = (int)response.StatusCode;
-            if (status == 429)
+            // A 429 naming no wait teaches this circuit nothing; Trendyol's counts it as a failure
+            // (MarketplaceCircuitRules, an owner decision).
+            if (status == 429 && RetryAfter(response.Headers.RetryAfter) is null && MarketplaceCircuitRules.SharedCircuitCountsQuotaStopWithoutRetryAfter)
+                circuit.Record(timeProvider.GetUtcNow(), succeeded: false);
+            else if (status == 429)
                 circuit.RecordQuota(timeProvider.GetUtcNow(), RetryAfter(response.Headers.RetryAfter));
             else
                 circuit.Record(timeProvider.GetUtcNow(), succeeded: status < 500 && status != 408);
@@ -99,19 +103,16 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
         return AccountKeyFor(request) is { } account ? $"{family}#{account}" : family;
     }
 
-    // The account the request is sent for, as its rate-limit handler names it, hashed so no credential is kept
-    // in a key: Pazarama's seller key, PTT AVM's store key, n11's app key (the SOAP option or the REST header), or a Basic
-    // Authorization header (Hepsiburada, the Pazarama token call). A Bearer token is never used: it rotates, and
-    // each new token would start a new circuit. Shopify needs none, as its host names the shop.
+    // The account the request is sent for, hashed so no credential is kept in a key: the shared quota account option its
+    // rate-limit handler buckets by (MarketplaceQuota.AccountKey: Pazarama's seller key, PTT AVM's store key, n11's SOAP
+    // app key), n11's REST appkey header, or a Basic Authorization header (Hepsiburada, the Pazarama token call). A
+    // Bearer token is never used: it rotates, and each new token would start a new circuit. Shopify needs none, as its
+    // host names the shop. The circuit key already starts with the host, so the account needs no marketplace name.
     internal static string? AccountKeyFor(HttpRequestMessage request)
     {
         string? identity = null;
-        if (request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.AccountKeyOption, out var seller) && !string.IsNullOrWhiteSpace(seller))
-            identity = "pazarama:" + seller;
-        else if (request.Options.TryGetValue(PttAvm.PttAvmRateLimitHandler.AccountKeyOption, out var pttAvmStore) && !string.IsNullOrWhiteSpace(pttAvmStore))
-            identity = "pttavm:" + pttAvmStore;
-        else if (request.Options.TryGetValue(N11.N11RateLimitHandler.AccountKeyOption, out var soapAccount) && !string.IsNullOrWhiteSpace(soapAccount))
-            identity = "n11:" + soapAccount;
+        if (request.Options.TryGetValue(MarketplaceQuota.AccountKey, out var account) && !string.IsNullOrWhiteSpace(account))
+            identity = "account:" + account;
         else if (request.Headers.TryGetValues("appkey", out var appKeys) && appKeys.FirstOrDefault() is { } appKey && !string.IsNullOrWhiteSpace(appKey))
             identity = "n11:" + appKey;
         else if (request.Headers.Authorization is { } authorization

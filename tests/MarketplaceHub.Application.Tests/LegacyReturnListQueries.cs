@@ -97,7 +97,7 @@ internal static class LegacyReturnListQueries
             if (!existingOrders.Contains(claim.OrderId)) { labels[claim.Id] = "FATURA_BEKLIYOR"; continue; }
             var package = packages.GetValueOrDefault(claim.OrderId);
             var invoice = invoices.GetValueOrDefault(claim.OrderId);
-            labels[claim.Id] = MarketplaceSalesService.InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown,
+            labels[claim.Id] = InvoiceLabelPolicy.InvoiceLabel(invoice?.Status, invoice?.InvoiceNumber, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown,
                 snapshots.GetValueOrDefault(claim.OrderId) ?? "{}", package is null ? [] : [package.RawStatus]);
         }
         return labels;

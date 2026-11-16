@@ -175,11 +175,11 @@ public sealed class CatalogLookupTests
     [Fact]
     public void OrderLineLookupKeys_IncludeTheSharedAndTheLegacyForms()
     {
-        var keys = MarketplaceSalesService.CatalogLookupKeys("abc_01");
+        var keys = OrderSnapshotReader.CatalogLookupKeys("abc_01");
         Assert.Contains("ABC-01", keys);
         Assert.Contains("ABC_01", keys);
-        Assert.Contains("KIRMIZI-1", MarketplaceSalesService.CatalogLookupKeys("Kırmızı 1"));
-        Assert.Contains("ABC", MarketplaceSalesService.CatalogLookupKeys("000ABC"));
+        Assert.Contains("KIRMIZI-1", OrderSnapshotReader.CatalogLookupKeys("Kırmızı 1"));
+        Assert.Contains("ABC", OrderSnapshotReader.CatalogLookupKeys("000ABC"));
     }
 
     [Theory]

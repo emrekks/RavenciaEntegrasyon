@@ -92,7 +92,7 @@ public sealed partial class MarketplaceJobProcessor
         var focusedPriceStock = ProductImportScanPolicy.FocusedPriceStock(connection.PlatformCode, existingOnly, singleLookup, newOnly, mappingOnly, optionsOnly, updateExistingProducts, updatePrices, updateStock);
         if (focusedPriceStock)
             contentLabel = updatePrices && updateStock ? " · Yalnız fiyat ve stok güncellenecek" : updatePrices ? " · Yalnız fiyat güncellenecek" : " · Yalnız stok güncellenecek";
-        importSummaryMode = focusedPriceStock ? ImportSummaryMode.FocusedPriceStock
+        run.ImportSummaryMode = focusedPriceStock ? ImportSummaryMode.FocusedPriceStock
             : mappingOnly && !isPttAvm ? ImportSummaryMode.Mapping
             : newOnly && !isShopify && !isHepsiburada && !flatCatalog ? ImportSummaryMode.NewOnly
             : ImportSummaryMode.Standard;
@@ -128,12 +128,12 @@ public sealed partial class MarketplaceJobProcessor
         var previousProgress = jobId is { } progressJob
             ? await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == progressJob).Select(x => new { x.ProgressProcessed, x.ProgressSkipped, x.ProgressFailed }).SingleOrDefaultAsync(cancellationToken)
             : null;
-        telemetryImportProcessedCount = previousProgress?.ProgressProcessed ?? 0;
-        telemetryImportSkippedCount = previousProgress?.ProgressSkipped ?? 0;
-        telemetryImportFailedCount = previousProgress?.ProgressFailed ?? 0;
+        run.ImportProcessedCount = previousProgress?.ProgressProcessed ?? 0;
+        run.ImportSkippedCount = previousProgress?.ProgressSkipped ?? 0;
+        run.ImportFailedCount = previousProgress?.ProgressFailed ?? 0;
         var receivedProducts = importSession.ReceivedProducts;
-        productImportTelemetry = true;
-        telemetryImportReceivedCount = receivedProducts;
+        run.ProductImportTelemetry = true;
+        run.ImportReceivedCount = receivedProducts;
         int? totalProducts = importSession.TotalProducts;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         var scanRequired = importSession.Phase == "SCANNING";
@@ -202,7 +202,7 @@ public sealed partial class MarketplaceJobProcessor
                     totalProducts is { } knownTotal && knownTotal > 0
                         ? Math.Clamp((int)Math.Floor(receivedProducts * 100d / knownTotal), 0, 99)
                         : null,
-                    $"{scanLabel}{lifecycleLabel} · {pageNumber}. sayfa okunuyor · Alınan {TrCount(receivedProducts)} · İşlenen {TrCount(telemetryImportProcessedCount)} · Atlanan {TrCount(telemetryImportSkippedCount)} · Hatalı {TrCount(telemetryImportFailedCount)}",
+                    $"{scanLabel}{lifecycleLabel} · {pageNumber}. sayfa okunuyor · Alınan {TrCount(receivedProducts)} · İşlenen {TrCount(run.ImportProcessedCount)} · Atlanan {TrCount(run.ImportSkippedCount)} · Hatalı {TrCount(run.ImportFailedCount)}",
                     cancellationToken);
             }
             TrackRequest();
@@ -223,9 +223,9 @@ public sealed partial class MarketplaceJobProcessor
             }
             // A product read is not a product changed: the cursor's changed count is what the import processed
             // (CursorImportCounts), not every product the page brought.
-            telemetryReceivedCount += result.Value!.Items.Count;
+            run.ReceivedCount += result.Value!.Items.Count;
             receivedProducts += result.Value.Items.Count;
-            telemetryImportReceivedCount = receivedProducts;
+            run.ImportReceivedCount = receivedProducts;
             totalProducts ??= result.Value.TotalCount;
             var pageSnapshots = result.Value.Items
                 .Where(snapshot => includeDrafts || !snapshot.IsDraft)
@@ -235,7 +235,7 @@ public sealed partial class MarketplaceJobProcessor
                     : snapshot with { Variants = snapshot.Variants.Where(variant => !variant.Archived).ToList() })
                 .Where(snapshot => includeArchived || snapshot.Variants.Count > 0)
                 .ToList();
-            telemetryImportSkippedCount += result.Value.Items.Count - pageSnapshots.Count;
+            run.ImportSkippedCount += result.Value.Items.Count - pageSnapshots.Count;
             // Trendyol can change the catalog while a long scan is running. If
             // its reported total falls behind the pages actually returned, do
             // not publish an impossible "received / total" progress state.
@@ -301,8 +301,8 @@ public sealed partial class MarketplaceJobProcessor
 
             foreach (var invalidSnapshot in pageSnapshots.Where(x => string.IsNullOrWhiteSpace(x.ExternalProductId)))
             {
-                telemetryImportFailedCount++;
-                telemetryFailedCount++;
+                run.ImportFailedCount++;
+                run.FailedCount++;
                 try
                 {
                     await RecordProductImportFailure(tenantId, connectionId, invalidSnapshot, new InvalidOperationException("Pazar yeri ürün kimliği boş döndü."), cancellationToken);
@@ -334,7 +334,7 @@ public sealed partial class MarketplaceJobProcessor
 
         var stagedSession = await db.ProductImportSessions.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         receivedProducts = stagedSession.ReceivedProducts;
-        telemetryImportReceivedCount = receivedProducts;
+        run.ImportReceivedCount = receivedProducts;
         // The whole catalog is read here, so what was received is the total the processing below works through
         // (Trendyol's cursor paging reports none): the bar and percent run on it instead of staying unknown.
         totalProducts = stagedSession.TotalProducts ?? (receivedProducts > 0 ? receivedProducts : null);
@@ -433,10 +433,10 @@ public sealed partial class MarketplaceJobProcessor
             var modelAttempt = 0;
         retryModel:
             modelAttempt++;
-            var attemptCounters = (telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryAlreadyInPanelCount, telemetryNewProductCount, telemetryNewSizeCount, telemetryUnaddedSizeCount, telemetryUnchangedVariantCount);
+            var attemptCounters = (run.ImportProcessedCount, run.ImportSkippedCount, run.AlreadyInPanelCount, run.NewProductCount, run.NewSizeCount, run.UnaddedSizeCount, run.UnchangedVariantCount);
             List<string> attemptAddedProductIds = [];
             List<string> attemptAddedVariantIds = [];
-            catalogStockReadAt = stagingRows.Min(row => row.CreatedAt);
+            run.CatalogStockReadAt = stagingRows.Min(row => row.CreatedAt);
             try
             {
                 if (isHepsiburada) await RekeyHepsiburadaVariantLinks(tenantId, connectionId, snapshotGroups, cancellationToken);
@@ -445,8 +445,8 @@ public sealed partial class MarketplaceJobProcessor
                     if (mappingOnly)
                     {
                         var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", pttAvm: isPttAvm);
-                        if (!mapped) telemetryImportSkippedCount++;
-                        else telemetryImportProcessedCount++;
+                        if (!mapped) run.ImportSkippedCount++;
+                        else run.ImportProcessedCount++;
                         continue;
                     }
                     var productAlreadyLinked = existingProductExternalIds?.Contains(snapshot.ExternalProductId) == true;
@@ -454,16 +454,16 @@ public sealed partial class MarketplaceJobProcessor
                     {
                         if (!productAlreadyLinked)
                         {
-                            telemetryImportSkippedCount++;
+                            run.ImportSkippedCount++;
                             continue;
                         }
                         var optionsUpdated = await UpdateCatalogOptionsOnly(tenantId, connectionId, snapshot, cancellationToken);
                         if (optionsUpdated)
                         {
-                            telemetryImportProcessedCount++;
+                            run.ImportProcessedCount++;
                             await ResolveIssue(tenantId, $"product-sync-import:{connectionId}:{Short(snapshot.ExternalProductId, 256)}", cancellationToken);
                         }
-                        else telemetryImportSkippedCount++;
+                        else run.ImportSkippedCount++;
                         continue;
                     }
                     var hasNewVariant = existingVariantExternalIds is not null
@@ -472,32 +472,32 @@ public sealed partial class MarketplaceJobProcessor
                         && snapshot.Variants.Any(variant => existingIdentityCodes.Contains(NormalizeCatalogKey(isShopify ? variant.Barcode : variant.ModelCode ?? variant.Barcode, 160)));
                     if (newOnly && productAlreadyLinked && !hasNewVariant)
                     {
-                        telemetryImportSkippedCount++;
+                        run.ImportSkippedCount++;
                         RecordProductRead(snapshot, JobReadOutcomes.Unchanged, null);
                         continue;
                     }
                     if (existingOnly && !productAlreadyLinked && !matchesExistingIdentity)
                     {
-                        telemetryImportSkippedCount++;
+                        run.ImportSkippedCount++;
                         RecordProductRead(snapshot, JobReadOutcomes.Skipped, "Panelde eşleşen ürün yok; yalnız mevcut ürünler güncelleniyordu.");
                         continue;
                     }
                     if (focusedPriceStock)
                     {
-                        productUnaddedSizeCount = 0;
+                        run.ProductUnaddedSizeCount = 0;
                         var focused = await ApplyFocusedPriceStock(tenantId, connectionId, snapshot, inventoryPolicy, updatePrices, updateStock, cancellationToken);
                         // A single lookup of a product the panel does not hold yet still adds it below, as it always did.
                         if (focused != FocusedPriceStockOutcome.NotInPanel || !singleLookup)
                         {
-                            if (focused == FocusedPriceStockOutcome.Changed) telemetryImportProcessedCount++;
-                            else telemetryImportSkippedCount++;
+                            if (focused == FocusedPriceStockOutcome.Changed) run.ImportProcessedCount++;
+                            else run.ImportSkippedCount++;
                             RecordProductRead(snapshot,
                                 focused switch { FocusedPriceStockOutcome.Changed => JobReadOutcomes.Updated, FocusedPriceStockOutcome.Unchanged => JobReadOutcomes.Unchanged, _ => JobReadOutcomes.Skipped },
                                 focused switch
                                 {
                                     FocusedPriceStockOutcome.NotInPanel => "Panelde eşleşen ürün yok; yalnız fiyat/stok güncelleniyordu, ürün eklenmedi.",
                                     FocusedPriceStockOutcome.Conflict => "Varyantları panelde birden fazla ürüne ait; fiyat/stok yazılmadı.",
-                                    _ => productUnaddedSizeCount > 0 ? UnaddedSizesNote(productUnaddedSizeCount) : null
+                                    _ => run.ProductUnaddedSizeCount > 0 ? UnaddedSizesNote(run.ProductUnaddedSizeCount) : null
                                 });
                             continue;
                         }
@@ -506,14 +506,14 @@ public sealed partial class MarketplaceJobProcessor
                     // the panel already holds (by link, stock code or barcode) is left alone before any category context is
                     // built; one with new sizes adds those sizes alone, every variant the panel holds untouched.
                     HashSet<string>? newOnlyAddIds = null;
-                    if (importSummaryMode == ImportSummaryMode.NewOnly && existingVariantExternalIds is not null)
+                    if (run.ImportSummaryMode == ImportSummaryMode.NewOnly && existingVariantExternalIds is not null)
                     {
                         var unlinked = snapshot.Variants.Where(variant => !existingVariantExternalIds.Contains(Short(variant.ExternalVariantId, 256))).ToList();
                         var missing = unlinked.Count == 0 ? [] : await RemoteVariantsMissingFromPanel(tenantId, connectionId, snapshot with { Variants = unlinked }, cancellationToken);
                         if (missing.Count == 0)
                         {
-                            telemetryImportSkippedCount++;
-                            telemetryAlreadyInPanelCount++;
+                            run.ImportSkippedCount++;
+                            run.AlreadyInPanelCount++;
                             RecordProductRead(snapshot, JobReadOutcomes.Unchanged, "Panelde zaten var.");
                             continue;
                         }
@@ -523,27 +523,27 @@ public sealed partial class MarketplaceJobProcessor
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    productUnaddedSizeCount = 0;
-                    productImportedNewVariantCount = 0;
+                    run.ProductUnaddedSizeCount = 0;
+                    run.ProductImportedNewVariantCount = 0;
                     var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, overwriteLocalChanges: ProductImportMergePolicy.OverwriteLocalChanges(updateExistingProducts, singleLookup, existingOnly, isShopify || isHepsiburada || flatCatalog, fullScanRequested: fullScan && updateExistingProductsRequested), updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PttAVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly, onlyAddExternalVariantIds: newOnlyAddIds, brandMappedByExternalId: ConnectionReferencePlan.SupportsBrands(connection.PlatformCode));
                     if (existingProductExternalIds?.Add(snapshot.ExternalProductId) == true) attemptAddedProductIds.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
                             if (existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256))) attemptAddedVariantIds.Add(Short(variant.ExternalVariantId, 256));
-                    if (changed) telemetryImportProcessedCount++;
-                    else telemetryImportSkippedCount++;
-                    if (importSummaryMode == ImportSummaryMode.NewOnly)
+                    if (changed) run.ImportProcessedCount++;
+                    else run.ImportSkippedCount++;
+                    if (run.ImportSummaryMode == ImportSummaryMode.NewOnly)
                     {
-                        if (changed && !productAlreadyLinked) telemetryNewProductCount++;
-                        else if (changed) telemetryNewSizeCount += productImportedNewVariantCount;
-                        else telemetryAlreadyInPanelCount++;
+                        if (changed && !productAlreadyLinked) run.NewProductCount++;
+                        else if (changed) run.NewSizeCount += run.ProductImportedNewVariantCount;
+                        else run.AlreadyInPanelCount++;
                     }
-                    RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, productUnaddedSizeCount > 0 ? UnaddedSizesNote(productUnaddedSizeCount) : null);
+                    RecordProductRead(snapshot, !changed ? JobReadOutcomes.Unchanged : productAlreadyLinked ? JobReadOutcomes.Updated : JobReadOutcomes.New, run.ProductUnaddedSizeCount > 0 ? UnaddedSizesNote(run.ProductUnaddedSizeCount) : null);
                 }
                 // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself. A new-only or
                 // focused price/stock run records the codes of the links it made alone: the links the panel had stay as
                 // they were.
-                if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken, onlyAdded: importSummaryMode is ImportSummaryMode.NewOnly or ImportSummaryMode.FocusedPriceStock);
+                if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken, onlyAdded: run.ImportSummaryMode is ImportSummaryMode.NewOnly or ImportSummaryMode.FocusedPriceStock);
                 await db.SaveChangesAsync(cancellationToken);
                 // Model Kaydı Faz 2: the listing each model is on this marketplace, from the variant links just saved
                 // (MarketplaceModelLinks.ModelListings: Shopify product, Trendyol productMainId, N11 main:, Pazarama group:, PTT AVM product).
@@ -565,7 +565,7 @@ public sealed partial class MarketplaceJobProcessor
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
-                (telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryAlreadyInPanelCount, telemetryNewProductCount, telemetryNewSizeCount, telemetryUnaddedSizeCount, telemetryUnchangedVariantCount) = attemptCounters;
+                (run.ImportProcessedCount, run.ImportSkippedCount, run.AlreadyInPanelCount, run.NewProductCount, run.NewSizeCount, run.UnaddedSizeCount, run.UnchangedVariantCount) = attemptCounters;
                 foreach (var id in attemptAddedProductIds) existingProductExternalIds?.Remove(id);
                 foreach (var id in attemptAddedVariantIds) existingVariantExternalIds?.Remove(id);
                 goto retryModel;
@@ -578,8 +578,8 @@ public sealed partial class MarketplaceJobProcessor
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
-                telemetryImportFailedCount += snapshotGroups.Count;
-                telemetryFailedCount += snapshotGroups.Count;
+                run.ImportFailedCount += snapshotGroups.Count;
+                run.FailedCount += snapshotGroups.Count;
                 foreach (var snapshot in snapshotGroups) RecordProductRead(snapshot, JobReadOutcomes.Failed, Short(exception.Message, 300));
                 foreach (var snapshot in snapshotGroups)
                 {
@@ -599,7 +599,7 @@ public sealed partial class MarketplaceJobProcessor
             }
             finally
             {
-                catalogStockReadAt = null;
+                run.CatalogStockReadAt = null;
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
@@ -608,7 +608,7 @@ public sealed partial class MarketplaceJobProcessor
             importedModelCount++;
             if (jobId is { } itemProgressJob)
             {
-                var completedProducts = telemetryImportProcessedCount + telemetryImportSkippedCount + telemetryImportFailedCount;
+                var completedProducts = run.ImportProcessedCount + run.ImportSkippedCount + run.ImportFailedCount;
                 var percent = totalProducts is { } total && total > 0
                     ? Math.Clamp((int)Math.Floor(completedProducts * 100d / total), 0, 99)
                     : (int?)null;
@@ -626,7 +626,14 @@ public sealed partial class MarketplaceJobProcessor
             .ToListAsync(cancellationToken);
         var failedModels = stagingStates.Where(x => x.State == "FAILED").Sum(x => x.Rows);
         var completedModels = stagingStates.Where(x => x.State == "COMPLETED").Sum(x => x.Rows);
-        if (ProductImportScanPolicy.AllFailed(telemetryImportFailedCount, completedModels))
+        // ISLEYICI-1 retry: the models this run could not store are read again one by one (ProductImportRetryPolicy); a
+        // retry run reports on its own model. Saved here, so a run that failed as a whole still keeps its list.
+        if (singleLookup && ReadBoolean(payloadJson, ProductImportRetryPolicy.PayloadFlag))
+            await CompleteProductImportRetryAsync(tenantId, connectionId, connection.PlatformCode, importJobId, productLookup!, stored: failedModels == 0 && completedModels > 0, payloadJson, correlationId, cancellationToken);
+        else if (!singleLookup && !mappingOnly && !optionsOnly && failedModels > 0)
+            await NoteFailedModelsForRetryAsync(tenantId, connectionId, connection.PlatformCode, importJobId, payloadJson, correlationId, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        if (ProductImportScanPolicy.AllFailed(run.ImportFailedCount, completedModels))
         {
             if (jobId is { } failedJob)
                 await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
@@ -706,8 +713,8 @@ public sealed partial class MarketplaceJobProcessor
     {
         var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.Id == jobId && (x.JobType == MarketplaceJobTypes.ProductSync || x.JobType == MarketplaceJobTypes.ShopifyProductSync || x.JobType == MarketplaceJobTypes.HepsiburadaProductSync || x.JobType == MarketplaceJobTypes.CatalogStructureImport));
         return keepExistingTotal
-            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken)
-            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, telemetryImportProcessedCount).SetProperty(x => x.ProgressSkipped, telemetryImportSkippedCount).SetProperty(x => x.ProgressFailed, telemetryImportFailedCount), cancellationToken);
+            ? query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, run.ImportProcessedCount).SetProperty(x => x.ProgressSkipped, run.ImportSkippedCount).SetProperty(x => x.ProgressFailed, run.ImportFailedCount), cancellationToken)
+            : query.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProgressCurrent, current).SetProperty(x => x.ProgressTotal, total).SetProperty(x => x.ProgressPercent, percent).SetProperty(x => x.ProgressLabel, label).SetProperty(x => x.ProgressReceived, current).SetProperty(x => x.ProgressProcessed, run.ImportProcessedCount).SetProperty(x => x.ProgressSkipped, run.ImportSkippedCount).SetProperty(x => x.ProgressFailed, run.ImportFailedCount), cancellationToken);
     }
 
     // Counts only: the internal stage (page number, "referanslar hazırlanıyor", model groups) is not shown to the user.
@@ -716,21 +723,21 @@ public sealed partial class MarketplaceJobProcessor
 
     private string ProductImportProgressLabel(int? total, int received, bool mappingOnly)
     {
-        var failedPart = $" · Hatalı {TrCount(telemetryImportFailedCount)}";
-        switch (importSummaryMode)
+        var failedPart = $" · Hatalı {TrCount(run.ImportFailedCount)}";
+        switch (run.ImportSummaryMode)
         {
             case ImportSummaryMode.FocusedPriceStock:
-                return $"Alınan {TrCount(received)} · Fiyatı değişen {TrCount(priceChangedVariantIds.Count)} varyant · Stoğu değişen {TrCount(stockChangedVariantIds.Count)} varyant · Değişmeyen {TrCount(telemetryUnchangedVariantCount)} · Yeni beden {TrCount(telemetryUnaddedSizeCount)}{failedPart}";
+                return $"Alınan {TrCount(received)} · Fiyatı değişen {TrCount(run.PriceChangedVariantIds.Count)} varyant · Stoğu değişen {TrCount(run.StockChangedVariantIds.Count)} varyant · Değişmeyen {TrCount(run.UnchangedVariantCount)} · Yeni beden {TrCount(run.UnaddedSizeCount)}{failedPart}";
             case ImportSummaryMode.NewOnly:
-                return $"Alınan {TrCount(received)} · Yeni ürün {TrCount(telemetryNewProductCount)} · Yeni beden {TrCount(telemetryNewSizeCount)} · Zaten panelde {TrCount(telemetryAlreadyInPanelCount)}{failedPart}";
+                return $"Alınan {TrCount(received)} · Yeni ürün {TrCount(run.NewProductCount)} · Yeni beden {TrCount(run.NewSizeCount)} · Zaten panelde {TrCount(run.AlreadyInPanelCount)}{failedPart}";
             case ImportSummaryMode.Mapping:
                 // "Eşlenen" also tells the panel's job card to name its counters for mapping.
-                return $"Alınan {TrCount(received)} · Eşlenen {TrCount(telemetryMappedCount)} · Zaten eşli {TrCount(telemetryAlreadyMappedCount)} · Panelde karşılığı yok {TrCount(telemetryNoCounterpartCount)} · Çakışma {TrCount(telemetryMappingConflictCount)}{failedPart}";
+                return $"Alınan {TrCount(received)} · Eşlenen {TrCount(run.MappedCount)} · Zaten eşli {TrCount(run.AlreadyMappedCount)} · Panelde karşılığı yok {TrCount(run.NoCounterpartCount)} · Çakışma {TrCount(run.MappingConflictCount)}{failedPart}";
         }
         var processedLabel = mappingOnly ? "Eşlenen" : "İşlenen";
         var skippedLabel = mappingOnly ? "Eşleşmeyen" : "Atlanan";
-        var unaddedPart = telemetryUnaddedSizeCount > 0 ? $" · Eklenmeyen yeni beden {TrCount(telemetryUnaddedSizeCount)}" : "";
-        return $"Alınan {TrCount(received)} · {processedLabel} {TrCount(telemetryImportProcessedCount)} · {skippedLabel} {TrCount(telemetryImportSkippedCount)} · Hatalı {TrCount(telemetryImportFailedCount)}{unaddedPart}";
+        var unaddedPart = run.UnaddedSizeCount > 0 ? $" · Eklenmeyen yeni beden {TrCount(run.UnaddedSizeCount)}" : "";
+        return $"Alınan {TrCount(received)} · {processedLabel} {TrCount(run.ImportProcessedCount)} · {skippedLabel} {TrCount(run.ImportSkippedCount)} · Hatalı {TrCount(run.ImportFailedCount)}{unaddedPart}";
     }
 
     internal static string UnaddedSizesNote(int count) =>

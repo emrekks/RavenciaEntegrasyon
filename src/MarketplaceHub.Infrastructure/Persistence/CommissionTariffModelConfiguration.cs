@@ -16,7 +16,7 @@ internal static class CommissionTariffModelConfiguration
             // The same file uploaded again for the same period is the same tariff.
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.FileHash, x.PeriodStart }).IsUnique();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<CommissionTariffRow>(entity =>
         {
@@ -60,7 +60,7 @@ internal static class CommissionTariffModelConfiguration
             entity.Property(x => x.FileName).HasMaxLength(260); entity.Property(x => x.FileHash).HasMaxLength(64); entity.Property(x => x.RowsJson).HasColumnType("jsonb");
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Kind });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         // Trendyol's product ads report, one snapshot per upload (AdReportService); the newest of a store is read.
         builder.Entity<AdReportFile>(entity =>
@@ -70,7 +70,7 @@ internal static class CommissionTariffModelConfiguration
             entity.Property(x => x.CampaignsJson).HasColumnType("jsonb");
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExportedAt });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

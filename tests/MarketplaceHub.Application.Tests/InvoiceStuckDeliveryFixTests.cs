@@ -139,7 +139,7 @@ public sealed class InvoiceStuckDeliveryFixTests
 
     // P4: the orders filter and the row label read an issued invoice with the same rules.
     [Theory]
-    [InlineData(InvoiceStatus.ManualReview, "PLATFORM_INVOICE_ALREADY_PRESENT", "remote-1", MarketplaceSalesService.InvoiceNeedsReviewLabel)]
+    [InlineData(InvoiceStatus.ManualReview, "PLATFORM_INVOICE_ALREADY_PRESENT", "remote-1", InvoiceLabelPolicy.InvoiceNeedsReviewLabel)]
     [InlineData(InvoiceStatus.ManualReview, "EFATURAM_FISCAL_PAYLOAD_INVALID", null, null)]
     [InlineData(InvoiceStatus.MarketplacePending, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, "remote-1", "FATURA_PLATFORMA_AKTARILMADI")]
     [InlineData(InvoiceStatus.Accepted, SafeRemoteDocumentDownloader.ContentTypeInvalidCode, "remote-1", "FATURA_PLATFORMA_AKTARILMADI")]
@@ -153,12 +153,12 @@ public sealed class InvoiceStuckDeliveryFixTests
         invoice.LastErrorCode = lastErrorCode;
         invoice.ExternalReference = externalReference;
 
-        Assert.Equal(expected, MarketplaceSalesService.IssuedInvoiceLabel(invoice));
-        Assert.Equal(expected == MarketplaceSalesService.InvoiceNeedsReviewLabel, MarketplaceSalesService.IssuedInvoiceNeedsReview.Compile()(invoice));
-        Assert.Equal(expected == "FATURA_PLATFORMA_AKTARILMADI", MarketplaceSalesService.IssuedInvoiceNotOnPlatform.Compile()(invoice));
+        Assert.Equal(expected, InvoiceLabelPolicy.IssuedInvoiceLabel(invoice));
+        Assert.Equal(expected == InvoiceLabelPolicy.InvoiceNeedsReviewLabel, InvoiceLabelPolicy.IssuedInvoiceNeedsReview.Compile()(invoice));
+        Assert.Equal(expected == "FATURA_PLATFORMA_AKTARILMADI", InvoiceLabelPolicy.IssuedInvoiceNotOnPlatform.Compile()(invoice));
         // The row label shows the same reading (an issued invoice waiting for review is never "refused").
         if (expected is not null)
-            Assert.Equal(expected, MarketplaceSalesService.PackageInvoiceLabel(null, invoice, "{}", [], "HEPSIBURADA"));
+            Assert.Equal(expected, InvoiceLabelPolicy.PackageInvoiceLabel(null, invoice, "{}", [], "HEPSIBURADA"));
     }
 
     private static Invoice StuckInvoice() => new()

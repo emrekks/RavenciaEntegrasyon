@@ -12,23 +12,11 @@ public sealed partial class MarketplaceJobProcessor
     // name only the new orders. Status changes of older orders come from the open-order scan.
     private async Task<bool> SyncPttAvmOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
-        string? externalOrderId = null;
-        var full = false;
-        try
+        var request = JobPayloadReader.OrderRead(payloadJson) ?? throw OrderSyncPayloadInvalid();
+        var full = request.Full;
+        if (request.IsSingleOrder)
         {
-            using var payload = JsonDocument.Parse(payloadJson);
-            if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
-            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
-        }
-        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
-
-        if (!string.IsNullOrWhiteSpace(externalOrderId))
-        {
-            TrackRequest();
-            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"pttavm-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
-            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
-            TrackReceived();
-            await UpsertOrders(tenantId, connectionId, [single.Value!], cancellationToken);
+            await UpsertOrders(tenantId, connectionId, [await ReadSingleOrderAsync(tenantId, connectionId, correlationId, "pttavm-order-get", request.ExternalOrderId!, cancellationToken)], cancellationToken);
             return true;
         }
 

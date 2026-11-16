@@ -201,14 +201,14 @@ public sealed class MarketplaceSalesStatusTabTests
     [InlineData(" ", null)]
     [InlineData(null, null)]
     public void Order_list_masks_identity_and_tax_numbers(string? value, string? expected) =>
-        Assert.Equal(expected, MarketplaceSalesService.MaskIdentityNumber(value));
+        Assert.Equal(expected, OrderSnapshotReader.MaskIdentityNumber(value));
 
     [Fact]
     public void Order_list_address_keeps_label_fields_and_drops_phone_and_identity()
     {
         const string json = """{"firstName":"Ayşe","lastName":"Yılmaz","fullAddress":"Atatürk Cad. No:1","district":"Kadıköy","city":"İstanbul","phone":"5321234567","identityNumber":"12345678901","email":"a@example.com"}""";
 
-        var address = MarketplaceSalesService.ListAddress(json);
+        var address = OrderSnapshotReader.ListAddress(json);
 
         Assert.NotNull(address);
         Assert.Equal("Ayşe Yılmaz", address!.FullName);
@@ -219,7 +219,7 @@ public sealed class MarketplaceSalesStatusTabTests
         Assert.DoesNotContain("5321234567", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("12345678901", serialized, StringComparison.Ordinal);
         Assert.DoesNotContain("example.com", serialized, StringComparison.Ordinal);
-        Assert.Null(MarketplaceSalesService.ListAddress("{}"));
+        Assert.Null(OrderSnapshotReader.ListAddress("{}"));
     }
 
     [Fact]

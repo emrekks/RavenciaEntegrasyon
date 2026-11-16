@@ -1,0 +1,8 @@
+{
+  "ExternalReference": "gid://shopify/Order/9001",
+  "RawStatus": "INVOICED",
+  "IsTerminal": true,
+  "VerifiedInvoiceNumber": null,
+  "VerifiedInvoiceLink": "https://invoices.example.test/RVN2026000000001.pdf",
+  "ReferencesAreAuthoritative": true
+}

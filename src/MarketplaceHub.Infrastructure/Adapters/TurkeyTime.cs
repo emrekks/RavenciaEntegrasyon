@@ -9,7 +9,7 @@ namespace MarketplaceHub.Infrastructure.Adapters;
 // adapter never mixes "assume UTC" and "assume Turkey" for the same kind of text.
 internal static partial class TurkeyTime
 {
-    internal static readonly TimeSpan Offset = TimeSpan.FromHours(3);
+    internal static readonly TimeSpan Offset = MarketplaceHub.Application.TurkeyClock.Offset;
 
     // The one Turkey clock of every adapter: a wall-clock time read from a marketplace, the Turkey view of an instant,
     // its calendar day and its text in a marketplace's format all go through these.
@@ -38,7 +38,7 @@ internal static partial class TurkeyTime
         try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
         catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
         {
-            return TimeZoneInfo.CreateCustomTimeZone("Turkey", TimeSpan.FromHours(3), "Turkey", "Turkey");
+            return TimeZoneInfo.CreateCustomTimeZone("Turkey", Offset, "Turkey", "Turkey");
         }
     }
 

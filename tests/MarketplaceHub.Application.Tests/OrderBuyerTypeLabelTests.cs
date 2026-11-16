@@ -66,7 +66,7 @@ public sealed class OrderBuyerTypeLabelTests
     [InlineData("""{"commercial":false}""", """{"company":"","companyName":"","taxOffice":""}""", false, "BIREYSEL")]
     [InlineData("""{"commercial":true}""", """{"company":"Firma"}""", true, "MIKRO_IHRACAT")]
     public void Order_type_follows_the_same_buyer_rule_after_micro_export(string customer, string address, bool micro, string orderType) =>
-        Assert.Equal(orderType, MarketplaceSalesService.BuyerType(customer, address, micro).OrderType);
+        Assert.Equal(orderType, OrderSnapshotReader.BuyerType(customer, address, micro).OrderType);
 
     // The "Fatura Türü" filter reads Order.BuyerType; the label reads the same stored value, with the rule's reason.
     [Fact]
@@ -74,11 +74,11 @@ public sealed class OrderBuyerTypeLabelTests
     {
         const string customer = """{"commercial":true}""";
         const string address = """{"company":"Firma A.Ş.","taxNumber":"1234567890"}""";
-        Assert.Equal(new OrderBuyerTypeView(Corporate, "Pazaryeri kurumsal olarak işaretledi"), MarketplaceSalesService.BuyerType(customer, address, false, Corporate).BuyerType);
-        Assert.Equal(new OrderBuyerTypeView(Corporate, "Pazaryeri kurumsal olarak işaretledi"), MarketplaceSalesService.BuyerType(customer, address, false, null).BuyerType);
+        Assert.Equal(new OrderBuyerTypeView(Corporate, "Pazaryeri kurumsal olarak işaretledi"), OrderSnapshotReader.BuyerType(customer, address, false, Corporate).BuyerType);
+        Assert.Equal(new OrderBuyerTypeView(Corporate, "Pazaryeri kurumsal olarak işaretledi"), OrderSnapshotReader.BuyerType(customer, address, false, null).BuyerType);
         // A stored kind the current rule no longer gives (the rule changed and the column was not cleared) still decides
         // the label and the order type, so the row never contradicts the filter it matched.
-        var stale = MarketplaceSalesService.BuyerType(customer, address, false, Individual);
+        var stale = OrderSnapshotReader.BuyerType(customer, address, false, Individual);
         Assert.Equal(Individual, stale.BuyerType.Kind);
         Assert.Equal("BIREYSEL", stale.OrderType);
     }

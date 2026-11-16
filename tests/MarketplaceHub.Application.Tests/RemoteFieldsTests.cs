@@ -84,4 +84,66 @@ public sealed class RemoteFieldsTests
     {
         Assert.Equal("{\"a\":[1.50,{\"x\":null,\"y\":true}],\"b\":\"s\"}", CanonicalJson.Write(Json("{ \"b\": \"s\", \"a\": [1.50, {\"y\": true, \"x\": null}] }")));
     }
+
+    // ADAPTOR-TY-HB-8: the named variants keep each mapper's reading.
+    [Fact]
+    public void RawTextIsAnyNonNullValueAsWritten()
+    {
+        Assert.Equal(" x ", RemoteFields.RawText(Json("{\"a\":null,\"b\":\" x \"}"), "a", "b"));
+        Assert.Equal("12.50", RemoteFields.RawText(Json("{\"a\":12.50}"), "a"));
+        Assert.Equal("{\"k\":1}", RemoteFields.RawText(Json("{\"a\":{\"k\":1}}"), "a"));
+        Assert.Equal("", RemoteFields.RawText(Json("{\"a\":\"\"}"), "a"));
+        Assert.Null(RemoteFields.RawText(Json("{}"), "a"));
+        Assert.Throws<InvalidOperationException>(() => RemoteFields.RawText(Json("[]"), "a"));
+    }
+
+    [Fact]
+    public void FirstDecimalSkipsAnUnreadableValue()
+    {
+        Assert.Equal(5m, RemoteFields.FirstDecimal(Json("{\"a\":\"1234,50\",\"b\":\"5\"}"), "a", "b"));
+        Assert.Null(RemoteFields.FirstDecimal(Json("{\"a\":\"x\"}"), "a"));
+    }
+
+    [Theory]
+    [InlineData("{\"a\":true}", true, true)]
+    [InlineData("{\"a\":\"TRUE\"}", true, true)]
+    [InlineData("{\"a\":1}", true, null)]
+    [InlineData("{\"a\":0}", false, null)]
+    [InlineData("{\"a\":\"false\"}", false, false)]
+    [InlineData("{\"a\":false}", false, false)]
+    [InlineData("{}", false, null)]
+    public void LooseTruthAndLooseYesNo(string json, bool looseTrue, bool? looseBool)
+    {
+        Assert.Equal(looseTrue, RemoteFields.LooseTrue(Json(json), "a"));
+        Assert.Equal(looseBool, RemoteFields.LooseBool(Json(json), "a"));
+    }
+
+    [Fact]
+    public void JsonNumberReadsNumbersOnly()
+    {
+        Assert.Equal(1180.00m, RemoteFields.JsonNumber(Json("{\"value\":1180.00}"), "value"));
+        Assert.Null(RemoteFields.JsonNumber(Json("{\"value\":\"1180.00\"}"), "value"));
+    }
+
+    [Fact]
+    public void TextIgnoringCaseVariantsDifferOnAValueOfAnotherKind()
+    {
+        var item = Json("{\"From\":null,\"author\":\" Ayşe \",\"flag\":true}");
+        // The first name present decides: a null there is no text.
+        Assert.Null(RemoteFields.TextIgnoringCase(item, "from", "author"));
+        // The question reader gives way to the next name.
+        Assert.Equal(" Ayşe ", RemoteFields.FirstTextIgnoringCase(item, "from", "author"));
+        Assert.Equal("True", RemoteFields.TextIgnoringCase(item, "FLAG"));
+        // By JSON order, string or number only: true is skipped.
+        Assert.Equal(" Ayşe ", RemoteFields.FirstListedTextIgnoringCase(Json("{\"flag\":true,\"Author\":\" Ayşe \",\"from\":\"x\"}"), "from", "author", "flag"));
+    }
+
+    [Theory]
+    [InlineData("{\"price\":\"130,50\"}", "130.50")]
+    [InlineData("{\"Price\":\"1.234,50\"}", "1234.50")]
+    [InlineData("{\"price\":{\"Amount\":12.5}}", "12.5")]
+    [InlineData("{\"price\":\"1234,5000\"}", null)]
+    [InlineData("{\"price\":\"99.90\"}", "99.90")]
+    public void MoneyIgnoringCaseReadsTurkishMoneyAndAmountObjects(string json, string? expected) =>
+        Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), RemoteFields.MoneyIgnoringCase(Json(json), "price"));
 }

@@ -49,13 +49,44 @@ internal sealed class ExternalEffectGuard(AppDbContext db, TimeProvider timeProv
             if (db.Entry(effect).State == EntityState.Detached) db.ExternalEffectRecords.Add(effect);
         if (saveBeforeSend) await db.SaveChangesAsync(cancellationToken);
         var result = await send();
+        var answeredAt = timeProvider.GetUtcNow();
         if (result.IsSuccess)
         {
-            var completedAt = timeProvider.GetUtcNow();
-            foreach (var effect in effects) effect.CompletedAt = completedAt;
+            foreach (var effect in effects)
+            {
+                effect.SentAt = answeredAt;
+                effect.CompletedAt = answeredAt;
+            }
             return new(result, ExternalEffectSendOutcome.Accepted);
         }
-        return new(result, Classify(result.Error!));
+        var outcome = Classify(result.Error!);
+        // KUYRUK-2: an unclear answer leaves the record open for the sweep, which waits from this moment (the request went
+        // out by now) instead of from the record's creation, before any quota wait. Written on its own, as the caller
+        // does not always save after an unclear answer; a failure here only leaves the old measure (CreatedAt).
+        if (outcome == ExternalEffectSendOutcome.Uncertain) await MarkSentAsync(effects, answeredAt);
+        return new(result, outcome);
+    }
+
+    private async Task MarkSentAsync(IReadOnlyList<ExternalEffectRecord> effects, DateTimeOffset answeredAt)
+    {
+        var ids = effects.Select(effect => effect.Id).ToArray();
+        // Inside the caller's open transaction a failed or cancelled statement would abort that transaction even with its
+        // exception swallowed; there the time is only set on the tracked records and goes with the caller's own save.
+        // (No caller sends inside a transaction today: the processors hold a session advisory lock, the instant actions
+        // send before theirs.)
+        if (db.Database.CurrentTransaction is not null)
+        {
+            foreach (var effect in effects) effect.SentAt ??= answeredAt;
+            return;
+        }
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await db.ExternalEffectRecords.Where(x => ids.Contains(x.Id) && x.SentAt == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.SentAt, answeredAt.ToUniversalTime()), timeout.Token);
+            foreach (var effect in effects) effect.SentAt ??= answeredAt;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { }
     }
 
     // Unclear first (the request may have been applied), then the panel's own circuit (never sent), then a refusal the job

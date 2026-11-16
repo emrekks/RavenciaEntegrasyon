@@ -42,7 +42,9 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ the `TrendyolHttpClien
 - V2 `GET order/sellers/{id}/v2/orders`: `startDate`, `endDate`, `orderNumber`, `shipmentPackageIds` (≤ 50), `page`,
   `size` (≤ 200). **Unverified:** 1 month back, ≤ 14 days per request, ≤ 10,000 records per query. An orderNumber
   that finds nothing is retried quoted.
-- Package lookup by status time: ±6 days, 3-month cutoff.
+- Package lookup by status time: ±6 days, 3-month cutoff. A package without a status time is looked for ±6 days
+  around its order's last change, else its order date (`TrendyolHttpClient.PackageStreamWindow`, since 16 Nov 2026);
+  outside V2's month and the stream's 3 months nothing is asked: TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW (unknown, not 404-gone).
 - Claims `GET order/sellers/{id}/claims`: dates filter the claim's lastModifiedDate; one cursor bucket per
   `claimItemStatus`; page 200 and 3-month depth **unverified**; no storeFrontCode sent (TR only).
 - Finance `finance/che`: max 15-day window, page 500 or 1000, `supplierId` required.

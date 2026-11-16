@@ -22,7 +22,7 @@ public sealed partial class MarketplaceJobProcessor
     private async Task NoteRefusedOrderAsync(Guid tenantId, Guid connectionId, RemoteOrder remote, bool isTrendyol, bool isNew, CancellationToken cancellationToken)
     {
         // Trendyol re-reads every refused order (T2-O8); every other marketplace the orders the panel does not have yet.
-        if (isTrendyol || isNew) rereadOrderIds.Add(remote.ExternalOrderId);
+        if (isTrendyol || isNew) run.RereadOrderIds.Add(remote.ExternalOrderId);
         if (!isNew) return;
         await RecordIssue(tenantId, OrderNotImportedKey(connectionId, remote.ExternalOrderId), OperationalIssueRetentionService.OrderNotImportedCode,
             $"{remote.OrderNumber} numaralı sipariş pazaryeri kaydı eksik veya tutarsız olduğu için içeri alınamadı; panel siparişi numarasıyla aralıklarla yeniden okuyor. Sipariş içeri alınınca bu uyarı kendiliğinden kapanır; kapanmazsa siparişi pazaryeri panelinden kontrol edin.",

@@ -40,7 +40,7 @@ index 4814cf076..dcb774833 100644
  # does not carry Kerberos libraries. Authentication remains SCRAM; only optional GSS transport negotiation is disabled.
  printf ';GSS Encryption Mode=Disable' >> "$connection_file"
 diff --git a/deploy/compose/compose.production.yaml b/deploy/compose/compose.production.yaml
-index fc2cc02a1..ca9920528 100644
+index 80cfefa6b..6e064fc22 100644
 --- a/deploy/compose/compose.production.yaml
 +++ b/deploy/compose/compose.production.yaml
 @@ -29,7 +29,12 @@ services:
@@ -57,10 +57,10 @@ index fc2cc02a1..ca9920528 100644
      logging: !override
        driver: journald
        options: { tag: "{{.Name}}" }
-@@ -49,7 +54,7 @@ services:
-     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
-     build: null
-     environment: *production_environment
+@@ -57,7 +62,7 @@ services:
+       Worker__HistoryRetention__ChannelPriceHistoryDays: "${MARKETPLACEHUB_RETENTION_CHANNEL_PRICE_HISTORY_DAYS:-}"
+       Worker__HistoryRetention__ProductChangeEntryDays: "${MARKETPLACEHUB_RETENTION_PRODUCT_CHANGE_ENTRY_DAYS:-}"
+       Worker__HistoryRetention__OrderStatusHistoryDays: "${MARKETPLACEHUB_RETENTION_ORDER_STATUS_HISTORY_DAYS:-}"
 -    secrets: *production_secrets
 +    secrets: [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
      logging: !override

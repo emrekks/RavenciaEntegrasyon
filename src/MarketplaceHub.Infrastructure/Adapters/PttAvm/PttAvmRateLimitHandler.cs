@@ -13,7 +13,7 @@ public sealed class PttAvmRateLimitHandler(
     ISharedRateLimiter? sharedLimiter = null,
     ILogger<PttAvmRateLimitHandler>? logger = null) : DelegatingHandler
 {
-    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.PttAvm.Account");
+    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = Http.MarketplaceQuota.AccountKey;
     public static readonly HttpRequestOptionsKey<string> OperationKey = new("MarketplaceHub.PttAvm.Operation");
     // Invoked once the request has its quota token, right before it is sent; the caller starts the request
     // timeout there, so time spent waiting for the quota is not counted as a timeout.

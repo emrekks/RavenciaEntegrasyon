@@ -244,7 +244,7 @@ public sealed partial class MarketplaceJobProcessor
         // A package kept without a product line it could not read is stored (it still has to be shipped), and its order
         // joins the re-read list (RejectedOrderRereadPolicy) so a later read can fill the line in; the line is never
         // guessed meanwhile and the order gets no invoice (InvoiceIssuePolicy.OrderLineUnreadable). Every marketplace.
-        if (remote.Packages.Any(package => package.UnreadableLineCount > 0)) rereadOrderIds.Add(remote.ExternalOrderId);
+        if (remote.Packages.Any(package => package.UnreadableLineCount > 0)) run.RereadOrderIds.Add(remote.ExternalOrderId);
         var detailedPackages = remote.Packages.Where(package => !package.IsStatusObservation).ToArray();
         var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
@@ -287,8 +287,8 @@ public sealed partial class MarketplaceJobProcessor
         var orderIsFresh = order is null
             || remote.LastModifiedAt >= order.LastRemoteModifiedAt
             || TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(order.CustomerSnapshotJson);
-        if (!orderIsFresh) telemetrySkippedCount++;
-        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); telemetryInsertedCount++; }
+        if (!orderIsFresh) run.SkippedCount++;
+        if (order is null) { order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = remote.ExternalOrderId, OrderNumber = remote.OrderNumber, Currency = remote.Currency, CustomerSnapshotJson = remote.CustomerSnapshotJson, ShipmentAddressSnapshotJson = remote.ShipmentAddressSnapshotJson, InvoiceAddressSnapshotJson = remote.InvoiceAddressSnapshotJson, DerivedStatus = "NEW", ShipmentDueAt = remote.ShipmentDueAt, CreatedAt = now, Version = 1 }; db.Orders.Add(order); batch?.OrdersByExternalId.TryAdd(remote.ExternalOrderId, order); run.InsertedCount++; }
         // An order never changes storefront; the first read that names it is kept for later targeted reads.
         if (order.StoreFrontCode is null && !string.IsNullOrWhiteSpace(remote.StoreFrontCode)) order.StoreFrontCode = remote.StoreFrontCode;
         var isNewOrder = db.Entry(order).State == EntityState.Added;
@@ -323,7 +323,7 @@ public sealed partial class MarketplaceJobProcessor
                 if (!TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(remote.CustomerSnapshotJson))
                     customerSnapshot = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.WithoutReturnClaimReadModelMark(customerSnapshot);
             }
-            order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = grossAmount; order.DiscountAmount = discountAmount; order.NetAmount = netAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = customerSnapshot; order.ShipmentAddressSnapshotJson = shipmentAddressSnapshot; order.InvoiceAddressSnapshotJson = invoiceAddressSnapshot; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; telemetryUpdatedCount++; }
+            order.OrderNumber = remote.OrderNumber; order.Currency = remote.Currency; order.GrossAmount = grossAmount; order.DiscountAmount = discountAmount; order.NetAmount = netAmount; order.OrderedAt = remote.OrderedAt; order.ShipmentDueAt = remote.ShipmentDueAt; order.LastRemoteModifiedAt = remote.LastModifiedAt; order.CustomerSnapshotJson = customerSnapshot; order.ShipmentAddressSnapshotJson = shipmentAddressSnapshot; order.InvoiceAddressSnapshotJson = invoiceAddressSnapshot; order.UpdatedAt = now; if (db.Entry(order).State != EntityState.Added) { order.Version++; run.UpdatedCount++; }
         }
         if (persistFinancialObservations && orderIsFresh)
             await UpsertShopifyFinancialObservations(tenantId, order.Id, remote, cancellationToken);
@@ -331,7 +331,7 @@ public sealed partial class MarketplaceJobProcessor
             ? batch.LinesByOrder.GetValueOrDefault(order.Id) ?? []
             : await db.OrderLines.Where(x => x.TenantId == tenantId && x.OrderId == order.Id).ToListAsync(cancellationToken);
         if (!orderIsFresh && isHepsiburada)
-            telemetryUpdatedCount += HepsiburadaStaleOrderEnrichmentPolicy.Apply(order, existingLines, remote, now);
+            run.UpdatedCount += HepsiburadaStaleOrderEnrichmentPolicy.Apply(order, existingLines, remote, now);
         // The order's lines by external line id (ISLEYICI-12: one dictionary, kept up to date as lines are matched).
         var lines = existingLines
             .GroupBy(x => x.ExternalLineId, StringComparer.Ordinal)
@@ -369,7 +369,7 @@ public sealed partial class MarketplaceJobProcessor
             if (line is null && isHepsiburada)
                 line = HepsiburadaOrderLineMatcher.FindExistingLine(remoteLine, existingLines, remote.Lines);
             if (line is null && !string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") line = linesBySnapshot.GetValueOrDefault(remoteLine.SourceSnapshotJson);
-            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); existingLines.Add(line); telemetryInsertedCount++; }
+            if (line is null) { line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = remoteLine.ExternalLineId, Sku = remoteLine.Sku, TitleSnapshot = remoteLine.Title, RawStatus = remoteLine.RawStatus, Version = 1 }; db.OrderLines.Add(line); existingLines.Add(line); run.InsertedCount++; }
 
             if (line.VariantId is null
                 && variantCandidates.Match(OrderLineVariantMatcher.Codes(platformCode, remoteLine.Sku, remoteLine.Barcode, remoteLine.SourceSnapshotJson)).VariantId is { } matchedVariantId)
@@ -455,7 +455,7 @@ public sealed partial class MarketplaceJobProcessor
             {
                 if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
                 {
-                    if (isTrendyol || isNewOrder) rereadOrderIds.Add(remote.ExternalOrderId);
+                    if (isTrendyol || isNewOrder) run.RereadOrderIds.Add(remote.ExternalOrderId);
                     await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                     continue;
                 }
@@ -467,14 +467,14 @@ public sealed partial class MarketplaceJobProcessor
             {
                 package.UpdatedAt = now;
                 if (db.Entry(package).State != EntityState.Added) package.Version++;
-                telemetryUpdatedCount++;
+                run.UpdatedCount++;
             }
             // Like the amounts, the package's unreadable lines follow every fresh detailed read, whatever its status event.
             if (package is not null && orderIsFresh && await ApplyUnreadableLines(tenantId, connectionId, platformCode, order.OrderNumber, package, remotePackage, cancellationToken))
             {
                 package.UpdatedAt = now;
                 if (db.Entry(package).State != EntityState.Added) package.Version++;
-                telemetryUpdatedCount++;
+                run.UpdatedCount++;
             }
             if (package is not null) await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null);
             if (package is not null && package.Status == ShipmentPackageStatus.ManualReview && package.RawStatus == remotePackage.RawStatus && target != ShipmentPackageStatus.ManualReview) { package.Status = target; package.UpdatedAt = now; package.Version++; ApplyReadLineQuantities(tenantId, package, remotePackage, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId); continue; }
@@ -533,7 +533,7 @@ public sealed partial class MarketplaceJobProcessor
                     package.CargoBarcode = string.IsNullOrWhiteSpace(remotePackage.CargoBarcode) ? package.CargoBarcode : remotePackage.CargoBarcode.Trim();
                     package.UpdatedAt = now;
                     package.Version++;
-                    telemetryUpdatedCount++;
+                    run.UpdatedCount++;
                 }
                 // The initial projection used shipmentPackageStatus before the
                 // authoritative top-level status. When the same package event
@@ -558,7 +558,7 @@ public sealed partial class MarketplaceJobProcessor
                 // first built from a return claim held only the returned lines when the event was recorded, and the
                 // order read that brought the other lines found the event already recorded.
                 if (package is not null && !remotePackage.IsStatusObservation)
-                    telemetryInsertedCount += AddMissingLineAllocations(tenantId, package, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId);
+                    run.InsertedCount += AddMissingLineAllocations(tenantId, package, packageObservation.Allocations, safeAllocations, lines, allocationsByKey, eventId);
                 continue;
             }
             var rejectedEventId = PackageIngestionSafety.RejectedEventId(eventId);
@@ -566,7 +566,7 @@ public sealed partial class MarketplaceJobProcessor
             {
                 // This exact event was refused before; it is not evaluated
                 // again, only cargo details it carries are still taken.
-                if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; telemetryUpdatedCount++; }
+                if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; run.UpdatedCount++; }
                 continue;
             }
             // The panel took the package into work a moment ago; a read that still sees it Created
@@ -582,7 +582,7 @@ public sealed partial class MarketplaceJobProcessor
                         .MaxAsync(x => (DateTimeOffset?)x.RecordedAt, cancellationToken);
                 if (PackageIngestionSafety.IsCreatedEchoAfterInstantPicking(package.Status, target, pickedAt, now))
                 {
-                    if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; telemetryUpdatedCount++; }
+                    if (MergePackageCargoMetadata(package, remotePackage)) { package.UpdatedAt = now; package.Version++; run.UpdatedCount++; }
                     continue;
                 }
             }
@@ -596,7 +596,7 @@ public sealed partial class MarketplaceJobProcessor
                 : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, statusAt, remotePackage.RawStatus));
             // A newer modification date with the same status is not a status change: no history row for it.
             var statusUnchanged = package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = statusAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); await ApplyUnreadableLines(tenantId, connectionId, platformCode, order.OrderNumber, package, remotePackage, cancellationToken); }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = statusAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; run.InsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); await ApplyUnreadableLines(tenantId, connectionId, platformCode, order.OrderNumber, package, remotePackage, cancellationToken); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = statusAt; package.Version++; }
             else if (remotePackage.IsStatusObservation && statusAt >= package.StatusOccurredAt && package.Status != target)
                 // Status observations carry the read time, not an event time:
@@ -632,7 +632,7 @@ public sealed partial class MarketplaceJobProcessor
             {
                 package.UpdatedAt = now;
                 package.Version++;
-                telemetryUpdatedCount++;
+                run.UpdatedCount++;
             }
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
@@ -641,7 +641,7 @@ public sealed partial class MarketplaceJobProcessor
                 foreach (var remoteAllocation in packageObservation.Allocations)
                     if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)
                         && UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey))
-                        telemetryInsertedCount++;
+                        run.InsertedCount++;
             }
             // A Hepsiburada package first seen through a status observation (a webhook, a shipping list) was stored
             // without lines; a detailed read of it brings them even when its status time is older than that observation.
@@ -656,7 +656,7 @@ public sealed partial class MarketplaceJobProcessor
                     var shipped = package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered ? safe.ActiveAllocatedQuantity : safe.ShippedQuantity;
                     var delivered = package.Status == ShipmentPackageStatus.Delivered ? safe.ActiveAllocatedQuantity : safe.DeliveredQuantity;
                     if (UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, shipped, delivered, safe.ReturnedQuantity, allocationsByKey))
-                        telemetryInsertedCount++;
+                        run.InsertedCount++;
                 }
             }
         }
@@ -673,7 +673,7 @@ public sealed partial class MarketplaceJobProcessor
                 package.Status = ShipmentPackageStatus.Cancelled;
                 package.UpdatedAt = now;
                 package.Version++;
-                telemetryUpdatedCount++;
+                run.UpdatedCount++;
             }
         }
         // n11 does not name the origin of a split package and a stream page can
@@ -705,7 +705,7 @@ public sealed partial class MarketplaceJobProcessor
                 var cancelled = Math.Min(line.OrderedQuantity, remoteLine.CancelledQuantity);
                 if (cancelled <= line.CancelledQuantity) continue;
                 line.CancelledQuantity = cancelled;
-                if (db.Entry(line).State != EntityState.Added) { line.Version++; telemetryUpdatedCount++; }
+                if (db.Entry(line).State != EntityState.Added) { line.Version++; run.UpdatedCount++; }
             }
         foreach (var line in lines.Values.Distinct())
             OrderLineCancelTime.Apply(line, cancelledBefore.GetValueOrDefault(line.Id), OrderLineCancelTime.Reported(line.ExternalLineId, remote), now);
@@ -842,7 +842,7 @@ public sealed partial class MarketplaceJobProcessor
     private void NoteRefusedOrders(IReadOnlyList<AdapterPageIssue>? issues)
     {
         foreach (var issue in issues ?? [])
-            if (!string.IsNullOrWhiteSpace(issue.RereadOrderId)) rereadOrderIds.Add(issue.RereadOrderId.Trim());
+            if (!string.IsNullOrWhiteSpace(issue.RereadOrderId)) run.RereadOrderIds.Add(issue.RereadOrderId.Trim());
     }
 
     // The split parents of an order (O8): the packages that a package of this read, or one the order already stores,

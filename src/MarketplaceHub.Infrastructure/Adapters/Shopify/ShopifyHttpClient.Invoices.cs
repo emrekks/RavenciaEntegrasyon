@@ -54,6 +54,12 @@ public sealed partial class ShopifyHttpClient
         if (shop is null) return CredentialFailure(Fail<InvoiceDeliveryStatus>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!IntegrationRuntimePolicy.AllowsManualRead(shop.Connection))
             return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.NotSupported, "SHOPIFY_CONNECTION_INACTIVE", "Shopify fatura durumu yalnızca etkin bağlantıdan okunabilir.", HttpStatusCode.Forbidden);
+        return await QueryDeliveryAsync(shop, reference, cancellationToken);
+    }
+
+    // The read itself, once the credential and the connection passed (the contract fixtures drive it with canned answers).
+    internal async Task<AdapterResult<InvoiceDeliveryStatus>> QueryDeliveryAsync(ShopifyRequestContext shop, ExternalInvoiceDeliveryReference reference, CancellationToken cancellationToken)
+    {
         var orderId = reference.ExternalOrderId ?? reference.ExternalReference;
         if (!IsShopifyOrderGid(orderId))
             return Fail<InvoiceDeliveryStatus>(AdapterErrorClass.Validation, "SHOPIFY_INVOICE_READBACK_REFERENCE_INVALID", "Shopify fatura kontrolü için sipariş kimliği gereklidir.", HttpStatusCode.BadRequest);

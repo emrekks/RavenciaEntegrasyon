@@ -25,6 +25,12 @@ public sealed partial class ShopifyHttpClient
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return CredentialFailure(Fail<RemoteOperationRef>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
         if (!await CanWriteAsync(shop, context, MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite, cancellationToken)) return WriteClosed<RemoteOperationRef>();
+        return await PushPriceAndInventoryAsync(shop, context, payloadJson, cancellationToken);
+    }
+
+    // The send itself, once the credential and the write gate passed (the contract fixtures drive it with canned answers).
+    internal async Task<AdapterResult<RemoteOperationRef>> PushPriceAndInventoryAsync(ShopifyRequestContext shop, AdapterContext context, string payloadJson, CancellationToken cancellationToken)
+    {
         JsonDocument payload;
         try { payload = JsonDocument.Parse(payloadJson); }
         catch (JsonException) { return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Fiyat-stok gönderimi geçersiz JSON içeriyor.", HttpStatusCode.BadRequest); }

@@ -15,10 +15,7 @@ public sealed partial class MarketplaceJobProcessor
     // Unfinished: a Trendyol run stopped at its slice budget with orders left; it continues shortly.
     private async Task<(bool Succeeded, bool Unfinished)> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = platformCode == "TRENDYOL";
@@ -203,12 +200,12 @@ public sealed partial class MarketplaceJobProcessor
             }
 
             TrackReceived();
-            var updatedBefore = telemetryUpdatedCount;
+            var updatedBefore = run.UpdatedCount;
             if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
                 hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
             await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, persistFinancialObservations: isShopify);
             // "İşlenen" counts orders, not rows: one order read once is processed once, however many of its rows moved.
-            if (telemetryUpdatedCount > updatedBefore) changedOrders++;
+            if (run.UpdatedCount > updatedBefore) changedOrders++;
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -442,7 +439,7 @@ public sealed partial class MarketplaceJobProcessor
         int? processedCount = null)
     {
         if (jobId is null) return Task.FromResult(0);
-        var processed = processedCount ?? telemetryUpdatedCount;
+        var processed = processedCount ?? run.UpdatedCount;
 
         return db.IntegrationJobs
             .Where(job => job.TenantId == tenantId
@@ -455,10 +452,10 @@ public sealed partial class MarketplaceJobProcessor
                 .SetProperty(job => job.ProgressTotal, total)
                 .SetProperty(job => job.ProgressPercent, percent)
                 .SetProperty(job => job.ProgressLabel, label)
-                .SetProperty(job => job.ProgressReceived, telemetryReceivedCount)
+                .SetProperty(job => job.ProgressReceived, run.ReceivedCount)
                 .SetProperty(job => job.ProgressProcessed, processed)
-                .SetProperty(job => job.ProgressSkipped, telemetrySkippedCount)
-                .SetProperty(job => job.ProgressFailed, telemetryFailedCount), cancellationToken);
+                .SetProperty(job => job.ProgressSkipped, run.SkippedCount)
+                .SetProperty(job => job.ProgressFailed, run.FailedCount), cancellationToken);
     }
 
     // The columns the Trendyol invoice check may change on a package (invoice state) and on an order (the
@@ -514,7 +511,7 @@ public sealed partial class MarketplaceJobProcessor
         if (transaction is not null) await transaction.RollbackAsync(cancellationToken);
         else await outerTransaction!.RollbackToSavepointAsync(savepoint, cancellationToken);
         DiscardOrderInvoiceChanges(written, keep);
-        telemetrySkippedCount++;
+        run.SkippedCount++;
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(cancellationToken);
         return false;
     }
@@ -664,7 +661,7 @@ public sealed partial class MarketplaceJobProcessor
             db, connectionId, MarketplaceJobTypes.OrderSync, cancellationToken);
         if (orderSyncLock is null)
         {
-            telemetrySkippedCount++;
+            run.SkippedCount++;
             await RecordIssue(tenantId, issueKey, "RETURN_ORDER_HYDRATION_BUSY", "Sipariş eşitlemesi sürdüğü için bu kayıt atlandı; fatura taraması ilerledi ve sonraki döngüde yeniden denenecek.", cancellationToken);
             return false;
         }
@@ -806,7 +803,7 @@ public sealed partial class MarketplaceJobProcessor
                         order.LastRemoteModifiedAt = lastRemoteModifiedAt;
                         order.UpdatedAt = timeProvider.GetUtcNow();
                         order.Version++;
-                        telemetryUpdatedCount++;
+                        run.UpdatedCount++;
                     }
                 }
             }

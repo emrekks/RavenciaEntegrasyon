@@ -21,7 +21,7 @@ public sealed partial class MarketplaceJobProcessor
     private async Task RunResendDiagnosticOnce(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         if (orders is not IOrderRawReadPort raw || cancellationToken.IsCancellationRequested) return;
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (platform != "TRENDYOL") return;
         var orderedAt = await db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalOrderId == ResendDiagnosticOrderNumber)

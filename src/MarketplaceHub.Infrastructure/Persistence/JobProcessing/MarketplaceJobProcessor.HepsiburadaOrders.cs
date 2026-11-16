@@ -11,17 +11,10 @@ public sealed partial class MarketplaceJobProcessor
 {
     private async Task<bool> SyncHepsiburadaOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
-        string? externalOrderId = null;
-        string? packageNumber = null;
-        var full = false;
-        try
-        {
-            using var payload = JsonDocument.Parse(payloadJson);
-            if (payload.RootElement.TryGetProperty("externalOrderId", out var id) && id.ValueKind == JsonValueKind.String) externalOrderId = id.GetString();
-            if (payload.RootElement.TryGetProperty("packageNumber", out var package) && package.ValueKind == JsonValueKind.String) packageNumber = package.GetString()?.Trim();
-            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
-        }
-        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
+        var request = JobPayloadReader.OrderRead(payloadJson) ?? throw OrderSyncPayloadInvalid();
+        var externalOrderId = request.ExternalOrderId;
+        var packageNumber = request.PackageNumber?.Trim();
+        var full = request.Full;
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
@@ -136,8 +129,7 @@ public sealed partial class MarketplaceJobProcessor
             await UpsertOrders(tenantId, connectionId, importableOrders, cancellationToken);
 
             state = NextHepsiburadaOrderPage(state, page.Value);
-            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-            cursor.Version++;
+            ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
             // Each finished day window releases the lane and the job's timeout: a month-long read would
             // otherwise not fit one run, time out, restart and never finish.
@@ -182,16 +174,11 @@ public sealed partial class MarketplaceJobProcessor
     // its first windows forever. Anything else starts afresh.
     internal static HepsiburadaOrderSyncState? ReadHepsiburadaOrderSyncState(string? opaqueCursor, DateTimeOffset now, bool forceBaseline)
     {
-        if (string.IsNullOrWhiteSpace(opaqueCursor)) return null;
-        try
-        {
-            var saved = JsonSerializer.Deserialize<HepsiburadaOrderSyncState>(opaqueCursor);
-            if (saved is not { Version: HepsiburadaOrderSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) return null;
-            if (!forceBaseline) return saved;
-            var isBaseline = saved.StartAt <= HepsiburadaOrderHistoryPolicy.InitialWindowStart(saved.AnchorEnd);
-            return isBaseline && now - saved.AnchorEnd < TimeSpan.FromDays(1) ? saved : null;
-        }
-        catch (JsonException) { return null; }
+        var saved = ResumableCursor.Read<HepsiburadaOrderSyncState>(opaqueCursor, state => state is { Version: HepsiburadaOrderSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 });
+        if (saved is null) return null;
+        if (!forceBaseline) return saved;
+        var isBaseline = saved.StartAt <= HepsiburadaOrderHistoryPolicy.InitialWindowStart(saved.AnchorEnd);
+        return isBaseline && now - saved.AnchorEnd < TimeSpan.FromDays(1) ? saved : null;
     }
 
     private async Task<bool> SyncHepsiburadaPackages(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -345,8 +332,7 @@ public sealed partial class MarketplaceJobProcessor
                 state = state with { Offset = nextOffset, LastPageKey = pageKey };
             }
             else state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0, LastPageKey = null };
-            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-            cursor.Version++;
+            ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
             // Persist every offset/window so an interrupted full scan resumes
             // without repeating the completed pages. Each finished day of a month-long read releases the lane and the
@@ -361,15 +347,10 @@ public sealed partial class MarketplaceJobProcessor
     // read started less than a day ago (one older is read again from the start).
     internal static HepsiburadaPackageSyncState? ReadHepsiburadaPackageSyncState(string? opaqueCursor, DateTimeOffset now, bool forceBaseline)
     {
-        if (string.IsNullOrWhiteSpace(opaqueCursor)) return null;
-        try
-        {
-            var saved = JsonSerializer.Deserialize<HepsiburadaPackageSyncState>(opaqueCursor);
-            if (saved is not { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 }) return null;
-            if (!forceBaseline) return saved;
-            return HepsiburadaPackageBaseline(saved, now) ? saved : null;
-        }
-        catch (JsonException) { return null; }
+        var saved = ResumableCursor.Read<HepsiburadaPackageSyncState>(opaqueCursor, state => state is { Version: HepsiburadaPackageSyncStateVersion, WindowIndex: >= 0, Offset: >= 0 });
+        if (saved is null) return null;
+        if (!forceBaseline) return saved;
+        return HepsiburadaPackageBaseline(saved, now) ? saved : null;
     }
 
     internal static bool HepsiburadaPackageBaseline(HepsiburadaPackageSyncState saved, DateTimeOffset now) =>

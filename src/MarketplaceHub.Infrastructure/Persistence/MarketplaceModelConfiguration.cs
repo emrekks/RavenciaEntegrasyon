@@ -72,7 +72,7 @@ internal static class MarketplaceModelConfiguration
         {
             entity.ToTable("orders", "sales", table => { table.HasCheckConstraint("ck_order_amounts", "\"GrossAmount\" >= 0 AND \"DiscountAmount\" >= 0 AND \"NetAmount\" >= 0"); table.HasCheckConstraint("ck_order_currency", "char_length(\"Currency\")=3"); });
             entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
-            entity.Property(x => x.ExternalOrderId).HasMaxLength(256); entity.Property(x => x.OrderNumber).HasMaxLength(160); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.Property(x => x.GrossAmount).HasPrecision(19, 4); entity.Property(x => x.DiscountAmount).HasPrecision(19, 4); entity.Property(x => x.NetAmount).HasPrecision(19, 4); entity.Property(x => x.DerivedStatus).HasMaxLength(48); entity.Property(x => x.StoreFrontCode).HasMaxLength(8); entity.Property(x => x.BuyerType).HasMaxLength(32); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.ExternalOrderId).HasMaxLength(256); entity.Property(x => x.OrderNumber).HasMaxLength(160); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.Property(x => x.GrossAmount).HasPrecision(19, 4); entity.Property(x => x.DiscountAmount).HasPrecision(19, 4); entity.Property(x => x.NetAmount).HasPrecision(19, 4); entity.Property(x => x.DerivedStatus).HasMaxLength(48); entity.Property(x => x.StoreFrontCode).HasMaxLength(8); entity.Property(x => x.BuyerType).HasMaxLength(32); entity.Property(x => x.CustomerSearchName).HasColumnType("text"); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalOrderId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.OrderedAt, x.Id });
             // The order list's "Fatura Türü" filter (Bireysel / Kurumsal).
             entity.HasIndex(x => new { x.TenantId, x.BuyerType }); entity.HasIndex(x => new { x.TenantId, x.ShipmentDueAt, x.OrderedAt, x.Id });
@@ -86,6 +86,8 @@ internal static class MarketplaceModelConfiguration
             entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
             entity.Property(x => x.ExternalLineId).HasMaxLength(256); entity.Property(x => x.Sku).HasMaxLength(160); entity.Property(x => x.Barcode).HasMaxLength(160); entity.Property(x => x.TitleSnapshot).HasMaxLength(512); entity.Property(x => x.SourceSnapshotJson).HasColumnType("text"); entity.Property(x => x.RawStatus).HasMaxLength(96); entity.Property(x => x.OrderedQuantity).HasPrecision(19, 4); entity.Property(x => x.CancelledQuantity).HasPrecision(19, 4); entity.Property(x => x.ShippedQuantity).HasPrecision(19, 4); entity.Property(x => x.DeliveredQuantity).HasPrecision(19, 4); entity.Property(x => x.ReturnedQuantity).HasPrecision(19, 4); entity.Property(x => x.UnitPrice).HasPrecision(19, 4); entity.Property(x => x.PlatformDiscount).HasPrecision(19, 4); entity.Property(x => x.VatRate).HasPrecision(7, 4); entity.Property(x => x.UnitCostSnapshot).HasPrecision(19, 4); entity.Property(x => x.DesiSnapshot).HasPrecision(19, 4); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.OrderId, x.ExternalLineId }).IsUnique();
+            // SIPARIS-STOK-2: the unmatched-line rematch reads a connection's lines without a variant in id order.
+            entity.HasIndex(x => new { x.TenantId, x.Id }, "IX_order_lines_TenantId_Id_Unmatched").HasFilter("\"VariantId\" IS NULL");
             entity.HasOne<Order>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<OrderFinancialAllocation>(entity =>
@@ -219,7 +221,7 @@ internal static class QuestionModelConfiguration
         builder.Entity<MarketplaceQuestionSyncState>(entity =>
         {
             entity.ToTable("marketplace_question_sync_states", "integration"); entity.HasKey(x => new { x.TenantId, x.ConnectionId }); entity.Property(x => x.LastError).HasMaxLength(512); entity.Property(x => x.ProgressStatus).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade).HasConstraintName("FK_question_sync_states_connection");
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict).HasConstraintName("FK_question_sync_states_connection");
         });
     }
 }

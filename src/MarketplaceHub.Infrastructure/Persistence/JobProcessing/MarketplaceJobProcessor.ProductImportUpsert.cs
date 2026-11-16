@@ -76,7 +76,7 @@ public sealed partial class MarketplaceJobProcessor
                 variant.OptionSignature = signature;
                 variant.UpdatedAt = now;
                 variant.Version++;
-                telemetryUpdatedCount++;
+                run.UpdatedCount++;
             }
             await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, options, null, cancellationToken);
         }
@@ -238,14 +238,14 @@ public sealed partial class MarketplaceJobProcessor
                 await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, owner, snapshot, inventoryPolicy, now, cancellationToken, updatePrices: updatePrices, updateStock: updateStock);
                 if (saveChanges)
                     await db.SaveChangesAsync(cancellationToken);
-                telemetrySkippedCount++;
+                run.SkippedCount++;
                 return updatePrices || updateStock;
             }
         }
         // "Mevcut Ürünleri Güncelle" never opens a product, and no mode opens one without a variant it can keep.
         if (product is null && (!allowNewProduct || !snapshot.Variants.Any(variant => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(variant.Sku ?? variant.Barcode ?? variant.ExternalVariantId, 160)))))
         {
-            telemetrySkippedCount++;
+            run.SkippedCount++;
             return false;
         }
         if (product is null)
@@ -271,12 +271,12 @@ public sealed partial class MarketplaceJobProcessor
                 Version = 1
             };
             db.Products.Add(product);
-            telemetryInsertedCount++;
+            run.InsertedCount++;
             if (link is null)
             {
                 link = new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = product.Id, ExternalId = externalProductId, LastImportedPayloadHash = remoteHash, SyncStatus = "SYNCED", Version = 1 };
                 db.MarketplaceProductLinks.Add(link);
-                telemetryInsertedCount++;
+                run.InsertedCount++;
             }
         }
         else if (link is null && observeOnly)
@@ -293,7 +293,7 @@ public sealed partial class MarketplaceJobProcessor
                 Version = 1
             };
             db.MarketplaceProductLinks.Add(link);
-            telemetryInsertedCount++;
+            run.InsertedCount++;
         }
 
         var expectedVariantExternalIds = snapshot.Variants
@@ -341,7 +341,7 @@ public sealed partial class MarketplaceJobProcessor
             await RepairMissingCatalogOptionAssignments(tenantId, connectionId, product.Id, snapshot, categoryContext, cancellationToken);
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
-            telemetrySkippedCount++;
+            run.SkippedCount++;
             return observeOnly;
         }
 
@@ -356,7 +356,7 @@ public sealed partial class MarketplaceJobProcessor
             await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updatePrices, updateStock);
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
-            telemetrySkippedCount++;
+            run.SkippedCount++;
             // A Shopify read-only observation is still a successful match even
             // when the local product hash is unchanged. The local catalog is
             // intentionally preserved, but progress must report the linked
@@ -376,11 +376,11 @@ public sealed partial class MarketplaceJobProcessor
             // it. What the marketplace says about the listing stays on its links (SaleState) and offers.
             product.UpdatedAt = now;
             product.Version++;
-            telemetryUpdatedCount++;
+            run.UpdatedCount++;
         }
         else if (preserveLocal)
         {
-            telemetrySkippedCount++;
+            run.SkippedCount++;
             if (isHepsiburada)
                 await RepairHepsiburadaVariantLinks(tenantId, connectionId, product, snapshot, cancellationToken);
         }
@@ -446,8 +446,8 @@ public sealed partial class MarketplaceJobProcessor
             if (isNewProduct && importedVariants.Count == 0)
             {
                 DropNewCatalogProduct(db, product);
-                telemetryInsertedCount = Math.Max(0, telemetryInsertedCount - 2);
-                telemetrySkippedCount++;
+                run.InsertedCount = Math.Max(0, run.InsertedCount - 2);
+                run.SkippedCount++;
                 await RecordIssue(tenantId, $"product-sync-no-variant:{connectionId}:{Short(externalProductId, 200)}", "PRODUCT_VARIANT_CONFLICT", Short($"Pazar yeri ürünü panelde açılmadı: varyantlarının hiçbiri eklenemedi (stok kodları başka panel ürünlerinde) · {snapshot.Title}", 1000), cancellationToken);
                 if (saveChanges)
                     await db.SaveChangesAsync(cancellationToken);
@@ -483,8 +483,8 @@ public sealed partial class MarketplaceJobProcessor
                 var issueKey = $"product-new-sizes:{connectionId:D}:{Short(externalProductId, 200)}";
                 if (unadded > 0)
                 {
-                    productUnaddedSizeCount = unadded;
-                    telemetryUnaddedSizeCount += unadded;
+                    run.ProductUnaddedSizeCount = unadded;
+                    run.UnaddedSizeCount += unadded;
                     await RecordIssue(tenantId, issueKey, "PRODUCT_NEW_SIZES_NOT_IMPORTED", Short($"{product.Title}: Trendyol'da panelde olmayan {UnaddedSizesNote(unadded)}", 1000), cancellationToken);
                 }
                 else
@@ -501,7 +501,7 @@ public sealed partial class MarketplaceJobProcessor
         // skip the content as already applied).
         if (addOnly)
         {
-            productImportedNewVariantCount = importedNewVariantCount;
+            run.ProductImportedNewVariantCount = importedNewVariantCount;
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
             return importedNewVariantCount > 0;
@@ -650,7 +650,7 @@ public sealed partial class MarketplaceJobProcessor
                 existingLinks.Add(link);
                 linkedExternalIds.Add(externalKey);
                 linkedVariantIds.Add(link.VariantId);
-                telemetryInsertedCount++;
+                run.InsertedCount++;
             }
         }
 
@@ -885,22 +885,22 @@ public sealed partial class MarketplaceJobProcessor
         }
         if (product is null) return FocusedPriceStockOutcome.NotInPanel;
 
-        var pricesBefore = priceChangedVariantIds.Count;
-        var stockBefore = stockChangedVariantIds.Count;
+        var pricesBefore = run.PriceChangedVariantIds.Count;
+        var stockBefore = run.StockChangedVariantIds.Count;
         var matched = await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, updatePrices: updatePrices, updateStock: updateStock);
-        telemetryUnchangedVariantCount += matched.Distinct().Count(id => !priceChangedVariantIds.Contains(id) && !stockChangedVariantIds.Contains(id));
+        run.UnchangedVariantCount += matched.Distinct().Count(id => !run.PriceChangedVariantIds.Contains(id) && !run.StockChangedVariantIds.Contains(id));
 
         var unadded = (await RemoteVariantsMissingFromPanel(tenantId, connectionId, snapshot, cancellationToken)).Count;
         var issueKey = $"product-new-sizes:{connectionId:D}:{Short(externalProductId, 200)}";
         if (unadded > 0)
         {
-            productUnaddedSizeCount = unadded;
-            telemetryUnaddedSizeCount += unadded;
+            run.ProductUnaddedSizeCount = unadded;
+            run.UnaddedSizeCount += unadded;
             await RecordIssue(tenantId, issueKey, "PRODUCT_NEW_SIZES_NOT_IMPORTED", Short($"{product.Title}: Trendyol'da panelde olmayan {UnaddedSizesNote(unadded)}", 1000), cancellationToken);
         }
         else
             await ResolveIssue(tenantId, issueKey, cancellationToken);
-        return priceChangedVariantIds.Count > pricesBefore || stockChangedVariantIds.Count > stockBefore
+        return run.PriceChangedVariantIds.Count > pricesBefore || run.StockChangedVariantIds.Count > stockBefore
             ? FocusedPriceStockOutcome.Changed
             : FocusedPriceStockOutcome.Unchanged;
     }

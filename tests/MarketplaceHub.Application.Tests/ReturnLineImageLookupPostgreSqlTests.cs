@@ -6,7 +6,7 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // A return detail line without a photo asks /orders/product-image with its barcode and the claim's store
-// (MarketplaceSalesService.ReturnDetailLineImageUrls). An n11, Pazarama or PTT AVM store's lookup was refused (404) before
+// (OrderSnapshotReader.ReturnDetailLineImageUrls). An n11, Pazarama or PTT AVM store's lookup was refused (404) before
 // anything was searched; it now finds the photo on that store's order lines and in the catalog like any other store.
 [Collection("postgres-integration")]
 public sealed class ReturnLineImageLookupPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
@@ -17,7 +17,7 @@ public sealed class ReturnLineImageLookupPostgreSqlTests(PostgreSqlTenantIsolati
     [InlineData("PTTAVM")]
     public void Every_marketplace_store_can_carry_a_return_lines_photo_lookup(string platform)
     {
-        var (url, _) = MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "BRK-1", Guid.CreateVersion7());
+        var (url, _) = OrderSnapshotReader.ReturnDetailLineImageUrls(null, null, "BRK-1", Guid.CreateVersion7());
         Assert.Contains("connectionId=", url, StringComparison.Ordinal);
         // n11 and Pazarama cannot be asked for a photo by barcode; PTT AVM can.
         Assert.Equal(platform == "PTTAVM", MarketplaceSalesService.HasLiveImageLookup(platform));

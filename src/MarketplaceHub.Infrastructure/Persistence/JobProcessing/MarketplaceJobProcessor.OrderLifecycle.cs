@@ -33,10 +33,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isHepsiburada = platformCode == "HEPSIBURADA";
         var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         if (isTrendyol) return await SyncTrendyolOpenPackages(tenantId, connectionId, correlationId, cancellationToken);

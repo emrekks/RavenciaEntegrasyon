@@ -1,0 +1,9 @@
+// Synthetic: the Admin GraphQL order(id){id pdf:metafield(namespace:"ravencia",key:"invoice_pdf_url"){value compareDigest}}
+// answer the invoice read asks for (ShopifyHttpClient.ReadInvoiceMetafieldsAsync), one per case: a link, an empty slot, a
+// blank value, an unknown order. No live data: see README.md.
+{
+  "linked": { "data": { "order": { "id": "gid://shopify/Order/9001", "pdf": { "value": "https://invoices.example.test/RVN2026000000001.pdf", "compareDigest": "digest-1" } } } },
+  "empty": { "data": { "order": { "id": "gid://shopify/Order/9002", "pdf": null } } },
+  "blank": { "data": { "order": { "id": "gid://shopify/Order/9003", "pdf": { "value": "  ", "compareDigest": "digest-3" } } } },
+  "missing": { "data": { "order": null } }
+}

@@ -11,8 +11,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed partial class MarketplaceJobProcessor
 {
     private readonly JobReadRecorder readRecorder = new();
-    private bool readRecordingEnabled;
-    private string readRecordingKind = "ORDER";
 
     // The reads that keep their records, by the kind of record they pull; null for a job that keeps none.
     internal static string? ReadRecordKind(string jobType) => jobType switch
@@ -25,45 +23,43 @@ public sealed partial class MarketplaceJobProcessor
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation => "ORDER",
         _ => RecordsReadProgress(jobType) ? "ORDER" : null
     };
-    private string? readReturnSkipReason;
-    private string? readReturnFailReason;
 
     private const string StaleReason = "Panelde daha yeni bir bilgi vardı; eski kayıt uygulanmadı.";
     private const string RejectedOrderReason = "Pazaryeri kaydı eksik veya tutarsızdı; uygulanmadı (Operasyon Sorunları).";
 
     private async Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionBatch? batch = null, bool saveChanges = true, bool persistFinancialObservations = false)
     {
-        if (!readRecordingEnabled) return await UpsertOrderCore(tenantId, connectionId, remote, cancellationToken, batch, saveChanges, persistFinancialObservations);
+        if (!run.ReadRecordingEnabled) return await UpsertOrderCore(tenantId, connectionId, remote, cancellationToken, batch, saveChanges, persistFinancialObservations);
         var before = await OrderStateAsync(tenantId, connectionId, remote.ExternalOrderId, fromDatabase: true, cancellationToken);
-        var skippedBefore = telemetrySkippedCount;
+        var skippedBefore = run.SkippedCount;
         var accepted = await UpsertOrderCore(tenantId, connectionId, remote, cancellationToken, batch, saveChanges, persistFinancialObservations);
         var after = await OrderStateAsync(tenantId, connectionId, remote.ExternalOrderId, fromDatabase: false, cancellationToken);
         var outcome = !accepted ? JobReadOutcomes.Failed
             : before is null ? (after is null ? JobReadOutcomes.Skipped : JobReadOutcomes.New)
             // An invoice check reads the invoice state, which it compares whatever the order's age: an older order snapshot
             // that left the invoice as it was is unchanged there, not skipped.
-            : readRecordingKind != "INVOICE" && telemetrySkippedCount > skippedBefore && after?.Compare == before.Compare ? JobReadOutcomes.Skipped
+            : run.ReadRecordingKind != "INVOICE" && run.SkippedCount > skippedBefore && after?.Compare == before.Compare ? JobReadOutcomes.Skipped
             : after is not null && after.Compare != before.Compare ? JobReadOutcomes.Updated
             : JobReadOutcomes.Unchanged;
         var reason = outcome == JobReadOutcomes.Failed ? RejectedOrderReason : outcome == JobReadOutcomes.Skipped ? StaleReason : null;
         var state = after ?? before;
         // An invoice check names the packages' invoice state; any other read the order's status.
-        var invoiceCheck = readRecordingKind == "INVOICE";
+        var invoiceCheck = run.ReadRecordingKind == "INVOICE";
         readRecorder.Add(invoiceCheck ? "INVOICE" : "ORDER", new JobReadRecord(remote.OrderNumber, state?.PackagesText, invoiceCheck ? state?.InvoiceText : state?.Status, outcome, reason));
         return accepted;
     }
 
     internal async Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
-        if (!readRecordingEnabled) { await UpsertReturnCore(tenantId, connectionId, remote, cancellationToken); return; }
-        readReturnSkipReason = null;
-        readReturnFailReason = null;
+        if (!run.ReadRecordingEnabled) { await UpsertReturnCore(tenantId, connectionId, remote, cancellationToken); return; }
+        run.ReadReturnSkipReason = null;
+        run.ReadReturnFailReason = null;
         var before = await ReturnStateAsync(tenantId, connectionId, remote.ExternalClaimId, fromDatabase: true, cancellationToken);
         await UpsertReturnCore(tenantId, connectionId, remote, cancellationToken);
         var after = await ReturnStateAsync(tenantId, connectionId, remote.ExternalClaimId, fromDatabase: false, cancellationToken);
         var stale = before is not null && IsStaleReturnObservation(before.LastRemoteModifiedAt, remote.LastModifiedAt);
-        var (outcome, reason) = readReturnFailReason is { } fail ? (JobReadOutcomes.Failed, fail)
-            : readReturnSkipReason is { } skip ? (JobReadOutcomes.Skipped, skip)
+        var (outcome, reason) = run.ReadReturnFailReason is { } fail ? (JobReadOutcomes.Failed, fail)
+            : run.ReadReturnSkipReason is { } skip ? (JobReadOutcomes.Skipped, skip)
             : before is null ? (after is null ? (JobReadOutcomes.Skipped, (string?)null) : (JobReadOutcomes.New, null))
             : after is not null && after.Version != before.Version ? (JobReadOutcomes.Updated, null)
             : stale ? (JobReadOutcomes.Skipped, StaleReason)
@@ -76,7 +72,7 @@ public sealed partial class MarketplaceJobProcessor
     // A package the invoice check read on its own (Trendyol): its number, the marketplace invoice number and state.
     private void RecordInvoiceRead(ShipmentPackage package, MarketplaceInvoiceStatus before, string? numberBefore)
     {
-        if (!readRecordingEnabled || readRecordingKind != "INVOICE") return;
+        if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "INVOICE") return;
         var changed = before != package.MarketplaceInvoiceStatus || !string.Equals(numberBefore, package.MarketplaceInvoiceNumber, StringComparison.Ordinal);
         readRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
     }
@@ -85,7 +81,7 @@ public sealed partial class MarketplaceJobProcessor
     // variants came with it. A failed batch marks each of its products with the error.
     private void RecordProductRead(RemoteCatalogProduct snapshot, string outcome, string? reason)
     {
-        if (!readRecordingEnabled || readRecordingKind != "PRODUCT") return;
+        if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "PRODUCT") return;
         var reference = string.IsNullOrWhiteSpace(snapshot.ProductMainId) ? snapshot.ExternalProductId : snapshot.ProductMainId!;
         var barcode = snapshot.Variants.Select(x => x.Barcode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         var secondary = barcode is null ? null : snapshot.Variants.Count > 1 ? $"{barcode} +{snapshot.Variants.Count - 1}" : barcode;
@@ -148,7 +144,7 @@ public sealed partial class MarketplaceJobProcessor
     // failed write never fails the read it describes.
     private async Task<JobReadCounts?> FlushReadRecordsAsync(Guid tenantId, Guid? jobId, CancellationToken cancellationToken, bool final = false)
     {
-        if (jobId is not { } id || !readRecordingEnabled) return null;
+        if (jobId is not { } id || !run.ReadRecordingEnabled) return null;
         try
         {
             var row = await db.JobReadSummaries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == id, cancellationToken);
@@ -156,7 +152,7 @@ public sealed partial class MarketplaceJobProcessor
             if (readRecorder.IsEmpty && (row is not null || !final)) return row is null ? null : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
             var previous = row is null ? JobReadCounts.Zero : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
             var (counts, kept, omitted) = readRecorder.MergeWith(previous, row is null ? [] : JobReadRecorder.Deserialize(row.RecordsJson), row?.Omitted ?? 0);
-            var kind = row?.Kind ?? readRecorder.Kind ?? readRecordingKind;
+            var kind = row?.Kind ?? readRecorder.Kind ?? run.ReadRecordingKind;
             var json = JobReadRecorder.Serialize(kept);
             var now = timeProvider.GetUtcNow().ToUniversalTime();
             // Written past the change tracker: after a failed run it may still hold that run's half-applied entities,

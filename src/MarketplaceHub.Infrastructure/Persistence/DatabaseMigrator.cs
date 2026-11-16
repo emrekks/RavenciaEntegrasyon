@@ -88,6 +88,17 @@ public static class DatabaseMigrator
                 {
                     logger.LogWarning(exception, "Return card columns were not filled");
                 }
+                // SIPARIS-STOK-9: the orders' kept customer names (the Returns search), filled at deploy instead of at the
+                // worker's first maintenance pass. Batched and idempotent; a failure leaves them to that pass.
+                try
+                {
+                    var filled = await OrderCustomerSearchNames.BackfillAsync(migrationContext, cancellationToken);
+                    logger.LogInformation("Order customer search names: {Filled} filled", filled);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Order customer search names were not filled");
+                }
                 return;
             }
             catch (Exception exception) when (IsLockTimeout(exception) && attempt < LockAttempts)

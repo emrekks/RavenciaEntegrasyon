@@ -147,7 +147,7 @@ public sealed partial class PazaramaHttpClient(
             }
             var response = exchange.Response!;
             var text = exchange.Body;
-            var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+            var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
             var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
             // A token revoked by "Yeni API Key Üret" in the seller panel is answered with 401; one
             // fresh token is tried before the credentials count as rejected.
@@ -309,28 +309,33 @@ public sealed partial class PazaramaHttpClient(
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
     {
         var remote = RemoteMessage(body);
-        return status switch
-        {
-            HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.", (int)status, null, null),
-            // A 403 that is an HTML page (seen live: 15 KB of text/html, no JSON) never reached Pazarama's API; its
-            // security gateway blocked the call, which comes and goes (one call passes, the next is blocked). The job
-            // keeps its attempt and the connection waits a quarter hour, as it does for a quota refusal.
-            HttpStatusCode.Forbidden when remote is null && LooksLikeHtml(body) => new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED",
-                "Pazarama'nın güvenlik geçidi isteği engelledi (API yerine HTML sayfa döndü). Geçici olabilir; okumalar 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null),
+        // The shared status table (MarketplaceErrorRules.FromStatus), Pazarama's words; its 403 is its own (below).
+        return MarketplaceErrorRules.FromStatus("PAZARAMA", "Pazarama", status, body, retryAfter, new(
+            CredentialsRejected: "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.",
+            RateLimited: "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.",
+            NotFound: remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}",
+            RemoteTimeout: "Pazarama isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.",
+            Conflict: remote is null ? "Pazarama isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}",
+            RemoteError: "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.",
+            RequestRejected: remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}"),
+            overrides: forbidden => forbidden == HttpStatusCode.Forbidden ? Forbidden(forbidden, body, remote) : null);
+    }
+
+    // Pazarama's own 403, which differs from the shared table (MarketplaceErrorTableTests lists it).
+    private static AdapterError Forbidden(HttpStatusCode status, string body, string? remote) =>
+        // A 403 that is an HTML page (seen live: 15 KB of text/html, no JSON) never reached Pazarama's API; its
+        // security gateway blocked the call, which comes and goes (one call passes, the next is blocked). The job
+        // keeps its attempt and the connection waits a quarter hour, as it does for a quota refusal. Pazarama's own
+        // wording, and only when the page names no API message.
+        remote is null && LooksLikeHtml(body)
+            ? new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED",
+                "Pazarama'nın güvenlik geçidi isteği engelledi (API yerine HTML sayfa döndü). Geçici olabilir; okumalar 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null)
             // 403 comes with a token Pazarama has just issued: the credentials are valid, Pazarama itself is refusing
             // the account's API access (permission withdrawn or a fault on its side). Its own words are kept, and the
             // connection waits instead of asking again every minute.
-            HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "PAZARAMA_ACCESS_DENIED", remote is null
+            : new(AdapterErrorClass.Authentication, "PAZARAMA_ACCESS_DENIED", remote is null
                 ? "Pazarama bu hesabın API erişimini reddetti (403). Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir."
-                : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null),
-            HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
-            HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "PAZARAMA_NOT_FOUND", remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}", (int)status, null, null),
-            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "PAZARAMA_REMOTE_TIMEOUT", "Pazarama isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), null),
-            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "PAZARAMA_CONFLICT", remote is null ? "Pazarama isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null),
-            >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
-            _ => new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null)
-        };
-    }
+                : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null);
 
     // "İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz." in a success=false envelope is
     // Pazarama saying it is busy, not refusing the request: seen live on order/getOrdersForApi on 28 Oct 23:25 and on

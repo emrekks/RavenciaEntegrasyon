@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish the Ravencia WAL archive for the off-site copy
+
+[Timer]
+# Shortly before each backup set (08:59 and 20:59 UTC), whose Google Drive copy (09:30 and 21:30 UTC) takes it along.
+# Installed by docs/patches/VERITABANI-DAGITIM-8-wal-archive.patch together with archive_mode=on.
+OnCalendar=*-*-* 08:45:00 UTC
+OnCalendar=*-*-* 20:45:00 UTC
+Persistent=true
+Unit=ravencia-wal-ship.service
+
+[Install]
+WantedBy=timers.target

@@ -178,6 +178,27 @@ Emanet kuralı (dosyaları **bu repoya, sohbete ya da şifresiz bir yere koymay�
 3. Şifreli dosyayı parola yöneticisine ve Drive'a koy (sunucuda yazdıysan `scp` ile al ve sunucudan `rm`).
 4. Her anahtar/sertifika değişiminde tekrarla; yılda bir kez açıp `restore-drill.sh` ile dene.
 
+**Otomatik emanet (VERITABANI-DAGITIM-9, sahibin tek adımı):** `deploy/backup/secrets-escrow.sh` dört dosyayı
+(`credential_key.txt`, `dp_certificate.pfx`, `dp_certificate_password.txt`, `production.env`) panelin Google Drive
+yedeğindeki age **açık** anahtarına şifreler (sunucu açamaz; düz kopya hiçbir yere yazılmaz) ve yedek biriminde
+`offsite-extra/escrow/ravencia-secrets.tar.age` olarak bırakır. Worker'ın Drive kopyası bunu her sete
+`<set>/extra/escrow/` olarak ekler (yalnız age başlıklı `.age` dosyaları alınır). Emanet, dosyaların ya da age anahtarının
+parmak izini tutar; bir sertifika yenilenir, anahtar değişir ya da emanet yoksa "bayat" sayılır ve günlük zamanlayıcı
+yeniden üretir. Açmak, sunucuda repo kökünde:
+```bash
+sudo touch deploy/secrets/secrets_escrow.enabled && bash deploy/scripts/install-backup-timer.sh
+sudo systemctl start ravencia-secrets-escrow.service && journalctl -u ravencia-secrets-escrow -n 5   # "refreshed"
+```
+Sonra `ravencia-secrets-escrow.timer` her gün 08:40 UTC'de (08:59 setinden önce) çalışır, başarısızlıkta alarm gelir;
+health watch `secrets-escrow.sh --check` ile emanet bayatsa uyarır. Doğrulama: bir sonraki Drive kopyasının worker logunda
+`extras: extra/escrow/ravencia-secrets.tar.age` (`/prod-logs logs worker --grep "Off-site backup"`).
+**Emanetle açılış tatbikatı:** Drive kopyasını sahibin bilgisayarında açıp (`age -d -i ravencia-yedek-anahtari.txt
+<set>.tar.age | tar -x`) sunucuya ya da Docker'lı bir makineye getirin; özel anahtar yalnız tatbikat süresince orada
+(tercihen `/dev/shm`) durur:
+`sudo bash deploy/backup/restore-drill.sh --escrow <set>/extra/escrow/ravencia-secrets.tar.age /dev/shm/anahtar.txt <set> <app imajı>`
+(canlı `deploy/secrets` yerine emanetteki sertifika ve anahtarla, yeni bir veritabanı parolasıyla açar; bitince
+`shred -u /dev/shm/anahtar.txt`). Yılda bir kez yapın.
+
 Yedek setlerinin kendisi de sunucu dışına şifreli kopyalanır: `deploy/backup/offsite-copy.sh` en yeni
 doğrulanmış seti aynı açık anahtarla şifreleyip rclone ile Google Drive'a yükler (yapılandırılana kadar
 "not configured" yazıp hiçbir şey yapmaz). Kurulum ve geri açma: [CI-CD-DEPLOY.md](CI-CD-DEPLOY.md)
@@ -260,53 +281,31 @@ kapanma süresi Docker varsayılanı 10 sn. Değişiklik postgres'i **yeniden ba
 yeniden başlatma ister; birkaç saniye kesinti, API/Worker yeniden bağlanır), bu yüzden deploy'a otomatik konmadı.
 Sessiz bir saatte, tek seferde:
 
-1. `deploy/compose/compose.yaml` postgres servisi, tam satırlar (mevcut `command` listesinin
-   `- log_min_duration_statement=2000` satırından sonra eklenir; `stop_grace_period` `init: true`'nun altına):
-   ```yaml
-       init: true
-       # PostgreSQL writes 1.5 GiB of shared buffers out before it stops; Docker's 10 s default kills it mid-way.
-       stop_grace_period: 120s
-   ```
-   ```yaml
-         - log_min_duration_statement=2000
-         - -c
-         - idle_in_transaction_session_timeout=10min
-         - -c
-         - log_lock_waits=on
-         - -c
-         - deadlock_timeout=1s
-         - -c
-         - log_autovacuum_min_duration=10s
-         - -c
-         - log_temp_files=65536
-         - -c
-         - track_io_timing=on
-         - -c
-         - shared_preload_libraries=pg_stat_statements
-         - -c
-         - pg_stat_statements.track=top
-         - -c
-         - max_wal_size=4GB
-   ```
-   Aynı gönderimde CI denetimi (`ci.yml` "Validate merged Compose manifests", api/worker `stop_grace_period`
-   satırının yanına): `"${compose[@]}" config --format json | jq -e '.services.postgres.stop_grace_period and
-   (.services.postgres.command | index("shared_preload_libraries=pg_stat_statements") != null) and
-   (.services.postgres.command | index("idle_in_transaction_session_timeout=10min") != null)'`. Bu denetim bugün
-   konmadı: ayarlar `compose.yaml`'da yokken kırmızı olurdu. Gönderilen ilk deploy postgres'i yeniden yaratır.
+1. Hazır, **uygulanmamış** yama: [`docs/patches/VERITABANI-DAGITIM-6-7-postgres-settings.patch`](patches/VERITABANI-DAGITIM-6-7-postgres-settings.patch).
+   `compose.yaml` postgres servisine `stop_grace_period: 120s` ve `command` listesine (her `-c` ile değer ayrı satır)
+   `idle_in_transaction_session_timeout=10min`, `log_lock_waits=on`, `deadlock_timeout=1s`, `log_autovacuum_min_duration=10s`,
+   `log_temp_files=65536`, `track_io_timing=on`, `shared_preload_libraries=pg_stat_statements`,
+   `pg_stat_statements.track=top`, `max_wal_size=4GB`; `ci.yml` "Validate merged Compose manifests" adımına bu ayarların
+   ve `stop_grace_period`'ın kaybolmadığını denetleyen `jq` kontrolü. Uygulamak: yeni dalda
+   `git apply docs/patches/VERITABANI-DAGITIM-6-7-postgres-settings.patch` (başka bir yama önce uygulandıysa `--3way`),
+   yama dosyasını silip bu maddeyi "uygulandı" diye güncelleyin, Validate'i bekleyip gönderin. Gönderilen ilk deploy
+   postgres'i yeniden yaratır (birkaç saniye kesinti).
 2. Uzantıyı **süper kullanıcıyla** kurun: `pg_stat_statements` "trusted" bir uzantı değildir, `CREATE EXTENSION`
    süper kullanıcı ister. Bölüm 7'den sonra migrate `marketplacehub_owner` ile çalışacağından bunu migration'a koymayın
    (migration orada `permission denied to create extension` ile düşer ve deploy durur). Adım 1 canlıya çıktıktan sonra
    sunucuda bir kez:
    `sudo docker exec marketplacehub-postgres-1 psql -X -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"`
    (yedek ve geri yükleme `marketplacehub` ile çalıştığı için uzantı yedekten de geri gelir).
-3. Ardından bir migration (yalnız SQL, `// migration-lock-ok: ALTER TABLE SET (...) takes SHARE UPDATE EXCLUSIVE`) sık
-   güncellenen tablolara:
-   `ALTER TABLE integration.jobs SET (autovacuum_vacuum_scale_factor = 0.02, autovacuum_analyze_scale_factor = 0.02);`
-   (aynısı `integration.job_attempts`, `integration.rate_limit_usage`, `integration.inbox_messages`,
-   `integration.reference_items`, `inventory.inventory_items`, `inventory.channel_offers`). Tablonun sahibi
-   çalıştırabilir: bölüm 7'den önce de sonra da çalışır.
-4. Salt-okunur rol için `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro;` (sahibin
-   `install-readonly-db-role.sh`'ına eklenir ve betik bir kez çalıştırılır). `pg_read_all_stats` diğer rollerin
+3. Sık güncellenen tabloların autovacuum ayarı **sahip adımı değil, migration ile geliyor**:
+   `20261116090200_HotTableAutovacuum` (`integration.jobs`, `job_attempts`, `rate_limit_usage`, `inbox_messages`,
+   `inventory.inventory_items`, `channel_offers` için `autovacuum_vacuum_scale_factor` ve
+   `autovacuum_analyze_scale_factor` 0.02; yazmaları bloke etmez, postgres yeniden başlamaz). Adım 1'den bağımsızdır.
+   Doğrulama: `/prod-sql "select relname, reloptions from pg_class where relname in ('jobs','channel_offers') and relkind='r'"`.
+4. Salt-okunur rol: `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro` artık
+   `deploy/scripts/install-readonly-db-role.sh` içinde. Sunucuda repo kökünde tek komut
+   `bash deploy/scripts/install-readonly-access.sh` (adım 1'den bağımsız, hemen yapılabilir) hem rolü yeniler hem güncel
+   `ravencia-ro` komutunu kurar; yeni `top-queries` isteği (`/prod-logs top-queries 20`) uzantı yokken bunu söyler,
+   varken en çok süren 20 sorguyu listeler. `pg_read_all_stats` diğer rollerin
    sorgu metnini `pg_stat_statements`'ta görmek için, `pg_read_all_settings` doğrulamadaki
    `show shared_preload_libraries` için gerekir (süper kullanıcıya özel ayar; o olmadan "permission denied").
 5. Doğrula: `/prod-sql "show idle_in_transaction_session_timeout"` → `10min`; `/prod-sql "show
@@ -333,3 +332,120 @@ faturalar ve stok düşümleri kaybolur (RPO ≤ 12 saat); "14:37'den hemen önc
 5. **Tatbikat:** `restore-drill.sh --pitr <zaman>`: izole konteynerde `wal-g backup-fetch` + `recovery_target_time`,
    aylık; sonuç `send-alert.sh`. Hedef RPO ≈ 1 dk.
 **Risk:** arşiv komutu başarısız olursa WAL dosyaları diskte birikir (disk dolar): 4. maddedeki alarm olmadan açılmaz.
+
+### 9a. Ara çözüm: yerel WAL arşivi + Drive kopyasıyla dışarı (hazır, uygulanmamış)
+
+Depo kararı verilene kadar, yukarıdaki planın yerel yarısı tek yamayla açılır:
+[`docs/patches/VERITABANI-DAGITIM-8-wal-archive.patch`](patches/VERITABANI-DAGITIM-8-wal-archive.patch).
+
+- **Yama:** `compose.yaml` postgres'e `archive_mode=on`, `archive_timeout=300` ve gzip'leyen `archive_command`; ayrı
+  volume `pg_wal_archive` (`/var/lib/postgresql/wal-archive`, `wal/` ve `base/`) ve onu postgres kullanıcısına veren
+  tek seferlik `pg-wal-archive-volume` servisi; `install-backup-timer.sh`'a `ravencia-wal-basebackup.timer` (her gün
+  02:30 UTC, `pg_basebackup`, son 2 temel yedek ve onların gerektirdiği WAL kalır) ve `ravencia-wal-ship.timer`
+  (08:45 / 20:45 UTC); `ci.yml`'e arşiv ayarlarının kaybolmadığını denetleyen `jq` satırı.
+- **Zaten canlıya giden ve yama gelene kadar hiçbir şey yapmayan parçalar:** `deploy/backup/wal-archive.sh`
+  (`basebackup | ship | status`), `deploy/backup/restore-drill.sh --pitr '<zaman>'` (`restore-drill-pitr.sh`: izole,
+  ağsız konteynerde temel yedek + WAL ile o ana döner, sonucu ve süreyi yazar), health watch'ta `pg_stat_archiver`
+  denetimi (`archive_mode=on` olunca devreye girer: arşivleme hata veriyorsa ya da 20 dk'dır segment arşivlenmediyse
+  alarm; `RAVENCIA_WAL_ARCHIVE_MAX_AGE_MINUTES`).
+- **Dışarı çıkış:** `wal-archive.sh ship` en yeni temel yedeği ve ondan sonraki WAL'ı panelin age açık anahtarına
+  şifreleyip `offsite-extra/wal/wal-archive.tar.age` olarak bırakır; worker'ın Google Drive kopyası onu sete
+  `<set>/extra/wal/` olarak ekler. Sunucuda kurtarma noktası en çok 5 dakika geride; sunucu tamamen kaybolursa son
+  Drive kopyası (günde iki kez). Drive'da her kopya bir temel yedek taşır (bugün veritabanı 1,35 GB; sıkıştırılmış temel
+  yedek bunun bir kısmı): Drive saklama gün sayısını buna göre seçin.
+
+Uygulama (sessiz bir saatte; postgres yeniden başlar, birkaç saniye kesinti):
+
+1. Diskte yer: arşiv günde birkaç yüz MB ile birkaç GB arası (yoğunluğa bağlı) ve iki temel yedek. `df -h /` %70'in
+   altında olmalı.
+2. Yeni dalda `git apply docs/patches/VERITABANI-DAGITIM-8-wal-archive.patch` (başka bir yama önce uygulandıysa
+   `--3way`), yama dosyasını silip bu bölümü "uygulandı" diye güncelleyin, Validate'i bekleyip gönderin. Deploy postgres'i
+   yeniden yaratır ve zamanlayıcıları kurar.
+3. Sunucuda: `sudo bash deploy/backup/wal-archive.sh basebackup` (ilk temel yedek), sonra
+   `sudo bash deploy/backup/wal-archive.sh status` (`archive_mode=on`, `archived_count` artıyor, `failed_count` 0).
+4. Tatbikat: 15 dakika sonra `sudo bash deploy/backup/restore-drill.sh --pitr "$(date -d '-10 min' '+%F %T%z')"`
+   → `PITR drill passed`; çıkan `durationSeconds` geri dönüş süresidir. Ayda bir tekrarlayın.
+5. `sudo bash deploy/backup/wal-archive.sh ship` ve bir sonraki Drive kopyasının worker logunda
+   `extras: ... extra/wal/wal-archive.tar.age`.
+
+**Gerçek bir "ana dön" işi:** önce tatbikatla doğru zamanı bulun (`--pitr` ile birkaç deneme), sonra bölüm 3'teki gibi
+yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karardır (veritabanı yeniden kurulur, sonrası kaybolur).
+**Geri dönüş:** yamanın compose satırlarını geri alıp deploy; `pg_wal_archive` volume'ü elle silinene kadar kalır.
+
+## 10a. Bekleyen takip işleri
+
+- **VERITABANI-DAGITIM-11, `billing.invoices."SequenceNumber"` sütununu silmek (genişlet-daralt 2. aşama):**
+  hiç yazılmayan ve okunmayan sütun 16 Kasım 2026'da modelden çıkarıldı (`20261116090000_StopMappingInvoiceSequenceNumber`,
+  boş `Up`; canlıda 2 faturanın hiçbirinde değer yok). O sürüm canlıya çıktıktan **sonraki** bir sürümde migration:
+  `migrationBuilder.Sql("ALTER TABLE billing.invoices DROP COLUMN IF EXISTS \"SequenceNumber\"");` ve dosyada
+  `expand-contract: phase 2 of 20261116090000_StopMappingInvoiceSequenceNumber` işaret yorumu (`//` ile; migration
+  guard bunu arar). Sütun silme kısa ACCESS EXCLUSIVE kilit alır (`lock_timeout` ile).
+
+## 10. Kesintisiz deploy: iki API kopyası (tasarım, VERITABANI-DAGITIM-4)
+
+**Bugün (16 Kasım 2026):** tek `api` konteyneri var; tam deploy eskisini durdurup yenisini başlatır. Caddy iki
+`reverse_proxy` bloğunda `lb_try_duration 45s` / `lb_try_interval 500ms` ile yeni API dinleyene kadar isteği bekletir:
+bağlanamayan istek hemen 502 almaz, en çok 45 sn bekler. **Ölçüm:** Caddy erişim logu journald'da deploy'lar arasında
+kalır (`compose.production.yaml`, `journald` sürücüsü; `docker logs` yalnız o anki konteyneri gösterir, ölçüm için
+onu kullanmayın): `/prod-logs journal caddy --since <deploy zamanı> --grep '"status":50[234]|connection refused'`.
+Canlı (salt okuma): 15 Kasım 22:22Z deploy'unda bu logda `connection refused` satırları var; 16 Kasım 00:17Z
+deploy'undan sonra hiç yok (gece, trafik azdı; birkaç gündüz deploy'undan sonra yeniden sayın). Bu yeterli değilse
+aşağıdaki tasarım kesintiyi sıfıra indirir; deploy akışını değiştirdiği için **hiçbiri uygulanmadı**.
+
+**Akış (yeni önce, eski sonra):** migrate bugünkü gibi önce çalışır. Sonra `api` iki kopyaya çıkar: yeni imajla ikinci
+konteyner açılır, sağlıklı olunca Caddy ona da istek gönderir, eski konteyner 45 sn'lik `stop_grace_period` ile
+kapanır, tek kopyaya dönülür. Worker ve Caddy bugünkü gibi yeniden yaratılır.
+
+1. `deploy/caddy/Caddyfile.production` ve `Caddyfile`, iki `reverse_proxy` bloğu: `api:8080` yerine Docker DNS'inden
+   bütün kopyalar ve sağlık denetimi (`tests/ops/test-caddy-proxy.sh` buna göre güncellenir):
+   ```caddyfile
+   reverse_proxy {
+       dynamic a {
+           name api
+           port 8080
+           refresh 2s
+       }
+       lb_policy round_robin
+       lb_try_duration 45s
+       lb_try_interval 500ms
+       health_uri /health/live
+       health_interval 2s
+       health_fails 2
+       fail_duration 10s
+   }
+   ```
+2. `deploy/scripts/fast-deploy.sh`, `release_services=(api worker caddy)` satırının yerine (`web_only` değilse):
+   ```bash
+   api_ids() { "${sudo_cmd[@]}" docker ps -q --filter label=com.docker.compose.project=marketplacehub --filter label=com.docker.compose.service=api; }
+   old_api="$(api_ids)"
+   "${compose[@]}" up -d --no-build --no-deps --no-recreate --scale api=2 api || release_status=$?
+   new_api="$(api_ids | grep -vxF "$old_api" || true)"
+   healthy=false
+   for _ in $(seq 1 60); do
+     if [[ "$("${sudo_cmd[@]}" docker inspect -f '{{.State.Health.Status}}' "$new_api")" == healthy ]]; then healthy=true; break; fi
+     sleep 2
+   done
+   if [[ "$healthy" == true ]]; then
+     sleep 5   # Caddy'nin DNS yenilemesi ve sağlık denetimi yeni kopyayı görsün
+     "${sudo_cmd[@]}" docker stop --time 45 "$old_api"
+     "${sudo_cmd[@]}" docker rm "$old_api"
+   else
+     "${sudo_cmd[@]}" docker rm -f "$new_api"   # eskisi hizmette kalır
+     release_status=1
+   fi
+   release_services=(worker caddy)
+   ```
+   Konteyner adı bundan sonra `marketplacehub-api-2`, `-3`... olur.
+3. Ada bağlı yerler etikete (`com.docker.compose.service=api`) geçer: `deploy/scripts/readonly-entrypoint.sh` (`images`,
+   `logs`, `journal`: journald'da aynı alanın birden çok değeri VEYA'dır, `docker ps` ile bulunan adlar
+   `CONTAINER_NAME=<ad>` olarak art arda verilir), `deploy/scripts/rollback.sh` ve `verify_stack` (`lib.sh`), bu
+   runbook'taki `docker stop marketplacehub-api-1` komutları, `docs/RUNBOOK-OLAY.md`, `.claude/skills/prod-logs`.
+   `healthwatch.sh` zaten etiketle buluyor.
+4. Bellek: iki kopya birkaç saniye için 2 × 1,5 GB sınır; 16 GB sunucuda sorun değil.
+5. Yan etkiler: iki kopya birkaç saniye birlikte çalışır. API'nin arka plan servisleri (idempotency ve silinmiş dosya
+   saklaması, kategori değişikliği dinleyicisi, canlı yayın) aynı işi iki kez yapabilir; hepsi tekrarlanabilir silme ya
+   da okuma. SignalR bağlantıları eski kopya kapanınca yeniden bağlanır (bugün de öyle). Data Protection anahtarları
+   ortak volume'de (`dp_keys`).
+6. Test: `tests/ops/test-fast-deploy-web-only.sh` gibi sahte `docker` ile "yeni sağlıklı → eski durdu" ve "yeni sağlıksız
+   → eski kaldı, deploy 1 ile çıktı"; canlıda bir deploy sırasında `while curl -fsS https://<site>/health/live >/dev/null;
+   do sleep 0.2; done` hiç kesilmemeli, Caddy logunda 502 olmamalı.

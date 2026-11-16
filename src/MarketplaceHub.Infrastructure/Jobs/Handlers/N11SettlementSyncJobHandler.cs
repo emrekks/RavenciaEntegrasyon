@@ -296,32 +296,17 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
         db.ChangeTracker.Clear();
         var key = FailureKey(request.ConnectionId);
         var summary = Short($"N11 hakediş kayıtları okunamadı ({error.Code}: {error.SafeMessage}); okunan günler kaydedildi, kalanlar sonraki çalışmada yeniden denenecek.", 1000)!;
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == request.TenantId && item.DedupeKey == key, cancellationToken);
-        if (issue is null)
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = request.TenantId, DedupeKey = key, Code = FailureCode, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
-        else
-        {
-            issue.Code = FailureCode;
-            issue.Summary = summary;
-            issue.Status = IssueStatus.Open;
-            issue.LastSeenAt = now;
-            issue.OccurrenceCount++;
-        }
+        // ISLEYICI-12 point 5: the shared IssueRecorder.
+        await new IssueRecorder(db).RecordAsync(request.TenantId, key, FailureCode, summary, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return new(JobExecutionResult.FromAdapterError(error), telemetry);
     }
 
-    private async Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key && item.Status != IssueStatus.Resolved, cancellationToken);
-        if (issue is null) return;
-        issue.Status = IssueStatus.Resolved;
-        issue.LastSeenAt = now;
-        issue.ResolvedAt = now;
-    }
+    private Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).ResolveAsync(tenantId, key, now, cancellationToken, IssueResolveStamps.ResolvedAt | IssueResolveStamps.LastSeenAt);
 
     private int Setting(string name, int fallback, int minimum, int maximum) =>
         Math.Clamp(configuration.GetValue($"MarketplaceSync:N11Settlement:{name}", fallback), minimum, maximum);
 
-    private static string? Short(string? value, int length) => value is null || value.Length <= length ? value : value[..length];
+    private static string? Short(string? value, int length) => TextValues.Truncate(value, length);
 }
