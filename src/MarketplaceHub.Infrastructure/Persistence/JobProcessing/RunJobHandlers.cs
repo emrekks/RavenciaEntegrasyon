@@ -58,6 +58,63 @@ internal sealed class OrderReadRunHandler(Func<JobRunContext, JobRunServices> se
         services(run).OrderRead.ReconcileTrendyolOrderWindows(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
 }
 
+// The order invoice checks (InvoiceReconciliationService). Trendyol's is the direct path: a run stopped at its slice budget
+// with orders left continues shortly; the others answer as the bool methods do.
+internal sealed class OrderInvoiceReconciliationRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler, IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public async Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        (await services(run).InvoiceReconciliation.ReconcileOrderInvoices(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, request.JobId, cancellationToken)).Succeeded;
+
+    // Trendyol's invoice check (the table sends only Trendyol connections here).
+    public async Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        (await services(run).InvoiceReconciliation.ReconcileOrderInvoices(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, request.JobId, cancellationToken)).Unfinished
+            ? JobExecutionResult.Continue("Fatura kontrolü kaldığı siparişten birkaç saniye içinde devam edecek.")
+            : JobExecutionResult.Success();
+}
+
+// Trendyol's cargo-info check (OrderReadService.ReconcileTrendyolCargoInfo); another store's job ends in the dispatch
+// table with its "not applicable" note before it gets here.
+internal sealed class TrendyolCargoInfoRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        services(run).OrderRead.ReconcileTrendyolCargoInfo(request.TenantId, request.ConnectionId, request.CorrelationId, cancellationToken);
+}
+
+// The listing verification scan and the single-code lookups it queues (ListingVerificationService); both answer with a
+// result of their own (a slice that continues, a note), so they run on the direct path only.
+internal sealed class ListingVerificationRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.ListingVerify, MarketplaceJobTypes.ListingLookup];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.ListingVerify => services(run).ListingVerification.VerifyListings(request.TenantId, request.ConnectionId, request.CorrelationId, request.JobId, cancellationToken),
+        MarketplaceJobTypes.ListingLookup => services(run).ListingVerification.RunListingLookups(request.TenantId, request.ConnectionId, request.CorrelationId, request.JobId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a listing verification.")
+    };
+}
+
+// The connection test of every marketplace (ConnectionTestService).
+internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, MarketplaceJobTypes.N11ConnectionTest, MarketplaceJobTypes.PazaramaConnectionTest, MarketplaceJobTypes.PttAvmConnectionTest];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        services(run).ConnectionTest.TestConnection(request.TenantId, request.ConnectionId, request.CorrelationId, cancellationToken);
+}
+
 // The return reads (ReturnReadService): new claims, the open-claim scans and Trendyol's return reconciliation.
 internal sealed class ReturnReadRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

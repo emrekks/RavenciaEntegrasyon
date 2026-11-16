@@ -9,7 +9,7 @@ namespace MarketplaceHub.Infrastructure.Adapters;
 
 // Circuit breaker for marketplace hosts without their own resilience handler (Hepsiburada, n11,
 // Pazarama, Shopify), one circuit per API family and account. Five consecutive failures (5xx, 408,
-// network errors, request timeouts) open the circuit for 30 s; a 429 with Retry-After opens it for
+// network errors, request timeouts, a 429 naming no wait) open the circuit for 30 s; a 429 with Retry-After opens it for
 // that long (at most 15 min). While open, calls are answered locally: 429 for a quota stop, so the job is deferred without losing an attempt, otherwise 503. After the
 // break one probe request is let through; its result closes or reopens the circuit. It sits outside the
 // marketplace's rate-limit handler, so a call refused by an open circuit never takes a quota token.
@@ -64,9 +64,9 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
                 return response;
             }
             var status = (int)response.StatusCode;
-            // A 429 naming no wait teaches this circuit nothing; Trendyol's counts it as a failure
-            // (MarketplaceCircuitRules, an owner decision).
-            if (status == 429 && RetryAfter(response.Headers.RetryAfter) is null && MarketplaceCircuitRules.SharedCircuitCountsQuotaStopWithoutRetryAfter)
+            // ADAPTOR-TY-HB-7 (owner decision, 16 Nov 2026): a 429 naming no wait counts as a failure, as in Trendyol's
+            // circuit; one with a wait breaks the circuit for that wait.
+            if (status == 429 && RetryAfter(response.Headers.RetryAfter) is null)
                 circuit.Record(timeProvider.GetUtcNow(), succeeded: false);
             else if (status == 429)
                 circuit.RecordQuota(timeProvider.GetUtcNow(), RetryAfter(response.Headers.RetryAfter));

@@ -1,0 +1,147 @@
+{
+  "Runs": [
+    {
+      "Run": "test",
+      "JobType": "PAZARAMA_CONNECTION_TEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "connection.Test key=connection-test",
+        "connection.Discover key=connection-test"
+      ]
+    },
+    {
+      "Run": "test-again",
+      "JobType": "PAZARAMA_CONNECTION_TEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "connection.Test key=connection-test",
+        "connection.Discover key=connection-test"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "PlatformCapability",
+      "Rows": [
+        {
+          "ApiVersion": "2026-01",
+          "Code": "ORDER_READ",
+          "ConnectionId": "connection",
+          "ConstraintsJson": null,
+          "Environment": "PRODUCTION",
+          "EvidenceNote": "golden ORDER_READ SUPPORTED",
+          "FixtureChecksum": null,
+          "Id": "id1",
+          "RequiredScope": null,
+          "SourceUrl": "https://docs.example.test",
+          "SourceVersion": "1",
+          "StoreScope": "store-from-marketplace",
+          "SupportLevel": "Supported",
+          "TenantId": "tenant",
+          "VerifiedAt": "T-00:01:00",
+          "Version": 2
+        },
+        {
+          "ApiVersion": "2026-01",
+          "Code": "PRODUCT_READ",
+          "ConnectionId": "connection",
+          "ConstraintsJson": null,
+          "Environment": "PRODUCTION",
+          "EvidenceNote": "golden PRODUCT_READ SUPPORTED",
+          "FixtureChecksum": null,
+          "Id": "id2",
+          "RequiredScope": null,
+          "SourceUrl": "https://docs.example.test",
+          "SourceVersion": "1",
+          "StoreScope": "store-from-marketplace",
+          "SupportLevel": "Supported",
+          "TenantId": "tenant",
+          "VerifiedAt": "T-00:01:00",
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "PAZARAMA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": "T+00:01:06",
+          "LastTestedAt": "T+00:01:06",
+          "PlatformCode": "PAZARAMA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "VERIFIED",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id3",
+          "LastAttemptAt": "T+00:01:05",
+          "LastChangedCount": 2,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 2,
+          "LastRequestCount": 2,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:08",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "CONNECTION_TEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "connections PlatformConnection updated x2"
+      ]
+    }
+  ]
+}

@@ -376,12 +376,15 @@ yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karard�
 
 - **VERITABANI-DAGITIM-11, `billing.invoices."SequenceNumber"` sütununu silmek (genişlet-daralt 2. aşama):**
   hiç yazılmayan ve okunmayan sütun 16 Kasım 2026'da modelden çıkarıldı (`20261116090000_StopMappingInvoiceSequenceNumber`,
-  boş `Up`; canlıda 2 faturanın hiçbirinde değer yok). O sürüm canlıya çıktıktan **sonraki** bir sürümde migration:
-  `migrationBuilder.Sql("ALTER TABLE billing.invoices DROP COLUMN IF EXISTS \"SequenceNumber\"");` ve dosyada
-  `expand-contract: phase 2 of 20261116090000_StopMappingInvoiceSequenceNumber` işaret yorumu (`//` ile; migration
-  guard bunu arar). Sütun silme kısa ACCESS EXCLUSIVE kilit alır (`lock_timeout` ile).
+  boş `Up`; 1. aşama yazılırken canlıda 2 faturanın hiçbirinde değer yoktu). **Yazıldı:** `20261116180000_DropInvoiceSequenceNumber`
+  (`DROP COLUMN IF EXISTS`, `SET LOCAL lock_timeout = '5s'`, `Down` boş nullable sütunu geri ekler). Yazıldığı an
+  canlı `ce8d854e99b4` ve bir önceki sürüm sütunu hiç anmıyor (16 Kasım, salt okuma: 7 faturanın 0'ında değer var);
+  imaj geri alındığında da sütun okunmaz. `6802b4706b64` öncesi bir imaja ELLE dönülecekse önce bu migration'ın
+  `Down`'ı çalıştırılır: o imajlar sütunu eşler, sütun yokken her fatura sorgusu 42703 ile düşer (otomatik geri alma
+  bu durumu üretmez). Canlıya çıkınca: `/prod-sql --columns billing.invoices` listesinde
+  `SequenceNumber` olmamalı.
 
-## 10. Kesintisiz deploy: iki API kopyası (tasarım, VERITABANI-DAGITIM-4)
+## 10. Kesintisiz deploy: iki API kopyası (hazır yama, uygulanmamış; VERITABANI-DAGITIM-4)
 
 **Bugün (16 Kasım 2026):** tek `api` konteyneri var; tam deploy eskisini durdurup yenisini başlatır. Caddy iki
 `reverse_proxy` bloğunda `lb_try_duration 45s` / `lb_try_interval 500ms` ile yeni API dinleyene kadar isteği bekletir:
@@ -390,62 +393,82 @@ kalır (`compose.production.yaml`, `journald` sürücüsü; `docker logs` yalnı
 onu kullanmayın): `/prod-logs journal caddy --since <deploy zamanı> --grep '"status":50[234]|connection refused'`.
 Canlı (salt okuma): 15 Kasım 22:22Z deploy'unda bu logda `connection refused` satırları var; 16 Kasım 00:17Z
 deploy'undan sonra hiç yok (gece, trafik azdı; birkaç gündüz deploy'undan sonra yeniden sayın). Bu yeterli değilse
-aşağıdaki tasarım kesintiyi sıfıra indirir; deploy akışını değiştirdiği için **hiçbiri uygulanmadı**.
+aşağıdaki hazır yama kesintiyi sıfıra indirir; deploy akışını değiştirdiği için **uygulanmadı**.
 
-**Akış (yeni önce, eski sonra):** migrate bugünkü gibi önce çalışır. Sonra `api` iki kopyaya çıkar: yeni imajla ikinci
-konteyner açılır, sağlıklı olunca Caddy ona da istek gönderir, eski konteyner 45 sn'lik `stop_grace_period` ile
-kapanır, tek kopyaya dönülür. Worker ve Caddy bugünkü gibi yeniden yaratılır.
+Hazır, **uygulanmamış** yama:
+[`docs/patches/VERITABANI-DAGITIM-4-api-rollover.patch`](patches/VERITABANI-DAGITIM-4-api-rollover.patch).
+`tests/ops/test-owner-patches.sh` yamanın temiz uygulandığını ve henüz uygulanmadığını, `tests/ops/test-api-rollover.sh`
+yamadaki geçiş mantığını (yamayı geçici bir kopyaya uygulayıp, sahte `docker`/`compose` ile) her Validate'te dener.
 
-1. `deploy/caddy/Caddyfile.production` ve `Caddyfile`, iki `reverse_proxy` bloğu: `api:8080` yerine Docker DNS'inden
-   bütün kopyalar ve sağlık denetimi (`tests/ops/test-caddy-proxy.sh` buna göre güncellenir):
+**Akış (yeni önce, eski sonra):** migrate bugünkü gibi önce çalışır. Sonra `api_rollover` (yeni
+`deploy/scripts/api-rollover.sh`, `fast-deploy.sh` yükler): `compose up -d --no-build --no-deps --no-recreate
+--scale api=2 api` çalışan kopyaya dokunmadan yeni imajla ikinci konteyneri açar; Docker onu `healthy` bildirene kadar
+(en çok 60 × 2 sn) beklenir; 5 sn sonra (Caddy'nin DNS yenilemesi yeni kopyayı görsün) eski kopya
+`docker stop --time 45` ile (istekleri bitsin) durdurulur ve silinir. Yeni kopya açılmaz, `unhealthy` olur ya da çıkarsa
+silinir, **eskisi hizmette kalır** ve sürüm başarısız sayılır (bugünkü gibi uyarı; otomatik geri alma yalnız worker ve
+Caddy'yi önceki imajla yeniden yaratır, onlar zaten eskidir). Worker ve Caddy sonra bugünkü gibi yeniden yaratılır.
+Web-only sürüm değişmez (yalnız Caddy). Konteyner adı bundan sonra `marketplacehub-api-2`, `-3`... olur.
+
+Yamanın içeriği:
+
+1. `deploy/caddy/Caddyfile.production` ve `Caddyfile`, iki `reverse_proxy` bloğu: `api:8080` yerine Docker DNS'inin
+   `api` adına verdiği bütün kopyalar, her saniye yeniden okunur:
    ```caddyfile
    reverse_proxy {
-       dynamic a {
-           name api
-           port 8080
-           refresh 2s
+       dynamic a api 8080 {
+           refresh 1s
        }
        lb_policy round_robin
+       fail_duration 10s
        lb_try_duration 45s
        lb_try_interval 500ms
-       health_uri /health/live
-       health_interval 2s
-       health_fails 2
-       fail_duration 10s
    }
    ```
-2. `deploy/scripts/fast-deploy.sh`, `release_services=(api worker caddy)` satırının yerine (`web_only` değilse):
-   ```bash
-   api_ids() { "${sudo_cmd[@]}" docker ps -q --filter label=com.docker.compose.project=marketplacehub --filter label=com.docker.compose.service=api; }
-   old_api="$(api_ids)"
-   "${compose[@]}" up -d --no-build --no-deps --no-recreate --scale api=2 api || release_status=$?
-   new_api="$(api_ids | grep -vxF "$old_api" || true)"
-   healthy=false
-   for _ in $(seq 1 60); do
-     if [[ "$("${sudo_cmd[@]}" docker inspect -f '{{.State.Health.Status}}' "$new_api")" == healthy ]]; then healthy=true; break; fi
-     sleep 2
-   done
-   if [[ "$healthy" == true ]]; then
-     sleep 5   # Caddy'nin DNS yenilemesi ve sağlık denetimi yeni kopyayı görsün
-     "${sudo_cmd[@]}" docker stop --time 45 "$old_api"
-     "${sudo_cmd[@]}" docker rm "$old_api"
-   else
-     "${sudo_cmd[@]}" docker rm -f "$new_api"   # eskisi hizmette kalır
-     release_status=1
-   fi
-   release_services=(worker caddy)
-   ```
-   Konteyner adı bundan sonra `marketplacehub-api-2`, `-3`... olur.
-3. Ada bağlı yerler etikete (`com.docker.compose.service=api`) geçer: `deploy/scripts/readonly-entrypoint.sh` (`images`,
-   `logs`, `journal`: journald'da aynı alanın birden çok değeri VEYA'dır, `docker ps` ile bulunan adlar
-   `CONTAINER_NAME=<ad>` olarak art arda verilir), `deploy/scripts/rollback.sh` ve `verify_stack` (`lib.sh`), bu
-   runbook'taki `docker stop marketplacehub-api-1` komutları, `docs/RUNBOOK-OLAY.md`, `.claude/skills/prod-logs`.
-   `healthwatch.sh` zaten etiketle buluyor.
-4. Bellek: iki kopya birkaç saniye için 2 × 1,5 GB sınır; 16 GB sunucuda sorun değil.
-5. Yan etkiler: iki kopya birkaç saniye birlikte çalışır. API'nin arka plan servisleri (idempotency ve silinmiş dosya
+   **Önceki tasarımdan fark:** Caddy belgesine göre etkin sağlık denetimi (`health_uri` ...) dinamik upstream'lerde
+   çalışmaz ("active health checks do not run for dynamic upstreams", caddyserver.com reverse_proxy). Bu yüzden
+   `health_uri` yok: yeni kopyanın sağlığını deploy betiği Docker'ın healthcheck'iyle bekler; bağlantıyı reddeden kopya
+   (kapanmakta olan eski) edilgen denetimle 10 sn atlanır, istek diğerine yeniden denenir (bağlantı kurulamadığında her
+   yöntem için yeniden deneme serbest). `tests/ops/test-caddy-proxy.sh` iki dosyada da bunu arar.
+2. `deploy/scripts/fast-deploy.sh`: `release_services=(api worker caddy)` yerine `api_rollover`, ardından
+   `release_services=(worker caddy)`. `tests/ops/test-fast-deploy-web-only.sh` yeni betiği de kopyalar.
+3. `deploy/compose/compose.production.yaml`: api'nin journald seçeneklerine `labels: "com.docker.compose.service"`
+   (kayıtlar `COM_DOCKER_COMPOSE_SERVICE=api` alanını taşır). `compose.yaml` değişmez: api'de `container_name` ve
+   yayımlanan port yok (ölçeklenebilir), `stop_grace_period: 45s` zaten var.
+4. `marketplacehub-api-1` adını anan yerler (16 Kasım taraması):
+   - Yamada değişenler: `deploy/scripts/readonly-entrypoint.sh` (`images`, `logs`, `errors`, `journal`: konteynerler
+     Compose etiketiyle bulunur; `journal` eski `-1` adını, güncel adları ve `+` ile `COM_DOCKER_COMPOSE_SERVICE` alanını
+     birlikte sorar), `deploy/scripts/healthwatch.sh` (uyarı metnindeki `journalctl` komutu; konteyneri zaten etiketle
+     buluyor), `compose.production.yaml` baştaki yorum.
+   - Yama uygulandığında elle güncellenecek belgeler: `CLAUDE.md` (Live satırı), `.claude/skills/prod-logs/SKILL.md`,
+     `docs/CI-CD-DEPLOY.md` (journald örnekleri, MFA doğrulaması `docker exec`, `--pid container:` satırı),
+     `docs/ISLEYIS-KILAVUZU.md` (konteyner tablosu), `docs/RUNBOOK-OLAY.md` (`journalctl`, `docker exec`,
+     `docker restart`), bu runbook'un 1., 3. ve 4. bölümlerindeki `docker stop/start/restart/inspect
+     marketplacehub-api-1` komutları: hepsinde ad yerine
+     `$(sudo docker ps -q --filter label=com.docker.compose.service=api)`.
+   - Değişmesi gerekmeyenler: `rollback.sh` (`compose up -d --no-deps api worker caddy` tek kopyayı yeniden yaratır;
+     geri alma bugünkü gibi birkaç saniye Caddy'nin 45 sn beklemesiyle geçer), `lib.sh` `verify_stack` ve
+     `running_service_image` (etiketle buluyor), `ship.sh` (`ravencia-ro images` aynı üç satırı verir).
+5. Bellek: iki kopya birkaç saniye için 2 × 1,5 GB sınır; 16 GB sunucuda sorun değil.
+6. Yan etkiler: iki kopya birkaç saniye birlikte çalışır. API'nin arka plan servisleri (idempotency ve silinmiş dosya
    saklaması, kategori değişikliği dinleyicisi, canlı yayın) aynı işi iki kez yapabilir; hepsi tekrarlanabilir silme ya
    da okuma. SignalR bağlantıları eski kopya kapanınca yeniden bağlanır (bugün de öyle). Data Protection anahtarları
-   ortak volume'de (`dp_keys`).
-6. Test: `tests/ops/test-fast-deploy-web-only.sh` gibi sahte `docker` ile "yeni sağlıklı → eski durdu" ve "yeni sağlıksız
-   → eski kaldı, deploy 1 ile çıktı"; canlıda bir deploy sırasında `while curl -fsS https://<site>/health/live >/dev/null;
-   do sleep 0.2; done` hiç kesilmemeli, Caddy logunda 502 olmamalı.
+   ortak volume'de (`dp_keys`). Kalan küçük risk: eski kopyaya açık bir keep-alive bağlantısında tam kapanış anında
+   giden yazma isteği 502 alabilir (Go yalnız idempotent istekleri yeniden dener); 45 sn'lik kapanış süresi içinde
+   Kestrel açık istekleri bitirir.
+
+**Uygulama (sahip):**
+1. Yeni dalda `git apply docs/patches/VERITABANI-DAGITIM-4-api-rollover.patch` (başka bir yama önce uygulandıysa
+   `--3way`), yama dosyasını silip bu bölümü "uygulandı" diye güncelleyin, 4. maddedeki belgeleri düzeltin, Validate'i
+   bekleyip gönderin. Readonly erişim betiği sunucuya `install-readonly-access.sh` ile yeniden kurulur (kurulu kopya
+   deploy'la değişmez).
+2. Bir sonraki tam deploy sırasında: `while curl -fsS https://<site>/health/live >/dev/null; do sleep 0.2; done` hiç
+   kesilmemeli; sonra `/prod-logs journal caddy --since <deploy zamanı> --grep '"status":502|connection refused'` boş,
+   `/prod-logs status`'ta tek `marketplacehub-api-<n>`; `journalctl -o verbose COM_DOCKER_COMPOSE_SERVICE=api -n 1`
+   alanı gösteriyor olmalı.
+
+**Geri dönüş:** yamanın commit'ini `git revert` edip gönderin; Caddy yeniden `api:8080` tek upstream'ine, deploy
+yeniden "eskiyi durdur, yeniyi başlat" akışına döner; readonly erişim betiği eski hâliyle yeniden kurulur. O deploy
+api'yi tek kopya olarak yeniden yaratır ama adı `marketplacehub-api-2` gibi kalabilir; geri alınmış betikler `-1` adını
+aradığından o durumda bir kez (birkaç saniyelik kesinti, bugünkü bir deploy kadar) Compose ile api'yi sıfıra indirip
+yeniden açın: `... up -d --no-build --no-deps --scale api=0 api`, ardından `... up -d --no-build --no-deps api`
+(`...` = `fast-deploy.sh`'daki `compose` dizisinin komutu); yeni konteyner `marketplacehub-api-1` olur.

@@ -83,7 +83,7 @@ public sealed partial class PttAvmHttpClient
         var body = exchange.Body;
         if (LocalCircuitResponse.Refusal(response, "PTTAVM", "PttAVM") is { } localCircuit)
             return AdapterResult<XElement>.Failure(localCircuit, new RateLimitMetadata(null, null, localCircuit.RetryAfter));
-        var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        var retryAfter = RetryAfterHeader.Delay(response.Headers.RetryAfter, timeProvider.GetUtcNow());
         var parsed = SoapResponse(response.StatusCode, body, operation, retryAfter);
         if (parsed.Error is { } error)
         {

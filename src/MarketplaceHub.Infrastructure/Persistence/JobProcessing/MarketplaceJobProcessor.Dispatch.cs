@@ -29,8 +29,23 @@ public sealed partial class MarketplaceJobProcessor
 
     private ReturnReadRunHandler ReturnReadHandler => returnReadHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 1: the invoice checks, the cargo-info check, the listing verification and the connection tests.
+    private OrderInvoiceReconciliationRunHandler? orderInvoiceReconciliationHandler;
+    private TrendyolCargoInfoRunHandler? trendyolCargoInfoHandler;
+    private ListingVerificationRunHandler? listingVerificationHandler;
+    private ConnectionTestRunHandler? connectionTestHandler;
+
+    private OrderInvoiceReconciliationRunHandler OrderInvoiceReconciliationHandler => orderInvoiceReconciliationHandler ??= new(ServicesFor);
+
+    private TrendyolCargoInfoRunHandler TrendyolCargoInfoHandler => trendyolCargoInfoHandler ??= new(ServicesFor);
+
+    private ListingVerificationRunHandler ListingVerificationHandler => listingVerificationHandler ??= new(ServicesFor);
+
+    private ConnectionTestRunHandler ConnectionTestHandler => connectionTestHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
-    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler];
+    internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
+        OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -38,6 +53,13 @@ public sealed partial class MarketplaceJobProcessor
 
     private static BoolJob RunBool(Func<MarketplaceJobProcessor, IRunBoolJobHandler> handler) =>
         (p, a, cancellationToken) => handler(p).HandleAsync(p.RunRequest(a), p.run, cancellationToken);
+
+    private static DirectJob RunDirect(Func<MarketplaceJobProcessor, IRunDirectJobHandler> handler) =>
+        async (p, a, cancellationToken) => await handler(p).HandleDirectAsync(p.RunRequest(a), p.run, cancellationToken);
+
+    // A handler's direct path for Trendyol connections only; another platform's job goes on to BoolJobDispatch.
+    private static DirectJob RunDirectOnTrendyol(Func<MarketplaceJobProcessor, IRunDirectJobHandler> handler) =>
+        async (p, a, cancellationToken) => a.Platform == "TRENDYOL" ? await handler(p).HandleDirectAsync(p.RunRequest(a), p.run, cancellationToken) : null;
 
     private delegate Task<JobExecutionResult?> DirectJob(MarketplaceJobProcessor processor, JobDispatchArgs a, CancellationToken cancellationToken);
 
@@ -57,17 +79,11 @@ public sealed partial class MarketplaceJobProcessor
         [MarketplaceJobTypes.CommonLabel] = async (p, a, cancellationToken) => await p.CommonLabel(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.CapabilityProbe] = async (p, a, cancellationToken) => await p.LabelCapabilityProbe(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.StageTestOrder] = async (p, a, cancellationToken) => await p.CreateStageTestOrder(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.OrderReconciliation] = async (p, a, cancellationToken) => a.Platform == "TRENDYOL"
-            ? await p.OrderReadHandler.HandleDirectAsync(p.RunRequest(a), p.run, cancellationToken)
-            : null,
+        [MarketplaceJobTypes.OrderReconciliation] = RunDirectOnTrendyol(p => p.OrderReadHandler),
         [MarketplaceJobTypes.ExternalEffectReconcile] = async (p, a, cancellationToken) => await p.ReconcileExternalEffect(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.ListingVerify] = async (p, a, cancellationToken) => await p.VerifyListings(a.TenantId, a.ConnectionId, a.CorrelationId, a.JobId, cancellationToken),
-        [MarketplaceJobTypes.ListingLookup] = async (p, a, cancellationToken) => await p.RunListingLookups(a.TenantId, a.ConnectionId, a.CorrelationId, a.JobId, cancellationToken),
-        [MarketplaceJobTypes.OrderInvoiceReconciliation] = async (p, a, cancellationToken) => a.Platform == "TRENDYOL"
-            ? (await p.ReconcileOrderInvoices(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)).Unfinished
-                ? JobExecutionResult.Continue("Fatura kontrolü kaldığı siparişten birkaç saniye içinde devam edecek.")
-                : JobExecutionResult.Success()
-            : null,
+        [MarketplaceJobTypes.ListingVerify] = RunDirect(p => p.ListingVerificationHandler),
+        [MarketplaceJobTypes.ListingLookup] = RunDirect(p => p.ListingVerificationHandler),
+        [MarketplaceJobTypes.OrderInvoiceReconciliation] = RunDirectOnTrendyol(p => p.OrderInvoiceReconciliationHandler),
         // J1 (15 Nov 2026): the cargo-info check reads Trendyol packages only. On another store it has nothing to do and
         // succeeds with a note, instead of ending Blocked F3_JOB_REJECTED as if something had been refused.
         [MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation] = (_, a, _) => Task.FromResult(a.Platform == "TRENDYOL"
@@ -77,15 +93,12 @@ public sealed partial class MarketplaceJobProcessor
 
     // Methods that return bool: false ends the job Blocked F3_JOB_REJECTED.
     private static readonly IReadOnlyDictionary<string, BoolJob> BoolJobDispatch = Table(
-        ([MarketplaceJobTypes.ConnectionTest, MarketplaceJobTypes.ShopifyConnectionTest, MarketplaceJobTypes.HepsiburadaConnectionTest, MarketplaceJobTypes.N11ConnectionTest, MarketplaceJobTypes.PazaramaConnectionTest, MarketplaceJobTypes.PttAvmConnectionTest],
-            async (p, a, cancellationToken) => await p.TestConnection(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
+        ([.. ConnectionTestRunHandler.Types], RunBool(p => p.ConnectionTestHandler)),
         ([.. ReferenceSyncRunHandler.Types], RunBool(p => p.ReferenceSyncHandler)),
         ([.. OrderReadRunHandler.SyncTypes, .. OrderReadRunHandler.RecoveryTypes, .. OrderReadRunHandler.StatusTypes], RunBool(p => p.OrderReadHandler)),
-        ([MarketplaceJobTypes.TrendyolOrderCargoInfoReconciliation],
-            async (p, a, cancellationToken) => await p.ReconcileTrendyolCargoInfo(a.TenantId, a.ConnectionId, a.CorrelationId, cancellationToken)),
+        ([.. TrendyolCargoInfoRunHandler.Types], RunBool(p => p.TrendyolCargoInfoHandler)),
         ([.. OrderReadRunHandler.ReconciliationTypes], RunBool(p => p.OrderReadHandler)),
-        ([MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation],
-            async (p, a, cancellationToken) => (await p.ReconcileOrderInvoices(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken)).Succeeded),
+        ([.. OrderInvoiceReconciliationRunHandler.Types], RunBool(p => p.OrderInvoiceReconciliationHandler)),
         ([.. ProductSyncRunHandler.Types], RunBool(p => p.ProductSyncHandler)),
         ([.. ReturnReadRunHandler.Types], RunBool(p => p.ReturnReadHandler)),
         ([.. CatalogStructureImportRunHandler.Types], RunBool(p => p.CatalogStructureImportHandler)),

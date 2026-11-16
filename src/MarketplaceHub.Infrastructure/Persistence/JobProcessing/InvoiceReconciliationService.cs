@@ -10,10 +10,72 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+// ISLEYICI-9 stage 5 step 1 (16 Nov 2026): the order invoice checks (ORDER_INVOICE_RECONCILIATION and its Shopify and
+// Hepsiburada types), moved out of the job processor as they were: Trendyol's package reads with the six-hourly sweep,
+// the Order V2 batches, the claim-order hydration and the slice budget; Hepsiburada's order details and missing-invoice
+// list; the order details of the others. It works for one run of one job (run) on the job's AppDbContext and stores
+// what it reads through that run's OrderIngestionService. Reads only: nothing is sent to a marketplace, no invoice is
+// made, and a missing invoice field is never taken as "not invoiced" (unknown stays unknown).
+internal sealed partial class InvoiceReconciliationService(
+    AppDbContext db,
+    IssueRecorder issues,
+    SyncCursorStore cursors,
+    IOrderPort orders,
+    IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus,
+    IConfiguration configuration,
+    TimeProvider timeProvider,
+    OrderIngestionService orderIngestion,
+    OrderReadService orderRead,
+    JobRunContext run)
 {
+    // What the moved code used from the processor: the same classes and helpers the processor calls.
+    private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
+        issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
+
+    private Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
+        issues.ResolveAsync(tenantId, key, timeProvider.GetUtcNow(), cancellationToken);
+
+    private Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) =>
+        cursors.GetAsync(tenantId, connectionId, resource, cancellationToken);
+
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived() => run.TrackReceived();
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    private static int ReadBoundedInt(string payloadJson, string propertyName, int fallback, int minimum, int maximum) =>
+        JobPayloadReader.BoundedInt(payloadJson, propertyName, fallback, minimum, maximum);
+
+    private Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        orderIngestion.ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+
+    private Task<bool> UpsertOrder(Guid tenantId, Guid connectionId, RemoteOrder remote, CancellationToken cancellationToken, OrderIngestionService.OrderIngestionBatch? batch = null, bool saveChanges = true, bool persistFinancialObservations = false) =>
+        orderIngestion.UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges, persistFinancialObservations);
+
+    private Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken, string? discoverySource = null) =>
+        orderIngestion.MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, discoverySource);
+
+    private Task<OrderLookupHint?> OrderHint(Guid tenantId, Guid connectionId, string externalOrderId, CancellationToken cancellationToken) =>
+        orderRead.OrderHint(tenantId, connectionId, externalOrderId, cancellationToken);
+
+    private Task ReadMissingHepsiburadaOrdersAsync(Guid tenantId, Guid connectionId, string correlationId, IEnumerable<(string OrderNumber, string? PackageNumber)> references, CancellationToken cancellationToken) =>
+        orderRead.ReadMissingHepsiburadaOrdersAsync(tenantId, connectionId, correlationId, references, cancellationToken);
+
+    private static string? TrendyolWebhookStorefront(string rawPackageJson) => OrderReadService.TrendyolWebhookStorefront(rawPackageJson);
+
+    // A package the invoice check read on its own (Trendyol): its number, the marketplace invoice number and state.
+    private void RecordInvoiceRead(ShipmentPackage package, MarketplaceInvoiceStatus before, string? numberBefore)
+    {
+        if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "INVOICE") return;
+        var changed = before != package.MarketplaceInvoiceStatus || !string.Equals(numberBefore, package.MarketplaceInvoiceNumber, StringComparison.Ordinal);
+        run.ReadRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
+    }
+
     // Unfinished: a Trendyol run stopped at its slice budget with orders left; it continues shortly.
-    private async Task<(bool Succeeded, bool Unfinished)> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    internal async Task<(bool Succeeded, bool Unfinished)> ReconcileOrderInvoices(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";

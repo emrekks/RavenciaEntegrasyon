@@ -1,0 +1,371 @@
+{
+  "Runs": [
+    {
+      "Run": "first",
+      "JobType": "ORDER_INVOICE_RECONCILIATION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.GetPackages key=trendyol-invoice-package-batch:8003 [\"8003\",\"8001\"] {\"OrderedAt\":\"2029-12-29T09:00:00+00:00\",\"LastModifiedAt\":null,\"StoreFrontCode\":null}",
+        "orders.GetPackageLookup key=trendyol-invoice-package-read:8001 \"8001\" {\"StatusOccurredAt\":\"2029-12-31T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-12-30T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-30T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":true}",
+        "orders.GetPackageLookup key=trendyol-invoice-package-read:8002 \"8002\" {\"StatusOccurredAt\":\"2029-11-03T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-11-02T09:00:00+00:00\",\"LastModifiedAt\":\"2029-11-02T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":true}",
+        "orders.GetHinted key=trendyol-return-order-hydration:7003 \"7003\" {\"OrderedAt\":\"2029-12-29T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-29T09:00:00+00:00\",\"StoreFrontCode\":null}",
+        "orders.GetPackageLookup key=trendyol-invoice-package-read:8003 \"8003\" {\"StatusOccurredAt\":\"2029-12-30T09:00:00+00:00\",\"Order\":{\"OrderedAt\":\"2029-12-29T09:00:00+00:00\",\"LastModifiedAt\":\"2029-12-29T09:00:00+00:00\",\"StoreFrontCode\":null},\"InvoiceOnly\":true}"
+      ]
+    },
+    {
+      "Run": "again",
+      "JobType": "ORDER_INVOICE_RECONCILIATION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "OperationalIssue",
+      "Rows": [
+        {
+          "Code": "RATE_LIMITED",
+          "DedupeKey": "trendyol-return-order-hydration:connection:7003",
+          "FirstSeenAt": "T+00:00:17",
+          "Id": "id1",
+          "LastSeenAt": "T+00:00:17",
+          "OccurrenceCount": 1,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "İade kaydından oluşturulan kısmi sipariş Trendyol'dan tamamlanamadı; otomatik taramada tekrar denenecek. golden: RATE_LIMITED",
+          "TenantId": "tenant"
+        },
+        {
+          "Code": "TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW",
+          "DedupeKey": "trendyol-invoice-package-read:connection:package-8001",
+          "FirstSeenAt": "T+00:00:08",
+          "Id": "id2",
+          "LastSeenAt": "T+00:00:08",
+          "OccurrenceCount": 1,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "Paket fatura durumu Trendyol'dan doğrulanamadı. golden: TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW",
+          "TenantId": "tenant"
+        },
+        {
+          "Code": "TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW",
+          "DedupeKey": "trendyol-invoice-package-read:connection:package-8002",
+          "FirstSeenAt": "T+00:00:13",
+          "Id": "id3",
+          "LastSeenAt": "T+00:00:13",
+          "OccurrenceCount": 1,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "Paket fatura durumu Trendyol'dan doğrulanamadı. golden: TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW",
+          "TenantId": "tenant"
+        },
+        {
+          "Code": "TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW",
+          "DedupeKey": "trendyol-invoice-package-read:connection:package-8003",
+          "FirstSeenAt": "T+00:00:19",
+          "Id": "id4",
+          "LastSeenAt": "T+00:00:19",
+          "OccurrenceCount": 1,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "Paket fatura durumu Trendyol'dan doğrulanamadı. golden: TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id5",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "7001",
+          "GrossAmount": 100.0000,
+          "Id": "order-7001",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-2.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "7001",
+          "OrderedAt": "T-2.00:00:00",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id6",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "7002",
+          "GrossAmount": 100.0000,
+          "Id": "order-7002",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-60.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "7002",
+          "OrderedAt": "T-60.00:00:00",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "—",
+          "CustomerSearchStamp": "id7",
+          "CustomerSnapshotJson": {
+            "_ravenciaReadModelSource": "RETURN_CLAIM"
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "7003",
+          "GrossAmount": 100.0000,
+          "Id": "order-7003",
+          "InvoiceAddressSnapshotJson": {},
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-3.00:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "7003",
+          "OrderedAt": "T-3.00:00:00",
+          "ShipmentAddressSnapshotJson": {},
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "8001",
+          "GrossAmount": 100.0000,
+          "Id": "package-8001",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-7001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-1.00:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "8002",
+          "GrossAmount": 100.0000,
+          "Id": "package-8002",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-7002",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-59.00:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        },
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "8003",
+          "GrossAmount": 100.0000,
+          "Id": "package-8003",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-7003",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-2.00:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id8",
+          "LastAttemptAt": "T+00:00:30",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:00:34",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "ORDER_INVOICE_RECONCILIATION",
+          "TenantId": "tenant",
+          "Version": 5
+        },
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id9",
+          "LastAttemptAt": null,
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": "T+00:00:00",
+          "LastDurationMs": null,
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:00:21",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "ORDER_INVOICE_SWEEP",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x3",
+        "orders ShipmentPackage created x3"
+      ]
+    }
+  ]
+}

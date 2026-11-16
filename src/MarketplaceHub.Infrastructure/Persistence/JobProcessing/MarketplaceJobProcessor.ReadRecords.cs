@@ -23,15 +23,8 @@ public sealed partial class MarketplaceJobProcessor
         _ => RecordsReadProgress(jobType) ? "ORDER" : null
     };
 
-    // A package the invoice check read on its own (Trendyol): its number, the marketplace invoice number and state.
-    private void RecordInvoiceRead(ShipmentPackage package, MarketplaceInvoiceStatus before, string? numberBefore)
-    {
-        if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "INVOICE") return;
-        var changed = before != package.MarketplaceInvoiceStatus || !string.Equals(numberBefore, package.MarketplaceInvoiceNumber, StringComparison.Ordinal);
-        run.ReadRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
-    }
-
-    // RecordProductRead (a product the catalog read pulled) moved with the import into CatalogImportService.
+    // RecordInvoiceRead (a package the invoice check read) moved with the check into InvoiceReconciliationService, and
+    // RecordProductRead (a product the catalog read pulled) with the import into CatalogImportService.
 
 
     // Stores what this run pulled on the job's summary row, joined to earlier slices of the same job, and returns the job's

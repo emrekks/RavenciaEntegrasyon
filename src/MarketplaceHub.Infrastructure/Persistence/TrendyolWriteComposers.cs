@@ -118,10 +118,10 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
     // The card's variants whose listing on this connection Trendyol still reviews or refused (ImportedApprovalStates).
     internal static async Task<Guid[]> HeldVariantIdsAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken) =>
-        await (from listing in db.ChannelListingVariants.AsNoTracking()
+        await (from listing in db.ChannelListingVariants.AsNoTracking().Where(PolicyExpressions.On<ChannelListingVariant, string?>(ImportedApprovalStates.IsHeldListingRule, listing => listing.ActualStatus))
                join profile in db.ChannelListingProfiles.AsNoTracking() on listing.ProfileId equals profile.Id
                where listing.TenantId == tenantId && profile.TenantId == tenantId && profile.ConnectionId == connectionId
-                   && variantIds.Contains(listing.VariantId) && ImportedApprovalStates.HeldListingStatuses.Contains(listing.ActualStatus)
+                   && variantIds.Contains(listing.VariantId)
                select listing.VariantId).Distinct().ToArrayAsync(cancellationToken);
 
     // The fields "Ürün Güncelleme - Onaysız Ürün v2" does not take: it updates the product information only (offline

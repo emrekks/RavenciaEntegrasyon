@@ -89,14 +89,8 @@ internal static class OrderSnapshotReader
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
         var phone = JsonText(customerJson, "customerPhone", "customerPhoneNumber", "phone", "phoneNumber") ?? JsonText(invoiceAddressJson, "phone", "phoneNumber", "mobilePhone") ?? JsonText(shipmentAddressJson, "phone", "phoneNumber", "mobilePhone");
         var tax = ResolveCustomerTaxOrIdentityNumber(customerJson, invoiceAddressJson, shipmentAddressJson);
-        var microText = JsonText(customerJson, "shipmentPackageType", "orderType");
-        // Trendyol exports through its 3P partner model explicitly return micro=false. The documented
-        // 3pByTrendyol=true signal is still an export order and must be presented as such to operators.
-        // Historical Stage snapshots may predate the export flags while retaining Trendyol's
-        // documented PM3/Arvato export-partner identity. Keep that narrow legacy signal so
-        // existing export orders are not presented as domestic orders.
-        var legacyExportPartner = IsLegacyTrendyolExportPartner(name);
-        var micro = JsonBool(customerJson, "micro", "microExport", "3pByTrendyol") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true || legacyExportPartner;
+        // SIPARIS-STOK-3: the label's rule, beside the filter's (OrderMicroExportRules; the owner decides which holds).
+        var micro = OrderMicroExportRules.Label(customerJson, name);
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
         return (name, email, phone, tax, micro, eInvoice);
     }

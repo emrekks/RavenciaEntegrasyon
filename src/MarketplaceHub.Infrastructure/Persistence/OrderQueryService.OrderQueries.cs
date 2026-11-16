@@ -11,13 +11,20 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 internal sealed partial class OrderQueryService
 {
     // A micro-export order as the row's flag reads it (RowMarks): Trendyol's micro = true in the package snapshot.
-    private Expression<Func<Order, bool>> MicroExportOrder() => x =>
-        (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
-        && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL");
+    // SIPARIS-STOK-3: the filter's rule, beside the label's (OrderMicroExportRules; the owner decides which holds).
+    private Expression<Func<Order, bool>> MicroExportOrder()
+    {
+        var order = Expression.Parameter(typeof(Order), "x");
+        var snapshot = PolicyExpressions.Inline(OrderMicroExportRules.FilterSnapshotRule, Expression.Property(order, nameof(Order.CustomerSnapshotJson)));
+        Expression<Func<Order, bool>> onPlatform = x => db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == OrderMicroExportRules.FilterPlatformCode);
+        return Expression.Lambda<Func<Order, bool>>(Expression.AndAlso(snapshot, PolicyExpressions.Inline(onPlatform, order)), order);
+    }
 
-    private Expression<Func<Order, bool>> DomesticOrder() => x =>
-        !((x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
-            && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
+    private Expression<Func<Order, bool>> DomesticOrder()
+    {
+        var micro = MicroExportOrder();
+        return Expression.Lambda<Func<Order, bool>>(Expression.Not(micro.Body), micro.Parameters);
+    }
 
     internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(HasCurrentManualShopifyStatus(tenantId));
 
