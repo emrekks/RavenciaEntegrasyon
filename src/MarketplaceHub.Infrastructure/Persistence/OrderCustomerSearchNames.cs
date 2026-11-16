@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// SIPARIS-STOK-9: the order's customer name as the screens show it (MarketplaceSalesService.ResolveCustomerName), kept in
+// SIPARIS-STOK-9: the order's customer name as the screens show it (OrderSnapshotReader.ResolveCustomerName), kept in
 // Order.CustomerSearchName so the Returns search is decided by the database. Every tracked save of a new order, or of one
 // whose snapshots changed (or that has no name yet), sets it with a new stamp (AppDbContext). A snapshot write outside the
 // tracker brings no new stamp, and the database trigger of migration CustomerSearchName empties the name then, so a name
@@ -17,7 +17,7 @@ internal static class OrderCustomerSearchNames
     private static readonly string[] SnapshotColumns = [nameof(Order.CustomerSnapshotJson), nameof(Order.InvoiceAddressSnapshotJson), nameof(Order.ShipmentAddressSnapshotJson)];
 
     public static string Resolve(string? customerSnapshotJson, string? invoiceAddressSnapshotJson, string? shipmentAddressSnapshotJson) =>
-        MarketplaceSalesService.ResolveCustomerName(customerSnapshotJson ?? "", invoiceAddressSnapshotJson ?? "", shipmentAddressSnapshotJson ?? "");
+        OrderSnapshotReader.ResolveCustomerName(customerSnapshotJson ?? "", invoiceAddressSnapshotJson ?? "", shipmentAddressSnapshotJson ?? "");
 
     public static void Apply(ChangeTracker changeTracker)
     {

@@ -1,9 +1,10 @@
 using System.Linq.Expressions;
 using MarketplaceHub.Domain;
+using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal static class InvoiceLabelPolicy
 {
     internal static string InvoiceLabel(Invoice? invoice, string customerJson, bool marketplaceDeliveryConfirmed = false) =>
         InvoiceLabel(invoice, customerJson, [], marketplaceDeliveryConfirmed);
@@ -118,8 +119,8 @@ public sealed partial class MarketplaceSalesService
     internal static readonly Expression<Func<Invoice, bool>> IssuedInvoiceNeedsReview = invoice =>
         invoice.Status == InvoiceStatus.ManualReview && invoice.ExternalReference != null && invoice.ExternalReference != "";
 
-    private static readonly Func<Invoice, bool> IsIssuedInvoiceNotOnPlatform = IssuedInvoiceNotOnPlatform.Compile();
-    private static readonly Func<Invoice, bool> IsIssuedInvoiceNeedsReview = IssuedInvoiceNeedsReview.Compile();
+    internal static readonly Func<Invoice, bool> IsIssuedInvoiceNotOnPlatform = IssuedInvoiceNotOnPlatform.Compile();
+    internal static readonly Func<Invoice, bool> IsIssuedInvoiceNeedsReview = IssuedInvoiceNeedsReview.Compile();
 
     internal const string InvoiceNeedsReviewLabel = "FATURA_INCELEME_GEREKLI";
 
@@ -195,15 +196,15 @@ public sealed partial class MarketplaceSalesService
             ?? visible.FirstOrDefault();
     }
 
-    private static bool IsInvoicedRemoteStatus(string? status) =>
+    internal static bool IsInvoicedRemoteStatus(string? status) =>
         string.Equals(status?.Trim(), "INVOICED", StringComparison.OrdinalIgnoreCase);
 
-    private static string? InvoiceDocumentUrl(string customerJson)
+    internal static string? InvoiceDocumentUrl(string customerJson)
     {
         return ValidInvoiceDocumentUrl(JsonText(customerJson, "invoiceLink"));
     }
 
-    private static string? ValidInvoiceDocumentUrl(string? value)
+    internal static string? ValidInvoiceDocumentUrl(string? value)
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }

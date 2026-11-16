@@ -235,7 +235,7 @@ public sealed class InvoicingDeepAuditTests
         };
 
         Assert.Equal(expected, InvoicingBillingService.SharedFiscalLabel(status, errorCode, null));
-        Assert.Equal(expected, MarketplaceSalesService.InvoiceLabelForPlatform(invoice, MarketplaceInvoiceStatus.Invoiced, "{}", [], "TRENDYOL"));
+        Assert.Equal(expected, InvoiceLabelPolicy.InvoiceLabelForPlatform(invoice, MarketplaceInvoiceStatus.Invoiced, "{}", [], "TRENDYOL"));
     }
 
     // G17: the inline budget starts after the batch is queued, so a long queue does not use it up.

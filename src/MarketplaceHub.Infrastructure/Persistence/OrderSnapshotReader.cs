@@ -4,11 +4,11 @@ using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal static class OrderSnapshotReader
 {
     // The shared catalog key (CatalogKeyNormalizer), so order and return lines find variants stored by the panel
     // or the import under the same key (K1).
-    private static string NormalizeCatalogKey(string? value, int maximum) => CatalogKeyNormalizer.Key(value, maximum);
+    internal static string NormalizeCatalogKey(string? value, int maximum) => CatalogKeyNormalizer.Key(value, maximum);
 
     // The codes an order or return line may name a linked variant by: the link id and the marketplace's stock code
     // (a Hepsiburada link is keyed by its hbSku and keeps the merchant SKU beside it).
@@ -22,7 +22,7 @@ public sealed partial class MarketplaceSalesService
     // hbSku/listingId, Shopify variant_id), which a variant link is keyed by. They still find the linked variant after
     // the barcode or stock code was changed on one side only: Trendyol line MZ052BOD-16 is listing 1696621714, linked
     // to the panel variant still coded MZ051BYC-16, and matched no variant by its codes.
-    private static readonly string[] SourceListingIdFields = ["productCode", "contentId", "hbSku", "listingId", "variantId", "variant_id"];
+    internal static readonly string[] SourceListingIdFields = ["productCode", "contentId", "hbSku", "listingId", "variantId", "variant_id"];
 
     internal static string[] LineMarketplaceIdentities(string? sku, string? sourceSnapshotJson)
     {
@@ -71,9 +71,6 @@ public sealed partial class MarketplaceSalesService
         .Where(group => group.Select(candidate => candidate.Variant.Id).Distinct().Count() == 1)
         .ToDictionary(group => group.Key, group => group.First().Variant, StringComparer.OrdinalIgnoreCase);
 
-    private Task<Dictionary<Guid, string>> MediaUrls(Guid tenantId, IEnumerable<Guid?> variantIds, CancellationToken cancellationToken) =>
-        OrderLineCatalog.MediaUrlsAsync(db, tenantId, variantIds.Where(x => x is not null).Select(x => x!.Value), cancellationToken);
-
     // The marketplace's own photo address in a line snapshot, ready to show; null when the line carries none.
     internal static string? SourceLineImageUrl(string? json) => NormalizeImageUrl(SourceImageUrl(json ?? "{}"));
 
@@ -86,7 +83,7 @@ public sealed partial class MarketplaceSalesService
         return (buyer, isMicroExport ? "MIKRO_IHRACAT" : buyer.Kind == OrderBuyerTypeView.Individual ? "BIREYSEL" : "KURUMSAL");
     }
 
-    private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
+    internal static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
     {
         var name = ResolveCustomerName(customerJson, invoiceAddressJson, shipmentAddressJson);
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
@@ -104,7 +101,7 @@ public sealed partial class MarketplaceSalesService
         return (name, email, phone, tax, micro, eInvoice);
     }
 
-    private static readonly HashSet<string> FastDeliveryTypes = new(["TodayDelivery", "SameDayShipping", "FastDelivery"], StringComparer.OrdinalIgnoreCase);
+    internal static readonly HashSet<string> FastDeliveryTypes = new(["TodayDelivery", "SameDayShipping", "FastDelivery"], StringComparer.OrdinalIgnoreCase);
 
     // The order row's marks, read from the package fields the marketplace sent (top level of the customer snapshot only,
     // never from a line). A field that is missing or holds another value leaves its mark out.
@@ -145,7 +142,7 @@ public sealed partial class MarketplaceSalesService
         catch (JsonException) { return null; }
     }
 
-    private static string? MicroExportCountry(string invoiceAddressJson, string? storeFrontCode)
+    internal static string? MicroExportCountry(string invoiceAddressJson, string? storeFrontCode)
     {
         static string? Code(string? value) => value?.Trim().ToUpperInvariant() is { Length: 2 } code && code.All(char.IsAsciiLetterUpper) && code != "TR" ? code : null;
         string? invoiceCountry = null;
@@ -172,7 +169,7 @@ public sealed partial class MarketplaceSalesService
         ?? JsonText(invoiceAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber")
         ?? JsonText(shipmentAddressJson, "taxNumber", "identityNumber", "tcIdentityNumber");
 
-    private static string? NameFrom(string json, string firstName, string lastName, params string[] fullNameFields)
+    internal static string? NameFrom(string json, string firstName, string lastName, params string[] fullNameFields)
     {
         var first = JsonText(json, firstName);
         var last = JsonText(json, lastName);
@@ -180,16 +177,16 @@ public sealed partial class MarketplaceSalesService
         return !string.IsNullOrWhiteSpace(combined) ? combined : JsonText(json, fullNameFields);
     }
 
-    private static string? FirstMeaningful(params string?[] names) => names.FirstOrDefault(name => IsMeaningfulText(name) && !IsPlaceholderCustomerName(name!));
+    internal static string? FirstMeaningful(params string?[] names) => names.FirstOrDefault(name => IsMeaningfulText(name) && !IsPlaceholderCustomerName(name!));
 
-    private static bool IsPlaceholderCustomerName(string name) => name.Trim() is "Adı Soyadı" or "Ad Soyad" or "İsim Soyisim";
+    internal static bool IsPlaceholderCustomerName(string name) => name.Trim() is "Adı Soyadı" or "Ad Soyad" or "İsim Soyisim";
 
     internal static bool IsLegacyTrendyolExportPartner(string name) =>
         name.Contains("PM3", StringComparison.OrdinalIgnoreCase) && name.Contains("ARVATO", StringComparison.OrdinalIgnoreCase);
 
     // A shipping deadline only: Trendyol's (extended) agreed hand-over date or a marketplace's due date;
     // delivery estimates and modification times are not deadlines.
-    private static DateTimeOffset? OperationalDueAt(string json) =>
+    internal static DateTimeOffset? OperationalDueAt(string json) =>
         JsonInstant(json, "extendedAgreedDeliveryDate", "agreedDeliveryDate", "dueDate", "shipmentDueDate", "deliveryDueAt");
 
     // n11 facts the order card shows besides the shared fields: cargo tracking (number and carrier
@@ -227,10 +224,10 @@ public sealed partial class MarketplaceSalesService
         return info;
     }
 
-    private static decimal JsonAmount(JsonElement element, string name) =>
+    internal static decimal JsonAmount(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var amount) ? amount : 0;
 
-    private static SourceLineView SourceLine(string? json)
+    internal static SourceLineView SourceLine(string? json)
     {
         var snapshot = json ?? "{}";
         var image = NormalizeImageUrl(SourceImageUrl(snapshot));
@@ -244,11 +241,11 @@ public sealed partial class MarketplaceSalesService
 
     // The product's own image fields, the most specific first. The first field that holds a usable address wins,
     // wherever it sits in the snapshot: a match in document order picked a claim photo listed before the product's.
-    private static readonly string[] ProductImageFields = ["productImageUrl", "productImageUrlFormat", "emaproductImageUrlFormat", "imageUrl", "productImage", "image"];
+    internal static readonly string[] ProductImageFields = ["productImageUrl", "productImageUrlFormat", "emaproductImageUrlFormat", "imageUrl", "productImage", "image"];
 
     // Parts of a line snapshot whose images are not the product: a Hepsiburada claim merged into the line keeps the
     // customer's evidence photos under Reports[].ImageUrl (an images.hepsiburada.net/oms/claim address the panel cannot load).
-    private static readonly HashSet<string> NonProductImageContainers = new(StringComparer.OrdinalIgnoreCase) { "Reports" };
+    internal static readonly HashSet<string> NonProductImageContainers = new(StringComparer.OrdinalIgnoreCase) { "Reports" };
 
     internal static string? SourceImageUrl(string json)
     {
@@ -278,7 +275,7 @@ public sealed partial class MarketplaceSalesService
             : images;
     }
 
-    private static string? FindImageField(JsonElement element, string field)
+    internal static string? FindImageField(JsonElement element, string field)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -310,7 +307,7 @@ public sealed partial class MarketplaceSalesService
         return Uri.TryCreate(candidate, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps ? uri.ToString() : null;
     }
 
-    private static string? FindImageUrl(JsonElement element)
+    internal static string? FindImageUrl(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -330,7 +327,7 @@ public sealed partial class MarketplaceSalesService
         return null;
     }
 
-    private sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
+    internal sealed record SourceLineView(string? ImageUrl, string? ModelCode, string? OptionSignature);
 
     internal static string? MaskIdentityNumber(string? value)
     {
@@ -358,7 +355,7 @@ public sealed partial class MarketplaceSalesService
         return address == new OrderAddressView(null, null, null, null, null, null, null, null, null) ? null : address;
     }
 
-    private static string? JsonText(string json, params string[] names)
+    internal static string? JsonText(string json, params string[] names)
     {
         try
         {
@@ -368,7 +365,7 @@ public sealed partial class MarketplaceSalesService
         catch (JsonException) { return null; }
     }
 
-    private static string? FindText(JsonElement element, HashSet<string> names)
+    internal static string? FindText(JsonElement element, HashSet<string> names)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {
@@ -386,16 +383,16 @@ public sealed partial class MarketplaceSalesService
         return null;
     }
 
-    private static bool IsMeaningfulText(string? value) =>
+    internal static bool IsMeaningfulText(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetterOrDigit);
 
-    private static bool JsonBool(string json, params string[] names)
+    internal static bool JsonBool(string json, params string[] names)
     {
         var value = JsonText(json, names);
         return bool.TryParse(value, out var parsed) && parsed || value is "1" or "YES" or "EVET";
     }
 
-    private static bool? JsonNullableBool(string json, params string[] names)
+    internal static bool? JsonNullableBool(string json, params string[] names)
     {
         var value = JsonText(json, names);
         if (string.IsNullOrWhiteSpace(value)) return null;
@@ -403,7 +400,7 @@ public sealed partial class MarketplaceSalesService
         return value is "1" or "YES" or "EVET" ? true : value is "0" or "NO" or "HAYIR" ? false : null;
     }
 
-    private static DateTimeOffset? JsonInstant(string json, params string[] names)
+    internal static DateTimeOffset? JsonInstant(string json, params string[] names)
     {
         try
         {
@@ -414,7 +411,7 @@ public sealed partial class MarketplaceSalesService
         catch (JsonException) { return null; }
     }
 
-    private static DateTimeOffset? FindInstant(JsonElement element, HashSet<string> names)
+    internal static DateTimeOffset? FindInstant(JsonElement element, HashSet<string> names)
     {
         if (element.ValueKind == JsonValueKind.Object)
         {

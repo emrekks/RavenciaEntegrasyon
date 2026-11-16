@@ -52,15 +52,15 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     [InlineData("N11", "UPLOADED", "FATURA_KONTROLDE")]
     [InlineData("SHOPIFY", "UPLOADED", "FATURA_KONTROLDE")]
     [InlineData("PTTAVM", "PENDING", "FATURA_BEKLIYOR")]
-    [InlineData("N11", null, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.UnverifiedInvoiceLabel)]
+    [InlineData("N11", null, MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy.UnverifiedInvoiceLabel)]
     // A Shopify order with no panel invoice and no invoice link of ours is to be reviewed ("İncelenecek"), 1 Nov 2026.
-    [InlineData("SHOPIFY", null, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel)]
+    [InlineData("SHOPIFY", null, MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy.ShopifyUnconfirmedInvoiceLabel)]
     [InlineData("SHOPIFY", "PENDING", "FATURA_BEKLIYOR")]
     public void HandSetStatusDecidesThePackageInvoiceLabel(string platformCode, string? manual, string expected)
     {
         var package = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "Delivered", MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, ManualInvoiceStatus = manual };
 
-        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.PackageInvoiceLabel(package, null, "{}", [package.RawStatus], platformCode));
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy.PackageInvoiceLabel(package, null, "{}", [package.RawStatus], platformCode));
     }
 
     // Audit 2026-10-19 W13: the screens say a status was set by hand, so the hand-set value reaches the order and
@@ -73,7 +73,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     [InlineData("", null)]
     [InlineData("DONE", null)]
     public void HandSetInvoiceStatusIsShownAsStored(string? manual, string? expected) =>
-        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.HandSetInvoiceStatus(manual));
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy.HandSetInvoiceStatus(manual));
 
     [Fact]
     public void InvoicedStateCannotBeDowngradedByAnOlderOrIncompleteSnapshot()
