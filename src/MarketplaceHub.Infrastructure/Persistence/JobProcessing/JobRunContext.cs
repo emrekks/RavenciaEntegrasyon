@@ -52,4 +52,26 @@ internal sealed class JobRunContext
     public string ReadRecordingKind = "ORDER";
     public string? ReadReturnSkipReason;
     public string? ReadReturnFailReason;
+    // ISLEYICI-9 stage 3a: the records this run read (Çekilen Kayıtlar), flushed to the job by the processor.
+    public readonly MarketplaceHub.Application.JobReadRecorder ReadRecorder = new();
+
+    // ISLEYICI-9 stage 3a: the run's request and record counts, kept here so a service working for the run (order,
+    // return or catalog ingestion) counts into the same run as the processor.
+    public void TrackRequest() => RequestCount++;
+
+    public void TrackReceived(bool changed = true)
+    {
+        ReceivedCount++;
+        if (changed) ChangedCount++;
+        else SkippedCount++;
+    }
+
+    public void TrackSkipped() => SkippedCount++;
+
+    public void TrackResultFailure(MarketplaceHub.Application.AdapterError? error)
+    {
+        FailedCount++;
+        if (error?.Class == MarketplaceHub.Application.AdapterErrorClass.RateLimit) RateLimitCount++;
+        if (error?.Class is MarketplaceHub.Application.AdapterErrorClass.TransientNetwork or MarketplaceHub.Application.AdapterErrorClass.RateLimit or MarketplaceHub.Application.AdapterErrorClass.Remote5xx) RetryCount++;
+    }
 }

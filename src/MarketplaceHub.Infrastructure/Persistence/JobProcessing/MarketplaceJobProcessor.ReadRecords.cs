@@ -10,7 +10,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // the customer is kept. Recorded only while a read job that records its progress runs.
 public sealed partial class MarketplaceJobProcessor
 {
-    private readonly JobReadRecorder readRecorder = new();
 
     // The reads that keep their records, by the kind of record they pull; null for a job that keeps none.
     internal static string? ReadRecordKind(string jobType) => jobType switch
@@ -45,7 +44,7 @@ public sealed partial class MarketplaceJobProcessor
         var state = after ?? before;
         // An invoice check names the packages' invoice state; any other read the order's status.
         var invoiceCheck = run.ReadRecordingKind == "INVOICE";
-        readRecorder.Add(invoiceCheck ? "INVOICE" : "ORDER", new JobReadRecord(remote.OrderNumber, state?.PackagesText, invoiceCheck ? state?.InvoiceText : state?.Status, outcome, reason));
+        run.ReadRecorder.Add(invoiceCheck ? "INVOICE" : "ORDER", new JobReadRecord(remote.OrderNumber, state?.PackagesText, invoiceCheck ? state?.InvoiceText : state?.Status, outcome, reason));
         return accepted;
     }
 
@@ -65,7 +64,7 @@ public sealed partial class MarketplaceJobProcessor
             : stale ? (JobReadOutcomes.Skipped, StaleReason)
             : (JobReadOutcomes.Unchanged, null);
         var orderNumber = after?.OrderNumber ?? before?.OrderNumber ?? remote.ExternalOrderId;
-        readRecorder.Add("RETURN", new JobReadRecord(remote.ExternalClaimId, orderNumber, (after ?? before)?.Status ?? remote.RawStatus, outcome, reason));
+        run.ReadRecorder.Add("RETURN", new JobReadRecord(remote.ExternalClaimId, orderNumber, (after ?? before)?.Status ?? remote.RawStatus, outcome, reason));
     }
 
     private sealed record OrderReadState(string Compare, string Status, string? PackagesText, string? InvoiceText);
@@ -74,7 +73,7 @@ public sealed partial class MarketplaceJobProcessor
     {
         if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "INVOICE") return;
         var changed = before != package.MarketplaceInvoiceStatus || !string.Equals(numberBefore, package.MarketplaceInvoiceNumber, StringComparison.Ordinal);
-        readRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
+        run.ReadRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
     }
 
     // A product the catalog read pulled: its model code (or the marketplace's product id), its first barcode and how many
@@ -85,7 +84,7 @@ public sealed partial class MarketplaceJobProcessor
         var reference = string.IsNullOrWhiteSpace(snapshot.ProductMainId) ? snapshot.ExternalProductId : snapshot.ProductMainId!;
         var barcode = snapshot.Variants.Select(x => x.Barcode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         var secondary = barcode is null ? null : snapshot.Variants.Count > 1 ? $"{barcode} +{snapshot.Variants.Count - 1}" : barcode;
-        readRecorder.Add("PRODUCT", new JobReadRecord(reference, secondary, $"{snapshot.Variants.Count} varyant", outcome, reason));
+        run.ReadRecorder.Add("PRODUCT", new JobReadRecord(reference, secondary, $"{snapshot.Variants.Count} varyant", outcome, reason));
     }
 
     private sealed record ReturnReadState(string Status, long Version, DateTimeOffset? LastRemoteModifiedAt, string? OrderNumber);
@@ -149,10 +148,10 @@ public sealed partial class MarketplaceJobProcessor
         {
             var row = await db.JobReadSummaries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == id, cancellationToken);
             // A finished read that pulled nothing still says so ("0 kayıt"), instead of looking like an old job.
-            if (readRecorder.IsEmpty && (row is not null || !final)) return row is null ? null : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
+            if (run.ReadRecorder.IsEmpty && (row is not null || !final)) return row is null ? null : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
             var previous = row is null ? JobReadCounts.Zero : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
-            var (counts, kept, omitted) = readRecorder.MergeWith(previous, row is null ? [] : JobReadRecorder.Deserialize(row.RecordsJson), row?.Omitted ?? 0);
-            var kind = row?.Kind ?? readRecorder.Kind ?? run.ReadRecordingKind;
+            var (counts, kept, omitted) = run.ReadRecorder.MergeWith(previous, row is null ? [] : JobReadRecorder.Deserialize(row.RecordsJson), row?.Omitted ?? 0);
+            var kind = row?.Kind ?? run.ReadRecorder.Kind ?? run.ReadRecordingKind;
             var json = JobReadRecorder.Serialize(kept);
             var now = timeProvider.GetUtcNow().ToUniversalTime();
             // Written past the change tracker: after a failed run it may still hold that run's half-applied entities,
@@ -164,12 +163,12 @@ public sealed partial class MarketplaceJobProcessor
                     "Unchanged" = EXCLUDED."Unchanged", "Skipped" = EXCLUDED."Skipped", "Failed" = EXCLUDED."Failed", "Omitted" = EXCLUDED."Omitted",
                     "RecordsJson" = EXCLUDED."RecordsJson", "UpdatedAt" = EXCLUDED."UpdatedAt"
                 """, cancellationToken);
-            readRecorder.Reset();
+            run.ReadRecorder.Reset();
             return counts;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            readRecorder.Reset();
+            run.ReadRecorder.Reset();
             return null;
         }
     }

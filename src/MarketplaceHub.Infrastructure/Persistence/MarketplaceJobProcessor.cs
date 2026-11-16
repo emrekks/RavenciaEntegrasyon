@@ -84,7 +84,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
             // ISLEYICI-9 stage 2: a new run starts with its own state (it was reset field by field).
-            readRecorder.Reset();
             run = new JobRunContext();
             run.ReadRecordingKind = ReadRecordKind(jobType) ?? "ORDER";
             run.ReadRecordingEnabled = jobId is not null && ReadRecordKind(jobType) is not null;
@@ -95,7 +94,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // Job types moved to their own handler class run here, inside the lock and telemetry.
                 if (jobHandlers.FirstOrDefault(candidate => candidate.Handles(jobType)) is { } handler)
                 {
-                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, run.ReadRecordingEnabled ? readRecorder : null), cancellationToken);
+                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, run.ReadRecordingEnabled ? run.ReadRecorder : null), cancellationToken);
                     run.RequestCount += outcome.Telemetry.Requests;
                     run.ReceivedCount += outcome.Telemetry.Received;
                     run.InsertedCount += outcome.Telemetry.Inserted;
