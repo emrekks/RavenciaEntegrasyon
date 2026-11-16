@@ -70,5 +70,9 @@ internal sealed class JobRunServices(
     // one ExternalEffectGuard and check the same write switches.
     private ActionJobService? actionJobs;
 
+    private LabelJobService? labelJobs;
+
+    public LabelJobService LabelJobs => labelJobs ??= new(db, orders, files, timeProvider, effectGuard, OrderIngestion, run);
+
     public ActionJobService ActionJobs => actionJobs ??= new(db, issues, orders, returns, files, timeProvider, effectGuard, writeSwitches, OrderIngestion, ReturnIngestion, ExternalEffectReconcile, run);
 }

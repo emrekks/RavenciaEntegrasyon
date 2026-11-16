@@ -53,10 +53,15 @@ public sealed partial class MarketplaceJobProcessor
 
     private ActionJobRunHandler ActionJobHandler => actionJobHandler ??= new(ServicesFor);
 
+    // ISLEYICI-9 stage 5 step 3b: the common label, the stage capability probe and the stage test order.
+    private LabelJobRunHandler? labelJobHandler;
+
+    private LabelJobRunHandler LabelJobHandler => labelJobHandler ??= new(ServicesFor);
+
     // The run handlers the dispatch tables use, for the dispatch tests.
     internal IReadOnlyList<IRunJobHandler> RunJobHandlers => [ProductSyncHandler, CatalogStructureImportHandler, ReferenceSyncHandler, OrderReadHandler, ReturnReadHandler,
         OrderInvoiceReconciliationHandler, TrendyolCargoInfoHandler, ListingVerificationHandler, ConnectionTestHandler, ExternalEffectReconcileHandler,
-        ActionJobHandler];
+        ActionJobHandler, LabelJobHandler];
 
     // The request a run handler gets: the job as the processor got it, with the run's read recorder when it keeps records.
     private JobRequest RunRequest(JobDispatchArgs a) =>
@@ -87,9 +92,9 @@ public sealed partial class MarketplaceJobProcessor
         [MarketplaceJobTypes.PriceInventorySync] = async (p, a, cancellationToken) => await p.SyncPriceInventory(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
         [MarketplaceJobTypes.StockProjectionDispatch] = async (p, a, cancellationToken) => await p.DispatchStockProjection(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, a.JobId, cancellationToken),
         [MarketplaceJobTypes.StockReconciliation] = async (p, a, cancellationToken) => await p.ReconcileStock(a.TenantId, a.ConnectionId, a.CorrelationId, a.JobId, cancellationToken),
-        [MarketplaceJobTypes.CommonLabel] = async (p, a, cancellationToken) => await p.CommonLabel(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.CapabilityProbe] = async (p, a, cancellationToken) => await p.LabelCapabilityProbe(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
-        [MarketplaceJobTypes.StageTestOrder] = async (p, a, cancellationToken) => await p.CreateStageTestOrder(a.TenantId, a.ConnectionId, a.PayloadJson, a.CorrelationId, cancellationToken),
+        [MarketplaceJobTypes.CommonLabel] = RunDirect(p => p.LabelJobHandler),
+        [MarketplaceJobTypes.CapabilityProbe] = RunDirect(p => p.LabelJobHandler),
+        [MarketplaceJobTypes.StageTestOrder] = RunDirect(p => p.LabelJobHandler),
         [MarketplaceJobTypes.OrderReconciliation] = RunDirectOnTrendyol(p => p.OrderReadHandler),
         [MarketplaceJobTypes.ExternalEffectReconcile] = RunDirect(p => p.ExternalEffectReconcileHandler),
         [MarketplaceJobTypes.ListingVerify] = RunDirect(p => p.ListingVerificationHandler),

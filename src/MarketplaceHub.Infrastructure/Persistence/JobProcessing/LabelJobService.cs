@@ -6,9 +6,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+// ISLEYICI-9 stage 5 step 3b (16 Nov 2026): the common label (TRENDYOL_COMMON_LABEL, Hepsiburada's read-only label too),
+// the Trendyol stage capability probe and the stage test order, moved out of the job processor as they were. The label
+// send opens, sends and closes its ExternalEffect record through the processor's ExternalEffectGuard; the probe and the
+// test order run on stage connections only. It works for one run of one job (run) on the job's AppDbContext.
+internal sealed class LabelJobService(
+    AppDbContext db,
+    IOrderPort orders,
+    IPrivateFileStorage files,
+    TimeProvider timeProvider,
+    ExternalEffectGuard effectGuard,
+    OrderIngestionService orderIngestion,
+    JobRunContext run)
 {
-    private async Task<JobExecutionResult> LabelCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+
+    // What the moved code used from the processor: the same classes and helpers the processor calls.
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived() => run.TrackReceived();
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    private static string Hash(string value) => TextValues.Sha256Hex(value);
+
+    private Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        orderIngestion.ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+
+    internal async Task<JobExecutionResult> LabelCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         CapabilityProbeJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<CapabilityProbeJobPayload>(payloadJson, JsonOptions); }
@@ -63,7 +90,7 @@ public sealed partial class MarketplaceJobProcessor
         return JobExecutionResult.Success();
     }
 
-    private async Task<JobExecutionResult> CreateStageTestOrder(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> CreateStageTestOrder(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         StageTestOrderJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<StageTestOrderJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
@@ -109,7 +136,7 @@ public sealed partial class MarketplaceJobProcessor
         return JobExecutionResult.Success();
     }
 
-    private async Task<JobExecutionResult> CommonLabel(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> CommonLabel(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         CommonLabelJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<CommonLabelJobPayload>(payloadJson, JsonOptions); }

@@ -130,6 +130,22 @@ internal sealed class ActionJobRunHandler(Func<JobRunContext, JobRunServices> se
     };
 }
 
+// The common label, the stage capability probe and the stage test order (LabelJobService); each answers with a result of its own.
+internal sealed class LabelJobRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.CommonLabel, MarketplaceJobTypes.CapabilityProbe, MarketplaceJobTypes.StageTestOrder];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.CommonLabel => services(run).LabelJobs.CommonLabel(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.CapabilityProbe => services(run).LabelJobs.LabelCapabilityProbe(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.StageTestOrder => services(run).LabelJobs.CreateStageTestOrder(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a label job.")
+    };
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {
