@@ -46,19 +46,19 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
         var t = tenant.Id;
         var summary = new
         {
-            Products = (await check.Products.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.Title, Status = x.Status.ToString() }).ToListAsync()).OrderBy(x => x.Title, StringComparer.Ordinal).ToList(),
+            Products = (await check.Products.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.Title, Status = x.Status.ToString() }).ToListAsync()).OrderBy(x => x.Title, StringComparer.Ordinal).ThenBy(x => x.Status, StringComparer.Ordinal).ToList(),
             Models = await check.ProductModels.AsNoTracking().CountAsync(x => x.TenantId == t),
             Variants = (await check.ProductVariants.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.Sku, x.Barcode, x.ModelCode, x.OptionSignature, Status = x.Status.ToString() }).ToListAsync())
-                .OrderBy(x => x.Sku, StringComparer.Ordinal).ThenBy(x => x.Barcode, StringComparer.Ordinal).ToList(),
+                .OrderBy(x => x.Sku, StringComparer.Ordinal).ThenBy(x => x.Barcode, StringComparer.Ordinal).ThenBy(x => x.ModelCode, StringComparer.Ordinal).ThenBy(x => x.OptionSignature, StringComparer.Ordinal).ToList(),
             Offers = (await check.ChannelOffers.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.SalePrice, x.ListPrice, x.Currency, x.VatRate, x.Status }).ToListAsync())
-                .OrderBy(x => x.SalePrice).ThenBy(x => x.ListPrice).ToList(),
+                .OrderBy(x => x.SalePrice).ThenBy(x => x.ListPrice).ThenBy(x => x.Currency, StringComparer.Ordinal).ThenBy(x => x.VatRate).ThenBy(x => x.Status.ToString(), StringComparer.Ordinal).ToList(),
             Inventory = (await check.InventoryItems.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.LocationCode, x.OnHand, x.Available }).ToListAsync())
-                .OrderBy(x => x.OnHand).ToList(),
+                .OrderBy(x => x.OnHand).ThenBy(x => x.Available).ThenBy(x => x.LocationCode, StringComparer.Ordinal).ToList(),
             AttributeAssignments = await check.ProductAttributeAssignments.AsNoTracking().CountAsync(x => x.TenantId == t),
             ModelLinks = (await check.MarketplaceModelLinks.AsNoTracking().Where(x => x.TenantId == t).Select(x => x.ExternalId).ToListAsync()).Order(StringComparer.Ordinal).ToList(),
             ProductLinks = (await check.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.ExternalId, x.ExternalCode }).ToListAsync()).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList(),
             VariantLinks = (await check.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == t).Select(x => new { x.ExternalId, x.ExternalBarcode, x.ExternalSku }).ToListAsync())
-                .OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList(),
+                .OrderBy(x => x.ExternalId, StringComparer.Ordinal).ThenBy(x => x.ExternalBarcode, StringComparer.Ordinal).ThenBy(x => x.ExternalSku, StringComparer.Ordinal).ToList(),
             Issues = (await check.OperationalIssues.AsNoTracking().Where(x => x.TenantId == t).Select(x => x.Code).ToListAsync()).Order(StringComparer.Ordinal).ToList()
         };
         ContractFixture.MatchesGolden($"{marketplace}/products-import.golden.json", summary);
