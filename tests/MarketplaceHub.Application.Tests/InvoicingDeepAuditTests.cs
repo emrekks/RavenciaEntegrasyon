@@ -83,8 +83,8 @@ public sealed class InvoicingDeepAuditTests
     public void A_marketplace_read_never_moves_an_invoice_out_of_manual_review()
     {
         var invoice = new Invoice { InvoiceType = "EARSIVFATURA", SequencePurpose = "SALE", Currency = "TRY", Note = "", IdempotencyKey = "k", Status = InvoiceStatus.ManualReview, LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, Version = 7 };
-        Assert.False(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplaceFailed, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode, DateTimeOffset.UnixEpoch));
-        Assert.False(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.Completed, null, DateTimeOffset.UnixEpoch));
+        Assert.False(OrderIngestionService.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplaceFailed, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode, DateTimeOffset.UnixEpoch));
+        Assert.False(OrderIngestionService.SetInvoiceDeliveryState(invoice, InvoiceStatus.Completed, null, DateTimeOffset.UnixEpoch));
         Assert.Equal(InvoiceStatus.ManualReview, invoice.Status);
         Assert.Equal(InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, invoice.LastErrorCode);
         Assert.Equal(7, invoice.Version);

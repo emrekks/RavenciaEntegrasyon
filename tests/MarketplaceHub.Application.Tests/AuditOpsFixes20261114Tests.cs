@@ -56,15 +56,15 @@ public sealed class AuditOpsFixes20261114Tests
     {
         var connection = Guid.Parse("01a15fda-b767-714d-ab0c-d40636b79aec");
         // The live notice of the order that was lost.
-        Assert.Equal("PTT-1C2OSLF2R-120926", MarketplaceJobProcessor.RefusedOrderIdOf($"package-quantity:{connection}:order:PTT-1C2OSLF2R-120926:1789229541000", connection));
-        Assert.Equal("4001", MarketplaceJobProcessor.RefusedOrderIdOf($"order-coverage:{connection}:4001:1789229541000", connection));
-        Assert.Equal("4001", MarketplaceJobProcessor.RefusedOrderIdOf($"order-lines:{connection}:4001:1", connection));
-        Assert.Equal("PTT-X-010126", MarketplaceJobProcessor.RefusedOrderIdOf(MarketplaceJobProcessor.OrderNotImportedKey(connection, "PTT-X-010126"), connection));
+        Assert.Equal("PTT-1C2OSLF2R-120926", OrderIngestionService.RefusedOrderIdOf($"package-quantity:{connection}:order:PTT-1C2OSLF2R-120926:1789229541000", connection));
+        Assert.Equal("4001", OrderIngestionService.RefusedOrderIdOf($"order-coverage:{connection}:4001:1789229541000", connection));
+        Assert.Equal("4001", OrderIngestionService.RefusedOrderIdOf($"order-lines:{connection}:4001:1", connection));
+        Assert.Equal("PTT-X-010126", OrderIngestionService.RefusedOrderIdOf(OrderIngestionService.OrderNotImportedKey(connection, "PTT-X-010126"), connection));
         // A Trendyol package id is no order number; an adapter's own contract key ends with a code, not a time.
-        Assert.Null(MarketplaceJobProcessor.RefusedOrderIdOf($"package-quantity:{connection}:3456789:1789229541000", connection));
-        Assert.Null(MarketplaceJobProcessor.RefusedOrderIdOf($"order-contract:{connection}:4001:ORDER_DATE_MISSING", connection));
+        Assert.Null(OrderIngestionService.RefusedOrderIdOf($"package-quantity:{connection}:3456789:1789229541000", connection));
+        Assert.Null(OrderIngestionService.RefusedOrderIdOf($"order-contract:{connection}:4001:ORDER_DATE_MISSING", connection));
         // Another connection's notice is not this one's.
-        Assert.Null(MarketplaceJobProcessor.RefusedOrderIdOf($"order-coverage:{Guid.NewGuid()}:4001:1", connection));
+        Assert.Null(OrderIngestionService.RefusedOrderIdOf($"order-coverage:{Guid.NewGuid()}:4001:1", connection));
     }
 
     [Fact]

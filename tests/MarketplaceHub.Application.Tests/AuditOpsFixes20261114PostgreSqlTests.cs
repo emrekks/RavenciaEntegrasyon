@@ -72,7 +72,7 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
         await using (var db = fixture.CreateContext())
         {
             Assert.False(await db.Orders.AnyAsync(x => x.TenantId == tenant.Id));
-            var marker = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == MarketplaceJobProcessor.OrderNotImportedKey(connection.Id, number));
+            var marker = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == OrderIngestionService.OrderNotImportedKey(connection.Id, number));
             Assert.Equal((OperationalIssueRetentionService.OrderNotImportedCode, IssueStatus.Open), (marker.Code, marker.Status));
             var cursor = await db.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.ResourceType == RejectedOrderRereadPolicy.CursorResource);
             Assert.Equal(number, Assert.Single(RejectedOrderRereadPolicy.Parse(cursor.OpaqueCursor)).OrderId);

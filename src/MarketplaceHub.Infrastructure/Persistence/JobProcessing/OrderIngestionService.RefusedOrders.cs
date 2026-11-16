@@ -10,7 +10,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // re-read list and PttAVM's reads cover two days). On every marketplace it joins the re-read list (RejectedOrderRereadPolicy:
 // read by its number, with backoff), and an ORDER_NOT_IMPORTED notice stays open until the order is imported: the
 // 30-day stale pass leaves it, and the import resolves it with the refusals that kept it out.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class OrderIngestionService
 {
     internal const string OrderNotImportedPrefix = "order-not-imported:";
 
@@ -57,7 +57,7 @@ public sealed partial class MarketplaceJobProcessor
     // one only a refusal seen once names (recorded before refused new orders joined the list; within 30 days). Each one
     // taken gets its not-imported notice touched, so it is taken again only a week later. A notice whose order the panel
     // has (imported by another path) is resolved.
-    private async Task<IReadOnlyList<string>> RefusedOrdersToRereadAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<string> listed, DateTimeOffset now, CancellationToken cancellationToken)
+    internal async Task<IReadOnlyList<string>> RefusedOrdersToRereadAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<string> listed, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var markerPrefix = $"{OrderNotImportedPrefix}{connectionId}:";
         var refusalPrefixes = OrderRefusalKinds.Append("package-quantity").Select(kind => $"{kind}:{connectionId}:").ToArray();
