@@ -49,6 +49,61 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteReadGuardTenantAsync(tenant.Id); }
     }
 
+    // ISLEYICI-9 round 10: Hepsiburada's paid-order list and claim list had no page cap of their own; a list that names the
+    // offset just read again, or never ends, now stops with its own code and leaves the watermark where it was.
+    [PostgreSqlTheory]
+    [InlineData(false, "HEPSIBURADA_ORDER_PAGE_CAP")]
+    [InlineData(true, "HEPSIBURADA_ORDER_PAGE_REPEATED")]
+    public async Task J3_HepsiburadaOrderListThatNeverEndsStopsWithoutMovingTheWatermark(bool repeat, string code)
+    {
+        var (tenant, connection, watermark) = await SeedReadGuardConnectionAsync(repeat ? "j3-hb-order-repeat" : "j3-hb-order-cap", "HEPSIBURADA", "ORDERS_HOT");
+        var port = new EndlessOrderPort(repeat);
+        try
+        {
+            var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaOrderSync, orders: port);
+            Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+            Assert.Equal(code, result.ErrorCode);
+            Assert.Equal(repeat ? 2 : OrderReadService.HepsiburadaOrderPageCap, port.Calls);
+            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDERS_HOT", watermark);
+        }
+        finally { await DeleteReadGuardTenantAsync(tenant.Id); }
+    }
+
+    [PostgreSqlFact]
+    public async Task J3_HepsiburadaClaimListThatNeverEndsStopsWithoutMovingTheWatermark()
+    {
+        var (tenant, connection, watermark) = await SeedReadGuardConnectionAsync("j3-hb-returns-cap", "HEPSIBURADA", "RETURNS");
+        var port = new EndlessReturnPort();
+        try
+        {
+            var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaReturnSync, returns: port);
+            Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+            Assert.Equal("HEPSIBURADA_RETURN_PAGE_CAP", result.ErrorCode);
+            Assert.Equal(ReturnReadService.HepsiburadaReturnPageCap, port.Calls);
+            await AssertWatermarkUnchangedAsync(tenant.Id, "RETURNS", watermark);
+        }
+        finally { await DeleteReadGuardTenantAsync(tenant.Id); }
+    }
+
+    // The return reconciliation is Trendyol's read: on another marketplace it ends blocked before any request.
+    [PostgreSqlTheory]
+    [InlineData("HEPSIBURADA")]
+    [InlineData("N11")]
+    [InlineData("SHOPIFY")]
+    public async Task ReturnReconciliationOutsideTrendyolIsBlockedBeforeAnyRequest(string platform)
+    {
+        var (tenant, connection, _) = await SeedReadGuardConnectionAsync($"return-reconcile-{platform.ToLowerInvariant()}", platform, "RETURNS");
+        var port = new EndlessReturnPort();
+        try
+        {
+            var result = await RunReadGuardJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ReturnReconciliation, """{"lookbackDays":3}""", returns: port);
+            Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+            Assert.Equal("RETURN_RECONCILIATION_NOT_SUPPORTED", result.ErrorCode);
+            Assert.Equal(0, port.Calls);
+        }
+        finally { await DeleteReadGuardTenantAsync(tenant.Id); }
+    }
+
     [PostgreSqlTheory]
     [InlineData(false, "CATALOG_STRUCTURE_PAGE_CAP")]
     [InlineData(true, "CATALOG_STRUCTURE_PAGE_REPEATED")]

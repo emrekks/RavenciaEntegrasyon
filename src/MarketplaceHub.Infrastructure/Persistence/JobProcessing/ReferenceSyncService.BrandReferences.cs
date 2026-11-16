@@ -12,7 +12,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // stored column but the row id). While they agree nothing is written; the first difference opens the staging snapshot,
 // copies the agreeing rows already passed into it (in the database) and the read goes on exactly as before. Two equal
 // lists are equal row by row, so their ContentHash (HashReferenceItemsAsync) is equal too and the current snapshot stays.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ReferenceSyncService
 {
     internal sealed record StoredBrandList(Guid SnapshotId, string ContentHash, UInt128[] Digests);
 

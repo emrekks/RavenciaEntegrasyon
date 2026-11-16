@@ -58,7 +58,7 @@ public sealed class OrderIngestionGoldenPostgreSqlTests(PostgreSqlTenantIsolatio
         }
 
         await using var check = fixture.CreateContext();
-        var stored = await check.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.ExternalOrderId).ToListAsync();
+        var stored = (await check.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync()).OrderBy(x => x.ExternalOrderId, StringComparer.Ordinal).ToList();
         var lines = await check.OrderLines.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
         var packages = await check.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
         var ledger = await check.StockLedgerEntries.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
@@ -75,7 +75,7 @@ public sealed class OrderIngestionGoldenPostgreSqlTests(PostgreSqlTenantIsolatio
                 order.DiscountAmount,
                 order.NetAmount,
                 order.StoreFrontCode,
-                Lines = lines.Where(line => line.OrderId == order.Id).OrderBy(line => line.Sku, StringComparer.Ordinal).ThenBy(line => line.OrderedQuantity)
+                Lines = lines.Where(line => line.OrderId == order.Id).OrderBy(line => line.Sku, StringComparer.Ordinal).ThenBy(line => line.OrderedQuantity).ThenBy(line => line.VariantId is not null).ThenBy(line => line.CancelledQuantity).ThenBy(line => line.ShippedQuantity).ThenBy(line => line.DeliveredQuantity).ThenBy(line => line.ReturnedQuantity)
                     .Select(line => new { line.Sku, Matched = line.VariantId is not null, line.OrderedQuantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity }).ToList(),
                 Packages = packages.Where(package => package.OrderId == order.Id).Select(package => package.Status.ToString()).Order(StringComparer.Ordinal).ToList()
             }).ToList(),

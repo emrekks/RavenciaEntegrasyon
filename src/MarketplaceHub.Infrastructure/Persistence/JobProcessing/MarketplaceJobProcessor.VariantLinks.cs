@@ -9,7 +9,7 @@ public sealed partial class MarketplaceJobProcessor
 {
     private VariantLinkBookkeeping? variantLinks;
 
-    internal VariantLinkBookkeeping VariantLinks => variantLinks ??= new VariantLinkBookkeeping(db, timeProvider, VerifiableVariantLinks);
+    internal VariantLinkBookkeeping VariantLinks => variantLinks ??= new VariantLinkBookkeeping(db, timeProvider, ListingRules);
 
     private Task<bool> ExternalIdTaken(Guid tenantId, Guid connectionId, string externalId, Guid? exceptLinkId, CancellationToken cancellationToken) =>
         VariantLinks.ExternalIdTaken(tenantId, connectionId, externalId, exceptLinkId, cancellationToken);

@@ -91,6 +91,7 @@ internal sealed partial class OrderReadService
             state = new(HepsiburadaOrderSyncStateVersion, anchor, start, 0, 0);
         }
 
+        var walk = new PageWalk(HepsiburadaOrderPageGuard);
         while (true)
         {
             var windowEnd = state.AnchorEnd.AddDays(-state.WindowIndex);
@@ -128,6 +129,16 @@ internal sealed partial class OrderReadService
                 .ToArray();
             await UpsertOrders(tenantId, connectionId, importableOrders, cancellationToken);
 
+            // ISLEYICI-9 round 10: a list that names the offset just read as the next one, or never ends, stops here with its
+            // own code. The position saved after the previous page stays, the watermark does not move, and the next run
+            // resumes from there.
+            switch (walk.After(state.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture), page.Value.HasMore ? page.Value.NextCursor : null))
+            {
+                case PagedReadStop.PageCap:
+                    throw PagedReadLoop.GuardFailure("HEPSIBURADA_ORDER_PAGE_CAP", $"Hepsiburada sipariş listesi bir okumada {HepsiburadaOrderPageCap} sayfayı aştı; okuma kaldığı yerde durduruldu ve bu dönem okunmuş sayılmadı.");
+                case PagedReadStop.RepeatedCursor:
+                    throw PagedReadLoop.GuardFailure("HEPSIBURADA_ORDER_PAGE_REPEATED", "Hepsiburada sipariş listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; okuma durduruldu ve bu dönem okunmuş sayılmadı.");
+            }
             state = NextHepsiburadaOrderPage(state, page.Value);
             ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
@@ -145,6 +156,12 @@ internal sealed partial class OrderReadService
         int? PageTotal = null, bool Moved = false, int Rereads = 0);
 
     internal const int HepsiburadaOrderWindowRereads = 2;
+
+    // ISLEYICI-9 round 10 (16 Nov 2026): pages of 100 paid-order lines in one run, which reads one 24-hour window (read at
+    // most three times when its totals move): 500,000 lines, far above any real day (37 orders live on 6 Nov 2026, at most
+    // 2 a day); guards against a list that never ends or repeats its offset.
+    internal const int HepsiburadaOrderPageCap = 5_000;
+    private static readonly PageGuard HepsiburadaOrderPageGuard = new(MaxPages: HepsiburadaOrderPageCap, StopOnRepeatedCursor: true);
 
     // The paid-order list is the live queue of lines waiting to be packaged (hepsiburada-api-son.md:8391-8399), read by
     // offset: a line packaged between two pages moves every later one up a place, and one is never seen; an unpacked

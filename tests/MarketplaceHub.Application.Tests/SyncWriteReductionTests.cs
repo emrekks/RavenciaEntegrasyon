@@ -62,13 +62,13 @@ public sealed class SyncWriteReductionTests
     public void BrandRowsAreComparedColumnForColumn()
     {
         var item = new RemoteReferenceItem("BRANDS", "101", null, "Ravencia", "Ravencia", 0, false, true, """{"id":101}""");
-        var digest = MarketplaceJobProcessor.RemoteBrandDigest(item);
-        Assert.Equal(digest, MarketplaceJobProcessor.RemoteBrandDigest(item with { }));
-        Assert.NotEqual(digest, MarketplaceJobProcessor.RemoteBrandDigest(item with { Name = "Ravencia " }));
-        Assert.NotEqual(digest, MarketplaceJobProcessor.RemoteBrandDigest(item with { IsActive = false }));
-        Assert.NotEqual(digest, MarketplaceJobProcessor.RemoteBrandDigest(item with { RawJson = """{"id":101,"x":1}""" }));
-        var stored = new MarketplaceJobProcessor.StoredBrandList(Guid.NewGuid(), "hash", [digest]);
-        Assert.True(MarketplaceJobProcessor.SameBrandRow(stored, 0, item));
-        Assert.False(MarketplaceJobProcessor.SameBrandRow(stored, 1, item));
+        var digest = ReferenceSyncService.RemoteBrandDigest(item);
+        Assert.Equal(digest, ReferenceSyncService.RemoteBrandDigest(item with { }));
+        Assert.NotEqual(digest, ReferenceSyncService.RemoteBrandDigest(item with { Name = "Ravencia " }));
+        Assert.NotEqual(digest, ReferenceSyncService.RemoteBrandDigest(item with { IsActive = false }));
+        Assert.NotEqual(digest, ReferenceSyncService.RemoteBrandDigest(item with { RawJson = """{"id":101,"x":1}""" }));
+        var stored = new ReferenceSyncService.StoredBrandList(Guid.NewGuid(), "hash", [digest]);
+        Assert.True(ReferenceSyncService.SameBrandRow(stored, 0, item));
+        Assert.False(ReferenceSyncService.SameBrandRow(stored, 1, item));
     }
 }

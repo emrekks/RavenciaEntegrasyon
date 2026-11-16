@@ -14,8 +14,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // applies exponential backoff, but this ceiling also keeps retry accounting from
     // becoming the earlier bound if the polling schedule is made more frequent later.
     private const int ProductApprovalReconcileMaxAttempts = (7 * 24 * 12) + 1;
-    private const int MaxReferenceItems = 500_000;
-    private const int MaxBrandReferenceItems = 2_000_000;
     // The job types that have their own handler class; built here when the processor is made without DI.
     private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
     // Every marketplace write opens, sends and closes its ExternalEffect record through this guard (ISLEYICI-10).
@@ -100,6 +98,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     run.UpdatedCount += outcome.Telemetry.Updated;
                     run.ChangedCount += outcome.Telemetry.Changed;
                     run.FailedCount += outcome.Telemetry.Failed;
+                    run.SkippedCount += outcome.Telemetry.Skipped;
+                    if (outcome.Telemetry.Import is { } import)
+                    {
+                        run.ProductImportTelemetry = true;
+                        run.ImportReceivedCount += import.Received;
+                        run.ImportProcessedCount += import.Processed;
+                        run.ImportSkippedCount += import.Skipped;
+                        run.ImportFailedCount += import.Failed;
+                    }
                     directResult = outcome.Result;
                 }
                 else if (DirectJobDispatch.TryGetValue(jobType, out var direct)) directResult = await direct(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);

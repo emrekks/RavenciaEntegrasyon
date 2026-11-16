@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ReferenceSyncService
 {
     // ISLEYICI-11 (16 Nov 2026): reference pages in one read, guards against a list that never ends with empty pages
     // (the item limits never fill then). 1,000 items a page reach MaxReferenceItems in 500 pages, 2,000 brands a page
@@ -16,7 +16,7 @@ public sealed partial class MarketplaceJobProcessor
     internal const int BrandReferencePageCap = 5_000;
     private static readonly PageGuard BrandReferencePageGuard = new(MaxPages: BrandReferencePageCap, StopOnRepeatedCursor: true);
 
-    private async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var (resourceType, parentExternalId) = ReferenceResource(payloadJson);
         if (!await IsValidReferenceScope(tenantId, connectionId, resourceType, parentExternalId, cancellationToken)) return false;

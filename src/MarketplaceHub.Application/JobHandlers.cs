@@ -7,7 +7,12 @@ namespace MarketplaceHub.Application;
 // Reads: where a read job notes each record it pulled (the job detail's "Çekilen Kayıtlar"); null when the job keeps none.
 public sealed record JobRequest(Guid TenantId, Guid ConnectionId, string JobType, string PayloadJson, string CorrelationId, Guid? JobId, JobReadRecorder? Reads = null);
 
-public sealed record JobTelemetry(int Requests = 0, int Received = 0, int Inserted = 0, int Updated = 0, int Changed = 0, int Failed = 0);
+// Skipped: records the job passed over (the cursor's skipped count). Import: what a product import did over the whole run
+// (the job's own Alınan / İşlenen / Atlanan / Hatalı); when it is set, the run's cursor counts it instead of the records
+// as they were read, as for a product import the processor runs itself.
+public sealed record JobTelemetry(int Requests = 0, int Received = 0, int Inserted = 0, int Updated = 0, int Changed = 0, int Failed = 0, int Skipped = 0, JobImportTelemetry? Import = null);
+
+public sealed record JobImportTelemetry(int Received, int Processed, int Skipped, int Failed);
 
 public sealed record JobOutcome(JobExecutionResult Result, JobTelemetry Telemetry);
 

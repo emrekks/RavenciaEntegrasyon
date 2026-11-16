@@ -98,23 +98,13 @@ public sealed partial class MarketplaceJobProcessor
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    // The links a scan may judge: healthy, suspect or unverified ones, of a variant the panel has not archived and
-    // whose publication on the connection is not on its way (it may not be on the marketplace's lists yet).
-    private IQueryable<MarketplaceVariantLink> VerifiableVariantLinks(Guid tenantId, Guid connectionId) =>
-        JudgeableVariantLinks(tenantId, connectionId).Where(x => x.HealthStatus == null || x.HealthStatus == MarketplaceVariantLinkHealth.Suspect || x.HealthStatus == MarketplaceVariantLinkHealth.Unverified);
+    // The links a scan may judge (ListingVerificationRules, shared with the import's variant link bookkeeping).
+    private ListingVerificationRules ListingRules => listingRules ??= new ListingVerificationRules(db);
+    private ListingVerificationRules? listingRules;
 
-    // Every link of the connection whose variant the panel has not archived and whose publication is not on its way.
-    private IQueryable<MarketplaceVariantLink> JudgeableVariantLinks(Guid tenantId, Guid connectionId)
-    {
-        var inFlight = MarketplaceVariantLinkHealth.PublicationInFlightStatuses;
-        return db.MarketplaceVariantLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
-            && !db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == x.VariantId
-                && (variant.Status == ProductStatus.Archived || db.Products.Any(product => product.TenantId == tenantId && product.Id == variant.ProductId && product.Status == ProductStatus.Archived)))
-            && !db.MarketplaceListingStates.Any(state => state.TenantId == tenantId && state.ConnectionId == connectionId && state.VariantId == x.VariantId && inFlight.Contains(state.ActualStatus))
-            && !db.ChannelListingVariants.Any(listing => listing.TenantId == tenantId && listing.VariantId == x.VariantId
-                && db.ChannelListingProfiles.Any(profile => profile.TenantId == tenantId && profile.Id == listing.ProfileId && profile.ConnectionId == connectionId
-                    && (inFlight.Contains(listing.ActualStatus) || inFlight.Contains(profile.ActualStatus)))));
-    }
+    private IQueryable<MarketplaceVariantLink> VerifiableVariantLinks(Guid tenantId, Guid connectionId) => ListingRules.VerifiableVariantLinks(tenantId, connectionId);
+
+    private IQueryable<MarketplaceVariantLink> JudgeableVariantLinks(Guid tenantId, Guid connectionId) => ListingRules.JudgeableVariantLinks(tenantId, connectionId);
 
     private sealed record UnseenLink(Guid Id, Guid VariantId, string ExternalId, string? ExternalSku, string? ExternalBarcode, string? HealthStatus, DateTimeOffset? HealthChangedAt, DateTimeOffset? LastSeenAt, DateTimeOffset? LastLookupAt, string? LastLookupOutcome);
 

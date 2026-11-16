@@ -16,6 +16,11 @@ internal sealed partial class ReturnReadService
     // Pages counts the pages read with the current query (Cursor), for the restart before Shopify's 25,000-result cap.
     internal sealed record ShopifyReturnSyncState(string Version, string? Cursor, DateTimeOffset? ModifiedAfter, DateTimeOffset Anchor, int Pages = 0);
     internal const int ShopifyReturnInitialLookbackDays = 180;
+    // ISLEYICI-9 round 10 (16 Nov 2026): pages of 100 orders in one run (the query restarts every 200 pages): 500,000
+    // orders, as Shopify's order read (ShopifyOrderPageCap), far above a 180-day read of a real store; guards against a read
+    // that never ends.
+    internal const int ShopifyReturnPageCap = 5_000;
+    private static readonly PageGuard ShopifyReturnPageGuard = new(MaxPages: ShopifyReturnPageCap);
     internal static readonly TimeSpan ShopifyReturnOverlap = TimeSpan.FromMinutes(15);
 
     // Where a new Shopify return read starts: 180 days back on the first read or when asked for a full read, otherwise
@@ -209,6 +214,7 @@ internal sealed partial class ReturnReadService
         // A run stopped between pages resumes its saved query, so the page cursor is always sent with the query it came from.
         var state = (forceFull ? null : ReadShopifyReturnSyncState(cursor.OpaqueCursor))
             ?? new(ShopifyReturnSyncStateVersion, null, ShopifyReturnReadStart(forceFull, cursor.LastSuccessAt, cursor.LastModifiedWatermark, now), now);
+        var walk = new PageWalk(ShopifyReturnPageGuard);
         while (!cancellationToken.IsCancellationRequested)
         {
             TrackRequest();
@@ -220,6 +226,10 @@ internal sealed partial class ReturnReadService
             {
                 if (string.IsNullOrWhiteSpace(page.Value.NextCursor) || string.Equals(page.Value.NextCursor, state.Cursor, StringComparison.Ordinal))
                     throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CURSOR_INVALID", "Shopify iade akışı geçersiz veya yinelenen sayfa imleci döndürdü.", 502, null, null));
+                // ISLEYICI-9 round 10: a read that never ends stops here with its own code (a repeated cursor stops above). The
+                // position saved after the previous page stays, the watermark does not move, and the next run resumes there.
+                if (walk.After(state.Cursor, page.Value.NextCursor) == PagedReadStop.PageCap)
+                    throw PagedReadLoop.GuardFailure("SHOPIFY_RETURN_PAGE_CAP", $"Shopify iade okuması bir okumada {ShopifyReturnPageCap} sayfayı aştı; okuma kaldığı yerde durduruldu ve bu dönem okunmuş sayılmadı.");
                 state = NextShopifyReturnPage(state, page.Value.NextCursor, page.Value.LastModifiedSeen);
                 ResumableCursor.Save(cursor, state);
                 await db.SaveChangesAsync(cancellationToken);
