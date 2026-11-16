@@ -158,6 +158,143 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         Assert.Equal(JsonSerializer.Serialize(await summaryService.ProductSummaryInMemoryAsync(seed.TenantId, CancellationToken.None)), JsonSerializer.Serialize(await summaryService.ProductSummaryAsync(seed.TenantId, CancellationToken.None)));
     }
 
+    // KATALOG-10 (round 8): the platform-state filter decided in the database lists what the in-memory reference lists, for
+    // every marketplace (and "ALL") × state × stock filter × status, over links and listings that reach each rule's edge:
+    // a held listing (waiting, refused) over a matched link, broken links (NOT_FOUND, REJECTED) known there or never known,
+    // a broken link on an archived card or under an archived listing, a broken link that still holds on a second
+    // connection, sale closures beyond stock / for stock 0 / without a reason, flagged publications and listings, an update
+    // on its way over a refused listing, a passive connection and a card without variants. Unknown stays unknown: a link
+    // without a health or sale state, a listing UNKNOWN.
+    [PostgreSqlFact]
+    public async Task ThePlatformStateFilter_InTheDatabase_ListsWhatTheInMemoryReferenceLists()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var now = DateTimeOffset.UtcNow;
+        var variantless = new Product { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, Title = "Varyantsız Kart", Description = "Açıklama", BrandId = seed.Ravencia, VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Active, CreatedAt = now.AddDays(-2), UpdatedAt = now.AddDays(-2), Version = 1 };
+        db.Products.Add(variantless);
+        PlatformConnection Connection(string code, string status) => new() { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, PublicId = Guid.CreateVersion7(), PlatformCode = code, Environment = "STAGE", DisplayName = $"{code} {status}", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = status, ApiVersion = "V2", Version = 1 };
+        var trendyol = Connection("TRENDYOL", "ACTIVE");
+        var trendyolSecond = Connection("TRENDYOL", "VERIFIED");
+        var hepsiburada = Connection("HEPSIBURADA", "ACTIVE");
+        var pazaramaPassive = Connection("PAZARAMA", "PASSIVE");
+        var connections = new[] { trendyol, trendyolSecond, hepsiburada, pazaramaPassive };
+        db.PlatformConnections.AddRange(connections);
+        await db.SaveChangesAsync();
+
+        var products = await db.Products.Where(x => x.TenantId == seed.TenantId).OrderBy(x => x.Title).ToListAsync();
+        var variants = await db.ProductVariants.Where(x => x.TenantId == seed.TenantId).OrderBy(x => x.Sku).ToListAsync();
+        var random = new Random(20261116);
+        string[] profileStatuses = ["LIVE", "ARCHIVED", "REJECTED", "APPROVAL_PENDING", "UPDATE_QUEUED", "UNKNOWN", "BLOCKED", "APPROVAL_PARTIAL_PENDING"];
+        string[] listingStatuses = ["LIVE", ImportedApprovalStates.Pending, ImportedApprovalStates.Rejected, "UNKNOWN", "BLOCKED"];
+        string?[] healths = [null, MarketplaceVariantLinkHealth.NotFound, MarketplaceVariantLinkHealth.Rejected, MarketplaceVariantLinkHealth.Suspect, MarketplaceVariantLinkHealth.Unverified];
+        string?[] saleStates = [null, ListingSaleState.OnSale, ListingSaleState.OffSale];
+        string?[] saleReasons = [null, ListingSaleState.StockZero, ListingSaleState.BySeller];
+        var profiles = new Dictionary<(Guid ProductId, Guid ConnectionId), ChannelListingProfile>();
+        var addedListings = new List<ChannelListingVariant>();
+        foreach (var product in products)
+            foreach (var connection in connections)
+            {
+                if (random.Next(3) == 0) continue;
+                var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = connection.Id, ProductId = product.Id, Enabled = random.Next(6) != 0, DesiredStatus = "LIVE", ActualStatus = profileStatuses[random.Next(profileStatuses.Length)] };
+                profiles[(product.Id, connection.Id)] = profile;
+                db.ChannelListingProfiles.Add(profile);
+            }
+        for (var index = 0; index < variants.Count; index++)
+        {
+            var variant = variants[index];
+            if (index % 5 != 0)
+            {
+                var onHand = (index % 7) switch { 0 => 0m, 1 => -2m, _ => random.Next(1, 9) };
+                db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, VariantId = variant.Id, LocationCode = "MAIN", OnHand = onHand, Available = Math.Max(0, onHand) });
+            }
+            foreach (var connection in connections)
+            {
+                if (random.Next(4) != 0)
+                    db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = seed.TenantId,
+                        ConnectionId = connection.Id,
+                        VariantId = variant.Id,
+                        ExternalId = $"EXT-{Guid.NewGuid():N}",
+                        HealthStatus = healths[random.Next(healths.Length)],
+                        LastSeenAt = random.Next(2) == 0 ? now.AddDays(-3) : null,
+                        SaleState = saleStates[random.Next(saleStates.Length)],
+                        SaleStateReason = saleReasons[random.Next(saleReasons.Length)],
+                        Version = 1
+                    });
+                if (profiles.TryGetValue((variant.ProductId, connection.Id), out var profile) && random.Next(3) != 0)
+                    addedListings.Add(db.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ProfileId = profile.Id, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = listingStatuses[random.Next(listingStatuses.Length)] }).Entity);
+            }
+        }
+        // A refused listing whose card's update is on its way ("Onaya Gönderildi": waiting, not failed).
+        var resent = addedListings.First(listing => profiles.Values.Single(profile => profile.Id == listing.ProfileId).Enabled);
+        resent.ActualStatus = ImportedApprovalStates.Rejected;
+        profiles.Values.Single(profile => profile.Id == resent.ProfileId).ActualStatus = "UPDATE_QUEUED";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var codec = new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        Assert.True(await Service(db, codec).FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
+
+        // Each rule's edge is in the seed.
+        var seededLinks = await db.MarketplaceVariantLinks.Where(x => x.TenantId == seed.TenantId).ToListAsync();
+        var seededListings = await (from listing in db.ChannelListingVariants
+                                    join profile in db.ChannelListingProfiles on listing.ProfileId equals profile.Id
+                                    where listing.TenantId == seed.TenantId
+                                    select new { listing.VariantId, profile.ConnectionId, profile.ProductId, profile.Enabled, Listing = listing.ActualStatus, Profile = profile.ActualStatus }).ToListAsync();
+        var seededProfiles = await db.ChannelListingProfiles.Where(x => x.TenantId == seed.TenantId).ToListAsync();
+        var productOf = variants.ToDictionary(x => x.Id, x => x.ProductId);
+        var archivedCards = products.Where(x => x.Status == ProductStatus.Archived).Select(x => x.Id).ToHashSet();
+        var edges = new Dictionary<string, bool>
+        {
+            ["held listing over a link"] = seededListings.Any(listing => listing.Enabled && ImportedApprovalStates.IsHeldListing(listing.Listing) && seededLinks.Any(link => link.VariantId == listing.VariantId && link.ConnectionId == listing.ConnectionId)),
+            ["broken link known there"] = seededLinks.Any(link => MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus) && link.LastSeenAt is not null),
+            ["broken link never known"] = seededLinks.Any(link => MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus) && link.LastSeenAt is null),
+            ["broken link on an archived card"] = seededLinks.Any(link => MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus) && archivedCards.Contains(productOf[link.VariantId])),
+            ["broken link under an archived listing"] = seededLinks.Any(link => MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus) && seededProfiles.Any(profile => profile.Enabled && profile.ActualStatus == "ARCHIVED" && profile.ProductId == productOf[link.VariantId] && profile.ConnectionId == link.ConnectionId)),
+            ["closed beyond stock"] = seededLinks.Any(link => link.SaleState == ListingSaleState.OffSale && link.SaleStateReason == ListingSaleState.BySeller),
+            ["closed without a reason"] = seededLinks.Any(link => link.SaleState == ListingSaleState.OffSale && link.SaleStateReason is null),
+            ["closed for stock 0"] = seededLinks.Any(link => link.SaleState == ListingSaleState.OffSale && link.SaleStateReason == ListingSaleState.StockZero),
+            ["unknown sale state"] = seededLinks.Any(link => link.SaleState is null),
+            ["refused listing under an update on its way"] = seededListings.Any(listing => listing.Enabled && listing.Listing == ImportedApprovalStates.Rejected && ProductListingHealth.IsUpdateInFlight(listing.Profile)),
+            ["broken on one Trendyol connection, holding on the other"] = seededLinks.Any(link => link.ConnectionId == trendyol.Id && MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus)
+                && seededLinks.Any(other => other.ConnectionId == trendyolSecond.Id && other.VariantId == link.VariantId && other.HealthStatus is null)),
+        };
+        Assert.True(edges.Values.All(present => present), string.Join(", ", edges.Where(edge => !edge.Value).Select(edge => edge.Key)));
+
+        string Position(string? cursor) => cursor is null ? "-" : codec.TryDecodeProduct(cursor, out var createdAt, out var id) ? $"{createdAt.UtcTicks}:{id}" : "invalid";
+        var compared = 0;
+        var outcomes = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+        foreach (var code in new[] { "TRENDYOL", "HEPSIBURADA", "PAZARAMA", "ALL" })
+            foreach (var state in new[] { "ACTIVE", "PARTIAL", "PASSIVE", "NOT_FOUND", "OFF_SALE", "ERROR", "APPROVAL" })
+                foreach (var stock in new string?[] { null, "OUT", "LOW", "GAP", "OK" })
+                    foreach (var (status, limit) in new (string?, int)[] { (null, 4), ("ACTIVE", 50), ("ARCHIVED", 50) })
+                    {
+                        var platform = $"{code}:{state}";
+                        var sqlService = new CatalogService(db, codec, new ConfigurationBuilder().Build(), TimeProvider.System, new MemoryCache(new MemoryCacheOptions()));
+                        var memoryService = new CatalogService(db, codec, new ConfigurationBuilder().Build(), TimeProvider.System, new MemoryCache(new MemoryCacheOptions()));
+                        string? sqlAfter = null, memoryAfter = null;
+                        for (var page = 0; page < 20; page++)
+                        {
+                            var sql = await sqlService.ListProductsAsync(seed.TenantId, limit, sqlAfter, status, null, platform, stock, null, sqlPaging: true, CancellationToken.None);
+                            var memory = await memoryService.ListProductsAsync(seed.TenantId, limit, memoryAfter, status, null, platform, stock, null, sqlPaging: false, CancellationToken.None);
+                            var label = $"platform {platform}, stock {stock}, status {status}, page {page}";
+                            Assert.True(JsonSerializer.Serialize(memory.Items) == JsonSerializer.Serialize(sql.Items), label);
+                            Assert.True((memory.HasMore, memory.TotalCount, Position(memory.NextCursor)) == (sql.HasMore, sql.TotalCount, Position(sql.NextCursor)), label);
+                            if (page == 0 && stock is null && status is null)
+                                (outcomes.TryGetValue(code, out var seen) ? seen : outcomes[code] = []).Add(sql.TotalCount ?? -1);
+                            compared++;
+                            if (!sql.HasMore) break;
+                            (sqlAfter, memoryAfter) = (sql.NextCursor, memory.NextCursor);
+                        }
+                    }
+        Assert.True(compared > 420, $"{compared} pages");
+        // The seed is not trivial: the states split the models differently on each marketplace that has a connection.
+        Assert.True(outcomes["TRENDYOL"].Count >= 4, string.Join(",", outcomes["TRENDYOL"]));
+        Assert.True(outcomes["HEPSIBURADA"].Count >= 3, string.Join(",", outcomes["HEPSIBURADA"]));
+    }
+
     // The rule check is kept for a short time and dropped by a save of a card or variant of the tenant.
     [PostgreSqlFact]
     public async Task TheRuleCheck_IsCached_AndDroppedByACatalogSave()

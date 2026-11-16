@@ -436,18 +436,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // KATALOG-10: newest first without a stock or platform-state filter, the models are paged in SQL while the stored
         // model links give the model-code rule's grouping; otherwise the in-memory grouping below.
         // KATALOG-10 (round 7): the stock filters, the platform-state filters and the price and stock sorts too: the filters
-        // narrow the cards in the database (a platform state is decided on the narrow link rows, as below), the sorts read
-        // one metric per model from the database and order those rows.
+        // narrow the cards in the database, the sorts read one metric per model from the database and order those rows.
+        // KATALOG-10 (round 8): the platform state too, by the same rules written once as expressions
+        // (ApplyPlatformStateFilterInSqlAsync); the in-memory path below keeps them compiled as the reference.
         if (sqlPaging && await FamilyIdMatchesModelCodeRuleCachedAsync(tenantId, cancellationToken))
         {
             if (!string.IsNullOrWhiteSpace(stock)) query = await ApplyStockFilterInSqlAsync(tenantId, query, stock, cancellationToken);
-            if (hasPlatformStatusFilter)
-            {
-                var narrowProducts = await query.Select(ProductShape).ToListAsync(cancellationToken);
-                var narrowVariants = await VariantShapes(tenantId).Where(x => query.Any(product => product.Id == x.ProductId)).ToListAsync(cancellationToken);
-                var kept = (await PlatformStateProductIdsAsync(tenantId, narrowProducts, narrowVariants, platformFilterCode, platformFilterState, cancellationToken)).ToArray();
-                query = query.Where(product => kept.Contains(product.Id));
-            }
+            if (hasPlatformStatusFilter) query = await ApplyPlatformStateFilterInSqlAsync(tenantId, query, platformFilterCode, platformFilterState, cancellationToken);
             return catalogSort is null
                 ? await ListProductFamiliesInSqlAsync(tenantId, query, afterCreatedAt, afterId, limit, countKey, cachedCount as int?, cancellationToken)
                 : await ListSortedProductFamiliesInSqlAsync(tenantId, query, catalogSort, afterSortKey, limit, countKey, cachedCount as int?, cancellationToken);
@@ -3568,24 +3563,41 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     {
         if (productIds.Count == 0) return [];
         var ids = productIds.ToArray();
+        var byProfile = await PlatformFlaggedByProfile(tenantId, platformCode, db.Products.Where(product => product.TenantId == tenantId && ids.Contains(product.Id)).Select(product => product.Id), statuses).ToListAsync(cancellationToken);
+        var byListing = await PlatformFlaggedByListing(tenantId, platformCode, db.Products.Where(product => product.TenantId == tenantId && ids.Contains(product.Id)).Select(product => product.Id), statuses).ToListAsync(cancellationToken);
+        return [.. byProfile, .. byListing];
+    }
+
+    private IQueryable<Guid> PlatformActiveConnectionIds(Guid tenantId, string platformCode) => db.PlatformConnections
+        .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
+        .Select(connection => connection.Id);
+
+    // The products (of productIds) whose enabled publication on one of the marketplace's active connections is in one of
+    // these states (KATALOG-10: one query, run as it is by the in-memory reference and inside the database filter).
+    private IQueryable<Guid> PlatformFlaggedByProfile(Guid tenantId, string platformCode, IQueryable<Guid> productIds, IReadOnlyCollection<string> statuses)
+    {
         var states = statuses.ToArray();
-        var connectionIds = db.PlatformConnections
-            .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-            .Select(connection => connection.Id);
-        var byProfile = await db.ChannelListingProfiles.AsNoTracking()
-            .Where(profile => profile.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId) && states.Contains(profile.ActualStatus))
-            .Select(profile => profile.ProductId).ToListAsync(cancellationToken);
-        // A refused variant whose card's update is on its way was sent again (the list mark's "Onaya Gönderildi"): it is
-        // waiting, not failed, until the marketplace answers.
+        var connectionIds = PlatformActiveConnectionIds(tenantId, platformCode);
+        return db.ChannelListingProfiles.AsNoTracking()
+            .Where(profile => profile.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && productIds.Contains(profile.ProductId) && states.Contains(profile.ActualStatus))
+            .Select(profile => profile.ProductId);
+    }
+
+    // The products (of productIds) with a listing in one of these states under an enabled publication there. A refused
+    // variant whose card's update is on its way was sent again (the list mark's "Onaya Gönderildi"): it is waiting, not
+    // failed, until the marketplace answers.
+    private IQueryable<Guid> PlatformFlaggedByListing(Guid tenantId, string platformCode, IQueryable<Guid> productIds, IReadOnlyCollection<string> statuses)
+    {
+        var states = statuses.ToArray();
+        var connectionIds = PlatformActiveConnectionIds(tenantId, platformCode);
         var inFlight = ProductListingHealth.UpdateInFlightStatuses.ToArray();
         var waiting = states.Contains(ImportedApprovalStates.Pending);
-        var byListing = await (from listing in db.ChannelListingVariants.AsNoTracking()
-                               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
-                               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && ids.Contains(profile.ProductId)
-                                   && (states.Contains(listing.ActualStatus) && !(listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
-                                       || waiting && listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
-                               select profile.ProductId).ToListAsync(cancellationToken);
-        return [.. byProfile, .. byListing];
+        return from listing in db.ChannelListingVariants.AsNoTracking()
+               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+               where listing.TenantId == tenantId && profile.Enabled && connectionIds.Contains(profile.ConnectionId) && productIds.Contains(profile.ProductId)
+                   && (states.Contains(listing.ActualStatus) && !(listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
+                       || waiting && listing.ActualStatus == ImportedApprovalStates.Rejected && inFlight.Contains(profile.ActualStatus))
+               select profile.ProductId;
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
