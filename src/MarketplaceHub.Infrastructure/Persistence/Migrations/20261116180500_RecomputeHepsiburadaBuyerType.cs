@@ -15,7 +15,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations;
 // two with a valid VKN and a tax office (4476971250, 4377390652) become Corporate, the other 35 stay Individual.
 // Rerunning it only clears the same rows again, which the next backfill fills in the same way.
 [DbContext(typeof(AppDbContext))]
-[Migration("20261116180000_RecomputeHepsiburadaBuyerType")]
+[Migration("20261116180500_RecomputeHepsiburadaBuyerType")]
 public sealed class RecomputeHepsiburadaBuyerType : Migration
 {
     internal const string Clear = """
