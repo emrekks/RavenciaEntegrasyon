@@ -91,8 +91,10 @@ async function loadOrderPage(filters: OrderFilters, limit: number, after: string
 function orderFilterParams(filters: OrderFilters) {
   const params = new URLSearchParams()
   if (filters.search.trim()) params.set('search', filters.search.trim())
-  if (filters.platform !== 'ALL') params.set('platform', filters.platform)
-  if (filters.platforms.length) params.set('platforms', filters.platforms.join(','))
+  // One unified platforms filter: the chosen platforms, else the single platform picked (the server reads platforms
+  // first and the old single platform only without it, so the rows are the same).
+  const platforms = filters.platforms.length ? filters.platforms : filters.platform !== 'ALL' ? [filters.platform] : []
+  if (platforms.length) params.set('platforms', platforms.join(','))
   if (filters.listing !== 'ALL') params.set('listing', filters.listing)
   if (filters.cargo !== 'ALL') params.set('cargo', filters.cargo)
   if (filters.invoice !== 'ALL') params.set('invoice', filters.invoice)

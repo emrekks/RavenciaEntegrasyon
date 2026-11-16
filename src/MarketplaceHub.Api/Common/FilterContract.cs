@@ -12,20 +12,27 @@ public static class FilterContract
     private static readonly Dictionary<string, string> PeriodAndPlatforms = new(StringComparer.Ordinal) { ["from"] = "dateFrom", ["to"] = "dateTo", ["platformCodes"] = "platforms" };
     private static readonly Dictionary<string, string> Platform = new(StringComparer.Ordinal) { ["platform"] = "platforms" };
     private static readonly Dictionary<string, string> Since = new(StringComparer.Ordinal) { ["since"] = "dateFrom" };
+    // Round 9: the lists that took platform next to platforms (the codes of both are read together) keep platform deprecated.
+    private static readonly Dictionary<string, string> SinceAndPlatform = new(StringComparer.Ordinal) { ["since"] = "dateFrom", ["platform"] = "platforms" };
+    private static readonly Dictionary<string, string> PeriodAndPlatform = new(StringComparer.Ordinal) { ["from"] = "dateFrom", ["to"] = "dateTo", ["platform"] = "platforms" };
 
     // Old name → unified name, by the operation's document route.
     private static readonly Dictionary<string, IReadOnlyDictionary<string, string>> Renamed = new(StringComparer.Ordinal)
     {
         ["/api/v1/dashboard/performance"] = Period,
         ["/api/v1/invoice-workspace/page"] = PeriodAndPlatforms,
-        ["/api/v1/jobs"] = Since,
-        ["/api/v1/jobs/counts"] = Since,
-        ["/api/v1/jobs/page"] = Since,
+        ["/api/v1/jobs"] = SinceAndPlatform,
+        ["/api/v1/jobs/counts"] = SinceAndPlatform,
+        ["/api/v1/jobs/metrics"] = Platform,
+        ["/api/v1/jobs/page"] = SinceAndPlatform,
         ["/api/v1/notifications"] = Period,
-        ["/api/v1/price-stock-send-log"] = Period,
-        ["/api/v1/price-stock-send-log/counts"] = Period,
-        ["/api/v1/product-activity"] = Period,
-        ["/api/v1/product-activity/counts"] = Period,
+        ["/api/v1/orders"] = Platform,
+        ["/api/v1/orders/facets"] = Platform,
+        ["/api/v1/orders/summary"] = Platform,
+        ["/api/v1/price-stock-send-log"] = PeriodAndPlatform,
+        ["/api/v1/price-stock-send-log/counts"] = PeriodAndPlatform,
+        ["/api/v1/product-activity"] = PeriodAndPlatform,
+        ["/api/v1/product-activity/counts"] = PeriodAndPlatform,
         ["/api/v1/reports/order-profitability"] = PeriodAndPlatforms,
         ["/api/v1/reports/payouts"] = PlatformCodes,
         ["/api/v1/reports/payouts/lines"] = PlatformCodes,

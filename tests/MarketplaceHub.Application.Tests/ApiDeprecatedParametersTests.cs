@@ -11,6 +11,17 @@ public sealed class ApiDeprecatedParametersTests
 {
     private static readonly string[] ToRemoveLater =
     [
+        "GET /api/v1/jobs platform",
+        "GET /api/v1/jobs/counts platform",
+        "GET /api/v1/jobs/metrics platform",
+        "GET /api/v1/jobs/page platform",
+        "GET /api/v1/orders platform",
+        "GET /api/v1/orders/facets platform",
+        "GET /api/v1/orders/summary platform",
+        "GET /api/v1/price-stock-send-log platform",
+        "GET /api/v1/price-stock-send-log/counts platform",
+        "GET /api/v1/product-activity platform",
+        "GET /api/v1/product-activity/counts platform",
         "GET /api/v1/dashboard/performance from",
         "GET /api/v1/dashboard/performance to",
         "GET /api/v1/invoice-workspace/page from",

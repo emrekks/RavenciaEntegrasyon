@@ -5447,6 +5447,7 @@ export interface ApiOperations {
       dateFrom?: string
       jobTypes?: string
       limit?: number | string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       ids?: string
@@ -5489,6 +5490,7 @@ export interface ApiOperations {
       /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
       since?: string
       dateFrom?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
     }
@@ -5504,6 +5506,7 @@ export interface ApiOperations {
     pathParams: Record<string, never>
     query: {
       hours?: number | string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
     }
@@ -5550,6 +5553,7 @@ export interface ApiOperations {
       /** 1-1000; the service brings any other value into it. Default 200. */
       limit?: number | string
       after?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       search?: string
@@ -5803,6 +5807,7 @@ export interface ApiOperations {
       after?: string
       status?: string
       search?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       listing?: string
@@ -5860,6 +5865,7 @@ export interface ApiOperations {
     query: {
       status?: string
       search?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       listing?: string
@@ -5904,6 +5910,7 @@ export interface ApiOperations {
     pathParams: Record<string, never>
     query: {
       search?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       listing?: string
@@ -5946,6 +5953,7 @@ export interface ApiOperations {
       /** 1-100; the service brings any other value into it. Default 50. */
       limit?: number | string
       after?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       connectionId?: string
@@ -5972,6 +5980,7 @@ export interface ApiOperations {
     path: "/api/v1/price-stock-send-log/counts"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       connectionId?: string
@@ -5999,6 +6008,7 @@ export interface ApiOperations {
       limit?: number | string
       after?: string
       kinds?: string
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
@@ -6023,6 +6033,7 @@ export interface ApiOperations {
     path: "/api/v1/product-activity/counts"
     pathParams: Record<string, never>
     query: {
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       platforms?: string
       /** @deprecated Use dateFrom; kept for older browser tabs. When both are sent, dateFrom wins. */
@@ -6051,7 +6062,7 @@ export interface ApiOperations {
       after?: string
       status?: string
       search?: string
-      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       stock?: string
       sort?: string
@@ -6251,7 +6262,7 @@ export interface ApiOperations {
     query: {
       kind?: string
       status?: string
-      /** @deprecated Use platforms; kept for older browser tabs. When both are sent, platforms wins. */
+      /** @deprecated Use platforms; kept for older browser tabs. */
       platform?: string
       connectionId?: string
       dateFrom?: string
