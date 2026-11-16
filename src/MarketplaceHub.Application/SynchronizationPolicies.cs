@@ -23,7 +23,7 @@ public static class N11OrderHistoryPolicy
     // n11 allows 15 days per query and silently trims a longer one; windows stay a day short of that.
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(14);
     public const int MinimumOverlapSeconds = 600;
-    public static readonly DateTimeOffset EarliestAvailable = new(2024, 11, 1, 0, 0, 0, TimeSpan.FromHours(3));
+    public static readonly DateTimeOffset EarliestAvailable = new(2024, 11, 1, 0, 0, 0, TurkeyClock.Offset);
 
     public static DateTimeOffset Start(bool full, DateTimeOffset? watermark, TimeSpan overlap, DateTimeOffset now)
     {
@@ -55,7 +55,7 @@ public static class PazaramaOrderHistoryPolicy
     public const int PageSize = 100;
     // Pazarama refuses ranges above one month; 28 days keeps a safe margin.
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(28);
-    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan TurkeyOffset = TurkeyClock.Offset;
 
     // First day (Turkey time) the run reads.
     public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now, int lookbackDays = IncrementalLookbackDays)
@@ -91,7 +91,7 @@ public static class PttAvmOrderHistoryPolicy
     public const int InitialLookbackMonths = 3;
     public const int IncrementalLookbackDays = 2;
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(35);
-    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan TurkeyOffset = TurkeyClock.Offset;
 
     // First day (Turkey time) the run reads.
     public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now)
@@ -1281,7 +1281,7 @@ public static class ExternalEffectReconcilePolicy
 public static class DailyScheduleWindowPolicy
 {
     public const int DailyIntervalSeconds = 86_400;
-    public static readonly TimeSpan IstanbulOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan IstanbulOffset = TurkeyClock.Offset;
     public static readonly TimeSpan WindowStart = TimeSpan.FromHours(14);
     public static readonly TimeSpan WindowEnd = TimeSpan.FromHours(17);
 
