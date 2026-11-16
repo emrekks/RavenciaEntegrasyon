@@ -1,3 +1,4 @@
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Jobs.Handlers;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -58,7 +59,7 @@ internal static class ReportMarketplaceCommissions
                 "HEPSIBURADA" => Hepsiburada(own.Concat(order.Packages.SelectMany(package => byPackage.GetValueOrDefault((order.ConnectionId, package)) ?? [])).ToList(), order.Packages),
                 _ => null
             };
-            if (commission is { } value) result[order.Id] = Math.Round(value, 2, MidpointRounding.AwayFromZero);
+            if (commission is { } value) result[order.Id] = MoneyRounding.Round(value);
         }
         return result;
     }

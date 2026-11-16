@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 // node:fs without @types/node, the way orders-sade-css.test.ts reads files.
 const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string): unknown } }).process.getBuiltinModule('node:fs') as { readFileSync(path: URL, encoding: 'utf8'): string }
 const testFileUrl = import.meta.url
-const css = fs.readFileSync(new URL('./returns-sade.css', testFileUrl), 'utf8')
+const css = fs.readFileSync(new URL('./rr-components.css', testFileUrl), 'utf8')
 
 // The CSS outside every @media block: rules that apply at every width.
 function unconditional() {

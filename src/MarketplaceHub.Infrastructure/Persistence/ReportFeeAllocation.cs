@@ -43,7 +43,7 @@ internal static class ReportFeeAllocation
         var total = TrendyolFinanceCategorizer.NetCost(invoice.Debt, invoice.Credit);
         var sum = weights.Values.Sum();
         var ordered = weights.OrderByDescending(weight => weight.Value).ThenBy(weight => weight.Key, StringComparer.Ordinal).ToList();
-        var shares = ordered.ToDictionary(weight => weight.Key, weight => Math.Round(total * weight.Value / sum, 2, MidpointRounding.AwayFromZero), StringComparer.Ordinal);
+        var shares = ordered.ToDictionary(weight => weight.Key, weight => MoneyRounding.Round(total * weight.Value / sum), StringComparer.Ordinal);
         // The rounding left over goes to the largest share, so the shares add up to the invoice.
         shares[ordered[0].Key] += total - shares.Values.Sum();
         return ordered.Select(weight => new ReportFinanceRow

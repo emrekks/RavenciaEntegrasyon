@@ -62,17 +62,16 @@ public static class InvoiceSaleReturnPolicy
     /// </summary>
     public static InvoiceOrderTotals KeptTotals(IReadOnlyCollection<InvoiceLineUnits> lines, InvoiceOrderTotals totals)
     {
-        var fullGross = lines.Sum(line => Money(Math.Max(0m, line.ActiveQuantity) * line.UnitPrice));
-        var keptGross = lines.Sum(line => Money(line.KeptQuantity * line.UnitPrice));
+        var fullGross = lines.Sum(line => MoneyRounding.Round(Math.Max(0m, line.ActiveQuantity) * line.UnitPrice));
+        var keptGross = lines.Sum(line => MoneyRounding.Round(line.KeptQuantity * line.UnitPrice));
         if (keptGross == fullGross) return totals;
-        var gross = totals.GrossAmount > 0 ? Money(totals.GrossAmount) : fullGross;
+        var gross = totals.GrossAmount > 0 ? MoneyRounding.Round(totals.GrossAmount) : fullGross;
         if (gross <= 0 || Math.Abs(fullGross - gross) > 0.01m) return totals;
-        var payable = Money(totals.PayableAmount);
-        var discount = totals.DiscountAmount > 0 ? Money(totals.DiscountAmount) : Math.Max(0m, gross - payable);
+        var payable = MoneyRounding.Round(totals.PayableAmount);
+        var discount = totals.DiscountAmount > 0 ? MoneyRounding.Round(totals.DiscountAmount) : Math.Max(0m, gross - payable);
         if (discount > gross || Math.Abs(gross - discount - payable) > 0.01m) return totals;
-        var keptDiscount = Money(discount * keptGross / gross);
+        var keptDiscount = MoneyRounding.Round(discount * keptGross / gross);
         return new(keptGross, keptDiscount, keptGross - keptDiscount);
     }
 
-    private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 }
