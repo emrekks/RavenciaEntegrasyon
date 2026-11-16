@@ -435,9 +435,23 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         // KATALOG-10: newest first without a stock or platform-state filter, the models are paged in SQL while the stored
         // model links give the model-code rule's grouping; otherwise the in-memory grouping below.
-        if (sqlPaging && catalogSort is null && string.IsNullOrWhiteSpace(stock) && !hasPlatformStatusFilter
-            && await FamilyIdMatchesModelCodeRuleAsync(tenantId, cancellationToken))
-            return await ListProductFamiliesInSqlAsync(tenantId, query, afterCreatedAt, afterId, limit, countKey, cachedCount as int?, cancellationToken);
+        // KATALOG-10 (round 7): the stock filters, the platform-state filters and the price and stock sorts too: the filters
+        // narrow the cards in the database (a platform state is decided on the narrow link rows, as below), the sorts read
+        // one metric per model from the database and order those rows.
+        if (sqlPaging && await FamilyIdMatchesModelCodeRuleCachedAsync(tenantId, cancellationToken))
+        {
+            if (!string.IsNullOrWhiteSpace(stock)) query = await ApplyStockFilterInSqlAsync(tenantId, query, stock, cancellationToken);
+            if (hasPlatformStatusFilter)
+            {
+                var narrowProducts = await query.Select(ProductShape).ToListAsync(cancellationToken);
+                var narrowVariants = await VariantShapes(tenantId).Where(x => query.Any(product => product.Id == x.ProductId)).ToListAsync(cancellationToken);
+                var kept = (await PlatformStateProductIdsAsync(tenantId, narrowProducts, narrowVariants, platformFilterCode, platformFilterState, cancellationToken)).ToArray();
+                query = query.Where(product => kept.Contains(product.Id));
+            }
+            return catalogSort is null
+                ? await ListProductFamiliesInSqlAsync(tenantId, query, afterCreatedAt, afterId, limit, countKey, cachedCount as int?, cancellationToken)
+                : await ListSortedProductFamiliesInSqlAsync(tenantId, query, catalogSort, afterSortKey, limit, countKey, cachedCount as int?, cancellationToken);
+        }
         // A platform refresh updates the card content, but must not reshuffle the
         // catalog. Keep the list in its original insertion order instead of the
         // mutable UpdatedAt order.
@@ -476,38 +490,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         if (hasPlatformStatusFilter)
         {
-            var variantsByProductForPlatform = allVariants
-                .GroupBy(variant => variant.ProductId)
-                .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
-            var familyGroups = allProducts
-                .GroupBy(product => ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
-                .ToList();
-            var matchingFamilyKeys = new HashSet<string>(StringComparer.Ordinal);
-            // "ALL" (Tüm Platformlar › a state, owner 14 Nov 2026): the family is in that state on at least one marketplace.
-            foreach (var code in platformFilterCode == AllPlatformsFilterCode ? ProductFilterPlatformCodes : [platformFilterCode])
-            {
-                var (matchedVariantIds, missingVariantIds, offSaleVariantIds) = await PlatformVariantStatesAsync(tenantId, code, allProducts, allVariants, cancellationToken);
-                // Hatalı / Onay Bekliyor: a card of the family whose publication there the marketplace refused or failed
-                // (the products list's red mark), or still reviews (ProductListingHealth.ErrorStatuses / WaitingStatuses).
-                var flaggedProductIds = platformFilterState is ProductListingHealth.Error or ProductListingHealth.Waiting
-                    ? await PlatformFlaggedProductIdsAsync(tenantId, code, allProductIds, platformFilterState == ProductListingHealth.Error ? ProductListingHealth.ErrorStatuses : ProductListingHealth.WaitingStatuses, cancellationToken)
-                    : null;
-                foreach (var group in familyGroups.Where(group => !matchingFamilyKeys.Contains(group.Key)))
-                {
-                    var matches = flaggedProductIds is not null
-                        ? group.Any(product => flaggedProductIds.Contains(product.Id))
-                        : PlatformFilterMatchesFamily(
-                            group.SelectMany(product => variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []).Select(variant => variant.Id),
-                            matchedVariantIds,
-                            missingVariantIds,
-                            offSaleVariantIds,
-                            platformFilterState);
-                    if (matches) matchingFamilyKeys.Add(group.Key);
-                }
-            }
-            allProducts = allProducts
-                .Where(product => matchingFamilyKeys.Contains(ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? [])))
-                .ToList();
+            var kept = await PlatformStateProductIdsAsync(tenantId, allProducts, allVariants, platformFilterCode, platformFilterState, cancellationToken);
+            allProducts = allProducts.Where(product => kept.Contains(product.Id)).ToList();
             allProductIds = allProducts.Select(x => x.Id).ToArray();
             allVariants = allVariants.Where(x => allProductIds.Contains(x.ProductId)).ToList();
         }
@@ -593,7 +577,44 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ProductFamilyKeyPolicy.FamilyKey(product.Id, product.BrandId, modelCode);
     }
 
+    // KATALOG-10 (round 7): the counts worked out in the database: each card's MAIN stock is summed there; only the cards
+    // with stock read their narrow variant rows, for the colour groups of the low-stock count (ProductStockPolicy).
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var main = db.InventoryItems.Where(item => item.TenantId == tenantId && item.LocationCode == "MAIN");
+        var variants = db.ProductVariants.Where(variant => variant.TenantId == tenantId);
+        var cards = VisibleProducts(tenantId).Select(product => new
+        {
+            product.Id,
+            product.Status,
+            Total = main.Where(item => variants.Any(variant => variant.Id == item.VariantId && variant.ProductId == product.Id)).Sum(item => (decimal?)item.OnHand) ?? 0m
+        });
+        // One narrow row per card (its id, status and summed stock); the variants stay in the database.
+        var totals = await cards.ToListAsync(cancellationToken);
+        var countedCards = totals.Where(card => !ProductDraftPolicy.IsDraft(card.Status)).ToList();
+        var stocked = countedCards.Where(card => card.Total > 0m).Select(card => card.Id).ToArray();
+        var rows = await variants.Where(variant => stocked.Contains(variant.ProductId))
+            .Select(variant => new { variant.Id, variant.ProductId, variant.OptionSignature, Stock = main.Where(item => item.VariantId == variant.Id).Sum(item => (decimal?)item.OnHand) })
+            .ToListAsync(cancellationToken);
+        var stockByVariant = rows.Where(row => row.Stock is not null).ToDictionary(row => row.Id, row => row.Stock!.Value);
+        var low = rows.GroupBy(row => row.ProductId)
+            .Count(group => ProductStockPolicy.IsLowStock(group.Select(row => new ProductVariant { Id = row.Id, TenantId = tenantId, ProductId = row.ProductId, Sku = "", SkuNormalized = "", OptionSignature = row.OptionSignature }), stockByVariant));
+        return new(totals.Count, totals.Count(card => card.Status == ProductStatus.Active), countedCards.Count(card => card.Total <= 0m), low,
+            await SummaryPlatformsAsync(tenantId, cancellationToken), countedCards.Sum(card => Math.Max(0, card.Total)));
+    }
+
+    private Task<List<string>> SummaryPlatformsAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        (from profile in db.ChannelListingProfiles.AsNoTracking()
+         join connection in db.PlatformConnections.AsNoTracking()
+             on new { profile.TenantId, profile.ConnectionId } equals new { connection.TenantId, ConnectionId = connection.Id }
+         where profile.TenantId == tenantId && profile.Enabled && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+         select connection.DisplayName)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToListAsync(cancellationToken);
+
+    // The counts worked out over every card and variant in memory: the reference ProductSummaryAsync is tested against.
+    internal async Task<ProductSummaryView> ProductSummaryInMemoryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var products = await VisibleProducts(tenantId)
             .Select(x => new { x.Id, x.Status })

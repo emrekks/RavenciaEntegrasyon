@@ -96,6 +96,89 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         await AssertSameListsAsync(db, seed.TenantId);
     }
 
+    // KATALOG-10 (round 7): the stock filters, the platform-state filters, the price and stock sorts and the summary read in
+    // the database give the in-memory list's rows, order, counts and cursors on every page.
+    [PostgreSqlFact]
+    public async Task FiltersSortsAndSummary_InTheDatabase_ListWhatTheInMemoryPathLists()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Trendyol", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
+        db.PlatformConnections.Add(connection);
+        var variants = await db.ProductVariants.Where(x => x.TenantId == seed.TenantId).OrderBy(x => x.Sku).ToListAsync();
+        var random = new Random(20261116);
+        for (var index = 0; index < variants.Count; index++)
+        {
+            var variant = variants[index];
+            // Stock: none, zero, below zero, some; an item more on a few (two MAIN rows summed).
+            if (index % 5 != 0)
+            {
+                var onHand = (index % 7) switch { 0 => 0m, 1 => -2m, _ => random.Next(1, 9) };
+                db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, VariantId = variant.Id, LocationCode = "MAIN", OnHand = onHand, Available = Math.Max(0, onHand) });
+            }
+            // Offers: none, a passive one, an active one with another price, a zero price.
+            if (index % 3 != 0)
+                db.ChannelOffers.Add(new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 900m, SalePrice = index % 4 == 0 ? 0m : 100m + index * 10, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = index % 2 == 0 ? "ACTIVE" : "PASSIVE", Version = 1 });
+            // Links on Trendyol: matched, one the marketplace no longer knows, none.
+            if (index % 4 is 1 or 2)
+                db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = $"EXT-{Guid.NewGuid():N}", HealthStatus = index % 4 == 2 ? "NOT_FOUND" : null, Version = 1 });
+        }
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var codec = new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        Assert.True(await Service(db, codec).FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
+
+        string Position(string? cursor, string? sort) => cursor is null ? "-"
+            : sort is null ? codec.TryDecodeProduct(cursor, out var createdAt, out var id) ? $"{createdAt.UtcTicks}:{id}" : "invalid"
+            : codec.TryDecodeProductSort(cursor, ProductCatalogSort.Parse(sort)!.Value, out var key) ? $"{key.Metric}:{key.CreatedAt.UtcTicks}:{key.Id}" : "invalid";
+        var compared = 0;
+        foreach (var stock in new string?[] { null, "OUT", "LOW", "GAP", "OK", "SOMETHING" })
+            foreach (var platform in new string?[] { null, "TRENDYOL:ACTIVE", "TRENDYOL:PASSIVE", "TRENDYOL:PARTIAL", "ALL:NOT_FOUND" })
+                foreach (var sort in new string?[] { null, "price-asc", "price-desc", "stock-asc", "stock-desc" })
+                    foreach (var (status, limit) in new (string?, int)[] { (null, 2), ("ACTIVE", 50) })
+                    {
+                        var sqlService = new CatalogService(db, codec, new ConfigurationBuilder().Build(), TimeProvider.System, new MemoryCache(new MemoryCacheOptions()));
+                        var memoryService = new CatalogService(db, codec, new ConfigurationBuilder().Build(), TimeProvider.System, new MemoryCache(new MemoryCacheOptions()));
+                        string? sqlAfter = null, memoryAfter = null;
+                        for (var page = 0; page < 20; page++)
+                        {
+                            var sql = await sqlService.ListProductsAsync(seed.TenantId, limit, sqlAfter, status, null, platform, stock, sort, sqlPaging: true, CancellationToken.None);
+                            var memory = await memoryService.ListProductsAsync(seed.TenantId, limit, memoryAfter, status, null, platform, stock, sort, sqlPaging: false, CancellationToken.None);
+                            var label = $"stock {stock}, platform {platform}, sort {sort}, status {status}, page {page}";
+                            Assert.True(JsonSerializer.Serialize(memory.Items) == JsonSerializer.Serialize(sql.Items), label);
+                            Assert.True((memory.HasMore, memory.TotalCount, Position(memory.NextCursor, sort)) == (sql.HasMore, sql.TotalCount, Position(sql.NextCursor, sort)), label);
+                            compared++;
+                            if (!sql.HasMore) break;
+                            (sqlAfter, memoryAfter) = (sql.NextCursor, memory.NextCursor);
+                        }
+                    }
+        Assert.True(compared > 300, $"{compared} pages");
+
+        var summaryService = Service(db, codec);
+        Assert.Equal(JsonSerializer.Serialize(await summaryService.ProductSummaryInMemoryAsync(seed.TenantId, CancellationToken.None)), JsonSerializer.Serialize(await summaryService.ProductSummaryAsync(seed.TenantId, CancellationToken.None)));
+    }
+
+    // The rule check is kept for a short time and dropped by a save of a card or variant of the tenant.
+    [PostgreSqlFact]
+    public async Task TheRuleCheck_IsCached_AndDroppedByACatalogSave()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var codec = new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        var service = Service(db, codec);
+        Assert.True(await service.FamilyIdMatchesModelCodeRuleCachedAsync(seed.TenantId, CancellationToken.None));
+        // Behind the tracker's back: the cached answer stands.
+        var gri = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId && x.Title == "Kadın Gri Etek");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {gri.Id}""");
+        Assert.True(await service.FamilyIdMatchesModelCodeRuleCachedAsync(seed.TenantId, CancellationToken.None));
+        // A tracked save of a card of the tenant drops it.
+        var card = await db.Products.SingleAsync(x => x.TenantId == seed.TenantId && x.Title == "Kodsuz Gömlek");
+        card.Description = "Yeni açıklama";
+        card.Version++;
+        await db.SaveChangesAsync();
+        Assert.False(await service.FamilyIdMatchesModelCodeRuleCachedAsync(seed.TenantId, CancellationToken.None));
+    }
+
     [PostgreSqlFact]
     public async Task ATenantWhoseLinksDifferFromTheModelCodeRule_KeepsTheInMemoryPath()
     {

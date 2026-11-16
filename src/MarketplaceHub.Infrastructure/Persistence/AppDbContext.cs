@@ -171,10 +171,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
         var returnClaims = ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, CancellationToken.None), []).GetAwaiter().GetResult();
         var models = ProductModelLinks.Capture(ChangeTracker);
+        // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
+        var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
         int saved;
         _saving = true;
         try { saved = base.SaveChanges(acceptAllChangesOnSuccess); }
         finally { _saving = false; }
+        CatalogListGenerations.Bump(catalogTenants);
         ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
         if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
         RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
@@ -189,10 +192,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         // tracker (ReturnCardColumns).
         var returnClaims = await ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, cancellationToken), []);
         var models = ProductModelLinks.Capture(ChangeTracker);
+        // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
+        var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
         int saved;
         _saving = true;
         try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
         finally { _saving = false; }
+        CatalogListGenerations.Bump(catalogTenants);
         await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
         if (models is not null) await LinkProductModelsAsync(models);
         await RefreshDeferredModelValuesAsync();
