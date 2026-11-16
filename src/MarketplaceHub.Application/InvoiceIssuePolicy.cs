@@ -19,6 +19,17 @@ public static class InvoiceIssuePolicy
     public const string EInvoiceTargetAliasUnresolvedCode = "EINVOICE_TARGET_ALIAS_UNRESOLVED";
     public const string EInvoiceTaxpayerConflictCode = "EINVOICE_TAXPAYER_CONFLICT";
     public const string EInvoiceTaxpayerChangedCode = "EINVOICE_TAXPAYER_STATUS_CHANGED";
+    public const string RecipientKindUnknownCode = "EFATURAM_RECIPIENT_KIND_UNKNOWN";
+    public const string RecipientPlaceholderForCorporateCode = "EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE";
+
+    // 16 Nov 2026: a Hepsiburada buyer whose kind its invoice details do not make clear waits for the owner ("unknown
+    // waits"); it never goes out as an individual e-Archive.
+    public static readonly InvoiceIssueRefusal RecipientKindUnknown = new(RecipientKindUnknownCode,
+        "Hepsiburada alıcının bireysel mi kurumsal mı olduğunu açıkça bildirmedi: siparişin fatura bilgilerinde vergi numarası ile vergi dairesi birlikte yok ya da vergi numarası T.C. kimlik numarasıyla birlikte geldi. Alıcı türü belirsiz olduğu için fatura kesilmedi. Hepsiburada satıcı panelinde siparişin fatura bilgilerini kontrol edin; faturayı E-Faturam portalında doğru alıcıya düzenleyip siparişe manuel belge olarak ekleyin.");
+
+    // 16 Nov 2026, every marketplace: the order holds a company's valid VKN but the invoice would go to 11111111111.
+    public static readonly InvoiceIssueRefusal RecipientPlaceholderForCorporate = new(RecipientPlaceholderForCorporateCode,
+        "Siparişin fatura bilgilerinde geçerli bir şirket vergi numarası (VKN) var, ancak fatura bireysel alıcı kimliği 11111111111 ile kesilecekti. Yanlış alıcıya fatura kesilmedi. Siparişin alıcı türünü pazaryeri panelinde kontrol edin; gerekirse faturayı E-Faturam portalında şirket adına düzenleyip siparişe manuel belge olarak ekleyin.");
 
     // Invoices stopped before the taxpayer lookup existed keep this code; no new invoice gets it.
     public static readonly InvoiceIssueRefusal EInvoiceRecipient = new(EInvoiceRecipientCode,
@@ -200,6 +211,8 @@ public static class InvoiceIssuePolicy
         EInvoiceTargetAliasUnresolvedCode => EInvoiceTargetAliasUnresolved.Message,
         EInvoiceTaxpayerConflictCode => EInvoiceTaxpayerConflict.Message,
         EInvoiceTaxpayerChangedCode => EInvoiceTaxpayerChanged.Message,
+        RecipientKindUnknownCode => RecipientKindUnknown.Message,
+        RecipientPlaceholderForCorporateCode => RecipientPlaceholderForCorporate.Message,
         ExportFlowRequiredCode => ExportFlowRequired.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,

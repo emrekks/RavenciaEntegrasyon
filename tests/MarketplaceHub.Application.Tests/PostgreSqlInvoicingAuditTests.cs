@@ -834,6 +834,79 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
+    // 16 Nov 2026 (Hepsiburada 4476971250): a Hepsiburada order with 11111111111 next to a valid VKN and a tax office is a
+    // company: the order is stored Corporate, the preview shows the company and its VKN, and the taxpayer lookup decides
+    // the type. Synthetic values only.
+    [PostgreSqlFact]
+    public async Task AHepsiburadaCompanyWithThePlaceholderIdentityIsPreviewedAsTheCompany()
+    {
+        var seed = NewSeed("audit-hb-corporate");
+        seed.Marketplace.PlatformCode = "HEPSIBURADA";
+        seed.Order.CustomerSnapshotJson = HepsiburadaCorporateBuyerTests.CorporateCustomer;
+        seed.Order.InvoiceAddressSnapshotJson = HepsiburadaCorporateBuyerTests.CorporateInvoiceAddress;
+        await SeedAsync(seed, db => db.OrderLines.Add(NewLine(seed.Tenant.Id, seed.Order.Id)));
+
+        try
+        {
+            await using (var stored = fixture.CreateContext())
+                Assert.Equal(OrderBuyerTypeView.Corporate, await stored.Orders.Where(row => row.Id == seed.Order.Id).Select(row => row.BuyerType).SingleAsync());
+
+            foreach (var (lookup, invoiceType) in new[]
+            {
+                (EInvoiceTaxpayerLookup.NotRegistered(), "EARSIVFATURA"),
+                (new EInvoiceTaxpayerLookup(EInvoiceTaxpayerState.Registered, "ÖRNEK TİCARET", [new("urn:mail:defaultpk@example.test", "PK")]), "TEMELFATURA")
+            })
+            {
+                var provider = new LookupOnlyProvider(lookup);
+                await using var db = fixture.CreateContext();
+                var preview = await NewBillingService(db, provider).PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                    new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+
+                Assert.True(preview.Succeeded, preview.Error?.Message);
+                var item = Assert.Single(preview.Value!);
+                Assert.Equal(("Kurumsal", HepsiburadaCorporateBuyerTests.Vkn, "ÖRNEK TİCARET LİMİTED ŞİRKETİ", invoiceType),
+                    (item.CustomerType, item.TaxIdentityNumber, item.CustomerName, item.InvoiceType));
+                Assert.Equal(HepsiburadaCorporateBuyerTests.Vkn, Assert.Single(provider.TaxIds));
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // The guard of 16 Nov 2026 for every marketplace: an order holding a company's VKN whose invoice would go to
+    // 11111111111 is blocked at the preview and refused at the draft; nothing is created.
+    [PostgreSqlFact]
+    public async Task AnOrderWithACompanyVknIsNeverPreviewedOrDraftedTo11111111111()
+    {
+        var seed = NewSeed("audit-placeholder-guard");
+        seed.Order.CustomerSnapshotJson = """{"commercial":false}""";
+        seed.Order.InvoiceAddressSnapshotJson = $$"""{"address":"Örnek Cadde No:1","firstName":"Ayşe","lastName":"Örnek","city":"Konya","district":"Selçuklu","taxNumber":"{{HepsiburadaCorporateBuyerTests.Vkn}}"}""";
+        await SeedAsync(seed, db => db.OrderLines.Add(NewLine(seed.Tenant.Id, seed.Order.Id)));
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewBillingService(db, new LookupOnlyProvider(EInvoiceTaxpayerLookup.NotRegistered()));
+            var preview = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), "audit-placeholder-guard", CancellationToken.None);
+
+            var item = Assert.Single(preview.Value ?? []);
+            Assert.False(item.CanConfirm);
+            Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporate.Message, item.BlockedReason);
+            Assert.Equal(InvoiceIssuePolicy.RecipientPlaceholderForCorporateCode, draft.Error?.Code);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.Invoices.AnyAsync(invoice => invoice.TenantId == seed.Tenant.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task ALineWhoseVatRateTrendyolDidNotReportBlocksThePreviewAndTheDraft()
     {

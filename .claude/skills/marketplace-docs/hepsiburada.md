@@ -192,9 +192,20 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
 HEPSIBURADA_CONNECTION_TEST, _REFERENCE_SYNC, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC (also reads packages,
 cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_INVOICE_RECONCILIATION.
 
-## Buyer kind (stage 5, 5 Nov 2026)
-- No corporate flag; an individual buyer comes with `identityNo: "11111111111"` and may still carry a `companyName`
-  (the sample has "Test User"): that placeholder is the "individual" flag (`hepsiburada-api-son.md:13394`).
+## Buyer kind (corrected 16 Nov 2026)
+- No corporate/individual field anywhere in the order or package payloads. The docs only describe the fields: package
+  `taxNumber` "Kurumsal müşterinin vergi numarası", `identityNo` "Müşterinin TCKN bilgisi" (`hepsiburada-api-son.md`
+  schema ~17411-17478); order detail `items.invoice.turkishIdentityNumber` / `taxNumber` / `taxOffice` (~8640-8664).
+- `11111111111` in `identityNo` / `turkishIdentityNumber` is NOT an individual flag (the 5 Nov note said so from the one
+  sample at :13394, where `taxNumber` is empty). Live, 16 Nov 2026: order 4476971250 (seller panel: "Kurumsal Müşteri",
+  company name, VKN, tax office) came with `turkishIdentityNumber` 11111111111 next to a valid 10-digit `taxNumber` and a
+  `taxOffice`, and was wrongly issued an e-Arşiv to 11111111111.
+- Shapes of all 37 live Hepsiburada orders (read-only SQL, 16 Nov 2026): 34 placeholder + `taxNumber` "" + `taxOffice`
+  null; 1 placeholder alone (no tax fields); 2 placeholder + valid VKN + tax office. No real personal TCKN seen.
+- Rule (`TrendyolEFaturamCanonicalPayload.HepsiburadaBuyerEvidence`): beside the identity field, placeholder with no tax
+  number and no tax office = individual; valid VKN + tax office = corporate (lookup decides e-Fatura/e-Arşiv, recipient =
+  VKN); anything else (VKN without office, office alone, invalid or 11-digit tax number, real TCKN + tax number) =
+  unclear, the invoice stops with EFATURAM_RECIPIENT_KIND_UNKNOWN for the owner.
 
 ## Report data gaps (7 Nov 2026)
 - Advertising in the accounting records: the documented ad types are `AdSharingExpense`, `MarketingExpense` (and their

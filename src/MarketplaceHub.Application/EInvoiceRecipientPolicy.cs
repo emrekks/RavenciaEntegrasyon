@@ -39,7 +39,9 @@ public static class EInvoiceRecipientPolicy
 
     /// <summary>
     /// A corporate buyer, or one the marketplace flags as an e-Invoice taxpayer, is looked up. An individual buyer
-    /// gets the consumer e-Archive (its identity is masked as 11111111111), so there is nothing to look up.
+    /// gets the consumer e-Archive (its identity is masked as 11111111111), so there is nothing to look up. Hepsiburada's
+    /// 11111111111 identity alone does not make a buyer individual: its VKN and tax office make it corporate
+    /// (TrendyolEFaturamCanonicalPayload.HepsiburadaBuyerEvidence, 16 Nov 2026).
     /// </summary>
     public static bool RequiresLookup(string marketplaceInvoiceType, bool corporateRecipient) =>
         corporateRecipient || string.Equals(marketplaceInvoiceType, EInvoiceType, StringComparison.Ordinal);
