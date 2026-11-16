@@ -119,7 +119,7 @@ public sealed partial class MarketplaceJobProcessor
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.PackageId && x.ConnectionId == connectionId, cancellationToken);
         var attempt = await db.ShipmentDocumentAttempts.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == (job == null ? "" : job.EffectIdempotencyKey), cancellationToken);
         if (job is null || package is null || attempt is null) return JobExecutionResult.Blocked("COMMON_LABEL_STATE_MISSING", "Ortak etiket işi, paket veya deneme kaydı bulunamadı.");
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var hepsiburada = platform == "HEPSIBURADA";
         var requestedFormat = (payload.Format ?? "ZPL").Trim().ToUpperInvariant();
         var validFormat = hepsiburada

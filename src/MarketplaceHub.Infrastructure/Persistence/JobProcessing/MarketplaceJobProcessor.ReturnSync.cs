@@ -74,10 +74,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private async Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
             return await SyncShopifyReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
@@ -224,8 +221,7 @@ public sealed partial class MarketplaceJobProcessor
                 if (string.IsNullOrWhiteSpace(page.Value.NextCursor) || string.Equals(page.Value.NextCursor, state.Cursor, StringComparison.Ordinal))
                     throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CURSOR_INVALID", "Shopify iade akışı geçersiz veya yinelenen sayfa imleci döndürdü.", 502, null, null));
                 state = NextShopifyReturnPage(state, page.Value.NextCursor, page.Value.LastModifiedSeen);
-                cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-                cursor.Version++;
+                ResumableCursor.Save(cursor, state);
                 await db.SaveChangesAsync(cancellationToken);
                 continue;
             }
@@ -508,12 +504,6 @@ public sealed partial class MarketplaceJobProcessor
 
     private static ShopifyReturnSyncState? ReadShopifyReturnSyncState(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        try
-        {
-            var state = JsonSerializer.Deserialize<ShopifyReturnSyncState>(value);
-            return state is { Version: ShopifyReturnSyncStateVersion } ? state : null;
-        }
-        catch (JsonException) { return null; }
+        return ResumableCursor.Read<ShopifyReturnSyncState>(value, state => state is { Version: ShopifyReturnSyncStateVersion });
     }
 }

@@ -20,12 +20,7 @@ public sealed partial class MarketplaceJobProcessor
         var lookback = TimeSpan.FromDays(ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90));
         var startedAt = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, $"ORDER_RECONCILE_{(int)lookback.TotalDays}D", cancellationToken);
-        OrderReconcileState? state = null;
-        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
-        {
-            try { state = JsonSerializer.Deserialize<OrderReconcileState>(cursor.OpaqueCursor); }
-            catch (JsonException) { }
-        }
+        var state = ResumableCursor.Read<OrderReconcileState>(cursor.OpaqueCursor, _ => true);
         // A pass left unfinished for a day starts over rather than finishing stale windows.
         if (state is null || state.StoreFronts is not { Length: > 0 } || state.StoreFrontIndex >= state.StoreFronts.Length || startedAt - state.AnchorEnd > TimeSpan.FromDays(1))
         {
@@ -50,8 +45,7 @@ public sealed partial class MarketplaceJobProcessor
                 else
                 {
                     TrackResultFailure(page.Error);
-                    cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-                    cursor.Version++;
+                    ResumableCursor.Save(cursor, state);
                     await db.SaveChangesAsync(cancellationToken);
                     return JobExecutionResult.FromAdapterError(page.Error!);
                 }
@@ -80,8 +74,7 @@ public sealed partial class MarketplaceJobProcessor
                 }
                 state = state with { WindowIndex = state.WindowIndex + 1, StoreFrontIndex = 0, NextCursor = null };
             }
-            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-            cursor.Version++;
+            ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
             if (timeProvider.GetUtcNow() - startedAt >= SliceBudget)
                 return JobExecutionResult.Continue("Sipariş uzlaştırması kaldığı pencereden birkaç saniye içinde devam edecek.");
@@ -91,10 +84,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private async Task<bool> ReconcileOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isShopify = platformCode == "SHOPIFY";
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 25, 1, 100);

@@ -24,8 +24,8 @@ public sealed partial class MarketplaceJobProcessor
             .ToList();
         if (remoteVariants.Count == 0) return false;
         // The run's result line counts variants: Eşlenen (a link made now), Zaten eşli, Panelde karşılığı yok, Çakışma.
-        bool NoCounterpart() { telemetryNoCounterpartCount += remoteVariants.Count; return false; }
-        bool Conflict() { telemetryMappingConflictCount += remoteVariants.Count; return false; }
+        bool NoCounterpart() { run.NoCounterpartCount += remoteVariants.Count; return false; }
+        bool Conflict() { run.MappingConflictCount += remoteVariants.Count; return false; }
 
         var now = timeProvider.GetUtcNow();
         var link = await db.MarketplaceProductLinks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalId == externalProductId, cancellationToken);
@@ -157,8 +157,8 @@ public sealed partial class MarketplaceJobProcessor
             var candidate = item.Candidate;
             if (candidate is null || claimedVariantIds.Contains(candidate.Id))
             {
-                if (candidate is not null || matches.Count > 1 || item.ModelCodeUndecided) telemetryMappingConflictCount++;
-                else telemetryNoCounterpartCount++;
+                if (candidate is not null || matches.Count > 1 || item.ModelCodeUndecided) run.MappingConflictCount++;
+                else run.NoCounterpartCount++;
                 if (reportUnmatched || item.ModelCodeUndecided)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"}, {string.Join(", ", remote.Options.Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key)).Select(option => $"{option.Key}: {option.Value}"))} · {snapshot.Title}. {(candidate is not null ? "Aday panel varyantı başka bir pazar yeri varyantına bağlı." : matches.Count > 1 ? $"{matches.Count} panel varyantı aday çıktı." : item.ModelCodeUndecided ? $"Model kodu {item.ModelCandidateCount} panel varyantında var ama hiçbirinin rengi ve bedeni bu varyantınki değil." : "Panelde aynı stok kodu, barkod veya model kodu yok.")}", 1000),
@@ -169,8 +169,8 @@ public sealed partial class MarketplaceJobProcessor
             var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
             if (externalLink is not null)
             {
-                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; telemetryAlreadyMappedCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
-                else telemetryMappingConflictCount++;
+                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; run.AlreadyMappedCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
+                else run.MappingConflictCount++;
                 if (externalLink.VariantId != candidate.Id && reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı {remote.Sku} daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme {candidate.Sku}. Bağlantı değiştirilmedi · {snapshot.Title}.", 1000), cancellationToken);
@@ -180,7 +180,7 @@ public sealed partial class MarketplaceJobProcessor
             var localLink = existingVariantLinks.FirstOrDefault(existing => existing.VariantId == candidate.Id);
             if (localLink is not null)
             {
-                telemetryMappingConflictCount++;
+                run.MappingConflictCount++;
                 if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, panel varyantı {candidate.Sku} zaten {localLink.ExternalId} stok koduna bağlı · {snapshot.Title}.", 1000), cancellationToken);
@@ -193,8 +193,8 @@ public sealed partial class MarketplaceJobProcessor
             existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
             claimedVariantIds.Add(candidate.Id);
             matchedVariantCount++;
-            telemetryMappedCount++;
-            telemetryInsertedCount++;
+            run.MappedCount++;
+            run.InsertedCount++;
             if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource);
         }
 
@@ -214,7 +214,7 @@ public sealed partial class MarketplaceJobProcessor
                 Version = 1
             };
             db.MarketplaceProductLinks.Add(link);
-            telemetryInsertedCount++;
+            run.InsertedCount++;
         }
         // A product link that already exists stays as it is (owner, 12 Nov 2026: mapping only links): until then it was
         // re-marked MAPPED, which wiped its sync state (SYNCED, LOCAL_CHANGES_PENDING) and its import time.
@@ -325,7 +325,7 @@ public sealed partial class MarketplaceJobProcessor
                 ListingSaleStateReads.ApplyToNewLink(own, modelSaleState, modelSaleReason, timeProvider.GetUtcNow());
                 db.MarketplaceVariantLinks.Add(own);
                 existingVariantLinks.Add(own);
-                telemetryInsertedCount++;
+                run.InsertedCount++;
             }
             else if (own.ExternalId != code || own.ExternalBarcode != variant.Barcode?.Trim() || own.ExternalSku != variant.Sku.Trim())
             {
@@ -358,7 +358,7 @@ public sealed partial class MarketplaceJobProcessor
                 return true;
             }
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ProductId = productId, ExternalId = externalProductId, ExternalCode = productCode, SyncStatus = "MAPPED", LastImportedAt = now, Version = 1 });
-            telemetryInsertedCount++;
+            run.InsertedCount++;
         }
         else
         {
@@ -444,7 +444,7 @@ public sealed partial class MarketplaceJobProcessor
             ActorSource = $"SYSTEM:{source}",
             EffectiveAt = now
         });
-        telemetryInsertedCount++;
+        run.InsertedCount++;
     }
 
     private async Task MarkPazaramaOfferInSyncAsync(Guid tenantId, ChannelOffer offer, RemoteCatalogVariant remote, decimal salePrice, decimal listPrice, CancellationToken cancellationToken)

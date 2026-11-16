@@ -288,7 +288,7 @@ public sealed partial class MarketplaceJobProcessor
                     .SetProperty(x => x.HealthChangedAt, now), cancellationToken);
         if (broken > 0)
         {
-            var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+            var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
             await RecordIssue(tenantId, $"variant-link-rejected:{connectionId}", "VARIANT_LINK_REJECTED",
                 $"{MarketplacePlatformName(platformCode)}: {broken:N0} varyantın kodu fiyat-stok gönderiminde art arda iki kez pazaryerinde bulunamadı; bu varyantlara toplu fiyat ve stok gönderilmez. Kodu ürünün Varyant Eşleştirme penceresinden düzeltin.", cancellationToken);
         }

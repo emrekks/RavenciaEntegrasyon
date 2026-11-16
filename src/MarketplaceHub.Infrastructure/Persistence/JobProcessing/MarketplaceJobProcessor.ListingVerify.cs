@@ -271,7 +271,7 @@ public sealed partial class MarketplaceJobProcessor
             .ToList();
         if (due.Count == 0) return;
         // n11, Pazarama and PTT AVM in their first two verification runs only record what a lookup answers.
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var state = ListingVerificationState.Parse(await db.SyncCursors.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == ListingVerificationPolicy.StateCursorResource)
             .Select(x => x.OpaqueCursor)
@@ -297,7 +297,7 @@ public sealed partial class MarketplaceJobProcessor
         catch (JsonException) { payload = null; }
         if (job is null || payload is null || payload.ConnectionId != connectionId)
             return JobExecutionResult.Blocked("LISTING_LOOKUP_PAYLOAD_INVALID", "Tekil ürün sorgusu işi payload sözleşmesini sağlamıyor.");
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (!ListingVerificationPolicy.Supports(platform)) return JobExecutionResult.Blocked("LISTING_VERIFY_UNSUPPORTED", "Bu bağlantıda tekil ürün sorgusu yapılmaz.");
         var queuedAt = job.CreatedAt;
         var remaining = payload.VariantIds.ToList();

@@ -50,7 +50,7 @@ public sealed partial class MarketplaceJobProcessor
             target.Variant.Desi = desi;
             target.Variant.UpdatedAt = now;
             target.Variant.Version++;
-            telemetryUpdatedCount++;
+            run.UpdatedCount++;
         }
     }
 
@@ -105,7 +105,7 @@ public sealed partial class MarketplaceJobProcessor
         {
             variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = sortOrder, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
             db.ProductVariants.Add(variant);
-            telemetryInsertedCount++;
+            run.InsertedCount++;
         }
         else
         {
@@ -128,7 +128,7 @@ public sealed partial class MarketplaceJobProcessor
                 // The variant's own status is the user's (report item 19); the listing's archived/closed state is kept
                 // on its link (SaleState) and its offer, never copied onto the panel variant.
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = nextSkuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = nextBarcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.UpdatedAt = now; variant.Version++;
-                telemetryUpdatedCount++;
+                run.UpdatedCount++;
             }
         }
         // The marketplace desi fills an empty local desi (also for observed catalogs: it only adds a value). A desi
@@ -136,7 +136,7 @@ public sealed partial class MarketplaceJobProcessor
         if (variant.Desi is null && remote.Desi is { } remoteDesi)
         {
             variant.Desi = remoteDesi;
-            if (!isNewVariant) { variant.UpdatedAt = now; variant.Version++; telemetryUpdatedCount++; }
+            if (!isNewVariant) { variant.UpdatedAt = now; variant.Version++; run.UpdatedCount++; }
         }
         if (link is not null && link.VariantId != variant.Id)
         {
@@ -159,7 +159,7 @@ public sealed partial class MarketplaceJobProcessor
                 var importedLink = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variant.Id, ExternalId = externalVariantId, Version = 1 };
                 ListingSaleStateReads.ApplyToNewLink(importedLink, remote.SaleState, remote.SaleStateReason, now);
                 db.MarketplaceVariantLinks.Add(importedLink);
-                telemetryInsertedCount++;
+                run.InsertedCount++;
             }
             // A link written for a panel publication before the marketplace named the variant (a "listing:" placeholder)
             // takes the variant id the import read, unless another link already holds that id.
@@ -270,7 +270,7 @@ public sealed partial class MarketplaceJobProcessor
                 // came from. It is not an on-hand movement for MarketplaceStockImportPolicy (it is the remote number).
                 if (opening.OnHand != 0)
                 {
-                    stockChangedVariantIds.Add(variant.Id);
+                    run.StockChangedVariantIds.Add(variant.Id);
                     var openingEventId = $"catalog-opening:{connectionId:N}:{opening.Id:N}";
                     StockMovementWriter.Record(db, tenantId, opening.Id, opening.OnHand, CatalogStockSource(ProductActivityTypes.ImportOpening, connectionId, openingEventId, now, now));
                 }
@@ -285,7 +285,7 @@ public sealed partial class MarketplaceJobProcessor
                 var observationChanged = inventory.ObservedRemoteQuantity != observedRemoteQuantity;
                 if (projectionChanged)
                 {
-                    stockChangedVariantIds.Add(variant.Id);
+                    run.StockChangedVariantIds.Add(variant.Id);
                     // K-2: the change goes through the stock ledger and reaches every connection selling the variant,
                     // like any other stock movement.
                     // The row is keyed by the projection version the move gives the item; the move bumps the row version.
@@ -338,7 +338,7 @@ public sealed partial class MarketplaceJobProcessor
             // The price came from the marketplace, so it counts as already sent there.
             offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
             db.ChannelOffers.Add(offer);
-            priceChangedVariantIds.Add(variant.Id);
+            run.PriceChangedVariantIds.Add(variant.Id);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
                 Id = Guid.CreateVersion7(),
@@ -370,7 +370,7 @@ public sealed partial class MarketplaceJobProcessor
         offer.Version++;
         if (priceChanged)
         {
-            priceChangedVariantIds.Add(variant.Id);
+            run.PriceChangedVariantIds.Add(variant.Id);
             offer.PriceVersion++;
             // The new price is the one the marketplace already holds; without this marker the next
             // price-and-stock send would push it back as a local change.
@@ -434,7 +434,7 @@ public sealed partial class MarketplaceJobProcessor
     // When the marketplace stock being written was read: the earliest page read of the model group being finalized,
     // else the write itself. An earlier moment is the safe side (more panel movements count as after the read).
     private DateTimeOffset MarketplaceStockReadAt(DateTimeOffset now) =>
-        catalogStockReadAt is { } readAt && readAt < now ? readAt.ToUniversalTime() : now;
+        run.CatalogStockReadAt is { } readAt && readAt < now ? readAt.ToUniversalTime() : now;
 
     private async Task<decimal> MarketplaceStockTargetAsync(Guid tenantId, InventoryItem inventory, decimal remoteQuantity, DateTimeOffset now, CancellationToken cancellationToken)
     {

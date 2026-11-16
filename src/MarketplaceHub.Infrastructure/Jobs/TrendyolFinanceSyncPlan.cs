@@ -1,6 +1,7 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
+using MarketplaceHub.Infrastructure.Persistence;
 
 namespace MarketplaceHub.Infrastructure.Jobs;
 
@@ -145,5 +146,5 @@ internal static class TrendyolFinanceSyncPlan
         return true;
     }
 
-    private static string? Short(string? value, int length) => value is null || value.Length <= length ? value : value[..length];
+    private static string? Short(string? value, int length) => TextValues.Truncate(value, length);
 }

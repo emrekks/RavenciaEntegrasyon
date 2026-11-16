@@ -27,7 +27,7 @@ public sealed partial class MarketplaceJobProcessor
             try { payload = JsonSerializer.Deserialize<ProductUpdateJobPayload>(job.PayloadJson, JsonOptions) ?? payload; }
             catch (JsonException) { return JobExecutionResult.Blocked("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme işi payload sözleşmesini sağlamıyor."); }
         }
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         // Trendyol: the cards one "Platformlarda Güncelle" sent together share their requests (TrendyolUpdateGroups).
         var groupedTrendyol = payload.SendGroupId is not null && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
@@ -201,7 +201,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private async Task<JobExecutionResult> CompleteProductUpdate(Guid tenantId, Guid connectionId, ProductUpdateJobPayload payload, ChannelListingProfile profile, IReadOnlyList<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, MarketplaceListingState> states, string correlationId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var rejected = listings.Count(x => string.Equals(x.ActualStatus, "UPDATE_REJECTED", StringComparison.Ordinal));
         // An update the marketplace applies in place, with no product review behind it (Hepsiburada's dispatch time alone,

@@ -455,7 +455,7 @@ public sealed partial class MarketplaceJobProcessor
 
     private async Task<string> PlatformLabelAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
-        var code = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var code = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         return code switch { "TRENDYOL" => "Trendyol", "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", _ => code ?? "Pazar yeri" };
     }
 

@@ -110,7 +110,7 @@ public sealed partial class MarketplaceJobProcessor
     // allocation), so the order is not shown with a package that no longer exists.
     private async Task MarkHepsiburadaPackageUnpackedAsync(Guid tenantId, Guid connectionId, Guid packageId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (platform != "HEPSIBURADA") return;
         var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
         if (package is null || ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)) return;

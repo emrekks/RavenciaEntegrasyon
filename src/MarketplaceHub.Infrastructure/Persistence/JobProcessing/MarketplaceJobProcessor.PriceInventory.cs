@@ -114,7 +114,7 @@ public sealed partial class MarketplaceJobProcessor
             return JobExecutionResult.Retry("PRICE_INVENTORY_BATCH_PENDING", "Fiyat-stok batch sonucu bekleniyor.", TimeSpan.FromSeconds(15), op.ExternalOperationId);
         }
         if (phase != "POLL" || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null) return JobExecutionResult.Blocked("PRICE_INVENTORY_PHASE_INVALID", "Fiyat-stok işi bilinmeyen bir fazda.");
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         // Pazarama may answer a batch up to four hours late, so it is waited for eight; the others for four.
         var pollDeadline = PriceInventorySendPolicy.PollDeadline(platformCode);
         if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > pollDeadline) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_EXPIRED", $"Fiyat-stok batch sonucu {pollDeadline.TotalHours:0} saatlik pencerede alınamadı.", payload.ExternalOperationId), cancellationToken);
