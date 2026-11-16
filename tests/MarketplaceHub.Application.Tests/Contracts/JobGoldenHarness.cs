@@ -9,6 +9,7 @@ using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Application.Tests.Contracts;
 
@@ -120,13 +121,18 @@ internal static partial class JobGolden
                 ? JsonValue.Create("<hash>")
                 : property.Name.EndsWith("DurationMs", StringComparison.Ordinal) && value is not null
                     ? JsonValue.Create("<duration>")
-                    : Value(value);
+                    // A database sequence (an audit row's number) depends on every test that ran before.
+                    : property.IsPrimaryKey() && value is long or int
+                        ? JsonValue.Create("<sequence>")
+                        : Value(value);
         }
         return json;
     }
 
     private static async Task<List<object>> RowsAsync<T>(AppDbContext db, Guid tenantId) where T : class =>
-        [.. await db.Set<T>().AsNoTracking().Where(row => EF.Property<Guid>(row, "TenantId") == tenantId).ToListAsync()];
+        db.Model.FindEntityType(typeof(T))!.FindProperty("TenantId")!.ClrType == typeof(Guid?)
+            ? [.. await db.Set<T>().AsNoTracking().Where(row => EF.Property<Guid?>(row, "TenantId") == tenantId).ToListAsync()]
+            : [.. await db.Set<T>().AsNoTracking().Where(row => EF.Property<Guid>(row, "TenantId") == tenantId).ToListAsync()];
 }
 
 // One second later at every reading, so a loop that runs until a time budget is spent ends.
@@ -146,7 +152,7 @@ internal sealed class FrozenClock(DateTimeOffset now) : TimeProvider
 // Every marketplace port the processor holds. Each call is recorded as "<port.Method> key=<idempotency key>
 // [op=<operation>] [flags] <arguments as JSON>" and answered from Answers by the same "<port.Method>" name; an
 // unscripted call fails with GOLDEN_UNSCRIPTED (class NotSupported), which the golden then shows.
-internal sealed class GoldenMarketplace : IOrderPort, IOrderPackageReadPort, IReturnPort, IHepsiburadaInvoiceStatusPort, IConnectionPort, IProductPort, IInventoryPricePort, IReferenceDataPort, IListingCodeCheckPort
+internal sealed class GoldenMarketplace : IOrderPort, IOrderPackageReadPort, IReturnPort, IHepsiburadaInvoiceStatusPort, IConnectionPort, IProductPort, IInventoryPricePort, IReferenceDataPort, IListingCodeCheckPort, IPrivateFileStorage
 {
     public List<string> Calls { get; } = [];
     public Dictionary<string, Func<object?[], object>> Answers { get; } = new(StringComparer.Ordinal);
@@ -224,4 +230,140 @@ internal sealed class GoldenMarketplace : IOrderPort, IOrderPackageReadPort, IRe
 
     // IListingCodeCheckPort
     public Task<AdapterResult<bool?>> HoldsCodeAsync(AdapterContext context, string code, CancellationToken cancellationToken) => Call<bool?>("products.HoldsCode", context, code);
+
+    // IPrivateFileStorage: the panel's own file store, recorded in the same list (a stored label, read evidence).
+    public Dictionary<string, byte[]> StoredFiles { get; } = new(StringComparer.Ordinal);
+
+    public async Task<string> SaveAsync(Guid tenantId, string relativeName, string mimeType, Stream content, long maximumBytes, CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, cancellationToken);
+        Calls.Add($"files.Save {relativeName} {mimeType} {buffer.Length} bytes");
+        StoredFiles[$"stored/{relativeName}"] = buffer.ToArray();
+        return $"stored/{relativeName}";
+    }
+
+    public Task<Stream> OpenReadAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken)
+    {
+        Calls.Add($"files.OpenRead {storedPath}");
+        return Task.FromResult<Stream>(new MemoryStream(StoredFiles.TryGetValue(storedPath, out var bytes) ? bytes : []));
+    }
+
+    public Task<bool> DeleteAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken)
+    {
+        Calls.Add($"files.Delete {storedPath}");
+        return Task.FromResult(StoredFiles.Remove(storedPath));
+    }
+}
+
+// One golden scenario: a tenant with one connection, the runs made on it (their results and calls) and the ids the
+// golden names. Every run gets a fresh AppDbContext whose own stamps use a frozen clock.
+internal sealed class GoldenRun(PostgreSqlTenantIsolationFixture fixture, string platform, string connectionStatus = "ACTIVE")
+{
+    public readonly GoldenClock Clock = new(JobGolden.Start);
+    public readonly Tenant Tenant = new() { Id = Guid.CreateVersion7(), Code = $"rjg-{Guid.NewGuid():N}"[..30], DisplayName = "read job golden", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = JobGolden.Start, UpdatedAt = JobGolden.Start, Version = 1 };
+    public PlatformConnection Connection = null!;
+    public readonly Dictionary<Guid, string> Known = [];
+    public readonly List<object> Runs = [];
+    public Dictionary<string, string?> Settings { get; } = [];
+    // The connection as seeded: production, store "store-golden", no settings unless a scenario sets them (a write test
+    // turns the external writes on here and in Settings, as a live owner would).
+    public string Environment { get; set; } = "PRODUCTION";
+    public string ExternalStoreId { get; set; } = "store-golden";
+    public string? ConnectionSettingsJson { get; set; }
+    private int seeded;
+
+    // Seeded rows get ids in the order they are made (each a millisecond later), so a read that walks rows by id walks
+    // them in the same order on every run.
+    public Guid NewId() => Guid.CreateVersion7(JobGolden.Start.AddMilliseconds(++seeded));
+
+    public async Task SeedAsync(Action<AppDbContext>? seed = null)
+    {
+        Connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = Tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = Environment, DisplayName = platform, ExternalStoreId = ExternalStoreId, Status = connectionStatus, ApiVersion = "V1" };
+        if (ConnectionSettingsJson is not null) Connection.SettingsJson = ConnectionSettingsJson;
+        Known[Tenant.Id] = "tenant";
+        Known[Connection.Id] = "connection";
+        Known[Connection.PublicId] = "connection-public";
+        await using var db = fixture.CreateContext(new FrozenClock(JobGolden.Start));
+        db.Tenants.Add(Tenant);
+        db.PlatformConnections.Add(Connection);
+        seed?.Invoke(db);
+        await db.SaveChangesAsync();
+    }
+
+    public MarketplaceJobProcessor Processor(AppDbContext db, GoldenMarketplace port) =>
+        new(db, port, port, port, port, port, port, port, port, null!, port, new ConfigurationBuilder().AddInMemoryCollection(Settings).Build(), Clock);
+
+    public async Task<JobExecutionResult> RunAsync(string label, string jobType, GoldenMarketplace port, string payloadJson = "{}", Guid? jobId = null)
+    {
+        JobExecutionResult result;
+        await using (var db = fixture.CreateContext(new FrozenClock(JobGolden.Start)))
+            result = await Processor(db, port).ProcessAsync(Tenant.Id, Connection.Id, jobType, payloadJson, $"rjg-{label}", CancellationToken.None, jobId);
+        Runs.Add(new { Run = label, JobType = jobType, Result = result, Calls = port.Calls.ToList() });
+        port.Calls.Clear();
+        return result;
+    }
+
+    public async Task MatchesAsync(string goldenPath)
+    {
+        await using var check = fixture.CreateContext();
+        var tables = await JobGolden.TablesAsync(check, Tenant.Id, Known);
+        JobGolden.Matches(goldenPath, new { Runs, Tables = tables }, Known);
+    }
+}
+
+internal static class GoldenSeeds
+{
+    private static readonly DateTimeOffset Start = JobGolden.Start;
+
+    public static Order NewOrder(GoldenRun run, string externalId, DateTimeOffset orderedAt, bool returnClaim = false)
+    {
+        var order = new Order
+        {
+            Id = run.NewId(),
+            TenantId = run.Tenant.Id,
+            ConnectionId = run.Connection.Id,
+            ExternalOrderId = externalId,
+            OrderNumber = externalId,
+            Currency = "TRY",
+            GrossAmount = 100m,
+            NetAmount = 100m,
+            OrderedAt = orderedAt,
+            LastRemoteModifiedAt = orderedAt,
+            CustomerSnapshotJson = returnClaim ? "{\"_ravenciaReadModelSource\":\"RETURN_CLAIM\"}" : "{\"customerFirstName\":\"Golden\"}",
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = "{}",
+            DerivedStatus = "DELIVERED",
+            CreatedAt = Start,
+            UpdatedAt = Start,
+            Version = 1
+        };
+        run.Known[order.Id] = $"order-{externalId}";
+        return order;
+    }
+
+    public static ShipmentPackage NewPackage(GoldenRun run, Order order, string externalId, DateTimeOffset statusAt, string? cargoProvider = null, string? tracking = null)
+    {
+        var package = new ShipmentPackage
+        {
+            Id = run.NewId(),
+            TenantId = run.Tenant.Id,
+            ConnectionId = run.Connection.Id,
+            OrderId = order.Id,
+            ExternalPackageId = externalId,
+            GrossAmount = 100m,
+            NetAmount = 100m,
+            Status = ShipmentPackageStatus.Delivered,
+            RawStatus = "Delivered",
+            StatusOccurredAt = statusAt,
+            MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown,
+            CargoProviderExternalId = cargoProvider,
+            CargoTrackingNumber = tracking,
+            CreatedAt = Start,
+            UpdatedAt = Start,
+            Version = 1
+        };
+        run.Known[package.Id] = $"package-{externalId}";
+        return package;
+    }
 }
