@@ -118,10 +118,10 @@ public sealed class ReturnsAndJobTrackingFixesTests
         claim.LastRemoteModifiedAt = modifiedAt;
 
         Assert.True(ReturnClaimStateMachine.CanTransition(ReturnClaimStatus.Approved, ReturnClaimStatus.Approved));
-        Assert.False(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.ToOffset(TimeSpan.FromHours(3))));
-        Assert.True(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Completed, "Accepted", modifiedAt));
-        Assert.True(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Refunded", modifiedAt));
-        Assert.True(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.AddMinutes(1)));
+        Assert.False(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.ToOffset(TimeSpan.FromHours(3))));
+        Assert.True(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Completed, "Accepted", modifiedAt));
+        Assert.True(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Refunded", modifiedAt));
+        Assert.True(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.AddMinutes(1)));
     }
 
     [Fact]

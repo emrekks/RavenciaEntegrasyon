@@ -36,17 +36,17 @@ public sealed class ReturnMetricCardTests
         var earlier = DateTimeOffset.Parse("2026-11-01T08:00:00Z");
         var today = DateTimeOffset.Parse("2026-11-02T10:00:00+03:00");
         // Same outcome: the stored date stays; a date the read brings replaces it (in UTC).
-        Assert.Equal((null, earlier), MarketplaceJobProcessor.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Approved, null, null));
-        var (_, dated) = MarketplaceJobProcessor.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Approved, null, today);
+        Assert.Equal((null, earlier), ReturnIngestionService.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Approved, null, null));
+        var (_, dated) = ReturnIngestionService.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Approved, null, today);
         Assert.Equal(TimeSpan.Zero, dated!.Value.Offset);
         Assert.Equal(today, dated);
         // A new outcome drops the old date; a claim that is neither approved nor rejected has none.
-        Assert.Equal((ReturnRejectedPackageStates.AwaitingCargo, (DateTimeOffset?)null), MarketplaceJobProcessor.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnRejectedPackageStates.AwaitingCargo, null));
-        Assert.Equal((null, (DateTimeOffset?)null), MarketplaceJobProcessor.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Completed, null, today));
+        Assert.Equal((ReturnRejectedPackageStates.AwaitingCargo, (DateTimeOffset?)null), ReturnIngestionService.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnRejectedPackageStates.AwaitingCargo, null));
+        Assert.Equal((null, (DateTimeOffset?)null), ReturnIngestionService.NextReturnOutcomeFacts(null, earlier, ReturnClaimStatus.Approved, ReturnClaimStatus.Completed, null, today));
         // A shipped package stays shipped on an older read; a read without the state keeps what is known.
-        Assert.Equal(ReturnRejectedPackageStates.Shipped, MarketplaceJobProcessor.NextReturnOutcomeFacts(ReturnRejectedPackageStates.Shipped, null, ReturnClaimStatus.Rejected, ReturnClaimStatus.Rejected, ReturnRejectedPackageStates.AwaitingCargo, null).RejectedPackageState);
-        Assert.Equal(ReturnRejectedPackageStates.AwaitingCargo, MarketplaceJobProcessor.NextReturnOutcomeFacts(ReturnRejectedPackageStates.AwaitingCargo, null, ReturnClaimStatus.Rejected, ReturnClaimStatus.Rejected, null, null).RejectedPackageState);
-        Assert.Equal(ReturnRejectedPackageStates.Shipped, MarketplaceJobProcessor.NextReturnOutcomeFacts(ReturnRejectedPackageStates.AwaitingCargo, null, ReturnClaimStatus.Rejected, ReturnClaimStatus.Rejected, ReturnRejectedPackageStates.Shipped, null).RejectedPackageState);
+        Assert.Equal(ReturnRejectedPackageStates.Shipped, ReturnIngestionService.NextReturnOutcomeFacts(ReturnRejectedPackageStates.Shipped, null, ReturnClaimStatus.Rejected, ReturnClaimStatus.Rejected, ReturnRejectedPackageStates.AwaitingCargo, null).RejectedPackageState);
+        Assert.Equal(ReturnRejectedPackageStates.AwaitingCargo, ReturnIngestionService.NextReturnOutcomeFacts(ReturnRejectedPackageStates.AwaitingCargo, null, ReturnClaimStatus.Rejected, ReturnClaimStatus.Rejected, null, null).RejectedPackageState);
+        Assert.Equal(ReturnRejectedPackageStates.Shipped, ReturnIngestionService.NextReturnOutcomeFacts(ReturnRejectedPackageStates.AwaitingCargo, null, ReturnClaimStatus.Rejected, ReturnClaimStatus.Rejected, ReturnRejectedPackageStates.Shipped, null).RejectedPackageState);
     }
 
     [Fact]

@@ -26,7 +26,7 @@ public sealed class MarketplaceJobProcessorReturnClaimTests
             "PTT Kargo",
             " return-tracking-1 ");
 
-        var claim = MarketplaceJobProcessor.NewReturnClaim(
+        var claim = ReturnIngestionService.NewReturnClaim(
             Guid.NewGuid(),
             Guid.NewGuid(),
             Guid.NewGuid(),

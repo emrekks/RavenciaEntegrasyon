@@ -40,11 +40,11 @@ public sealed class ReturnLineDecisionPolicyTests
     {
         // Two of three lines accepted, the first one still waiting: the claim stays actionable, the decision succeeded.
         var target = ReturnDecisionLinePolicy.Outcome(ReturnClaimStatus.ActionRequired, ["Accepted", "Accepted"]);
-        Assert.Equal(("SUCCEEDED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("APPROVE", "SUBMITTED", target, "WaitingInAction"));
+        Assert.Equal(("SUCCEEDED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("APPROVE", "SUBMITTED", target, "WaitingInAction"));
         // Before it was judged by the claim status and stayed SUBMITTED for good.
-        Assert.Equal(("SUBMITTED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("APPROVE", "SUBMITTED", ReturnClaimStatus.ActionRequired, "WaitingInAction"));
+        Assert.Equal(("SUBMITTED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("APPROVE", "SUBMITTED", ReturnClaimStatus.ActionRequired, "WaitingInAction"));
         var waiting = ReturnDecisionLinePolicy.Outcome(ReturnClaimStatus.ActionRequired, ["WaitingInAction"]);
-        Assert.Equal(("SUBMITTED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("REJECT", "SUBMITTED", waiting, "WaitingInAction"));
+        Assert.Equal(("SUBMITTED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("REJECT", "SUBMITTED", waiting, "WaitingInAction"));
     }
 
     [Theory]

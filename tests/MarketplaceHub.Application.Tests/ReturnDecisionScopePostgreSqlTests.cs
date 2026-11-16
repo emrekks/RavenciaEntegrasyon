@@ -244,7 +244,7 @@ public sealed class ReturnDecisionScopePostgreSqlTests(PostgreSqlTenantIsolation
     [InlineData("RECEIVED_BY_SELLER", ReturnClaimStatus.Approved, false)]
     [InlineData("WaitingInAction", ReturnClaimStatus.InTransit, false)]
     public void TheReceiptMark_WaitsOnlyForStatusesFromBeforeTheReceipt(string raw, ReturnClaimStatus target, bool waits) =>
-        Assert.Equal(waits, MarketplaceJobProcessor.AwaitsMarketplaceAfterSellerReceipt(raw, target));
+        Assert.Equal(waits, ReturnIngestionService.AwaitsMarketplaceAfterSellerReceipt(raw, target));
 
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid[] ClaimIds, Guid[][] LineIds);
 

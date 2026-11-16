@@ -21,25 +21,25 @@ public sealed class ReturnLifecycleReconciliationTests
     [Fact]
     public void Unclear_decision_is_settled_by_the_claim_status()
     {
-        Assert.Equal(("SUCCEEDED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("APPROVE", "MANUAL_REVIEW", ReturnClaimStatus.Approved, "Accepted"));
-        Assert.Equal(("MANUAL_REVIEW", "RETURN_ACTION_READBACK_CONFLICT"), MarketplaceJobProcessor.ReconciledReturnDecision("APPROVE", "MANUAL_REVIEW", ReturnClaimStatus.Cancelled, "Cancelled"));
+        Assert.Equal(("SUCCEEDED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("APPROVE", "MANUAL_REVIEW", ReturnClaimStatus.Approved, "Accepted"));
+        Assert.Equal(("MANUAL_REVIEW", "RETURN_ACTION_READBACK_CONFLICT"), ReturnIngestionService.ReconciledReturnDecision("APPROVE", "MANUAL_REVIEW", ReturnClaimStatus.Cancelled, "Cancelled"));
         // Still waiting: nothing changes, it is not promoted to "submitted".
-        Assert.Null(MarketplaceJobProcessor.ReconciledReturnDecision("APPROVE", "MANUAL_REVIEW", ReturnClaimStatus.ActionRequired, "AwaitingAction"));
+        Assert.Null(ReturnIngestionService.ReconciledReturnDecision("APPROVE", "MANUAL_REVIEW", ReturnClaimStatus.ActionRequired, "AwaitingAction"));
     }
 
     [Fact]
     public void Unresolved_decision_only_moves_on_to_a_confirmed_outcome()
     {
-        Assert.Equal(("SUCCEEDED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("REJECT", "FAILED", ReturnClaimStatus.Rejected, "Rejected"));
-        Assert.Null(MarketplaceJobProcessor.ReconciledReturnDecision("REJECT", "FAILED", ReturnClaimStatus.ActionRequired, "AwaitingAction"));
-        Assert.Null(MarketplaceJobProcessor.ReconciledReturnDecision("REJECT", "FAILED", ReturnClaimStatus.Approved, "Accepted"));
+        Assert.Equal(("SUCCEEDED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("REJECT", "FAILED", ReturnClaimStatus.Rejected, "Rejected"));
+        Assert.Null(ReturnIngestionService.ReconciledReturnDecision("REJECT", "FAILED", ReturnClaimStatus.ActionRequired, "AwaitingAction"));
+        Assert.Null(ReturnIngestionService.ReconciledReturnDecision("REJECT", "FAILED", ReturnClaimStatus.Approved, "Accepted"));
     }
 
     [Fact]
     public void Sent_decision_keeps_its_previous_reconciliation()
     {
-        Assert.Equal(("SUBMITTED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("APPROVE", "PENDING", ReturnClaimStatus.ActionRequired, "WaitingInAction"));
-        Assert.Equal(("SUCCEEDED", (string?)null), MarketplaceJobProcessor.ReconciledReturnDecision("PREAPPROVAL_CONFIRM", "SUBMITTED", ReturnClaimStatus.ActionRequired, "AwaitingAction"));
+        Assert.Equal(("SUBMITTED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("APPROVE", "PENDING", ReturnClaimStatus.ActionRequired, "WaitingInAction"));
+        Assert.Equal(("SUCCEEDED", (string?)null), ReturnIngestionService.ReconciledReturnDecision("PREAPPROVAL_CONFIRM", "SUBMITTED", ReturnClaimStatus.ActionRequired, "AwaitingAction"));
     }
 
     [Fact]
@@ -80,6 +80,6 @@ public sealed class ReturnLifecycleReconciliationTests
     {
         var remote = new RemoteReturnClaim("c1", "o1", "WaitingInAction", null, null, DateTimeOffset.UnixEpoch.AddHours(48), DateTimeOffset.UnixEpoch, [], "{}", ActionDueAtEstimated: true);
 
-        Assert.True(MarketplaceJobProcessor.NewReturnClaim(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), remote, ReturnClaimStatus.ActionRequired, DateTimeOffset.UnixEpoch).ActionDueAtEstimated);
+        Assert.True(ReturnIngestionService.NewReturnClaim(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), remote, ReturnClaimStatus.ActionRequired, DateTimeOffset.UnixEpoch).ActionDueAtEstimated);
     }
 }
