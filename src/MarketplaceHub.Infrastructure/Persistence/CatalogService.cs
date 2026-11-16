@@ -677,7 +677,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     }
 
     private static RequiredFieldsSkippedProduct SkippedFor(IncompleteCard card) =>
-        new(card.Product.Id, EffectiveCatalog.Of(card.Product).Title.Trim(), card.ModelCode, [.. card.Gaps.Select(gap => gap.Label)]);
+        new(card.Product.Id, card.Product.Title.Trim(), card.ModelCode, [.. card.Gaps.Select(gap => gap.Label)]);
 
     private sealed record IncompleteCard(Product Product, IReadOnlyList<ProductRequiredFields.Gap> Gaps, string? ModelCode);
 
@@ -692,14 +692,15 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(x => new { x.ProductId, Row = new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice) }).ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.Select(x => x.Row).ToList());
         var result = new List<IncompleteCard>();
+        // The cards' shared values as every reader sees them (EffectiveCatalog); the caller keeps the tracked cards.
+        var effective = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         foreach (var stored in products)
         {
-            // The card's shared values as every reader sees them (EffectiveCatalog); the caller keeps the tracked card.
-            var product = EffectiveCatalog.Of(stored);
+            var product = effective.GetValueOrDefault(stored.Id) ?? stored;
             var productRows = rows.GetValueOrDefault(product.Id) ?? [];
             var gaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(product.Title, product.BrandId, product.CategoryId, WarrantyGiven: product.WarrantyMonths is not null, DeliveryDaysGiven: product.DeliveryDays is not null,
                 product.DefaultListPrice, product.DefaultSalePrice, productRows, VatGiven: product.VatRate is not null && !string.IsNullOrWhiteSpace(product.VatInclusion)));
-            if (gaps.Count > 0) result.Add(new(stored, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
+            if (gaps.Count > 0) result.Add(new(product, gaps, productRows.Select(row => row.ModelCode?.Trim()).FirstOrDefault(code => !string.IsNullOrEmpty(code))));
         }
         return result;
     }

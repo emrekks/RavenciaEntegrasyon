@@ -1,0 +1,64 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace MarketplaceHub.Infrastructure.Persistence.Migrations
+{
+    /// <inheritdoc />
+    public partial class ProductFamilyRequired : Migration
+    {
+        // NOT COMPILED: kept here until it may ship. To use it: move it to Persistence/Migrations with a fresh id, set in
+        // CatalogModelConfiguration (Product) entity.Property(x => x.FamilyId).IsRequired() and the model key's
+        // OnDelete(DeleteBehavior.Restrict), regenerate the Designer/snapshot with dotnet-ef and keep this Up()/Down().
+        // Before that, every path that inserts a card must insert or find its model first (today a card is linked right
+        // after its save, ProductModelLinks.AfterSaveAsync, so a NOT NULL column refuses every new card), a codeless card
+        // and a code several brands share must get a model of their own, and ProductModelLinks must stop writing NULL.
+        // expand-contract: phase 2 of 20261114125517_ProductModels
+        // KATALOG-14 phase D5 (PREPARED ONLY, scan12/model-contract): every colour card belongs to a model.
+        // Ships only in a release AFTER the one that links every card on every path (codeless cards and a code several
+        // brands share included) and only when this read-only check answers 0 on live:
+        //   SELECT count(*) FROM catalog.products WHERE "FamilyId" IS NULL;
+        // Lock-light: a CHECK added NOT VALID and validated (no write block), SET NOT NULL then skips its scan because the
+        // validated check proves it, and the check goes. The model key becomes RESTRICT: a model goes only when its last
+        // card has gone (ON DELETE SET NULL can no longer hold); the key is re-added NOT VALID and validated.
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.Sql("""ALTER TABLE catalog.products ADD CONSTRAINT "CK_products_FamilyId_NotNull" CHECK ("FamilyId" IS NOT NULL) NOT VALID;""");
+            migrationBuilder.Sql("""ALTER TABLE catalog.products VALIDATE CONSTRAINT "CK_products_FamilyId_NotNull";""");
+            migrationBuilder.Sql("""ALTER TABLE catalog.products ALTER COLUMN "FamilyId" SET NOT NULL;""");
+            migrationBuilder.Sql("""ALTER TABLE catalog.products DROP CONSTRAINT "CK_products_FamilyId_NotNull";""");
+            migrationBuilder.Sql("""ALTER TABLE catalog.products DROP CONSTRAINT "FK_products_product_models_TenantId_FamilyId";""");
+            migrationBuilder.Sql("""
+                ALTER TABLE catalog.products ADD CONSTRAINT "FK_products_product_models_TenantId_FamilyId"
+                    FOREIGN KEY ("TenantId", "FamilyId") REFERENCES catalog.product_models ("TenantId", "Id") ON DELETE RESTRICT NOT VALID;
+                """);
+            migrationBuilder.Sql("""ALTER TABLE catalog.products VALIDATE CONSTRAINT "FK_products_product_models_TenantId_FamilyId";""");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropForeignKey(
+                name: "FK_products_product_models_TenantId_FamilyId",
+                schema: "catalog",
+                table: "products");
+
+            migrationBuilder.AlterColumn<Guid>(
+                name: "FamilyId",
+                schema: "catalog",
+                table: "products",
+                type: "uuid",
+                nullable: true,
+                oldClrType: typeof(Guid),
+                oldType: "uuid");
+
+            // KATALOG-15's key: the card's tenant stays when its model goes (column list SET NULL, PostgreSQL 15+).
+            migrationBuilder.Sql("""
+                ALTER TABLE catalog.products ADD CONSTRAINT "FK_products_product_models_TenantId_FamilyId"
+                    FOREIGN KEY ("TenantId", "FamilyId") REFERENCES catalog.product_models ("TenantId", "Id") ON DELETE SET NULL ("FamilyId");
+                """);
+        }
+    }
+}
