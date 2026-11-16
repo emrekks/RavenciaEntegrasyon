@@ -5,9 +5,15 @@ import { ApiRequestError, hubApi, settingsIfMatch } from '../../../shared/api'
 import { FieldHelp, LoadingState } from '../../../shared/components'
 import { SettingsNotice, type SettingsNoticeState } from '../SettingsNotifications'
 import { queryKeys } from '../../../shared/api/query-keys'
+import { useServerDraft } from '../../../shared/hooks/useServerDraft'
 import { formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, SettingsBar } from '../settings-ui'
 
 const maximumAlertRecipients = 5
+
+type AlertEmailSettings = ApiAnswer<'getSettingsAlertEmail'>
+type AlertEmailForm = { sender: string; recipients: string[]; password: string; changingPassword: boolean }
+const alertEmailForm = (saved: AlertEmailSettings): AlertEmailForm => ({ sender: saved.senderAddress ?? '', recipients: saved.recipients.length ? saved.recipients : [''], password: '', changingPassword: !saved.appPasswordSaved })
+const cleanAlertRecipients = (recipients: string[]) => recipients.map(value => value.trim().toLowerCase()).filter(Boolean)
 
 // Settings → Alarm Bildirimleri: the Gmail account that sends the server's and the panel's alerts (security plan Y1).
 // The app password is write-only: the server never returns it, the form shows "Kayıtlı" and "Değiştir". The host
@@ -16,25 +22,27 @@ export function AlertEmailSettingsSection() {
   const client = useQueryClient()
   const query = useQuery({ queryKey: queryKeys.alertEmailSettings(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsAlertEmail'>>('/settings/alert-email', { signal }), retry: false })
   const saved = query.data
-  const [sender, setSender] = useState('')
-  const [recipients, setRecipients] = useState<string[]>([''])
-  const [password, setPassword] = useState('')
-  const [changingPassword, setChangingPassword] = useState(false)
+  // The form starts from the saved settings, and again for every new version (a save here or elsewhere); a refetch of the
+  // same version keeps it. The app password field always starts empty.
+  const form = useServerDraft<AlertEmailSettings, AlertEmailForm>({
+    server: saved ? { value: saved, version: saved.version } : null,
+    onServerChange: 'replace',
+    toDraft: alertEmailForm,
+    initialDraft: () => ({ sender: '', recipients: [''], password: '', changingPassword: false }),
+    isDirty: (draft, server) => draft.sender.trim().toLowerCase() !== (server.senderAddress ?? '') || cleanAlertRecipients(draft.recipients).join(',') !== server.recipients.join(',') || draft.password.trim().length > 0
+  })
+  const { sender, recipients, password, changingPassword } = form.draft
+  const edit = (patch: Partial<AlertEmailForm> | ((current: AlertEmailForm) => Partial<AlertEmailForm>)) => form.setDraft(current => ({ ...current, ...(typeof patch === 'function' ? patch(current) : patch) }))
+  const setSender = (value: string) => edit({ sender: value })
+  const setPassword = (value: string) => edit({ password: value })
+  const setChangingPassword = (value: boolean) => edit({ changingPassword: value })
+  const setRecipients = (next: (current: string[]) => string[]) => edit(current => ({ recipients: next(current.recipients) }))
   const [busy, setBusy] = useState<'save' | 'test' | null>(null)
   const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
   const [testResult, setTestResult] = useState<{ kind: 'done' | 'bad'; message: string } | null>(null)
-  const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
-  // The form starts from the saved settings, and again after a save (a new version).
-  if (saved && loadedVersion !== saved.version) {
-    setLoadedVersion(saved.version)
-    setSender(saved.senderAddress ?? '')
-    setRecipients(saved.recipients.length ? saved.recipients : [''])
-    setPassword('')
-    setChangingPassword(!saved.appPasswordSaved)
-  }
 
-  const cleanRecipients = recipients.map(value => value.trim().toLowerCase()).filter(Boolean)
-  const dirty = !!saved && (sender.trim().toLowerCase() !== (saved.senderAddress ?? '') || cleanRecipients.join(',') !== saved.recipients.join(',') || password.trim().length > 0)
+  const cleanRecipients = cleanAlertRecipients(recipients)
+  const dirty = form.dirty
   const configured = !!saved?.senderAddress && saved.recipients.length > 0 && saved.appPasswordSaved
 
   async function save() {

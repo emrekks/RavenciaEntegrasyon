@@ -92,4 +92,17 @@ describe('useAppearanceSettings draft', () => {
     expect(hook.draft.fontFamily).toBe('arial')
     expect(hook.conflict).toBe(false)
   })
+
+  it('an edited draft over a newer version of the same appearance is no conflict, and saves over that version', async () => {
+    act(() => hook.setDraft({ ...hook.draft, fontFamily: 'segoe' }))
+    server.version++
+    await act(async () => { await client.invalidateQueries({ queryKey: ['appearance-settings'] }) })
+    await settle()
+    expect(hook.draft.fontFamily).toBe('segoe')
+    expect(hook.conflict).toBe(false)
+    await act(async () => { await hook.save(hook.draft) })
+    await settle()
+    expect(server.settings.fontFamily).toBe('segoe')
+    expect(hook.draft.fontFamily).toBe('segoe')
+  })
 })

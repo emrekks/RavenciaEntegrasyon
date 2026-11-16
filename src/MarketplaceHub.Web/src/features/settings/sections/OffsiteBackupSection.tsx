@@ -10,6 +10,7 @@ import { formatBackupSize, googleCloudSteps, offsiteBackupDefaultFolder, offsite
 import { backupKeyFileName, decryptBackup, decryptedFileName, downloadText, generateBackupKeyPair, identityFromKeyFile, saveStream, type BackupKeyPair } from '../offsite-backup-crypto'
 import { reauthBody } from '../user-management'
 import { queryKeys } from '../../../shared/api/query-keys'
+import { useServerDraft } from '../../../shared/hooks/useServerDraft'
 import { formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, SettingsBar, SettingsSwitch, mfaErrorMessage, ReauthFields } from '../settings-ui'
 
 // Sistem Ayarları › Google Drive Yedeği (offsite-backup.ts, OffsiteBackupEndpoints): the worker sends the newest verified
@@ -18,6 +19,7 @@ import { formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, Sett
 // Saving, connecting and disconnecting take the password again (and the authenticator code when it is on). The key pair is
 // made in the browser and a copy is opened in the browser (offsite-backup-crypto.ts): no extra program is needed.
 type OffsiteConfirm = 'save' | 'connect' | 'disconnect' | 'setup'
+type OffsiteForm = { values: OffsiteBackupDraft; changingSecret: boolean }
 const offsiteConfirmCopy: Record<OffsiteConfirm, { title: string; hint: string; action: string; busy: string; danger?: boolean }> = {
   save: { title: 'Yedek Ayarlarını Kaydet', hint: 'Yedeğin nereye ve hangi anahtarla gönderildiği değişir; parolanızla onaylayın.', action: 'Kaydet', busy: 'Kaydediliyor…' },
   setup: { title: 'Google Drive’a Bağlan', hint: 'Parolanızı onaylayın: ayarlar kaydedilir ve Google’ın izin sayfası açılır. Parola yalnız bir kez sorulur.', action: 'Kaydet ve Google’a Git', busy: 'Hazırlanıyor…' },
@@ -38,9 +40,18 @@ export function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
     refetchOnWindowFocus: 'always'
   })
   const saved = query.data
-  const [draft, setDraft] = useState<OffsiteBackupDraft | null>(null)
-  const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
-  const [changingSecret, setChangingSecret] = useState(false)
+  // The form starts from the saved settings, and again for every new version (a save here or elsewhere); the status
+  // refetches of the same version (every 5 s while a copy runs) keep it.
+  const form = useServerDraft<OffsiteBackupView, OffsiteForm | null>({
+    server: saved ? { value: saved, version: saved.version } : null,
+    onServerChange: 'replace',
+    toDraft: view => ({ values: offsiteBackupDraft(view), changingSecret: !view.clientSecretSaved }),
+    initialDraft: () => null,
+    isDirty: (current, view) => !!current && offsiteBackupDirty(view, current.values)
+  })
+  const draft = form.draft?.values ?? null
+  const changingSecret = form.draft?.changingSecret ?? false
+  const setChangingSecret = (value: boolean) => form.setDraft(current => current ? { ...current, changingSecret: value } : current)
   const [busy, setBusy] = useState<OffsiteConfirm | 'test' | 'run' | null>(null)
   const [notice, setNotice] = useState<SettingsNoticeState | null>(() => (location.state as { offsiteNotice?: SettingsNoticeState } | null)?.offsiteNotice ?? null)
   const [actionResult, setActionResult] = useState<{ kind: 'done' | 'bad'; message: string } | null>(null)
@@ -59,18 +70,12 @@ export function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
   const [openRows, setOpenRows] = useState<string[]>([])
   const toggleRow = (id: string) => setOpenRows(rows => rows.includes(id) ? rows.filter(row => row !== id) : [...rows, id])
   const [pasteKey, setPasteKey] = useState(false)
-  // The form starts from the saved settings, and again after a save (a new version).
-  if (saved && loadedVersion !== saved.version) {
-    setLoadedVersion(saved.version)
-    setDraft(offsiteBackupDraft(saved))
-    setChangingSecret(!saved.clientSecretSaved)
-  }
 
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
-  const dirty = !!saved && !!draft && offsiteBackupDirty(saved, draft)
+  const dirty = form.dirty
   const draftError = draft && saved ? offsiteBackupDraftError(draft, saved.clientSecretSaved && !changingSecret) : null
   const state = saved ? offsiteBackupState(saved) : null
-  const update = (patch: Partial<OffsiteBackupDraft>) => setDraft(current => current ? { ...current, ...patch } : current)
+  const update = (patch: Partial<OffsiteBackupDraft>) => form.setDraft(current => current ? { ...current, values: { ...current.values, ...patch } } : current)
 
   function openConfirm(kind: OffsiteConfirm) {
     setPassword(''); setFactor(''); setConfirmError(''); setActionResult(null); setConfirm(kind)
