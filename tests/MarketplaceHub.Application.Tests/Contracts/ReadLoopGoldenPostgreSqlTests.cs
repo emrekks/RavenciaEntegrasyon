@@ -79,7 +79,10 @@ public sealed class ReadLoopGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixtu
         }
 
         await using var check = fixture.CreateContext();
-        var cursors = await check.SyncCursors.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.ResourceType).ToListAsync();
+        // Ordered here, not by the database: its collation decides whether "ORDERS_HOT" or "ORDER_LINE_REMATCH" comes first
+        // (C locally, en_US on CI), and the golden must not depend on that.
+        var cursors = (await check.SyncCursors.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync())
+            .OrderBy(x => x.ResourceType, StringComparer.Ordinal).ToList();
         var issues = await check.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Code + (x.ResolvedAt == null ? "" : " (resolved)")).ToListAsync();
         var summary = new
         {
