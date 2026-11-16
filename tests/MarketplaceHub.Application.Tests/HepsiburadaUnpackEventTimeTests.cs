@@ -16,7 +16,7 @@ public sealed class HepsiburadaUnpackEventTimeTests
     {
         using var document = JsonDocument.Parse(body);
 
-        var unpackedAt = MarketplaceJobProcessor.HepsiburadaUnpackedAt(document.RootElement);
+        var unpackedAt = WebhookIngestService.HepsiburadaUnpackedAt(document.RootElement);
 
         Assert.Equal(DateTimeOffset.Parse(expected), unpackedAt);
         Assert.Equal(TimeSpan.Zero, unpackedAt!.Value.Offset);
@@ -27,6 +27,6 @@ public sealed class HepsiburadaUnpackEventTimeTests
     {
         using var document = JsonDocument.Parse("""{"packageNumber":"P1","unpackedDate":"yarın"}""");
 
-        Assert.Null(MarketplaceJobProcessor.HepsiburadaUnpackedAt(document.RootElement));
+        Assert.Null(WebhookIngestService.HepsiburadaUnpackedAt(document.RootElement));
     }
 }

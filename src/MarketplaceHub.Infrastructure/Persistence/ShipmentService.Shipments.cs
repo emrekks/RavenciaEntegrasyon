@@ -55,7 +55,7 @@ internal sealed partial class ShipmentService
             actions = [];
         // n11's capability is proven by its first accepted action; once proven, every n11 package action is offered.
         if (!stage && row.PlatformCode == "N11" && actions.Count > 0)
-            actions = MarketplaceJobProcessor.N11ShipmentActions;
+            actions = ActionJobService.N11ShipmentActions;
         // Pazarama has no sandbox and nothing to probe without writing; the actions follow the package state and every
         // send still passes the write gate (global flag, connection switch, shipment policy).
         if (row.PlatformCode == "PAZARAMA")

@@ -1,0 +1,342 @@
+{
+  "Runs": [
+    {
+      "Run": "automatic",
+      "JobType": "STOCK_RECONCILIATION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": "AUTOMATIC_WRITES_OFF",
+        "ErrorSummary": "Otomatik fiyat-stok yazması kapalı; stok uzlaştırması gönderim yapmadı.",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    },
+    {
+      "Run": "automatic-again",
+      "JobType": "STOCK_RECONCILIATION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": "AUTOMATIC_WRITES_OFF",
+        "ErrorSummary": "Otomatik fiyat-stok yazması kapalı; stok uzlaştırması gönderim yapmadı.",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "ChannelOffer",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "Currency": "TRY",
+          "FollowsPanelPrice": null,
+          "Id": "offer-PS-1",
+          "LastPriceHash": null,
+          "LastSentAt": null,
+          "LastSentCode": null,
+          "LastSentListPrice": null,
+          "LastSentQuantity": null,
+          "LastSentSalePrice": null,
+          "LastStockProjectionVersion": null,
+          "ListPrice": 150.0000,
+          "PriceVersion": 1,
+          "RoundingMode": "HALF_EVEN",
+          "SafetyStock": 0.0000,
+          "SalePrice": 120.0000,
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "VariantId": "variant-PS-1",
+          "VatInclusion": "INCLUDED",
+          "VatRate": 20.0000,
+          "Version": 1
+        },
+        {
+          "ConnectionId": "connection",
+          "Currency": "TRY",
+          "FollowsPanelPrice": null,
+          "Id": "offer-PS-2",
+          "LastPriceHash": null,
+          "LastSentAt": null,
+          "LastSentCode": null,
+          "LastSentListPrice": null,
+          "LastSentQuantity": null,
+          "LastSentSalePrice": null,
+          "LastStockProjectionVersion": null,
+          "ListPrice": 150.0000,
+          "PriceVersion": 1,
+          "RoundingMode": "HALF_EVEN",
+          "SafetyStock": 0.0000,
+          "SalePrice": 120.0000,
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "VariantId": "variant-PS-2",
+          "VatInclusion": "INCLUDED",
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "InventoryItem",
+      "Rows": [
+        {
+          "Available": 5.0000,
+          "Id": "inventory-PS-1",
+          "LocationCode": "MAIN",
+          "ObservedRemoteAt": null,
+          "ObservedRemoteQuantity": null,
+          "OnHand": 5.0000,
+          "ProjectionVersion": 1,
+          "ReconciledAt": null,
+          "Reserved": 0.0000,
+          "TenantId": "tenant",
+          "VariantId": "variant-PS-1",
+          "Version": 1
+        },
+        {
+          "Available": 5.0000,
+          "Id": "inventory-PS-2",
+          "LocationCode": "MAIN",
+          "ObservedRemoteAt": null,
+          "ObservedRemoteQuantity": null,
+          "OnHand": 5.0000,
+          "ProjectionVersion": 1,
+          "ReconciledAt": null,
+          "Reserved": 0.0000,
+          "TenantId": "tenant",
+          "VariantId": "variant-PS-2",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "MarketplaceVariantLink",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ExternalBarcode": "869200000001",
+          "ExternalId": "869200000001",
+          "ExternalSku": "PS-1",
+          "FulfilledByMarketplace": null,
+          "HealthChangedAt": null,
+          "HealthReason": null,
+          "HealthStatus": null,
+          "Id": "link-PS-1",
+          "LastLookupAt": null,
+          "LastLookupOutcome": null,
+          "LastSeenAt": null,
+          "SaleState": null,
+          "SaleStateReadAt": null,
+          "SaleStateReason": null,
+          "TenantId": "tenant",
+          "VariantId": "variant-PS-1",
+          "Version": 1
+        },
+        {
+          "ConnectionId": "connection",
+          "ExternalBarcode": "869200000002",
+          "ExternalId": "869200000002",
+          "ExternalSku": "PS-2",
+          "FulfilledByMarketplace": null,
+          "HealthChangedAt": null,
+          "HealthReason": null,
+          "HealthStatus": null,
+          "Id": "link-PS-2",
+          "LastLookupAt": null,
+          "LastLookupOutcome": null,
+          "LastSeenAt": null,
+          "SaleState": null,
+          "SaleStateReadAt": null,
+          "SaleStateReason": null,
+          "TenantId": "tenant",
+          "VariantId": "variant-PS-2",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "Product",
+      "Rows": [
+        {
+          "ArchivedAt": null,
+          "BrandId": null,
+          "CategoryId": null,
+          "CreatedAt": "T+00:00:00",
+          "DefaultListPrice": null,
+          "DefaultSalePrice": null,
+          "DeliveryDays": 1,
+          "Description": "golden",
+          "DescriptionOverride": null,
+          "FamilyId": "id1",
+          "Id": "product",
+          "SourcePolicyVersion": 1,
+          "Status": "Active",
+          "TenantId": "tenant",
+          "Title": "Fiyat stok ürünü",
+          "TitleOverride": null,
+          "TrendyolWebColorValueId": null,
+          "UpdatedAt": "T+00:00:00",
+          "VatInclusion": null,
+          "VatRate": null,
+          "Version": 1,
+          "WarrantyMonths": 0
+        }
+      ]
+    },
+    {
+      "Table": "ProductModel",
+      "Rows": [
+        {
+          "AttributesSavedAt": null,
+          "BrandId": null,
+          "CategoryId": null,
+          "CreatedAt": "T+00:00:00",
+          "DeliveryDays": 1,
+          "Description": "golden",
+          "Desi": null,
+          "FieldsSavedAt": null,
+          "Id": "id1",
+          "ModelCode": "PS-MODEL",
+          "ModelCodeKey": "PS-MODEL",
+          "TenantId": "tenant",
+          "Title": "Fiyat stok ürünü",
+          "TitleColor": null,
+          "UpdatedAt": "T+00:00:00",
+          "VatInclusion": null,
+          "VatRate": null,
+          "Version": 1,
+          "WarrantyMonths": 0
+        }
+      ]
+    },
+    {
+      "Table": "ProductVariant",
+      "Rows": [
+        {
+          "Barcode": "869200000001",
+          "BarcodeNormalized": "869200000001",
+          "CostPrice": null,
+          "CreatedAt": "T+00:00:00",
+          "DefaultListPrice": null,
+          "DefaultSalePrice": null,
+          "Desi": null,
+          "Height": null,
+          "Id": "variant-PS-1",
+          "Length": null,
+          "ModelCode": "PS-MODEL",
+          "OptionSignature": "Renk=Siyah|Beden=S",
+          "ProductId": "product",
+          "Sku": "PS-1",
+          "SkuNormalized": "PS-1",
+          "SortOrder": 0,
+          "Status": "Active",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1,
+          "Weight": null,
+          "Width": null
+        },
+        {
+          "Barcode": "869200000002",
+          "BarcodeNormalized": "869200000002",
+          "CostPrice": null,
+          "CreatedAt": "T+00:00:00",
+          "DefaultListPrice": null,
+          "DefaultSalePrice": null,
+          "Desi": null,
+          "Height": null,
+          "Id": "variant-PS-2",
+          "Length": null,
+          "ModelCode": "PS-MODEL",
+          "OptionSignature": "Renk=Siyah|Beden=M",
+          "ProductId": "product",
+          "Sku": "PS-2",
+          "SkuNormalized": "PS-2",
+          "SortOrder": 0,
+          "Status": "Active",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1,
+          "Weight": null,
+          "Width": null
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id2",
+          "LastAttemptAt": "T+00:01:03",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:04",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "STOCK_RECONCILIATION",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "inventory InventoryItem created x2",
+        "products Product created x1"
+      ]
+    }
+  ]
+}

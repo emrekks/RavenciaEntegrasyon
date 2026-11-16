@@ -15,6 +15,7 @@ internal sealed class JobRunServices(
     IConnectionPort connections,
     IReferenceDataPort references,
     IProductPort products,
+    IInventoryPricePort inventoryPrice,
     IOrderPort orders,
     IOrderPackageReadPort orderPackages,
     IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus,
@@ -24,6 +25,9 @@ internal sealed class JobRunServices(
     IInvoicingBillingService? invoiceBilling,
     ILogger? logger,
     VariantLinkBookkeeping variantLinks,
+    IPrivateFileStorage files,
+    ExternalEffectGuard effectGuard,
+    JobWriteSwitches writeSwitches,
     JobRunContext run)
 {
     private OrderIngestionService? orderIngestion;
@@ -62,4 +66,26 @@ internal sealed class JobRunServices(
     private ExternalEffectReconcileService? externalEffectReconcile;
 
     public ExternalEffectReconcileService ExternalEffectReconcile => externalEffectReconcile ??= new(db, issues, orders, returns, timeProvider, OrderIngestion, ReturnIngestion, run);
+
+    // ISLEYICI-9 stage 5 step 3: the write services open, send and close their effect records through the processor's
+    // one ExternalEffectGuard and check the same write switches.
+    private ActionJobService? actionJobs;
+
+    private WebhookIngestService? webhookIngest;
+
+    public WebhookIngestService WebhookIngest => webhookIngest ??= new(db, issues, orders, orderPackages, configuration, timeProvider, OrderIngestion, ReturnIngestion, OrderRead, ReturnRead, ActionJobs, run);
+
+    private ProductJobService? productJobs;
+
+    public ProductJobService ProductJobs => productJobs ??= new(db, issues, products, references, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, variantLinks, run);
+
+    private PriceStockService? priceStock;
+
+    public PriceStockService PriceStock => priceStock ??= new(db, issues, products, inventoryPrice, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, ListingVerification, run);
+
+    private LabelJobService? labelJobs;
+
+    public LabelJobService LabelJobs => labelJobs ??= new(db, orders, files, timeProvider, effectGuard, OrderIngestion, run);
+
+    public ActionJobService ActionJobs => actionJobs ??= new(db, issues, orders, returns, files, timeProvider, effectGuard, writeSwitches, OrderIngestion, ReturnIngestion, ExternalEffectReconcile, run);
 }

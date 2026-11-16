@@ -1,0 +1,473 @@
+{
+  "Runs": [
+    {
+      "Run": "ingest",
+      "JobType": "TRENDYOL_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    },
+    {
+      "Run": "ingest-again",
+      "JobType": "TRENDYOL_WEBHOOK_INGEST",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "InboxMessage",
+      "Rows": [
+        {
+          "ExternalMessageId": "ty-msg-1",
+          "Id": "inbox",
+          "PayloadHash": "<hash>",
+          "ProcessedAt": "T+00:01:12",
+          "ReceivedAt": "T-00:01:00",
+          "Source": "TRENDYOL_WEBHOOK",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:02",
+          "Currency": "TRY",
+          "CustomerSearchName": "Test Musteri",
+          "CustomerSearchStamp": "id1",
+          "CustomerSnapshotJson": {
+            "shipmentAddress": {
+              "id": 11111111,
+              "firstName": "Test",
+              "lastName": "Musteri",
+              "company": "",
+              "address1": "Fake Street 1",
+              "address2": "Fake Street 1",
+              "city": "İstanbul",
+              "cityCode": 34,
+              "district": "Sarıyer",
+              "districtId": 54,
+              "countyId": 0,
+              "countyName": "",
+              "shortAddress": "",
+              "stateName": "",
+              "addressLines": {
+                "addressLine1": "Fake Street 1",
+                "addressLine2": "Fake Street 1"
+              },
+              "postalCode": "34200",
+              "countryCode": "TR",
+              "neighborhoodId": 21111,
+              "neighborhood": "Maslak Mahallesi",
+              "phone": "5550000000",
+              "fullAddress": "Fake Street 1",
+              "fullName": "Test Musteri"
+            },
+            "orderNumber": "10654411111",
+            "paymentMethod": "Alışveriş Kredisi",
+            "orderCountryCode": "TR",
+            "packageGrossAmount": 498.90,
+            "packageSellerDiscount": 0.00,
+            "packageTyDiscount": 0.00,
+            "packageTotalDiscount": 0.00,
+            "discountDisplays": [
+              {
+                "displayName": "Sepette %20 İndirim",
+                "discountAmount": 100
+              }
+            ],
+            "taxNumber": null,
+            "invoiceAddress": {
+              "id": 11111112,
+              "firstName": "Test",
+              "lastName": "Musteri",
+              "company": "",
+              "address1": "Fake Street 1",
+              "address2": "Fake Street 1",
+              "city": "İstanbul",
+              "cityCode": 0,
+              "district": "Sarıyer",
+              "districtId": 54,
+              "countyId": 0,
+              "countyName": "",
+              "shortAddress": "",
+              "stateName": "",
+              "addressLines": {
+                "addressLine1": "Fake Street 1",
+                "addressLine2": "Fake Street 1"
+              },
+              "postalCode": "",
+              "sector": "",
+              "countryCode": "TR",
+              "neighborhoodId": 0,
+              "phone": "5550000000",
+              "latitude": "11.111111",
+              "longitude": "22.222222",
+              "fullAddress": "Fake Street 1",
+              "fullName": "Test Musteri",
+              "taxOffice": "Fake Tax Office",
+              "taxNumber": "0000000000"
+            },
+            "customerFirstName": "Test",
+            "customerEmail": "customer@example.test",
+            "customerId": 888888888,
+            "supplierId": 99999999,
+            "customerLastName": "Musteri",
+            "channelId": 25,
+            "shipmentPackageId": 3330111111,
+            "cargoTrackingNumber": 7280027504111111,
+            "cargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",
+            "cargoSenderNumber": "210090111111",
+            "sellerDeliveryMethod": "",
+            "sellerOtpCode": "",
+            "cargoProviderName": "Trendyol Express",
+            "lines": [
+              {
+                "quantity": 1,
+                "salesCampaignId": 11,
+                "productSize": "Tek Ebat",
+                "stockCode": "111111",
+                "productName": "Kuş ve Çiçek Desenli Tepsi - Yeşil / Altın Sarısı - 49 cm, 01SYM134, Tek Ebat",
+                "contentId": 1239111111,
+                "productOrigin": "TR",
+                "sellerId": 2738,
+                "lineGrossAmount": 498.90,
+                "lineTotalDiscount": 0.00,
+                "lineSellerDiscount": 0.00,
+                "lineTyDiscount": 0.00,
+                "discountDetails": [
+                  {
+                    "lineItemId": "11111111",
+                    "lineItemPrice": 498.90,
+                    "lineItemSellerDiscount": 0.00,
+                    "lineItemTyDiscount": 0.00
+                  }
+                ],
+                "currencyCode": "TRY",
+                "productColor": "Yeşil",
+                "lineId": 4765111111,
+                "vatRate": 20.00,
+                "barcode": "0000000000001",
+                "orderLineItemStatusName": "Delivered",
+                "lineUnitPrice": 498.90,
+                "fastDeliveryOptions": [],
+                "productCategoryId": 2710,
+                "commission": 13,
+                "businessUnit": "Sports Shoes",
+                "cancelledBy": "",
+                "cancelReason": "",
+                "cancelReasonCode": 0,
+                "defectiveClaimListingInsight": "Kırık ve akma sorunları var"
+              }
+            ],
+            "orderDate": 1762253333685,
+            "identityNumber": "00000000000",
+            "currencyCode": "TRY",
+            "packageHistories": [
+              {
+                "createdDate": 1762242537624,
+                "status": "Created"
+              }
+            ],
+            "shipmentPackageStatus": "Delivered",
+            "status": "Delivered",
+            "whoPays": 1,
+            "deliveryType": "normal",
+            "timeSlotId": 0,
+            "estimatedDeliveryStartDate": 1762858136000,
+            "estimatedDeliveryEndDate": 1763030936000,
+            "packageTotalPrice": 498.90,
+            "deliveryAddressType": "Shipment",
+            "agreedDeliveryDate": 1762376340000,
+            "fastDelivery": false,
+            "originShipmentDate": 1762242537619,
+            "lastModifiedDate": 1762865408581,
+            "commercial": false,
+            "fastDeliveryType": "",
+            "deliveredByService": false,
+            "warehouseId": 372389,
+            "invoiceLink": "https://invoices.example.test/11111111111",
+            "invoiceNumber": "1255141",
+            "invoiceStatus": "NotInvoiced",
+            "invoiceRejectedReasonKeys": "",
+            "micro": true,
+            "giftBoxRequested": false,
+            "3pByTrendyol": false,
+            "etgbNo": "25341453EX025864",
+            "etgbDate": 1762646400000,
+            "containsDangerousProduct": false,
+            "cargoDeci": 10,
+            "boxQuantity": 4,
+            "deci": 4.4,
+            "width": "",
+            "length": "",
+            "height": "",
+            "isCod": false,
+            "createdBy": "order-creation",
+            "originPackageIds": null,
+            "hsCode": "711111000000",
+            "shipmentNumber": 606404425,
+            "is4P": true
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "10654411111",
+          "GrossAmount": 498.9000,
+          "Id": "id2",
+          "InvoiceAddressSnapshotJson": {
+            "id": 11111112,
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "company": "",
+            "address1": "Fake Street 1",
+            "address2": "Fake Street 1",
+            "city": "İstanbul",
+            "cityCode": 0,
+            "district": "Sarıyer",
+            "districtId": 54,
+            "countyId": 0,
+            "countyName": "",
+            "shortAddress": "",
+            "stateName": "",
+            "addressLines": {
+              "addressLine1": "Fake Street 1",
+              "addressLine2": "Fake Street 1"
+            },
+            "postalCode": "",
+            "sector": "",
+            "countryCode": "TR",
+            "neighborhoodId": 0,
+            "phone": "5550000000",
+            "latitude": "11.111111",
+            "longitude": "22.222222",
+            "fullAddress": "Fake Street 1",
+            "fullName": "Test Musteri",
+            "taxOffice": "Fake Tax Office",
+            "taxNumber": "0000000000"
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-1511.20:09:51.4190000",
+          "NetAmount": 498.9000,
+          "OrderNumber": "10654411111",
+          "OrderedAt": "T-1519.01:11:06.3150000",
+          "ShipmentAddressSnapshotJson": {
+            "id": 11111111,
+            "firstName": "Test",
+            "lastName": "Musteri",
+            "company": "",
+            "address1": "Fake Street 1",
+            "address2": "Fake Street 1",
+            "city": "İstanbul",
+            "cityCode": 34,
+            "district": "Sarıyer",
+            "districtId": 54,
+            "countyId": 0,
+            "countyName": "",
+            "shortAddress": "",
+            "stateName": "",
+            "addressLines": {
+              "addressLine1": "Fake Street 1",
+              "addressLine2": "Fake Street 1"
+            },
+            "postalCode": "34200",
+            "countryCode": "TR",
+            "neighborhoodId": 21111,
+            "neighborhood": "Maslak Mahallesi",
+            "phone": "5550000000",
+            "fullAddress": "Fake Street 1",
+            "fullName": "Test Musteri"
+          },
+          "ShipmentDueAt": "T-1517.12:01:00",
+          "StoreFrontCode": "TR",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:02",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "0000000000001",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 1.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "4765111111",
+          "Id": "id3",
+          "OrderId": "id2",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": 0.0000,
+          "RawStatus": "Delivered",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "Sku": "111111",
+          "SourceSnapshotJson": "<raw 1216 chars sha256:3d2a24a1ea87>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Kuş ve Çiçek Desenli Tepsi - Yeşil / Altın Sarısı - 49 cm, 01SYM134, Tek Ebat",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 498.9000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "DELIVERED",
+          "Id": "id4",
+          "OccurredAt": "T-1511.20:09:51.4190000",
+          "OrderId": "id2",
+          "PackageId": "id5",
+          "RawStatus": "Delivered",
+          "RecordedAt": "T+00:00:02",
+          "SourceEventId": "3330111111:1762865408581",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 1.0000,
+          "Id": "id6",
+          "OrderLineId": "id3",
+          "PackageId": "id5",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 1.0000,
+          "SourceEventId": "3330111111:1762865408581",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "Trendyol Express",
+          "CargoTrackingNumber": "7280027504111111",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:02",
+          "CreatedBy": "order-creation",
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "3330111111",
+          "GrossAmount": 498.9000,
+          "Id": "id5",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": "T+00:01:10",
+          "MarketplaceInvoiceRawStatus": "NotInvoiced",
+          "MarketplaceInvoiceSourceUpdatedAt": "T-1511.20:09:51.4190000",
+          "MarketplaceInvoiceStatus": "NotInvoiced",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 498.9000,
+          "OrderId": "id2",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T-1511.20:09:51.4190000",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:02",
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id7",
+          "LastAttemptAt": "T+00:01:08",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:13",
+          "LastUpdatedCount": 2,
+          "OpaqueCursor": null,
+          "ResourceType": "WEBHOOK_INGEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}

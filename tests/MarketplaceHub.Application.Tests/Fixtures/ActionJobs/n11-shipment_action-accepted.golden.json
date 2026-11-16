@@ -1,0 +1,355 @@
+{
+  "Runs": [
+    {
+      "Run": "send",
+      "JobType": "SHIPMENT_ACTION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.PackageAction key=shipment-action:job {\"ExternalPackageId\":\"P1\",\"Action\":\"PICKING\",\"PayloadJson\":\"{\\\"lines\\\":[{\\\"lineId\\\":1,\\\"quantity\\\":2}]}\",\"StoreFrontCode\":\"TR\"}",
+        "orders.GetHinted key=shipment-action:job:readback \"5001\" {\"OrderedAt\":\"2029-12-31T09:00:00+00:00\",\"LastModifiedAt\":\"2030-01-01T06:00:00+00:00\",\"StoreFrontCode\":\"TR\"}"
+      ]
+    },
+    {
+      "Run": "same-job-again",
+      "JobType": "SHIPMENT_ACTION",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "ExternalEffectRecord",
+      "Rows": [
+        {
+          "Action": "PICKING",
+          "CompletedAt": "T+00:00:04",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:02",
+          "EffectType": "SHIPMENT_ACTION",
+          "ExpectedValue": null,
+          "Id": "id1",
+          "IdempotencyKey": "shipment-action:job",
+          "LastCheckedAt": null,
+          "Outcome": null,
+          "SentAt": "T+00:00:04",
+          "TargetId": "package-P1",
+          "TenantId": "tenant",
+          "UnclearChecks": 0,
+          "VerificationSeconds": 0
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationJob",
+      "Rows": [
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:00",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "golden",
+          "CreatedAt": "T+00:00:00",
+          "EffectIdempotencyKey": "shipment-action:job",
+          "HeartbeatAt": null,
+          "Id": "job",
+          "JobDedupKey": "golden-shipment:job",
+          "JobType": "SHIPMENT_ACTION",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "shipment_action",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "JobId": "job",
+            "PackageId": "package-P1",
+            "Action": "PICKING",
+            "PayloadJson": {
+              "lines": [
+                {
+                  "lineId": 1,
+                  "quantity": 2
+                }
+              ]
+            }
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "orders",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "Leased",
+          "TenantId": "tenant",
+          "TriggerType": "manual",
+          "Version": 1,
+          "WaitingChecks": 0
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id2",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "PROCESSING",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "5001",
+          "GrossAmount": 100.0000,
+          "Id": "order-5001",
+          "InvoiceAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-03:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "5001",
+          "OrderedAt": "T-1.00:00:00",
+          "ShipmentAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": "TR",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:07",
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "8690000000001",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "L1",
+          "Id": "order-line-L1",
+          "OrderId": "order-5001",
+          "OrderedQuantity": 2.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Picking",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-1",
+          "SourceSnapshotJson": "<raw 2 chars sha256:44136fa355b3>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Ürün",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 50.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "NEW",
+          "Id": "id3",
+          "OccurredAt": "T-03:00:00",
+          "OrderId": "order-5001",
+          "PackageId": "package-P1",
+          "RawStatus": "Created",
+          "RecordedAt": "T-00:30:00",
+          "SourceEventId": "P1:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id4",
+          "OrderLineId": "order-line-L1",
+          "PackageId": "package-P1",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "SourceEventId": "P1:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformCapability",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "Code": "SHIPMENT_WRITE",
+          "ConnectionId": "connection",
+          "ConstraintsJson": {
+            "allowedActions": [
+              "PICKING",
+              "SPLIT",
+              "MULTI_SPLIT",
+              "SPLIT_BY_QUANTITY",
+              "LABOR_COST",
+              "COLLECTION_REQUEST"
+            ]
+          },
+          "Environment": "PRODUCTION",
+          "EvidenceNote": "SHIPMENT_WRITE, N11 canlı mağazasının kabul ettiği ilk paket aksiyonuyla (PICKING) doğrulandı.",
+          "FixtureChecksum": null,
+          "Id": "id5",
+          "RequiredScope": null,
+          "SourceUrl": "https://api.n11.com/rest/order/v1/update",
+          "SourceVersion": "V1",
+          "StoreScope": "store-golden",
+          "SupportLevel": "Supported",
+          "TenantId": "tenant",
+          "VerifiedAt": "T+00:00:05",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "N11",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "N11",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "ARAS",
+          "CargoTrackingNumber": "TRK1",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "P1",
+          "GrossAmount": 100.0000,
+          "Id": "package-P1",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-5001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Picking",
+          "RemoteVersion": null,
+          "Status": "Processing",
+          "StatusOccurredAt": "T-03:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:07",
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id6",
+          "LastAttemptAt": "T+00:01:10",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:01:11",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "SHIPMENT_ACTION",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders Order updated x1",
+        "orders ShipmentPackage created x1",
+        "orders ShipmentPackage updated x1"
+      ]
+    }
+  ]
+}

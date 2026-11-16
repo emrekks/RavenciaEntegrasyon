@@ -488,7 +488,7 @@ internal sealed partial class ShipmentService
     // can only be split after it was approved.
     internal static ServiceError? N11ShipmentActionStateError(ShipmentPackage package, string action)
     {
-        if (!MarketplaceJobProcessor.N11ShipmentActions.Contains(action, StringComparer.Ordinal))
+        if (!ActionJobService.N11ShipmentActions.Contains(action, StringComparer.Ordinal))
             return new("SHIPMENT_ACTION_UNSUPPORTED", "N11 için yalnız siparişi işleme alma, paket bölme, işçilik bedeli ve lojistik toplama talebi desteklenir; diğer işlemleri N11 satıcı panelinden yapın.", 422);
         if (package.Status == ShipmentPackageStatus.PaymentPending) return new("SHIPMENT_PAYMENT_PENDING", "Ödeme onayı gelmeden paket işlemi yapılamaz.", 409);
         if (package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Cancelled)

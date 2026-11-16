@@ -112,7 +112,7 @@ public sealed class N11ShipmentExtrasTests
     [Fact]
     public void EveryN11PackageActionIsOfferedOnceShipmentWriteIsProven()
     {
-        Assert.Equal(["PICKING", "SPLIT", "MULTI_SPLIT", "SPLIT_BY_QUANTITY", "LABOR_COST", "COLLECTION_REQUEST"], MarketplaceJobProcessor.N11ShipmentActions);
+        Assert.Equal(["PICKING", "SPLIT", "MULTI_SPLIT", "SPLIT_BY_QUANTITY", "LABOR_COST", "COLLECTION_REQUEST"], ActionJobService.N11ShipmentActions);
     }
 
     [Fact]

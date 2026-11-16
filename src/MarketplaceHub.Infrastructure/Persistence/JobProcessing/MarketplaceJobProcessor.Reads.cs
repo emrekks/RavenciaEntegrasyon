@@ -1,30 +1,11 @@
-using MarketplaceHub.Application;
-using MarketplaceHub.Domain;
+using System.Text.Json;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// ISLEYICI-9 stage 3e (16 Nov 2026): the order and return read loops live in OrderReadService and ReturnReadService, one
-// per run like the ingestion services they store through. The read jobs run in OrderReadRunHandler and
-// ReturnReadRunHandler (stage 4c, 4d); these members are what the processor's own code (webhooks, the invoice checks, the
-// cargo-info check) still calls.
+// ISLEYICI-9 stage 5 (16 Nov 2026): every job family runs in its own service through a run handler. The processor keeps
+// only what tests still call on it: the Hepsiburada address event of the webhook ingest (WebhookIngestService).
 public sealed partial class MarketplaceJobProcessor
 {
-    private OrderReadService OrderRead => Services.OrderRead;
-
-    private ReturnReadService ReturnRead => Services.ReturnRead;
-
-    private Task<bool> SyncHepsiburadaOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken) =>
-        OrderRead.SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
-
-    private Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
-        OrderRead.SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
-
-    // The package actions judge an effect closed as unresolved with the effect check's own read.
-    private Task<EffectVerdict> PackageEffectVerdictAsync(Guid tenantId, Guid connectionId, ExternalEffectRecord effect, string correlationId, CancellationToken cancellationToken) =>
-        Services.ExternalEffectReconcile.PackageEffectVerdictAsync(tenantId, connectionId, effect, correlationId, cancellationToken);
-
-    private static string? TrendyolWebhookStorefront(string rawPackageJson) => OrderReadService.TrendyolWebhookStorefront(rawPackageJson);
-
-    private Task<bool> SyncReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken) =>
-        ReturnRead.SyncReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+    internal Task ApplyHepsiburadaShippingAddressAsync(Guid tenantId, Guid connectionId, string orderNumber, JsonElement root, string eventKey, CancellationToken cancellationToken) =>
+        Services.WebhookIngest.ApplyHepsiburadaShippingAddressAsync(tenantId, connectionId, orderNumber, root, eventKey, cancellationToken);
 }

@@ -27,12 +27,8 @@ internal static class FinanceRecordIssues
     {
         var prefix = Prefix(connectionId);
         var more = MoreKey(connectionId);
-        var issues = await db.OperationalIssues
-            .Where(x => x.TenantId == tenantId && x.Code == Code && x.DedupeKey.StartsWith(prefix))
-            .ToListAsync(cancellationToken);
-        foreach (var local in db.OperationalIssues.Local.Where(x => x.TenantId == tenantId && x.Code == Code && x.DedupeKey.StartsWith(prefix, StringComparison.Ordinal)))
-            if (!issues.Contains(local)) issues.Add(local);
-        var byKey = issues.GroupBy(x => x.DedupeKey, StringComparer.Ordinal).ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+        // ISLEYICI-12: the lookup is IssueRecorder's; the open and resolve rules below stay this class's own.
+        var byKey = await new IssueRecorder(db).ByPrefixAsync(tenantId, Code, prefix, cancellationToken);
 
         var distinct = skipped.DistinctBy(x => x.Key, StringComparer.Ordinal).ToList();
         foreach (var record in distinct.Take(MaximumPerRun))

@@ -80,11 +80,11 @@ public sealed class N11ProductUpdateTests
     public void TheTaskBody_CountsAsAPhaseWithItems()
     {
         var body = N11ProductUpdateComposer.Payload("Ravencia", [new("A", "Açıklama", null, null, null, null)]);
-        Assert.True(MarketplaceJobProcessor.HasItems(body));
-        Assert.False(MarketplaceJobProcessor.HasItems("""{"payload":{"integrator":"x","skus":[]}}"""));
-        Assert.False(MarketplaceJobProcessor.HasItems(N11ProductUpdateComposer.EmptyItems));
-        Assert.False(MarketplaceJobProcessor.HasItems("{}"));
-        Assert.True(MarketplaceJobProcessor.HasItems("""{"items":[{"barcode":"B1"}]}"""));
+        Assert.True(ProductJobService.HasItems(body));
+        Assert.False(ProductJobService.HasItems("""{"payload":{"integrator":"x","skus":[]}}"""));
+        Assert.False(ProductJobService.HasItems(N11ProductUpdateComposer.EmptyItems));
+        Assert.False(ProductJobService.HasItems("{}"));
+        Assert.True(ProductJobService.HasItems("""{"items":[{"barcode":"B1"}]}"""));
         // The adapter takes the same body as a create: the integrator is set, 1-1000 SKUs.
         using var sent = JsonDocument.Parse(N11HttpClient.CreatePayload(body, "Ravencia Hub")!);
         Assert.Equal("Ravencia Hub", sent.RootElement.GetProperty("payload").GetProperty("integrator").GetString());

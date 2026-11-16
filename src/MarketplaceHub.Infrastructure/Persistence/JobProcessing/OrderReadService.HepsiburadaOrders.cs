@@ -18,11 +18,8 @@ internal sealed partial class OrderReadService
 
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
-            TrackRequest();
-            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"hepsiburada-order-get:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
-            if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
-            TrackReceived();
-            var remoteOrder = single.Value!;
+            // ISLEYICI-12: the order read is the shared single-order read; the package status read below is Hepsiburada's own.
+            var remoteOrder = await ReadSingleOrderAsync(tenantId, connectionId, correlationId, "hepsiburada-order-get", externalOrderId, cancellationToken);
             if (!string.IsNullOrWhiteSpace(packageNumber))
             {
                 TrackRequest();
