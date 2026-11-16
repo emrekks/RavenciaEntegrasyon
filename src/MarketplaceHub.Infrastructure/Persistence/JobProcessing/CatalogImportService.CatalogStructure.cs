@@ -7,17 +7,19 @@ using Microsoft.EntityFrameworkCore;
 using CategoryAttributeContext = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.CategoryAttributeContext;
 using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.CatalogAttributeService.LocalCategoryAttribute;
 
+using StructureCategoryDifference = MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.StructureCategoryDifference;
+
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // Reads the products already listed on a marketplace and brings their category,
 // option and attribute structure into the panel. It never writes to the
 // marketplace: the only remote calls are product and reference reads.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     private static readonly JsonSerializerOptions StructureReportJson = new(JsonSerializerDefaults.Web);
     private static readonly Regex PlatformSuffix = new(@"\s\([^()]*\)$", RegexOptions.Compiled);
 
-    private async Task<bool> ImportCatalogStructure(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    internal async Task<bool> ImportCatalogStructure(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA"), cancellationToken);
@@ -610,8 +612,6 @@ public sealed partial class MarketplaceJobProcessor
         public int ProductCount { get; set; }
         public Dictionary<string, HashSet<string>> Options { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
-
-    public sealed record StructureCategoryDifference(string ComparedWith, string ComparedSource, int SharedCount, List<string> OnlyInMarketplace, List<string> OnlyInPanel);
 
     private sealed record StructureChange(string Kind, string Name, Guid? AttributeId = null);
 

@@ -31,16 +31,7 @@ public sealed partial class MarketplaceJobProcessor
         run.ReadRecorder.Add("INVOICE", new JobReadRecord(package.ExternalPackageId, package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceStatus.ToString(), changed ? JobReadOutcomes.Updated : JobReadOutcomes.Unchanged));
     }
 
-    // A product the catalog read pulled: its model code (or the marketplace's product id), its first barcode and how many
-    // variants came with it. A failed batch marks each of its products with the error.
-    private void RecordProductRead(RemoteCatalogProduct snapshot, string outcome, string? reason)
-    {
-        if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "PRODUCT") return;
-        var reference = string.IsNullOrWhiteSpace(snapshot.ProductMainId) ? snapshot.ExternalProductId : snapshot.ProductMainId!;
-        var barcode = snapshot.Variants.Select(x => x.Barcode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
-        var secondary = barcode is null ? null : snapshot.Variants.Count > 1 ? $"{barcode} +{snapshot.Variants.Count - 1}" : barcode;
-        run.ReadRecorder.Add("PRODUCT", new JobReadRecord(reference, secondary, $"{snapshot.Variants.Count} varyant", outcome, reason));
-    }
+    // RecordProductRead (a product the catalog read pulled) moved with the import into CatalogImportService.
 
 
     // Stores what this run pulled on the job's summary row, joined to earlier slices of the same job, and returns the job's

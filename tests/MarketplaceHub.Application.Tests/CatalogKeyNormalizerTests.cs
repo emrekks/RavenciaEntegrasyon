@@ -116,9 +116,9 @@ public sealed class CatalogKeyNormalizerTests
     public void SameColorAndSize_ReadsThePanelSignature()
     {
         var remote = new Dictionary<string, string> { ["Renk"] = "Mavi", ["Beden"] = "XL" };
-        Assert.True(MarketplaceJobProcessor.SameColorAndSize("RENK=MAVI|BEDEN=XL", remote));
-        Assert.True(MarketplaceJobProcessor.SameColorAndSize("Renk: Mavi | Beden: XL", remote));
-        Assert.False(MarketplaceJobProcessor.SameColorAndSize("RENK=MAVI|BEDEN=L", remote));
+        Assert.True(CatalogImportService.SameColorAndSize("RENK=MAVI|BEDEN=XL", remote));
+        Assert.True(CatalogImportService.SameColorAndSize("Renk: Mavi | Beden: XL", remote));
+        Assert.False(CatalogImportService.SameColorAndSize("RENK=MAVI|BEDEN=L", remote));
     }
 
     [Fact]
@@ -126,14 +126,14 @@ public sealed class CatalogKeyNormalizerTests
     {
         // PTT AVM names a model's variants by value only ("S"), with the colour in the product title.
         var size = new Dictionary<string, string> { ["Varyant"] = "S" };
-        Assert.True(MarketplaceJobProcessor.HasOptionValues("Renk: Bordo | Beden: S | Boy: Mini", size));
-        Assert.False(MarketplaceJobProcessor.HasOptionValues("Renk: Bordo | Beden: M | Boy: Mini", size));
-        Assert.True(MarketplaceJobProcessor.HasOptionValues("Renk: Lacivert | Beden: L", new Dictionary<string, string> { ["Varyant"] = "Lacivert / L" }));
-        Assert.False(MarketplaceJobProcessor.HasOptionValues(null, size));
-        Assert.True(MarketplaceJobProcessor.TitleNamesColor("Bordo Kaşe Mini Etek", "Renk: Bordo | Beden: S"));
-        Assert.False(MarketplaceJobProcessor.TitleNamesColor("Bordo Kaşe Mini Etek", "Renk: Haki | Beden: S"));
-        Assert.True(MarketplaceJobProcessor.TitleNamesColor("Siyah-Beyaz Kolsuz Bluz", "Renk: Siyah-Beyaz | Beden: S"));
-        Assert.False(MarketplaceJobProcessor.TitleNamesColor("Siyahlı Bluz", "Renk: Siyah | Beden: S"));
+        Assert.True(CatalogImportService.HasOptionValues("Renk: Bordo | Beden: S | Boy: Mini", size));
+        Assert.False(CatalogImportService.HasOptionValues("Renk: Bordo | Beden: M | Boy: Mini", size));
+        Assert.True(CatalogImportService.HasOptionValues("Renk: Lacivert | Beden: L", new Dictionary<string, string> { ["Varyant"] = "Lacivert / L" }));
+        Assert.False(CatalogImportService.HasOptionValues(null, size));
+        Assert.True(CatalogImportService.TitleNamesColor("Bordo Kaşe Mini Etek", "Renk: Bordo | Beden: S"));
+        Assert.False(CatalogImportService.TitleNamesColor("Bordo Kaşe Mini Etek", "Renk: Haki | Beden: S"));
+        Assert.True(CatalogImportService.TitleNamesColor("Siyah-Beyaz Kolsuz Bluz", "Renk: Siyah-Beyaz | Beden: S"));
+        Assert.False(CatalogImportService.TitleNamesColor("Siyahlı Bluz", "Renk: Siyah | Beden: S"));
     }
 
     [Theory]

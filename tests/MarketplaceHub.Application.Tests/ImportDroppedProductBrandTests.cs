@@ -30,7 +30,7 @@ public sealed class ImportDroppedProductBrandTests
         using var db = Context();
         var (brand, product, mapping) = AddProductWithNewBrand(db, Guid.CreateVersion7());
 
-        MarketplaceJobProcessor.DropNewCatalogProduct(db, product);
+        CatalogImportService.DropNewCatalogProduct(db, product);
 
         Assert.Equal(EntityState.Detached, db.Entry(product).State);
         Assert.Equal(EntityState.Detached, db.Entry(brand).State);
@@ -46,7 +46,7 @@ public sealed class ImportDroppedProductBrandTests
         var sibling = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, BrandId = brand.Id, Title = "Ürün", Description = "" };
         db.Products.Add(sibling);
 
-        MarketplaceJobProcessor.DropNewCatalogProduct(db, product);
+        CatalogImportService.DropNewCatalogProduct(db, product);
 
         Assert.Equal(EntityState.Detached, db.Entry(product).State);
         Assert.Equal(EntityState.Added, db.Entry(brand).State);

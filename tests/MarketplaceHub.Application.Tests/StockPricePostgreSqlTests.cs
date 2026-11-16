@@ -1250,8 +1250,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
         await using var db = fixture.CreateContext();
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-        var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var mapped = await (Task<bool>)map.Invoke(processor, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!;
+        var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var mapped = await (Task<bool>)map.Invoke(processor.CatalogImport, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!;
         await db.SaveChangesAsync();
 
         Assert.True(mapped);
@@ -1296,8 +1296,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await using (var db = fixture.CreateContext())
         {
             var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-            var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-            Assert.True(await (Task<bool>)map.Invoke(processor, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!);
+            var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Assert.True(await (Task<bool>)map.Invoke(processor.CatalogImport, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!);
             await db.SaveChangesAsync();
         }
 
@@ -1340,8 +1340,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         {
             await using var db = fixture.CreateContext();
             var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-            var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-            var mapped = await (Task<bool>)map.Invoke(processor, [tenant.Id, trendyol.Id, snapshot, false, CancellationToken.None, false, false, false, null, "N11", false])!;
+            var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var mapped = await (Task<bool>)map.Invoke(processor.CatalogImport, [tenant.Id, trendyol.Id, snapshot, false, CancellationToken.None, false, false, false, null, "N11", false])!;
             await db.SaveChangesAsync();
             return mapped;
         }
@@ -1406,8 +1406,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await using (var db = fixture.CreateContext())
         {
             var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-            var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-            Assert.True(await (Task<bool>)map.Invoke(processor, [tenant.Id, shopify.Id, snapshot, true, CancellationToken.None, false, false, false, null, "N11", false])!);
+            var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Assert.True(await (Task<bool>)map.Invoke(processor.CatalogImport, [tenant.Id, shopify.Id, snapshot, true, CancellationToken.None, false, false, false, null, "N11", false])!);
             await db.SaveChangesAsync();
             // Model Kaydı Faz 2: what the import run does after its save: the Shopify product becomes the model's listing.
             await MarketplaceModelLinks.RecordAsync(db, tenant.Id, shopify.Id, [(snapshot.ExternalProductId, [.. remoteVariants.Select(x => x.ExternalVariantId)])], DateTimeOffset.UtcNow, CancellationToken.None);
@@ -1447,8 +1447,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
         await using var db = fixture.CreateContext();
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-        var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var mapped = await (Task<bool>)map.Invoke(processor, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!;
+        var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var mapped = await (Task<bool>)map.Invoke(processor.CatalogImport, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!;
         await db.SaveChangesAsync();
 
         Assert.True(mapped);
@@ -1475,10 +1475,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
         await using var db = fixture.CreateContext();
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-        var record = typeof(MarketplaceJobProcessor).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var record = typeof(VariantLinkBookkeeping).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var remote = new RemoteCatalogVariant("888001", " TY-STOK ", "TY-BARKOD", null, new Dictionary<string, string>(), false, 100m, 120m, 20m, 2m, "TRY", "{}");
         var snapshots = new List<RemoteCatalogProduct> { new("p-1", null, "Ürün", "", null, null, null, null, [], [remote], "{}") };
-        await (Task)record.Invoke(processor, [tenant.Id, trendyol.Id, snapshots, CancellationToken.None, false])!;
+        await (Task)record.Invoke(processor.VariantLinks, [tenant.Id, trendyol.Id, snapshots, CancellationToken.None, false])!;
         await db.SaveChangesAsync();
 
         var link = await db.MarketplaceVariantLinks.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == trendyol.Id);
@@ -1509,11 +1509,11 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var link = await db.MarketplaceVariantLinks.SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id);
         link.ExternalId = "M1-S";
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-        var record = typeof(MarketplaceJobProcessor).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var record = typeof(VariantLinkBookkeeping).GetMethod("RecordVariantLinkCodes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var remote = new RemoteCatalogVariant("MODEL-1/7101", "MODEL-1-S", null, "MODEL-1", new Dictionary<string, string> { ["Varyant"] = "S" }, false, 100m, null, 20m, 1m, "TRY", "{}");
         var snapshots = new List<RemoteCatalogProduct> { new("900001", "MODEL-1", "Etek", "", null, null, null, null, [], [remote], "{}") };
 
-        await (Task)record.Invoke(processor, [tenant.Id, pttAvm.Id, snapshots, CancellationToken.None, false])!;
+        await (Task)record.Invoke(processor.VariantLinks, [tenant.Id, pttAvm.Id, snapshots, CancellationToken.None, false])!;
 
         Assert.Equal("M1-S", link.ExternalId);
         Assert.Null(link.ExternalSku);

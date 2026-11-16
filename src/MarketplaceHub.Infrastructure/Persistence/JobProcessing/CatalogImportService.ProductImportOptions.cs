@@ -7,7 +7,7 @@ using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.Catalog
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     private static string NormalizeCurrency(string? value)
     {

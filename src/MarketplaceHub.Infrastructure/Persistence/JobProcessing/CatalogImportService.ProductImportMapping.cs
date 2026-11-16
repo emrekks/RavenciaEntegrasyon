@@ -9,7 +9,7 @@ using LocalCategoryAttribute = MarketplaceHub.Infrastructure.Persistence.Catalog
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     // crossMatchCodes (n11): the seller stock code may be the panel barcode
     // and the n11 barcode the panel SKU. Model-code candidates are narrowed

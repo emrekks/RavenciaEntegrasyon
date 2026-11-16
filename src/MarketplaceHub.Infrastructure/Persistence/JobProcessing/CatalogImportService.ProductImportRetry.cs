@@ -7,7 +7,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // ISLEYICI-1 retry (16 Nov 2026): the failed models of a catalog import are read again one by one
 // (ProductImportRetryPolicy). Called at the end of an import, before its staging rows are deleted.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class CatalogImportService
 {
     // A run that is not itself a retry lists the models it could not store and queues their first try.
     private async Task NoteFailedModelsForRetryAsync(Guid tenantId, Guid connectionId, string? platformCode, Guid importJobId, string payloadJson, string correlationId, CancellationToken cancellationToken)
