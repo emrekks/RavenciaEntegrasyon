@@ -376,10 +376,11 @@ yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karard�
 
 - **VERITABANI-DAGITIM-11, `billing.invoices."SequenceNumber"` sütununu silmek (genişlet-daralt 2. aşama):**
   hiç yazılmayan ve okunmayan sütun 16 Kasım 2026'da modelden çıkarıldı (`20261116090000_StopMappingInvoiceSequenceNumber`,
-  boş `Up`; canlıda 2 faturanın hiçbirinde değer yok). O sürüm canlıya çıktıktan **sonraki** bir sürümde migration:
-  `migrationBuilder.Sql("ALTER TABLE billing.invoices DROP COLUMN IF EXISTS \"SequenceNumber\"");` ve dosyada
-  `expand-contract: phase 2 of 20261116090000_StopMappingInvoiceSequenceNumber` işaret yorumu (`//` ile; migration
-  guard bunu arar). Sütun silme kısa ACCESS EXCLUSIVE kilit alır (`lock_timeout` ile).
+  boş `Up`; canlıda 2 faturanın hiçbirinde değer yok). **Yazıldı:** `20261116180000_DropInvoiceSequenceNumber`
+  (`DROP COLUMN IF EXISTS`, `SET LOCAL lock_timeout = '5s'`, `Down` boş nullable sütunu geri ekler). Yazıldığı an
+  canlı `ce8d854e99b4` ve bir önceki sürüm sütunu hiç anmıyor (16 Kasım, salt okuma: 7 faturanın 0'ında değer var);
+  imaj geri alındığında da sütun okunmaz. Canlıya çıkınca: `/prod-sql --columns billing.invoices` listesinde
+  `SequenceNumber` olmamalı.
 
 ## 10. Kesintisiz deploy: iki API kopyası (tasarım, VERITABANI-DAGITIM-4)
 
