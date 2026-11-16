@@ -209,8 +209,10 @@ public static class PazaramaPriceInventoryRules
         message is not null && message.Contains("önceki değerleriyle aynı olamaz", StringComparison.OrdinalIgnoreCase);
 
     // The hash that marks a price as sent; the composer and the catalog mapping must agree on it.
+    // Invariant culture: the mark must not depend on the machine's decimal separator (the live server runs invariant).
     public static string PriceHash(decimal listPrice, decimal salePrice, long priceVersion) =>
-        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{listPrice:0.00}|{salePrice:0.00}|TRY|{priceVersion}")));
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{listPrice:0.00}|{salePrice:0.00}|TRY|{priceVersion}"))));
 
     public static SplitBodies? Split(string payloadJson)
     {

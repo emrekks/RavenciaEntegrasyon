@@ -44,6 +44,21 @@ public sealed class PazaramaPriceInventoryTests
         Assert.NotEqual(hash, PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 2));
     }
 
+    // The mark is the same on every machine: a Turkish culture (decimal comma) gives the invariant culture's hash.
+    [Fact]
+    public void The_price_hash_does_not_depend_on_the_machine_culture()
+    {
+        var before = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            var invariant = PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 1);
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("tr-TR");
+            Assert.Equal(invariant, PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 1));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = before; }
+    }
+
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     // ---- payload ----

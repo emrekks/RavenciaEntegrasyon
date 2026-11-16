@@ -875,7 +875,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     internal static string N11PriceHash(ChannelOffer offer)
     {
         var (listPrice, salePrice) = N11Prices(offer);
-        return Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{offer.PriceVersion}");
+        // Invariant culture: the mark must not depend on the machine's decimal separator (the live server runs invariant).
+        return Hash(string.Create(CultureInfo.InvariantCulture, $"{listPrice:0.00}|{salePrice:0.00}|TRY|{offer.PriceVersion}"));
     }
 
     internal static (decimal ListPrice, decimal SalePrice) PazaramaPrices(ChannelOffer offer)
