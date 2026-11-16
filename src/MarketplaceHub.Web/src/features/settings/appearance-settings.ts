@@ -1,9 +1,10 @@
 import type { ApiAnswer } from '../../shared/api/api-answer'
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { scopedStorageKey } from '../../shared/storage-scope'
 import { queryKeys } from '../../shared/api/query-keys'
+import { useServerDraft } from '../../shared/hooks/useServerDraft'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
@@ -251,25 +252,18 @@ export function useAppearanceSettings() {
     staleTime: 60_000,
     refetchOnWindowFocus: true
   })
-  const settings = normalizeAppearanceSettings(query.data?.settings)
-  const [draft, setDraft] = useState<AppearanceSettings>(settings)
-  // The saved appearance the draft was made from, with its version (WEB-SAYFALAR-4): newer settings read later replace
-  // only a draft equal to it; an edited draft is kept and the newer copy waits as a conflict (acceptServer, overwrite).
-  const [base, setBase] = useState<{ settings: AppearanceSettings; version: number | undefined }>(() => ({ settings, version: query.data?.version }))
-  const settingsColorsKey = JSON.stringify(settings.colors)
-  const settingsThemesKey = JSON.stringify(settings.colorThemes)
+  const serverSettings = query.data?.settings
   const serverVersion = query.data?.version
-
-  const resetDraft = useEffectEvent(() => {
-    if (JSON.stringify(draft) === JSON.stringify(base.settings)) {
-      setDraft(settings)
-      setBase({ settings, version: serverVersion })
-    } else if (JSON.stringify(settings) === JSON.stringify(base.settings)) {
-      // Only the version moved: nothing to choose between.
-      setBase({ settings: base.settings, version: serverVersion })
-    }
+  const settings = useMemo(() => normalizeAppearanceSettings(serverSettings), [serverSettings])
+  // The draft and the saved appearance it was made from, with its version (WEB-SAYFALAR-4, useServerDraft keep-edits):
+  // newer settings read later replace only a draft equal to it; an edited draft is kept and the newer copy waits as a
+  // conflict (acceptServer, overwrite).
+  const { draft, setDraft, base, conflict, acceptServer, commit } = useServerDraft<AppearanceSettings>({
+    server: { value: settings, version: serverVersion },
+    onServerChange: 'keep-edits',
+    toDraft: value => value,
+    initialDraft: () => settings
   })
-  useEffect(() => resetDraft(), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey, serverVersion])
 
   async function save(next: AppearanceSettings, overVersion?: number) {
     const normalized = normalizeAppearanceSettings(next)
@@ -279,25 +273,16 @@ export function useAppearanceSettings() {
       ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)) })
     let saved: AppearanceSettingsEnvelope
     try {
-      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(overVersion ?? base.version ?? current?.version), body: JSON.stringify(normalized) })
+      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(overVersion ?? base?.version ?? current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
       // changed elsewhere meanwhile: read the current settings; the draft stays and the newer copy waits as a conflict
       if (error instanceof ApiRequestError && (error.status === 412 || error.status === 428)) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
       throw error
     }
     client.setQueryData(appearanceSettingsQueryKey, rememberAppearance(saved))
-    const savedSettings = normalizeAppearanceSettings(saved.settings)
-    setDraft(savedSettings)
-    setBase({ settings: savedSettings, version: saved.version })
+    commit({ value: normalizeAppearanceSettings(saved.settings), version: saved.version })
   }
 
-  // Newer settings were saved elsewhere while this draft held edits.
-  const conflict = base.version != null && serverVersion != null && serverVersion !== base.version
-  // The draft gives way to the newer settings.
-  function acceptServer() {
-    setDraft(settings)
-    setBase({ settings, version: serverVersion })
-  }
   // The draft is written over the newer settings, knowingly.
   function overwrite() {
     return save(draft, serverVersion)

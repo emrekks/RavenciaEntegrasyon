@@ -6,6 +6,7 @@ import { FieldHelp, LoadingState } from '../../../shared/components'
 import { SettingsNotice, type SettingsNoticeState } from '../SettingsNotifications'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { queryKeys } from '../../../shared/api/query-keys'
+import { useServerDraft } from '../../../shared/hooks/useServerDraft'
 import { formatSettingsDate, SettingsIcon, SettingsGlyph, SettingsPaneHead, SettingsBar } from '../settings-ui'
 
 type AiSettings = ApiAnswer<'getSettingsAi'>
@@ -15,6 +16,8 @@ const maxSkillFileBytes = 10 * 1024 * 1024
 // status: SUCCEEDED, FAILED or CANCELLED (AiUsageLog).
 type AiUsageEntry = ApiAnswer<'getSettingsAiUsage'>['items'][number]
 const defaultAiModel = 'claude-sonnet-5-5'
+type AiForm = { apiKey: string; changingKey: boolean; model: string }
+const aiForm = (saved: AiSettings): AiForm => ({ apiKey: '', changingKey: !saved.apiKeySaved, model: saved.defaultModel || defaultAiModel })
 // The Claude models the panel offers, with their list price per million tokens (input / output, USD).
 const aiModelOptions = [
   { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — dengeli (2 $ / 10 $)' },
@@ -51,25 +54,27 @@ export function AiSettingsSection() {
   const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
   const usage = useQuery({ queryKey: queryKeys.aiUsage(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsAiUsage'>>('/settings/ai/usage?limit=50', { signal }), retry: false, enabled: query.isSuccess })
   const saved = query.data
-  const [apiKey, setApiKey] = useState('')
-  const [changingKey, setChangingKey] = useState(false)
-  const [model, setModel] = useState(defaultAiModel)
+  // The form starts from the saved settings, and again for every new version (a save, a skill upload, another session);
+  // a refetch of the same version keeps it. The key field always starts empty.
+  const form = useServerDraft<AiSettings, AiForm>({
+    server: saved ? { value: saved, version: saved.version } : null,
+    onServerChange: 'replace',
+    toDraft: aiForm,
+    initialDraft: () => ({ apiKey: '', changingKey: false, model: defaultAiModel }),
+    isDirty: (draft, server) => draft.model.trim() !== (server.defaultModel || defaultAiModel) || draft.apiKey.trim().length > 0
+  })
+  const { apiKey, changingKey, model } = form.draft
+  const setApiKey = (value: string) => form.setDraft(current => ({ ...current, apiKey: value }))
+  const setChangingKey = (value: boolean) => form.setDraft(current => ({ ...current, changingKey: value }))
+  const setModel = (value: string) => form.setDraft(current => ({ ...current, model: value }))
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
   const [testResult, setTestResult] = useState<{ kind: 'done' | 'bad'; message: string } | null>(null)
   const [skillResult, setSkillResult] = useState<{ key: string; kind: 'done' | 'bad'; message: string } | null>(null)
   const [skillFile, setSkillFile] = useState<{ key: string; label: string } | null>(null)
   const skillInputs = useRef(new Map<string, HTMLInputElement>())
-  const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
-  // The form starts from the saved settings, and again after a save (a new version); the key field always starts empty.
-  if (saved && loadedVersion !== saved.version) {
-    setLoadedVersion(saved.version)
-    setApiKey('')
-    setChangingKey(!saved.apiKeySaved)
-    setModel(saved.defaultModel || defaultAiModel)
-  }
 
-  const dirty = !!saved && (model.trim() !== (saved.defaultModel || defaultAiModel) || apiKey.trim().length > 0)
+  const dirty = form.dirty
   const configured = !!saved?.apiKeySaved
 
   async function save() {
