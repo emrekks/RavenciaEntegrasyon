@@ -983,7 +983,7 @@ describe('ReportsPage', () => {
     // A payment opens its records.
     await act(async () => { (page.querySelector('.reports-payout-row') as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF&kind=PAYOUT_DAY')
+    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF&kind=PAYOUT_DAY&limit=100')
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('10234')
     // A record names its product: an order of two products has a sale for each.
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('MZ042DSS14')

@@ -2281,6 +2281,8 @@ export type PayoutLinesPage = {
   page: number
   pageSize: number
   net: number
+  nextCursor?: null | string
+  hasMore: boolean
 }
 
 export type PayoutLineView = {
@@ -3430,6 +3432,8 @@ export type ReportOrderProfitPage = {
   margin?: null | number
   missingCargo: number
   missingCommission: number
+  nextCursor?: null | string
+  hasMore: boolean
 }
 
 export type ReportOrderProfitView = {
@@ -6474,19 +6478,21 @@ export interface ApiOperations {
       search?: string
       sort?: string
       dir?: string
-      /** 0-100000; outside it the request is refused (400). Default 0. */
+      /** @deprecated 0-100000; outside it the request is refused (400). Default 0. */
       page?: number | string
-      /** @deprecated 1-200; outside it the request is refused (400). Default 50. */
-      limit?: number | string
       /** 1-200; outside it the request is refused (400). Default 50. */
+      limit?: number | string
+      /** @deprecated 1-200; outside it the request is refused (400). Default 50. */
       pageSize?: number | string
+      /** The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null). */
+      after?: string
     }
     headers: Record<string, never>
     body: never
     status: 200
     response: ReportOrderProfitPage
     errorStatus: 400 | 401 | 429 | 500
-    paging: "page+pageSize"
+    paging: "page+pageSize|cursor"
   }
   getReportsPayouts: {
     method: "GET"
@@ -6519,15 +6525,19 @@ export interface ApiOperations {
       region?: string
       kind?: string
       q?: string
-      /** 0-10000; outside it the request is refused (400). Default 0. */
+      /** @deprecated 0-10000; outside it the request is refused (400). Default 0. */
       page?: number | string
+      /** 1-100; outside it the request is refused (400). Default 100. */
+      limit?: number | string
+      /** The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null). */
+      after?: string
     }
     headers: Record<string, never>
     body: never
     status: 200
     response: PayoutLinesPage
     errorStatus: 400 | 401 | 429 | 500
-    paging: "page"
+    paging: "page|cursor"
   }
   getReportsPriceAssumptions: {
     method: "GET"

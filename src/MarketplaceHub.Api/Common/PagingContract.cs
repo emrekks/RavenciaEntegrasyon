@@ -27,10 +27,8 @@ namespace MarketplaceHub.Api.Common;
 //   questions (page+limit|cursor), commission tariff rows (page+limit|cursor), invoice-workspace/page
 //   (pageNumber+pageSize|cursor). A list whose order has ties or is sorted in memory gets no cursor (nextCursor stays
 //   null and after is refused there): questions sorted by UPDATED, tariff rows under a sort or a profit filter.
-// Left without a cursor: reports/order-profitability (sorted in memory over rows read without a total order; equal keys
-// keep the database's read order, which may differ between two requests) and reports/payouts/lines (sorted by the
-// transaction date alone, ties in the database's order, then filtered and paged in memory). Both answer the
-// NumberedPage members (items, page, pageSize, totalCount); a cursor needs an id tie-break in their services first.
+// Round 8: reports/order-profitability (ties now broken by the order id) and reports/payouts/lines (by the record id)
+// have a total order and take the cursor too (limit + after → nextCursor, hasMore); their numbered parameters stay.
 //
 // Round 7: the panel reads the cursor where a list gives one (questions not sorted by UPDATED, tariff rows without a
 // sort or a profit filter, the invoice workspace; a page jump sends the OffsetCursor of that page) and the NumberedPage
@@ -67,6 +65,8 @@ public static class PagingContract
     // NumberedPage (round 7): the one page-numbered form, page with pageSize, for orders that give no cursor.
     public const string PagePageSize = "page+pageSize";
     public const string PagePageSizeWithCursor = PagePageSize + "|" + Cursor;
+    // API-GUVENLIK-8 (round 8): the payout records, page only, also take the cursor.
+    public const string PageOnlyWithCursor = PageOnly + "|" + Cursor;
 
     private static readonly PagingRange CheckedLimit = new(1, EndpointHelpers.MaximumPageSize, EndpointHelpers.DefaultPageSize);
 
@@ -105,7 +105,7 @@ public static class PagingContract
         // the cursor's page size and, for older tabs, still the numbered page size; order-profitability is numbered only
         // (its limit is deprecated for pageSize). Page bases stay as each list had them (questions 1-based, the rest 0-based).
         ["/api/v1/questions"] = Format(PagePageSizeWithCursor, ("page", new(1, null, 1, Refused: false)), ("pageSize", new(1, 100, 50, Refused: false)), ("limit", new(1, 100, 50, Refused: false))),
-        ["/api/v1/reports/order-profitability"] = WithCursor(PagePageSize, ["limit"], ("page", new(0, 100_000, 0)), ("pageSize", new(1, 200, 50)), ("limit", new(1, 200, 50))),
+        ["/api/v1/reports/order-profitability"] = WithCursor(PagePageSizeWithCursor, ["page", "pageSize"], ("page", new(0, 100_000, 0)), ("pageSize", new(1, 200, 50)), ("limit", new(1, 200, 50))),
         ["/api/v1/connections/{connectionId}/commission-tariffs/{tariffId}/rows"] = Format(PagePageSizeWithCursor, ("page", new(0, 100_000, 0)), ("pageSize", new(1, 200, 50)), ("limit", new(1, 200, 50))),
         // 3. pageNumber + pageSize, also the cursor (limit read as pageSize is).
         ["/api/v1/invoice-workspace/page"] = WithCursor(PageNumberPageSizeWithCursor, ["pageNumber", "pageSize"],
@@ -113,7 +113,7 @@ public static class PagingContract
             ("pageSize", new(20, 200, 20, Refused: false, Note: "20, 50, 100 or 200; any other value reads as 20.")),
             ("limit", new(20, 200, 20, Refused: false, Note: "20, 50, 100 or 200; any other value reads as 20. Wins over pageSize."))),
         // 4. Page only, a fixed page size.
-        ["/api/v1/reports/payouts/lines"] = Format(PageOnly, ("page", new(0, 10_000, 0)))
+        ["/api/v1/reports/payouts/lines"] = WithCursor(PageOnlyWithCursor, ["page"], ("page", new(0, 10_000, 0)), ("limit", new(1, 100, 100)))
     };
 
     /// <summary>The lists that page, by route.</summary>

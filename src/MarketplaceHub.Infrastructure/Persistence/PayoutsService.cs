@@ -127,7 +127,8 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
         // The open records expected on the day (PayoutBuilder.Expect decides the day, so it is applied after reading).
         else if (query.Day is not null) rows = PayoutBuilder.OpenOnADay(rows);
         else return ServiceResult<PayoutLinesPage>.Fail("PAYOUT_LINES_QUERY_INVALID", "Bir ödeme, bir gün ya da arama gerekir.", 400);
-        var read = await WithCargoRegionsAsync(tenantId, await rows.OrderBy(x => x.TransactionDate).ToListAsync(cancellationToken), cancellationToken);
+        // API-GUVENLIK-8: a total order (the date, then the record id), so a page and its cursor always name the same rows.
+        var read = await WithCargoRegionsAsync(tenantId, await rows.OrderBy(x => x.TransactionDate).ThenBy(x => x.Id).ToListAsync(cancellationToken), cancellationToken);
         var payoutOrders = await db.MarketplacePayoutOrders.AsNoTracking()
             .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId))
             .Select(x => new PayoutOrderRow(x.ConnectionId, x.ExternalId, x.Amount, x.PayoutDate, x.RegionCode, x.RegionName, x.LinesReadAt != null))
@@ -147,7 +148,9 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(query.PayoutId) || query.Kind != "PAID_DAY" || line.Region == query.Region)
             .ToList();
         var page = Math.Max(0, query.Page);
-        return ServiceResult<PayoutLinesPage>.Ok(new(all.Skip(page * LinesPageSize).Take(LinesPageSize).ToList(), all.Count, page, LinesPageSize, all.Where(x => x.Currency == PayoutBuilder.Lira).Sum(x => x.Net)));
+        // The cursor form may ask for a smaller page; the numbered form keeps its hundred.
+        var size = Math.Clamp(query.PageSize, 1, LinesPageSize);
+        return ServiceResult<PayoutLinesPage>.Ok(new(all.Skip(page * size).Take(size).ToList(), all.Count, page, size, all.Where(x => x.Currency == PayoutBuilder.Lira).Sum(x => x.Net)));
     }
 
     private IQueryable<PayoutRow> Rows(Guid tenantId, Guid[] ids) =>
@@ -155,6 +158,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId))
             .Select(x => new PayoutRow
             {
+                Id = x.Id,
                 ConnectionId = x.ConnectionId,
                 PlatformCode = x.PlatformCode,
                 Source = x.Source,
@@ -212,6 +216,8 @@ internal sealed record PayoutOrderRow(Guid ConnectionId, string ExternalId, deci
 
 internal sealed record PayoutRow
 {
+    // The record's own id: the lines' order breaks equal transaction dates by it (API-GUVENLIK-8).
+    public Guid Id { get; init; }
     public Guid ConnectionId { get; init; }
     public string PlatformCode { get; init; } = "";
     public string Source { get; init; } = "";

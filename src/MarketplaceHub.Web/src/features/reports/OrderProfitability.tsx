@@ -11,6 +11,7 @@ import { platformName } from './report-format'
 import { KpiStrip, type Kpi } from './ReportsPage'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { queryKeys } from '../../shared/api/query-keys'
+import { cursorPageParams } from '../../shared/api/paging'
 
 // Sipariş Kârlılık Analizi (ReportsContracts.cs, ReportOrderProfitView): each order of the period with what it leaves
 // after product cost, commission, cargo, the platform's fees, withholding tax and net VAT, and its items one by one.
@@ -63,7 +64,8 @@ export const unknownProfit = (order: OrderProfit) => (order.unreadableLines ?? 0
 
 // The query of a page: the period and platforms of the report, the search, the order and the page.
 export function orderProfitQuery(filters: { from: string; to: string; platforms: string[] | null; search: string; sort: Sort; descending: boolean; page: number }) {
-  const query = new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to, sort: filters.sort, dir: filters.descending ? 'desc' : 'asc', page: String(filters.page), pageSize: '50' })
+  // The cursor form (API-GUVENLIK-8): fifty orders, after the offset cursor of the page asked for.
+  const query = cursorPageParams(new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to, sort: filters.sort, dir: filters.descending ? 'desc' : 'asc' }), filters.page, 50)
   if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   if (filters.search.trim()) query.set('search', filters.search.trim())
   return query.toString()

@@ -4,13 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiState = vi.hoisted(() => ({ paths: [] as string[], total: (() => 120) as (query: URLSearchParams) => number }))
+// The 0-based page a request asks for: the offset cursor (after) over the limit, the first page without one.
+const pageOf = vi.hoisted(() => (query: URLSearchParams) => { const after = query.get('after'); return after ? Number(atob(after.replace(/-/g, '+').replace(/_/g, '/')).slice(1)) / Number(query.get('limit')) : 0 })
 
 vi.mock('../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../shared/api')>()
   return { ...original, hubApi: vi.fn(async (path: string) => {
     apiState.paths.push(path)
     const query = new URLSearchParams(path.split('?')[1])
-    return { items: [], totalCount: apiState.total(query), page: Number(query.get('page')), pageSize: 50, amount: 0, profit: null, missingCost: 0, profitAmount: 0, profitOrders: 0, margin: null, missingCargo: 0 }
+    return { items: [], totalCount: apiState.total(query), page: pageOf(query), pageSize: 50, amount: 0, profit: null, missingCost: 0, profitAmount: 0, profitOrders: 0, margin: null, missingCargo: 0 }
   }) }
 })
 
@@ -29,7 +31,7 @@ async function render(from: string, platforms: string[] | null = null) {
   await settle()
 }
 
-const lastPage = () => new URLSearchParams(apiState.paths.at(-1)!.split('?')[1]).get('page')
+const lastPage = () => String(pageOf(new URLSearchParams(apiState.paths.at(-1)!.split('?')[1])))
 const next = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.getAttribute('aria-label') === 'Sonraki')!
 
 beforeEach(() => {
@@ -59,7 +61,7 @@ describe('OrderProfitability paging', () => {
 
     await render('2026-09-01')
     expect(lastPage()).toBe('0')
-    expect(apiState.paths.some(path => path.includes('from=2026-09-01') && path.includes('page=2'))).toBe(false)
+    expect(apiState.paths.some(path => path.includes('from=2026-09-01') && pageOf(new URLSearchParams(path.split('?')[1])) === 2)).toBe(false)
 
     await act(async () => { next().click() })
     await settle()
