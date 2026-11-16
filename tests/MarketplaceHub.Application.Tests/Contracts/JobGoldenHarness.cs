@@ -72,6 +72,15 @@ internal static partial class JobGolden
         ContractFixture.MatchesGolden(goldenPath, JsonNode.Parse(labelled));
     }
 
+    // The ids a fixture payload carries (a claim's item ids) get names in their order in the fixture, so where a row that
+    // holds one sorts never changes which name it gets.
+    public static void KnowFixtureIds(IDictionary<Guid, string> known, string fixtureText)
+    {
+        var index = 0;
+        foreach (Match match in GuidPattern().Matches(fixtureText))
+            if (Guid.TryParse(match.Value, out var id) && !known.ContainsKey(id)) known[id] = $"fixture-id{++index}";
+    }
+
     [GeneratedRegex("(?<![0-9a-fA-F])[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}(?![0-9a-fA-F])")]
     private static partial Regex GuidPattern();
 

@@ -41,6 +41,7 @@ public sealed class EffectReconcileGoldenPostgreSqlTests(PostgreSqlTenantIsolati
     public async Task AnUnclearAnswerIsCheckedTheSameWay(string scenario)
     {
         var run = new GoldenRun(fixture, "TRENDYOL");
+        JobGolden.KnowFixtureIds(run.Known, ContractFixture.Read("Trendyol/getClaims-docs-sample.json"));
         await run.SeedAsync();
         var isReturn = scenario.StartsWith("return-", StringComparison.Ordinal);
         await using (var db = fixture.CreateContext(new FrozenClock(Start.AddMinutes(-30))))

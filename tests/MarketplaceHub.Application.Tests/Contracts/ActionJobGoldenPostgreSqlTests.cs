@@ -35,6 +35,7 @@ public sealed class ActionJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixt
     private async Task<GoldenRun> SeedAsync(string platform, bool writesOn, bool claim)
     {
         var run = new GoldenRun(fixture, platform) { ConnectionSettingsJson = writesOn ? WritesOn : null };
+        JobGolden.KnowFixtureIds(run.Known, ContractFixture.Read("Trendyol/getClaims-docs-sample.json"));
         run.Settings["FeatureFlags:ExternalWrites"] = "true";
         await run.SeedAsync();
         await using (var db = fixture.CreateContext(new FrozenClock(Start.AddMinutes(-30))))
