@@ -10,80 +10,83 @@ namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 
 public sealed partial class ShopifyHttpClient
 {
+    // ADAPTOR-DIGER-5: the shared send step in its no-quota mode. Shopify has no rate-limit handler; the client's own
+    // HttpClient.Timeout (45 s, the buffered body included) stays the request timeout, so no timer is added here
+    // (Timeout.InfiniteTimeSpan), and its timeout and network errors carry no wait, as before.
+    internal static readonly MarketplaceTransport Transport = new("Shopify", "SHOPIFY", "Shopify", MarketplaceQuota.AcquiredKey)
+    {
+        WaitsForQuota = false,
+        TransportErrorWait = null
+    };
+
     private async Task<AdapterResult<JsonDocument>> QueryAsync(ShopifyRequestContext context, string query, object? variables = null, CancellationToken cancellationToken = default)
     {
-        var client = clients.CreateBoundedClient("Shopify");
         var endpoint = new Uri($"https://{context.Shop}.myshopify.com/admin/api/{context.ApiVersion}/graphql.json");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new StringContent(JsonSerializer.Serialize(new { query, variables }), Encoding.UTF8, "application/json") };
         request.Headers.TryAddWithoutValidation("X-Shopify-Access-Token", context.AccessToken);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        // The client's 45 s timeout cancels inside the pipeline; the circuit tells it from the caller's cancellation.
-        CallerCancellation.Mark(request, cancellationToken);
-        try
+        // The client's 45 s timeout cancels inside the pipeline; the circuit tells it from the caller's cancellation
+        // (the send step marks the caller's token).
+        using var exchange = await Transport.SendAsync(clients, request, Timeout.InfiniteTimeSpan, cancellationToken);
+        if (exchange.Error is { } transportError)
         {
-            using var response = await client.SendAsync(request, cancellationToken);
-            // The panel's own open circuit refused it: never sent, so never an outcome-unknown write.
-            if (LocalCircuitResponse.Refusal(response, "SHOPIFY", "Shopify") is { } localCircuit) return Failure<JsonDocument>(localCircuit);
-            var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            // An error answer may be an HTML page (a 502 or 503 from Shopify's edge); it is classed by its
-            // status instead of failing as unreadable JSON.
-            JsonDocument? parsed = null;
-            try { parsed = JsonDocument.Parse(raw); }
-            catch (JsonException) when (!response.IsSuccessStatusCode) { }
-            // A success status whose body is not JSON (an HTML page from a proxy, a cut-off body) is a broken contract,
-            // reported as one instead of escaping the adapter as an exception.
-            catch (JsonException)
-            {
-                var requestId = response.Headers.TryGetValues("X-Request-ID", out var ids) ? ids.FirstOrDefault() : null;
-                return Failure<JsonDocument>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_RESPONSE_NOT_JSON", "Shopify başarılı yanıtı JSON değil; yanıt okunamadı.", (int)HttpStatusCode.BadGateway, null, requestId));
-            }
-            using var document = parsed;
-            var rate = document is null ? null : ReadRateLimit(document);
-            if (document is not null) LogQueryCost(document, context.Shop);
-            var remoteRequestId = response.Headers.TryGetValues("X-Request-ID", out var requestIds) ? requestIds.FirstOrDefault() : null;
-            // Shopify answers with the oldest supported version when the asked one is retired.
-            if (response.Headers.TryGetValues("X-Shopify-API-Version", out var servedVersions) && servedVersions.FirstOrDefault() is { Length: > 0 } servedVersion
-                && !string.Equals(servedVersion, context.ApiVersion, StringComparison.OrdinalIgnoreCase))
-                logger.LogWarning("Shopify served API version {ServedVersion} instead of {RequestedVersion} for {Shop}", servedVersion, context.ApiVersion, context.Shop);
-            if (!response.IsSuccessStatusCode || document is null)
-            {
-                // ADAPTOR-DIGER-2: a client-credentials token Shopify refuses (the app reinstalled, the token revoked) is
-                // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
-                if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
-                    authentication.Forget(context.Connection.Id);
-                var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
-                return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
-            }
-            if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)
-                return Failure<JsonDocument>(graphQlError, rate);
-            if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
-            {
-                return Failure<JsonDocument>(new(
-                    AdapterErrorClass.ContractViolation,
-                    "SHOPIFY_GRAPHQL_CONTRACT_INVALID",
-                    "Shopify GraphQL yanıtı beklenen veri alanını içermiyor.",
-                    (int)HttpStatusCode.BadGateway,
-                    null,
-                    remoteRequestId), rate);
-            }
+            if (exchange.Exception is { } exception)
+                logger.LogWarning(exception, "Shopify GraphQL isteği başarısız. Shop: {Shop}", context.Shop);
+            else if (transportError.Code == "SHOPIFY_TIMEOUT")
+                logger.LogWarning("Shopify GraphQL isteği zaman aşımına uğradı. Shop: {Shop}", context.Shop);
+            return Failure<JsonDocument>(transportError);
+        }
+        var response = exchange.Response!;
+        // The panel's own open circuit refused it: never sent, so never an outcome-unknown write.
+        if (LocalCircuitResponse.Refusal(response, "SHOPIFY", "Shopify") is { } localCircuit) return Failure<JsonDocument>(localCircuit);
+        var raw = exchange.Body;
+        // An error answer may be an HTML page (a 502 or 503 from Shopify's edge); it is classed by its
+        // status instead of failing as unreadable JSON.
+        JsonDocument? parsed = null;
+        try { parsed = JsonDocument.Parse(raw); }
+        catch (JsonException) when (!response.IsSuccessStatusCode) { }
+        // A success status whose body is not JSON (an HTML page from a proxy, a cut-off body) is a broken contract,
+        // reported as one instead of escaping the adapter as an exception.
+        catch (JsonException)
+        {
+            var requestId = response.Headers.TryGetValues("X-Request-ID", out var ids) ? ids.FirstOrDefault() : null;
+            return Failure<JsonDocument>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_RESPONSE_NOT_JSON", "Shopify başarılı yanıtı JSON değil; yanıt okunamadı.", (int)HttpStatusCode.BadGateway, null, requestId));
+        }
+        using var document = parsed;
+        var rate = document is null ? null : ReadRateLimit(document);
+        if (document is not null) LogQueryCost(document, context.Shop);
+        var remoteRequestId = response.Headers.TryGetValues("X-Request-ID", out var requestIds) ? requestIds.FirstOrDefault() : null;
+        // Shopify answers with the oldest supported version when the asked one is retired.
+        if (response.Headers.TryGetValues("X-Shopify-API-Version", out var servedVersions) && servedVersions.FirstOrDefault() is { Length: > 0 } servedVersion
+            && !string.Equals(servedVersion, context.ApiVersion, StringComparison.OrdinalIgnoreCase))
+            logger.LogWarning("Shopify served API version {ServedVersion} instead of {RequestedVersion} for {Shop}", servedVersion, context.ApiVersion, context.Shop);
+        if (!response.IsSuccessStatusCode || document is null)
+        {
+            // ADAPTOR-DIGER-2: a client-credentials token Shopify refuses (the app reinstalled, the token revoked) is
+            // dropped from the cache, so the next request asks for a new one instead of reusing it until it expires.
+            if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
+                authentication.Forget(context.Connection.Id);
+            var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+            return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
+        }
+        if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)
+            return Failure<JsonDocument>(graphQlError, rate);
+        if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+        {
+            return Failure<JsonDocument>(new(
+                AdapterErrorClass.ContractViolation,
+                "SHOPIFY_GRAPHQL_CONTRACT_INVALID",
+                "Shopify GraphQL yanıtı beklenen veri alanını içermiyor.",
+                (int)HttpStatusCode.BadGateway,
+                null,
+                remoteRequestId), rate);
+        }
 
-            // Shopify GraphQL wraps every successful result in a top-level
-            // `data` object. Keep the adapter contract flat so the catalog,
-            // order and connection checks can consume the queried fields
-            // consistently.
-            return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(data.GetRawText()), rate);
-        }
-        catch (HttpRequestException exception)
-        {
-            logger.LogWarning(exception, "Shopify GraphQL isteği başarısız. Shop: {Shop}", context.Shop);
-            return Failure<JsonDocument>(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR", "Shopify bağlantısı geçici olarak kurulamadı.", null, null, null));
-        }
-        // The client's timeout (not the caller's cancellation) ended the request.
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            logger.LogWarning("Shopify GraphQL isteği zaman aşımına uğradı. Shop: {Shop}", context.Shop);
-            return Failure<JsonDocument>(new(AdapterErrorClass.TransientNetwork, "SHOPIFY_TIMEOUT", "Shopify isteği zaman aşımına uğradı.", null, null, null));
-        }
+        // Shopify GraphQL wraps every successful result in a top-level
+        // `data` object. Keep the adapter contract flat so the catalog,
+        // order and connection checks can consume the queried fields
+        // consistently.
+        return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(data.GetRawText()), rate);
     }
     internal static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) =>
         MarketplaceErrorRules.GatewayBlocked(status, body, "Shopify", "SHOPIFY", remoteRequestId) ?? MapHttpStatus(status, retryAfter, remoteRequestId);
