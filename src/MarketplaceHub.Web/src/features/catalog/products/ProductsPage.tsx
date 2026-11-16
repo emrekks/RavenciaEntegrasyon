@@ -411,7 +411,7 @@ export function ProductsPage() {
   const setPageNumber = pager.setPage
   const pageCursor = pager.cursor
   const { rememberCursor } = pager
-  const selection = useListSelection({ filterKey: productListKey, page: pageNumber, keepAcrossPages: true, onReset: () => { setSelectedProductCache({}); setAllProductsSelected(false) } })
+  const selection = useListSelection({ filterKey: productListKey, onReset: () => { setSelectedProductCache({}); setAllProductsSelected(false) } })
   const selectedProductIds = selection.selectedIds
   const setSelectedProductIds = selection.set
   const query = useQuery({

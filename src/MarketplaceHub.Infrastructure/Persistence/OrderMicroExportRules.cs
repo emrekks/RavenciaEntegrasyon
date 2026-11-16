@@ -1,40 +1,69 @@
 using System.Linq.Expressions;
+using System.Text.RegularExpressions;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// SIPARIS-STOK-3 (the code-neutral part, 16 Nov 2026): which order is a micro export is decided by two different rules
-// today, and which one holds is the owner's decision. Both are written here side by side, unchanged, and
-// OrderMicroExportRulesTests lists the inputs on which they disagree. To make one rule hold everywhere, point the other
-// one's caller at it (one line: Label in OrderSnapshotReader.Customer, or Filter in OrderQueryService.MicroExportOrder).
+/// <summary>
+/// The one rule for a micro-export order (owner, 16 Nov 2026, SIPARIS-STOK-3: the "Mikro İhracat" type label's rule is
+/// the rule). An order is micro export when its package (the customer snapshot) says so in any of three ways:
+/// <list type="bullet">
+/// <item>a flag micro, microExport or 3pByTrendyol is true (Trendyol's 3P partner exports send micro = false with
+/// 3pByTrendyol = true);</item>
+/// <item>shipmentPackageType or orderType names it (MICRO, İHRAC);</item>
+/// <item>the buyer is Trendyol's former export partner (PM3 and ARVATO in the buyer's name), for old snapshots that
+/// predate the flags.</item>
+/// </list>
+/// Any one positive indicator makes the order micro export, whatever the order of the fields: an explicit micro = false
+/// does not cancel 3pByTrendyol = true (Trendyol documents exactly that pair for its export partnership). A missing field
+/// says nothing. The label read the flags by first match before (JsonText), so {"micro":false,"3pByTrendyol":true} was
+/// domestic and the same fields the other way round export; live on 16 Nov 2026 no order carried such a pair (0). The
+/// indicators are read at any depth of the package, as the label always did: Trendyol sends them at the package's top
+/// level (docs: the package fields micro and 3pByTrendyol) and live no order has micro = true anywhere but there (0 of
+/// 1845 Trendyol orders), so top level and any depth are the same orders; any depth is what both engines can match alike.
+/// The label (OrderSnapshotReader.Customer), the row's flag (RowMarks), the list's Mikro İhracat and Fatura Bölgesi filters
+/// and the micro-export card all read this rule: the label and the flag in memory (Matches), the filters and the card in
+/// the database (InDatabase), which are the same expression (OrderMicroExportRulesTests). The invoice keeps its own rule
+/// (InvoiceIssuePolicy.IsMicroExport): which invoice an order gets is the owner's tax rule, not this one.
+/// </summary>
 internal static class OrderMicroExportRules
 {
-    // Rule 1, the order-type label (Customer().IsMicroExport -> MIKRO_IHRACAT on the order list, the order detail and the
-    // Returns list): any of the package's micro, microExport or 3pByTrendyol fields true (as text: true, 1, YES, EVET;
-    // wherever JsonText finds them), a shipmentPackageType or orderType text holding MICRO or İHRAC, or the old PM3 /
-    // Arvato export partner as the customer's name. It does not look at the marketplace.
-    public static bool Label(string customerJson, string customerName)
-    {
-        var microText = OrderSnapshotReader.JsonText(customerJson, "shipmentPackageType", "orderType");
-        // Trendyol exports through its 3P partner model explicitly return micro=false. The documented
-        // 3pByTrendyol=true signal is still an export order and must be presented as such to operators.
-        // Historical Stage snapshots may predate the export flags while retaining Trendyol's
-        // documented PM3/Arvato export-partner identity. Keep that narrow legacy signal so
-        // existing export orders are not presented as domestic orders.
-        var legacyExportPartner = OrderSnapshotReader.IsLegacyTrendyolExportPartner(customerName);
-        return OrderSnapshotReader.JsonBool(customerJson, "micro", "microExport", "3pByTrendyol") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true || legacyExportPartner;
-    }
+    // Written for both engines alike: case is spelled out letter by letter ([mM][iI]…) rather than left to a case-insensitive
+    // match, because PostgreSQL folds İ and ı by its collation and .NET by its own table; JSON whitespace is listed
+    // (space, tab, CR, LF) rather than \s, whose set differs between the two.
+    private const string Space = "[ \t\r\n]*";
 
-    // Rule 2, the "Fatura Bölgesi" filter (MICRO_EXPORT / TR), the "Mikro İhracat" filter and card: an order of a Trendyol
-    // connection whose package snapshot holds "micro":true (the row's flag icon, RowMarks, reads the same field). The
-    // snapshot part is an expression the database runs; FilterSnapshot compiles the same one.
-    public static readonly Expression<Func<string, bool>> FilterSnapshotRule = customerJson =>
-        customerJson.Contains("\"micro\":true") || customerJson.Contains("\"micro\": true");
+    private static string Letters(string word) => string.Concat(word.Select(letter =>
+        char.IsAsciiLetter(letter) ? $"[{char.ToLowerInvariant(letter)}{char.ToUpperInvariant(letter)}]" : Regex.Escape(letter.ToString())));
 
-    private static readonly Func<string, bool> FilterSnapshotCompiled = FilterSnapshotRule.Compile();
+    private static string Key(params string[] names) => $"\"(?:{string.Join("|", names.Select(Letters))})\"{Space}:{Space}";
 
-    public const string FilterPlatformCode = "TRENDYOL";
+    // A flag that reads as true: the JSON literal, the number 1, or the text "true" (any case, padded), "1", "YES", "EVET".
+    internal static readonly string FlagPattern =
+        Key("microExport", "micro", "3pByTrendyol") + $"(?:{Letters("true")}|1|\"{Space}{Letters("true")}{Space}\"|\"1\"|\"YES\"|\"EVET\"){Space}[,}}\\]]";
 
-    // Rule 2 in memory, for one order of a connection of this marketplace.
-    public static bool Filter(string? platformCode, string customerJson) =>
-        platformCode == FilterPlatformCode && FilterSnapshotCompiled(customerJson);
+    // The package type's text naming a micro export (MICRO, İHRAC; the ASCII letters in any case).
+    internal static readonly string TypePattern = Key("shipmentPackageType", "orderType") + $"\"[^\"]*(?:{Letters("MICRO")}|İ{Letters("HRAC")})";
+
+    // Trendyol's former export partner as the buyer: PM3 and ARVATO in the buyer's name fields.
+    private static readonly string NameKey = Key("customerFirstName", "customerLastName", "customerName", "customerFullName", "buyerName", "fullName");
+    internal static readonly string PartnerPm3Pattern = NameKey + $"\"[^\"]*{Letters("PM3")}";
+    internal static readonly string PartnerArvatoPattern = NameKey + $"\"[^\"]*{Letters("ARVATO")}";
+
+    /// <summary>The rule on a customer snapshot, as the database runs it (Npgsql writes Regex.IsMatch as ~).</summary>
+    internal static readonly Expression<Func<string, bool>> SnapshotIsMicroExport = json =>
+        Regex.IsMatch(json, FlagPattern)
+        || Regex.IsMatch(json, TypePattern)
+        || (Regex.IsMatch(json, PartnerPm3Pattern) && Regex.IsMatch(json, PartnerArvatoPattern));
+
+    private static readonly Func<string, bool> Compiled = SnapshotIsMicroExport.Compile();
+
+    /// <summary>The rule in memory: the same expression, compiled.</summary>
+    internal static bool Matches(string? customerSnapshotJson) => !string.IsNullOrWhiteSpace(customerSnapshotJson) && Compiled(customerSnapshotJson);
+
+    /// <summary>The rule as a database condition on an order.</summary>
+    internal static readonly Expression<Func<Order, bool>> InDatabase = PolicyExpressions.On<Order, string>(SnapshotIsMicroExport, order => order.CustomerSnapshotJson);
+
+    /// <summary>An order that is no micro export: the "Türkiye" invoice region.</summary>
+    internal static readonly Expression<Func<Order, bool>> NotInDatabase = Expression.Lambda<Func<Order, bool>>(Expression.Not(InDatabase.Body), InDatabase.Parameters);
 }

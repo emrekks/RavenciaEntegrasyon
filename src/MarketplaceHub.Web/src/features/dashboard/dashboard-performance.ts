@@ -8,6 +8,7 @@ import type { ApiAnswer } from '../../shared/api/api-answer'
 
 import { dateRangePresets } from '../../shared/date-range'
 import { newChangeText } from '../../shared/components/ChangePill'
+import { roundPercent } from '../../shared/percent-rounding'
 
 export type PerformanceRow = { day: string; connectionId: string; currency: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 export type DashboardChannel = Performance['channels'][number]
@@ -161,7 +162,7 @@ export function istanbulHour(instant: string) {
 export function periodTrend(current: number, previous: number): [string, boolean] | null {
   if (previous <= 0) return current > 0 ? [newChangeText, true] : null
   // Rounded to the one decimal shown first, so a change that shows as %0 carries no minus and no falling colour.
-  const delta = Math.round(((current - previous) / previous) * 1000) / 10
+  const delta = roundPercent(((current - previous) / previous) * 100, 1)
   return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
 }
 

@@ -128,8 +128,8 @@ describe('Siparişler row selection (WEB-SAYFALAR-11 table)', () => {
       expect(box('TY-2')!.checked).toBe(true)
     }
     if (outcome === 'counted') expect(barText()).toContain('1 sipariş seçildi')
-    if (outcome === 'uncounted') {
-      expect(barText()).toBe('')
+    // The row comes back on a later read: it is ticked again, and counted once.
+    if (outcome === 'counted') {
       fixture.withSecond = true
       await act(async () => { await client.invalidateQueries({ queryKey: ['orders'] }) })
       await settle()

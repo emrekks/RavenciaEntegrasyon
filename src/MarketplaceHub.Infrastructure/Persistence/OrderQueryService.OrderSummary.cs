@@ -32,7 +32,7 @@ internal sealed partial class OrderQueryService
         var requested = tabs is null ? OrderSummaryTabs : OrderSummaryTabs.Where(tab => tabs.Contains(tab, StringComparer.OrdinalIgnoreCase)).ToArray();
         if (requested.Length == 0) requested = OrderSummaryTabs;
         // The micro-export count and its countries are read only by the card, which asks for one tab by name over the
-        // micro-export orders (micro=true): the pending ones (PENDING). The tab counters skip them.
+        // micro-export orders (OrderMicroExportRules): the pending ones (PENDING). The tab counters skip them.
         var includeMicro = options.MicroExport == true && tabs is not null && requested.Length == 1;
         if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
         // SIPARIS-STOK-4: the Geciken tab moves with the clock (an order passes its ship-by time with no change to stamp),

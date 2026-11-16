@@ -97,9 +97,9 @@ public sealed class AdReportService(AppDbContext db, TimeProvider timeProvider) 
         var seen = campaigns.Where(x => x.Clicks is not null && x.Impressions is not null).ToList();
         var seenImpressions = seen.Sum(x => x.Impressions!.Value);
         return new(MoneyRounding.Round(spent), MoneyRounding.Round(revenue), MoneyRounding.Round(campaigns.Sum(x => x.DirectRevenue ?? 0m)), MoneyRounding.Round(campaigns.Sum(x => x.IndirectRevenue ?? 0m)),
-            bothSpent > 0 ? MeasureRounding.Round(both.Sum(x => x.TotalRevenue!.Value) / bothSpent, 2) : null, clicks, impressions,
+            bothSpent > 0 ? PercentRounding.Percent(both.Sum(x => x.TotalRevenue!.Value) / bothSpent) : null, clicks, impressions,
             paidClicks > 0 ? MoneyRounding.Round(clickSpent.Sum(x => x.Spent!.Value) / paidClicks) : null,
-            seenImpressions > 0 ? MeasureRounding.Round((decimal)seen.Sum(x => x.Clicks!.Value) / seenImpressions, 4) : null,
+            seenImpressions > 0 ? PercentRounding.Rate((decimal)seen.Sum(x => x.Clicks!.Value) / seenImpressions) : null,
             campaigns.Sum(x => x.TotalSales ?? 0m), campaigns.Sum(x => x.DirectSales ?? 0m), campaigns.Sum(x => x.IndirectSales ?? 0m));
     }
 

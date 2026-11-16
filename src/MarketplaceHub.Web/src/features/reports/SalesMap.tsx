@@ -3,6 +3,7 @@ import { UiIcon, type UiIconName } from '../../shared/components'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { formatCount, formatNumber, formatPercent, platformColor, platformName, unknownLabel, type ReportGroup, type ReportSales } from './report-format'
 import type { MapRegion } from './sales-map-types'
+import { roundPercent } from '../../shared/percent-rounding'
 import { otherZone, turkeyZones, worldZones, type MapZone } from './sales-map-regions'
 import { EmptyState } from '../../shared/components/EmptyState'
 
@@ -58,7 +59,7 @@ const formatMetric = (value: number | null, metric: Metric) => value === null ? 
 function change(now: number | null, before: number | null) {
   if (now === null) return null
   if (before === null || before === 0) return now > 0 ? { text: 'Yeni', tone: 'up' as const } : null
-  const percent = Math.round((now - before) / before * 100)
+  const percent = roundPercent((now - before) / before * 100)
   return { text: `${percent > 0 ? '+' : percent < 0 ? '−' : ''}%${Math.abs(percent)}`, tone: percent > 0 ? 'up' as const : percent < 0 ? 'down' as const : 'flat' as const }
 }
 

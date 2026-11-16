@@ -38,7 +38,10 @@ public sealed class AcceptedReturnRuleParityTests
     [MemberData(nameof(DatabaseStatuses))]
     public async Task PostgreSQL_reads_the_patterns_as_the_invoice_rule(string line)
     {
-        await using var connection = new Npgsql.NpgsqlConnection(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
+        // Only the server's regex engine is under test: the maintenance database answers it, so the test never races the
+        // creation of the test database (a fresh database is made by the fixture, which this class does not use).
+        var target = new Npgsql.NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")) { Database = "postgres" };
+        await using var connection = new Npgsql.NpgsqlConnection(target.ConnectionString);
         await connection.OpenAsync();
         await using var command = new Npgsql.NpgsqlCommand("SELECT @line ~ @foreign, @line ~* @accepted, @line ~* @refused", connection);
         command.Parameters.AddWithValue("line", line);

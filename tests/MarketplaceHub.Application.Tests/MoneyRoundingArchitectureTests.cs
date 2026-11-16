@@ -5,7 +5,7 @@ namespace MarketplaceHub.Application.Tests;
 
 // FATURA-FINANS-5 (owner, 16 Nov 2026): reports, the overview, profitability, payouts, ad reports and invoices round
 // money half a kuruş away from zero, through MoneyRounding; figures that are not money keep their rule through
-// MeasureRounding. A bare Math.Round(x, 2) rounds to even (banker's), so in those areas every rounding names its
+// MeasureRounding, and percentages and rates round half up through PercentRounding. A bare Math.Round(x, 2) rounds to even (banker's), so in those areas every rounding names its
 // rule, and no file keeps a Round/Money/Kurus helper of its own.
 public sealed partial class MoneyRoundingArchitectureTests
 {
@@ -23,7 +23,7 @@ public sealed partial class MoneyRoundingArchitectureTests
     // Each with its reason; nothing else may round without a rule or keep its own helper.
     private static readonly Dictionary<string, string> AllowedHelpers = new(StringComparer.Ordinal)
     {
-        ["src/MarketplaceHub.Domain/MoneyRounding.cs:Round"] = "The shared helpers themselves (MoneyRounding, MeasureRounding).",
+        ["src/MarketplaceHub.Domain/MoneyRounding.cs:Round"] = "The shared helpers themselves (MoneyRounding, PercentRounding, MeasureRounding).",
         ["src/MarketplaceHub.Infrastructure/Adapters/TrendyolEFaturam/Contracts/TrendyolEFaturamInvoicePayload.cs:Money"] =
             "The e-invoice adapter's own copy, already away from zero; adapters belong to another session (FATURA-FINANS-5 scope).",
         ["src/MarketplaceHub.Infrastructure/Adapters/TrendyolEFaturam/Contracts/TrendyolEFaturamInvoicePayload.cs:Kurus"] =
@@ -43,7 +43,7 @@ public sealed partial class MoneyRoundingArchitectureTests
                     var call = CallText(line, match.Index + match.Length - 1);
                     if (!call.Contains("MidpointRounding.", StringComparison.Ordinal)) bare.Add($"{file}:{number}: {line.Trim()}");
                 }
-        Assert.True(bare.Count == 0, "Use MoneyRounding.Round (money) or MeasureRounding.Round (not money), or name the MidpointRounding:\n" + string.Join("\n", bare));
+        Assert.True(bare.Count == 0, "Use MoneyRounding.Round (money), PercentRounding (percentages, rates) or MeasureRounding.Round (other measures), or name the MidpointRounding:\n" + string.Join("\n", bare));
     }
 
     [Fact]
@@ -56,6 +56,68 @@ public sealed partial class MoneyRoundingArchitectureTests
                     if (!AllowedHelpers.ContainsKey($"{file}:{match.Groups["name"].Value}")) helpers.Add($"{file}:{number}: {line.Trim()}");
         Assert.True(helpers.Count == 0, "Round through MoneyRounding / MeasureRounding instead of a helper of the file's own:\n" + string.Join("\n", helpers));
     }
+
+    [GeneratedRegex(@"\bMeasureRounding\.Round\s*\(", RegexOptions.CultureInvariant)]
+    private static partial Regex MeasureCall();
+
+    // Every use of MeasureRounding (to even) in those areas, by file, each a figure that is neither money nor a
+    // percentage (owner, 16 Nov 2026: percentages and rates round half up through PercentRounding). A new use fails until
+    // it is classified here, so a new percentage cannot take the to-even rule by accident.
+    private static readonly Dictionary<string, (int Count, string What)> MeasureUses = new(StringComparer.Ordinal)
+    {
+        ["src/MarketplaceHub.Infrastructure/Persistence/ReportBuilder.cs"] =
+            (5, "average days to ship and to deliver per carrier (1), orders per customer (2), units sold per day (2), days of stock cover (1)"),
+        ["src/MarketplaceHub.Infrastructure/Persistence/ReportStock.cs"] = (3, "days of stock cover (1, twice) and units sold per day (2)"),
+        ["src/MarketplaceHub.Infrastructure/Persistence/ReportQuestionTimes.cs"] = (2, "average and median answer hours (1)"),
+    };
+
+    [Fact]
+    public void Only_classified_measures_round_to_even_and_no_percentage_does()
+    {
+        var found = new Dictionary<string, int>(StringComparer.Ordinal);
+        var wrong = new List<string>();
+        foreach (var (file, lines) in ScopedSources())
+            foreach (var (number, line) in lines)
+            {
+                foreach (Match match in MeasureCall().Matches(line))
+                {
+                    found[file] = found.GetValueOrDefault(file) + 1;
+                    var call = CallText(line, match.Index + match.Length - 1);
+                    // Four places is the rate format (0.1234 = 12.34 %), × 100 a percentage: both belong to PercentRounding.
+                    if (PercentageCall(call)) wrong.Add($"{file}:{number}: {line.Trim()}");
+                }
+                if (!file.EndsWith("/MoneyRounding.cs", StringComparison.Ordinal) && line.Contains("MidpointRounding.ToEven", StringComparison.Ordinal))
+                    wrong.Add($"{file}:{number}: {line.Trim()}");
+                // A percentage rounded by hand (× 100 inside a Math/decimal.Round) goes through PercentRounding.Percent; a
+                // share of money (amount × rate / 100) is money and stays on its rule.
+                if (!file.Contains("/Adapters/", StringComparison.Ordinal))
+                    foreach (Match match in RoundCall().Matches(line))
+                        if (TimesHundred().IsMatch(CallText(line, match.Index + match.Length - 1))) wrong.Add($"{file}:{number}: {line.Trim()}");
+            }
+        Assert.True(wrong.Count == 0, "A percentage or rate rounds through PercentRounding (half up):\n" + string.Join("\n", wrong));
+        Assert.Equal(MeasureUses.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => (x.Key, x.Value.Count)),
+            found.OrderBy(x => x.Key, StringComparer.Ordinal).Select(x => (x.Key, x.Value)));
+    }
+
+    [Theory]
+    [InlineData("var x = MeasureRounding.Round(a / b, 4);", true)]
+    [InlineData("var x = MeasureRounding.Round(a / b * 100m, 2);", true)]
+    [InlineData("var x = MeasureRounding.Round(Sum(a, b), 1);", false)]
+    public void The_scanner_finds_a_percentage_on_the_to_even_rule(string line, bool percentage)
+    {
+        var match = MeasureCall().Match(line);
+        var call = CallText(line, match.Index + match.Length - 1);
+        Assert.Equal(percentage, PercentageCall(call));
+    }
+
+    [GeneratedRegex(@"\*\s*100m\b", RegexOptions.CultureInvariant)]
+    private static partial Regex TimesHundred();
+
+    [GeneratedRegex(@",\s*4\s*\)$", RegexOptions.CultureInvariant)]
+    private static partial Regex FourPlaces();
+
+    // Four places is the rate format (0.1234 = 12.34 %), × 100 a percentage: both belong to PercentRounding.
+    private static bool PercentageCall(string call) => TimesHundred().IsMatch(call) || FourPlaces().IsMatch(call);
 
     [Fact]
     public void The_scan_covers_the_report_payout_ad_and_invoice_files()

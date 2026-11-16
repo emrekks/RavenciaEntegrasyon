@@ -1,52 +1,108 @@
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// SIPARIS-STOK-3: the two micro-export rules side by side (OrderMicroExportRules). Neither is changed here; the owner
-// decides which one holds. Each row is an order (marketplace, package snapshot, customer name) with what the order-type
-// label (Label) and the Fatura Bölgesi / Mikro İhracat filter (Filter) say today. The rows where they differ are the
-// orders a one-line switch to either rule would move.
+// SIPARIS-STOK-3 (owner, 16 Nov 2026): one micro-export rule, the "Mikro İhracat" label's. OrderMicroExportRules.InDatabase
+// (the filters and the card, in PostgreSQL) and OrderMicroExportRules.Matches (the label and the row flag, in memory) are the
+// same expression; these tests hold the two to the same answer for every way a package can say it, and to the expected one.
 public sealed class OrderMicroExportRulesTests
 {
-    public static TheoryData<string, string, string, string, bool, bool> Orders => new()
-    {
-        // Both agree.
-        { "micro true", "TRENDYOL", """{"micro":true}""", "Ali Veli", true, true },
-        { "micro true with a space", "TRENDYOL", """{"micro": true}""", "Ali Veli", true, true },
-        { "domestic", "TRENDYOL", """{"micro":false}""", "Ali Veli", false, false },
-        { "a company named İhracat (the fixed text search)", "TRENDYOL", """{"micro":false,"invoiceAddress":{"company":"ABC İTHALAT İHRACAT LTD"},"lines":[{"productName":"MICRO FIBER HAVLU"}]}""", "ABC İTHALAT İHRACAT LTD", false, false },
-        { "micro true only on a line", "TRENDYOL", """{"lines":[{"micro":true}]}""", "Ali Veli", true, true },
-        // They differ: the label finds an export the filter does not.
-        { "micro as text", "TRENDYOL", """{"micro":"true"}""", "Ali Veli", true, false },
-        { "micro as 1", "TRENDYOL", """{"micro":1}""", "Ali Veli", true, false },
-        { "microExport true", "TRENDYOL", """{"microExport":true}""", "Ali Veli", true, false },
-        { "3pByTrendyol true before micro false", "TRENDYOL", """{"3pByTrendyol":true,"micro":false}""", "Ali Veli", true, false },
-        { "package type MICRO", "TRENDYOL", """{"shipmentPackageType":"MICRO_EXPORT"}""", "Ali Veli", true, false },
-        { "order type İHRACAT", "TRENDYOL", """{"orderType":"İHRACAT"}""", "Ali Veli", true, false },
-        { "old PM3 / Arvato partner", "TRENDYOL", """{"micro":false}""", "PM3 ARVATO LOGISTICS", true, false },
-        { "micro true on another marketplace", "HEPSIBURADA", """{"micro":true}""", "Ali Veli", true, false },
-        // The label reads the first of micro / microExport / 3pByTrendyol in the snapshot's order: the same fields in the
-        // other order read as domestic (the filter never looks at 3pByTrendyol).
-        { "micro false before 3pByTrendyol true", "TRENDYOL", """{"micro":false,"3pByTrendyol":true}""", "Ali Veli", false, false },
-    };
+    // (customer snapshot, micro export)
+    internal static readonly (string Json, bool Micro)[] Cases =
+    [
+        ("{}", false),
+        ("""{"micro":true}""", true),
+        ("""{"micro": true , "x":1}""", true),
+        ("""{"micro":false}""", false),
+        ("""{"micro":"true"}""", true),
+        ("""{"micro":" True "}""", true),
+        ("""{"micro":"1"}""", true),
+        ("""{"micro":1}""", true),
+        ("""{"micro":10}""", false),
+        ("""{"micro":"YES"}""", true),
+        ("""{"micro":"EVET"}""", true),
+        ("""{"micro":"yes"}""", false),
+        ("""{"micro":"no"}""", false),
+        ("""{"micro":null}""", false),
+        ("""{"MICRO":true}""", true),
+        ("""{"microExport":true}""", true),
+        // Any positive indicator, in either field order (the label read them by first match before: this pair was domestic).
+        ("""{"micro":false,"3pByTrendyol":true}""", true),
+        ("""{"3pByTrendyol":true,"micro":false}""", true),
+        ("""{"micro":true,"3pByTrendyol":false}""", true),
+        ("""{"3pByTrendyol":false,"micro":false}""", false),
+        ("""{"3pByTrendyol":false}""", false),
+        ("""{"lines":[{"micro":true}]}""", true),
+        ("""{"microscope":true}""", false),
+        ("""{"shipmentPackageType":"MICRO_EXPORT"}""", true),
+        ("""{"orderType":"Mikro İhracat"}""", true),
+        ("""{"orderType":"MİKRO İHRACAT"}""", true),
+        ("""{"orderType":"İhracat"}""", true),
+        ("""{"orderType":"ihracat"}""", false),
+        ("""{"orderType":"micro"}""", true),
+        ("""{"orderType":"Normal"}""", false),
+        // Not a text search over the package: a company or a product with the words is no export.
+        ("""{"invoiceAddress":{"company":"ABC İTHALAT İHRACAT LTD."},"lines":[{"productName":"MICRO FIBER"}]}""", false),
+        ("""{"note":"micro\":true"}""", false),
+        // Trendyol's former export partner as the buyer: both words, in the name fields.
+        ("""{"customerFirstName":"PM3","customerLastName":"Arvato Export"}""", true),
+        ("""{"customerFullName":"pm3 arvato"}""", true),
+        ("""{"customerFirstName":"PM3","customerLastName":"Yılmaz"}""", false),
+        ("""{"customerFirstName":"Ali","shipmentAddress":{"address1":"PM3 ARVATO depo"}}""", false),
+    ];
 
-    [Theory]
-    [MemberData(nameof(Orders))]
-    public void TheLabelAndTheFilter_SayWhatTheyDoToday(string order, string platformCode, string customerJson, string customerName, bool label, bool filter)
+    public static TheoryData<int> CaseIndexes()
     {
-        Assert.True(label == OrderMicroExportRules.Label(customerJson, customerName), $"{order}: label");
-        Assert.True(filter == OrderMicroExportRules.Filter(platformCode, customerJson), $"{order}: filter");
+        var data = new TheoryData<int>();
+        for (var index = 0; index < Cases.Length; index++) data.Add(index);
+        return data;
     }
 
-    // The label the order screens show is rule 1 as it stands.
-    [Fact]
-    public void TheCustomerReadOfTheScreens_IsTheLabelsRule()
+    [Theory]
+    [MemberData(nameof(CaseIndexes))]
+    public void The_rule_in_memory_gives_the_expected_answer(int index)
     {
-        foreach (var row in Orders)
-        {
-            var customerJson = (string)row[2];
-            Assert.Equal(OrderMicroExportRules.Label(customerJson, OrderSnapshotReader.ResolveCustomerName(customerJson, "{}", "{}")), OrderSnapshotReader.Customer(customerJson, "{}", "{}").IsMicroExport);
-        }
+        var (json, micro) = Cases[index];
+        Assert.Equal(micro, OrderMicroExportRules.Matches(json));
+        // The label (Customer) and the row flag (RowMarks) read the same rule.
+        Assert.Equal(micro, OrderSnapshotReader.Customer(json, "{}", "{}").IsMicroExport);
+        Assert.Equal(micro, OrderSnapshotReader.RowMarks("TRENDYOL", "RO", json, "{}")?.MicroExport == true);
+    }
+
+    [PostgreSqlTheory]
+    [MemberData(nameof(CaseIndexes))]
+    public async Task PostgreSQL_reads_the_patterns_as_the_rule_in_memory(int index)
+    {
+        var (json, micro) = Cases[index];
+        // Only the server's regex engine is under test: the maintenance database answers it, so the test never waits for (or
+        // races) the creation of the test database.
+        var target = new Npgsql.NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")) { Database = "postgres" };
+        await using var connection = new Npgsql.NpgsqlConnection(target.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new Npgsql.NpgsqlCommand("SELECT @json ~ @flag OR @json ~ @type OR (@json ~ @pm3 AND @json ~ @arvato)", connection);
+        command.Parameters.AddWithValue("json", json);
+        command.Parameters.AddWithValue("flag", OrderMicroExportRules.FlagPattern);
+        command.Parameters.AddWithValue("type", OrderMicroExportRules.TypePattern);
+        command.Parameters.AddWithValue("pm3", OrderMicroExportRules.PartnerPm3Pattern);
+        command.Parameters.AddWithValue("arvato", OrderMicroExportRules.PartnerArvatoPattern);
+        Assert.Equal(micro, (bool)(await command.ExecuteScalarAsync())!);
+    }
+
+    // The order condition EF writes is the same rule: every case as an order, filtered in the database.
+    [PostgreSqlFact]
+    public async Task The_order_condition_in_the_database_is_the_rule_in_memory()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).Options;
+        await using var db = new AppDbContext(options);
+        var sql = db.Orders.Where(OrderMicroExportRules.InDatabase).ToQueryString();
+        Assert.Contains(" ~ ", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("~*", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("LIKE", sql, StringComparison.Ordinal);
+        var notSql = db.Orders.Where(OrderMicroExportRules.NotInDatabase).ToQueryString();
+        Assert.NotEqual(sql, notSql);
+        Assert.Contains("!~", notSql, StringComparison.Ordinal);
     }
 }
