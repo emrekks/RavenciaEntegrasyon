@@ -52,10 +52,8 @@ export default defineConfig([
     rules: {
       'no-restricted-imports': ['error', {
         patterns: [{
-          // Any path through a features folder, with these known exceptions (each to be removed once its cause is gone):
-          // - marketplace/returns-sade.css: shared/ui/rr-components.tsx imports the rr- stylesheet from where it has
-          //   always lived; moving the CSS file needs the live computed-style comparison CLAUDE.md asks for.
-          regex: '(^|/)features/(?!marketplace/returns-sade\\.css$)',
+          // Any path through a features folder.
+          regex: '(^|/)features/',
           message: 'src/shared must not import from src/features: move the shared piece to src/shared (src/shared/ui for components).',
         }],
       }],
