@@ -33,13 +33,14 @@ function enclosed(text: string, start: number, open: string, close: string) {
   return null
 }
 
-function inlineAnswerCalls(files: Record<string, string>) {
+// The calls of a declared operation whose answer type passes `counts` (an inline object type, or a hand-written name).
+function answerCalls(files: Record<string, string>, counts: (answerType: string) => boolean) {
   const found: string[] = []
   for (const [file, text] of Object.entries(files)) {
-    for (const match of text.matchAll(/\bhub(?:Api|Poll)</g)) {
+    for (const match of text.matchAll(/\b(?:hubApi|hubPoll|loadAllPages)</g)) {
       const typeStart = match.index + match[0].length - 1
       const answerType = enclosed(text, typeStart, '<', '>')
-      if (answerType === null || !answerType.includes('{')) continue
+      if (answerType === null || !counts(answerType)) continue
       const callStart = typeStart + answerType.length + 2
       if (text[callStart] !== '(') continue
       const args = enclosed(text, callStart, '(', ')') ?? ''
@@ -54,6 +55,23 @@ function inlineAnswerCalls(files: Record<string, string>) {
   return found
 }
 
+const inlineAnswerCalls = (files: Record<string, string>) => answerCalls(files, answerType => answerType.includes('{'))
+
+// API-TYPES, round 7: a hand-written object type named as the answer of a declared operation (`type Payouts = { … }`);
+// an alias of the contract (`= ApiAnswer<…>`, a narrowed `Omit<…> & …`) does not count. The number may only go down;
+// what is left is a type the panel narrows (string unions the contract gives as strings) and has not yet split into
+// the contract's alias and a narrowing function at the fetch boundary.
+const handWrittenAnswerTypes = 29
+function handWrittenNames(files: Record<string, string>) {
+  const names = new Set<string>()
+  for (const text of Object.values(files)) for (const match of text.matchAll(/^(?:export )?type (\w+)(?:<[^=]*>)? = \{/gm)) names.add(match[1])
+  return names
+}
+function handWrittenAnswerCalls(files: Record<string, string>) {
+  const names = handWrittenNames(files)
+  return answerCalls(files, answerType => names.has(answerType.trim().replace(/\[\]$/, '')))
+}
+
 describe('contract answer types', () => {
   it('reads the contract and the app sources', () => {
     expect(operations.length).toBeGreaterThan(300)
@@ -66,6 +84,18 @@ describe('contract answer types', () => {
       'b.ts': "hubApi<{ jobs: string[] }>('/not-in-the-contract', { method: 'POST' })\nhubApi<{ id: string }>(path)"
     }
     expect(inlineAnswerCalls(files)).toEqual(['a.ts:1 getOrdersById', 'a.ts:3 getNotificationsSummary'])
+  })
+
+  it('finds a hand-written named answer type of a declared operation, not an alias', () => {
+    const files = {
+      'a.ts': "type Hand = { id: string }\ntype Alias = ApiAnswer<'getOrdersById'>\nhubApi<Hand>(`/orders/${id}`)\nhubApi<Alias>(`/orders/${id}`)\nhubApi<Hand[]>('/not-declared')"
+    }
+    expect(handWrittenAnswerCalls(files)).toEqual(['a.ts:3 getOrdersById'])
+  })
+
+  it(`leaves no more than ${handWrittenAnswerTypes} hand-written answer types for declared operations`, () => {
+    const found = handWrittenAnswerCalls(sources)
+    expect(found.length, `hand-written answer types:\n${found.join('\n')}`).toBeLessThanOrEqual(handWrittenAnswerTypes)
   })
 
   it(`leaves no more than ${inlineAnswerTypes} inline answer types for declared operations`, () => {

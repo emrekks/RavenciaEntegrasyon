@@ -52,9 +52,13 @@ export const noBulk: TariffBulk = { kind: '', tier: 1, minRate: null, minAmount:
 // A tariff's picks as the server keeps them (GET and PUT …/selection): the pick for every row and each row's own pick.
 // CONTRACT: the API declares a choice's tier and price as "number or string": CommissionTariffChoice is the PUT body's
 // too, which reads either, but an answer writes numbers (int? Tier, decimal? Price). It is also this screen's PUT body.
-export type TariffSelection = {
-  bulk: string | null; tier: number | null; minRate: number | null; minAmount: number | null; maxRate: number | null; maxAmount: number | null
-  choices: Array<{ rowId: string; tier: number | null; price: number | null }>; updatedAt?: string | null
+type SelectionAnswer = ApiAnswer<'getConnectionsByConnectionIdCommissionTariffsByTariffIdSelection'>
+// CONTRACT: the API's numbers may be read from strings, so the contract gives a choice's tier and price as number or
+// string; the server writes numbers. readTariffSelection brings them to numbers at the fetch boundary.
+export type TariffSelection = Omit<SelectionAnswer, 'choices' | 'updatedAt'> & { choices: Array<{ rowId: string; tier: number | null; price: number | null }>; updatedAt?: string | null }
+const selectionNumber = (value: number | string | null) => value === null || value === '' ? null : typeof value === 'number' ? value : Number.isFinite(Number(value)) ? Number(value) : null
+export function readTariffSelection(raw: SelectionAnswer): TariffSelection {
+  return { ...raw, choices: raw.choices.map(choice => ({ rowId: choice.rowId, tier: selectionNumber(choice.tier), price: selectionNumber(choice.price) })) }
 }
 
 // The page's picks as the server keeps them, rows in id order so the same picks always read the same.
@@ -258,13 +262,13 @@ export function useSavedSelection(save: (body: string) => Promise<unknown>, seri
 export function TariffPlan(props: TariffPlanProps) {
   const selection = useQuery({
     queryKey: queryKeys.commissionTariffSelection(props.connectionId, props.tariff.id),
-    queryFn: async ({ signal }) => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.tariff.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`, { signal }) },
+    queryFn: async ({ signal }) => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.tariff.id)); return readTariffSelection(await hubApi<SelectionAnswer>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`, { signal })) },
     gcTime: 0, refetchOnWindowFocus: false
   })
   // The 7-day view keeps the second period's picks too.
   const partnerSelection = useQuery({
     queryKey: queryKeys.commissionTariffSelection(props.connectionId, props.partner?.id),
-    queryFn: async ({ signal }) => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.partner!.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`, { signal }) },
+    queryFn: async ({ signal }) => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.partner!.id)); return readTariffSelection(await hubApi<SelectionAnswer>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`, { signal })) },
     gcTime: 0, refetchOnWindowFocus: false, enabled: props.partner != null
   })
   if (selection.isPending || (props.partner && partnerSelection.isPending)) return <Busy />
@@ -300,7 +304,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   // The pick for every row, set in the Toplu Seçim popover.
   const [bulk, setBulk] = useState<TariffBulk>(() => selectionState(saved).bulk)
   const applied = bulk
-  const save = useCallback((body: string) => hubApi<TariffSelection>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/selection`, {
+  const save = useCallback((body: string) => hubApi<SelectionAnswer>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/selection`, {
     method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
   }), [connectionId, tariff.id])
   const saving = useSavedSelection(save, useMemo(() => JSON.stringify(selectionBody(picks, bulk)), [picks, bulk]), selectionSaveKey(connectionId, tariff.id))
@@ -316,7 +320,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const [partnerPicks, setPartnerPicks] = useState<Map<string, TariffPick>>(() => selectionState(partnerSaved).picks)
   const [partnerBulk, setPartnerBulk] = useState<TariffBulk>(() => selectionState(partnerSaved).bulk)
   const partnerId = partner?.id
-  const savePartner = useCallback((body: string) => hubApi<TariffSelection>(`/connections/${connectionId}/commission-tariffs/${partnerId}/selection`, {
+  const savePartner = useCallback((body: string) => hubApi<SelectionAnswer>(`/connections/${connectionId}/commission-tariffs/${partnerId}/selection`, {
     method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
   }), [connectionId, partnerId])
   const partnerSaving = useSavedSelection(savePartner, useMemo(() => JSON.stringify(selectionBody(partnerPicks, partnerBulk)), [partnerPicks, partnerBulk]), partnerId ? selectionSaveKey(connectionId, partnerId) : null)
