@@ -47,7 +47,7 @@ internal sealed class PriceStockService(
 
     private static string Short(string? value, int maximum) => CatalogAttributeService.Short(value, maximum);
 
-    private static string? SafeCode(string? value) => MarketplaceJobProcessor.SafeCode(value);
+    private static string? SafeCode(string? value) => ProductJobService.SafeCode(value);
 
     private static string MarketplacePlatformName(string? platformCode) => VariantLinkBookkeeping.MarketplacePlatformName(platformCode);
 

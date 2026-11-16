@@ -260,13 +260,13 @@ public sealed class PazaramaProductWriteTests
     [InlineData("N11", "N11_TASK_REJECTED")]
     [InlineData("PTTAVM", "PTTAVM_PRODUCT_REJECTED")]
     public void A_whole_batch_refusal_closes_the_card_as_rejected(string platform, string code) =>
-        Assert.Equal(code, MarketplaceJobProcessor.WholeBatchRejection(platform, "REJECTED")?.Code);
+        Assert.Equal(code, ProductJobService.WholeBatchRejection(platform, "REJECTED")?.Code);
 
     [Theory]
     [InlineData("PAZARAMA", "COMPLETED")]
     [InlineData("TRENDYOL", "REJECTED")]
     public void Other_batch_answers_are_not_a_whole_batch_refusal(string platform, string status) =>
-        Assert.Null(MarketplaceJobProcessor.WholeBatchRejection(platform, status));
+        Assert.Null(ProductJobService.WholeBatchRejection(platform, status));
 
     [Theory]
     [InlineData("""{"success":true}""")]

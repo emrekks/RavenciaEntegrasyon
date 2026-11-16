@@ -108,6 +108,7 @@ public sealed class PriceStockJobGoldenPostgreSqlTests(PostgreSqlTenantIsolation
     [MemberData(nameof(SendScenarios))]
     public async Task APriceStockSendSendsAndStoresTheSameThings(string platform, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         var (run, productId, _) = await SeedAsync(platform, writesOn: true, MarketplaceExternalWritePolicies.Manual);
         var (jobId, payloadJson) = await QueueManualSendAsync(run, productId);
         if (scenario == "writes-off")
@@ -165,6 +166,7 @@ public sealed class PriceStockJobGoldenPostgreSqlTests(PostgreSqlTenantIsolation
     [MemberData(nameof(AutomaticScenarios))]
     public async Task AnAutomaticStockPathSendsNothingWhileItsSwitchesAreOff(string jobType, string scenario)
     {
+        using var culture = JobGolden.InvariantCulture();
         string[] policies = scenario switch
         {
             "owner-turned-on" => [MarketplaceExternalWritePolicies.Stock, MarketplaceExternalWritePolicies.Price],

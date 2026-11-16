@@ -193,6 +193,9 @@ internal sealed partial class OrderReadService
     internal const int TrendyolOpenScanRecentChunk = 250;
     internal const int TrendyolOpenScanOlderChunk = 25;
 
+    // ISLEYICI-12 (16 Nov 2026): the position stays a text cursor ("trendyol-open-v1:{recent|older}:{after}") in the
+    // sync cursor's OpaqueCursor, as live cursors hold it today: a typed column would need a migration and a reader for
+    // both forms, and any other value already starts a new scan.
     internal sealed record TrendyolOpenScanPosition(bool Older, string? After);
 
     internal static string TrendyolOpenScanCursor(TrendyolOpenScanPosition position) =>

@@ -163,6 +163,34 @@ internal sealed class PriceStockRunHandler(Func<JobRunContext, JobRunServices> s
     };
 }
 
+// The product writes and the approval check (ProductJobService); each answers with a result of its own.
+internal sealed class ProductJobRunHandler(Func<JobRunContext, JobRunServices> services) : IRunDirectJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductApprovalReconcile, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<JobExecutionResult> HandleDirectAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) => request.JobType switch
+    {
+        MarketplaceJobTypes.ProductCreate => services(run).ProductJobs.CreateProduct(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.ProductApprovalReconcile => services(run).ProductJobs.ReconcileProductApproval(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.ProductUpdate => services(run).ProductJobs.UpdateProduct(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        MarketplaceJobTypes.ProductArchive => services(run).ProductJobs.ArchiveProduct(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken),
+        _ => throw new InvalidOperationException($"{request.JobType} is not a product job.")
+    };
+}
+
+// The webhook ingests of every marketplace that sends notices (WebhookIngestService).
+internal sealed class WebhookIngestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
+{
+    public static readonly IReadOnlyCollection<string> Types = [MarketplaceJobTypes.WebhookIngest, MarketplaceJobTypes.ShopifyWebhookIngest, MarketplaceJobTypes.HepsiburadaWebhookIngest];
+
+    public IReadOnlyCollection<string> JobTypes => Types;
+
+    public Task<bool> HandleAsync(JobRequest request, JobRunContext run, CancellationToken cancellationToken) =>
+        services(run).WebhookIngest.IngestWebhook(request.TenantId, request.ConnectionId, request.PayloadJson, request.CorrelationId, cancellationToken);
+}
+
 // The connection test of every marketplace (ConnectionTestService).
 internal sealed class ConnectionTestRunHandler(Func<JobRunContext, JobRunServices> services) : IRunBoolJobHandler
 {

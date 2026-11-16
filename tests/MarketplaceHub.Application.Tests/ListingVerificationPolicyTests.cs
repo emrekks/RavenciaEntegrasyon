@@ -129,10 +129,10 @@ public sealed class ListingVerificationPolicyTests
     {
         Assert.Null(MarketplaceVariantLinkHealth.RemoteVariantId("listing:12345"));
         Assert.Equal("44791234567890", MarketplaceVariantLinkHealth.RemoteVariantId("44791234567890"));
-        Assert.Equal("44791234567890", MarketplaceJobProcessor.ShopifyVariantIdOrNull("gid://shopify/ProductVariant/44791234567890"));
-        Assert.Equal("447", MarketplaceJobProcessor.ShopifyVariantIdOrNull(" 447 "));
-        Assert.Null(MarketplaceJobProcessor.ShopifyVariantIdOrNull("SKU-1"));
-        Assert.Null(MarketplaceJobProcessor.ShopifyVariantIdOrNull(null));
+        Assert.Equal("44791234567890", ProductJobService.ShopifyVariantIdOrNull("gid://shopify/ProductVariant/44791234567890"));
+        Assert.Equal("447", ProductJobService.ShopifyVariantIdOrNull(" 447 "));
+        Assert.Null(ProductJobService.ShopifyVariantIdOrNull("SKU-1"));
+        Assert.Null(ProductJobService.ShopifyVariantIdOrNull(null));
     }
 
     [Theory]

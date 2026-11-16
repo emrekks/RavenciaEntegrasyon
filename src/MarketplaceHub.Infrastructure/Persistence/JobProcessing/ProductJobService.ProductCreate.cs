@@ -6,12 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ProductJobService
 {
     // Every create job that ends leaves its per-variant answer: a path that stops before the batch result (blocked,
     // manual review, expired window) records each sent variant from the card's state, with the job's reason, so the job
     // screen never falls back to "ran before it saved results" for a job that ran after they existed.
-    private async Task<JobExecutionResult> CreateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> CreateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var result = await CreateProductCore(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (result.Kind != JobCompletionKind.Retry) await EnsureCreateJobVariantResults(tenantId, connectionId, payloadJson, result, cancellationToken);
@@ -335,7 +335,7 @@ public sealed partial class MarketplaceJobProcessor
         };
     }
 
-    private async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    internal async Task<JobExecutionResult> ReconcileProductApproval(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         ProductApprovalReconciliationJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<ProductApprovalReconciliationJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }

@@ -370,7 +370,7 @@ public sealed class ShopifyFamilyPublicationTests
     [Fact]
     public void AnUncertainCreateKeepsTheMarketplacesOwnCodeAndMessage()
     {
-        var summary = MarketplaceJobProcessor.AmbiguousCreateSummary(new(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Online Store kanalına yayınlayamadı: erişim yok", 502, null, null));
+        var summary = PriceStockService.AmbiguousCreateSummary(new(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Online Store kanalına yayınlayamadı: erişim yok", 502, null, null));
 
         Assert.Contains("SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", summary, StringComparison.Ordinal);
         Assert.Contains("erişim yok", summary, StringComparison.Ordinal);

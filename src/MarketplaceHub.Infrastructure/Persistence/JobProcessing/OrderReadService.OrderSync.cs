@@ -16,9 +16,10 @@ internal sealed partial class OrderReadService
         new(JobExecutionResult.Blocked("ORDER_SYNC_PAYLOAD_INVALID", "Sipariş okuma isteği okunamadı; pazaryerinden sipariş okunmadı. Okumayı mağaza ekranından yeniden başlatın."));
 
     // ISLEYICI-12 point 1 (16 Nov 2026): one order read by its number, for the readers whose single-order branch was the
-    // same copy (Shopify, n11, Pazarama, PttAVM): a failure ends the job with the marketplace's error, nothing is stored.
-    // Trendyol (a package fallback for orders its number lookup no longer shows) and Hepsiburada (package reads around the
-    // order) keep their own branches; they read the request through the same JobPayloadReader.OrderRead.
+    // same copy (Shopify, n11, Pazarama, PttAVM, and Hepsiburada's order read before its own package status read): a
+    // failure ends the job with the marketplace's error, nothing is stored. Trendyol keeps its own branch: it asks with the
+    // order's lookup hint and takes "not found" as the start of its package fallback (its number lookup no longer shows
+    // older orders), not as a failure, so its logic is not this one.
     private async Task<RemoteOrder> ReadSingleOrderAsync(Guid tenantId, Guid connectionId, string correlationId, string idempotencyPrefix, string externalOrderId, CancellationToken cancellationToken)
     {
         TrackRequest();
@@ -40,6 +41,98 @@ internal sealed partial class OrderReadService
         if (synced) await RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken);
         if (synced && cursorResourceType == "ORDERS_RECOVERY") await RunResendDiagnosticOnce(tenantId, connectionId, correlationId, cancellationToken);
         return synced;
+    }
+
+    // Trendyol's read of one order by its number: the order read with its lookup hint, and when Trendyol no longer shows
+    // the order by number, the package fallback (RecoverTrendyolOrderFromPackagesAsync).
+    private async Task<bool> ReadTrendyolSingleOrderAsync(Guid tenantId, Guid connectionId, string correlationId, string externalOrderId, string? packageNumber, CancellationToken cancellationToken)
+    {
+        var requestedPackageNumber = packageNumber?.Trim();
+        var hasRequestedPackageNumber = !string.IsNullOrWhiteSpace(requestedPackageNumber)
+            && requestedPackageNumber.Length <= 100
+            && !requestedPackageNumber.Any(char.IsControl);
+
+        TrackRequest();
+        var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), await OrderHint(tenantId, connectionId, externalOrderId.Trim(), cancellationToken), cancellationToken);
+        if (single.IsSuccess)
+        {
+            TrackReceived();
+            await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
+            return true;
+        }
+
+        if (single.Error?.Class != AdapterErrorClass.NotFound && single.Error?.HttpStatus != 404)
+        {
+            TrackResultFailure(single.Error);
+            throw JobProcessingException.FromAdapter(single.Error!);
+        }
+
+        return await RecoverTrendyolOrderFromPackagesAsync(tenantId, connectionId, correlationId, externalOrderId, requestedPackageNumber, hasRequestedPackageNumber, single.Error, cancellationToken);
+    }
+
+    // The package fallback of a Trendyol single-order read: the requested and the known packages of the order are read
+    // one by one and their order snapshots merged; nothing found ends the job with the order read's own error.
+    private async Task<bool> RecoverTrendyolOrderFromPackagesAsync(Guid tenantId, Guid connectionId, string correlationId, string externalOrderId, string? requestedPackageNumber, bool hasRequestedPackageNumber, AdapterError? orderReadError, CancellationToken cancellationToken)
+    {
+        // Trendyol's order-number lookup stops exposing older orders, while
+        // their package endpoint can still return the complete order snapshot.
+        // Use package IDs already linked to this order as a read-only fallback.
+        var knownPackages = await (from package in db.ShipmentPackages.AsNoTracking()
+                                   join order in db.Orders.AsNoTracking()
+                                       on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                                   where package.TenantId == tenantId
+                                       && package.ConnectionId == connectionId
+                                       && order.ExternalOrderId == externalOrderId
+                                   select new { package.ExternalPackageId, package.StatusOccurredAt })
+            .ToListAsync(cancellationToken);
+        var packagesToRead = new List<(string ExternalPackageId, DateTimeOffset? StatusOccurredAt)>();
+        var packageIdsToRead = new HashSet<string>(StringComparer.Ordinal);
+        if (hasRequestedPackageNumber && packageIdsToRead.Add(requestedPackageNumber!))
+            packagesToRead.Add((requestedPackageNumber!, null));
+        foreach (var knownPackage in knownPackages)
+        {
+            if (packageIdsToRead.Add(knownPackage.ExternalPackageId))
+                packagesToRead.Add((knownPackage.ExternalPackageId, knownPackage.StatusOccurredAt));
+        }
+        var packageSnapshots = new List<RemoteOrder>();
+        AdapterError? packageNotAsked = null;
+        foreach (var packageToRead in packagesToRead)
+        {
+            TrackRequest();
+            var packageRead = await orders.GetShipmentPackageAsync(
+                Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{packageToRead.ExternalPackageId}"),
+                packageToRead.ExternalPackageId,
+                new PackageLookup(packageToRead.StatusOccurredAt, await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken)),
+                cancellationToken);
+            if (!packageRead.IsSuccess)
+            {
+                // ADAPTOR-TY-HB-3: a package outside every readable window was not asked for; remembered so the
+                // job does not end as if Trendyol had answered that it does not know the order.
+                if (TrendyolPackageNotAsked(packageRead.Error))
+                {
+                    packageNotAsked ??= packageRead.Error;
+                    continue;
+                }
+                if (packageRead.Error?.Class == AdapterErrorClass.NotFound || packageRead.Error?.HttpStatus == 404)
+                    continue;
+                TrackResultFailure(packageRead.Error);
+                throw JobProcessingException.FromAdapter(packageRead.Error!);
+            }
+
+            TrackReceived();
+            if (packageRead.Value?.OrderSnapshot is { Packages.Count: > 0 } orderSnapshot)
+                packageSnapshots.Add(orderSnapshot);
+        }
+
+        var recoveredOrder = TrendyolJsonMapper.MergeOrderPackages(packageSnapshots, externalOrderId);
+        if (recoveredOrder is { Packages.Count: > 0 })
+        {
+            await UpsertOrder(tenantId, connectionId, recoveredOrder, cancellationToken);
+            return true;
+        }
+
+        TrackResultFailure(orderReadError);
+        throw JobProcessingException.FromAdapter(packageNotAsked ?? orderReadError!);
     }
 
     private async Task<bool> SyncOrders(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
@@ -72,87 +165,7 @@ internal sealed partial class OrderReadService
         var packageNumber = request.PackageNumber;
         var full = request.Full;
         if (!string.IsNullOrWhiteSpace(externalOrderId))
-        {
-            var requestedPackageNumber = packageNumber?.Trim();
-            var hasRequestedPackageNumber = !string.IsNullOrWhiteSpace(requestedPackageNumber)
-                && requestedPackageNumber.Length <= 100
-                && !requestedPackageNumber.Any(char.IsControl);
-
-            TrackRequest();
-            var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-get:{externalOrderId}"), externalOrderId.Trim(), await OrderHint(tenantId, connectionId, externalOrderId.Trim(), cancellationToken), cancellationToken);
-            if (single.IsSuccess)
-            {
-                TrackReceived();
-                await UpsertOrder(tenantId, connectionId, single.Value!, cancellationToken);
-                return true;
-            }
-
-            if (single.Error?.Class != AdapterErrorClass.NotFound && single.Error?.HttpStatus != 404)
-            {
-                TrackResultFailure(single.Error);
-                throw JobProcessingException.FromAdapter(single.Error!);
-            }
-
-            // Trendyol's order-number lookup stops exposing older orders, while
-            // their package endpoint can still return the complete order snapshot.
-            // Use package IDs already linked to this order as a read-only fallback.
-            var knownPackages = await (from package in db.ShipmentPackages.AsNoTracking()
-                                       join order in db.Orders.AsNoTracking()
-                                           on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
-                                       where package.TenantId == tenantId
-                                           && package.ConnectionId == connectionId
-                                           && order.ExternalOrderId == externalOrderId
-                                       select new { package.ExternalPackageId, package.StatusOccurredAt })
-                .ToListAsync(cancellationToken);
-            var packagesToRead = new List<(string ExternalPackageId, DateTimeOffset? StatusOccurredAt)>();
-            var packageIdsToRead = new HashSet<string>(StringComparer.Ordinal);
-            if (hasRequestedPackageNumber && packageIdsToRead.Add(requestedPackageNumber!))
-                packagesToRead.Add((requestedPackageNumber!, null));
-            foreach (var knownPackage in knownPackages)
-            {
-                if (packageIdsToRead.Add(knownPackage.ExternalPackageId))
-                    packagesToRead.Add((knownPackage.ExternalPackageId, knownPackage.StatusOccurredAt));
-            }
-            var packageSnapshots = new List<RemoteOrder>();
-            AdapterError? packageNotAsked = null;
-            foreach (var packageToRead in packagesToRead)
-            {
-                TrackRequest();
-                var packageRead = await orders.GetShipmentPackageAsync(
-                    Context(tenantId, connectionId, correlationId, $"targeted-order-package-read:{packageToRead.ExternalPackageId}"),
-                    packageToRead.ExternalPackageId,
-                    new PackageLookup(packageToRead.StatusOccurredAt, await OrderHint(tenantId, connectionId, externalOrderId, cancellationToken)),
-                    cancellationToken);
-                if (!packageRead.IsSuccess)
-                {
-                    // ADAPTOR-TY-HB-3: a package outside every readable window was not asked for; remembered so the
-                    // job does not end as if Trendyol had answered that it does not know the order.
-                    if (TrendyolPackageNotAsked(packageRead.Error))
-                    {
-                        packageNotAsked ??= packageRead.Error;
-                        continue;
-                    }
-                    if (packageRead.Error?.Class == AdapterErrorClass.NotFound || packageRead.Error?.HttpStatus == 404)
-                        continue;
-                    TrackResultFailure(packageRead.Error);
-                    throw JobProcessingException.FromAdapter(packageRead.Error!);
-                }
-
-                TrackReceived();
-                if (packageRead.Value?.OrderSnapshot is { Packages.Count: > 0 } orderSnapshot)
-                    packageSnapshots.Add(orderSnapshot);
-            }
-
-            var recoveredOrder = TrendyolJsonMapper.MergeOrderPackages(packageSnapshots, externalOrderId);
-            if (recoveredOrder is { Packages.Count: > 0 })
-            {
-                await UpsertOrder(tenantId, connectionId, recoveredOrder, cancellationToken);
-                return true;
-            }
-
-            TrackResultFailure(single.Error);
-            throw JobProcessingException.FromAdapter(packageNotAsked ?? single.Error!);
-        }
+            return await ReadTrendyolSingleOrderAsync(tenantId, connectionId, correlationId, externalOrderId, packageNumber, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, cursorResourceType, cancellationToken);
         var now = timeProvider.GetUtcNow();

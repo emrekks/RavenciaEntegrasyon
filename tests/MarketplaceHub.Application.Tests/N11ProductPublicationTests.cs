@@ -72,14 +72,14 @@ public sealed class N11ProductPublicationTests
     [Fact]
     public void RefusedLinesCarryN11sOwnReasonIntoTheJobSummary()
     {
-        var reasons = MarketplaceJobProcessor.RejectionReasons([
+        var reasons = ProductJobService.RejectionReasons([
             new("MZ-01", true, "11", null, false, "SUCCESS"),
             new("MZ-03", false, null, "N11_SKU_REJECTED", false, "Barkod başka bir üründe kullanılıyor"),
             new("MZ-04", false, null, "N11_SKU_REJECTED", false, null)
         ]);
         Assert.Equal(" Reddedilen: MZ-03 (Barkod başka bir üründe kullanılıyor)", reasons);
-        Assert.Equal(string.Empty, MarketplaceJobProcessor.RejectionReasons([new("MZ-01", true, "11", null, false, "SUCCESS")]));
-        var crowded = MarketplaceJobProcessor.RejectionReasons(Enumerable.Range(1, 80).Select(i => new MarketplaceHub.Application.RemoteOperationLine($"MZ-{i:00}", false, null, "N11_SKU_REJECTED", false, "Uzun bir ret nedeni metni")));
+        Assert.Equal(string.Empty, ProductJobService.RejectionReasons([new("MZ-01", true, "11", null, false, "SUCCESS")]));
+        var crowded = ProductJobService.RejectionReasons(Enumerable.Range(1, 80).Select(i => new MarketplaceHub.Application.RemoteOperationLine($"MZ-{i:00}", false, null, "N11_SKU_REJECTED", false, "Uzun bir ret nedeni metni")));
         Assert.Equal(898, crowded.Length);
         Assert.EndsWith("…", crowded, StringComparison.Ordinal);
     }
