@@ -492,7 +492,7 @@ internal static class PayoutBuilder
         // The records in another currency, each currency apart: never added to a lira figure.
         var otherCurrencies = rows.Where(Counts).Where(row => !IsLira(row)).Select(row => (Row: row, Line: Line(row, today))).Where(x => Open(x.Line))
             .GroupBy(x => x.Line.Currency).OrderBy(group => group.Key, StringComparer.Ordinal)
-            .Select(group => new PayoutCurrencyView(group.Key, Math.Round(group.Sum(x => x.Line.Net), 2), group.Count())).ToList();
+            .Select(group => new PayoutCurrencyView(group.Key, MoneyRounding.Round(group.Sum(x => x.Line.Net)), group.Count())).ToList();
         var lastPaid = LastPaid(payouts);
         // The orders not delivered yet, of the stores in view, by marketplace and Trendyol region.
         var pending = (pendingOrders ?? []).Where(order => stores.ContainsKey(order.ConnectionId))
@@ -593,8 +593,8 @@ internal static class PayoutBuilder
             ? coming.Where(x => x.Day == first && !Waiting(x.Kind)).GroupBy(x => 1).Select(group => group.First() with
             {
                 Key = $"next:{first:yyyy-MM-dd}",
-                Amount = Math.Round(group.Sum(Payable), 2),
-                Carried = group.Sum(x => carried.TryGetValue(x.Key, out var carry) && carry.Payable > 0 ? carry.In : 0m) is var taken && taken != 0m ? Math.Round(taken, 2) : null,
+                Amount = MoneyRounding.Round(group.Sum(Payable)),
+                Carried = group.Sum(x => carried.TryGetValue(x.Key, out var carry) && carry.Payable > 0 ? carry.In : 0m) is var taken && taken != 0m ? MoneyRounding.Round(taken) : null,
                 Records = group.Sum(x => x.Records),
                 LinesAmount = group.Any(x => x.Estimates is not null) ? group.Sum(x => x.LinesAmount ?? x.Amount) : null,
                 Estimates = group.Any(x => x.Estimates is not null) ? group.SelectMany(x => x.Estimates ?? []).ToList() : null
@@ -700,14 +700,14 @@ internal static class PayoutBuilder
             decimal? europeTariff = forecast.CargoTariff.TryGetValue(connection, out var europeKnown) ? europeKnown : null;
             if (unbilled > 0)
             {
-                result.Add(new("CARGO", unbilled, europeTariff is { } rate ? Math.Round(unbilled * rate, 2) : 0m, europeTariff));
+                result.Add(new("CARGO", unbilled, europeTariff is { } rate ? MoneyRounding.Round(unbilled * rate) : 0m, europeTariff));
                 result.Add(new("PLATFORM_FEE", unbilled, unbilled * ReportCosts.PlatformServiceFeePerOrder, ReportCosts.PlatformServiceFeePerOrder));
             }
             var europeNet = settlements.Sum(row => row.Credit - row.Debt);
             if (!invoices.Any(International))
-                result.Add(new("INTERNATIONAL_FEE", sales.Count, Math.Max(0m, Math.Round(europeNet * ReportCosts.InternationalServiceFeeRate, 2)), ReportCosts.InternationalServiceFeeRate));
+                result.Add(new("INTERNATIONAL_FEE", sales.Count, Math.Max(0m, MoneyRounding.Round(europeNet * ReportCosts.InternationalServiceFeeRate)), ReportCosts.InternationalServiceFeeRate));
             if (!invoices.Any(row => row.Category == MarketplaceFinanceCategories.Stoppage) && europeNet > 0)
-                result.Add(new("STOPPAGE", settlements.Count, Math.Round(europeNet * ReportCosts.StoppageRate, 2), ReportCosts.StoppageRate));
+                result.Add(new("STOPPAGE", settlements.Count, MoneyRounding.Round(europeNet * ReportCosts.StoppageRate), ReportCosts.StoppageRate));
             return result;
         }
 
@@ -716,8 +716,8 @@ internal static class PayoutBuilder
             decimal? tariff = forecast.CargoTariff.TryGetValue(connection, out var known) ? known : null;
             var shipped = sales.Count(row => row.OrderNumber is null || !forecast.ShippingBilled.Contains((connection, row.OrderNumber)));
             var returned = returns.Count(row => row.OrderNumber is null || !forecast.ReturnBilled.Contains((connection, row.OrderNumber)));
-            if (shipped > 0) result.Add(new("CARGO", shipped, tariff is { } rate ? Math.Round(shipped * rate, 2) : 0m, tariff));
-            if (returned > 0) result.Add(new("RETURN_CARGO", returned, tariff is { } rate2 ? Math.Round(returned * rate2, 2) : 0m, tariff));
+            if (shipped > 0) result.Add(new("CARGO", shipped, tariff is { } rate ? MoneyRounding.Round(shipped * rate) : 0m, tariff));
+            if (returned > 0) result.Add(new("RETURN_CARGO", returned, tariff is { } rate2 ? MoneyRounding.Round(returned * rate2) : 0m, tariff));
         }
         if (sales.Count > 0 && !invoices.Any(row => row.Category == MarketplaceFinanceCategories.ServiceFee && !International(row)))
         {
@@ -727,14 +727,14 @@ internal static class PayoutBuilder
         var abroad = settlements.Where(row => !Domestic(row)).ToList();
         var abroadNet = abroad.Sum(row => row.Credit - row.Debt);
         if (abroad.Count > 0 && !invoices.Any(International))
-            result.Add(new("INTERNATIONAL_FEE", sales.Count(row => !Domestic(row)), Math.Max(0m, Math.Round(abroadNet * ReportCosts.InternationalServiceFeeRate, 2)), ReportCosts.InternationalServiceFeeRate));
+            result.Add(new("INTERNATIONAL_FEE", sales.Count(row => !Domestic(row)), Math.Max(0m, MoneyRounding.Round(abroadNet * ReportCosts.InternationalServiceFeeRate)), ReportCosts.InternationalServiceFeeRate));
         if (!azerbaijan && !invoices.Any(row => row.Category == MarketplaceFinanceCategories.Stoppage))
         {
             var domestic = settlements.Where(Domestic).ToList();
             decimal? Vat(PayoutRow row) => row.OrderNumber is not null && row.Barcode is not null && forecast.VatRates.TryGetValue((connection, row.OrderNumber, row.Barcode), out var vat) ? vat : null;
             var known = domestic.Where(row => Vat(row) is not null).ToList();
             var vatFree = known.Sum(row => (row.Credit - row.Debt) / (1m + Vat(row)!.Value / 100m));
-            var amount = Math.Round(vatFree * ReportCosts.StoppageRate, 2) + Math.Round(abroadNet * ReportCosts.StoppageRate, 2);
+            var amount = MoneyRounding.Round(vatFree * ReportCosts.StoppageRate) + MoneyRounding.Round(abroadNet * ReportCosts.StoppageRate);
             if (amount > 0) result.Add(new("STOPPAGE", settlements.Count, amount, ReportCosts.StoppageRate, domestic.Count - known.Count));
         }
         return result;
@@ -762,6 +762,6 @@ internal static class PayoutBuilder
         decimal amount, decimal? linesAmount, int records, string status)
     {
         var store = stores.GetValueOrDefault(connectionId);
-        return new(key, kind, connectionId, store?.PlatformCode ?? "", store?.StoreName ?? "", region, regionName, day, Math.Round(amount, 2), linesAmount is { } lines ? Math.Round(lines, 2) : null, records, status);
+        return new(key, kind, connectionId, store?.PlatformCode ?? "", store?.StoreName ?? "", region, regionName, day, MoneyRounding.Round(amount), linesAmount is { } lines ? MoneyRounding.Round(lines) : null, records, status);
     }
 }

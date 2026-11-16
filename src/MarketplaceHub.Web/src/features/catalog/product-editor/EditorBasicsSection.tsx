@@ -5,7 +5,7 @@ import { maxProductDesi } from '../product-desi'
 import { ModelCodeHolderNotice } from '../model-code-holder'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { EditorFieldError, automaticCodeHelp, variantCodesReadOnlyTitle, RequiredLabel } from './EditorBits'
-import { RichTextEditor } from './RichTextEditor'
+import { RichTextEditor } from '../../../shared/components/RichTextEditor'
 import type { EditorContext } from './editor-context'
 
 export function EditorBasicsSection({ editor }: { editor: EditorContext }) {
