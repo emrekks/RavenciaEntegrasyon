@@ -4,6 +4,7 @@
 # nothing on the server is changed.
 # Usage: run.sh status | run.sh logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX]
 #        run.sh host [--since 6h] | run.sh errors [--since 30m] | run.sh journal <api|worker|caddy|postgres> [--since 30m] [--grep REGEX]
+#        run.sh top-queries [N]
 set -u
 host="${RAVENCIA_SSH_HOST:-ravencia-ro@187.126.24.163}"
 # Default: the read-only ravencia-ro login (key without passphrase, forced command on the server).
@@ -16,7 +17,7 @@ else sshx=(ssh -o BatchMode=yes); fi
 
 remote() { "${sshx[@]}" "$host" "ravencia-ro $*"; }
 
-usage() { echo "usage: run.sh status | host [--since 6h] | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX]" >&2; exit 2; }
+usage() { echo "usage: run.sh status | host [--since 6h] | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX] | top-queries [N]" >&2; exit 2; }
 
 since="30m"; tail_n="-"; pattern=""
 parse_opts() {
@@ -55,6 +56,12 @@ case "${1:-}" in
     case "$svc" in api|worker|caddy|postgres) ;; *) usage ;; esac
     parse_opts "$@"
     remote journal "$svc" "$since" "$(encoded_pattern)"
+    ;;
+  # The slowest statements from pg_stat_statements (needs the server's ravencia-ro to be reinstalled after 16 Nov 2026).
+  top-queries)
+    limit="${2:-20}"
+    [[ "$limit" =~ ^[0-9]{1,3}$ ]] || usage
+    remote top-queries "$limit"
     ;;
   *) usage ;;
 esac

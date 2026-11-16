@@ -4,8 +4,9 @@ set -Eeuo pipefail
 # Creates or refreshes the PostgreSQL role "ravencia_ro" used by the read-only login's `sql`
 # request (readonly-entrypoint.sh). The role, not the entrypoint's statement filter, is the boundary:
 #   - LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS, at most 3 connections;
-#   - member of pg_read_all_data only (SELECT on every table, nothing else: no writes, no
-#     COPY ... TO PROGRAM, no server files, no pg_terminate_backend on other roles);
+#   - member of pg_read_all_data (SELECT on every table, nothing else: no writes, no COPY ... TO PROGRAM,
+#     no server files, no pg_terminate_backend on other roles), pg_read_all_stats and pg_read_all_settings (read-only
+#     statistics and settings);
 #   - default_transaction_read_only=on and statement_timeout=60s as role settings;
 #   - no password: it can only log in over the container's unix socket (pg_hba "local ... trust"),
 #     i.e. through `docker exec`, which needs root. Network logins require a password (scram).
@@ -30,6 +31,9 @@ ALTER ROLE ravencia_ro SET default_transaction_read_only = on;
 ALTER ROLE ravencia_ro SET statement_timeout = '60s';
 ALTER ROLE ravencia_ro SET idle_in_transaction_session_timeout = '60s';
 GRANT pg_read_all_data TO ravencia_ro;
+-- Statistics and settings, read only: other roles' query texts in pg_stat_statements (`ravencia-ro top-queries`) and
+-- superuser-only settings such as shared_preload_libraries (docs/RUNBOOK-GERI-ALMA.md section 8).
+GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro;
 SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls, rolconnlimit,
        pg_has_role('ravencia_ro', 'pg_read_all_data', 'MEMBER') AS reads_all,
        pg_has_role('ravencia_ro', 'pg_write_all_data', 'MEMBER') AS writes_all,

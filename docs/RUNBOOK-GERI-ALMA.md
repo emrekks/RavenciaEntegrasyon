@@ -260,39 +260,15 @@ kapanma süresi Docker varsayılanı 10 sn. Değişiklik postgres'i **yeniden ba
 yeniden başlatma ister; birkaç saniye kesinti, API/Worker yeniden bağlanır), bu yüzden deploy'a otomatik konmadı.
 Sessiz bir saatte, tek seferde:
 
-1. `deploy/compose/compose.yaml` postgres servisi, tam satırlar (mevcut `command` listesinin
-   `- log_min_duration_statement=2000` satırından sonra eklenir; `stop_grace_period` `init: true`'nun altına):
-   ```yaml
-       init: true
-       # PostgreSQL writes 1.5 GiB of shared buffers out before it stops; Docker's 10 s default kills it mid-way.
-       stop_grace_period: 120s
-   ```
-   ```yaml
-         - log_min_duration_statement=2000
-         - -c
-         - idle_in_transaction_session_timeout=10min
-         - -c
-         - log_lock_waits=on
-         - -c
-         - deadlock_timeout=1s
-         - -c
-         - log_autovacuum_min_duration=10s
-         - -c
-         - log_temp_files=65536
-         - -c
-         - track_io_timing=on
-         - -c
-         - shared_preload_libraries=pg_stat_statements
-         - -c
-         - pg_stat_statements.track=top
-         - -c
-         - max_wal_size=4GB
-   ```
-   Aynı gönderimde CI denetimi (`ci.yml` "Validate merged Compose manifests", api/worker `stop_grace_period`
-   satırının yanına): `"${compose[@]}" config --format json | jq -e '.services.postgres.stop_grace_period and
-   (.services.postgres.command | index("shared_preload_libraries=pg_stat_statements") != null) and
-   (.services.postgres.command | index("idle_in_transaction_session_timeout=10min") != null)'`. Bu denetim bugün
-   konmadı: ayarlar `compose.yaml`'da yokken kırmızı olurdu. Gönderilen ilk deploy postgres'i yeniden yaratır.
+1. Hazır, **uygulanmamış** yama: [`docs/patches/VERITABANI-DAGITIM-6-7-postgres-settings.patch`](patches/VERITABANI-DAGITIM-6-7-postgres-settings.patch).
+   `compose.yaml` postgres servisine `stop_grace_period: 120s` ve `command` listesine (her `-c` ile değer ayrı satır)
+   `idle_in_transaction_session_timeout=10min`, `log_lock_waits=on`, `deadlock_timeout=1s`, `log_autovacuum_min_duration=10s`,
+   `log_temp_files=65536`, `track_io_timing=on`, `shared_preload_libraries=pg_stat_statements`,
+   `pg_stat_statements.track=top`, `max_wal_size=4GB`; `ci.yml` "Validate merged Compose manifests" adımına bu ayarların
+   ve `stop_grace_period`'ın kaybolmadığını denetleyen `jq` kontrolü. Uygulamak: yeni dalda
+   `git apply docs/patches/VERITABANI-DAGITIM-6-7-postgres-settings.patch` (başka bir yama önce uygulandıysa `--3way`),
+   yama dosyasını silip bu maddeyi "uygulandı" diye güncelleyin, Validate'i bekleyip gönderin. Gönderilen ilk deploy
+   postgres'i yeniden yaratır (birkaç saniye kesinti).
 2. Uzantıyı **süper kullanıcıyla** kurun: `pg_stat_statements` "trusted" bir uzantı değildir, `CREATE EXTENSION`
    süper kullanıcı ister. Bölüm 7'den sonra migrate `marketplacehub_owner` ile çalışacağından bunu migration'a koymayın
    (migration orada `permission denied to create extension` ile düşer ve deploy durur). Adım 1 canlıya çıktıktan sonra
@@ -305,8 +281,11 @@ Sessiz bir saatte, tek seferde:
    (aynısı `integration.job_attempts`, `integration.rate_limit_usage`, `integration.inbox_messages`,
    `integration.reference_items`, `inventory.inventory_items`, `inventory.channel_offers`). Tablonun sahibi
    çalıştırabilir: bölüm 7'den önce de sonra da çalışır.
-4. Salt-okunur rol için `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro;` (sahibin
-   `install-readonly-db-role.sh`'ına eklenir ve betik bir kez çalıştırılır). `pg_read_all_stats` diğer rollerin
+4. Salt-okunur rol: `GRANT pg_read_all_stats, pg_read_all_settings TO ravencia_ro` artık
+   `deploy/scripts/install-readonly-db-role.sh` içinde. Sunucuda repo kökünde tek komut
+   `bash deploy/scripts/install-readonly-access.sh` (adım 1'den bağımsız, hemen yapılabilir) hem rolü yeniler hem güncel
+   `ravencia-ro` komutunu kurar; yeni `top-queries` isteği (`/prod-logs top-queries 20`) uzantı yokken bunu söyler,
+   varken en çok süren 20 sorguyu listeler. `pg_read_all_stats` diğer rollerin
    sorgu metnini `pg_stat_statements`'ta görmek için, `pg_read_all_settings` doğrulamadaki
    `show shared_preload_libraries` için gerekir (süper kullanıcıya özel ayar; o olmadan "permission denied").
 5. Doğrula: `/prod-sql "show idle_in_transaction_session_timeout"` → `10min`; `/prod-sql "show
