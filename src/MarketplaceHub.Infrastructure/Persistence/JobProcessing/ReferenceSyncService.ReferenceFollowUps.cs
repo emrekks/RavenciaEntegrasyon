@@ -8,9 +8,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // The reference reads that continue after their own list (ConnectionReferencePlan): a category tree read for an
 // activation queues the field lists of the connection's mapped categories, and a field list read with includeValues
 // reads the value lists of its selectable fields in the same run.
-public sealed partial class MarketplaceJobProcessor
+internal sealed partial class ReferenceSyncService
 {
-    private async Task<bool> SyncReferenceJob(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    internal async Task<bool> SyncReferenceJob(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var followUp = ConnectionReferencePlan.ReadFollowUp(payloadJson);
         var (resourceType, parentExternalId) = ReferenceResource(payloadJson);

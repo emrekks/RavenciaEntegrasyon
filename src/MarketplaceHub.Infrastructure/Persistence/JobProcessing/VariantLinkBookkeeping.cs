@@ -7,13 +7,13 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // ISLEYICI-9 stage 3d step 1 (16 Nov 2026): the variant link bookkeeping a catalog read does (the links it saw, the ones a
 // complete scan missed, the marketplace codes and sale states it read, Hepsiburada's re-keying to the hbSku), moved out of
 // the job processor as it was; the import and the listing verification use it alike. The links a scan may judge come from
-// the processor's listing verification rules (verifiableVariantLinks). Reads only: nothing is sent to a marketplace.
+// the listing verification rules (ListingVerificationRules). Reads only: nothing is sent to a marketplace.
 internal sealed class VariantLinkBookkeeping(
     AppDbContext db,
     TimeProvider timeProvider,
-    Func<Guid, Guid, IQueryable<MarketplaceVariantLink>> verifiableVariantLinks)
+    ListingVerificationRules listingRules)
 {
-    private IQueryable<MarketplaceVariantLink> VerifiableVariantLinks(Guid tenantId, Guid connectionId) => verifiableVariantLinks(tenantId, connectionId);
+    private IQueryable<MarketplaceVariantLink> VerifiableVariantLinks(Guid tenantId, Guid connectionId) => listingRules.VerifiableVariantLinks(tenantId, connectionId);
 
     private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
         new IssueRecorder(db).RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);

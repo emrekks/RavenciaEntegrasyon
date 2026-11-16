@@ -52,7 +52,7 @@ public static class JobEnqueueSites
             "As the product update."),
         new("ConnectionReferencePlan.QueueForSavedCategoryMappingAsync", "TRENDYOL_REFERENCE_SYNC", 5, true, true, null, CallerChecked,
             "OpenReadExistsAsync (an open read with the same payload fragments); the key carries a millisecond timestamp."),
-        new("MarketplaceJobProcessor.QueueMappedCategoryReferencesAsync", "TRENDYOL_REFERENCE_SYNC", 5, false, true, null, CallerChecked,
+        new("ReferenceSyncService.QueueMappedCategoryReferencesAsync", "TRENDYOL_REFERENCE_SYNC", 5, false, true, null, CallerChecked,
             "Taken keys (any status) and OpenReadExistsAsync; inherits the triggering job's priority when there is one (then it may differ)."),
         new("ReferenceSnapshotBackfill.QueueMissingAsync", "TRENDYOL_REFERENCE_SYNC", 5, false, true, null, CallerChecked,
             "KeyTakenAsync then OpenReadExistsAsync; the key carries the day; a unique-violation catch absorbs races."),

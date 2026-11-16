@@ -3,22 +3,22 @@ using MarketplaceHub.Application;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // ISLEYICI-9 stage 3d step 1 (16 Nov 2026): the catalog attribute machinery the product import and the catalog structure
-// import share, moved out of the job processor as it was: the reference snapshots a read needs (read through the
-// processor's reference read, passed in as syncReferences so the service does not call back into the processor), the
+// import share, moved out of the job processor as it was: the reference snapshots a read needs (read through the run's
+// ReferenceSyncService, round 10 step 2; before that a delegate to the processor's reference read), the
 // category attribute contexts, the mapped categories, attributes and values, the web colour value mappings, the product
 // attribute assignments, and the option-key and catalog-key helpers. Mappings stay the user's: the machinery uses the
 // mappings the user made and the marketplace's own lists; it looks no brand or category up by name.
 internal sealed partial class CatalogAttributeService(
     AppDbContext db,
     TimeProvider timeProvider,
-    Func<Guid, Guid, string, string, CancellationToken, Task<bool>> syncReferences,
+    ReferenceSyncService referenceSync,
     JobRunContext run)
 {
     public JobRunContext Run => run;
 
-    // The processor's reference read (SyncReferences), handed in by the processor.
+    // The run's reference read.
     private Task<bool> SyncReferences(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken) =>
-        syncReferences(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        referenceSync.SyncReferences(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 
     internal static bool IsWebColorOptionKey(string value)
     {
