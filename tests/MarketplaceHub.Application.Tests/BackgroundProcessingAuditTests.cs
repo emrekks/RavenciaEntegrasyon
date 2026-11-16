@@ -434,10 +434,10 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Equal("order-invoices", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation));
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation));
-        Assert.True(MarketplaceJobProcessor.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Version)], MarketplaceJobProcessor.PackageInvoiceColumns));
-        Assert.False(MarketplaceJobProcessor.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Status)], MarketplaceJobProcessor.PackageInvoiceColumns));
-        Assert.True(MarketplaceJobProcessor.OnlyChanges([nameof(Order.CustomerSnapshotJson), nameof(Order.Version)], MarketplaceJobProcessor.OrderSnapshotColumns));
-        Assert.False(MarketplaceJobProcessor.OnlyChanges([nameof(Order.DerivedStatus)], MarketplaceJobProcessor.OrderSnapshotColumns));
+        Assert.True(InvoiceReconciliationService.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Version)], InvoiceReconciliationService.PackageInvoiceColumns));
+        Assert.False(InvoiceReconciliationService.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Status)], InvoiceReconciliationService.PackageInvoiceColumns));
+        Assert.True(InvoiceReconciliationService.OnlyChanges([nameof(Order.CustomerSnapshotJson), nameof(Order.Version)], InvoiceReconciliationService.OrderSnapshotColumns));
+        Assert.False(InvoiceReconciliationService.OnlyChanges([nameof(Order.DerivedStatus)], InvoiceReconciliationService.OrderSnapshotColumns));
     }
 
     [Fact]

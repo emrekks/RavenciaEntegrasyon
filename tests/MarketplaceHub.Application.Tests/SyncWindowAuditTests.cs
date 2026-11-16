@@ -236,11 +236,11 @@ public sealed class SyncWindowAuditTests
             (otherModel, "FK9999", "Renk: Bordo | Beden: S")
         };
 
-        Assert.Equal([listed], MarketplaceJobProcessor.PttAvmModelVariantsSeen(product, panel));
-        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OnSale, MarketplaceJobProcessor.PttAvmModelSaleState(product).State);
-        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OffSale, MarketplaceJobProcessor.PttAvmModelSaleState(PttModel(false, "Bordo", "S")).State);
+        Assert.Equal([listed], ListingVerificationService.PttAvmModelVariantsSeen(product, panel));
+        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OnSale, ListingVerificationService.PttAvmModelSaleState(product).State);
+        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OffSale, ListingVerificationService.PttAvmModelSaleState(PttModel(false, "Bordo", "S")).State);
         // A model that lists no values says nothing about its variants.
-        Assert.Empty(MarketplaceJobProcessor.PttAvmModelVariantsSeen(product with { Variants = [] }, panel));
+        Assert.Empty(ListingVerificationService.PttAvmModelVariantsSeen(product with { Variants = [] }, panel));
     }
 
     [Fact]

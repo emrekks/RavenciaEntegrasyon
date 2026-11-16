@@ -20,9 +20,6 @@ public sealed partial class MarketplaceJobProcessor
 
     private void NoteRefusedOrders(IReadOnlyList<AdapterPageIssue>? issues) => OrderIngestion.NoteRefusedOrders(issues);
 
-    private Task MergeMarketplaceInvoiceState(ShipmentPackage package, RemotePackage remotePackage, CancellationToken cancellationToken, string? discoverySource = null) =>
-        OrderIngestion.MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, discoverySource);
-
     internal Task<OrderIngestionService.OrderLineRematchOutcome> RematchUnmatchedOrderLines(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, int batchSize = OrderIngestionService.OrderLineRematchBatchSize) =>
         OrderIngestion.RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken, batchSize);
 

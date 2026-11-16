@@ -48,6 +48,23 @@ public sealed class MarketplaceCircuitBreakerHandlerTests
         Assert.True(local.Headers.RetryAfter?.Delta >= TimeSpan.FromSeconds(19));
     }
 
+    // ADAPTOR-TY-HB-7 (owner, 16 Nov 2026): a 429 naming no wait counts as a failure, as in Trendyol's circuit (it used
+    // to teach this circuit nothing): five in a row open it like five 5xx answers.
+    [Fact]
+    public async Task QuotaRejectionsWithoutRetryAfter_CountAsFailures()
+    {
+        var clock = new StepClock();
+        var downstream = new CountingHandler(HttpStatusCode.TooManyRequests);
+        using var client = new HttpClient(new MarketplaceCircuitBreakerHandler(new MarketplaceCircuitBreakerState(), clock) { InnerHandler = downstream });
+
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync("https://hb.test/packages/merchantid/1")).StatusCode);
+        var blocked = await client.GetAsync("https://hb.test/packages/merchantid/2");
+
+        Assert.Equal(5, downstream.Calls);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, blocked.StatusCode);
+    }
+
     [Fact]
     public void CircuitKey_UsesHostAndFirstTwoPathSegments()
     {
