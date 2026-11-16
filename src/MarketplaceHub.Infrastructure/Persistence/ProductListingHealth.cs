@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -29,8 +30,27 @@ internal static class ProductListingHealth
 
     // A product archived in the panel, or a listing archived on the marketplace, is not looked for there: its links
     // keep their old meaning and it never reads "Bulunamadı".
+    // KATALOG-10: written once as an expression over the link's health, the product's archive and the listing's archive
+    // (MarketplaceVariantLinkHealth.IsBrokenRule inlined); the products filter runs it in the database, the views compile
+    // it. Whether a profile status reads as archived (IsArchived: trimmed, any case) is decided by the caller: the views
+    // read the status here, the filter's database step asks for an enabled profile that is exactly ARCHIVED, as its
+    // in-memory reference always did.
+    public static readonly Expression<Func<string?, bool, bool, bool>> CountsAsMissingRule = BuildCountsAsMissingRule();
+    private static readonly Func<string?, bool, bool, bool> CountsAsMissingCompiled = CountsAsMissingRule.Compile();
+
+    private static Expression<Func<string?, bool, bool, bool>> BuildCountsAsMissingRule()
+    {
+        var health = Expression.Parameter(typeof(string), "linkHealthStatus");
+        var productArchived = Expression.Parameter(typeof(bool), "productArchived");
+        var profileArchived = Expression.Parameter(typeof(bool), "profileArchived");
+        var body = Expression.AndAlso(
+            PolicyExpressions.Inline(MarketplaceVariantLinkHealth.IsBrokenRule, health),
+            Expression.AndAlso(Expression.Not(productArchived), Expression.Not(profileArchived)));
+        return Expression.Lambda<Func<string?, bool, bool, bool>>(body, health, productArchived, profileArchived);
+    }
+
     public static bool CountsAsMissing(string? linkHealthStatus, bool productArchived, string? profileStatus) =>
-        MarketplaceVariantLinkHealth.IsBroken(linkHealthStatus) && !productArchived && !IsArchived(profileStatus);
+        CountsAsMissingCompiled(linkHealthStatus, productArchived, IsArchived(profileStatus));
 
     public static string Status(string? profileStatus, int matchedVariantCount, int missingVariantCount, int variantCount)
     {
@@ -70,16 +90,34 @@ internal static class ProductListingHealth
     ];
     public static bool IsUpdateInFlight(string? profileStatus) => profileStatus is not null && UpdateInFlightStatuses.Contains(profileStatus.Trim().ToUpperInvariant());
 
-    // The products list's platform filter over a family's variants on one marketplace.
-    public static bool MatchesFilter(string platformState, int variantCount, int matchedVariantCount, int missingVariantCount, int offSaleVariantCount = 0) => platformState switch
+    // The products list's platform filter over a family's variants on one marketplace. KATALOG-10: written once as an
+    // expression per state over the family's counts; the filter's database step runs it on its counts, the in-memory
+    // reference compiles it.
+    public static Expression<Func<PlatformStateCounts, bool>> MatchesFilterRule(string platformState) => platformState switch
     {
-        "ACTIVE" => variantCount > 0 && matchedVariantCount == variantCount,
-        "PARTIAL" => matchedVariantCount > 0 && matchedVariantCount < variantCount,
-        NotFound => matchedVariantCount == 0 && missingVariantCount > 0,
-        "PASSIVE" => matchedVariantCount == 0 && missingVariantCount == 0,
-        OffSale => offSaleVariantCount > 0,
-        _ => true
+        "ACTIVE" => counts => counts.VariantCount > 0 && counts.MatchedVariantCount == counts.VariantCount,
+        "PARTIAL" => counts => counts.MatchedVariantCount > 0 && counts.MatchedVariantCount < counts.VariantCount,
+        NotFound => counts => counts.MatchedVariantCount == 0 && counts.MissingVariantCount > 0,
+        "PASSIVE" => counts => counts.MatchedVariantCount == 0 && counts.MissingVariantCount == 0,
+        OffSale => counts => counts.OffSaleVariantCount > 0,
+        _ => counts => true
     };
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Func<PlatformStateCounts, bool>> MatchesFilterCompiled = new(StringComparer.Ordinal);
+
+    public static bool MatchesFilter(string platformState, int variantCount, int matchedVariantCount, int missingVariantCount, int offSaleVariantCount = 0) =>
+        MatchesFilterCompiled.GetOrAdd(platformState, state => MatchesFilterRule(state).Compile())(
+            new PlatformStateCounts { VariantCount = variantCount, MatchedVariantCount = matchedVariantCount, MissingVariantCount = missingVariantCount, OffSaleVariantCount = offSaleVariantCount });
+
     private static bool IsArchived(string? profileStatus) => string.Equals(profileStatus?.Trim(), "ARCHIVED", StringComparison.OrdinalIgnoreCase);
+}
+
+// A family's variants on one marketplace, counted for the products list's platform filter (ProductListingHealth.MatchesFilterRule).
+internal sealed class PlatformStateCounts
+{
+    public Guid FamilyKey { get; init; }
+    public int VariantCount { get; init; }
+    public int MatchedVariantCount { get; init; }
+    public int MissingVariantCount { get; init; }
+    public int OffSaleVariantCount { get; init; }
 }
