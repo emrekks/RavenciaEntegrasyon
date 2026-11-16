@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace MarketplaceHub.Application;
 
 /// <summary>
@@ -57,15 +55,5 @@ public static class InvoiceMarketplaceAutoDeliveryPolicy
         return null;
     }
 
-    public static bool ConnectionWritesEnabled(string? settingsJson)
-    {
-        if (string.IsNullOrWhiteSpace(settingsJson)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    public static bool ConnectionWritesEnabled(string? settingsJson) => ConnectionSettings.ExternalWritesEnabled(settingsJson);
 }

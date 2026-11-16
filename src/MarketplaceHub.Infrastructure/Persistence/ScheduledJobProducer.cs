@@ -998,15 +998,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         return StoredWritesEnabled(settingsJson);
     }
 
-    private static bool StoredWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    private static bool StoredWritesEnabled(string settingsJson) => ConnectionSettings.ExternalWritesEnabled(settingsJson);
 
     // Only the write switch is turned off: the connection's other settings (the invoice switch, the Trendyol
     // User-Agent, n11's shipment template) stay as the seller set them. Dropping InvoiceCreationEnabled would read
