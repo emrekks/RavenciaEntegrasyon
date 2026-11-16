@@ -11,7 +11,7 @@ import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 import { queryKeys } from '../../../shared/api/query-keys'
 
-// A brand as the picker holds it (picked from a slice or typed back from a saved mapping): the members it shows.
+// A picker row type, not an answer alias: a brand as the picker holds it (picked from a slice or typed back from a saved mapping).
 export type BrandReferenceItem = { externalId: string; name: string; isActive: boolean }
 // One slice of the connection's current brand snapshot: no items for the summary, the matches of a search or lookup.
 export type BrandReferenceSlice = ApiAnswer<'getReferenceDataBrandsSearch'>
