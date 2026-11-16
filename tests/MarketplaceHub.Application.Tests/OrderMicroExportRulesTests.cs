@@ -77,7 +77,10 @@ public sealed class OrderMicroExportRulesTests
     public async Task PostgreSQL_reads_the_patterns_as_the_rule_in_memory(int index)
     {
         var (json, micro) = Cases[index];
-        await using var connection = new Npgsql.NpgsqlConnection(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
+        // Only the server's regex engine is under test: the maintenance database answers it, so the test never waits for (or
+        // races) the creation of the test database.
+        var target = new Npgsql.NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")) { Database = "postgres" };
+        await using var connection = new Npgsql.NpgsqlConnection(target.ConnectionString);
         await connection.OpenAsync();
         await using var command = new Npgsql.NpgsqlCommand("SELECT @json ~ @flag OR @json ~ @type OR (@json ~ @pm3 AND @json ~ @arvato)", connection);
         command.Parameters.AddWithValue("json", json);
