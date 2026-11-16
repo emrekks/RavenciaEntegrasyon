@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.Extensions.Configuration;
@@ -23,22 +22,23 @@ internal static class ExternalWriteGate
 
     internal static bool GlobalWritesEnabled(IConfiguration configuration) => configuration.GetValue<bool>(GlobalFlag);
 
-    // The connection's switch: only a JSON true counts; unreadable settings keep writes off.
-    internal static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    // The connection's switch: only a JSON true counts; unreadable settings keep writes off. The one reader every layer
+    // uses (ConnectionSettings.ExternalWritesEnabled, ADAPTOR-DIGER-9).
+    internal static bool ConnectionWritesEnabled(string settingsJson) => ConnectionSettings.ExternalWritesEnabled(settingsJson);
+
+    // OWNER DECISION (ADAPTOR-DIGER-9), kept as it is: the ProductionWrite rule (n11, Pazarama, PTT AVM) lets a VERIFIED
+    // production connection write; the RuntimeWrite rule (Hepsiburada, Shopify) does not. Setting this to false makes
+    // the ProductionWrite rule take ACTIVE connections only, the same status rule as RuntimeWrite's automatic work.
+    // E-Faturam's own rule (TrendyolEFaturamHttpClient.CanWrite: a manual STAGE send, or PRODUCTION with both switches)
+    // is the other owner decision and stays in that client.
+    internal const bool ProductionRuleWritesOnVerifiedConnections = true;
 
     internal static bool AllowsProductionWrite(PlatformConnection connection, bool globalWritesEnabled) =>
         globalWritesEnabled
         && ConnectionWritesEnabled(connection.SettingsJson)
         && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-        && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase)
+            || ProductionRuleWritesOnVerifiedConnections && string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
 
     internal static bool AllowsRuntimeWrite(PlatformConnection connection, AdapterContext context, bool globalWritesEnabled) =>
         IntegrationRuntimePolicy.AllowsExternalWrite(connection, context, globalWritesEnabled, ConnectionWritesEnabled(connection.SettingsJson));

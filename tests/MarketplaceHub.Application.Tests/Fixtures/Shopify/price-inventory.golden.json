@@ -1,0 +1,46 @@
+{
+  "ExternalOperationId": "shopify-completed:W3siRXh0ZXJuYWxLZXkiOiJCQy0xIiwiU3VjY2VlZGVkIjp0cnVlLCJFeHRlcm5hbElkIjoiZ2lkOi8vc2hvcGlmeS9Qcm9kdWN0VmFyaWFudC80NDc5MSIsIkVycm9yQ29kZSI6bnVsbCwiUmV0cnlhYmxlIjpmYWxzZSwiU3RhdHVzIjoiQ09NUExFVEVEIiwiUmVhc29ucyI6bnVsbH0seyJFeHRlcm5hbEtleSI6IkJDLTIiLCJTdWNjZWVkZWQiOmZhbHNlLCJFeHRlcm5hbElkIjpudWxsLCJFcnJvckNvZGUiOiJTSE9QSUZZX1ZBUklBTlRfTk9UX0ZPVU5EIiwiUmV0cnlhYmxlIjpmYWxzZSwiU3RhdHVzIjoiUkVKRUNURUQiLCJSZWFzb25zIjpudWxsfSx7IkV4dGVybmFsS2V5IjoiQkMtMyIsIlN1Y2NlZWRlZCI6ZmFsc2UsIkV4dGVybmFsSWQiOm51bGwsIkVycm9yQ29kZSI6IlNIT1BJRllfSU5WRU5UT1JZX05PVF9UUkFDS0VEIiwiUmV0cnlhYmxlIjpmYWxzZSwiU3RhdHVzIjoiUkVKRUNURUQiLCJSZWFzb25zIjpudWxsfSx7IkV4dGVybmFsS2V5IjoiQkMtNCIsIlN1Y2NlZWRlZCI6ZmFsc2UsIkV4dGVybmFsSWQiOm51bGwsIkVycm9yQ29kZSI6IlNIT1BJRllfSU5WRU5UT1JZX1JFSkVDVEVEIiwiUmV0cnlhYmxlIjpmYWxzZSwiU3RhdHVzIjoiVGhlIHNwZWNpZmllZCBjb21wYXJlIHF1YW50aXR5IGRvZXMgbm90IG1hdGNoIHRoZSBjdXJyZW50IHF1YW50aXR5LiIsIlJlYXNvbnMiOm51bGx9XQ==",
+  "Status": "COMPLETED",
+  "Lines": [
+    {
+      "ExternalKey": "BC-1",
+      "Succeeded": true,
+      "ExternalId": "gid://shopify/ProductVariant/44791",
+      "ErrorCode": null,
+      "Retryable": false,
+      "Status": "COMPLETED",
+      "Reasons": null
+    },
+    {
+      "ExternalKey": "BC-2",
+      "Succeeded": false,
+      "ExternalId": null,
+      "ErrorCode": "SHOPIFY_VARIANT_NOT_FOUND",
+      "Retryable": false,
+      "Status": "REJECTED",
+      "Reasons": null
+    },
+    {
+      "ExternalKey": "BC-3",
+      "Succeeded": false,
+      "ExternalId": null,
+      "ErrorCode": "SHOPIFY_INVENTORY_NOT_TRACKED",
+      "Retryable": false,
+      "Status": "REJECTED",
+      "Reasons": null
+    },
+    {
+      "ExternalKey": "BC-4",
+      "Succeeded": false,
+      "ExternalId": null,
+      "ErrorCode": "SHOPIFY_INVENTORY_REJECTED",
+      "Retryable": false,
+      "Status": "The specified compare quantity does not match the current quantity.",
+      "Reasons": null
+    }
+  ],
+  "UnlistedLinesUnconfirmed": false,
+  "IssueCode": null,
+  "IssueSummary": null,
+  "ReportedItemCount": null
+}

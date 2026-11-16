@@ -1027,12 +1027,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
     private bool WritesEnabled(string settingsJson)
     {
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
+        return MarketplaceHub.Application.ConnectionSettings.ExternalWritesEnabled(settingsJson);
     }
     private static string Mask(string value) => value.Length <= 4 ? "****" : $"****{value[^4..]}";
     private static string N11InvalidCharacters(string field) => $"N11 {field} değerinde geçersiz karakter var. Değeri N11 satıcı panelindeki Hesabım → API Hesapları ekranından yeniden kopyalayın; yalnız harf, rakam ve işaretler kullanılabilir.";

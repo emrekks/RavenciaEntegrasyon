@@ -172,7 +172,7 @@ public sealed partial class N11HttpClient(
         }
         var response = exchange.Response!;
         var body = exchange.Body;
-        var retryAfter = RetryAfterHeader.Unchecked(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+        var retryAfter = RetryAfterHeader.ForN11PazaramaPttAvmShopify(response.Headers.RetryAfter, timeProvider.GetUtcNow());
         var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
         if (!response.IsSuccessStatusCode)
         {
@@ -201,18 +201,15 @@ public sealed partial class N11HttpClient(
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
     {
         var remote = RemoteMessage(body) is { } remoteText ? N11ErrorAdvice.WithAdvice(remoteText) : null;
-        // A 403 HTML page is the security gateway, as on every marketplace (MarketplaceErrorRules).
-        if (MarketplaceErrorRules.GatewayBlocked(status, body, "N11", "N11") is { } gatewayBlock) return gatewayBlock;
-        return status switch
-        {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null),
-            HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
-            HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "N11_NOT_FOUND", remote is null ? "N11 istenen kaydı bulamadı." : $"N11 kaydı bulamadı: {remote}", (int)status, null, null),
-            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "N11_REMOTE_TIMEOUT", "N11 isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), null),
-            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "N11_CONFLICT", remote is null ? "N11 isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"N11 isteği reddetti: {remote}", (int)status, null, null),
-            >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR", "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
-            _ => new(AdapterErrorClass.Validation, "N11_REQUEST_REJECTED", remote is null ? "N11 isteği reddetti." : $"N11 isteği reddetti: {remote}", (int)status, null, null)
-        };
+        // The shared status table (MarketplaceErrorRules.FromStatus), n11's words; a 403 HTML page is the gateway block.
+        return MarketplaceErrorRules.FromStatus("N11", "N11", status, body, retryAfter, new(
+            CredentialsRejected: "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.",
+            RateLimited: "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.",
+            NotFound: remote is null ? "N11 istenen kaydı bulamadı." : $"N11 kaydı bulamadı: {remote}",
+            RemoteTimeout: "N11 isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.",
+            Conflict: remote is null ? "N11 isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"N11 isteği reddetti: {remote}",
+            RemoteError: "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.",
+            RequestRejected: remote is null ? "N11 isteği reddetti." : $"N11 isteği reddetti: {remote}"));
     }
 
     // n11 reports errors as message/errorMessage fields or a reasons list.

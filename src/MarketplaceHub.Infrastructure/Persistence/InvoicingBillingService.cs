@@ -2041,11 +2041,7 @@ public sealed partial class InvoicingBillingService(
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         return connection is not null && IntegrationRuntimePolicy.AllowsManualRead(connection);
     }
-    private static bool ConnectionWritesEnabled(string settings)
-    {
-        try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; }
-        catch (JsonException) { return false; }
-    }
+    private static bool ConnectionWritesEnabled(string settings) => ConnectionSettings.ExternalWritesEnabled(settings);
     private InvoicePartySnapshot Snapshot(Invoice invoice, string role, string content, DateTimeOffset now) => new() { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, InvoiceId = invoice.Id, Role = role, ProtectedContent = _partyProtector.Protect(content), ContentHash = Hash(content), CreatedAt = now };
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private static bool Unapproved(string value) => value is "UNKNOWN" or "UNAPPROVED";

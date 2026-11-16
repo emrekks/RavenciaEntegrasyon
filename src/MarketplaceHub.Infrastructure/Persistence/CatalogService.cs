@@ -2774,8 +2774,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private bool WritesEnabled(string settingsJson)
     {
         if (!configuration.GetValue<bool>("FeatureFlags:ExternalWrites")) return false;
-        try { using var document = JsonDocument.Parse(settingsJson); return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True; }
-        catch (JsonException) { return false; }
+        return ConnectionSettings.ExternalWritesEnabled(settingsJson);
     }
 
     private static string? ExternalOperationIdOf(string payloadJson)

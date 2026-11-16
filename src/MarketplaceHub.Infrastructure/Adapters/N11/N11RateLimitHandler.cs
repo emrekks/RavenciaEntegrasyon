@@ -17,7 +17,7 @@ public sealed class N11RateLimitHandler(
     // A request can name a stricter bucket than its path family (e.g. the 1/min question list).
     public static readonly HttpRequestOptionsKey<string> BucketKey = new("MarketplaceHub.N11.RateBucket");
     // SOAP calls carry the account inside the envelope, so the client names it here.
-    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = new("MarketplaceHub.N11.Account");
+    public static readonly HttpRequestOptionsKey<string> AccountKeyOption = Http.MarketplaceQuota.AccountKey;
     // Invoked once the request has its quota token, right before it is sent; the caller starts the request
     // timeout there, so time spent waiting for the quota is not counted as a timeout.
     public static readonly HttpRequestOptionsKey<Action> QuotaAcquiredKey = Http.MarketplaceQuota.AcquiredKey;

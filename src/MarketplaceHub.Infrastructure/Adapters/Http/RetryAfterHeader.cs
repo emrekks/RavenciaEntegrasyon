@@ -19,4 +19,12 @@ internal static class RetryAfterHeader
     // JobExecutionResult bounds later). Kept apart from Delay until the owner decides to unify them (ADAPTOR-TY-HB-7).
     internal static TimeSpan? Unchecked(RetryConditionHeaderValue? header, DateTimeOffset now) =>
         header?.Delta ?? (header?.Date is { } date ? date - now : null);
+
+    // OWNER DECISION (ADAPTOR-TY-HB-7), kept as it is: n11, Pazarama, PTT AVM and Shopify read the header unchecked.
+    // False would read theirs as Delay does (no wait for zero or a past date), the same as Trendyol and Hepsiburada.
+    internal const bool N11PazaramaPttAvmShopifyReadUnchecked = true;
+
+    // The reading those four adapters use; their clients call this, never Unchecked or Delay directly.
+    internal static TimeSpan? ForN11PazaramaPttAvmShopify(RetryConditionHeaderValue? header, DateTimeOffset now) =>
+        N11PazaramaPttAvmShopifyReadUnchecked ? Unchecked(header, now) : Delay(header, now);
 }

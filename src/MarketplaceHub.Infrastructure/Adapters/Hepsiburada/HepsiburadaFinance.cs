@@ -69,14 +69,12 @@ public static class HepsiburadaFinanceMapper
         return new(items, count, skipped);
     }
 
-    // Kept local on purpose: the finance amount is a {value, currencyCode} object whose value is read as a JSON number
-    // only. RemoteFields.Decimal would also read a dot-decimal text value, which this service has never been read with.
-    private static (decimal? Value, string? Currency) Money(JsonElement item, string name)
-    {
-        if (!item.TryGetProperty(name, out var money) || money.ValueKind != JsonValueKind.Object) return (null, null);
-        decimal? value = money.TryGetProperty("value", out var number) && number.ValueKind == JsonValueKind.Number && number.TryGetDecimal(out var parsed) ? parsed : null;
-        return (value, Text(money, "currencyCode"));
-    }
+    // The finance amount is a {value, currencyCode} object whose value is read as a JSON number only
+    // (RemoteFields.JsonNumber); a text value has never been read from this service.
+    private static (decimal? Value, string? Currency) Money(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var money) && money.ValueKind == JsonValueKind.Object
+            ? (JsonNumber(money, "value"), Text(money, "currencyCode"))
+            : (null, null);
 
     // Hepsiburada writes Istanbul local times: a time without an offset is Istanbul's, one with Z or an offset keeps it
     // (TurkeyTime, the policy of every Hepsiburada text timestamp; it replaced the old "a '-' after index 9" guess).

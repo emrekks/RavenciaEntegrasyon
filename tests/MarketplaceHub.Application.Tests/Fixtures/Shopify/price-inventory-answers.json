@@ -1,0 +1,16 @@
+// Synthetic: the Admin GraphQL answers a price-stock send gets, in the order it asks (ShopifyHttpClient
+// .PushPriceAndInventoryAsync): productVariant(id) / productVariants(query:barcode) with inventoryItem{tracked
+// inventoryLevels{location{isActive} quantities(names:["available"])}}, productVariantsBulkUpdate{userErrors} and
+// inventorySetQuantities{userErrors}. Lines: BC-1 applied, BC-2 not found by barcode, BC-3 not tracked, BC-4 stock refused.
+// No live data: see README.md.
+{
+  "answers": [
+    { "data": { "productVariant": { "id": "gid://shopify/ProductVariant/44791", "product": { "id": "gid://shopify/Product/801" }, "inventoryItem": { "id": "gid://shopify/InventoryItem/901", "tracked": true, "inventoryLevels": { "nodes": [ { "location": { "id": "gid://shopify/Location/1", "isActive": true }, "quantities": [ { "name": "available", "quantity": 5 } ] }, { "location": { "id": "gid://shopify/Location/2", "isActive": false }, "quantities": [ { "name": "available", "quantity": 0 } ] } ], "pageInfo": { "hasNextPage": false } } } } } },
+    { "data": { "productVariantsBulkUpdate": { "userErrors": [] } } },
+    { "data": { "inventorySetQuantities": { "userErrors": [] } } },
+    { "data": { "productVariants": { "nodes": [] } } },
+    { "data": { "productVariant": { "id": "gid://shopify/ProductVariant/44793", "product": { "id": "gid://shopify/Product/803" }, "inventoryItem": { "id": "gid://shopify/InventoryItem/903", "tracked": false, "inventoryLevels": { "nodes": [], "pageInfo": { "hasNextPage": false } } } } } },
+    { "data": { "productVariant": { "id": "gid://shopify/ProductVariant/44794", "product": { "id": "gid://shopify/Product/804" }, "inventoryItem": { "id": "gid://shopify/InventoryItem/904", "tracked": true, "inventoryLevels": { "nodes": [ { "location": { "id": "gid://shopify/Location/1", "isActive": true }, "quantities": [ { "name": "available", "quantity": 2 } ] } ], "pageInfo": { "hasNextPage": false } } } } } },
+    { "data": { "inventorySetQuantities": { "userErrors": [ { "field": ["input", "quantities", "0", "changeFromQuantity"], "message": "The specified compare quantity does not match the current quantity." } ] } } }
+  ]
+}

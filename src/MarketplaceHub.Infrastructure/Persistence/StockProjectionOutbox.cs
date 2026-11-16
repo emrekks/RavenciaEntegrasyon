@@ -76,15 +76,5 @@ internal static class StockProjectionOutbox
         }
     }
 
-    internal static bool StoredExternalWritesEnabled(string? settingsJson)
-    {
-        if (string.IsNullOrWhiteSpace(settingsJson)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool StoredExternalWritesEnabled(string? settingsJson) => ConnectionSettings.ExternalWritesEnabled(settingsJson);
 }

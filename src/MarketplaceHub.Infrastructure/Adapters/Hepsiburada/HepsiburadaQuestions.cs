@@ -185,9 +185,9 @@ internal static class HepsiburadaQuestionMapper
     }
     public static string ToRemoteStatus(string status) => status switch { "WAITING_FOR_ANSWER" => "1", "ANSWERED" => "2", "REJECTED" => "3", "EXPIRED" => "4", _ => status };
     private static JsonElement Property(JsonElement item, string name) => RemoteFields.TryFindIgnoringCase(item, out var value, name) ? value : default;
-    // Kept local, not RemoteFields.Text: a name whose value is of another kind (null, object) gives way to the next name,
-    // text is returned untrimmed and true/false read as text, as the question fixtures have it.
-    private static string? Text(JsonElement item, params string[] names) { foreach (var name in names) { var value = Property(item, name); if (value.ValueKind == JsonValueKind.String) return value.GetString(); if (value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return value.ToString(); } return null; }
+    // A name whose value is of another kind (null, object) gives way to the next name; text untrimmed, true/false as
+    // text (RemoteFields.FirstTextIgnoringCase), as the question fixtures have it.
+    private static string? Text(JsonElement item, params string[] names) => RemoteFields.FirstTextIgnoringCase(item, names);
     // A text date is Istanbul time unless it carries an offset (TurkeyTime); a number is an epoch whose unit is guessed.
     private static DateTimeOffset? Date(JsonElement item, params string[] names)
     {

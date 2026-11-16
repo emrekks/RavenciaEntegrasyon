@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Imports;
@@ -13,7 +14,7 @@ public static partial class TrendyolAdReportParser
 {
     private const int MaximumWarnings = 20;
     private const int MaximumCampaigns = 5000;
-    private static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+    private static readonly TimeSpan TurkeyOffset = TurkeyClock.Offset;
 
     public static ParsedAdReport Parse(XlsxTable table)
     {

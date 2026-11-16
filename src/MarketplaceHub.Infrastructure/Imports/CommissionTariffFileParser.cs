@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Imports;
@@ -14,7 +15,7 @@ public sealed record ParsedCommissionTariffFile(IReadOnlyList<ParsedCommissionTa
 // read is skipped with a warning, never guessed.
 public static partial class CommissionTariffFileParser
 {
-    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan TurkeyOffset = TurkeyClock.Offset;
     private const int MaximumWarnings = 20;
 
     private enum Column { ProductName, Barcode, SellerSku, Size, ModelCode, Tier1Min, Tier2Max, Tier2Min, Tier3Max, Tier3Min, Tier4Max, Period, Rate1, Rate2, Rate3, Rate4, BasisPrice, CurrentRate, CurrentSalePrice, TariffGroup, Category, Brand, Stock }
