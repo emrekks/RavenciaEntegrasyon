@@ -315,10 +315,14 @@ public sealed partial class MarketplaceSalesService
 
     // Units of each line already in a live package of the order: cancelled and superseded
     // packages (split parents, resent originals) hold none.
-    private async Task<Dictionary<Guid, decimal>> ActiveAllocatedQuantitiesAsync(Guid tenantId, Guid[] orderLineIds, CancellationToken cancellationToken)
+    private Task<Dictionary<Guid, decimal>> ActiveAllocatedQuantitiesAsync(Guid tenantId, Guid[] orderLineIds, CancellationToken cancellationToken) =>
+        ActiveAllocatedQuantitiesAsync(db, tenantId, orderLineIds, cancellationToken);
+
+    // Also read by the order detail (OrderQueryService).
+    internal static async Task<Dictionary<Guid, decimal>> ActiveAllocatedQuantitiesAsync(AppDbContext db, Guid tenantId, Guid[] orderLineIds, CancellationToken cancellationToken)
     {
         if (orderLineIds.Length == 0) return [];
-        var livePackages = CurrentShipmentPackages().Where(package => package.TenantId == tenantId && package.Status != ShipmentPackageStatus.Cancelled);
+        var livePackages = CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId && package.Status != ShipmentPackageStatus.Cancelled);
         var rows = await db.PackageLineAllocations.AsNoTracking()
             .Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.OrderLineId) && livePackages.Any(package => package.Id == x.PackageId))
             .Select(x => new PackageLineAllocationRow(x.PackageId, x.OrderLineId, x.SourceEventId, x.AllocatedQuantity, x.CancelledQuantity))

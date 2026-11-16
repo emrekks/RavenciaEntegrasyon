@@ -4,10 +4,11 @@ using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
+using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed partial class MarketplaceSalesService
+internal sealed partial class OrderQueryService
 {
     // A micro-export order as the row's flag reads it (RowMarks): Trendyol's micro = true in the package snapshot.
     private Expression<Func<Order, bool>> MicroExportOrder() => x =>
@@ -88,7 +89,7 @@ public sealed partial class MarketplaceSalesService
 
     internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);
 
-    private const string LikeEscape = "\\";
+    internal const string LikeEscape = "\\";
 
     // "%term%" for ILIKE as typed, and Turkish-folded (TurkishSearchText.Fold) for a column folded the
     // same way (TurkishSearchText.FoldedILike), with the LIKE wildcards of the term escaped (a "%" in
