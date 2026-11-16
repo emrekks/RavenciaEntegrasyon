@@ -201,6 +201,9 @@ internal sealed class GoldenMarketplace : IOrderPort, IOrderPackageReadPort, IRe
         if (context.IsAutomaticInvoiceMarketplaceDelivery) flags.Add("autoInvoiceDelivery");
         if (context.IsExplicitManualInvoiceDelivery) flags.Add("manualInvoiceDelivery");
         if (context.IsExchangeInvoiceResend) flags.Add("exchangeResend");
+        // A return decision names its lines in the order of their panel ids, which the claim's read made in the same
+        // millisecond (random within it): the line set is pinned, not that order.
+        args = [.. args.Select(arg => arg is ReturnActionCommand command ? command with { ExternalLineItemIds = [.. command.ExternalLineItemIds.Order(StringComparer.Ordinal)] } : arg)];
         var arguments = string.Join(" ", args.Select(JobGolden.Json));
         Calls.Add($"{method} key={context.IdempotencyKey}{(flags.Count == 0 ? "" : " " + string.Join(" ", flags))} {arguments}".TrimEnd());
         return Task.FromResult(Answers.TryGetValue(method, out var answer)
