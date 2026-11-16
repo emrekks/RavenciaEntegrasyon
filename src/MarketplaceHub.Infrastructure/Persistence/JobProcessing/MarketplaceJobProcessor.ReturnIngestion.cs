@@ -19,15 +19,10 @@ public sealed partial class MarketplaceJobProcessor
             // The oldest cursors were a bare page number (a number is not a state object, so it is read first).
             if (int.TryParse(cursor.OpaqueCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var oldPage))
                 return InitialReturnWindow(now) with { Page = oldPage };
-            try
-            {
-                var state = JsonSerializer.Deserialize<ReturnSyncState>(cursor.OpaqueCursor);
-                if (state is { Version: ReturnSyncStateVersion, StoreFrontIndex: >= 0, Page: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.ReturnCodes.Length)
-                    return state.PageCursor is { } pageCursor && (string.IsNullOrWhiteSpace(pageCursor) || pageCursor.Length > MaximumReturnPageCursorLength)
-                        ? state with { PageCursor = null }
-                        : state;
-            }
-            catch (JsonException) { }
+            if (ResumableCursor.Read<ReturnSyncState>(cursor.OpaqueCursor, state => state is { Version: ReturnSyncStateVersion, StoreFrontIndex: >= 0, Page: >= 0 } && state.StoreFrontIndex < TrendyolReadStorefronts.ReturnCodes.Length) is { } state)
+                return state.PageCursor is { } pageCursor && (string.IsNullOrWhiteSpace(pageCursor) || pageCursor.Length > MaximumReturnPageCursorLength)
+                    ? state with { PageCursor = null }
+                    : state;
         }
         var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt;
         return watermark is null
@@ -35,7 +30,7 @@ public sealed partial class MarketplaceJobProcessor
             : new(ReturnSyncStateVersion, 0, 0, false, watermark.Value.Subtract(overlap), now);
     }
 
-    internal static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
+    internal static string SerializeReturnSyncState(ReturnSyncState state) => ResumableCursor.Serialize(state);
     private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
 
     // The claim the seller marked received (MarkReturnReceivedAsync: Aksiyon Bekliyor, raw RECEIVED_BY_SELLER) while the
@@ -57,8 +52,8 @@ public sealed partial class MarketplaceJobProcessor
         if (lineStatusOverrides && target == ReturnClaimStatus.ActionRequired) remote = remote with { RawStatus = "WaitingInAction" };
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
-            if (!await RemoveCancelledReturnClaim(tenantId, connectionId, remote, cancellationToken)) telemetrySkippedCount++;
-            readReturnSkipReason = "Pazaryerinde kapanmış veya iptal edilmiş talep; panelde tutulmaz.";
+            if (!await RemoveCancelledReturnClaim(tenantId, connectionId, remote, cancellationToken)) run.SkippedCount++;
+            run.ReadReturnSkipReason = "Pazaryerinde kapanmış veya iptal edilmiş talep; panelde tutulmaz.";
             return;
         }
 
@@ -69,10 +64,7 @@ public sealed partial class MarketplaceJobProcessor
             // outside the order API history window. Reconstruct a minimal
             // local read model from the platform's own claim contract rather
             // than issuing a doomed remote lookup per claim.
-            var platformCode = await db.PlatformConnections.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-                .Select(x => x.PlatformCode)
-                .SingleOrDefaultAsync(cancellationToken);
+            var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
             // Only Trendyol and Hepsiburada claims carry the order lines; an
             // n11/Pazarama claim would build a Trendyol-shaped empty order that
             // is never filled, so those are reported below and skipped.
@@ -95,7 +87,7 @@ public sealed partial class MarketplaceJobProcessor
         {
             await RecordIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", "RETURN_ORDER_NOT_FOUND", "Return claim yerel order ile eşleşmedi; sessiz kayıt oluşturulmadı.", cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            readReturnFailReason = "Bağlı sipariş panelde bulunamadı; talep kaydedilmedi.";
+            run.ReadReturnFailReason = "Bağlı sipariş panelde bulunamadı; talep kaydedilmedi.";
             return;
         }
         // A previous scan may have reconstructed the order after recording the
@@ -108,7 +100,7 @@ public sealed partial class MarketplaceJobProcessor
         // Freshness is decided once for the whole read: an older snapshot than the one stored changes neither the
         // claim's status, its lines, its open decisions nor a pending "Stoğa Ekle"; only non-empty cargo facts merge.
         var remoteIsFresh = claim is null || !IsStaleReturnObservation(claim.LastRemoteModifiedAt, remote.LastModifiedAt);
-        if (claim is null) { claim = NewReturnClaim(tenantId, connectionId, order.Id, remote, target, now); db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
+        if (claim is null) { claim = NewReturnClaim(tenantId, connectionId, order.Id, remote, target, now); db.ReturnClaims.Add(claim); run.InsertedCount++; }
         else
         {
             var claimChanged = false;
@@ -118,7 +110,7 @@ public sealed partial class MarketplaceJobProcessor
             // claim (Shopify, Hepsiburada; ReturnDecisionScope): it never reports a line apart, so the claim follows what
             // the marketplace says on the next read instead of waiting forever (report item 8).
             var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal) && !allLinesKnown
-                && !ReturnDecisionScope.IsWholeClaim(await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken));
+                && !ReturnDecisionScope.IsWholeClaim(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken));
             if (remoteIsFresh && !partialLineDecisionPending && (lineStatusOverrides || ReturnClaimStateMachine.CanTransition(claim.Status, target)))
             {
                 // CanTransition allows staying in the same status; a read that brings the same status, raw status and
@@ -184,7 +176,7 @@ public sealed partial class MarketplaceJobProcessor
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
             if (remote.ResolvedWith is { } resolvedWith && !string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal)) { claim.ResolvedWith = resolvedWith; claimChanged = true; }
-            if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
+            if (claimChanged) { claim.UpdatedAt = now; claim.Version++; run.UpdatedCount++; }
         }
         if (!remoteIsFresh)
         {

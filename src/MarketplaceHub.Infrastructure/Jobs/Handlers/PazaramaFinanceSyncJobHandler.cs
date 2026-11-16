@@ -173,32 +173,16 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
 
     internal static string FailureKey(Guid connectionId) => $"pazarama-finance:{connectionId:N}";
 
-    private async Task UpsertIssueAsync(Guid tenantId, string key, string summary, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key, cancellationToken);
-        if (issue is null)
-        {
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = FailureCode, Summary = Short(summary, 1000)!, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
-            return;
-        }
-        issue.Code = FailureCode;
-        issue.Summary = Short(summary, 1000)!;
-        issue.Status = IssueStatus.Open;
-        issue.LastSeenAt = now;
-        issue.OccurrenceCount++;
-    }
+    // ISLEYICI-12 point 5: issues go through the shared IssueRecorder, as before cut to 1,000 characters, a resolve
+    // stamping ResolvedAt and LastSeenAt.
+    private Task UpsertIssueAsync(Guid tenantId, string key, string summary, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).RecordAsync(tenantId, key, FailureCode, Short(summary, 1000)!, now, cancellationToken);
 
-    private async Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key && item.Status != IssueStatus.Resolved, cancellationToken);
-        if (issue is null) return;
-        issue.Status = IssueStatus.Resolved;
-        issue.LastSeenAt = now;
-        issue.ResolvedAt = now;
-    }
+    private Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).ResolveAsync(tenantId, key, now, cancellationToken, IssueResolveStamps.ResolvedAt | IssueResolveStamps.LastSeenAt);
 
     private int Setting(string name, int fallback, int minimum, int maximum) =>
         Math.Clamp(configuration.GetValue($"MarketplaceSync:PazaramaFinance:{name}", fallback), minimum, maximum);
 
-    private static string? Short(string? value, int length) => value is null || value.Length <= length ? value : value[..length];
+    private static string? Short(string? value, int length) => TextValues.Truncate(value, length);
 }

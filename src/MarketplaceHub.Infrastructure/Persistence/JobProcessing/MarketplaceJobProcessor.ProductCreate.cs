@@ -44,7 +44,7 @@ public sealed partial class MarketplaceJobProcessor
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductCreate, cancellationToken);
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.ProfileId && x.ProductId == payload.ProductId && x.ConnectionId == connectionId, cancellationToken);
         if (job is null || profile is null) return JobExecutionResult.Blocked("PRODUCT_PUBLICATION_STATE_MISSING", "Yayın işi veya listing profile bulunamadı.");
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
 
         if (string.Equals(payload.Phase, "SUBMIT", StringComparison.OrdinalIgnoreCase))
         {
@@ -345,7 +345,7 @@ public sealed partial class MarketplaceJobProcessor
 
         // Pazarama lists every product's approval state on two lists: one walk of them answers all of the connection's
         // waiting cards at once, instead of each card's job asking per barcode.
-        var connectionPlatform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var connectionPlatform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (string.Equals(connectionPlatform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && products is IProductApprovalSnapshotPort snapshotPort)
             return await ReconcileConnectionApprovals(tenantId, connectionId, payload, correlationId, snapshotPort, cancellationToken);
         return await ReconcileProductApprovalCore(tenantId, connectionId, payload, correlationId, null, cancellationToken);
@@ -358,7 +358,7 @@ public sealed partial class MarketplaceJobProcessor
         var job = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.JobId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile, cancellationToken);
         var profile = await db.ChannelListingProfiles.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == payload.ProfileId && x.ProductId == payload.ProductId && x.ConnectionId == connectionId, cancellationToken);
         if (job is null || profile is null) return JobExecutionResult.Blocked("PRODUCT_APPROVAL_STATE_MISSING", "Onay uzlaştırma işi veya listing profile bulunamadı.");
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         // n11 follows the same status-query flow, keyed by stock code (the listing SKU)
         // instead of barcode; an approved stock code becomes the variant's n11 link.
         var isN11 = string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);

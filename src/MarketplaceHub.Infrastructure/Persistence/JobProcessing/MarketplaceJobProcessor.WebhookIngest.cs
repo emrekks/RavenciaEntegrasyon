@@ -15,7 +15,7 @@ public sealed partial class MarketplaceJobProcessor
         try { using var payload = JsonDocument.Parse(payloadJson); raw = payload.RootElement.GetProperty("rawJson").GetString() ?? ""; externalMessageId = payload.RootElement.GetProperty("externalMessageId").GetString() ?? ""; resourceType = payload.RootElement.TryGetProperty("resourceType", out var type) ? type.GetString() ?? "" : ""; }
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or InvalidOperationException) { throw WebhookUnreadable(); }
 
-        var platform = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var source = $"{platform}_WEBHOOK";
         if (platform == "HEPSIBURADA")
         {

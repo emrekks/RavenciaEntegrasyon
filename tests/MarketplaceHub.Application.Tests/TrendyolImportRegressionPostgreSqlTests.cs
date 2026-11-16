@@ -907,6 +907,50 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(watermark, cursor.LastModifiedWatermark);
     }
 
+    // ISLEYICI-1 retry (16 Nov 2026): the failed model is listed for a retry and gets a single-product import job of its
+    // own half an hour later; that job, once the model stores, takes it off the list and resolves its issue.
+    [PostgreSqlFact]
+    public async Task AFailedModel_IsReadAgainByItsOwnJob_AndItsIssueResolvesWhenItStores()
+    {
+        var seed = await SeedAsync();
+        var failing = new ConflictOnCardTitled("Haki");
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK" }]));
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider))
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        IntegrationJob retryJob;
+        await using (var check = fixture.CreateContext())
+        {
+            var retries = await check.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == ProductImportRetryPolicy.CursorResource);
+            var entry = Assert.Single(ProductImportRetryPolicy.Parse(retries.OpaqueCursor));
+            Assert.Equal("MZ999HK", entry.LookupKey);
+            retryJob = await check.IntegrationJobs.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.JobDedupKey == ProductImportRetryPolicy.JobDedupKey(seed.ConnectionId, "MZ999HK", 0));
+            Assert.Equal(MarketplaceJobTypes.ProductSync, retryJob.JobType);
+            Assert.Contains("\"productLookup\":\"MZ999HK\"", retryJob.PayloadJson, StringComparison.Ordinal);
+            Assert.Contains("\"importRetry\":true", retryJob.PayloadJson, StringComparison.Ordinal);
+            Assert.True(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED" && row.Status == IssueStatus.Open));
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, retryJob.PayloadJson, $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None, retryJob.Id);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using (var check = fixture.CreateContext())
+        {
+            var retries = await check.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == ProductImportRetryPolicy.CursorResource);
+            Assert.Null(retries.OpaqueCursor);
+            Assert.False(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED" && row.Status == IssueStatus.Open));
+            Assert.Equal(2, (await CardsAsync(check, seed)).Count);
+        }
+    }
+
     // ISLEYICI-1: the products a run filters out (here a content whose every size is archived) no longer count towards
     // "not all failed": a run whose only processed model failed is not a success.
     [PostgreSqlFact]

@@ -126,7 +126,7 @@ public sealed partial class MarketplaceJobProcessor
         package.MarketplaceInvoiceObservedAt = observedAt;
         package.UpdatedAt = timeProvider.GetUtcNow();
         package.Version++;
-        telemetryUpdatedCount++;
+        run.UpdatedCount++;
 
         // New invoices belong to the order rather than one shipment package.
         // Include those alongside legacy package-scoped invoices, and fail

@@ -171,8 +171,7 @@ public sealed partial class MarketplaceJobProcessor
                 full,
                 full ? null : HepsiburadaReturnHistoryPolicy.IncrementalStatusChangeStart(lastSuccessfulChange, overlap, now),
                 now);
-            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-            cursor.Version++;
+            ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
         }
         while (!cancellationToken.IsCancellationRequested)
@@ -251,37 +250,21 @@ public sealed partial class MarketplaceJobProcessor
                 break;
             }
 
-            cursor.OpaqueCursor = JsonSerializer.Serialize(state);
-            cursor.Version++;
+            ResumableCursor.Save(cursor, state);
             await db.SaveChangesAsync(cancellationToken);
         }
         return true;
     }
 
-    private static HepsiburadaReturnSyncState? ReadHepsiburadaReturnSyncState(string? opaqueCursor)
-    {
-        if (!string.IsNullOrWhiteSpace(opaqueCursor))
-        {
-            try
-            {
-                var state = JsonSerializer.Deserialize<HepsiburadaReturnSyncState>(opaqueCursor);
-                if (state is { Version: HepsiburadaReturnSyncStateVersion, StatusIndex: >= 0, Offset: >= 0 }
-                    && state.StatusIndex < HepsiburadaClaimStatuses.Length
-                    && state.AnchorEnd != default
-                    && (state.Full || state.StatusChangedAfter is not null))
-                    return state;
-            }
-            catch (JsonException) { }
-        }
-        return null;
-    }
+    private static HepsiburadaReturnSyncState? ReadHepsiburadaReturnSyncState(string? opaqueCursor) =>
+        ResumableCursor.Read<HepsiburadaReturnSyncState>(opaqueCursor, state => state is { Version: HepsiburadaReturnSyncStateVersion, StatusIndex: >= 0, Offset: >= 0 }
+            && state.StatusIndex < HepsiburadaClaimStatuses.Length
+            && state.AnchorEnd != default
+            && (state.Full || state.StatusChangedAfter is not null));
 
     private async Task<bool> SyncOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.Ordinal))
             return await SyncHepsiburadaOpenReturns(tenantId, connectionId, correlationId, cancellationToken);
         if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))

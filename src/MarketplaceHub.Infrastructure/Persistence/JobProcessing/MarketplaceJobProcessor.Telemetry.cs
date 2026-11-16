@@ -55,14 +55,14 @@ public sealed partial class MarketplaceJobProcessor
         var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
         ApplySliceTelemetry(cursor, timeProvider.GetUtcNow(), duration);
         var counts = CurrentCursorCounts();
-        cursor.LastRequestCount = telemetryRequestCount;
+        cursor.LastRequestCount = run.RequestCount;
         cursor.LastReceivedCount = counts.Received;
         cursor.LastChangedCount = counts.Changed;
-        cursor.LastInsertedCount = telemetryInsertedCount;
-        cursor.LastUpdatedCount = telemetryUpdatedCount;
+        cursor.LastInsertedCount = run.InsertedCount;
+        cursor.LastUpdatedCount = run.UpdatedCount;
         cursor.LastSkippedCount = counts.Skipped;
-        cursor.LastRetryCount = telemetryRetryCount;
-        cursor.LastRateLimitCount = telemetryRateLimitCount;
+        cursor.LastRetryCount = run.RetryCount;
+        cursor.LastRateLimitCount = run.RateLimitCount;
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -94,49 +94,16 @@ public sealed partial class MarketplaceJobProcessor
             cursor.ConsecutiveFailureCount++;
             cursor.LastFailedCount = Math.Max(1, counts.Failed);
         }
-        cursor.LastRequestCount = telemetryRequestCount;
+        cursor.LastRequestCount = run.RequestCount;
         cursor.LastReceivedCount = counts.Received;
         cursor.LastChangedCount = counts.Changed;
-        cursor.LastInsertedCount = telemetryInsertedCount;
-        cursor.LastUpdatedCount = telemetryUpdatedCount;
+        cursor.LastInsertedCount = run.InsertedCount;
+        cursor.LastUpdatedCount = run.UpdatedCount;
         cursor.LastSkippedCount = counts.Skipped;
-        cursor.LastRetryCount = telemetryRetryCount + (succeeded ? 0 : 1);
-        cursor.LastRateLimitCount = telemetryRateLimitCount;
+        cursor.LastRetryCount = run.RetryCount + (succeeded ? 0 : 1);
+        cursor.LastRateLimitCount = run.RateLimitCount;
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
-    }
-
-    private void ResetTelemetry()
-    {
-        readRecorder.Reset();
-        telemetryRequestCount = 0;
-        telemetryReceivedCount = 0;
-        telemetryChangedCount = 0;
-        telemetryInsertedCount = 0;
-        telemetryUpdatedCount = 0;
-        telemetrySkippedCount = 0;
-        telemetryFailedCount = 0;
-        telemetryRetryCount = 0;
-        telemetryRateLimitCount = 0;
-        telemetryImportProcessedCount = 0;
-        telemetryImportSkippedCount = 0;
-        telemetryImportFailedCount = 0;
-        productImportTelemetry = false;
-        telemetryImportReceivedCount = 0;
-        telemetryUnaddedSizeCount = 0;
-        productUnaddedSizeCount = 0;
-        importSummaryMode = ImportSummaryMode.Standard;
-        priceChangedVariantIds.Clear();
-        stockChangedVariantIds.Clear();
-        telemetryUnchangedVariantCount = 0;
-        telemetryNewProductCount = 0;
-        telemetryNewSizeCount = 0;
-        telemetryAlreadyInPanelCount = 0;
-        productImportedNewVariantCount = 0;
-        telemetryMappedCount = 0;
-        telemetryAlreadyMappedCount = 0;
-        telemetryNoCounterpartCount = 0;
-        telemetryMappingConflictCount = 0;
     }
 
     internal readonly record struct CursorCounts(int Received, int Changed, int Skipped, int Failed);
@@ -147,9 +114,9 @@ public sealed partial class MarketplaceJobProcessor
         productImport ? import : run;
 
     private CursorCounts CurrentCursorCounts() => CursorImportCounts(
-        productImportTelemetry,
-        new(telemetryReceivedCount, telemetryChangedCount, telemetrySkippedCount, telemetryFailedCount),
-        new(telemetryImportReceivedCount, telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryImportFailedCount));
+        run.ProductImportTelemetry,
+        new(run.ReceivedCount, run.ChangedCount, run.SkippedCount, run.FailedCount),
+        new(run.ImportReceivedCount, run.ImportProcessedCount, run.ImportSkippedCount, run.ImportFailedCount));
 
     // Order and return reads write what they brought on the job (received, new, updated), so the list tells a read that
     // came back empty from one that brought records. The counts are the run's own telemetry.
@@ -172,11 +139,11 @@ public sealed partial class MarketplaceJobProcessor
     private async Task RecordReadProgressAsync(Guid tenantId, Guid? jobId, string jobType, CancellationToken cancellationToken)
     {
         if (jobId is not { } id || !RecordsReadProgress(jobType)) return;
-        var received = telemetryReceivedCount;
-        var processed = telemetryInsertedCount + telemetryUpdatedCount;
-        var skipped = telemetrySkippedCount;
+        var received = run.ReceivedCount;
+        var processed = run.InsertedCount + run.UpdatedCount;
+        var skipped = run.SkippedCount;
         var failed = (int?)null;
-        var label = ReadProgressLabel(received, telemetryInsertedCount, telemetryUpdatedCount);
+        var label = ReadProgressLabel(received, run.InsertedCount, run.UpdatedCount);
         // What the run recorded record by record wins: each record counts once, so Okunan = Yeni + Güncellenen +
         // Değişmeyen + Atlanan + Hatalı (an unchanged record counts with the skipped ones instead of vanishing).
         if (await FlushReadRecordsAsync(tenantId, id, cancellationToken, final: true) is { } counts)
@@ -205,18 +172,18 @@ public sealed partial class MarketplaceJobProcessor
         }
     }
 
-    private void TrackRequest() => telemetryRequestCount++;
+    private void TrackRequest() => run.RequestCount++;
     private void TrackReceived(bool changed = true)
     {
-        telemetryReceivedCount++;
-        if (changed) telemetryChangedCount++;
-        else telemetrySkippedCount++;
+        run.ReceivedCount++;
+        if (changed) run.ChangedCount++;
+        else run.SkippedCount++;
     }
-    private void TrackSkipped() => telemetrySkippedCount++;
+    private void TrackSkipped() => run.SkippedCount++;
     private void TrackResultFailure(AdapterError? error)
     {
-        telemetryFailedCount++;
-        if (error?.Class == AdapterErrorClass.RateLimit) telemetryRateLimitCount++;
-        if (error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx) telemetryRetryCount++;
+        run.FailedCount++;
+        if (error?.Class == AdapterErrorClass.RateLimit) run.RateLimitCount++;
+        if (error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx) run.RetryCount++;
     }
 }

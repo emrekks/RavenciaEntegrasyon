@@ -103,10 +103,7 @@ public sealed partial class MarketplaceJobProcessor
 
     internal async Task<OrderLineRematchOutcome> RematchUnmatchedOrderLines(Guid tenantId, Guid connectionId, CancellationToken cancellationToken, int batchSize = OrderLineRematchBatchSize)
     {
-        var platformCode = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (platformCode is null) return new(0, 0, 0);
         var cursor = await Cursor(tenantId, connectionId, OrderLineRematchCursor, cancellationToken);
         var afterId = Guid.TryParse(cursor.OpaqueCursor, out var lastId) ? lastId : Guid.Empty;

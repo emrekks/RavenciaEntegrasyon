@@ -15,15 +15,28 @@ public sealed partial class MarketplaceJobProcessor
     private static JobProcessingException OrderSyncPayloadInvalid() =>
         new(JobExecutionResult.Blocked("ORDER_SYNC_PAYLOAD_INVALID", "Sipariş okuma isteği okunamadı; pazaryerinden sipariş okunmadı. Okumayı mağaza ekranından yeniden başlatın."));
 
+    // ISLEYICI-12 point 1 (16 Nov 2026): one order read by its number, for the readers whose single-order branch was the
+    // same copy (Shopify, n11, Pazarama, PttAVM): a failure ends the job with the marketplace's error, nothing is stored.
+    // Trendyol (a package fallback for orders its number lookup no longer shows) and Hepsiburada (package reads around the
+    // order) keep their own branches; they read the request through the same JobPayloadReader.OrderRead.
+    private async Task<RemoteOrder> ReadSingleOrderAsync(Guid tenantId, Guid connectionId, string correlationId, string idempotencyPrefix, string externalOrderId, CancellationToken cancellationToken)
+    {
+        TrackRequest();
+        var single = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"{idempotencyPrefix}:{externalOrderId}"), externalOrderId.Trim(), cancellationToken);
+        if (!single.IsSuccess) { TrackResultFailure(single.Error); throw JobProcessingException.FromAdapter(single.Error!); }
+        TrackReceived();
+        return single.Value!;
+    }
+
     // A finished order read also matches the connection's lines that still have no panel variant
     // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
     private async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
-        orderRereadRan = false;
+        run.OrderRereadRan = false;
         var synced = await SyncOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
         // Every marketplace: orders stored with an unreadable product line are read again by number (UnreadableOrderLines).
         // The Trendyol stream read does this itself once its read completed (it also re-reads the orders it refused).
-        if (synced && !orderRereadRan && !cancellationToken.IsCancellationRequested) await RereadOrders(tenantId, connectionId, correlationId, cancellationToken);
+        if (synced && !run.OrderRereadRan && !cancellationToken.IsCancellationRequested) await RereadOrders(tenantId, connectionId, correlationId, cancellationToken);
         if (synced) await RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken);
         if (synced && cursorResourceType == "ORDERS_RECOVERY") await RunResendDiagnosticOnce(tenantId, connectionId, correlationId, cancellationToken);
         return synced;
@@ -34,10 +47,7 @@ public sealed partial class MarketplaceJobProcessor
         if (!configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
             return true;
 
-        var platform = await db.PlatformConnections.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Id == connectionId)
-            .Select(x => x.PlatformCode)
-            .SingleOrDefaultAsync(cancellationToken);
+        var platform = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         if (platform == "SHOPIFY")
             return await SyncShopifyOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
         if (platform == "N11")
@@ -53,28 +63,14 @@ public sealed partial class MarketplaceJobProcessor
             var ordersSynced = await HepsiburadaPackageBaselinePendingAsync(tenantId, connectionId, payloadJson, cursorResourceType, cancellationToken)
                 || await SyncHepsiburadaOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
             if (!ordersSynced || cursorResourceType is not ("ORDERS_HOT" or "ORDERS_RECOVERY")) return ordersSynced;
-            try
-            {
-                using var payload = JsonDocument.Parse(payloadJson);
-                if (payload.RootElement.TryGetProperty("externalOrderId", out var requestedOrderId)
-                    && requestedOrderId.ValueKind == JsonValueKind.String
-                    && !string.IsNullOrWhiteSpace(requestedOrderId.GetString())) return true;
-            }
-            catch (JsonException) { throw OrderSyncPayloadInvalid(); }
+            if ((JobPayloadReader.OrderRead(payloadJson) ?? throw OrderSyncPayloadInvalid()).IsSingleOrder) return true;
             return await SyncHepsiburadaPackages(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         }
 
-        string? externalOrderId = null;
-        string? packageNumber = null;
-        var full = false;
-        try
-        {
-            using var payload = JsonDocument.Parse(payloadJson);
-            if (payload.RootElement.TryGetProperty("externalOrderId", out var value) && value.ValueKind == JsonValueKind.String) externalOrderId = value.GetString();
-            if (payload.RootElement.TryGetProperty("full", out var fullValue) && fullValue.ValueKind is JsonValueKind.True or JsonValueKind.False) full = fullValue.GetBoolean();
-            if (payload.RootElement.TryGetProperty("packageNumber", out var packageValue) && packageValue.ValueKind == JsonValueKind.String) packageNumber = packageValue.GetString();
-        }
-        catch (JsonException) { throw OrderSyncPayloadInvalid(); }
+        var request = JobPayloadReader.OrderRead(payloadJson) ?? throw OrderSyncPayloadInvalid();
+        var externalOrderId = request.ExternalOrderId;
+        var packageNumber = request.PackageNumber;
+        var full = request.Full;
         if (!string.IsNullOrWhiteSpace(externalOrderId))
         {
             var requestedPackageNumber = packageNumber?.Trim();
@@ -185,7 +181,7 @@ public sealed partial class MarketplaceJobProcessor
             readableStorefronts: TrendyolStorefrontPolicy.Readable(readStorefronts, storefrontActivity, now));
         var resetExpiredCursor = false;
         var completed = false;
-        var insertedBeforePoll = telemetryInsertedCount;
+        var insertedBeforePoll = run.InsertedCount;
         var streamWalk = new PageWalk(TrendyolOrderStreamPageGuard);
         do
         {
@@ -287,7 +283,7 @@ public sealed partial class MarketplaceJobProcessor
         // notification to have come and was placed before the notifications' last delivery, is one the
         // notifications missed. Orders placed while nothing was delivered (the server was off at night,
         // the webhook passive) are an outage the silence rule covers, not a miss.
-        if (completed && telemetryInsertedCount > insertedBeforePoll)
+        if (completed && run.InsertedCount > insertedBeforePoll)
         {
             var lastNotificationAt = await db.WebhookSubscriptions.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
@@ -381,11 +377,11 @@ public sealed partial class MarketplaceJobProcessor
     // next run and counts no try.
     private async Task RereadOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
-        orderRereadRan = true;
+        run.OrderRereadRan = true;
         var now = timeProvider.GetUtcNow();
         var saved = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == RejectedOrderRereadPolicy.CursorResource, cancellationToken);
-        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rereadOrderIds, now, out var dropped);
-        rereadOrderIds.Clear();
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), run.RereadOrderIds, now, out var dropped);
+        run.RereadOrderIds.Clear();
         // Orders an open refusal notice names and no entry holds (a refusal from before every marketplace re-read its
         // refused new orders, or one whose tries ran out a week ago) are read again now.
         var seeded = await RefusedOrdersToRereadAsync(tenantId, connectionId, entries.Select(entry => entry.OrderId).ToHashSet(StringComparer.Ordinal), now, cancellationToken);
@@ -408,7 +404,7 @@ public sealed partial class MarketplaceJobProcessor
             {
                 TrackReceived();
                 await UpsertOrder(tenantId, connectionId, read.Value!, cancellationToken);
-                stillRefused = rereadOrderIds.Remove(entry.OrderId);
+                stillRefused = run.RereadOrderIds.Remove(entry.OrderId);
             }
             // Not found, or found but refused again by the mapper (a contract error naming the refusal, e.g. still no
             // order date): a try is spent, so a record that stays broken leaves the list after its last try.
@@ -416,7 +412,7 @@ public sealed partial class MarketplaceJobProcessor
             else break;
             entries = RejectedOrderRereadPolicy.AfterRead(entries, entry, stillRefused, now);
         }
-        rereadOrderIds.Clear();
+        run.RereadOrderIds.Clear();
         var serialized = RejectedOrderRereadPolicy.Serialize(entries);
         if (serialized == cursor.OpaqueCursor && db.Entry(cursor).State != EntityState.Added)
         {
@@ -434,11 +430,11 @@ public sealed partial class MarketplaceJobProcessor
     // reads them when due. Nothing is read here.
     private async Task SaveRefusedOrdersForRereadAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
-        if (rereadOrderIds.Count == 0) return;
+        if (run.RereadOrderIds.Count == 0) return;
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
-        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(cursor.OpaqueCursor), rereadOrderIds, now, out var dropped);
-        rereadOrderIds.Clear();
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(cursor.OpaqueCursor), run.RereadOrderIds, now, out var dropped);
+        run.RereadOrderIds.Clear();
         if (dropped.Count > 0)
             await RecordIssue(tenantId, $"order-reread-full:{connectionId}", RejectedOrderRereadPolicy.OverflowIssueCode, RejectedOrderRereadPolicy.OverflowSummary(dropped), cancellationToken);
         var serialized = RejectedOrderRereadPolicy.Serialize(entries);
@@ -538,19 +534,11 @@ public sealed partial class MarketplaceJobProcessor
     private static OrderSyncState ReadOrderSyncState(SyncCursor cursor, DateTimeOffset now, TimeSpan overlap, bool allowBaseline, bool forceBaseline = false,
         IReadOnlyList<string>? activeStorefronts = null, IReadOnlyList<string>? readableStorefronts = null)
     {
-        if (!string.IsNullOrWhiteSpace(cursor.OpaqueCursor))
-        {
-            try
-            {
-                var state = JsonSerializer.Deserialize<OrderSyncState>(cursor.OpaqueCursor);
-                // A baseline already under way continues even when a baseline is asked for again (an
-                // empty store, a retry after a failure); restarting it would read its first window forever.
-                if (state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < OrderSyncStorefronts(state).Count
-                    && (!forceBaseline || state.Mode == OrderSyncMode.Baseline && now - state.AnchorEnd < TimeSpan.FromDays(1)))
-                    return state;
-            }
-            catch (JsonException) { }
-        }
+        // A baseline already under way continues even when a baseline is asked for again (an
+        // empty store, a retry after a failure); restarting it would read its first window forever.
+        if (ResumableCursor.Read<OrderSyncState>(cursor.OpaqueCursor, state => state is { Version: OrderSyncStateVersion, WindowIndex: >= 0, StoreFrontIndex: >= 0 } && state.StoreFrontIndex < OrderSyncStorefronts(state).Count
+                && (!forceBaseline || state.Mode == OrderSyncMode.Baseline && now - state.AnchorEnd < TimeSpan.FromDays(1))) is { } resumed)
+            return resumed;
 
         var baseline = allowBaseline && (forceBaseline || (cursor.LastSuccessAt is null && cursor.LastModifiedWatermark is null && string.IsNullOrWhiteSpace(cursor.OpaqueCursor)));
         var anchor = now;
@@ -588,5 +576,5 @@ public sealed partial class MarketplaceJobProcessor
         return nextEnd >= state.StartAt;
     }
 
-    private static string SerializeOrderSyncState(OrderSyncState state) => JsonSerializer.Serialize(state);
+    private static string SerializeOrderSyncState(OrderSyncState state) => ResumableCursor.Serialize(state);
 }

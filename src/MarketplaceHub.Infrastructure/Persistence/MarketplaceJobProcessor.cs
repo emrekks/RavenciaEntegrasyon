@@ -20,48 +20,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
     // Every marketplace write opens, sends and closes its ExternalEffect record through this guard (ISLEYICI-10).
     private readonly ExternalEffectGuard effectGuard = new(db, timeProvider);
-    // When the marketplace stock of the model group being finalized was read (K-2); null outside a catalog import.
-    private DateTimeOffset? catalogStockReadAt;
-    // Trendyol orders an integrity check refused during this job (T2-O8), and orders of any marketplace stored with a
-    // product line that could not be read; the order read hands them to its re-read list.
-    private readonly HashSet<string> rereadOrderIds = new(StringComparer.Ordinal);
-    private bool orderRereadRan;
-    private int telemetryRequestCount;
-    private int telemetryReceivedCount;
-    private int telemetryChangedCount;
-    private int telemetryInsertedCount;
-    private int telemetryUpdatedCount;
-    private int telemetrySkippedCount;
-    private int telemetryFailedCount;
-    private int telemetryRetryCount;
-    private int telemetryRateLimitCount;
-    private int telemetryImportProcessedCount;
-    private int telemetryImportSkippedCount;
-    private int telemetryImportFailedCount;
-    // A product import run reports to its cursor what the job reports (received, processed, skipped, failed), counted
-    // over the whole import, not each product the pages brought as changed (audit 2026-11-06 O3).
-    private bool productImportTelemetry;
-    private int telemetryImportReceivedCount;
-    // Sizes (barcodes) Trendyol lists on an owner-edited card that a plain pull kept whole and did not add: the run's
-    // count for the progress line, the last product's for its read record.
-    private int telemetryUnaddedSizeCount;
-    private int productUnaddedSizeCount;
-    // The result line of a product pull, by mode (owner, 12 Nov 2026): what the focused price/stock path changed, what
-    // "Yeni Ürünleri Aktar" added, what "Ürün Eşleme" linked. Counted over this run of the job.
-    private ImportSummaryMode importSummaryMode;
-    private readonly HashSet<Guid> priceChangedVariantIds = [];
-    private readonly HashSet<Guid> stockChangedVariantIds = [];
-    private int telemetryUnchangedVariantCount;
-    private int telemetryNewProductCount;
-    private int telemetryNewSizeCount;
-    private int telemetryAlreadyInPanelCount;
-    private int productImportedNewVariantCount;
-    private int telemetryMappedCount;
-    private int telemetryAlreadyMappedCount;
-    private int telemetryNoCounterpartCount;
-    private int telemetryMappingConflictCount;
+    // ISLEYICI-9 stage 2: the state of the current run (counters, product import summary, re-read list, read records).
+    // ProcessAsync starts each run with a new one; a method called outside a run works on this first one.
+    private JobRunContext run = new();
 
-    private enum ImportSummaryMode { Standard, FocusedPriceStock, NewOnly, Mapping }
+    internal enum ImportSummaryMode { Standard, FocusedPriceStock, NewOnly, Mapping }
 
     private enum FocusedPriceStockOutcome { NotInPanel, Conflict, Unchanged, Changed }
 
@@ -120,9 +83,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
-            ResetTelemetry();
-            readRecordingKind = ReadRecordKind(jobType) ?? "ORDER";
-            readRecordingEnabled = jobId is not null && ReadRecordKind(jobType) is not null;
+            // ISLEYICI-9 stage 2: a new run starts with its own state (it was reset field by field).
+            readRecorder.Reset();
+            run = new JobRunContext();
+            run.ReadRecordingKind = ReadRecordKind(jobType) ?? "ORDER";
+            run.ReadRecordingEnabled = jobId is not null && ReadRecordKind(jobType) is not null;
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
             try
             {
@@ -130,13 +95,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // Job types moved to their own handler class run here, inside the lock and telemetry.
                 if (jobHandlers.FirstOrDefault(candidate => candidate.Handles(jobType)) is { } handler)
                 {
-                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, readRecordingEnabled ? readRecorder : null), cancellationToken);
-                    telemetryRequestCount += outcome.Telemetry.Requests;
-                    telemetryReceivedCount += outcome.Telemetry.Received;
-                    telemetryInsertedCount += outcome.Telemetry.Inserted;
-                    telemetryUpdatedCount += outcome.Telemetry.Updated;
-                    telemetryChangedCount += outcome.Telemetry.Changed;
-                    telemetryFailedCount += outcome.Telemetry.Failed;
+                    var outcome = await handler.HandleAsync(new JobRequest(tenantId, connectionId.Value, jobType, payloadJson, correlationId, jobId, run.ReadRecordingEnabled ? readRecorder : null), cancellationToken);
+                    run.RequestCount += outcome.Telemetry.Requests;
+                    run.ReceivedCount += outcome.Telemetry.Received;
+                    run.InsertedCount += outcome.Telemetry.Inserted;
+                    run.UpdatedCount += outcome.Telemetry.Updated;
+                    run.ChangedCount += outcome.Telemetry.Changed;
+                    run.FailedCount += outcome.Telemetry.Failed;
                     directResult = outcome.Result;
                 }
                 else if (DirectJobDispatch.TryGetValue(jobType, out var direct)) directResult = await direct(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);
@@ -156,13 +121,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         if (telemetryResource is not null) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
                         return directResult;
                     }
-                    telemetryFailedCount++;
-                    if (directResult.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
+                    run.FailedCount++;
+                    if (directResult.Kind == JobCompletionKind.Retry) run.RetryCount++;
                     if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, directResult.ErrorCode, cancellationToken);
                     await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, directResult, cancellationToken);
                     return directResult;
                 }
-                var succeeded = BoolJobDispatch.TryGetValue(jobType, out var run) && await run(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);
+                var succeeded = BoolJobDispatch.TryGetValue(jobType, out var boolJob) && await boolJob(this, new JobDispatchArgs(tenantId, connectionId.Value, payloadJson, correlationId, jobId, platform), cancellationToken);
                 if (telemetryResource is not null)
                 {
                     if (succeeded) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
@@ -180,16 +145,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             catch (JobProcessingException exception)
             {
-                if (exception.Result.Kind == JobCompletionKind.Retry) telemetryRetryCount++;
-                else telemetryFailedCount++;
+                if (exception.Result.Kind == JobCompletionKind.Retry) run.RetryCount++;
+                else run.FailedCount++;
                 if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.Result.ErrorCode, cancellationToken);
                 await RecordConnectionAuthenticationFailureAsync(tenantId, connectionId.Value, jobType, exception.Result, cancellationToken);
                 return exception.Result;
             }
             catch (Exception exception)
             {
-                telemetryFailedCount++;
-                telemetryRetryCount++;
+                run.FailedCount++;
+                run.RetryCount++;
                 if (telemetryResource is not null) await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, exception.GetType().Name, cancellationToken);
                 throw;
             }
