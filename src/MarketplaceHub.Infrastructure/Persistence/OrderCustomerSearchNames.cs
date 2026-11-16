@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // SIPARIS-STOK-9: the order's customer name as the screens show it (OrderSnapshotReader.ResolveCustomerName), kept in
 // Order.CustomerSearchName so the Returns search is decided by the database. Every tracked save of a new order, or of one
-// whose snapshots changed (or that has no name yet), sets it with a new stamp (AppDbContext). A snapshot write outside the
+// whose snapshots changed, sets it with a new stamp (AppDbContext). A snapshot write outside the
 // tracker brings no new stamp, and the database trigger of migration CustomerSearchName empties the name then, so a name
 // is never older than the snapshots it was read from; BackfillAsync fills the empty ones in the maintenance pass.
 internal static class OrderCustomerSearchNames
@@ -23,8 +23,10 @@ internal static class OrderCustomerSearchNames
     {
         foreach (var entry in changeTracker.Entries<Order>())
         {
+            // An empty name on a save that changes no snapshot stays empty: this context's snapshots may be older than the
+            // stored ones (a write outside the tracker), and BackfillAsync fills it only where the snapshots are unchanged.
             if (entry.State == EntityState.Added
-                || entry.State == EntityState.Modified && (entry.Entity.CustomerSearchName is null || SnapshotColumns.Any(column => entry.Property(column).IsModified)))
+                || entry.State == EntityState.Modified && SnapshotColumns.Any(column => entry.Property(column).IsModified))
             {
                 entry.Entity.CustomerSearchName = Resolve(entry.Entity.CustomerSnapshotJson, entry.Entity.InvoiceAddressSnapshotJson, entry.Entity.ShipmentAddressSnapshotJson);
                 entry.Entity.CustomerSearchStamp = Guid.CreateVersion7();

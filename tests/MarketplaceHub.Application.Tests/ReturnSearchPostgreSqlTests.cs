@@ -154,9 +154,17 @@ public sealed class ReturnSearchPostgreSqlTests(PostgreSqlTenantIsolationFixture
             // SIPARIS-STOK-9: every order keeps its customer name; a snapshot written outside the tracker empties it (the
             // trigger), and the search still equals the reference (the view decides that order) until the backfill.
             Assert.False(await db.Orders.AnyAsync(x => x.TenantId == tenantId && x.CustomerSearchName == null));
+            // A context that read the order before the snapshot write keeps the old snapshot in memory.
+            await using var stale = fixture.CreateContext();
+            var staleOrder = await stale.Orders.SingleAsync(x => x.TenantId == tenantId && x.OrderNumber == "S-1009");
             await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009")
                 .ExecuteUpdateAsync(set => set.SetProperty(x => x.CustomerSnapshotJson, """{"customerFirstName":"Nurşen","customerLastName":"Kaya"}"""));
             Assert.Null(await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009").Select(x => x.CustomerSearchName).SingleAsync());
+            // Its save of another field writes no name from that old snapshot: the name stays empty for the backfill.
+            staleOrder.DerivedStatus = "SHIPPED";
+            await stale.SaveChangesAsync();
+            Assert.Null(await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009").Select(x => x.CustomerSearchName).SingleAsync());
+            await db.Orders.Where(x => x.TenantId == tenantId && x.OrderNumber == "S-1009").ExecuteUpdateAsync(set => set.SetProperty(x => x.DerivedStatus, "DELIVERED"));
             foreach (var term in new[] { "nurşen", "Şükrü", "a" })
             {
                 var options = new ReturnListQuery(Search: term);

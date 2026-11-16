@@ -15,8 +15,22 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
         // name is never older than its snapshots; an empty name is read from the order's view, as before.
         // SIPARIS-STOK-2: a partial index for the unmatched-line rematch, built CONCURRENTLY (AddProductVariantModelCodeIndex).
         /// <inheritdoc />
+        // Ordering rule: the CONCURRENTLY statements come first. EF commits its open transaction at the first
+        // suppressTransaction command, so anything above them would be applied for good before the index; if the index build
+        // then failed, a rerun would stop on the existing columns and never reach the DROP INDEX that clears the INVALID
+        // index. With the index first, a failed build leaves nothing else applied and a rerun starts clean; the columns, the
+        // function, the trigger and the history row then commit together in one transaction.
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql("SET lock_timeout = 0", suppressTransaction: true);
+            migrationBuilder.Sql(
+                "DROP INDEX CONCURRENTLY IF EXISTS sales.\"IX_order_lines_TenantId_Id_Unmatched\"",
+                suppressTransaction: true);
+            migrationBuilder.Sql(
+                "CREATE INDEX CONCURRENTLY \"IX_order_lines_TenantId_Id_Unmatched\" ON sales.order_lines (\"TenantId\", \"Id\") WHERE \"VariantId\" IS NULL",
+                suppressTransaction: true);
+            migrationBuilder.Sql("RESET lock_timeout", suppressTransaction: true);
+
             migrationBuilder.AddColumn<string>(
                 name: "CustomerSearchName",
                 schema: "sales",
@@ -51,15 +65,6 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     OR NEW."ShipmentAddressSnapshotJson" IS DISTINCT FROM OLD."ShipmentAddressSnapshotJson")
                 EXECUTE FUNCTION sales.orders_customer_search_name_stale();
                 """);
-
-            migrationBuilder.Sql("SET lock_timeout = 0", suppressTransaction: true);
-            migrationBuilder.Sql(
-                "DROP INDEX CONCURRENTLY IF EXISTS sales.\"IX_order_lines_TenantId_Id_Unmatched\"",
-                suppressTransaction: true);
-            migrationBuilder.Sql(
-                "CREATE INDEX CONCURRENTLY \"IX_order_lines_TenantId_Id_Unmatched\" ON sales.order_lines (\"TenantId\", \"Id\") WHERE \"VariantId\" IS NULL",
-                suppressTransaction: true);
-            migrationBuilder.Sql("RESET lock_timeout", suppressTransaction: true);
         }
 
         /// <inheritdoc />
