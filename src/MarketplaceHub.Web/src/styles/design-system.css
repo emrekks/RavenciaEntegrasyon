@@ -4235,7 +4235,7 @@ small,
 
 /* Product status uses compact square platform marks. The full horizontal
    artwork remains reserved for order, return, and invoice order details. */
-.app-shell.stitch-shell main .platform-square-mark {
+.app-shell.stitch-shell main .platform-square-mark, .rr-layer.rr-layer .platform-square-mark {
   display: grid;
   width: 34px;
   height: 34px;
@@ -4253,27 +4253,27 @@ small,
   text-transform: lowercase;
 }
 
-.app-shell.stitch-shell main .platform-square-mark > img {
+.app-shell.stitch-shell main .platform-square-mark > img, .rr-layer.rr-layer .platform-square-mark > img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.app-shell.stitch-shell main .platform-square-mark > img {
+.app-shell.stitch-shell main .platform-square-mark > img, .rr-layer.rr-layer .platform-square-mark > img {
   border-radius: inherit;
 }
 
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol { background: #f56600; }
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-shopify { background: #6da33a; }
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-hepsiburada { background: #ff6000; }
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-pazarama { background: #2454d7; }
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-pttavm { color: #1e1e1e; background: #f4c400; }
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-n11 { background: #252525; }
-.app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol-efaturam { color: #1e1e1e; background: #ffc928; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol, .rr-layer.rr-layer .platform-square-mark.platform-logo-trendyol { background: #f56600; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-shopify, .rr-layer.rr-layer .platform-square-mark.platform-logo-shopify { background: #6da33a; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-hepsiburada, .rr-layer.rr-layer .platform-square-mark.platform-logo-hepsiburada { background: #ff6000; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-pazarama, .rr-layer.rr-layer .platform-square-mark.platform-logo-pazarama { background: #2454d7; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-pttavm, .rr-layer.rr-layer .platform-square-mark.platform-logo-pttavm { color: #1e1e1e; background: #f4c400; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-n11, .rr-layer.rr-layer .platform-square-mark.platform-logo-n11 { background: #252525; }
+.app-shell.stitch-shell main .platform-square-mark.platform-logo-trendyol-efaturam, .rr-layer.rr-layer .platform-square-mark.platform-logo-trendyol-efaturam { color: #1e1e1e; background: #ffc928; }
 
 /* Small mark for rows, chips and menus: 20 px, beside the platform name or alone with its name as the label. */
-.app-shell.stitch-shell main .platform-square-mark.is-sm { display: inline-grid; width: 20px; height: 20px; flex: 0 0 20px; margin-right: 2px; border-radius: 7px; vertical-align: -5px; }
+.app-shell.stitch-shell main .platform-square-mark.is-sm, .rr-layer.rr-layer .platform-square-mark.is-sm { display: inline-grid; width: 20px; height: 20px; flex: 0 0 20px; margin-right: 2px; border-radius: 7px; vertical-align: -5px; }
 .app-shell.stitch-shell main .integration-filter-menu button .platform-square-mark.is-sm { margin-right: 0; vertical-align: baseline; }
 .app-shell.stitch-shell main .invoice-bulk-status-platform .platform-square-mark.is-sm { width: 24px; height: 24px; flex-basis: 24px; margin-right: 0; vertical-align: baseline; }
 
@@ -6726,3 +6726,6 @@ html body main .rr .rr-fbtns .rr-btn.rr-clear:disabled { opacity: .5; cursor: no
    that is not the last step of a confirmation. A filled danger button stays only on the final button of a confirmation dialog. */
 html body .is-danger-outline.is-danger-outline.is-danger-outline { color: var(--rv-color-danger); background: var(--rv-color-surface); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong)); }
 html body .is-danger-outline.is-danger-outline.is-danger-outline:hover:not(:disabled) { color: var(--rv-color-danger); background: color-mix(in srgb, var(--rv-color-danger) 10%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-danger) 60%, var(--rv-color-border-strong)); }
+/* Hızlı Arama on RrModal: the rr layer resets strong and small; the item keeps its white title and full-size line. */
+.rr-layer.rr-layer .rv-command-item strong { color: var(--rv-color-ink); }
+.rr-layer.rr-layer .rv-command-item small { font-size: inherit; }

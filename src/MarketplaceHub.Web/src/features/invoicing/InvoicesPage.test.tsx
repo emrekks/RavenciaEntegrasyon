@@ -152,11 +152,12 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(thumbnail?.getAttribute('aria-label')).toBe('Ravencia test ürün görselini büyüt')
     act(() => thumbnail!.click())
 
-    const dialog = document.getElementById('invoice-detail-image-modal-title')?.closest('[role="dialog"]')
-    expect(dialog).not.toBeNull()
-    expect(dialog?.querySelector('img')?.getAttribute('alt')).toBe('Ravencia test ürün büyük ürün görseli')
-    act(() => dialog?.querySelector<HTMLButtonElement>('.modal-close')?.click())
-    expect(document.getElementById('invoice-detail-image-modal-title')).toBeNull()
+    // The shared preview (RrImagePreview): the product's name is the window's title and the image's text.
+    const dialog = document.querySelector<HTMLElement>('.rr-modal.rr-img[role="dialog"]')
+    expect(dialog?.getAttribute('aria-label')).toBe('Ravencia test ürün')
+    expect(dialog?.querySelector('img')?.getAttribute('alt')).toBe('Ravencia test ürün')
+    await act(async () => { dialog?.querySelector<HTMLButtonElement>('button[aria-label="Pencereyi Kapat"]')?.click(); await new Promise(resolve => setTimeout(resolve, 200)) })
+    expect(document.querySelector('.rr-modal.rr-img')).toBeNull()
   })
 
   // Owner's rule of 6 Nov 2026: a partly returned order not invoiced yet is invoiced without its returned units.
