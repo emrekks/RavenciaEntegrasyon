@@ -425,7 +425,8 @@ public static class ProductModelLinks
             var current = keyModels.OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault();
             var target = current?.Id;
             var modelBrand = current?.BrandId;
-            // A model left without a colour (its cards deleted or re-coded) takes the brand of the cards that come to it.
+            // A model left without a colour (its cards deleted or re-coded) takes the brand of the cards that come to it, as a
+            // model opened for them would (no colour's brand changes; a blank brand never moves it).
             if (current is not null && !linkedElsewhere.Any(x => x.FamilyId == current.Id)
                 && cards.Where(x => x.Card.BrandId is not null).GroupBy(x => x.Card.BrandId).OrderByDescending(x => x.Count()).ThenBy(x => x.Min(card => card.Card.CreatedAt)).Select(x => x.Key).FirstOrDefault() is Guid joining
                 && joining != modelBrand)
@@ -510,7 +511,8 @@ public static class ProductModelLinks
         // KATALOG-14 phase D5a: a card left without a model (its code gone) gets one of its own; the whole tenant's run
         // gives one to every card still without.
         await EnsureOwnModelsAsync(db, tenantId, keyArray is null ? null : [.. desired.Where(pair => pair.Value is null).Select(pair => pair.Key)], now, cancellationToken);
-        if (keyArray is null) await SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);
+        // KATALOG-14 phase D5b review 2: a whole-tenant run (startup pass, nightly scan, a raw-SQL delete) never touches a
+        // model's brand, an own model's included; only a save of the card moves its own model (AfterSaveAsync).
         // KATALOG-10: the links moved; the product list's cached rule check of the tenant is dropped.
         CatalogListGenerations.Bump(tenantId);
         // Faz 2: the pictures follow their card's model.

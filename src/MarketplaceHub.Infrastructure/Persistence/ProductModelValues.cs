@@ -402,27 +402,25 @@ public static class ProductModelValues
     }
 
     // KATALOG-14 phase D5b: run once when the Worker starts, before it takes a job. A card the previous release linked
-    // during the deploy to a model of its own although it carries a code is linked to its code's model (the reconcile);
-    // then a colour whose copy the previous release changed alone (VAT, category, warranty, delivery days, brand) is only
-    // reported (ModelMirror.ReportGapsAsync, review 17 Nov 2026: the automatic paths write none of the eight model fields
-    // and mark no link; "the newer card wins" is withdrawn). Returns the models whose colours differ, for the log.
-    public static async Task<(int Written, IReadOnlyList<string> Differing)> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // during the deploy to a model of its own although it carries a code is linked to its code's model (the reconcile,
+    // which never touches a model's brand); then a colour whose copy the previous release changed alone (VAT, category,
+    // warranty, delivery days, brand) is only reported (ModelMirror.ReportGapsAsync, review 17 Nov 2026: the automatic
+    // paths write none of the eight model fields and mark no link; "the newer card wins" is withdrawn). Returns the models
+    // whose colours differ, for the log.
+    public static async Task<IReadOnlyList<string>> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var tenants = await db.ProductModels.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
-        var written = 0;
         var differing = new List<string>();
         foreach (var tenantId in tenants)
         {
             // A card the previous release linked during the deploy to a model of its own although it carries a code (its
             // insert of a second brand's model under the unique key was skipped): the whole tenant's reconcile links it to
-            // its code's model when the brand is the model's, else leaves it alone and opens PRODUCT_MODEL_AMBIGUOUS.
+            // its code's model unless it carries another brand (a blank brand is none), else leaves it alone and opens
+            // PRODUCT_MODEL_AMBIGUOUS.
             await ProductModelLinks.ReconcileTenantAsync(db, tenantId, now, cancellationToken);
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            written += await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);
             differing.AddRange((await ModelMirror.ReportGapsAsync(db, tenantId, now, cancellationToken)).Select(x => $"{x.ModelCode} ({string.Join(", ", x.Fields)})"));
-            await transaction.CommitAsync(cancellationToken);
         }
-        return (written, differing);
+        return differing;
     }
 
     // The backfill and the nightly scan: every model of every tenant, then one PRODUCT_MODEL_VALUES_DIFFER warning per

@@ -140,8 +140,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var (written, differing) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
-            logger.LogInformation("Product models checked at startup: {Models} written; {Count} models whose colours differ from them (warned, nothing written): {Differing}", written, differing.Count, string.Join(", ", differing.Take(50)));
+            var differing = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
+            logger.LogInformation("Product models checked at startup: {Count} models whose colours differ from them (warned, nothing written): {Differing}", differing.Count, string.Join(", ", differing.Take(50)));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)

@@ -120,7 +120,7 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         }
         await using (var db = fixture.CreateContext())
         {
-            var (_, differing) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            var differing = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
             Assert.Contains(differing, x => x.StartsWith("MZ300", StringComparison.Ordinal));
             await ProductModelValues.RefreshTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
             await ProductModelValues.RefreshAllAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
@@ -145,6 +145,69 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
             await ProductModelValues.RefreshTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
             Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == issue.Id)).Status);
+        }
+    }
+
+    // KATALOG-14 phase D5b review 2 (17 Nov 2026): no automatic path touches a model's brand. A coded colour without a brand
+    // (newer than its model) neither erases the model's brand nor counts as another brand; one the previous release left on
+    // a model of its own is linked to its code's model, whose brand stays; an own model whose card's brand the previous
+    // release changed keeps its brand and the difference is only warned about.
+    [PostgreSqlFact]
+    public async Task NoAutomaticPath_TouchesAModelsBrand_AndABlankBrandIsNoOtherBrand()
+    {
+        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
+        var now = DateTimeOffset.UtcNow;
+        Guid brand, blankCard, ownCard, ownModel;
+        await using (var db = fixture.CreateContext())
+        {
+            brand = (await ModelOfAsync(db, seeded.Cards[0].Id)).BrandId!.Value;
+            // A colour of MZ300 without a brand, changed after its model.
+            var model = await ModelOfAsync(db, seeded.Cards[1].Id);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "BrandId" = NULL, "UpdatedAt" = {model.UpdatedAt.AddMinutes(5)} WHERE "Id" = {seeded.Cards[1].Id}""");
+
+            // A new MZ300 colour without a brand, then left by the previous release on a model of its own.
+            var card = new Product { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, Title = "Kadın Mavi Bluz", Description = model.Description, VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+            db.Products.Add(card);
+            db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ProductId = card.Id, Sku = $"MAVI-{Guid.NewGuid():N}"[..20], SkuNormalized = "MAVI", ModelCode = "MZ300", OptionSignature = "Renk: Mavi | Beden: M", CreatedAt = now, UpdatedAt = now });
+            // A codeless card on a model of its own.
+            var codeless = new Product { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, Title = "Kodsuz Şal", Description = "Kodsuz", BrandId = brand, VatRate = 10m, VatInclusion = "INCLUDED", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+            db.Products.Add(codeless);
+            db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ProductId = codeless.Id, Sku = $"SAL-{Guid.NewGuid():N}"[..20], SkuNormalized = "SAL", OptionSignature = "SAL", CreatedAt = now, UpdatedAt = now });
+            await db.SaveChangesAsync();
+            Assert.Equal(model.Id, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).FamilyId);
+            blankCard = card.Id;
+            ownCard = codeless.Id;
+            ownModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == codeless.Id)).FamilyId!.Value;
+            var stray = Guid.CreateVersion7();
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "Description", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+                VALUES ({stray}, {seeded.Tenant.Id}, NULL, '', {$"#{card.Id:N}"}, 'Kadın Mavi Bluz', '', NULL, {now}, {now}, 1)
+                """);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = {stray}, "BrandId" = NULL WHERE "Id" = {card.Id}""");
+            // The previous release gave the codeless card another brand without its model.
+            var other = new Brand { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            db.Brands.Add(other);
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "BrandId" = {other.Id}, "UpdatedAt" = {now.AddMinutes(10)} WHERE "Id" = {codeless.Id}""");
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            await ProductModelValues.RefreshAllAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+
+            var mz300 = await ModelOfAsync(db, seeded.Cards[0].Id);
+            Assert.Equal(brand, mz300.BrandId);
+            Assert.Equal(mz300.Id, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == blankCard)).FamilyId);
+            Assert.Equal(((Guid?)null, (Guid?)null), ((await db.Products.AsNoTracking().SingleAsync(x => x.Id == blankCard)).BrandId, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[1].Id)).BrandId));
+            Assert.All(await EffectiveCatalog.Products(db).Where(x => x.TenantId == seeded.Tenant.Id && x.Id != ownCard).ToListAsync(), x => Assert.Equal(brand, x.BrandId));
+            // The own model keeps its brand; the card's other brand is only warned about.
+            Assert.Equal(brand, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == ownModel)).BrandId);
+            var gaps = await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix)).ToListAsync();
+            var gap = Assert.Single(gaps);
+            Assert.Contains("marka \"Lavian\"", gap.Summary);
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelLinks.AmbiguousCode && x.Status == IssueStatus.Open));
         }
     }
 
