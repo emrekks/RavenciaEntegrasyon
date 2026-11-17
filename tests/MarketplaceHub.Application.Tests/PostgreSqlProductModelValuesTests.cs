@@ -980,7 +980,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         }
         // The refresh's lock of the save's models (after ModelMirror reported) fails once.
         var tap = new CommandTap(sql => sql.Contains("OR \"Id\" = ANY(", StringComparison.Ordinal) && sql.Contains("FOR UPDATE", StringComparison.Ordinal),
-            () => new Npgsql.PostgresException("deadlock detected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.DeadlockDetected)) { Fail = true };
+            () => new Npgsql.PostgresException("deadlock detected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.DeadlockDetected))
+        { Fail = true };
         await using var db = ContextWith(tap);
         var result = await Service(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([siyah.Id], BulkProductFields.VatRate, "20"), CancellationToken.None);
         Assert.True(result.Succeeded, result.Error?.Message);
