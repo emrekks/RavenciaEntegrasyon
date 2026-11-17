@@ -364,15 +364,17 @@ jobs:
     needs: [plan, backend-build]
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # main-3 runs about 11 min and once took 14.5 (16-17 Nov 2026); at 15 a slow runner was cut with no test named.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       # The non-Load PostgreSQL tests ("Category=PostgreSql&PostgreSqlLane!=Load", ~330 s of tests on 15 Nov 2026)
       # run in three shards built as a partition, so together they run each of those tests exactly once whatever
       # new tests are added. main-1 is the dashboard-equivalence class alone: its legacy queries slow down from
       # seconds to minutes when the busy postgres-integration collection runs beside them and fills the database
-      # (measured: 8 min in a shard with the tenant-isolation tests, ~1.5 min alone). main-2 holds four heavy
-      # classes, main-3 everything else, written as the complement of main-1 and main-2. New tests land in
+      # (measured: 8 min in a shard with the tenant-isolation tests, ~1.5 min alone). main-2 holds the heavy
+      # classes (ReturnListEquivalencePostgreSqlTests, ~6.5 min locally, moved there 17 Nov 2026: main-3 neared its
+      # timeout), main-3 everything else, written as the complement of main-1 and main-2. New tests land in
       # main-3; to move a class out of it, add it to main-2 AND as a !~ term to main-3. Per-test times:
       # --logger "console;verbosity=normal".
       matrix:
@@ -380,9 +382,9 @@ jobs:
           - lane: main-1
             filter: Category=PostgreSql&PostgreSqlLane!=Load&FullyQualifiedName~.PostgreSqlDashboardEquivalenceTests.
           - lane: main-2
-            filter: Category=PostgreSql&PostgreSqlLane!=Load&(FullyQualifiedName~.PostgreSqlTenantIsolationTests.|FullyQualifiedName~.TrendyolImportRegressionPostgreSqlTests.|FullyQualifiedName~.InvoiceLinkAndWriteSwitchApiTests.|FullyQualifiedName~.StockPricePostgreSqlTests.)
+            filter: Category=PostgreSql&PostgreSqlLane!=Load&(FullyQualifiedName~.PostgreSqlTenantIsolationTests.|FullyQualifiedName~.TrendyolImportRegressionPostgreSqlTests.|FullyQualifiedName~.InvoiceLinkAndWriteSwitchApiTests.|FullyQualifiedName~.StockPricePostgreSqlTests.|FullyQualifiedName~.ReturnListEquivalencePostgreSqlTests.)
           - lane: main-3
-            filter: Category=PostgreSql&PostgreSqlLane!=Load&FullyQualifiedName!~.PostgreSqlDashboardEquivalenceTests.&FullyQualifiedName!~.PostgreSqlTenantIsolationTests.&FullyQualifiedName!~.TrendyolImportRegressionPostgreSqlTests.&FullyQualifiedName!~.InvoiceLinkAndWriteSwitchApiTests.&FullyQualifiedName!~.StockPricePostgreSqlTests.
+            filter: Category=PostgreSql&PostgreSqlLane!=Load&FullyQualifiedName!~.PostgreSqlDashboardEquivalenceTests.&FullyQualifiedName!~.PostgreSqlTenantIsolationTests.&FullyQualifiedName!~.TrendyolImportRegressionPostgreSqlTests.&FullyQualifiedName!~.InvoiceLinkAndWriteSwitchApiTests.&FullyQualifiedName!~.StockPricePostgreSqlTests.&FullyQualifiedName!~.ReturnListEquivalencePostgreSqlTests.
           - lane: load
             filter: PostgreSqlLane=Load
     services:
@@ -433,7 +435,19 @@ jobs:
           MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
           FeatureFlags__ExternalWrites: "false"
           TEST_FILTER: ${{ matrix.filter }}
-        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "$TEST_FILTER"
+        # --blame-hang: a test that runs 8 min without finishing (the slowest, a Returns equivalence test, takes about
+        # 2.5) is stopped and named in the log and the uploaded Sequence file, instead of the job running into its timeout
+        # with no test named (Validate 44152902035, 17 Nov 2026).
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "$TEST_FILTER" --blame-hang --blame-hang-timeout 8m --blame-hang-dump-type none --results-directory "$RUNNER_TEMP/test-results"
+
+      - name: Upload hang report
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hang-report-${{ matrix.lane }}
+          path: ${{ runner.temp }}/test-results
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Fills main's NuGet cache, which every branch reads, once per lock-file set. Not a check:
   # gate does not wait for it and a failure here cannot hold back Validate or Deploy.

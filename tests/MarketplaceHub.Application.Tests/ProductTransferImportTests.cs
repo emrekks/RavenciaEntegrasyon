@@ -891,8 +891,8 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         await using (var db = fixture.CreateContext())
         {
-            Assert.Equal(panelOnly.Id, (await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ortak model", imported.Id, CancellationToken.None))?.ProductId);
-            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "BAŞKA-MODEL", imported.Id, CancellationToken.None));
+            Assert.Equal(panelOnly.Id, (await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, null, "ortak model", imported.Id, CancellationToken.None))?.ProductId);
+            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, null, "BAŞKA-MODEL", imported.Id, CancellationToken.None));
         }
 
         // Once the panel card is linked on the connection it is the same marketplace model: no conflict.
@@ -902,7 +902,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
             await link.SaveChangesAsync();
         }
         await using (var db = fixture.CreateContext())
-            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ORTAK-MODEL", imported.Id, CancellationToken.None));
+            Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, null, "ORTAK-MODEL", imported.Id, CancellationToken.None));
     }
 
     // KATALOG-14 phase D5b (owner, 17 Nov 2026): the export carries the model's description on every row; one longer than
@@ -942,6 +942,9 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
             var sheets = string.Concat(zip.Entries.Where(entry => entry.FullName.StartsWith("xl/", StringComparison.Ordinal) && entry.FullName.EndsWith(".xml", StringComparison.Ordinal))
                 .Select(entry => new StreamReader(entry.Open()).ReadToEnd()));
             Assert.Contains("Bu Modelin Açıklaması Excel İçin Çok Uzun, Editörden Düzenleyin: LONG1", sheets);
+            // The notes state the model rule: a change on one row reaches every colour of the model; no "ürünün kendisine aittir".
+            Assert.Contains("bir satırdaki değişiklik modelin bütün renklerine ve bedenlerine uygulanır", sheets);
+            Assert.DoesNotContain("ürünün kendisine aittir", sheets);
         }
         // Loaded straight back with the description picked: nothing changes, the long one is not deleted.
         var roundTrip = await service.PreviewAsync(tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), [ProductTransferFields.Description], CancellationToken.None);

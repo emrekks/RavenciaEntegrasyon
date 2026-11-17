@@ -155,6 +155,7 @@ public static class ApiErrorCatalog
         new("RESEND_REMINDER_INVALID", 400, "Yeniden gönderim sayısı 0 ile … arasında bir tam sayı olmalıdır."),
         new("RESOURCE_NOT_FOUND", 404, "Kayıt bulunamadı."),
         new("REVENUE_RANGE_INVALID", 400, "Tarihler yyyy-AA-gg biçiminde olmalıdır."),
+        new("SAVE_CONFLICT_RETRY", 409, "Kayıt aynı anda başka bir işlemle çakıştı; tekrar deneyin."),
         new("SECOND_FACTOR_FAILED", 401, "İkinci doğrulama kodu kabul edilmedi."),
         new("SELF_CHANGE_REFUSED", 403, "Kendi hesabınızı buradan değiştiremezsiniz."),
         new("SESSION_NOT_CLOSED", 409, "Yalnız kapanmış oturumlar silinebilir."),

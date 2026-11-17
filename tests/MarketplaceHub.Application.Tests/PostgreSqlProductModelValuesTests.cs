@@ -468,7 +468,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await Task.Delay(500);
         Assert.False(waiting.IsCompleted);
         await transaction.CommitAsync();
-        await waiting;
+        // Bounded: a save that never ends fails this test by name instead of hanging the run.
+        await waiting.WaitAsync(ConcurrencyTimeout);
 
         Assert.Equal("Yeni açıklama", (await ModelOfAsync(db, siyah.Id)).Description);
         Assert.Equal(["Yeni açıklama", "Yeni açıklama"], await DescriptionsAsync(db, siyah.Id, mavi.Id));
@@ -503,20 +504,19 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
-        // KATALOG-14 phase D5b: what is left for the tenant's warning is a difference in the category attributes (the
-        // eight model fields are the model's, so their copies never differ for long).
+        // Owner rule "uyarı yalnız KDV farkında" (review, 18 Nov 2026): what is left for the tenant's warning is a VAT the
+        // colours hold apart (an older release wrote one card alone).
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ800", "Siyah", "Kadın Siyah Etek", 0);
         var mavi = AddCard(db, seed, seed.Ravencia, "MZ800", "Mavi", "Kadın Mavi Etek", 1);
-        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = siyah.Id, AttributeId = seed.FabricId, ValueId = seed.Cotton, Version = 1 });
-        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = mavi.Id, AttributeId = seed.FabricId, ValueId = seed.Linen, Version = 1 });
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20 WHERE "Id" = {mavi.Id}""");
         var model = await ModelOfAsync(db, siyah.Id);
         await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         Task<IssueStatus> StatusAsync() => db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ProductModelValues.DifferDedupeKey).Select(x => x.Status).SingleAsync();
         Assert.Equal(IssueStatus.Open, await StatusAsync());
 
         // The owner makes the cards agree while the model is locked: the run skips it and the warning stays.
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_attribute_assignments SET "ValueId" = {seed.Cotton} WHERE "TenantId" = {seed.Tenant.Id}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 10 WHERE "TenantId" = {seed.Tenant.Id}""");
         await using (await LockModelAsync(model.Id))
         {
             var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
@@ -537,6 +537,42 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Contains(empty.Id, await ProductModelScan.TenantsAsync(db, CancellationToken.None));
         await ProductModelScan.RunTenantAsync(db, empty.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         Assert.Equal(IssueStatus.Resolved, await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == empty.Id).Select(x => x.Status).SingleAsync());
+    }
+
+    // Owner rule "uyarı yalnız KDV farkında" (review, 18 Nov 2026): colours of one model holding different category
+    // attributes (a colour's fabric) open no PRODUCT_MODEL_VALUES_DIFFER warning in the scan or the deploy refresh; they are
+    // only counted for the log. A tenant warning an older release opened for them is resolved by the next run; a VAT
+    // difference still warns.
+    [PostgreSqlFact]
+    public async Task ColoursWithDifferentCategoryAttributes_AreOnlyLogged_AndAnOldWarningOfThemCloses()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ810", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ810", "Mavi", "Kadın Mavi Etek", 1);
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = siyah.Id, AttributeId = seed.FabricId, ValueId = seed.Cotton, Version = 1 });
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = mavi.Id, AttributeId = seed.FabricId, ValueId = seed.Linen, Version = 1 });
+        await db.SaveChangesAsync();
+        // The warning the previous release opened for them.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ops.operational_issues ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount")
+            VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, {ProductModelValues.DifferDedupeKey}, {ProductModelValues.DifferCode}, '1 modelin renk kartlarında ortak değerler birbirinden farklı (özellikler 1): MZ810.', 'Open', now(), now(), 1)
+            """);
+
+        var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal((0, 1), (outcome.Differing.Count, outcome.AttributesSpread));
+        Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status != IssueStatus.Resolved));
+        var scan = await ProductModelScan.RunTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal((0, 1), (scan.ModelsDiffering, scan.ModelsAttributesSpread));
+        Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status != IssueStatus.Resolved));
+
+        // A VAT the colours hold apart still warns, and only the VAT is named.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20 WHERE "Id" = {mavi.Id}""");
+        var vat = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal([ProductModelValues.Vat], Assert.Single(vat.Differing).Fields);
+        var warning = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ProductModelValues.DifferDedupeKey);
+        Assert.Equal(IssueStatus.Open, warning.Status);
+        Assert.DoesNotContain(ProductModelValues.Attributes, warning.Summary);
     }
 
     // F8: the model's size chart is written only when it differs: a second run issues no write for it, neither for a
@@ -706,11 +742,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {unlinked.Id}""");
 
-        Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["mz500"], CancellationToken.None))?.ProductId);
+        Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Ravencia, ["mz500"], CancellationToken.None))?.ProductId);
+        // A model is its brand and its code (owner, 17 Nov 2026): another brand finds no holder of the code.
+        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Lavian, ["mz500"], CancellationToken.None));
         Assert.Contains(unlinked.Id, await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["KENE02"]).ToListAsync());
         // The model's key decides for a linked card: with the model moved to another key the card is not found by the old.
         await db.ProductModels.Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ500").ExecuteUpdateAsync(s => s.SetProperty(x => x.ModelCodeKey, "MZ501"));
-        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["MZ500"], CancellationToken.None));
+        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Ravencia, ["MZ500"], CancellationToken.None));
         Assert.Equal([linked.Id], await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["MZ501"]).ToListAsync());
     }
 
@@ -816,6 +854,10 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await transaction.CommitAsync();
     }
 
+    // The longest any concurrency test waits for a save: past it the test fails by name (CI saw a lane cut by its job
+    // timeout with no test named).
+    private static readonly TimeSpan ConcurrencyTimeout = TimeSpan.FromSeconds(60);
+
     // Holds a save right after its first UPDATE of a card row (the row then stays locked) until Release.
     private sealed class PauseAfterCardUpdate : DbCommandInterceptor
     {
@@ -827,7 +869,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         {
             if (!command.CommandText.Contains("UPDATE catalog.products", StringComparison.Ordinal) || Interlocked.Exchange(ref _armed, 0) == 0) return;
             Reached.TrySetResult();
-            await Release.Task;
+            // Bounded: a test that never releases it fails instead of holding the connection and its locks for ever.
+            await Release.Task.WaitAsync(ConcurrencyTimeout);
         }
 
         public override async ValueTask<System.Data.Common.DbDataReader> ReaderExecutedAsync(System.Data.Common.DbCommand command, CommandExecutedEventData eventData, System.Data.Common.DbDataReader result, CancellationToken cancellationToken = default)
@@ -867,13 +910,21 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         (await second.Products.SingleAsync(x => x.Id == mavi.Id)).VatRate = 20m;
 
         var firstSave = Task.Run(() => first.SaveChangesAsync());
-        await pause.Reached.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        var secondSave = Task.Run(() => second.SaveChangesAsync());
-        // The second save is now waiting on a row the first holds; the first then goes on.
-        await Task.Delay(TimeSpan.FromSeconds(2));
-        pause.Release.TrySetResult();
-        await firstSave;
-        await secondSave;
+        Task<int>? secondSave = null;
+        try
+        {
+            await pause.Reached.Task.WaitAsync(ConcurrencyTimeout);
+            secondSave = Task.Run(() => second.SaveChangesAsync());
+            // The second save is now waiting on a row the first holds; the first then goes on.
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            // Released whatever happened above, so no save is left holding its locks.
+            pause.Release.TrySetResult();
+        }
+        await firstSave.WaitAsync(ConcurrencyTimeout);
+        await secondSave!.WaitAsync(ConcurrencyTimeout);
 
         await using var check = fixture.CreateContext();
         Assert.Equal(20m, (await ModelOfAsync(check, siyah.Id)).VatRate);
@@ -1065,5 +1116,37 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var first = await OpenAsync(reversed: false);
         Assert.Equal(("Kadın Bordo Midi Etek", "Bordonun", (decimal?)10m), first);
         Assert.Equal(first, await OpenAsync(reversed: true));
+    }
+
+    // Review (17 Nov 2026, CI lane cut by its timeout): a save waits for the model rows another session holds at most
+    // ModelLockTimeout, then fails with 55P03 (a lock conflict the import retries and Excel / Toplu Değer Ata answer),
+    // instead of hanging with its request; once the holder ends the save goes through.
+    [PostgreSqlFact]
+    public async Task ASaveBehindAModelLockThatIsNeverReleased_FailsWithinTheLockTimeout_InsteadOfHanging()
+    {
+        Seed seed;
+        Product siyah;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            siyah = AddCard(setup, seed, seed.Ravencia, "MZ960", "Siyah", "Kadın Siyah Etek", 0);
+            AddCard(setup, seed, seed.Ravencia, "MZ960", "Mavi", "Kadın Mavi Etek", 1);
+            await setup.SaveChangesAsync();
+        }
+        await using var holder = fixture.CreateContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await holder.Database.SqlQuery<int>($"""SELECT 1 AS "Value" FROM catalog.product_models WHERE "TenantId" = {seed.Tenant.Id} FOR UPDATE""").ToListAsync();
+
+        await using var saver = fixture.CreateContext();
+        saver.ModelLockTimeout = "1s";
+        (await saver.Products.SingleAsync(x => x.Id == siyah.Id)).VatRate = 20m;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => saver.SaveChangesAsync().WaitAsync(ConcurrencyTimeout));
+        Assert.True(SerializableWriteRetry.IsLockConflict(failure), failure.ToString());
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(20), $"waited {clock.Elapsed}");
+
+        await held.RollbackAsync();
+        await saver.SaveChangesAsync().WaitAsync(ConcurrencyTimeout);
+        Assert.Equal(20m, (await ModelOfAsync(saver, siyah.Id)).VatRate);
     }
 }

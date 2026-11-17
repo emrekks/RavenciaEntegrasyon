@@ -278,6 +278,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // each model group.
     internal Dictionary<Guid, int> ModelOrderHint { get; } = [];
 
+    // How long a save waits for the model rows another save holds (ProductModelLinks.ModelLockTimeout; a test shortens it).
+    internal string ModelLockTimeout { get; set; } = ProductModelLinks.ModelLockTimeout;
+
     // KATALOG-14 phase D5b review: what a save that failed or was rolled back reported (its models were not written): it is
     // dropped, so "Model İçindeki N Renge Uygulandı" counts only what stands.
     internal void ForgetModelMirrorReport(int from)

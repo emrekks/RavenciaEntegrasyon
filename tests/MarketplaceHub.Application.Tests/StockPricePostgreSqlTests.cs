@@ -2098,6 +2098,43 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal((1m, "INCLUDED"), (chosen.Value!.VatRate, chosen.Value.VatInclusion));
     }
 
+    // Owner (17 Nov 2026, "farklı markalar aynı model kodunu kullanabiliyor"): a model is its brand and its code. "Yeni Ürün"
+    // of Lavian with a code Ravencia holds is opened as Lavian's own model; the same brand and code is still refused.
+    [PostgreSqlFact]
+    public async Task NewProduct_WithACodeAnotherBrandHolds_IsOpened_TheSameBrandIsStillRefused()
+    {
+        var tenant = NewTenant("model-code-brand");
+        var now = DateTimeOffset.UtcNow;
+        var ravencia = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Ravencia", NormalizedName = "RAVENCIA", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var lavian = new Brand { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Brands.AddRange(ravencia, lavian);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = NewCatalogService(db);
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var code = $"KENE{suffix}";
+
+        var held = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Kadın Kot Etek", "Açıklama", ravencia.Id, null, [new CreateVariantCommand($"{code}-R1", null, code)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(held.Succeeded, held.Error?.Message);
+        db.ChangeTracker.Clear();
+        var other = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Kadın Mavi Kot Etek", "Açıklama", lavian.Id, null, [new CreateVariantCommand($"{code}-L1", null, code)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(other.Succeeded, other.Error?.Message);
+        db.ChangeTracker.Clear();
+        var same = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Kadın Siyah Kot Etek", "Açıklama", ravencia.Id, null, [new CreateVariantCommand($"{code}-R2", null, code)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal((409, ModelCodeUniquenessPolicy.ConflictCode), (same.Error!.Status, same.Error.Code));
+
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.Equal(2, models.Count);
+        Assert.Equal(new Guid?[] { ravencia.Id, lavian.Id }.Order(), models.Select(x => x.BrandId).Order());
+        Assert.All(models, model => Assert.Equal(code, model.ModelCodeKey));
+        Assert.Null(await ModelCodeOwnership.FindAsync(db, tenant.Id, null, [code], CancellationToken.None));
+        Assert.Equal(held.Value!.Id, (await ModelCodeOwnership.FindAsync(db, tenant.Id, ravencia.Id, [code], CancellationToken.None))?.ProductId);
+    }
+
     // A model code belongs to one product: "Yeni Ürün" (a draft too) may not take one the catalog holds, whatever its case
     // or separators; the holder's editor (an update adding a colour), a colour card an import wrote next to it and a card
     // without a model code are not stopped.

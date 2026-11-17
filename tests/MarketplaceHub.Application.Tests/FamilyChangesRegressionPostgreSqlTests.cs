@@ -168,7 +168,7 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
 
     // Model Kaydı Faz 2b (owner, 14 Nov 2026: "eşlenmiş olduğuna eklesin"): a colour card nothing was sent of goes to
     // Trendyol under the productMainId of the product its model is linked to, even when the panel's model code differs; the
-    // card already on Trendyol keeps the panel code, and an ambiguous model takes no link-based code.
+    // card already on Trendyol keeps the panel code.
     [PostgreSqlFact]
     public async Task ATrendyolColourCard_JoinsTheProductItsModelIsLinkedTo_ByTheModelLinksProductMainId()
     {
@@ -187,11 +187,12 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         // Bordo is on Trendyol (its variant link): its productMainId stays the panel's, no live variant moves.
         Assert.Equal([ModelCode], MainIds(await BuildAsync(composer, seed, "TRENDYOL", seed.Cards["Bordo"].Id)));
 
-        // The model's code key under several brands (PRODUCT_MODEL_AMBIGUOUS open): no link-based code.
+        // A code under several brands is several models, each with its own link (owner, 17 Nov 2026): an old
+        // PRODUCT_MODEL_AMBIGUOUS issue left open no longer takes the link-based code away.
         var modelKey = await db.ProductModels.AsNoTracking().Where(x => x.Id == bordo.FamilyId).Select(x => x.ModelCodeKey).SingleAsync();
         db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DedupeKey = ProductModelLinks.AmbiguousDedupeKey(modelKey), Code = ProductModelLinks.AmbiguousCode, Summary = "test", Status = IssueStatus.Open, FirstSeenAt = DateTimeOffset.UtcNow, LastSeenAt = DateTimeOffset.UtcNow, OccurrenceCount = 1 });
         await db.SaveChangesAsync();
-        Assert.Equal([ModelCode], MainIds(await BuildAsync(composer, seed, "TRENDYOL", seed.Cards["Siyah"].Id)));
+        Assert.Equal(["TY-MZ051"], MainIds(await BuildAsync(composer, seed, "TRENDYOL", seed.Cards["Siyah"].Id)));
     }
 
     // The owner changes the model's brand and name from the Siyah row: every colour card takes them, so each card's

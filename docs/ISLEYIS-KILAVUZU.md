@@ -602,6 +602,13 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
   farklı değer verilirse model değişmez ve fark bildirilir (Excel bu satırları baştan reddeder, 3.12).
 - **Marka değişikliği** bütün modeli o markaya taşır; o markada aynı model kodlu model zaten varsa reddedilir, hiçbir şey
   birleştirilmez ("Bu Markada Aynı Model Kodu Zaten Var …", `MODEL_CODE_TAKEN_IN_BRAND`; `ModelCodeUniquenessPolicy.cs:19-24`).
+- **Marka ve model kodu aynı kayıtta** (editör, Excel satırında Marka + Model Kodu) değişirse kod, kartın **yeni** markasında
+  aranır: o markanın modeli kodu tutuyorsa kayıt reddedilir, birleştirilmez (Excel `PRODUCT_TRANSFER_MODEL_CODE_TAKEN`); panelde
+  henüz olmayan marka kod tutmaz. Son korumalar `ProductModelLinks` içinde (kod yayılımı ve eşleştirme).
+- **"Kod kullanımda mı" kuralı eşleştirmeyle aynıdır** (`ProductModelLinks.LinkBrand`): markasız kart için kod, markasız bir
+  kart onu tutuyorsa ya da kodun tek bir markalı modeli varsa (kart oraya katılırdı) kullanımdadır; iki marka tutuyorsa serbesttir.
+  Yeni Ürün alanı ("Kullanımda: …"), editör/Excel kod değişikliği ve pazaryeri aktarımının kod değişikliği aynı kuralı sorar
+  (`ModelCodeOwnership.cs`).
 - **Pazaryerinden ürün aktarımı** var olan modeli değiştirmez: farklı değerle gelen renk modelin değerini alır (kopyası geri
   yazılır). Yalnız modelde henüz olmayan (bilinmeyen) bir değeri doldurabilir. Fark yalnız **KDV** içinse
   `PRODUCT_MODEL_VALUES_DIFFER` uyarısı açılır (model, renk, iki değer; fatura modelin KDV'siyle kesilir); ad, açıklama, desi,
@@ -613,11 +620,14 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
 - **Otomatik yollar** (deploy yenilemesi, Worker açılış geçişi, gece model taraması) bu sekiz alanın hiçbirini yazmaz ve
   pazaryeri bağlarını işaretlemez. Kopyası modelinkinden farklı kalmış bir rengi (KDV, kategori, garanti, teslimat ya da marka)
   model başına bir `PRODUCT_MODEL_VALUES_DIFFER` uyarısıyla bildirir; farkı yalnız sahibin kaydı kapatır
+  (uyarı yalnız KDV farkında: renklerin kategori özellikleri farklıysa uyarı açılmaz, yalnız loglarda sayılır)
   (`ModelMirror.cs` `ReportGapsAsync`).
 - **Eşzamanlı kayıt**: model alanı veren kayıt, kart yazmadan önce ilgili model satırlarını kimlik sırasıyla kilitler; iki
   kardeş renk kaydı sırayla çalışır. Yine de kilitlenme (deadlock) olursa Toplu Değer Ata ve Excel modeli "İşlem sırasında başka
   bir kayıtla değişti" diye atlar, pazaryeri aktarımı modeli yeniden dener (`ProductModelLinks.cs:200-215`
-  `LockPendingModelsAsync`; `CatalogImportService.ProductImport.cs:576-583`).
+  `LockPendingModelsAsync`; `CatalogImportService.ProductImport.cs:576-583`). Model satırını bekleyen kayıt en çok 30 sn bekler
+  (55P03); editör (Yeni Ürün dahil) ve diğer API yolları bunu `SAVE_CONFLICT_RETRY` 409 "Tekrar deneyin" diye yanıtlar, 500 değil
+  (`CatalogService.SaveConflict`, `ApiExceptionHandler`).
 - Kart ve varyantlardaki eski sütunlar şimdilik modelin **kopyası** olarak yazılmaya devam eder (geri alma güvenliği). Önceki
   sürümden kalma ad/açıklama farkı olan kartlar, sahip ürünleri silip yeniden aktarana kadar kendi metnini taşır
   (`EffectiveCatalog.cs:29-35`).

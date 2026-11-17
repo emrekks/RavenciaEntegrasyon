@@ -216,16 +216,27 @@ public static class ProductModelLinks
         }
     }
 
+    // How long a save waits for the model rows another save holds (review, 17 Nov 2026): a lock left by a session that
+    // never ends (a stuck request) fails the save with 55P03 instead of holding it, and its request, forever; the import
+    // retries the model, Excel and Toplu Değer Ata answer with a conflict (SerializableWriteRetry.IsLockConflict).
+    public const string ModelLockTimeout = "30s";
+
     // The rows of the models the given cards are linked to and of the given keys, locked in one statement in id order (the
-    // one order every model write takes them in), in the caller's transaction.
-    internal static Task<List<int>> LockModelsOfCardsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, string[] keys, CancellationToken cancellationToken) =>
-        db.Database.SqlQuery<int>($"""
+    // one order every model write takes them in), in the caller's transaction, waiting at most ModelLockTimeout; the
+    // caller's own lock_timeout is put back after it.
+    internal static async Task LockModelsOfCardsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, string[] keys, CancellationToken cancellationToken)
+    {
+        var previous = (await db.Database.SqlQuery<string>($"""SELECT current_setting('lock_timeout') AS "Value" """).ToListAsync(cancellationToken)).Single();
+        await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {db.ModelLockTimeout}, true) AS "Value" """).ToListAsync(cancellationToken);
+        await db.Database.SqlQuery<int>($"""
             SELECT 1 AS "Value" FROM catalog.product_models
             WHERE "TenantId" = {tenantId}
               AND ("Id" IN (SELECT p."FamilyId" FROM catalog.products p WHERE p."TenantId" = {tenantId} AND p."Id" = ANY({productIds}) AND p."FamilyId" IS NOT NULL)
                    OR "ModelCodeKey" = ANY({keys}))
             ORDER BY "Id" FOR UPDATE
             """).ToListAsync(cancellationToken);
+        await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {previous}, true) AS "Value" """).ToListAsync(cancellationToken);
+    }
 
     private static bool Changed<TEntity, T>(PropertyEntry<TEntity, T> property) where TEntity : class =>
         property.IsModified && !EqualityComparer<T>.Default.Equals(property.OriginalValue, property.CurrentValue);
@@ -242,15 +253,16 @@ public static class ProductModelLinks
                 var ids = modelIds.ToArray();
                 keys.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).Select(x => x.ModelCodeKey).ToListAsync(cancellationToken));
             }
+            // The brands the save gave cards already linked (a brand change moves the whole model, ModelMirror writing it right
+            // after; a marketplace import moves no model, its card goes to its brand's model).
+            var brandChanges = (pending.FieldChanges.GetValueOrDefault(tenantId) ?? []).Where(x => x.Value.Brand && !x.Value.Added && !db.MarketplaceCatalogImport).ToDictionary(x => x.Key, x => x.Value.BrandId);
             // KATALOG-14 phase D5b: a code changed on a colour is the model's new code (not in a marketplace import, which never
             // moves a model).
             if (!db.MarketplaceCatalogImport && pending.CodeChanges.TryGetValue(tenantId, out var codeChanges))
-                keys.UnionWith(await PropagateCodeChangesAsync(db, tenantId, codeChanges, cancellationToken));
+                keys.UnionWith(await PropagateCodeChangesAsync(db, tenantId, codeChanges, brandChanges, cancellationToken));
             if (keys.Count > 0)
             {
-                // The save's cards and the brands the save gave cards already linked (a brand change moves the whole model,
-                // ModelMirror writing it right after; a marketplace import moves no model, its card goes to its brand's model).
-                var brandChanges = (pending.FieldChanges.GetValueOrDefault(tenantId) ?? []).Where(x => x.Value.Brand && !x.Value.Added && !db.MarketplaceCatalogImport).ToDictionary(x => x.Key, x => x.Value.BrandId);
+                // The save's cards and the brands it gave.
                 await ReconcileAsync(db, tenantId, keys, now, cancellationToken, new SaveScope(new HashSet<Guid>([.. productIds ?? [], .. brandChanges.Keys]), brandChanges));
             }
             // KATALOG-14 phase D5a: a card the model-code rule links to no model (no code) gets a model of its own.
@@ -294,7 +306,7 @@ public static class ProductModelLinks
     // the model's: every variant of the model still holding the old code takes the new one in the save's transaction, so
     // the reconcile keeps the model under its new code (KATALOG-2's re-key). A code another model holds is refused (the
     // editor and the Excel file refuse it first; this is the last guard). Returns the keys to reconcile.
-    private static async Task<HashSet<string>> PropagateCodeChangesAsync(AppDbContext db, Guid tenantId, IReadOnlyDictionary<Guid, (string? Before, string? After)> changes, CancellationToken cancellationToken)
+    private static async Task<HashSet<string>> PropagateCodeChangesAsync(AppDbContext db, Guid tenantId, IReadOnlyDictionary<Guid, (string? Before, string? After)> changes, IReadOnlyDictionary<Guid, Guid?> brandChanges, CancellationToken cancellationToken)
     {
         var keys = new HashSet<string>(StringComparer.Ordinal);
         var cardIds = changes.Keys.ToArray();
@@ -306,12 +318,14 @@ public static class ProductModelLinks
             var model = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == card.ModelId && x.ModelCodeKey == oldKey).Select(x => new { x.Id, x.BrandId }).SingleOrDefaultAsync(cancellationToken);
             if (model is null) continue;
             var modelId = model.Id;
-            // A model is its brand and code: only a model of the same brand holding the new code refuses it.
-            var holder = await (from other in db.ProductModels.AsNoTracking()
-                                join product in db.Products.AsNoTracking() on other.Id equals product.FamilyId
-                                where other.TenantId == tenantId && other.ModelCodeKey == newKey && other.BrandId == model.BrandId && other.Id != modelId && product.TenantId == tenantId
-                                orderby product.CreatedAt, product.Id
-                                select product.Title).FirstOrDefaultAsync(cancellationToken);
+            // A model is its brand and code: only the model of the new code the cards would join refuses it, under the brand
+            // the save gives the card when it gives one (an Excel row with Marka and Model Kodu, review 18 Nov 2026), by the
+            // reconcile's own rule (LinkBrand: a model without a brand joins the code's one branded model).
+            var codeModels = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == newKey && x.Id != modelId).Select(x => new { x.Id, x.BrandId }).ToListAsync(cancellationToken);
+            var joining = LinkBrand(brandChanges.TryGetValue(card.Id, out var given) ? given : model.BrandId, [.. codeModels.Where(x => x.BrandId is not null).Select(x => x.BrandId)]);
+            var joinedIds = codeModels.Where(x => x.BrandId == joining).Select(x => x.Id).ToArray();
+            var holder = joinedIds.Length == 0 ? null : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId != null && joinedIds.Contains(x.FamilyId.Value))
+                .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Select(x => x.Title).FirstOrDefaultAsync(cancellationToken);
             if (holder is not null) throw ModelRuleException.CodeInUse(holder);
             var variants = (await db.ProductVariants.AsNoTracking()
                     .Where(x => x.TenantId == tenantId && x.ModelCode != null && db.Products.Any(product => product.TenantId == tenantId && product.Id == x.ProductId && product.FamilyId == modelId))
@@ -367,6 +381,14 @@ public static class ProductModelLinks
     // half done. Inside a caller's transaction it runs as before (no lock, so a long import holds nothing for others).
     // save: a save's reconcile (KATALOG-14 phase D5b): a card of the save joining a code under another brand fails the save.
     public sealed record SaveScope(IReadOnlySet<Guid> Products, IReadOnlyDictionary<Guid, Guid?> BrandChanges);
+
+    // The one rule of which brand's model of a code a card joins when it is not linked to one of the code yet: the reconcile
+    // below and every "is this code in use" check (ModelCodeOwnership) ask it. A card of a brand joins its brand's model. A
+    // card without a brand is no other brand (owner, 17 Nov 2026): it joins the code's one model of a brand when the code has
+    // exactly one, else the model without a brand. brandedModelBrands: the brands of the code's models that have a brand
+    // (one model per brand and code).
+    public static Guid? LinkBrand(Guid? cardBrand, IReadOnlyCollection<Guid?> brandedModelBrands) =>
+        cardBrand ?? (brandedModelBrands.Count == 1 ? brandedModelBrands.First() : null);
 
     public static async Task ReconcileAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<string>? keys, DateTimeOffset now, CancellationToken cancellationToken, SaveScope? save = null)
     {
@@ -453,23 +475,30 @@ public static class ProductModelLinks
             var keyModels = models.Where(x => x.ModelCodeKey == key && !rekeyed.Contains(x.Id)).ToList();
             if (openIssueKeys.Contains(AmbiguousDedupeKey(key))) await ResolveAmbiguityAsync(db, tenantId, key, now, cancellationToken);
             if (keyCards.Count == 0) continue;
+            var brandedModels = keyModels.Where(model => model.BrandId is not null).Select(model => model.BrandId).ToList();
             // A brand a save gives a linked colour moves its model to that brand's key: refused here, in the save's transaction,
-            // when that brand already has a model of the code (nothing is merged; the editor's deferred model write would be late).
-            if (save is not null && keyCards.FirstOrDefault(x => save.BrandChanges.TryGetValue(x.Card.Id, out var given) && keyModels.FirstOrDefault(model => model.Id == x.Card.FamilyId) is { } linked
-                    && given != linked.BrandId && keyModels.Any(model => model.Id != linked.Id && model.BrandId == given)) is { Card: not null } moving)
+            // when that brand (a blank brand too, owner 17 Nov 2026) already has a model of the code (nothing is merged; the
+            // editor's deferred model write would be late, after its commit).
+            // A card whose brand and code the save changed together (an Excel row with Marka and Model Kodu, an editor save) is
+            // not linked to a model of this code yet: it is refused when the model it would join (LinkBrand of its new brand)
+            // already holds colours, as a code change to a code its brand holds is (review, 18 Nov 2026).
+            if (save is not null && keyCards.FirstOrDefault(x => save.BrandChanges.TryGetValue(x.Card.Id, out var given)
+                    && (keyModels.FirstOrDefault(model => model.Id == x.Card.FamilyId) is { } linked
+                        ? given != linked.BrandId && keyModels.Any(model => model.Id != linked.Id && model.BrandId == given)
+                        : LinkBrand(given, brandedModels) is var joining && keyModels.Any(model => model.BrandId == joining && linkedElsewhere.Any(card => card.FamilyId == model.Id && card.Id != x.Card.Id))))
+                    is { Card: not null } moving)
             {
-                var brandName = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == save.BrandChanges[moving.Card.Id]).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
+                var given = save.BrandChanges[moving.Card.Id];
+                var taken = keyModels.Any(model => model.Id == moving.Card.FamilyId) ? given : LinkBrand(given, brandedModels);
+                var brandName = taken is null ? null : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == taken).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
                 throw ModelRuleException.BrandCodeTaken(moving.Code, brandName ?? "markasız");
             }
             // A colour whose brand this save changed stays with its model (a brand change moves the whole model, ModelMirror);
-            // every other card goes to its own brand's model of the code. A card without a brand is no other brand (owner, 17 Nov
-            // 2026): it stays with the model of the code it is linked to, else joins the code's one model of a brand, else
-            // the models without a brand.
-            var brandedModels = keyModels.Where(model => model.BrandId is not null).ToList();
+            // a card without a brand stays with the model of the code it is linked to; every other card joins the model LinkBrand
+            // names.
             Guid? GroupBrand(Guid cardId, Guid? familyId, Guid? cardBrand) =>
                 (save is not null && save.BrandChanges.ContainsKey(cardId) || cardBrand is null) && keyModels.FirstOrDefault(model => model.Id == familyId) is { } linked ? linked.BrandId
-                : cardBrand is null && brandedModels.Count == 1 ? brandedModels[0].BrandId
-                : cardBrand;
+                : LinkBrand(cardBrand, brandedModels);
             foreach (var brandGroup in keyCards.GroupBy(x => GroupBrand(x.Card.Id, x.Card.FamilyId, x.Card.BrandId)))
             {
                 var brand = brandGroup.Key;

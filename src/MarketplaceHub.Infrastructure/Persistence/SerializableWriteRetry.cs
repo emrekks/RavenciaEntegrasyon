@@ -22,12 +22,13 @@ internal static class SerializableWriteRetry
         return false;
     }
 
-    // A deadlock (40P01) or a serialization failure (40001) anywhere in the chain (Npgsql's execution strategy wraps it):
+    // A deadlock (40P01), a serialization failure (40001) or a lock wait that ran out (55P03, ProductModelLinks.ModelLockTimeout)
+    // anywhere in the chain (Npgsql's execution strategy wraps it):
     // the attempt wrote nothing and may be run again (KATALOG-14 phase D5b review 3).
     public static bool IsLockConflict(Exception exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)
-            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected }) return true;
+            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.LockNotAvailable }) return true;
         return false;
     }
 

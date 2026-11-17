@@ -69,7 +69,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId && x.Code == ProductModelLinks.AmbiguousCode).ToListAsync();
 
     [PostgreSqlFact]
-    public async Task AnImportFromEmpty_OpensOneModelPerBrandAndCode_LinksNewColours_AndLeavesTwoBrandCodesUnlinked()
+    public async Task AnImportFromEmpty_OpensOneModelPerBrandAndCode_LinksNewColours_AndGivesEachBrandItsOwnModelOfACode()
     {
         var seed = NewSeed();
         await using var db = fixture.CreateContext();
