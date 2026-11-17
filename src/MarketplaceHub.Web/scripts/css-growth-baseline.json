@@ -163,8 +163,8 @@
   },
   "src/styles/one-row.css": {
     "important": 0,
-    "rootBumps": 51,
-    "lines": 86
+    "rootBumps": 50,
+    "lines": 83
   },
   "src/styles/orders-returns-invoices-audit.css": {
     "important": 1,
@@ -176,7 +176,7 @@
     "rootBumps": 2
   },
   "src/styles/responsive.css": {
-    "important": 15,
+    "important": 13,
     "rootBumps": 0
   },
   "src/styles/segments.css": {
