@@ -207,7 +207,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" overwrites the owner's edit (ProductImportMergePolicy.
         // OverwriteLocalChanges, owner decision 7 Nov) and still keeps the owner's pictures. KATALOG-14 phase D5b (owner,
         // 17 Nov 2026): the name is the model's and an import never moves a model, so Trendyol's other name for this one
-        // colour is not taken; the owner is told. The card's warranty (24 here) is never touched: a listing carries none.
+        // colour is not taken, unwarned. The card's warranty (24 here) is never touched: a listing carries none.
         await using (var db = fixture.CreateContext())
             await db.Products.Where(row => row.Id == siyah.ProductId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 24));
         await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), $"{{\"productLookup\":\"{ModelCode}\",\"updateExistingProducts\":true}}");
@@ -217,8 +217,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         {
             var card = await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId);
             Assert.Equal((Title("Siyah"), (int?)24), (card.Title, card.WarrantyMonths));
-            Assert.Contains(await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open).Select(row => row.Summary).ToListAsync(),
-                summary => summary.Contains("Trendyol Siyah Başlık", StringComparison.Ordinal));
+            // A name difference is not warned about (owner, 17 Nov 2026: only a VAT difference is).
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open));
         }
 
         // The lookup cleared the card's marks; a later changed full import still keeps the pictures, because the card
@@ -338,7 +338,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
 
     // 4. Model fields: Trendyol brings another title and description for one colour only. KATALOG-14 phase D5b (owner,
     // 17 Nov 2026): the name and description are the model's and an import never moves a model, so that colour keeps the
-    // model's and the owner is told which values Trendyol sent.
+    // model's, unwarned (only a VAT difference is warned about).
     [PostgreSqlFact]
     public async Task ChangedTitleOfOneColour_MovesNoColour_AndAnOwnersFamilyEditHoldsOnEveryCard()
     {
@@ -354,8 +354,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             var cards = await CardsAsync(db, seed);
             foreach (var (colour, _, _, _) in Colours)
                 Assert.Equal((Title(colour), "Yumuşak dokulu triko bluz."), (cards[ContentId(colour)].Product.Title, cards[ContentId(colour)].Product.Description));
-            var warning = Assert.Single(await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Summary.Contains("Yeni açıklama.")).ToListAsync());
-            Assert.Contains("Kadın Bordo Triko Bluz Yeni", warning.Summary, StringComparison.Ordinal);
+            // A name or description difference is not warned about (owner, 17 Nov 2026: only a VAT difference is).
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open));
         }
 
         // The owner writes the description to the whole family (the editor's model field marks every colour card's

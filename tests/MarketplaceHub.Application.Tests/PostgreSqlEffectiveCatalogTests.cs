@@ -109,8 +109,10 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             var gap = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
             Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
             Assert.Contains("KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
-            Assert.Contains("teslimat süresi 5 (modelin: 2)", gap.Summary);
-            Assert.Contains("garanti 12 (modelin: 24)", gap.Summary);
+            // Only the VAT is warned about (owner, 17 Nov 2026); the delivery days and warranty are only logged.
+            Assert.DoesNotContain("teslimat süresi", gap.Summary);
+            Assert.DoesNotContain("garanti", gap.Summary);
+            Assert.Contains("fatura modelin KDV'siyle kesilir", gap.Summary);
 
             var model = await ModelOfAsync(db, card.Id);
             Assert.Equal((10m, (int?)2, (int?)24), (model.VatRate, model.DeliveryDays, model.WarrantyMonths));
@@ -296,11 +298,11 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             Assert.Equal(mz300.Id, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == blankCard)).FamilyId);
             Assert.Equal(((Guid?)null, (Guid?)null), ((await db.Products.AsNoTracking().SingleAsync(x => x.Id == blankCard)).BrandId, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[1].Id)).BrandId));
             Assert.All(await EffectiveCatalog.Products(db).Where(x => x.TenantId == seeded.Tenant.Id && x.Id != ownCard).ToListAsync(), x => Assert.Equal(brand, x.BrandId));
-            // The own model keeps its brand; the card's other brand is only warned about.
+            // The own model keeps its brand; the card's other brand is only logged (owner, 17 Nov 2026: only a VAT difference
+            // is warned about).
             Assert.Equal(brand, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == ownModel)).BrandId);
-            var gaps = await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix)).ToListAsync();
-            var gap = Assert.Single(gaps);
-            Assert.Contains("marka \"Lavian\"", gap.Summary);
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix) && x.Status == IssueStatus.Open));
+            Assert.Contains(await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None), x => x.Contains(ProductModelValues.Brand, StringComparison.Ordinal));
             Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelLinks.AmbiguousCode && x.Status == IssueStatus.Open));
         }
     }

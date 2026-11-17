@@ -74,30 +74,25 @@ public static class ProductFamilySharedFields
             Most(card => $"{card.DeliveryDays}").DeliveryDays);
     }
 
-    // KATALOG-14 phase D5b review 5: the values a model opened for its colours takes (a save, a marketplace import). An
-    // unknown value (no VAT, category, warranty, delivery days or brand; an empty name or description) does not vote: each
-    // field is the value most colours that know it hold, on a tie the oldest card's (cards oldest first); unknown only when
-    // no colour knows it. The editor's ModelValues stays as it is.
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026: "isimleri ilk çekilen gibi yapsın", "KDV ve desi de öyle olsun"): the values
+    // a model opened for its colours takes (a save, a marketplace import) are the first card's (the oldest, the first one
+    // brought in), field by field; where that card does not know a value (no VAT, category, warranty, delivery days or
+    // brand; an empty name or description) the oldest card that knows it gives it, and it stays unknown only when no colour
+    // knows it. Nothing is voted on. The other colours take the model's (the name with their colour word, TitleFor). The
+    // editor's ModelValues stays as it is.
     public static ModelFields NewModelValues(IReadOnlyList<CardFields> cards)
     {
         if (cards.Count == 0) throw new ArgumentException("A model has at least one colour card.", nameof(cards));
-        var indexed = cards.Select((card, index) => (card, index)).ToList();
-        CardFields? Most(Func<CardFields, bool> known, Func<CardFields, string> keyOf) => indexed.Where(item => known(item.card))
-            .GroupBy(item => keyOf(item.card), StringComparer.Ordinal)
-            .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index))
-            .Select(group => group.OrderBy(item => item.index).First().card).FirstOrDefault();
-        // The name: compared as the editor compares it (without the colour word), given as the oldest such card wrote it.
-        var withTitle = cards.Where(card => !string.IsNullOrWhiteSpace(card.Title)).ToList();
-        var title = withTitle.Count == 0 ? cards[0].Title.Trim() : ModelValues(withTitle, null).Title;
-        var vat = Most(card => card.VatRate is not null, card => $"{card.VatRate!.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
+        CardFields? First(Func<CardFields, bool> known) => cards.FirstOrDefault(known);
+        var vat = First(card => card.VatRate is not null);
         return new ModelFields(
-            title,
-            Most(card => !string.IsNullOrWhiteSpace(card.Description), card => card.Description.Trim())?.Description ?? cards[0].Description,
-            Most(card => card.BrandId is not null, card => $"{card.BrandId}")?.BrandId,
-            Most(card => card.CategoryId is not null, card => $"{card.CategoryId}")?.CategoryId,
+            (First(card => !string.IsNullOrWhiteSpace(card.Title)) ?? cards[0]).Title.Trim(),
+            First(card => !string.IsNullOrWhiteSpace(card.Description))?.Description ?? cards[0].Description,
+            First(card => card.BrandId is not null)?.BrandId,
+            First(card => card.CategoryId is not null)?.CategoryId,
             vat?.VatRate, vat?.VatInclusion,
-            Most(card => card.WarrantyMonths is not null, card => $"{card.WarrantyMonths}")?.WarrantyMonths,
-            Most(card => card.DeliveryDays is not null, card => $"{card.DeliveryDays}")?.DeliveryDays);
+            First(card => card.WarrantyMonths is not null)?.WarrantyMonths,
+            First(card => card.DeliveryDays is not null)?.DeliveryDays);
     }
 
     // The card (index in the family's order) whose attribute set most cards hold, on a tie the first: the model's attributes.

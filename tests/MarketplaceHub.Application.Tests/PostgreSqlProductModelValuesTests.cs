@@ -632,8 +632,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
     }
 
     // KATALOG-14 phase D5b: new colour cards in one save open a model with the oldest colour's values (most colours, on a
-    // tie the oldest: the editor's rule) and a colour that came with another name takes the model's, with a warning naming
-    // the model; a marketplace import that rewrites one colour's description never moves the model (the colour takes the
+    // tie the oldest; the name the oldest card's) and a colour that came with another name takes the model's, without a
+    // warning; a marketplace import that rewrites one colour's description never moves the model (the colour takes the
     // model's back, warned); Toplu Değer Ata on one colour gives the value to the model and every colour.
     [PostgreSqlFact]
     public async Task AnImportAndABulkEdit_LeaveNoColourWithAValueOfItsOwn()
@@ -648,7 +648,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(("Kadın Siyah Midi Etek", "Siyah", "Ortak açıklama"), (model.Title, model.TitleColor, model.Description));
         Assert.Equal(["Kadın Siyah Midi Etek", "Kadın Mavi Midi Etek", "Kadın Gri Midi Etek"], await TitlesAsync(db, siyah.Id, mavi.Id, gri.Id));
         Task<OperationalIssue> WarningAsync() => db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ModelMirror.DifferDedupePrefix + model.Id.ToString("N"));
-        Assert.Contains("Gri Pileli Etek Kampanya", (await WarningAsync()).Summary);
+        // A colour that came with another name takes the one derived from the model and nobody is warned (owner, 17 Nov 2026).
+        Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ModelMirror.DifferDedupePrefix + model.Id.ToString("N")));
 
         // A Pazaryeri import rewrites one colour's description: the model keeps its own and so does the colour.
         db.ChangeTracker.Clear();
@@ -658,17 +659,29 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         db.MarketplaceCatalogImport = false;
         Assert.Equal("Ortak açıklama", (await ModelOfAsync(db, siyah.Id)).Description);
         Assert.Equal(["Ortak açıklama", "Ortak açıklama", "Ortak açıklama"], await DescriptionsAsync(db, siyah.Id, mavi.Id, gri.Id));
+        // A description difference is not warned about (owner, 17 Nov 2026: only a VAT difference is).
+        Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ModelMirror.DifferDedupePrefix + model.Id.ToString("N")));
+
+        // The import brings another VAT for one colour: the model keeps its own, the colour takes it back, and the owner is
+        // told which colour, both values and that the invoice is cut at the model's VAT.
+        db.ChangeTracker.Clear();
+        db.MarketplaceCatalogImport = true;
+        (await db.Products.SingleAsync(x => x.Id == mavi.Id)).VatRate = 20m;
+        await db.SaveChangesAsync();
+        db.MarketplaceCatalogImport = false;
+        Assert.Equal(10m, (await ModelOfAsync(db, siyah.Id)).VatRate);
         var warning = await WarningAsync();
         Assert.Equal(IssueStatus.Open, warning.Status);
         Assert.Contains("pazaryerinden gelen", warning.Summary);
-        Assert.Contains("Mavi rengin açıklaması", warning.Summary);
-        Assert.Contains("Mavi rengi: açıklama \"Mavi rengin açıklaması\"", warning.Summary);
+        Assert.Contains("Mavi rengi: KDV %20 dahil (modelin: %10 dahil)", warning.Summary);
+        Assert.Contains("fatura modelin KDV'siyle kesilir", warning.Summary);
         Assert.Contains(ModelMirror.NextUpdateSentence, warning.Summary);
 
         // Toplu Değer Ata writes the whole model (every colour of the selected card) and resolves the warning.
         Assert.True((await Service(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([mavi.Id], BulkProductFields.Description, "Toplu açıklama"), CancellationToken.None)).Succeeded);
         Assert.Equal("Toplu açıklama", (await ModelOfAsync(db, siyah.Id)).Description);
         Assert.Equal(["Toplu açıklama", "Toplu açıklama", "Toplu açıklama"], await DescriptionsAsync(db, siyah.Id, mavi.Id, gri.Id));
+        Assert.True((await Service(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([mavi.Id], BulkProductFields.VatRate, "20"), CancellationToken.None)).Succeeded);
         Assert.Equal(IssueStatus.Resolved, (await WarningAsync()).Status);
     }
 
@@ -861,34 +874,36 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.All(await check.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
     }
 
-    // KATALOG-14 phase D5b review 5: a model a save opens for new colours takes, field by field, the value most colours
-    // that know it hold; an unknown value (no VAT, no category, an empty description) does not vote, so two colours
-    // without a VAT do not outvote the one that has one. On a tie the oldest card's value wins, the desi included (before:
-    // the smaller).
+    // Owner (17 Nov 2026: "isimleri ilk çekilen gibi", "KDV ve desi de öyle olsun"): a model a save opens for new colours
+    // takes every field from the first card (the oldest); where it does not know one (no VAT, no category, an empty
+    // description) the oldest card that knows it gives it. Nothing is voted on: two later colours with another VAT, desi or
+    // description do not outvote it; they take the model's, and only their VAT difference is warned about.
     [PostgreSqlFact]
-    public async Task ANewModel_TakesTheKnownMajority_UnknownsDoNotVote_AndATieGoesToTheOldestCard()
+    public async Task ANewModel_TakesTheFirstKnownValues_NotTheMajority_AndOnlyAVatDifferenceIsWarned()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
         var oldest = AddCard(db, seed, seed.Ravencia, "NEWM1", "Siyah", "Kadın Siyah Etek", 0, desi: 3m, description: "");
-        var middle = AddCard(db, seed, seed.Ravencia, "NEWM1", "Mavi", "Kadın Mavi Etek", 1, desi: 2m, description: "Bilinen açıklama", vat: 20m);
-        var newest = AddCard(db, seed, seed.Ravencia, "NEWM1", "Gri", "Kadın Gri Etek", 2, desi: null, description: "");
+        var second = AddCard(db, seed, seed.Ravencia, "NEWM1", "Mavi", "Kadın Mavi Etek", 1, desi: 2m, description: "Bilinen açıklama", vat: 20m);
+        AddCard(db, seed, seed.Ravencia, "NEWM1", "Gri", "Kadın Gri Etek", 2, desi: 2m, description: "Başka açıklama", vat: 10m);
+        AddCard(db, seed, seed.Ravencia, "NEWM1", "Bordo", "Kadın Bordo Etek", 3, desi: 2m, description: "Başka açıklama", vat: 10m);
         oldest.VatRate = null;
         oldest.VatInclusion = null;
         oldest.CategoryId = null;
-        newest.VatRate = null;
-        newest.VatInclusion = null;
-        newest.CategoryId = null;
         await db.SaveChangesAsync();
 
-        var model = await ModelOfAsync(db, middle.Id);
-        Assert.Equal((20m, "INCLUDED", (Guid?)seed.CategoryId, "Bilinen açıklama"), (model.VatRate, model.VatInclusion, model.CategoryId, model.Description));
-        // Desi 3 ×2 (the oldest card) and 2 ×2: a tie, the oldest card's.
+        var model = await ModelOfAsync(db, second.Id);
+        Assert.Equal((20m, "INCLUDED", (Guid?)seed.CategoryId, "Bilinen açıklama", "Kadın Siyah Etek"), (model.VatRate, model.VatInclusion, model.CategoryId, model.Description, model.Title));
+        // The first card's first size with a desi: 3 (two later colours hold 2 on six sizes).
         Assert.Equal(3m, model.Desi);
-        // Every colour reads the model's values.
-        Assert.All(await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal((20m, (Guid?)seed.CategoryId), (x.VatRate, x.CategoryId)));
-        Assert.Equal(3m, ProductModelValues.ModelDesi([3m, 3m, 2m, 2m]));
-        Assert.Equal(2m, ProductModelValues.ModelDesi([null, 2m, 3m, 3m, 2m, 2m]));
+        Assert.All(await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal((20m, (Guid?)seed.CategoryId, "Bilinen açıklama"), (x.VatRate, x.CategoryId, x.Description)));
+        Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
+        var warning = Assert.Single(await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open).ToListAsync());
+        Assert.Contains("Gri rengi: KDV %10 dahil (modelin: %20 dahil)", warning.Summary);
+        Assert.Contains("Bordo rengi: KDV %10 dahil (modelin: %20 dahil)", warning.Summary);
+        Assert.DoesNotContain("desi", warning.Summary);
+        Assert.DoesNotContain("açıklama \"", warning.Summary);
+        Assert.Equal(2m, ProductModelValues.ModelDesi([null, 2m, 3m, 3m, 3m]));
     }
 
     // KATALOG-14 phase D5b review: the owner deletes every product before the re-import. The models (an own "#id" model
@@ -989,5 +1004,34 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Single(result.Value!.Failures);
         Assert.Equal(0, result.Value.ModelColours);
         Assert.Equal(10m, (await ModelOfAsync(db, siyah.Id)).VatRate);
+    }
+
+    // Owner (17 Nov 2026, "isimleri ilk çekilen gibi yapsın"): a new model's name is the first card's (the oldest), not the
+    // one most colours bring; the other colours' names are derived from it with their colour word, and a colour whose
+    // marketplace name differed opens no warning. A differing name on an existing model's colour is not warned about either.
+    [PostgreSqlFact]
+    public async Task ANewModelsName_IsTheFirstCards_TheOthersAreDerived_AndANameDifferenceIsNotWarned()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        db.MarketplaceCatalogImport = true;
+        var siyah = AddCard(db, seed, seed.Ravencia, "NAME1", "Siyah", "Kadın Siyah Midi Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "NAME1", "Mavi", "Kadın Mavi Uzun Etek", 1);
+        var gri = AddCard(db, seed, seed.Ravencia, "NAME1", "Gri", "Kadın Gri Uzun Etek", 2);
+        await db.SaveChangesAsync();
+
+        var model = await ModelOfAsync(db, siyah.Id);
+        Assert.Equal(("Kadın Siyah Midi Etek", "Siyah"), (model.Title, model.TitleColor));
+        Assert.Equal(["Kadın Siyah Midi Etek", "Kadın Mavi Midi Etek", "Kadın Gri Midi Etek"], await TitlesAsync(db, siyah.Id, mavi.Id, gri.Id));
+        Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
+
+        // A new colour of the existing model with another name: the model stays, the colour takes the derived name, no warning.
+        db.ChangeTracker.Clear();
+        var bordo = AddCard(db, seed, seed.Ravencia, "NAME1", "Bordo", "Kadın Bordo Kısa Etek", 3);
+        await db.SaveChangesAsync();
+        Assert.Equal("Kadın Siyah Midi Etek", (await ModelOfAsync(db, siyah.Id)).Title);
+        Assert.Equal(["Kadın Bordo Midi Etek"], await TitlesAsync(db, bordo.Id));
+        Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
+        db.MarketplaceCatalogImport = false;
     }
 }

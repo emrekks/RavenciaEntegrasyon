@@ -491,8 +491,8 @@ public static class ProductModelLinks
                 var titleCard = cards.FirstOrDefault(x => x.Card.Title.Trim() == fields.Title);
                 // KATALOG-14 phase D5b: the colour word the name holds, whichever colour card it came from (a copy can hold another colour's).
                 var titleColor = (titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? color : cards.Select(x => x.Color).FirstOrDefault(other => other is not null && ProductFamilyNewColorCard.HasColorWord(fields.Title, other))) is { } word ? Short(word.Trim(), 120) : null;
-                // The brand most colours hold (on a tie the oldest card's), an empty brand only when no colour has one.
-                var brandId = cards.Where(x => x.Card.BrandId is not null).GroupBy(x => x.Card.BrandId).OrderByDescending(x => x.Count()).ThenBy(x => x.Min(card => card.Card.CreatedAt)).Select(x => x.Key).FirstOrDefault();
+                // The brand of the first card that has one (an empty brand only when no colour has one), as every field.
+                var brandId = fields.BrandId;
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
                     VALUES ({Guid.CreateVersion7()}, {tenantId}, {brandId}, {Short(cards[0].Code, 160)}, {key}, {Short(fields.Title, 320)}, {titleColor}, {fields.Description}, {fields.CategoryId}, {fields.VatRate}, {fields.VatInclusion}, {fields.WarrantyMonths}, {fields.DeliveryDays}, {(DateTimeOffset?)null}, {now}, {now}, {1L})

@@ -52,11 +52,10 @@ public static class ProductModelValues
 
     public sealed record Card(Guid Id, DateTimeOffset CreatedAt, string? Color, string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays, string? TitleOverride = null, string? DescriptionOverride = null);
 
-    // The model's desi: the one most variants hold (above 0; an empty one does not vote), on a tie the oldest card's (the
-    // desis come oldest card first, each card's variants in their order; KATALOG-14 phase D5b review 5, before the
-    // smaller); null when none holds one.
-    public static decimal? ModelDesi(IEnumerable<decimal?> desis) => desis.Select((desi, index) => (desi, index)).Where(item => item.desi > 0)
-        .GroupBy(item => item.desi!.Value).OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index)).Select(group => (decimal?)group.Key).FirstOrDefault();
+    // The desi a model without one takes (KATALOG-14 phase D5b, owner 17 Nov 2026: "KDV ve desi de öyle olsun"): the first
+    // known one (above 0) in the order given, the oldest card first and each card's variants in their order, so the first
+    // card's first size with a desi gives it; null when none holds one. Nothing is voted on.
+    public static decimal? ModelDesi(IEnumerable<decimal?> desis) => desis.FirstOrDefault(desi => desi > 0);
 
     // The index (cards oldest first) of the card whose chart most charted cards hold, on a tie the oldest; null: none.
     public static int? ModelChartCard(IReadOnlyList<string?> measurements) => measurements.Select((json, index) => (json, index)).Where(item => item.json is not null)
@@ -256,7 +255,9 @@ public static class ProductModelValues
         // KATALOG-14 phase D2: what is still worth telling the owner. A colour's own name or description is a deliberate
         // override, a variant's own desi and a colour's own size chart are its own; what has no per-colour value (category,
         // VAT, warranty, delivery days, the category attributes) yet differs between colours is still reported.
-        var differing = DifferingFields(cards).Where(field => field is not (Title or Description)).ToList();
+        // KATALOG-14 phase D5b (owner, 17 Nov 2026): of the eight model fields only a VAT that differs between colours is
+        // worth a warning (the invoice); the others the colours take from the model, unwarned.
+        var differing = DifferingFields(cards).Where(field => field == Vat).ToList();
         if (setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any()) differing.Add(Attributes);
         // What the owner saved in the editor after the last change of every card stays (the editor's own rule).
         var updatedAt = cards.Select(card => snapshot.CardUpdatedAt[card.Id]).ToList();

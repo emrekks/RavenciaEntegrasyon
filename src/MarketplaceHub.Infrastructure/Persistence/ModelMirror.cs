@@ -94,8 +94,14 @@ public static class ModelMirror
                 var added = counted.Where(x => x.Change.Added && key(valueOf(x)) != currentKey).ToList();
                 var changed = counted.Where(x => !x.Change.Added).Select(valueOf).GroupBy(key, StringComparer.Ordinal).Select(g => g.First()).ToList();
                 // Each colour that came with another value, named with both values (review, 17 Nov 2026).
-                void Report(IEnumerable<(CardRow Card, FieldChange Change)> differing) =>
+                // Owner (17 Nov 2026): only a VAT that differs is warned about (the invoice is cut at the model's VAT); a colour
+                // whose name, description, category, warranty, delivery days or brand differs takes the model's (the name derived
+                // with its colour word) and nobody is warned ("dert değil").
+                void Report(IEnumerable<(CardRow Card, FieldChange Change)> differing)
+                {
+                    if (field != ProductModelValues.Vat) return;
                     conflicts.AddRange(differing.Select(x => $"{ColourOf(x.Card)}: {field} {Shown(valueOf(x))} (modelin: {Shown(current)})").Except(conflicts).ToList());
+                }
                 Report(added);
                 if (changed.Count == 0) return;
                 // An import fills a value the model does not hold yet (unknown stays unknown until a source knows it); it
@@ -136,8 +142,6 @@ public static class ModelMirror
             // The desi: every variant value the save gave; an empty one (not filled) never moves the model.
             var desiCards = given.SelectMany(x => (x.Change.Desis ?? []).Select(desi => (x.Card, Desi: desi with { Added = desi.Added || x.Change.Added }))).ToList();
             var desiGiven = desiCards.Select(x => x.Desi).ToList();
-            void ReportDesi(Func<DesiGiven, bool> differing) =>
-                conflicts.AddRange(desiCards.Where(x => x.Desi.Desi is not null && differing(x.Desi)).Select(x => $"{ColourOf(x.Card)}: {ProductModelValues.Desi} {Show(x.Desi.Desi)} (modelin: {Show(target.Desi)})").Distinct().Except(conflicts).ToList());
             var desiVariants = new HashSet<Guid>(desiGiven.Select(x => x.VariantId));
             if (desiGiven.Count > 0)
             {
@@ -146,7 +150,6 @@ public static class ModelMirror
                 var changedDesis = desiGiven.Where(x => !x.Added).Select(x => x.Desi).OfType<decimal>().Distinct().ToList();
                 if (changedDesis.Count > 1 || (changedDesis.Count == 1 && db.MarketplaceCatalogImport && target.Desi is not null))
                 {
-                    ReportDesi(desi => !desi.Added && desi.Desi != target.Desi);
                 }
                 else if (changedDesis.Count == 1 && changedDesis[0] != target.Desi)
                 {
@@ -160,9 +163,7 @@ public static class ModelMirror
                     target = target with { Desi = opened };
                     fields.Add(ProductModelValues.Desi);
                 }
-                // New sizes that came with another desi take the model's, and the owner is told.
-                var addedDesis = addedValues.Where(value => value != target.Desi).Distinct().ToList();
-                if (addedDesis.Count > 0 && target.Desi is not null) ReportDesi(desi => desi.Added && desi.Desi != target.Desi);
+                // New sizes that came with another desi take the model's; a desi difference is not warned about (owner, 17 Nov 2026).
             }
 
             if (fields.Count > 0)
@@ -346,6 +347,7 @@ public static class ModelMirror
         string Named(Guid? id, Dictionary<Guid, string> names) => id is Guid value && names.TryGetValue(value, out var name) ? $"\"{Clip(name)}\"" : "boş";
 
         var gaps = new List<Gap>();
+        var warned = new List<Guid>();
         var at = now.ToUniversalTime();
         foreach (var model in rows.GroupBy(x => x.ModelId))
         {
@@ -355,9 +357,11 @@ public static class ModelMirror
             foreach (var card in model)
             {
                 var parts = new List<string>();
+                // Owner (17 Nov 2026): only a VAT difference is warned about (the invoice is cut at the model's VAT); the others
+                // are only returned for the caller's log.
                 void Differs(string field, string cardValue, string modelValue)
                 {
-                    parts.Add($"{field} {cardValue} (modelin: {modelValue})");
+                    if (field == ProductModelValues.Vat) parts.Add($"{field} {cardValue} (modelin: {modelValue})");
                     if (!fields.Contains(field)) fields.Add(field);
                 }
                 if (card.CardVatRate is not null && (card.CardVatRate != card.VatRate || card.CardVatInclusion != card.VatInclusion))
@@ -370,11 +374,13 @@ public static class ModelMirror
                 var colour = colours.GetValueOrDefault(card.CardId) is { } word ? $"{word.Trim()} rengi" : $"\"{Clip(card.CardTitle)}\" kartı";
                 lines.Add($"{colour}: {string.Join(", ", parts)}");
             }
-            if (lines.Count == 0) continue;
+            if (fields.Count == 0) continue;
             var code = string.IsNullOrWhiteSpace(first.ModelCode) ? $"\"{Clip(model.First().CardTitle)}\"" : first.ModelCode;
             gaps.Add(new Gap(model.Key, code, fields));
+            if (lines.Count == 0) continue;
+            warned.Add(model.Key);
             var summary = Summary($"{code} modelinin renk kartında modelinkinden farklı değer kayıtlı: ", lines,
-                $". Otomatik olarak hiçbir şey değiştirilmedi: ekranlar ve faturalar modelin değerini kullanır. {NextUpdateSentence} Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin; bütün renklere uygulanır.");
+                $". Otomatik olarak hiçbir şey değiştirilmedi: ekranlar modelin değerini gösterir ve fatura modelin KDV'siyle kesilir. {NextUpdateSentence} Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin; bütün renklere uygulanır.");
             var key = $"{GapDedupePrefix}{model.Key:N}";
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
@@ -386,7 +392,7 @@ public static class ModelMirror
                 """, cancellationToken);
         }
         // The warnings of models whose colours agree with them again (or that are gone).
-        var open = gaps.Select(x => $"{GapDedupePrefix}{x.ModelId:N}").ToArray();
+        var open = warned.Select(id => $"{GapDedupePrefix}{id:N}").ToArray();
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE ops.operational_issues SET "Status" = 'Resolved', "ResolvedAt" = {at}, "LastSeenAt" = {at}
             WHERE "TenantId" = {tenantId} AND "Code" = {ProductModelValues.DifferCode} AND "DedupeKey" LIKE {GapDedupePrefix + "%"} AND "Status" <> 'Resolved' AND NOT ("DedupeKey" = ANY({open}))
@@ -401,7 +407,7 @@ public static class ModelMirror
         var at = now.ToUniversalTime();
         var code = string.IsNullOrWhiteSpace(model.ModelCode) ? $"\"{Clip(model.Title)}\"" : model.ModelCode;
         var summary = Summary($"{code} modelinin {(import ? "pazaryerinden gelen" : "aynı kayıtta değişen")} renk kartında modelinkinden farklı değer geldi: ", conflicts,
-            $". Modelin değeri korundu ve bütün renklerde aynı kaldı. {NextUpdateSentence} Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin.");
+            $". Modelin değeri korundu ve bütün renklerde aynı kaldı; fatura modelin KDV'siyle kesilir. {NextUpdateSentence} Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin.");
         var key = $"{DifferDedupePrefix}{model.Id:N}";
         return db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
