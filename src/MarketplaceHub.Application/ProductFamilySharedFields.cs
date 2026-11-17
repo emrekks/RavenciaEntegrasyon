@@ -74,6 +74,32 @@ public static class ProductFamilySharedFields
             Most(card => $"{card.DeliveryDays}").DeliveryDays);
     }
 
+    // KATALOG-14 phase D5b review 5: the values a model opened for its colours takes (a save, a marketplace import). An
+    // unknown value (no VAT, category, warranty, delivery days or brand; an empty name or description) does not vote: each
+    // field is the value most colours that know it hold, on a tie the oldest card's (cards oldest first); unknown only when
+    // no colour knows it. The editor's ModelValues stays as it is.
+    public static ModelFields NewModelValues(IReadOnlyList<CardFields> cards)
+    {
+        if (cards.Count == 0) throw new ArgumentException("A model has at least one colour card.", nameof(cards));
+        var indexed = cards.Select((card, index) => (card, index)).ToList();
+        CardFields? Most(Func<CardFields, bool> known, Func<CardFields, string> keyOf) => indexed.Where(item => known(item.card))
+            .GroupBy(item => keyOf(item.card), StringComparer.Ordinal)
+            .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index))
+            .Select(group => group.OrderBy(item => item.index).First().card).FirstOrDefault();
+        // The name: compared as the editor compares it (without the colour word), given as the oldest such card wrote it.
+        var withTitle = cards.Where(card => !string.IsNullOrWhiteSpace(card.Title)).ToList();
+        var title = withTitle.Count == 0 ? cards[0].Title.Trim() : ModelValues(withTitle, null).Title;
+        var vat = Most(card => card.VatRate is not null, card => $"{card.VatRate!.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
+        return new ModelFields(
+            title,
+            Most(card => !string.IsNullOrWhiteSpace(card.Description), card => card.Description.Trim())?.Description ?? cards[0].Description,
+            Most(card => card.BrandId is not null, card => $"{card.BrandId}")?.BrandId,
+            Most(card => card.CategoryId is not null, card => $"{card.CategoryId}")?.CategoryId,
+            vat?.VatRate, vat?.VatInclusion,
+            Most(card => card.WarrantyMonths is not null, card => $"{card.WarrantyMonths}")?.WarrantyMonths,
+            Most(card => card.DeliveryDays is not null, card => $"{card.DeliveryDays}")?.DeliveryDays);
+    }
+
     // The card (index in the family's order) whose attribute set most cards hold, on a tie the first: the model's attributes.
     public static int ModelAttributeCard(IReadOnlyList<string> attributeKeys) => attributeKeys.Select((key, index) => (key, index))
         .GroupBy(item => item.key, StringComparer.Ordinal)

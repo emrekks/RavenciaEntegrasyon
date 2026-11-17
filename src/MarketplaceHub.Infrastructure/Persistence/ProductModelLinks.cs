@@ -480,9 +480,9 @@ public static class ProductModelLinks
             }
             if (target is null)
             {
-                var fields = ProductFamilySharedFields.ModelValues(
-                    [.. cards.Select(x => new ProductFamilySharedFields.CardFields(x.Card.Id, x.Color, x.Card.Title, x.Card.Description, x.Card.BrandId, x.Card.CategoryId, x.Card.VatRate, x.Card.VatInclusion, x.Card.WarrantyMonths, x.Card.DeliveryDays))],
-                    null);
+                // KATALOG-14 phase D5b review 5: unknown values do not vote; most colours that know a value, on a tie the oldest.
+                var fields = ProductFamilySharedFields.NewModelValues(
+                    [.. cards.Select(x => new ProductFamilySharedFields.CardFields(x.Card.Id, x.Color, x.Card.Title, x.Card.Description, x.Card.BrandId, x.Card.CategoryId, x.Card.VatRate, x.Card.VatInclusion, x.Card.WarrantyMonths, x.Card.DeliveryDays))]);
                 var titleCard = cards.FirstOrDefault(x => x.Card.Title.Trim() == fields.Title);
                 // KATALOG-14 phase D5b: the colour word the name holds, whichever colour card it came from (a copy can hold another colour's).
                 var titleColor = (titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? color : cards.Select(x => x.Color).FirstOrDefault(other => other is not null && ProductFamilyNewColorCard.HasColorWord(fields.Title, other))) is { } word ? Short(word.Trim(), 120) : null;

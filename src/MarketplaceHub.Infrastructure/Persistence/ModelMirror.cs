@@ -69,7 +69,8 @@ public static class ModelMirror
             if (model is null) continue;
             var members = await CardsAsync(db, tenantId, model.Id, cancellationToken);
             var colors = members.Select(x => x.Color?.Trim()).OfType<string>().Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var given = group.Select(x => (Card: members.First(member => member.Id == x.Id), Change: changes[x.Id])).ToList();
+            // Oldest colour first (members are by CreatedAt, Id): a new model's desi goes by the oldest card on a tie.
+            var given = group.Select(x => (Card: members.First(member => member.Id == x.Id), Change: changes[x.Id])).OrderBy(x => members.IndexOf(x.Card)).ToList();
             var target = new Values(model.Title, model.TitleColor, model.Description, model.VatRate, model.VatInclusion, model.CategoryId, model.WarrantyMonths, model.DeliveryDays, model.Desi, model.BrandId);
             var fields = new List<string>();
             // Per touched field, the cards that brought a value: when the model does not move they alone take its value
@@ -146,7 +147,7 @@ public static class ModelMirror
                     target = target with { Desi = changedDesis[0] };
                     fields.Add(ProductModelValues.Desi);
                 }
-                // A model without a desi yet takes the one most of its new sizes bring (on a tie the smaller), as the
+                // A model without a desi yet takes the one most of its new sizes bring (on a tie the oldest card's), as the
                 // refresh does.
                 else if (target.Desi is null && changedDesis.Count == 0 && ProductModelValues.ModelDesi(addedValues.Select(value => (decimal?)value)) is { } opened)
                 {

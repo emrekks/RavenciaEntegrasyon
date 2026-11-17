@@ -856,4 +856,34 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(20m, (await ModelOfAsync(check, siyah.Id)).VatRate);
         Assert.All(await check.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
     }
+
+    // KATALOG-14 phase D5b review 5: a model a save opens for new colours takes, field by field, the value most colours
+    // that know it hold; an unknown value (no VAT, no category, an empty description) does not vote, so two colours
+    // without a VAT do not outvote the one that has one. On a tie the oldest card's value wins, the desi included (before:
+    // the smaller).
+    [PostgreSqlFact]
+    public async Task ANewModel_TakesTheKnownMajority_UnknownsDoNotVote_AndATieGoesToTheOldestCard()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var oldest = AddCard(db, seed, seed.Ravencia, "NEWM1", "Siyah", "Kadın Siyah Etek", 0, desi: 3m, description: "");
+        var middle = AddCard(db, seed, seed.Ravencia, "NEWM1", "Mavi", "Kadın Mavi Etek", 1, desi: 2m, description: "Bilinen açıklama", vat: 20m);
+        var newest = AddCard(db, seed, seed.Ravencia, "NEWM1", "Gri", "Kadın Gri Etek", 2, desi: null, description: "");
+        oldest.VatRate = null;
+        oldest.VatInclusion = null;
+        oldest.CategoryId = null;
+        newest.VatRate = null;
+        newest.VatInclusion = null;
+        newest.CategoryId = null;
+        await db.SaveChangesAsync();
+
+        var model = await ModelOfAsync(db, middle.Id);
+        Assert.Equal((20m, "INCLUDED", (Guid?)seed.CategoryId, "Bilinen açıklama"), (model.VatRate, model.VatInclusion, model.CategoryId, model.Description));
+        // Desi 3 ×2 (the oldest card) and 2 ×2: a tie, the oldest card's.
+        Assert.Equal(3m, model.Desi);
+        // Every colour reads the model's values.
+        Assert.All(await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal((20m, (Guid?)seed.CategoryId), (x.VatRate, x.CategoryId)));
+        Assert.Equal(3m, ProductModelValues.ModelDesi([3m, 3m, 2m, 2m]));
+        Assert.Equal(2m, ProductModelValues.ModelDesi([null, 2m, 3m, 3m, 2m, 2m]));
+    }
 }

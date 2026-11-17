@@ -52,9 +52,11 @@ public static class ProductModelValues
 
     public sealed record Card(Guid Id, DateTimeOffset CreatedAt, string? Color, string Title, string Description, Guid? BrandId, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays, string? TitleOverride = null, string? DescriptionOverride = null);
 
-    // The model's desi: the one most variants hold (above 0), on a tie the smaller; null when none holds one.
-    public static decimal? ModelDesi(IEnumerable<decimal?> desis) => desis.OfType<decimal>().Where(desi => desi > 0)
-        .GroupBy(desi => desi).OrderByDescending(group => group.Count()).ThenBy(group => group.Key).Select(group => (decimal?)group.Key).FirstOrDefault();
+    // The model's desi: the one most variants hold (above 0; an empty one does not vote), on a tie the oldest card's (the
+    // desis come oldest card first, each card's variants in their order; KATALOG-14 phase D5b review 5, before the
+    // smaller); null when none holds one.
+    public static decimal? ModelDesi(IEnumerable<decimal?> desis) => desis.Select((desi, index) => (desi, index)).Where(item => item.desi > 0)
+        .GroupBy(item => item.desi!.Value).OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index)).Select(group => (decimal?)group.Key).FirstOrDefault();
 
     // The index (cards oldest first) of the card whose chart most charted cards hold, on a tie the oldest; null: none.
     public static int? ModelChartCard(IReadOnlyList<string?> measurements) => measurements.Select((json, index) => (json, index)).Where(item => item.json is not null)

@@ -70,7 +70,7 @@ public sealed class ProductModel
     // majority set (ProductModelLinks.RecomputeUnsavedAttributesAsync), not yet saved from the editor.
     public DateTimeOffset? AttributesSavedAt { get; set; }
     // KATALOG-14 (expand): the model's desi (owner, 11 Nov 2026: "desi marka ortak"), the value most of its variants hold
-    // (on a tie the smaller, the editor's rule); null while no variant holds one. Written through by ProductModelValues
+    // (on a tie the oldest card's, KATALOG-14 phase D5b); null while no variant holds one. Written through by ProductModelValues
     // after every save that changes a variant's desi; the variants keep their own (every reader still reads them).
     public decimal? Desi { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
