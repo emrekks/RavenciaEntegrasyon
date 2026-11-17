@@ -11,10 +11,12 @@ function longDate(value: string) { return formatIstanbul(new Date(value), { day:
 
 // A parcel the carrier could not deliver and brought back (Trendyol UnDeliveredAndReturned), as opposed to a return the
 // customer started: the order says "Teslim Edilemedi" and "İade Döndü" instead of "İade Edildi" (owner, 17 Nov 2026).
+// The same test as the server's Teslim Edilemedi tab (OrderQueryService.UndeliveredReturnInDatabase): RETURNED with a
+// line or package whose raw status, upper-cased, is UNDELIVEREDANDRETURNED.
 export function undeliveredReturn(item: Pick<Order, 'derivedStatus' | 'packages' | 'lines'>) {
   if (item.derivedStatus !== 'RETURNED') return false
   const raw = [...(item.packages ?? []).map(value => value.rawStatus), ...(item.lines ?? []).map(value => value.rawStatus)]
-  return raw.some(status => (status ?? '').replace(/[^a-z]/giu, '').toUpperCase() === 'UNDELIVEREDANDRETURNED')
+  return raw.some(status => (status ?? '').toUpperCase() === 'UNDELIVEREDANDRETURNED')
 }
 
 export function deliveryText(item: Order): DeliveryInfo {
