@@ -137,6 +137,8 @@
   --rv-z-tooltip: 90;
   --rv-z-modal: 1000;
   --rv-z-toast: 1100;
+  /* Every sheet that opens from the bottom on a phone (filters, row menus, bulk menus) is at most this tall: the page and its title stay visible above it. */
+  --rv-sheet-max-height: min(75dvh, 640px);
   /* One hover colour for every neutral hover (owner, 18 Nov 2026), both themes: the element's own ground (the surface) with 6% of the
      ink mixed in, so it is a little darker than its surface in the light theme and a little lighter in the dark one, and a card, row
      or menu item never takes on the colour of the page behind it. Hover rules read it as var(--rv-hover, <fallback>). */
