@@ -455,6 +455,72 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Owner, 17 Nov 2026: a parcel the carrier could not deliver and brought back (RETURNED, raw UnDeliveredAndReturned on
+    // its lines, live 11813450018, or on its package) is listed and counted under Teslim Edilemedi and stays under İade
+    // Edildi; a customer return is not Teslim Edilemedi; a plain undelivered order still is; paging walks the same rows.
+    [PostgreSqlFact]
+    public async Task TeslimEdilemediListsAndCountsAnUndeliveredAndReturnedOrderButNotACustomerReturn()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ol-uar-{Guid.NewGuid():N}"[..20], DisplayName = "uar", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "uar", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            var minute = 0;
+            void AddOrder(string number, string derived, ShipmentPackageStatus packageStatus, string packageRaw, params string[] lineRaws)
+            {
+                var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalOrderId = number, OrderNumber = number, Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-++minute), LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = derived, CreatedAt = now, UpdatedAt = now, Version = 1 };
+                seed.Orders.Add(order);
+                var line = 0;
+                foreach (var raw in lineRaws)
+                    seed.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = $"{++line}", Sku = $"SKU-{number}-{line}", TitleSnapshot = "Ürün", OrderedQuantity = 1, UnitPrice = 10m, VatRate = 20m, RawStatus = raw });
+                seed.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = $"p-{number}", Status = packageStatus, RawStatus = packageRaw, StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+            }
+            AddOrder("uar-lines", "RETURNED", ShipmentPackageStatus.Returned, "Returned", "UnDeliveredAndReturned", "UnDeliveredAndReturned", "UnDeliveredAndReturned");
+            AddOrder("uar-package", "RETURNED", ShipmentPackageStatus.Returned, "UndeliveredAndReturned", "Returned");
+            AddOrder("customer-return", "RETURNED", ShipmentPackageStatus.Returned, "Returned", "Returned");
+            AddOrder("undelivered", "UNDELIVERED", ShipmentPackageStatus.Undelivered, "UnDelivered", "UnDelivered");
+            AddOrder("delivered", "DELIVERED", ShipmentPackageStatus.Delivered, "Delivered", "Delivered");
+            // Not returned (yet): the raw status alone does not make it Teslim Edilemedi.
+            AddOrder("uar-shipped", "SHIPPED", ShipmentPackageStatus.Shipped, "Shipped", "UnDeliveredAndReturned");
+            await seed.SaveChangesAsync();
+        }
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            var all = new OrderListQuery();
+            var summary = await service.OrderSummaryAsync(tenant.Id, all, CancellationToken.None);
+            var undelivered = await service.OrdersAsync(tenant.Id, 50, 1, null, all with { Status = "UNDELIVERED" }, CancellationToken.None);
+            Assert.Equal(["uar-lines", "uar-package", "undelivered"], undelivered.Items.Select(x => x.OrderNumber).Order().ToArray());
+            Assert.Equal(3, summary.Undelivered);
+            Assert.Equal(summary.Undelivered, undelivered.TotalCount);
+            // Still İade Edildi: the tabs are counted one by one, Tümü is its own count (no tab sum doubles).
+            var returned = await service.OrdersAsync(tenant.Id, 50, 1, null, all with { Status = "RETURNED" }, CancellationToken.None);
+            Assert.Equal(["customer-return", "uar-lines", "uar-package"], returned.Items.Select(x => x.OrderNumber).Order().ToArray());
+            Assert.Equal(3, summary.Returned);
+            Assert.Equal(6, summary.All);
+
+            // One row per page through the cursor: the same three orders, each once, and the total on every page.
+            var walked = new List<string>();
+            string? after = null;
+            do
+            {
+                var page = await service.OrdersAsync(tenant.Id, 1, 1, after, all with { Status = "UNDELIVERED" }, CancellationToken.None);
+                Assert.Equal(3, page.TotalCount);
+                walked.AddRange(page.Items.Select(x => x.OrderNumber));
+                after = page.HasMore ? page.NextCursor : null;
+            } while (after is not null);
+            Assert.Equal(["uar-lines", "uar-package", "undelivered"], walked.Order().ToArray());
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
 

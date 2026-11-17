@@ -392,6 +392,13 @@ internal sealed partial class OrderQueryService
                             && !currentPackages.Any(package => package.TenantId == order.TenantId
                                 && package.OrderId == order.Id
                                 && package.Status != ShipmentPackageStatus.Cancelled),
+                    // A parcel the carrier could not deliver and brought back is Teslim Edilemedi too, while it stays
+                    // under İade Edildi (owner, 17 Nov 2026); the tabs are counted one by one, never summed.
+                    "UNDELIVERED" => Either(
+                        order => currentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status)),
+                        UndeliveredReturnInDatabase(currentPackages)),
                     _ => order => currentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
                         && packageStatuses.Contains(package.Status))
@@ -507,6 +514,29 @@ internal sealed partial class OrderQueryService
         "RESENT" => [],
         _ => [status]
     };
+
+    // The raw status of a parcel the carrier could not deliver and brought back to the seller: Trendyol's
+    // UnDeliveredAndReturned, and PTT AVM's gondericisine_teslim_edildi, which its mapper stores as UndeliveredAndReturned.
+    // The order itself is RETURNED. Compared upper-cased, exactly as the web's undeliveredReturn does.
+    internal const string UndeliveredAndReturnedRawStatus = "UNDELIVEREDANDRETURNED";
+
+    // An undelivered-and-returned order: RETURNED with a line or a current package of that raw status (the lines and
+    // packages the order list sends the web). One rule for the Teslim Edilemedi list and its count, which both read
+    // FilteredOrders; the order keeps its DerivedStatus, so it stays under İade Edildi as well.
+    internal Expression<Func<Order, bool>> UndeliveredReturnInDatabase(IQueryable<ShipmentPackage> currentPackages) =>
+        order => order.DerivedStatus == "RETURNED"
+            && (db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id
+                    && line.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus)
+                || currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id
+                    && package.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus));
+
+    // left(order) || right(order), as one predicate.
+    private static Expression<Func<Order, bool>> Either(Expression<Func<Order, bool>> left, Expression<Func<Order, bool>> right)
+    {
+        var order = left.Parameters[0];
+        return Expression.Lambda<Func<Order, bool>>(
+            Expression.OrElse(left.Body, ReplacingExpressionVisitor.Replace(right.Parameters[0], order, right.Body)), order);
+    }
 
     // order => isManual(order) ? manualRule(order) : marketplaceRule(order), as one predicate.
     private static Expression<Func<Order, bool>> WithManualShopifyStatus(Expression<Func<Order, bool>> isManual, Expression<Func<Order, bool>> manualRule, Expression<Func<Order, bool>> marketplaceRule)
