@@ -89,6 +89,43 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         }
     }
 
+    // KATALOG-14 phase D5b review 4: a marketplace import opens a new colour of an existing model with no warranty of its own
+    // (the listing carries none: 0), no delivery days, no VAT, no category and no description, and brings an existing
+    // colour without a category or description. Unknown is no difference: the colours take the model's values and no
+    // PRODUCT_MODEL_VALUES_DIFFER warning opens.
+    [PostgreSqlFact]
+    public async Task AnImportsUnknownValues_AreNoDifference_TheColourTakesTheModels_AndNothingIsWarned()
+    {
+        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
+        var now = DateTimeOffset.UtcNow;
+        Guid added;
+        ProductModel model;
+        await using (var db = fixture.CreateContext())
+        {
+            model = await ModelOfAsync(db, seeded.Cards[0].Id);
+            db.MarketplaceCatalogImport = true;
+            var card = new Product { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, Title = ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, "Mavi"), Description = "", BrandId = model.BrandId, WarrantyMonths = 0, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            db.Products.Add(card);
+            db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ProductId = card.Id, Sku = $"MAVI-{Guid.NewGuid():N}"[..20], SkuNormalized = "MAVI", ModelCode = model.ModelCode, OptionSignature = "Renk: Mavi | Beden: M", CreatedAt = now, UpdatedAt = now });
+            var existing = await db.Products.SingleAsync(x => x.Id == seeded.Cards[1].Id);
+            existing.CategoryId = null;
+            existing.Description = "";
+            await db.SaveChangesAsync();
+            added = card.Id;
+            Assert.DoesNotContain(db.ModelMirrorReport, x => x.Refused);
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
+            var after = await ModelOfAsync(db, seeded.Cards[0].Id);
+            Assert.Equal((model.VatRate, model.CategoryId, model.WarrantyMonths, model.DeliveryDays, model.Description), (after.VatRate, after.CategoryId, after.WarrantyMonths, after.DeliveryDays, after.Description));
+            var newColour = await db.Products.AsNoTracking().SingleAsync(x => x.Id == added);
+            Assert.Equal((after.Id, model.VatRate, model.CategoryId, model.DeliveryDays, model.Description), (newColour.FamilyId!.Value, newColour.VatRate, newColour.CategoryId, newColour.DeliveryDays, newColour.Description));
+            var existing = await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[1].Id);
+            Assert.Equal((model.CategoryId, model.Description), (existing.CategoryId, existing.Description));
+        }
+    }
+
     // What the automatic paths may not write: every column of the eight model fields of the tenant's models, cards and
     // variants, their Version and UpdatedAt, and the marketplace links' sync marks.
     private static async Task<string> ModelFieldsSnapshotAsync(AppDbContext db, Guid tenantId) =>

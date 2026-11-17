@@ -78,7 +78,7 @@ public static class ModelMirror
             var conflicts = new List<string>();
 
             // One field: the values the save gave (new colours only check the model's), the model's value and how to set it.
-            void Take<T>(string field, Func<FieldChange, bool> isSet, Func<(CardRow Card, FieldChange Change), T> valueOf, Func<T, string> key, T current, Func<Values, T, Values> with, Func<T, string>? show = null)
+            void Take<T>(string field, Func<FieldChange, bool> isSet, Func<(CardRow Card, FieldChange Change), T> valueOf, Func<T, string> key, T current, Func<Values, T, Values> with, Func<T, string>? show = null, Func<(CardRow Card, FieldChange Change), bool>? unknown = null)
             {
                 string Shown(T value) => show is null ? Show(value) : show(value);
                 var set = given.Where(x => isSet(x.Change)).ToList();
@@ -87,8 +87,11 @@ public static class ModelMirror
                 // Only a card whose value differs from the model's takes it back: one that brought the model's value in
                 // another spelling (a colour word written in lower case) keeps its text.
                 touched[field] = [.. set.Where(x => key(valueOf(x)) != currentKey).Select(x => x.Card.Id)];
-                var added = set.Where(x => x.Change.Added).Select(valueOf).Where(value => key(value) != currentKey).ToList();
-                var changed = set.Where(x => !x.Change.Added).Select(valueOf).GroupBy(key, StringComparer.Ordinal).Select(g => g.First()).ToList();
+                // KATALOG-14 phase D5b review 4: an unknown or empty value a new colour or a marketplace import brings is no
+                // difference: the colour takes the model's value (above) and nobody is warned.
+                var counted = unknown is null ? set : set.Where(x => !((x.Change.Added || db.MarketplaceCatalogImport) && unknown(x))).ToList();
+                var added = counted.Where(x => x.Change.Added).Select(valueOf).Where(value => key(value) != currentKey).ToList();
+                var changed = counted.Where(x => !x.Change.Added).Select(valueOf).GroupBy(key, StringComparer.Ordinal).Select(g => g.First()).ToList();
                 if (added.Count > 0) conflicts.Add($"{field} ({string.Join(" / ", added.Select(Shown).Distinct())}; modelin: {Shown(current)})");
                 if (changed.Count == 0) return;
                 // An import fills a value the model does not hold yet (unknown stays unknown until a source knows it); it
@@ -106,14 +109,17 @@ public static class ModelMirror
 
             Take(ProductModelValues.Title, x => x.Title, x => (x.Change.TitleText ?? x.Card.Title, x.Card.Color),
                 value => value.Item2 is null ? value.Item1.Trim() : TitleKey(value.Item1, value.Item2, colors), (target.Title, target.TitleColor),
-                (v, x) => v with { Title = Short(x.Item1.Trim(), 320), TitleColor = x.Item2 is { } color && ProductFamilyNewColorCard.HasColorWord(x.Item1, color) ? Short(color.Trim(), 120) : null });
-            Take(ProductModelValues.Description, x => x.Description, x => x.Change.DescriptionText ?? x.Card.Description, value => value.Trim(), target.Description, (v, x) => v with { Description = x });
-            Take(ProductModelValues.Vat, x => x.Vat, x => (x.Change.VatRate, x.Change.VatInclusion), value => $"{value.VatRate?.ToString("0.####", CultureInfo.InvariantCulture)}|{value.VatInclusion?.ToUpperInvariant()}", (target.VatRate, target.VatInclusion), (v, x) => v with { VatRate = x.VatRate, VatInclusion = x.VatInclusion });
-            Take(ProductModelValues.Category, x => x.Category, x => x.Change.CategoryId, value => $"{value}", target.CategoryId, (v, x) => v with { CategoryId = x });
+                (v, x) => v with { Title = Short(x.Item1.Trim(), 320), TitleColor = x.Item2 is { } color && ProductFamilyNewColorCard.HasColorWord(x.Item1, color) ? Short(color.Trim(), 120) : null },
+                unknown: x => string.IsNullOrWhiteSpace(x.Change.TitleText ?? x.Card.Title));
+            Take(ProductModelValues.Description, x => x.Description, x => x.Change.DescriptionText ?? x.Card.Description, value => value.Trim(), target.Description, (v, x) => v with { Description = x }, unknown: x => string.IsNullOrWhiteSpace(x.Change.DescriptionText ?? x.Card.Description));
+            Take(ProductModelValues.Vat, x => x.Vat, x => (x.Change.VatRate, x.Change.VatInclusion), value => $"{value.VatRate?.ToString("0.####", CultureInfo.InvariantCulture)}|{value.VatInclusion?.ToUpperInvariant()}", (target.VatRate, target.VatInclusion), (v, x) => v with { VatRate = x.VatRate, VatInclusion = x.VatInclusion }, unknown: x => x.Change.VatRate is null);
+            Take(ProductModelValues.Category, x => x.Category, x => x.Change.CategoryId, value => $"{value}", target.CategoryId, (v, x) => v with { CategoryId = x }, unknown: x => x.Change.CategoryId is null);
             // An emptied warranty (a draft saved with it emptied, 15-16 Nov 2026) is "not filled", not a value: it neither moves the
-            // model nor reaches another colour.
-            Take(ProductModelValues.Warranty, x => x.Warranty && x.WarrantyMonths is not null, x => x.Change.WarrantyMonths, value => $"{value}", target.WarrantyMonths, (v, x) => v with { WarrantyMonths = x });
-            Take(ProductModelValues.DeliveryDays, x => x.Delivery, x => x.Change.DeliveryDays, value => $"{value}", target.DeliveryDays, (v, x) => v with { DeliveryDays = x });
+            // model nor reaches another colour. A new colour a marketplace import opens carries no warranty or delivery days of
+            // the listing (0 and the card default 1 are placeholders): unknown, so no difference.
+            Take(ProductModelValues.Warranty, x => x.Warranty && x.WarrantyMonths is not null, x => x.Change.WarrantyMonths, value => $"{value}", target.WarrantyMonths, (v, x) => v with { WarrantyMonths = x },
+                unknown: x => x.Change.Added && db.MarketplaceCatalogImport);
+            Take(ProductModelValues.DeliveryDays, x => x.Delivery, x => x.Change.DeliveryDays, value => $"{value}", target.DeliveryDays, (v, x) => v with { DeliveryDays = x }, unknown: x => x.Change.DeliveryDays is null || x.Change.Added && db.MarketplaceCatalogImport);
             // The brand (KATALOG-14 phase D5b, model key change): an empty brand is not a value; a new colour without one takes
             // the model's.
             var brandIds = given.Select(x => x.Change.BrandId).Append(target.BrandId).OfType<Guid>().Distinct().ToArray();
