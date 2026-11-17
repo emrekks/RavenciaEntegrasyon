@@ -143,6 +143,33 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         Assert.All(cards.Values, card => Assert.Equal((1L, 10m), (card.Version, card.VatRate!.Value)));
     }
 
+    // KATALOG-14 phase D5b review 7: a VAT and a desi the file gives one colour reach the model's other colours and sizes,
+    // and Ürün Hareketleri records each of them too, marked as applied from the model.
+    [PostgreSqlFact]
+    public async Task AValueGivenToOneColour_IsRecordedInTheOtherColoursHistory_AsAppliedFromTheModel()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == seed.A1.Id).OrderBy(x => x.SortOrder).FirstAsync();
+        var applied = await new ProductTransferService(db, fixture.TimeProvider).ApplyAsync(seed.TenantId, Guid.CreateVersion7(), new ApplyProductTransferCommand(
+            [new ProductTransferChange(variant.Id, variant.Version, false, null, true, 3m)], [new ProductTransferProductChange(seed.A1.Id, 1, null, 20m)]), $"transfer-history-{Guid.NewGuid():N}", CancellationToken.None);
+        Assert.True(applied.Succeeded, applied.Error?.Message);
+        db.ChangeTracker.Clear();
+
+        var otherSizes = await db.ProductVariants.AsNoTracking().Where(x => (x.ProductId == seed.A1.Id || x.ProductId == seed.A2.Id) && x.Id != variant.Id).Select(x => x.Id).ToListAsync();
+        Assert.Equal(3, otherSizes.Count);
+        var history = await db.ProductChangeEntries.AsNoTracking().Where(x => x.TenantId == seed.TenantId).ToListAsync();
+        // The file's own colour and size: no note.
+        Assert.Contains(history, x => x.ProductId == seed.A1.Id && x.VariantId == null && x.Field == ProductChangeFields.VatRate && x.Note == null);
+        Assert.Contains(history, x => x.VariantId == variant.Id && x.Field == ProductChangeFields.Desi && x.Note == null);
+        // The other colour's VAT and every other size's desi, applied from the model.
+        Assert.Contains(history, x => x.ProductId == seed.A2.Id && x.VariantId == null && x.Field == ProductChangeFields.VatRate && x.Note == ProductTransferService.ModelAppliedNote);
+        Assert.All(otherSizes, id => Assert.Contains(history, x => x.VariantId == id && x.Field == ProductChangeFields.Desi && x.NewValue == ThreeDesiShown && x.Note == ProductTransferService.ModelAppliedNote));
+        Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == seed.A1.Id || x.ProductId == seed.A2.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
+    }
+
+    private static readonly string? ThreeDesiShown = ProductFieldChangeRecorder.Display(ProductChangeFields.Desi, 3m);
+
     // KATALOG-3: the server refuses, as the preview does, a file whose rows give two cards of one model two names (the
     // colour word aside) or two VAT rates, and writes nothing.
     [PostgreSqlTheory]

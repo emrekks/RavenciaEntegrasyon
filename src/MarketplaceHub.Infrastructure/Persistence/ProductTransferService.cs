@@ -23,6 +23,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     private const string ImportReason = "Ürün dosyası içe aktarma";
     public const string ModelFieldMixedCode = "PRODUCT_TRANSFER_MODEL_FIELD_MIXED";
     public const string LockConflictCode = "PRODUCT_TRANSFER_BUSY";
+    // The history note of a colour or size a value reached through its model (another colour's row changed it).
+    public const string ModelAppliedNote = "Modelden uygulandı: aynı modelin başka bir rengi dosyada değişti.";
 
     public async Task<ServiceResult<ProductTransferSummaryView>> SummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -426,6 +428,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         // KATALOG-14 phase D5b: the desi is the model's, one value on every size of every colour: the rows of one model may
         // not ask for two (the preview refuses it; checked again here).
         var desiChanges = changes.Where(change => change.SetDesi && change.Desi is not null).ToList();
+        var modelOfDesi = new Dictionary<Guid, Guid?>();
         if (desiChanges.Count > 0)
         {
             var desiProductIds = desiChanges.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
@@ -436,7 +439,10 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                                            from model in models.DefaultIfEmpty()
                                            where product.TenantId == tenantId && chunk.Contains(product.Id)
                                            select new { product.Id, product.FamilyId, Code = model == null ? null : model.ModelCode }).ToListAsync(cancellationToken))
+                {
                     modelOf[row.Id] = (row.FamilyId, row.Code);
+                    modelOfDesi[row.Id] = row.FamilyId;
+                }
             foreach (var model in desiChanges.GroupBy(change => modelOf.GetValueOrDefault(byId[change.VariantId].ProductId).ModelId ?? byId[change.VariantId].ProductId))
                 if (model.Select(change => change.Desi).Distinct().Count() > 1)
                 {
@@ -454,6 +460,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         // Products whose own row changes (version bump) and those whose marketplace links get the local-edit mark.
         var touchedProducts = new HashSet<Guid>();
         var contentProducts = new HashSet<Guid>();
+        // The colours (and sizes) a value of another colour's row reached through the model: their history rows say so.
+        var fromModel = new HashSet<(Guid ProductId, Guid? VariantId, string Field)>();
         var projections = new List<StockProjectionChange>();
         var stockSetItemIds = new List<Guid>();
         var repricedOffers = new List<ChannelOffer>();
@@ -569,7 +577,6 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             var ownVats = productChanges.Where(change => change.VatRate is not null).Select(change => change.ProductId).ToHashSet();
             foreach (var change in modelFieldChanges)
             {
-                var changed = productById[change.ProductId];
                 foreach (var cardId in fieldCards[change.ProductId].Where(id => id != change.ProductId))
                 {
                     if (!productById.TryGetValue(cardId, out var card))
@@ -577,7 +584,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                         card = await db.Products.SingleAsync(item => item.TenantId == tenantId && item.Id == cardId, cancellationToken);
                         productById[cardId] = card;
                     }
-                    if (card.BrandId != changed.BrandId) continue;
+                    // KATALOG-14 phase D5b: a model is its code alone, so every colour of it takes the value (no brand check),
+                    // through the tracker, so Ürün Hareketleri records each colour too ("Modelden uygulandı").
                     if (change.Title is { } title && !ownTitles.Contains(cardId)
                         && ProductFamilySharedFields.TitleFor(title, colours.GetValueOrDefault(change.ProductId), colours.GetValueOrDefault(cardId)) is var cardTitle && card.Title != cardTitle)
                     {
@@ -585,6 +593,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                         titlesUpdated++;
                         touchedProducts.Add(cardId);
                         contentProducts.Add(cardId);
+                        fromModel.Add((cardId, null, ProductChangeFields.Title));
                     }
                     if (change.VatRate is decimal modelVat && !ownVats.Contains(cardId) && card.VatRate != modelVat)
                     {
@@ -592,6 +601,15 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                         card.VatInclusion = card.VatInclusion?.Trim().ToUpperInvariant() == "EXCLUDED" ? "EXCLUDED" : "INCLUDED";
                         vatUpdated++;
                         touchedProducts.Add(cardId);
+                        fromModel.Add((cardId, null, ProductChangeFields.VatRate));
+                        fromModel.Add((cardId, null, ProductChangeFields.VatInclusion));
+                    }
+                    if (descriptionOf.TryGetValue(change.ProductId, out var modelDescription) && !descriptionOf.ContainsKey(cardId) && card.Description != modelDescription)
+                    {
+                        card.Description = modelDescription;
+                        touchedProducts.Add(cardId);
+                        contentProducts.Add(cardId);
+                        fromModel.Add((cardId, null, ProductChangeFields.Description));
                     }
                 }
             }
@@ -628,9 +646,31 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     if (card.BrandId == match.Id) continue;
                     card.BrandId = match.Id;
                     brandsUpdated++;
+                    if (cardId != change.ProductId) fromModel.Add((cardId, null, ProductChangeFields.Brand));
                     touchedProducts.Add(cardId);
                     contentProducts.Add(cardId);
                 }
+            }
+        }
+        // KATALOG-14 phase D5b: the desi is the model's: the other sizes of the model take the file's value through the tracker
+        // too (ModelMirror would write them raw), so Ürün Hareketleri records each of them ("Modelden uygulandı").
+        if (desiChanges.Count > 0)
+        {
+            var desiOfModel = new Dictionary<Guid, decimal>();
+            foreach (var change in desiChanges)
+                if (modelOfDesi.GetValueOrDefault(byId[change.VariantId].ProductId) is Guid modelId) desiOfModel[modelId] = change.Desi!.Value;
+            var modelIds = desiOfModel.Keys.ToArray();
+            var fileVariantIds = changes.Select(change => change.VariantId).ToHashSet();
+            var siblings = await (from variant in db.ProductVariants
+                                  join product in db.Products on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
+                                  where variant.TenantId == tenantId && product.FamilyId != null && modelIds.Contains(product.FamilyId.Value)
+                                  select new { Variant = variant, ModelId = product.FamilyId!.Value }).ToListAsync(cancellationToken);
+            foreach (var sibling in siblings.Where(item => !fileVariantIds.Contains(item.Variant.Id)))
+            {
+                var desi = desiOfModel[sibling.ModelId];
+                if (sibling.Variant.Desi == desi) continue;
+                sibling.Variant.Desi = desi;
+                fromModel.Add((sibling.Variant.ProductId, sibling.Variant.Id, ProductChangeFields.Desi));
             }
         }
         touchedProducts.UnionWith(contentProducts);
@@ -668,6 +708,9 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         });
         // Ürün Hareketleri: maliyet, desi, barkod, model kodu, ürün adı and KDV as the file changed them.
         await ProductFieldChangeRecorder.RecordAsync(db, tenantId, ProductChangeSources.FileImport, userId, correlationId, now, cancellationToken);
+        foreach (var entry in db.ChangeTracker.Entries<ProductChangeEntry>().Where(entry => entry.State == EntityState.Added && entry.Entity.Note is null && entry.Entity.Field is not null
+                     && fromModel.Contains((entry.Entity.ProductId, entry.Entity.VariantId, entry.Entity.Field))))
+            entry.Entity.Note = ModelAppliedNote;
         try
         {
             await db.SaveChangesAsync(cancellationToken);
