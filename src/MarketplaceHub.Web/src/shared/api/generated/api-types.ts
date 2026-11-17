@@ -331,6 +331,7 @@ export type BulkProductFieldResult = {
   variantCount: number
   failures: BulkProductFieldFailure[]
   skipped?: null | RequiredFieldsSkippedProduct[]
+  modelColours: number
 }
 
 export type BulkProductStatusCommand = {
@@ -2712,6 +2713,7 @@ export type ProductTransferApplyResult = {
   vatUpdated: number
   brandsUpdated: number
   brandsCreated: number
+  modelColours: number
 }
 
 export type ProductTransferChange = {

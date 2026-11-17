@@ -23881,7 +23881,8 @@
           "updatedCount",
           "unchangedCount",
           "variantCount",
-          "failures"
+          "failures",
+          "modelColours"
         ],
         "type": "object",
         "properties": {
@@ -23911,6 +23912,11 @@
             "items": {
               "$ref": "#/components/schemas/RequiredFieldsSkippedProduct"
             }
+          },
+          "modelColours": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },
@@ -35017,7 +35023,8 @@
           "panelPricesUpdated",
           "vatUpdated",
           "brandsUpdated",
-          "brandsCreated"
+          "brandsCreated",
+          "modelColours"
         ],
         "type": "object",
         "properties": {
@@ -35089,6 +35096,11 @@
             "default": 0
           },
           "brandsCreated": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "modelColours": {
             "type": "integer",
             "format": "int32",
             "default": 0
