@@ -137,6 +137,10 @@
   --rv-z-tooltip: 90;
   --rv-z-modal: 1000;
   --rv-z-toast: 1100;
+  /* One hover colour for every neutral hover (owner, 18 Nov 2026), both themes: the element's own ground (the surface) with 6% of the
+     ink mixed in, so it is a little darker than its surface in the light theme and a little lighter in the dark one, and a card, row
+     or menu item never takes on the colour of the page behind it. Hover rules read it as var(--rv-hover, <fallback>). */
+  --rv-hover: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-surface));
 }
 
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -169,8 +173,4 @@
   --rv-color-sidebar: #eaedf2;
   --rv-hover-fill: color-mix(in srgb, var(--rv-color-ink) 6%, transparent);
   --rv-hover-solid: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-surface));
-  /* One hover colour for every neutral hover in the light theme: the ground under the element, 7% darker, so a row,
-     card, menu item or button never turns the colour of the page behind it. Hover rules read it as
-     var(--rv-hover, <their dark-theme colour>); the dark theme leaves it unset and keeps its own colours. */
-  --rv-hover: color-mix(in srgb, var(--rv-color-ink) 7%, transparent);
 }
