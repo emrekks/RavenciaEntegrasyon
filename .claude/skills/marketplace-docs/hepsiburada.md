@@ -206,6 +206,11 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
   number and no tax office = individual; valid VKN + tax office = corporate (lookup decides e-Fatura/e-Arşiv, recipient =
   VKN); anything else (VKN without office, office alone, invalid or 11-digit tax number, real TCKN + tax number) =
   unclear, the invoice stops with EFATURAM_RECIPIENT_KIND_UNKNOWN for the owner.
+- Guard on every marketplace (16 Nov 2026, `TrendyolEFaturamCanonicalPayload.SendsPlaceholderToCorporateTaxNumber`):
+  an invoice whose recipient would be 11111111111 while the order's snapshots hold a company's valid VKN stops with
+  EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE (`InvoiceIssuePolicy`).
+- Invoice link (17 Nov 2026): Hepsiburada gets E-Faturam's permanent document URL, not the panel link
+  (`MarketplaceInvoiceLinkPolicy`, efaturam.md "Permanent document URL").
 
 ## Report data gaps (7 Nov 2026)
 - Advertising in the accounting records: the documented ad types are `AdSharingExpense`, `MarketingExpense` (and their
