@@ -185,6 +185,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
         Assert.Contains("AGREE1 modelinin", gap.Summary);
         Assert.Contains("Mavi rengi: KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
+        Assert.Contains(ModelMirror.NextUpdateSentence, gap.Summary);
 
         // Again: nothing to write, the warning counted once.
         var second = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
@@ -661,6 +662,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(IssueStatus.Open, warning.Status);
         Assert.Contains("pazaryerinden gelen", warning.Summary);
         Assert.Contains("Mavi rengin açıklaması", warning.Summary);
+        Assert.Contains("Mavi rengi: açıklama \"Mavi rengin açıklaması\"", warning.Summary);
+        Assert.Contains(ModelMirror.NextUpdateSentence, warning.Summary);
 
         // Toplu Değer Ata writes the whole model (every colour of the selected card) and resolves the warning.
         Assert.True((await Service(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([mavi.Id], BulkProductFields.Description, "Toplu açıklama"), CancellationToken.None)).Succeeded);

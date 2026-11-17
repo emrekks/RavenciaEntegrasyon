@@ -79,7 +79,9 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.DedupeKey.StartsWith(ModelMirror.DifferDedupePrefix));
             Assert.Equal(IssueStatus.Open, issue.Status);
             Assert.Contains("MZ300 modelinin pazaryerinden gelen", issue.Summary);
-            Assert.Contains("KDV (%20 dahil; modelin: %10 dahil)", issue.Summary);
+            // The colour and both values are named, and the owner learns what the marketplaces get (review, 17 Nov 2026).
+            Assert.Contains("Bordo rengi: KDV %20 dahil (modelin: %10 dahil)", issue.Summary);
+            Assert.Contains(ModelMirror.NextUpdateSentence, issue.Summary);
 
             // The owner then gives the model a value (the editor, Excel): the warning is settled.
             (await db.Products.SingleAsync(x => x.Id == card.Id)).VatRate = 20m;

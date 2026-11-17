@@ -91,16 +91,19 @@ public static class ModelMirror
                 // KATALOG-14 phase D5b review 4: an unknown or empty value a new colour or a marketplace import brings is no
                 // difference: the colour takes the model's value (above) and nobody is warned.
                 var counted = unknown is null ? set : set.Where(x => !((x.Change.Added || db.MarketplaceCatalogImport) && unknown(x))).ToList();
-                var added = counted.Where(x => x.Change.Added).Select(valueOf).Where(value => key(value) != currentKey).ToList();
+                var added = counted.Where(x => x.Change.Added && key(valueOf(x)) != currentKey).ToList();
                 var changed = counted.Where(x => !x.Change.Added).Select(valueOf).GroupBy(key, StringComparer.Ordinal).Select(g => g.First()).ToList();
-                if (added.Count > 0) conflicts.Add($"{field} ({string.Join(" / ", added.Select(Shown).Distinct())}; modelin: {Shown(current)})");
+                // Each colour that came with another value, named with both values (review, 17 Nov 2026).
+                void Report(IEnumerable<(CardRow Card, FieldChange Change)> differing) =>
+                    conflicts.AddRange(differing.Select(x => $"{ColourOf(x.Card)}: {field} {Shown(valueOf(x))} (modelin: {Shown(current)})").Except(conflicts).ToList());
+                Report(added);
                 if (changed.Count == 0) return;
                 // An import fills a value the model does not hold yet (unknown stays unknown until a source knows it); it
                 // never replaces one.
                 var modelEmpty = currentKey.Trim('|').Length == 0;
                 if (changed.Count > 1 || db.MarketplaceCatalogImport && !modelEmpty)
                 {
-                    if (changed.Any(value => key(value) != currentKey)) conflicts.Add($"{field} ({string.Join(" / ", changed.Select(Shown))}; modelin: {Shown(current)})");
+                    Report(counted.Where(x => !x.Change.Added && key(valueOf(x)) != currentKey));
                     return;
                 }
                 if (key(changed[0]) == currentKey) return;
@@ -131,7 +134,10 @@ public static class ModelMirror
             if (emptyBrand.Count > 0 && target.BrandId is not null)
                 touched[ProductModelValues.Brand] = [.. touched.GetValueOrDefault(ProductModelValues.Brand) ?? [], .. emptyBrand];
             // The desi: every variant value the save gave; an empty one (not filled) never moves the model.
-            var desiGiven = given.SelectMany(x => (x.Change.Desis ?? []).Select(desi => desi with { Added = desi.Added || x.Change.Added })).ToList();
+            var desiCards = given.SelectMany(x => (x.Change.Desis ?? []).Select(desi => (x.Card, Desi: desi with { Added = desi.Added || x.Change.Added }))).ToList();
+            var desiGiven = desiCards.Select(x => x.Desi).ToList();
+            void ReportDesi(Func<DesiGiven, bool> differing) =>
+                conflicts.AddRange(desiCards.Where(x => x.Desi.Desi is not null && differing(x.Desi)).Select(x => $"{ColourOf(x.Card)}: {ProductModelValues.Desi} {Show(x.Desi.Desi)} (modelin: {Show(target.Desi)})").Distinct().Except(conflicts).ToList());
             var desiVariants = new HashSet<Guid>(desiGiven.Select(x => x.VariantId));
             if (desiGiven.Count > 0)
             {
@@ -140,7 +146,7 @@ public static class ModelMirror
                 var changedDesis = desiGiven.Where(x => !x.Added).Select(x => x.Desi).OfType<decimal>().Distinct().ToList();
                 if (changedDesis.Count > 1 || (changedDesis.Count == 1 && db.MarketplaceCatalogImport && target.Desi is not null))
                 {
-                    if (changedDesis.Any(value => value != target.Desi)) conflicts.Add($"{ProductModelValues.Desi} ({string.Join(" / ", changedDesis.Select(value => Show((decimal?)value)))}; modelin: {Show(target.Desi)})");
+                    ReportDesi(desi => !desi.Added && desi.Desi != target.Desi);
                 }
                 else if (changedDesis.Count == 1 && changedDesis[0] != target.Desi)
                 {
@@ -156,7 +162,7 @@ public static class ModelMirror
                 }
                 // New sizes that came with another desi take the model's, and the owner is told.
                 var addedDesis = addedValues.Where(value => value != target.Desi).Distinct().ToList();
-                if (addedDesis.Count > 0 && target.Desi is not null) conflicts.Add($"{ProductModelValues.Desi} ({string.Join(" / ", addedDesis.Select(value => Show((decimal?)value)))}; modelin: {Show(target.Desi)})");
+                if (addedDesis.Count > 0 && target.Desi is not null) ReportDesi(desi => desi.Added && desi.Desi != target.Desi);
             }
 
             if (fields.Count > 0)
@@ -190,6 +196,21 @@ public static class ModelMirror
         decimal number => number.ToString("0.##", CultureInfo.InvariantCulture),
         _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? "boş",
     };
+
+    // What the owner is told about the marketplaces (review, 17 Nov 2026): the colour's own value is not sent.
+    public const string NextUpdateSentence = "Bir Sonraki Ürün Güncellemesinde Pazaryerine Modelin Değeri Gider.";
+
+    // A warning of at most 1000 characters whose closing sentences always stay: the colour lines are cut first.
+    private static string Summary(string opening, IReadOnlyList<string> lines, string closing)
+    {
+        var room = 1000 - opening.Length - closing.Length;
+        var listed = string.Join("; ", lines);
+        if (listed.Length > room) listed = room > 1 ? listed[..(room - 1)] + "…" : "";
+        return opening + listed + closing;
+    }
+
+    // The colour a warning line names: its colour word, else its card's name.
+    private static string ColourOf(CardRow card) => card.Color is { } colour && colour.Trim().Length > 0 ? $"{colour.Trim()} rengi" : $"\"{Clip(card.Title)}\" kartı";
 
     private static string Clip(string text) => text.Length <= 60 ? text : text[..60] + "…";
 
@@ -352,8 +373,8 @@ public static class ModelMirror
             if (lines.Count == 0) continue;
             var code = string.IsNullOrWhiteSpace(first.ModelCode) ? $"\"{Clip(model.First().CardTitle)}\"" : first.ModelCode;
             gaps.Add(new Gap(model.Key, code, fields));
-            var summary = $"{code} modelinin renk kartında modelinkinden farklı değer kayıtlı: {string.Join("; ", lines)}. Otomatik olarak hiçbir şey değiştirilmedi: ekranlar, pazaryeri gönderimleri ve faturalar modelin değerini kullanır. Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin; bütün renklere uygulanır.";
-            if (summary.Length > 1000) summary = summary[..1000];
+            var summary = Summary($"{code} modelinin renk kartında modelinkinden farklı değer kayıtlı: ", lines,
+                $". Otomatik olarak hiçbir şey değiştirilmedi: ekranlar ve faturalar modelin değerini kullanır. {NextUpdateSentence} Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin; bütün renklere uygulanır.");
             var key = $"{GapDedupePrefix}{model.Key:N}";
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
@@ -378,8 +399,9 @@ public static class ModelMirror
     private static Task RecordAsync(AppDbContext db, Guid tenantId, ProductModel model, IReadOnlyList<string> conflicts, bool import, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var at = now.ToUniversalTime();
-        var summary = $"{model.ModelCode} modelinin {(import ? "pazaryerinden gelen" : "aynı kayıtta değişen")} bir rengi modelinkinden farklı değerle geldi: {string.Join("; ", conflicts)}. Modelin değeri korundu ve bütün renklerde aynı kaldı. Doğru değer farklıysa modeli düzenleme ekranında açıp kaydedin.";
-        if (summary.Length > 1000) summary = summary[..1000];
+        var code = string.IsNullOrWhiteSpace(model.ModelCode) ? $"\"{Clip(model.Title)}\"" : model.ModelCode;
+        var summary = Summary($"{code} modelinin {(import ? "pazaryerinden gelen" : "aynı kayıtta değişen")} renk kartında modelinkinden farklı değer geldi: ", conflicts,
+            $". Modelin değeri korundu ve bütün renklerde aynı kaldı. {NextUpdateSentence} Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin.");
         var key = $"{DifferDedupePrefix}{model.Id:N}";
         return db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
