@@ -186,7 +186,10 @@ public sealed record ProductTransferApplyResult(
     int PanelPricesUpdated = 0,
     int VatUpdated = 0,
     int BrandsUpdated = 0,
-    int BrandsCreated = 0);
+    int BrandsCreated = 0,
+    // KATALOG-14 phase D5b: the colour cards of the models a model field (name, VAT, brand, desi) reached: the file's own
+    // and those it did not list ("Model İçindeki N Renge Uygulandı").
+    int ModelColours = 0);
 
 // Which variants an export lists: every one, or only those still missing a cost or a desi.
 public enum ProductTransferExportFilter { All, MissingCost, MissingDesi }

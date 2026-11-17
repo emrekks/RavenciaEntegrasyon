@@ -204,7 +204,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             AddCard(db, seed, seed.Ravencia, "DIFF1", "Siyah", "Kadın Siyah Bluz", 2, description: "Bir"),
             AddCard(db, seed, seed.Ravencia, "DIFF1", "Mavi", "Kadın Mavi Bluz Uzun", 3, description: "İki", vat: 20m),
             AddCard(db, seed, seed.Ravencia, "DIFF1", "Gri", "Kadın Gri Bluz", 4, description: "Bir"),
-            AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Kot Etek", 5),
+            AddCard(db, seed, seed.Lavian, "KENE02", "Mavi", "Kadın Mavi Kot Etek", 5),
             AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Denim Kot Etek", 6),
             AddCard(db, seed, seed.Ravencia, null, "Beyaz", "Kodsuz Gömlek", 7),
             AddCard(db, seed, seed.Ravencia, "ARCH1", "Siyah", "Kadın Siyah Ceket", 8, status: ProductStatus.Archived),
@@ -592,9 +592,9 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal([seed.Cotton], await ModelAttributeValuesAsync(db, model.Id));
     }
 
-    // KATALOG-6: a card left without its model (FamilyId emptied) is linked by the scan; KATALOG-14 phase D5a: the
-    // two-brand code's cards each hold a model of their own brand (never merged), the code stays reported; no card's
-    // own columns are written.
+    // KATALOG-6: a card left without its model (FamilyId emptied) is linked by the scan; KATALOG-14 phase D5b: a code two
+    // brands share from before keeps its model (of the oldest card's brand), the other brand's card stays on a model of its
+    // own and the code is reported (never merged); no card's own columns are written.
     [PostgreSqlFact]
     public async Task TheScan_RelinksACardWhoseLinkFailed_AndLeavesTheTwoBrandCodeAlone()
     {
@@ -603,8 +603,11 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ200", "Siyah", "Kadın Siyah Etek", 0);
         var bordo = AddCard(db, seed, seed.Ravencia, "MZ200", "Bordo", "Kadın Bordo Etek", 1);
         var lavian = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Kot Etek", 2);
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Kot Etek", 3);
+        var ravencia = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Kot Etek", 3);
         await db.SaveChangesAsync();
+        // KATALOG-14 phase D5b: a code two brands share can only come from before (no save puts a card of another brand
+        // under a code).
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {ravencia.Id}""");
         var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {bordo.Id}""");
         var versions = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version);
@@ -665,12 +668,10 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
         var linked = AddCard(db, seed, seed.Ravencia, "MZ500", "Siyah", "Kadın Siyah Etek", 0);
-        AddCard(db, seed, seed.Lavian, "KENE02", "Mavi", "Kadın Mavi Kot Etek", 1);
         var unlinked = AddCard(db, seed, seed.Ravencia, "KENE02", "Siyah", "Kadın Siyah Kot Etek", 2);
         await db.SaveChangesAsync();
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == linked.Id)).FamilyId);
-        // KATALOG-14 phase D5a: the code under two brands: a model of its own brand; the card left without one (its link
-        // still to come) is found by its variants.
+        // A card left without its model (its link still to come) is found by its variants.
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {unlinked.Id}""");
 

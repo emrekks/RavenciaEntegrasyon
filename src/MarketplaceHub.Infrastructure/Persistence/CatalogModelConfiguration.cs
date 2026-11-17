@@ -40,9 +40,10 @@ internal static class CatalogModelConfiguration
             entity.Property(x => x.VatRate).HasPrecision(7, 4); entity.Property(x => x.VatInclusion).HasMaxLength(16);
             entity.Property(x => x.Desi).HasPrecision(19, 4);
             entity.Property(x => x.Version).IsConcurrencyToken();
-            // One model per brand and model-code key; cards without a brand are one brand too (NULLS NOT DISTINCT).
+            // One model per brand and model-code key; cards without a brand are one brand too (NULLS NOT DISTINCT). Kept for
+            // the brand's key; KATALOG-14 phase D5b (owner, 17 Nov 2026): a model is its code alone, one per tenant and key.
             entity.HasIndex(x => new { x.TenantId, x.BrandId, x.ModelCodeKey }).IsUnique().AreNullsDistinct(false);
-            entity.HasIndex(x => new { x.TenantId, x.ModelCodeKey });
+            entity.HasIndex(x => new { x.TenantId, x.ModelCodeKey }).IsUnique();
             // A model is derived from its cards: when its tenant or brand goes, it goes too and its cards fall back to the
             // model-code rule (products.FamilyId SET NULL) until ProductModelLinks links them again.
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);

@@ -388,8 +388,34 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                         && ProductTransferImportPlanner.ModelTitleKey(title, colours.GetValueOrDefault(change.ProductId)) != ProductTransferImportPlanner.ModelTitleKey(otherTitle, colours.GetValueOrDefault(other.ProductId))
                             ? "ürün adı"
                             : change.VatRate is decimal vat && other.VatRate is decimal otherVat && vat != otherVat ? "KDV oranı" : null;
+                    var modelName = label is null ? null : await (from product in db.Products.AsNoTracking()
+                                                                  join model in db.ProductModels.AsNoTracking() on product.FamilyId equals model.Id
+                                                                  where product.TenantId == tenantId && product.Id == change.ProductId
+                                                                  select model.ModelCode).FirstOrDefaultAsync(cancellationToken);
                     if (label is not null)
-                        return ServiceResult<ProductTransferApplyResult>.Fail(ModelFieldMixedCode, $"Aynı modelin satırlarında farklı {label} var; {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın. Hiçbir değişiklik kaydedilmedi; dosyayı düzeltip yeniden yükleyin.", 422);
+                        return ServiceResult<ProductTransferApplyResult>.Fail(ModelFieldMixedCode, $"Aynı modelin ({(string.IsNullOrWhiteSpace(modelName) ? productById[change.ProductId].Title : modelName)}) satırlarında farklı {label} var; {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın. Hiçbir değişiklik kaydedilmedi; dosyayı düzeltip yeniden yükleyin.", 422);
+                }
+        }
+
+        // KATALOG-14 phase D5b: the desi is the model's, one value on every size of every colour: the rows of one model may
+        // not ask for two (the preview refuses it; checked again here).
+        var desiChanges = changes.Where(change => change.SetDesi && change.Desi is not null).ToList();
+        if (desiChanges.Count > 0)
+        {
+            var desiProductIds = desiChanges.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
+            var modelOf = new Dictionary<Guid, (Guid? ModelId, string? Code)>();
+            foreach (var chunk in desiProductIds.Chunk(Chunk))
+                foreach (var row in await (from product in db.Products.AsNoTracking()
+                                           join model in db.ProductModels.AsNoTracking() on product.FamilyId equals model.Id into models
+                                           from model in models.DefaultIfEmpty()
+                                           where product.TenantId == tenantId && chunk.Contains(product.Id)
+                                           select new { product.Id, product.FamilyId, Code = model == null ? null : model.ModelCode }).ToListAsync(cancellationToken))
+                    modelOf[row.Id] = (row.FamilyId, row.Code);
+            foreach (var model in desiChanges.GroupBy(change => modelOf.GetValueOrDefault(byId[change.VariantId].ProductId).ModelId ?? byId[change.VariantId].ProductId))
+                if (model.Select(change => change.Desi).Distinct().Count() > 1)
+                {
+                    var code = modelOf.GetValueOrDefault(byId[model.First().VariantId].ProductId).Code is { Length: > 0 } held ? held : byId[model.First().VariantId].Sku;
+                    return ServiceResult<ProductTransferApplyResult>.Fail(ModelFieldMixedCode, $"Aynı modelin ({code}) satırlarında farklı desi var; desi modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın. Hiçbir değişiklik kaydedilmedi; dosyayı düzeltip yeniden yükleyin.", 422);
                 }
         }
 
@@ -619,6 +645,14 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             db.ChangeTracker.Clear();
             return Stale("Bazı kayıtlar kayıt sırasında değişti; hiçbir değişiklik kaydedilmedi. Dosyayı yeniden yükleyin.");
         }
+        catch (ModelRuleException conflict)
+        {
+            // KATALOG-14 phase D5b: the file broke the model-code rule (another brand, a code another model holds); nothing
+            // of it is written.
+            await transaction.RollbackAsync(CancellationToken.None);
+            db.ChangeTracker.Clear();
+            return ServiceResult<ProductTransferApplyResult>.Fail(conflict.Code, conflict.Message, 409);
+        }
         catch (DbUpdateException exception) when (exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
         {
             // A barcode taken by another variant between the check above and the save.
@@ -628,7 +662,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         }
         return ServiceResult<ProductTransferApplyResult>.Ok(new ProductTransferApplyResult(
             written.Count, costsUpdated, costsCleared, desiUpdated, desiCleared, stocksUpdated, pricesUpdated, products.Count,
-            titlesUpdated, barcodesUpdated, modelCodesUpdated, modelCodesCleared, panelPricesUpdated, vatUpdated, brandsUpdated, brandsCreated));
+            titlesUpdated, barcodesUpdated, modelCodesUpdated, modelCodesCleared, panelPricesUpdated, vatUpdated, brandsUpdated, brandsCreated,
+            ModelMirror.ColoursReached(db.ModelMirrorReport)));
 
         void Written(ProductVariant variant)
         {

@@ -1990,6 +1990,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // serializable / deadlock conflict (409, try again). Anything else stays an error.
     internal static ServiceResult<T>? SaveConflict<T>(Exception exception)
     {
+        // KATALOG-14 phase D5b: the save broke the model-code rule (another brand, a code another model holds); nothing of it stands.
+        if (exception is ModelRuleException rule)
+            return ServiceResult<T>.Fail(rule.Code, rule.Message, 409, new Dictionary<string, string[]> { [ModelCodeUniquenessPolicy.Field] = [rule.Message] });
         var postgres = exception as Npgsql.PostgresException ?? exception.InnerException as Npgsql.PostgresException;
         var sqlState = postgres?.SqlState;
         return sqlState switch

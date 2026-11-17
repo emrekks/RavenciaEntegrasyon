@@ -251,6 +251,15 @@ internal sealed partial class CatalogImportService
             run.SkippedCount++;
             return false;
         }
+        // KATALOG-14 phase D5b (owner, 17 Nov 2026): a model is its code alone and the brand one of its fields, so a listing
+        // of another brand under a code the panel holds opens no card: it is skipped and PRODUCT_MODEL_AMBIGUOUS says so.
+        if (product is null && await OtherBrandModelAsync(tenantId, snapshot, observeOnly ? await ImportBrandId(tenantId, connectionId, snapshot, brandPlatformName, brandMappedByExternalId, create: false, cancellationToken) : mappedBrandId, cancellationToken) is { } otherBrand)
+        {
+            await RecordIssue(tenantId, $"product-model-other-brand:{connectionId:N}:{Short(otherBrand.Key, 160)}", ProductModelLinks.AmbiguousCode,
+                Short($"{ModelCodeUniquenessPolicy.OtherBrandMessage(otherBrand.Code, otherBrand.Brand)}: {brandPlatformName} ürünü ({snapshot.BrandName ?? "markasız"} · {snapshot.Title}) panele aktarılmadı, hiçbir şey birleştirilmedi. Doğru marka ya da model kodu hangisiyse pazaryerinde ya da panelde düzeltin.", 1000), cancellationToken);
+            run.SkippedCount++;
+            return false;
+        }
         if (product is null)
         {
             isNewProduct = true;
@@ -970,6 +979,18 @@ internal sealed partial class CatalogImportService
     // A panel brand the user switched off is not revived; two panel brands mapped to one marketplace brand are the user's
     // to settle; both leave the product without a brand and list the brand on the mapping page (BRAND_MAPPING_MISSING).
     // With create false (sizes added to a linked card) only an existing mapping is read and nothing is written.
+    // KATALOG-14 phase D5b: the panel model of the listing's code when its brand is another than the listing's (an
+    // unknown brand on either side is no conflict: unknown stays unknown).
+    private async Task<(string Key, string Code, string Brand)?> OtherBrandModelAsync(Guid tenantId, RemoteCatalogProduct snapshot, Guid? brandId, CancellationToken cancellationToken)
+    {
+        var code = snapshot.Variants.Select(variant => variant.ModelCode?.Trim()).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (brandId is not Guid brand || ProductFamilyKeyPolicy.ModelCodeKey(code) is not { } key) return null;
+        var model = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key && x.BrandId != null && x.BrandId != brand)
+            .Select(x => new { x.ModelCode, x.BrandId }).FirstOrDefaultAsync(cancellationToken);
+        if (model is null) return null;
+        var name = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == model.BrandId).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
+        return (key, string.IsNullOrWhiteSpace(model.ModelCode) ? code! : model.ModelCode, name ?? "markasız");
+    }
     private async Task<Guid?> ImportBrandId(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, string platformName, bool byExternalId, bool create, CancellationToken cancellationToken)
     {
         var externalId = byExternalId && !string.IsNullOrWhiteSpace(snapshot.BrandExternalId) ? Short(snapshot.BrandExternalId, 256) : null;

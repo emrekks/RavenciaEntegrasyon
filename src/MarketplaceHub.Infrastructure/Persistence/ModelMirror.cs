@@ -29,9 +29,10 @@ public static class ModelMirror
     // What a save gave one card. Added: a new colour card, which never moves its model.
     public sealed record FieldChange(
         bool Vat, decimal? VatRate, string? VatInclusion, bool Category, Guid? CategoryId, bool Warranty, int? WarrantyMonths, bool Delivery, int? DeliveryDays,
-        bool Added = false, bool Title = false, string? TitleText = null, bool Description = false, string? DescriptionText = null, IReadOnlyList<DesiGiven>? Desis = null)
+        bool Added = false, bool Title = false, string? TitleText = null, bool Description = false, string? DescriptionText = null, IReadOnlyList<DesiGiven>? Desis = null,
+        bool Brand = false, Guid? BrandId = null)
     {
-        public bool Any => Vat || Category || Warranty || Delivery || Title || Description || Desis is { Count: > 0 };
+        public bool Any => Vat || Category || Warranty || Delivery || Title || Description || Brand || Desis is { Count: > 0 };
 
         // A variant's desi the save changed (Added: a new size, which only checks its model's).
         public FieldChange WithDesi(Guid variantId, decimal? desi, bool added = false) => this with { Desis = [.. Desis ?? [], new DesiGiven(variantId, desi, added)] };
@@ -47,7 +48,12 @@ public static class ModelMirror
 
     public const string DifferDedupePrefix = "product-model-values-differ:";
 
-    private sealed record Values(string Title, string? TitleColor, string Description, decimal? VatRate, string? VatInclusion, Guid? CategoryId, int? WarrantyMonths, int? DeliveryDays, decimal? Desi);
+    // The colour cards of the models whose fields a request's saves moved (each model once, its colour count as last seen):
+    // the "Model İçindeki N Renge Uygulandı" of Toplu Değer Ata and the product file.
+    internal static int ColoursReached(IEnumerable<Applied> report) =>
+        report.Where(x => x.Fields.Count > 0).GroupBy(x => x.ModelId).Sum(x => x.Last().Colours);
+
+    private sealed record Values(string Title, string? TitleColor, string Description, decimal? VatRate, string? VatInclusion, Guid? CategoryId, int? WarrantyMonths, int? DeliveryDays, decimal? Desi, Guid? BrandId);
 
     private sealed record CardRow(Guid Id, string Title, string Description, string? Color);
 
@@ -65,7 +71,7 @@ public static class ModelMirror
             var members = await CardsAsync(db, tenantId, model.Id, cancellationToken);
             var colors = members.Select(x => x.Color?.Trim()).OfType<string>().Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var given = group.Select(x => (Card: members.First(member => member.Id == x.Id), Change: changes[x.Id])).ToList();
-            var target = new Values(model.Title, model.TitleColor, model.Description, model.VatRate, model.VatInclusion, model.CategoryId, model.WarrantyMonths, model.DeliveryDays, model.Desi);
+            var target = new Values(model.Title, model.TitleColor, model.Description, model.VatRate, model.VatInclusion, model.CategoryId, model.WarrantyMonths, model.DeliveryDays, model.Desi, model.BrandId);
             var fields = new List<string>();
             // Per touched field, the cards that brought a value: when the model does not move they alone take its value
             // back (an import, a new colour), so a colour nobody touched keeps what it holds today.
@@ -73,8 +79,9 @@ public static class ModelMirror
             var conflicts = new List<string>();
 
             // One field: the values the save gave (new colours only check the model's), the model's value and how to set it.
-            void Take<T>(string field, Func<FieldChange, bool> isSet, Func<(CardRow Card, FieldChange Change), T> valueOf, Func<T, string> key, T current, Func<Values, T, Values> with)
+            void Take<T>(string field, Func<FieldChange, bool> isSet, Func<(CardRow Card, FieldChange Change), T> valueOf, Func<T, string> key, T current, Func<Values, T, Values> with, Func<T, string>? show = null)
             {
+                string Shown(T value) => show is null ? Show(value) : show(value);
                 var set = given.Where(x => isSet(x.Change)).ToList();
                 if (set.Count == 0) return;
                 var currentKey = key(current);
@@ -83,11 +90,14 @@ public static class ModelMirror
                 touched[field] = [.. set.Where(x => key(valueOf(x)) != currentKey).Select(x => x.Card.Id)];
                 var added = set.Where(x => x.Change.Added).Select(valueOf).Where(value => key(value) != currentKey).ToList();
                 var changed = set.Where(x => !x.Change.Added).Select(valueOf).GroupBy(key, StringComparer.Ordinal).Select(g => g.First()).ToList();
-                if (added.Count > 0) conflicts.Add($"{field} ({string.Join(" / ", added.Select(value => Show(value)).Distinct())}; modelin: {Show(current)})");
+                if (added.Count > 0) conflicts.Add($"{field} ({string.Join(" / ", added.Select(Shown).Distinct())}; modelin: {Shown(current)})");
                 if (changed.Count == 0) return;
-                if (changed.Count > 1 || db.MarketplaceCatalogImport)
+                // An import fills a value the model does not hold yet (unknown stays unknown until a source knows it); it
+                // never replaces one.
+                var modelEmpty = currentKey.Trim('|').Length == 0;
+                if (changed.Count > 1 || db.MarketplaceCatalogImport && !modelEmpty)
                 {
-                    if (changed.Any(value => key(value) != currentKey)) conflicts.Add($"{field} ({string.Join(" / ", changed.Select(value => Show(value)))}; modelin: {Show(current)})");
+                    if (changed.Any(value => key(value) != currentKey)) conflicts.Add($"{field} ({string.Join(" / ", changed.Select(Shown))}; modelin: {Shown(current)})");
                     return;
                 }
                 if (key(changed[0]) == currentKey) return;
@@ -105,6 +115,15 @@ public static class ModelMirror
             // model nor reaches another colour.
             Take(ProductModelValues.Warranty, x => x.Warranty && x.WarrantyMonths is not null, x => x.Change.WarrantyMonths, value => $"{value}", target.WarrantyMonths, (v, x) => v with { WarrantyMonths = x });
             Take(ProductModelValues.DeliveryDays, x => x.Delivery, x => x.Change.DeliveryDays, value => $"{value}", target.DeliveryDays, (v, x) => v with { DeliveryDays = x });
+            // The brand (KATALOG-14 phase D5b, model key change): an empty brand is not a value; a new colour without one takes
+            // the model's.
+            var brandIds = given.Select(x => x.Change.BrandId).Append(target.BrandId).OfType<Guid>().Distinct().ToArray();
+            var brandNames = brandIds.Length == 0 || !given.Any(x => x.Change.Brand) ? [] : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && brandIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+            Take(ProductModelValues.Brand, x => x.Brand && x.BrandId is not null, x => x.Change.BrandId, value => $"{value}", target.BrandId, (v, x) => v with { BrandId = x },
+                value => value is Guid id && brandNames.TryGetValue(id, out var name) ? $"\"{Clip(name)}\"" : "boş");
+            var emptyBrand = given.Where(x => x.Change.Added && x.Change.BrandId is null).Select(x => x.Card.Id).ToList();
+            if (emptyBrand.Count > 0 && target.BrandId is not null)
+                touched[ProductModelValues.Brand] = [.. touched.GetValueOrDefault(ProductModelValues.Brand) ?? [], .. emptyBrand];
             // The desi: every variant value the save gave; an empty one (not filled) never moves the model.
             var desiGiven = given.SelectMany(x => (x.Change.Desis ?? []).Select(desi => desi with { Added = desi.Added || x.Change.Added })).ToList();
             var desiVariants = new HashSet<Guid>(desiGiven.Select(x => x.VariantId));
@@ -140,7 +159,7 @@ public static class ModelMirror
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Title, target.Title).SetProperty(x => x.TitleColor, target.TitleColor).SetProperty(x => x.Description, target.Description)
                         .SetProperty(x => x.VatRate, target.VatRate).SetProperty(x => x.VatInclusion, target.VatInclusion)
                         .SetProperty(x => x.CategoryId, target.CategoryId).SetProperty(x => x.WarrantyMonths, target.WarrantyMonths).SetProperty(x => x.DeliveryDays, target.DeliveryDays)
-                        .SetProperty(x => x.Desi, target.Desi).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+                        .SetProperty(x => x.Desi, target.Desi).SetProperty(x => x.BrandId, target.BrandId).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
                 if (!db.MarketplaceCatalogImport) await ResolveAsync(db, tenantId, model.Id, now, cancellationToken);
             }
             if (conflicts.Count > 0) await RecordAsync(db, tenantId, model, conflicts, db.MarketplaceCatalogImport, now, cancellationToken);
@@ -214,6 +233,7 @@ public static class ModelMirror
         await Cards(ProductModelValues.Category, x => x.CategoryId != values.CategoryId, s => s.SetProperty(x => x.CategoryId, values.CategoryId));
         await Cards(ProductModelValues.Warranty, x => x.WarrantyMonths != values.WarrantyMonths, s => s.SetProperty(x => x.WarrantyMonths, values.WarrantyMonths));
         await Cards(ProductModelValues.DeliveryDays, x => x.DeliveryDays != values.DeliveryDays, s => s.SetProperty(x => x.DeliveryDays, values.DeliveryDays));
+        await Cards(ProductModelValues.Brand, x => x.BrandId != values.BrandId, s => s.SetProperty(x => x.BrandId, values.BrandId));
         if (fields.ContainsKey(ProductModelValues.Desi) && values.Desi is { } desi)
         {
             var only = desiVariants?.ToArray();
@@ -228,15 +248,20 @@ public static class ModelMirror
             }
         }
         if (changedCards.Count == 0 || !markLinks) return;
-        await db.Database.ExecuteSqlRawAsync("""
+        await MarkLinksEditedAsync(db, tenantId, changedCards, cancellationToken);
+    }
+
+    // The marketplace links of the given cards marked edited, as a card edit marks them (a link already marked keeps its
+    // version).
+    internal static Task MarkLinksEditedAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> productIds, CancellationToken cancellationToken) =>
+        db.Database.ExecuteSqlRawAsync("""
             UPDATE catalog.marketplace_product_links l
             SET "SyncStatus" = 'LOCAL_CHANGES_PENDING',
                 "DirtyFieldsJson" = coalesce(l."DirtyFieldsJson", '[]'::jsonb) || '["product"]'::jsonb,
                 "Version" = l."Version" + 1
             WHERE l."TenantId" = @tenant AND l."ProductId" = ANY(@products)
               AND NOT (l."SyncStatus" = 'LOCAL_CHANGES_PENDING' AND coalesce(l."DirtyFieldsJson", '[]'::jsonb) @> '["product"]'::jsonb)
-            """, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("products", changedCards.ToArray())], cancellationToken);
-    }
+            """, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("products", productIds.ToArray())], cancellationToken);
 
     // The VAT, category, warranty and delivery days of every model whose colours' copies differ from it (a path that
     // wrote the cards alone: the previous release during a deploy, a raw edit): the card changed latest after the model
@@ -249,7 +274,7 @@ public static class ModelMirror
                           join model in db.ProductModels.AsNoTracking() on new { card.TenantId, Id = card.FamilyId } equals new { model.TenantId, Id = (Guid?)model.Id }
                           where card.TenantId == tenantId && (ids == null || ids.Contains(model.Id))
                                 && (card.VatRate != model.VatRate || card.VatInclusion != model.VatInclusion || card.CategoryId != model.CategoryId
-                                    || card.WarrantyMonths != model.WarrantyMonths || card.DeliveryDays != model.DeliveryDays)
+                                    || card.WarrantyMonths != model.WarrantyMonths || card.DeliveryDays != model.DeliveryDays || card.BrandId != model.BrandId)
                           select new
                           {
                               ModelId = model.Id,
@@ -264,29 +289,31 @@ public static class ModelMirror
                               model.WarrantyMonths,
                               model.DeliveryDays,
                               model.Desi,
+                              model.BrandId,
                               CardId = card.Id,
                               CardUpdatedAt = card.UpdatedAt,
                               CardVatRate = card.VatRate,
                               CardVatInclusion = card.VatInclusion,
                               CardCategoryId = card.CategoryId,
                               CardWarranty = card.WarrantyMonths,
-                              CardDelivery = card.DeliveryDays
+                              CardDelivery = card.DeliveryDays,
+                              CardBrandId = card.BrandId
                           })
             .ToListAsync(cancellationToken);
         var taken = new List<string>();
-        var fields = new Dictionary<string, IReadOnlySet<Guid>?>(StringComparer.Ordinal) { [ProductModelValues.Vat] = null, [ProductModelValues.Category] = null, [ProductModelValues.Warranty] = null, [ProductModelValues.DeliveryDays] = null };
+        var fields = new Dictionary<string, IReadOnlySet<Guid>?>(StringComparer.Ordinal) { [ProductModelValues.Vat] = null, [ProductModelValues.Category] = null, [ProductModelValues.Warranty] = null, [ProductModelValues.DeliveryDays] = null, [ProductModelValues.Brand] = null };
         foreach (var model in gaps.GroupBy(x => x.ModelId).OrderBy(x => x.Key))
         {
             var first = model.First();
-            var values = new Values(first.Title, first.TitleColor, first.Description, first.VatRate, first.VatInclusion, first.CategoryId, first.WarrantyMonths, first.DeliveryDays, first.Desi);
+            var values = new Values(first.Title, first.TitleColor, first.Description, first.VatRate, first.VatInclusion, first.CategoryId, first.WarrantyMonths, first.DeliveryDays, first.Desi, first.BrandId);
             var newer = model.Where(x => x.CardUpdatedAt > x.ModelUpdatedAt).OrderByDescending(x => x.CardUpdatedAt).ThenBy(x => x.CardId).FirstOrDefault();
             if (newer is not null)
             {
-                values = values with { VatRate = newer.CardVatRate, VatInclusion = newer.CardVatInclusion, CategoryId = newer.CardCategoryId, WarrantyMonths = newer.CardWarranty, DeliveryDays = newer.CardDelivery };
+                values = values with { VatRate = newer.CardVatRate, VatInclusion = newer.CardVatInclusion, CategoryId = newer.CardCategoryId, WarrantyMonths = newer.CardWarranty, DeliveryDays = newer.CardDelivery, BrandId = newer.CardBrandId };
                 await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == model.Key)
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.VatRate, values.VatRate).SetProperty(x => x.VatInclusion, values.VatInclusion)
                         .SetProperty(x => x.CategoryId, values.CategoryId).SetProperty(x => x.WarrantyMonths, values.WarrantyMonths).SetProperty(x => x.DeliveryDays, values.DeliveryDays)
-                        .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+                        .SetProperty(x => x.BrandId, values.BrandId).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
                 taken.Add($"{first.ModelCode} ({newer.CardId})");
             }
             await MirrorAsync(db, tenantId, model.Key, values, fields, [], null, true, cancellationToken);

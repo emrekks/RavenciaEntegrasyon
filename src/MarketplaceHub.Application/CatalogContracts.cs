@@ -269,7 +269,8 @@ public sealed record BulkProductFieldCommand(IReadOnlyList<Guid>? ProductIds, st
 // Model: the model code (or the card's name when it has none) the line is about.
 public sealed record BulkProductFieldFailure(string Model, string Message);
 // Skipped: the closed cards Satış Durumu = Satışa Açık left for a missing required field (also named in Failures).
-public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures, IReadOnlyList<RequiredFieldsSkippedProduct>? Skipped = null);
+// ModelColours (KATALOG-14 phase D5b): the colour cards of the models a model field reached ("Model İçindeki N Renge Uygulandı").
+public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures, IReadOnlyList<RequiredFieldsSkippedProduct>? Skipped = null, int ModelColours = 0);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
 // Product list "Platformlara Yayınla": every selected card to every selected marketplace. A new offer takes its VAT
 // from the product card (Product.VatRate/VatInclusion), then a sibling offer of the same variant, then the connection's

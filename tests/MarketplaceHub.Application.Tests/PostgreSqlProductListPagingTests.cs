@@ -49,12 +49,16 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         AddCard(db, tenant.Id, seed.Ravencia, "MZ200", "Gri", "Kadın Gri Bluz", at.AddMinutes(5), ProductStatus.Archived);
         AddCard(db, tenant.Id, seed.Ravencia, "MZ300", "Siyah", "Kadın Siyah Ceket", at.AddMinutes(6), ProductStatus.Draft);
         AddCard(db, tenant.Id, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Kot Etek", at.AddMinutes(7));
-        AddCard(db, tenant.Id, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Kot Etek", at.AddMinutes(7));
+        var keneRavencia = AddCard(db, tenant.Id, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Kot Etek", at.AddMinutes(7));
         AddCard(db, tenant.Id, seed.Ravencia, "MZ300", "Bordo", "Kadın Bordo Ceket", at.AddMinutes(8));
         AddCard(db, tenant.Id, null, "MZ400", "Siyah", "Markasız Şort", at.AddMinutes(9));
         AddCard(db, tenant.Id, null, null, "Gri", "Kodsuz Markasız Atlet", at.AddMinutes(9));
         AddCard(db, tenant.Id, seed.Ravencia, "MZ100", "Gri", "Kadın Gri Etek", at.AddMinutes(10));
         await db.SaveChangesAsync();
+        // KENE01 under two brands, as only a release before KATALOG-14 phase D5b could leave it (no save puts a card of
+        // another brand under a code): the code's model is Lavian's, the Ravencia card keeps a model of its own.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {keneRavencia.Id}""");
+        await ProductModelLinks.ReconcileTenantAsync(db, tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         return seed;
     }
 
@@ -401,9 +405,9 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         Assert.False(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         await AssertSameListsAsync(db, seed.TenantId);
 
-        // Relinked (the scan): the SQL path again. KATALOG-14 phase D5a: KENE01 gets a second Lavian card; the code is
-        // still ambiguous, but each brand's cards of it hold a model of their own brand, so the two Lavian cards are one
-        // row in SQL as in memory: the SQL path stays.
+        // Relinked (the scan): the SQL path again. KENE01 gets a second Lavian card; the code is still ambiguous, but the
+        // Lavian cards are the code's model and the Ravencia card keeps its own, so the two Lavian cards are one row in SQL
+        // as in memory: the SQL path stays.
         await ProductModelScan.RunTenantAsync(db, seed.TenantId, DateTimeOffset.UtcNow, CancellationToken.None);
         Assert.True(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         AddCard(db, seed.TenantId, seed.Lavian, "KENE01", "Gri", "Kadın Gri Kot Etek", DateTimeOffset.UtcNow.AddHours(-1));

@@ -39,7 +39,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var black = Card("Bluz Siyah", 0);
         var red = Card("Bluz Kırmızı", 1);
         var unrelated = Card("Başka model", 2);
-        // The model code under another brand (KENE01): never pulled into the selected model, only warned about.
+        // A card of another brand and another model (KATALOG-14 phase D5b: a model code is one model, so no save puts a
+        // card of another brand under BLZ01): never pulled into the selected model.
         var foreign = Card("Bluz Mavi", 3);
         foreign.BrandId = thirdBrand.Id;
         var variants = new List<ProductVariant>();
@@ -57,7 +58,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         Sizes(black, "BLZ01", "Siyah");
         Sizes(red, "BLZ01", "Kırmızı");
         Sizes(unrelated, "GML02", "Beyaz");
-        Sizes(foreign, "BLZ01", "Mavi");
+        Sizes(foreign, "BLZ99", "Mavi");
         var redLink = new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = red.Id, ExternalId = $"remote-{Guid.NewGuid():N}", SyncStatus = "SYNCED", Version = 1 };
 
         await using var db = fixture.CreateContext();

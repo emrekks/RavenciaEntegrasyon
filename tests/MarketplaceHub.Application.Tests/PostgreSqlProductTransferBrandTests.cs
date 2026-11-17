@@ -6,8 +6,9 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // The brand the products file writes is the model's: it goes to the colour cards of the model that had the row's own
-// brand. A card under the same model code with another brand (an ambiguous model-code group) is only warned about
-// (owner, 15 Nov 2026): no other card's row re-brands it; only its own row in the file does.
+// brand. A card under the same model code with another brand (an ambiguous model-code group, which only a release before
+// KATALOG-14 phase D5b could leave: no save puts a card of another brand under a code) is only warned about (owner, 15 Nov
+// 2026): no other card's row re-brands it; its own row in the file brings it into the model when it names the model's brand.
 [Collection("postgres-integration")]
 public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -29,13 +30,15 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         db.Brands.Add(new Brand { Id = y, TenantId = tenant.Id, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
         var a1 = AddCard(db, tenant.Id, categoryId, x, "Siyah", 0);
         var a2 = AddCard(db, tenant.Id, categoryId, x, "Mavi", 1);
-        var b = AddCard(db, tenant.Id, categoryId, y, "Gri", 2);
+        var b = AddCard(db, tenant.Id, categoryId, y, "Gri", 2, ModelCode + "-ESKI");
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = {ModelCode} WHERE "ProductId" = {b.Id}""");
+        await ProductModelLinks.ReconcileTenantAsync(db, tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         db.ChangeTracker.Clear();
         return new Seed(tenant.Id, x, y, a1, a2, b);
     }
 
-    private static Product AddCard(AppDbContext db, Guid tenantId, Guid categoryId, Guid brandId, string colour, int minute)
+    private static Product AddCard(AppDbContext db, Guid tenantId, Guid categoryId, Guid brandId, string colour, int minute, string code = ModelCode)
     {
         var now = DateTimeOffset.UtcNow;
         var card = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = $"Kadın {colour} Etek", Description = "Açıklama", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", DeliveryDays = 1, DefaultListPrice = 900m, DefaultSalePrice = 600m, Status = ProductStatus.Active, CreatedAt = now.AddMinutes(minute), UpdatedAt = now, Version = 1 };
@@ -43,9 +46,9 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         var index = 0;
         foreach (var size in new[] { "M", "L" })
         {
-            var sku = $"{ModelCode}-{colour}-{size}-{Guid.NewGuid():N}"[..36];
+            var sku = $"{code}-{colour}-{size}-{Guid.NewGuid():N}"[..36];
             var barcode = $"869{Random.Shared.NextInt64(1_000_000_000L, 9_999_999_999L)}";
-            db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = card.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode, ModelCode = ModelCode, OptionSignature = $"Renk: {colour} | Beden: {size}", Desi = 1m, DefaultListPrice = 900m, DefaultSalePrice = 600m, Status = ProductStatus.Active, SortOrder = index++, CreatedAt = now, UpdatedAt = now, Version = 1 });
+            db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = card.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode, ModelCode = code, OptionSignature = $"Renk: {colour} | Beden: {size}", Desi = 1m, DefaultListPrice = 900m, DefaultSalePrice = 600m, Status = ProductStatus.Active, SortOrder = index++, CreatedAt = now, UpdatedAt = now, Version = 1 });
         }
         return card;
     }
@@ -79,8 +82,8 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         var cards = await CardsAsync(db, seed);
         Assert.Equal([z, z], [cards[seed.A1.Id].BrandId, cards[seed.A2.Id].BrandId]);
         Assert.Equal((seed.Y, 1L), (cards[seed.B.Id].BrandId, cards[seed.B.Id].Version));
-        // The code is still under two brands: the warning stays open and B is in no model of A's. KATALOG-14 phase D5a:
-        // each brand's cards hold a model of their own brand (nothing merged or re-branded).
+        // The code is still under two brands: the warning stays open and B is in no model of A's (KATALOG-14 phase D5b: the
+        // code's model is A's, B keeps a model of its own; nothing merged or re-branded).
         Assert.NotNull(cards[seed.B.Id].FamilyId);
         Assert.Equal(cards[seed.A1.Id].FamilyId, cards[seed.A2.Id].FamilyId);
         Assert.NotEqual(cards[seed.A1.Id].FamilyId, cards[seed.B.Id].FamilyId);

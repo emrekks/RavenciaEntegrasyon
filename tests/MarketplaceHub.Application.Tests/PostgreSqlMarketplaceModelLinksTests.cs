@@ -99,17 +99,19 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // A model with a product link on one card while another card holds Shopify variants of another product.
         var linked = AddCard(db, seed, seed.Ravencia, "MZ061", "Siyah", "Kadın Siyah Ceket", 1, "gid-7");
         AddCard(db, seed, seed.Ravencia, "MZ061", "Mavi", "Kadın Mavi Ceket", 2, "gid-8");
-        // KENE01 card with a product link (a code under two brands): a model of its own brand.
+        // KENE01 card with a product link (a code under two brands from before KATALOG-14 phase D5b: no save puts a card of
+        // another brand under a code): the code's model, the other brand's card on a model of its own.
         var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 3, "gid-9");
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 4, null);
+        var other = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Etek", 4, null);
         foreach (var (card, external) in new[] { (single, "8001"), (linked, "8002"), (kene, "8003") })
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Shopify.Id, ProductId = card.Id, ExternalId = external, SyncStatus = "SYNCED", Version = 1 });
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {other.Id}""");
+        await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
 
         await db.Database.ExecuteSqlRawAsync(MarketplaceModelLinks_Backfill);
         await db.Database.ExecuteSqlRawAsync(MarketplaceModelLinks_Backfill);
-        // KATALOG-14 phase D5a: the KENE01 card holds a model of its own brand (never the other brand's), a one-card model
-        // the backfill links like any other.
+        // The KENE01 card's model is a one-card model the backfill links like any other.
         var modelLinks = (await ModelLinksAsync(db, seed)).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
         Assert.Equal(2, modelLinks.Count);
         Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == single.Id).Select(x => x.FamilyId).SingleAsync(), "8001"), ((Guid?)modelLinks[0].ModelId, modelLinks[0].ExternalId));

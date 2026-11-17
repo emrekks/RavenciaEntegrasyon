@@ -42,8 +42,8 @@ public sealed partial class CatalogService
         var selected = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
             .Select(x => new BulkFieldCard(x.Id, x.BrandId, x.Title)).ToListAsync(cancellationToken);
         if (selected.Count != ids.Length) return ServiceResult<BulkProductFieldResult>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
-        // A selected card's model is its brand's cards of its code; a card of the code under another brand (KENE01) takes
-        // the value only when it is selected itself (PRODUCT_MODEL_AMBIGUOUS is only warned about, never merged).
+        // A selected card's model is every card of its code (KATALOG-14 phase D5b: a model is its code alone, the brand one
+        // of its fields).
         var families = await BulkFieldFamiliesAsync(tenantId, selected, cancellationToken);
 
         var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
@@ -68,20 +68,23 @@ public sealed partial class CatalogService
             {
                 failures.Add(new(family.Model, BulkFieldChangedMeanwhile));
             }
+            catch (ModelRuleException conflict)
+            {
+                failures.Add(new(family.Model, conflict.Message));
+            }
             finally
             {
                 db.ChangeTracker.Clear();
             }
         }
-        return ServiceResult<BulkProductFieldResult>.Ok(new(updated, unchanged, variantCount, failures, skipped));
+        return ServiceResult<BulkProductFieldResult>.Ok(new(updated, unchanged, variantCount, failures, skipped, ModelMirror.ColoursReached(db.ModelMirrorReport)));
     }
 
     private sealed record BulkFieldCard(Guid Id, Guid? BrandId, string Title);
     private sealed record BulkFieldFamily(string Model, IReadOnlyList<Guid> ProductIds);
     private sealed record BulkFieldOutcome(int Updated, int Unchanged, int Variants, string? Note, IReadOnlyList<RequiredFieldsSkippedProduct> Skipped);
 
-    // The selected cards grouped by model (same brand and model code; any brand for the brand itself), each with every
-    // visible colour card of the model. A card without a model code is a model of its own, named by its title.
+    // The selected cards grouped by model (one model code), each with every visible colour card of the model. A card without a model code is a model of its own, named by its title.
     private async Task<List<BulkFieldFamily>> BulkFieldFamiliesAsync(Guid tenantId, IReadOnlyList<BulkFieldCard> selected, CancellationToken cancellationToken)
     {
         var selectedIds = selected.Select(x => x.Id).ToArray();
@@ -122,9 +125,8 @@ public sealed partial class CatalogService
             // The selected card always belongs to its model, even when another marketplace's link hides it from the list.
             var members = new List<Guid> { card.Id };
             members.AddRange((candidatesByKey.GetValueOrDefault(key) ?? [])
-                .Where(candidate => candidate.BrandId == card.BrandId)
                 .Select(candidate => candidate.Id));
-            members.AddRange(selected.Where(other => ProductFamilyKeyPolicy.ModelCodeKey(codes.GetValueOrDefault(other.Id)) == key && other.BrandId == card.BrandId).Select(other => other.Id));
+            members.AddRange(selected.Where(other => ProductFamilyKeyPolicy.ModelCodeKey(codes.GetValueOrDefault(other.Id)) == key).Select(other => other.Id));
             var ids = members.Where(id => !placed.Contains(id)).Distinct().ToList();
             placed.UnionWith(ids);
             families.Add(new(code!, ids));

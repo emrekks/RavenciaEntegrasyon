@@ -88,8 +88,8 @@ public sealed class PostgreSqlCatalogModelCodeConsistencyTests(PostgreSqlTenantI
     }
 
     // KATALOG-3: the name and the VAT the products file writes on one colour card go to every colour card of the model
-    // (each with its own colour word), so the editor's next save does not take them back; another brand's card under the
-    // same code is not touched.
+    // (each with its own colour word), so the editor's next save does not take them back; another brand's card (another
+    // model: KATALOG-14 phase D5b, a code is one model) is not touched.
     [PostgreSqlFact]
     public async Task AProductsFile_NameAndVatOnOneColour_GoToEveryColourOfTheModel()
     {
@@ -99,7 +99,7 @@ public sealed class PostgreSqlCatalogModelCodeConsistencyTests(PostgreSqlTenantI
         var mavi = AddCard(db, seed, "MZ600", "Mavi");
         var otherBrand = Guid.CreateVersion7();
         db.Brands.Add(new Brand { Id = otherBrand, TenantId = seed.Tenant.Id, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 });
-        var lavian = AddCard(db, seed, "MZ600", "Gri");
+        var lavian = AddCard(db, seed, "MZ601", "Gri");
         lavian.BrandId = otherBrand;
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
