@@ -21,6 +21,13 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler>? logger = n
         return false;
     }
 
+    private static bool IsDeadlock(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+            if (current is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.DeadlockDetected }) return true;
+        return false;
+    }
+
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
         if (httpContext.Response.HasStarted) return false;
@@ -37,7 +44,8 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler>? logger = n
                 await ApiProblems.WriteAsync(httpContext, "CONCURRENCY_CONFLICT", "Kayıt başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", StatusCodes.Status409Conflict);
                 return true;
             case not null when IsLockConflict(exception):
-                logger?.LogWarning(exception, "Save conflict for {Method} {Path}.", httpContext.Request.Method, httpContext.Request.Path.Value);
+                // A deadlock stays an Error line so the error scan sees a repeating one; a lock wait or a serialization retry is a Warning.
+                logger?.Log(IsDeadlock(exception) ? LogLevel.Error : LogLevel.Warning, exception, "Save conflict for {Method} {Path}.", httpContext.Request.Method, httpContext.Request.Path.Value);
                 await ApiProblems.WriteAsync(httpContext, "SAVE_CONFLICT_RETRY", "Kayıt aynı anda başka bir işlemle çakıştı; tekrar deneyin.", StatusCodes.Status409Conflict);
                 return true;
             case ArgumentException argument:
