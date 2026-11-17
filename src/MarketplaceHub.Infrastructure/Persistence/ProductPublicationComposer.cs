@@ -135,7 +135,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // productMainId is the whole card's model code, so the variants a matched card adds join its Trendyol product.
-        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        // KATALOG-14 phase D5b: the model's code (EffectiveCatalog.CardModelCodesAsync).
+        var modelCodes = await EffectiveCatalog.CardModelCodesAsync(db, tenantId, productId, cardVariants.Select(x => x.ModelCode), cancellationToken);
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
         // Model Kaydı Faz 2b: the productMainId the model link holds (TrendyolProductMainIdAsync).
         var productMainId = await TrendyolProductMainIdAsync(db, tenantId, connectionId, product, cardVariants.Select(x => x.Id).ToArray(), modelCodes[0]!, cancellationToken);

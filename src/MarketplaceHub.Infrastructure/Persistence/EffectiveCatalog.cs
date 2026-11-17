@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using MarketplaceHub.Domain;
+using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -64,4 +65,21 @@ public static class EffectiveCatalog
 
     // The same for a card already loaded with its model (null: a card linked to no model). A detached copy.
     public static Product Of(Product card, ProductModel? model) => ResolveCompiled(new CardWithModel { Card = card, Model = model?.Id == card.FamilyId ? model : null });
+
+    // KATALOG-14 phase D5b: the model code a card's marketplace payloads carry (Trendyol productMainId, Hepsiburada
+    // VaryantGroupID, n11 productMainId, Pazarama groupCode, PTT AVM's parent barcode, Shopify's family): its model's, the
+    // one place the code lives. The variants' codes (the copies every writer keeps equal to it) are the answer when the
+    // card has no coded model, or when a copy holds another key (a mix the composers refuse as before).
+    public static async Task<List<string?>> CardModelCodesAsync(AppDbContext db, Guid tenantId, Guid productId, IEnumerable<string?> variantCodes, CancellationToken cancellationToken)
+    {
+        var copies = variantCodes.Select(code => code?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        var model = await (from product in db.Products.AsNoTracking()
+                           join record in db.ProductModels.AsNoTracking() on product.FamilyId equals record.Id
+                           where product.TenantId == tenantId && product.Id == productId
+                           select new { record.ModelCode, record.ModelCodeKey }).FirstOrDefaultAsync(cancellationToken);
+        if (model is null || string.IsNullOrWhiteSpace(model.ModelCode) || copies.Count == 0
+            || copies.Any(code => Application.ProductFamilyKeyPolicy.ModelCodeKey(code) != model.ModelCodeKey))
+            return copies;
+        return [model.ModelCode.Trim()];
+    }
 }

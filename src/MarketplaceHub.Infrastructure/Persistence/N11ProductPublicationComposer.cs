@@ -73,7 +73,8 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         // n11 keys a listing by its stock code (the variant link carries it), so both codes are checked.
         if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), barcodes, variants.Select(x => x.Sku.Trim()).ToArray(), cancellationToken) is { } takenCode)
             return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenCode), status: 409);
-        var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        // KATALOG-14 phase D5b: the model's code (EffectiveCatalog.CardModelCodesAsync).
+        var modelCodes = await EffectiveCatalog.CardModelCodesAsync(db, tenantId, productId, variants.Select(x => x.ModelCode), cancellationToken);
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "N11 varyant grubu tek bir ortak model kodu (productMainId) kullanmalıdır.");
         var productMainId = modelCodes[0]!;
 
