@@ -188,7 +188,7 @@ public static class ProductModelValues
     private sealed record Target(
         ProductModel Model, IReadOnlyList<Card> Cards, ProductFamilySharedFields.ModelFields Fields, string Title, string? TitleColor, string Description, bool FieldsSaved,
         decimal? Desi, IReadOnlyList<ProductModelLinks.ModelAttributeRow> Attributes, bool AttributesDiffer, string? Chart, bool ChartDiffers, IReadOnlyList<string> Differing,
-        IReadOnlyList<CardOverride> Overrides, Guid? ChartAsset = null);
+        IReadOnlyList<CardOverride> Overrides, Guid? ChartAsset = null, bool AttributesSpread = false);
 
     // KATALOG-14 phase D2 (owner, 16 Nov 2026): the name and the description are the model's when every colour holds the
     // same one (the name compared without its colour word), and stay as the model holds them otherwise; no majority
@@ -258,19 +258,22 @@ public static class ProductModelValues
         // KATALOG-14 phase D5b (owner, 17 Nov 2026): of the eight model fields only a VAT that differs between colours is
         // worth a warning (the invoice); the others the colours take from the model, unwarned.
         var differing = DifferingFields(cards).Where(field => field == Vat).ToList();
-        if (setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any()) differing.Add(Attributes);
+        // Owner rule "uyarı yalnız KDV farkında" (review, 18 Nov 2026): colours whose category attributes differ are counted for
+        // the logs only (AttributesSpread), like the other fields that are not the VAT; no warning is opened.
+        var attributesSpread = setKeys.Distinct(StringComparer.Ordinal).Skip(1).Any();
         // What the owner saved in the editor after the last change of every card stays (the editor's own rule).
         var updatedAt = cards.Select(card => snapshot.CardUpdatedAt[card.Id]).ToList();
         var fieldsSaved = ProductModelLinks.HoldsSavedFields(model, cards.Select(card => (snapshot.CardUpdatedAt[card.Id], card.CategoryId)));
         var attributesDiffer = !ProductModelLinks.HoldsSavedAttributes(model.AttributesSavedAt, updatedAt)
             && AttributeSetKey(snapshot.ModelAttributes.GetValueOrDefault(model.Id) ?? []) != setKeys[ProductFamilySharedFields.ModelAttributeCard(setKeys)];
-        return new Target(model, cards, fields, title, titleColor, description, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing, overrides, chartAsset);
+        return new Target(model, cards, fields, title, titleColor, description, fieldsSaved, desi, attributes, attributesDiffer, chart, chartDiffers, differing, overrides, chartAsset, attributesSpread);
     }
 
     // Skipped: models left for the next run because their refresh failed (a lock wait timeout, a deadlock).
     // Gaps: the models whose colours' copies differ from the model's own values (ModelMirror.ReportGapsAsync; the
     // automatic paths only).
-    public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing, int Skipped = 0, int Gaps = 0);
+    // AttributesSpread: the models whose colours hold different category attributes (logged only, never warned).
+    public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing, int Skipped = 0, int Gaps = 0, int AttributesSpread = 0);
 
     // How long the refresh's own transaction waits for a model row (and anything else) a save holds locked.
     public const string LockTimeout = "3s";
@@ -285,7 +288,7 @@ public static class ProductModelValues
     {
         var ids = modelIds?.Distinct().Order().ToArray();
         if (ids is { Length: 0 }) return new(0, 0, []);
-        var written = 0;
+        int written = 0, spread = 0;
         var differing = new List<(string, IReadOnlyList<string>)>();
         if (db.Database.CurrentTransaction is not null)
         {
@@ -308,8 +311,9 @@ public static class ProductModelValues
                 {
                     if (await WriteAsync(db, target, now, cancellationToken)) written++;
                     if (target.Differing.Count > 0) differing.Add((model.ModelCode, target.Differing));
+                    if (target.AttributesSpread) spread++;
                 }
-            return new(snapshot.Models.Count, written, differing);
+            return new(snapshot.Models.Count, written, differing, AttributesSpread: spread);
         }
         ids ??= [.. await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id).Select(x => x.Id).ToListAsync(cancellationToken)];
         int count = 0, skipped = 0;
@@ -341,6 +345,7 @@ public static class ProductModelValues
                 count++;
                 if (wrote) written++;
                 if (target.Differing.Count > 0) differing.Add((target.Model.ModelCode, target.Differing));
+                if (target.AttributesSpread) spread++;
             }
             // Nothing to detach: the refresh tracks nothing (AsNoTracking reads, raw SQL, ExecuteUpdate / ExecuteDelete), and
             // the caller's tracked entities (an import's cards between its saves) stay tracked for the caller's next save.
@@ -350,7 +355,7 @@ public static class ProductModelValues
                 skipped++;
             }
         }
-        return new(count, written, differing, skipped);
+        return new(count, written, differing, skipped, AttributesSpread: spread);
     }
 
     private static bool IsDatabaseError(Exception exception) =>
@@ -430,12 +435,13 @@ public static class ProductModelValues
     // tenant naming the models whose cards disagree (resolved when none does) and one per model whose colours' copies
     // differ from it (ModelMirror.ReportGapsAsync). Nothing is merged or chosen for the owner and none of the eight model
     // fields is written: the screens keep showing what they showed. Idempotent; a model a save holds locked waits for it,
-    // a model that fails is left for the next run. Returns (models, written, differing, models whose colours differ).
-    public static async Task<(int Models, int Written, int Differing, int Gaps)> RefreshAllAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // a model that fails is left for the next run. Returns (models, written, differing, models whose colours differ, models
+    // whose colours hold different category attributes: logged only).
+    public static async Task<(int Models, int Written, int Differing, int Gaps, int AttributesSpread)> RefreshAllAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var tenants = await db.ProductModels.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
         tenants.AddRange((await db.OperationalIssues.AsNoTracking().Where(x => x.Code == DifferCode && x.Status != IssueStatus.Resolved && x.TenantId != null).Select(x => x.TenantId!.Value).ToListAsync(cancellationToken)).Except(tenants));
-        int models = 0, written = 0, differing = 0, gaps = 0;
+        int models = 0, written = 0, differing = 0, gaps = 0, spread = 0;
         foreach (var tenantId in tenants)
         {
             var outcome = await RefreshTenantAsync(db, tenantId, now, cancellationToken);
@@ -443,8 +449,9 @@ public static class ProductModelValues
             written += outcome.Written;
             differing += outcome.Differing.Count;
             gaps += outcome.Gaps;
+            spread += outcome.AttributesSpread;
         }
-        return (models, written, differing, gaps);
+        return (models, written, differing, gaps, spread);
     }
 
     // One tenant's models and its PRODUCT_MODEL_VALUES_DIFFER warnings. KATALOG-14 phase D5b (review, 17 Nov 2026): the

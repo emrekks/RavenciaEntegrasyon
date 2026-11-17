@@ -121,6 +121,24 @@ public sealed class ApiErrorEnvelopeTests
         Assert.Equal("CONCURRENCY_CONFLICT", (await ReadBody(context)).GetProperty("code").GetString());
     }
 
+    // Review (18 Nov 2026): a save that met another on the same rows (a model-row lock wait that ran out, 55P03; a
+    // serialization failure or a deadlock), on any path without its own answer, is a 409 to try again, not a 500.
+    [Fact]
+    public async Task ALockConflict_IsATryAgainConflict_NotAnInternalError()
+    {
+        foreach (var state in new[] { Npgsql.PostgresErrorCodes.LockNotAvailable, Npgsql.PostgresErrorCodes.SerializationFailure, Npgsql.PostgresErrorCodes.DeadlockDetected })
+        {
+            var context = NewContext();
+            var wrapped = new InvalidOperationException("strategy", new Microsoft.EntityFrameworkCore.DbUpdateException("save", new Npgsql.PostgresException("lock", "ERROR", "ERROR", state)));
+
+            Assert.True(await new ApiExceptionHandler().TryHandleAsync(context, wrapped, CancellationToken.None));
+
+            Assert.Equal(409, context.Response.StatusCode);
+            var body = await ReadBody(context);
+            Assert.Equal("SAVE_CONFLICT_RETRY", body.GetProperty("code").GetString());
+        }
+    }
+
     [Fact]
     public async Task ArgumentException_IsABadRequest_InEveryEndpointGroup()
     {

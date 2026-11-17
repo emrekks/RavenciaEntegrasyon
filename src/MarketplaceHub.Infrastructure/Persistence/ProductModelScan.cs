@@ -12,7 +12,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // reconcile does; the cards themselves are never written.
 public static class ProductModelScan
 {
-    public sealed record Result(int Tenants, int UnlinkedCodedBefore, int UnlinkedCodedAfter, int ModelsWritten, int ModelsDiffering);
+    public sealed record Result(int Tenants, int UnlinkedCodedBefore, int UnlinkedCodedAfter, int ModelsWritten, int ModelsDiffering, int ModelsAttributesSpread = 0);
 
     public static async Task<Result> RunAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -22,7 +22,7 @@ public static class ProductModelScan
         {
             var result = await RunTenantAsync(db, tenantId, now, cancellationToken);
             total = new(total.Tenants + 1, total.UnlinkedCodedBefore + result.UnlinkedCodedBefore, total.UnlinkedCodedAfter + result.UnlinkedCodedAfter,
-                total.ModelsWritten + result.ModelsWritten, total.ModelsDiffering + result.ModelsDiffering);
+                total.ModelsWritten + result.ModelsWritten, total.ModelsDiffering + result.ModelsDiffering, total.ModelsAttributesSpread + result.ModelsAttributesSpread);
         }
         return total;
     }
@@ -41,7 +41,7 @@ public static class ProductModelScan
         var before = await UnlinkedCodedCardsAsync(db, tenantId, cancellationToken);
         await ProductModelLinks.ReconcileTenantAsync(db, tenantId, now, cancellationToken);
         var values = await ProductModelValues.RefreshTenantAsync(db, tenantId, now, cancellationToken);
-        return new(1, before, await UnlinkedCodedCardsAsync(db, tenantId, cancellationToken), values.Written, values.Differing.Count);
+        return new(1, before, await UnlinkedCodedCardsAsync(db, tenantId, cancellationToken), values.Written, values.Differing.Count, values.AttributesSpread);
     }
 
     // Cards that hold a model code but are linked to no model: the ambiguous groups (KENE01) stay here by design.

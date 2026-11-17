@@ -2006,7 +2006,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 Conflict<T>("SAVE_CONFLICT_RETRY", "Bu ürün aynı anda başka bir kayıtla değişti (öznitelik ya da görsel sırası); hiçbir değişiklik kaydedilmedi. Sayfayı yenileyip tekrar deneyin."),
             Npgsql.PostgresErrorCodes.UniqueViolation when exception is DbUpdateException =>
                 Conflict<T>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod kayıt sırasında başka bir ürüne verildi; hiçbir değişiklik kaydedilmedi. Sayfayı yenileyip tekrar deneyin."),
-            Npgsql.PostgresErrorCodes.SerializationFailure or Npgsql.PostgresErrorCodes.DeadlockDetected =>
+            // Review (18 Nov 2026): a lock wait that ran out (55P03, ProductModelLinks.ModelLockTimeout: another save holds the
+            // model's row) is the same race; the save's transaction is rolled back, nothing of it stands.
+            _ when SerializableWriteRetry.IsLockConflict(exception) =>
                 Conflict<T>("SAVE_CONFLICT_RETRY", "Kayıt aynı anda başka bir işlemle çakıştı; hiçbir değişiklik kaydedilmedi. Tekrar deneyin."),
             _ => null
         };

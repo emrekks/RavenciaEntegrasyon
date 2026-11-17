@@ -504,20 +504,19 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
-        // KATALOG-14 phase D5b: what is left for the tenant's warning is a difference in the category attributes (the
-        // eight model fields are the model's, so their copies never differ for long).
+        // Owner rule "uyarı yalnız KDV farkında" (review, 18 Nov 2026): what is left for the tenant's warning is a VAT the
+        // colours hold apart (an older release wrote one card alone).
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ800", "Siyah", "Kadın Siyah Etek", 0);
         var mavi = AddCard(db, seed, seed.Ravencia, "MZ800", "Mavi", "Kadın Mavi Etek", 1);
-        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = siyah.Id, AttributeId = seed.FabricId, ValueId = seed.Cotton, Version = 1 });
-        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = mavi.Id, AttributeId = seed.FabricId, ValueId = seed.Linen, Version = 1 });
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20 WHERE "Id" = {mavi.Id}""");
         var model = await ModelOfAsync(db, siyah.Id);
         await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         Task<IssueStatus> StatusAsync() => db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ProductModelValues.DifferDedupeKey).Select(x => x.Status).SingleAsync();
         Assert.Equal(IssueStatus.Open, await StatusAsync());
 
         // The owner makes the cards agree while the model is locked: the run skips it and the warning stays.
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_attribute_assignments SET "ValueId" = {seed.Cotton} WHERE "TenantId" = {seed.Tenant.Id}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 10 WHERE "TenantId" = {seed.Tenant.Id}""");
         await using (await LockModelAsync(model.Id))
         {
             var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
@@ -538,6 +537,42 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Contains(empty.Id, await ProductModelScan.TenantsAsync(db, CancellationToken.None));
         await ProductModelScan.RunTenantAsync(db, empty.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         Assert.Equal(IssueStatus.Resolved, await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == empty.Id).Select(x => x.Status).SingleAsync());
+    }
+
+    // Owner rule "uyarı yalnız KDV farkında" (review, 18 Nov 2026): colours of one model holding different category
+    // attributes (a colour's fabric) open no PRODUCT_MODEL_VALUES_DIFFER warning in the scan or the deploy refresh; they are
+    // only counted for the log. A tenant warning an older release opened for them is resolved by the next run; a VAT
+    // difference still warns.
+    [PostgreSqlFact]
+    public async Task ColoursWithDifferentCategoryAttributes_AreOnlyLogged_AndAnOldWarningOfThemCloses()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ810", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ810", "Mavi", "Kadın Mavi Etek", 1);
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = siyah.Id, AttributeId = seed.FabricId, ValueId = seed.Cotton, Version = 1 });
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = mavi.Id, AttributeId = seed.FabricId, ValueId = seed.Linen, Version = 1 });
+        await db.SaveChangesAsync();
+        // The warning the previous release opened for them.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ops.operational_issues ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount")
+            VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, {ProductModelValues.DifferDedupeKey}, {ProductModelValues.DifferCode}, '1 modelin renk kartlarında ortak değerler birbirinden farklı (özellikler 1): MZ810.', 'Open', now(), now(), 1)
+            """);
+
+        var outcome = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal((0, 1), (outcome.Differing.Count, outcome.AttributesSpread));
+        Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status != IssueStatus.Resolved));
+        var scan = await ProductModelScan.RunTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal((0, 1), (scan.ModelsDiffering, scan.ModelsAttributesSpread));
+        Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status != IssueStatus.Resolved));
+
+        // A VAT the colours hold apart still warns, and only the VAT is named.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20 WHERE "Id" = {mavi.Id}""");
+        var vat = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        Assert.Equal([ProductModelValues.Vat], Assert.Single(vat.Differing).Fields);
+        var warning = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == ProductModelValues.DifferDedupeKey);
+        Assert.Equal(IssueStatus.Open, warning.Status);
+        Assert.DoesNotContain(ProductModelValues.Attributes, warning.Summary);
     }
 
     // F8: the model's size chart is written only when it differs: a second run issues no write for it, neither for a

@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const hubApi = vi.hoisted(() => vi.fn(async (path: string) => {
+  // Without a brand the server answers by the reconcile's rule: the code's one branded model holds it (review, 18 Nov 2026).
+  if (path === '/catalog/model-codes/holder?code=MZ021Y-CD') return { taken: true, productId: 'p-1', productTitle: 'Kadın Bluz', message: null }
   if (path === '/catalog/model-codes/holder?code=MZ021Y-CD&brandId=b-ravencia') return { taken: true, productId: 'p-1', productTitle: 'Kadın Bluz', message: "Bu model kodu 'Kadın Bluz' ürününde kullanılıyor. Yeni renk veya beden eklemek için o ürünü düzenleyin." }
   if (path.startsWith('/catalog/model-codes/holder?code=')) return { taken: false }
   throw new Error(`Test API fixture does not handle ${path}`)
@@ -101,5 +103,16 @@ describe('model code holder per brand', () => {
     await settle()
     expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD&brandId=b-lavian', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('free')
+  })
+})
+
+describe('model code holder without a brand', () => {
+  it('asks without a brand and shows the holder the server names (the code joins its one branded model)', async () => {
+    vi.useFakeTimers()
+    await renderProbe('MZ021Y-CD', true, '  ')
+    await settle()
+    expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('blocked')
+    expect(container.querySelector('.model-code-holder-notice')?.textContent).toContain('Kullanımda: Kadın Bluz.')
   })
 })

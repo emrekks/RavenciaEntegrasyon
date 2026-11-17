@@ -70,8 +70,8 @@ public static class DatabaseMigrator
                 // colour agrees, a colour that differs gets its own text as an override (the colour overrides' backfill).
                 try
                 {
-                    var (models, written, differing, gaps) = await ProductModelValues.RefreshAllAsync(migrationContext, DateTimeOffset.UtcNow, cancellationToken);
-                    logger.LogInformation("Product model values refreshed: {Models} models, {Written} written, {Differing} with cards that disagree, {Gaps} whose colours differ from the model (warned, nothing written)", models, written, differing, gaps);
+                    var (models, written, differing, gaps, spread) = await ProductModelValues.RefreshAllAsync(migrationContext, DateTimeOffset.UtcNow, cancellationToken);
+                    logger.LogInformation("Product model values refreshed: {Models} models, {Written} written, {Differing} with cards that disagree, {Gaps} whose colours differ from the model (warned, nothing written), {Spread} whose colours hold different category attributes (not warned)", models, written, differing, gaps, spread);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {

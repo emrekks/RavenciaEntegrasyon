@@ -747,8 +747,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<MarketplaceHub.Infrastructure.Persistence.AppDbContext>();
             var result = await MarketplaceHub.Infrastructure.Persistence.ProductModelScan.RunAsync(db, DateTimeOffset.UtcNow, token);
-            logger.LogInformation("Product model scan: {Tenants} tenant(s), coded unlinked cards {UnlinkedBefore} -> {UnlinkedAfter}, {Written} model(s) written, {Differing} model(s) whose cards disagree",
-                result.Tenants, result.UnlinkedCodedBefore, result.UnlinkedCodedAfter, result.ModelsWritten, result.ModelsDiffering);
+            logger.LogInformation("Product model scan: {Tenants} tenant(s), coded unlinked cards {UnlinkedBefore} -> {UnlinkedAfter}, {Written} model(s) written, {Differing} model(s) whose cards disagree, {Spread} model(s) whose colours hold different category attributes (not warned)",
+                result.Tenants, result.UnlinkedCodedBefore, result.UnlinkedCodedAfter, result.ModelsWritten, result.ModelsDiffering, result.ModelsAttributesSpread);
         }, exception => logger.LogError(exception, "Product model scan failed"), stoppingToken, "product-model-scan");
 
     // SIPARIS-STOK-9: a few minutes after start (after a deploy, the claims the previous code wrote while it migrated) and

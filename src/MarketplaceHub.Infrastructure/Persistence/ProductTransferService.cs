@@ -371,11 +371,31 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         // C-9: a model code the file changes to one another product holds (a product this upload does not change) would
         // join that product's family; the upload is refused before anything is written.
         var modelCodeChanges = changes.Where(change => change.SetModelCode).ToList();
-        // A model is its brand and its code (owner, 17 Nov 2026): only a card of the row's own brand holding the code counts.
+        // A model is its brand and its code (owner, 17 Nov 2026): only the model of the brand the card has after the upload
+        // counts (review, 18 Nov 2026: a row giving Marka and Model Kodu together was checked under the card's old brand and
+        // joined the new brand's model). The brand is the model's: a row's Marka goes to every colour card of its model with
+        // the row's old brand (written below), the card's own row first. A brand the panel does not have yet holds no code.
         var fileProductIds = changes.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
         var codeProducts = modelCodeChanges.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
-        var brandOfRecoded = codeProducts.Length == 0 ? [] : await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && codeProducts.Contains(product.Id)).ToDictionaryAsync(product => product.Id, product => product.BrandId, cancellationToken);
-        foreach (var brandGroup in modelCodeChanges.GroupBy(change => brandOfRecoded.GetValueOrDefault(byId[change.VariantId].ProductId)))
+        var brandRows = codeProducts.Length == 0 ? [] : productChanges.Where(change => change.Brand is not null).ToList();
+        var brandReadIds = codeProducts.Concat(brandRows.Select(change => change.ProductId)).Distinct().ToArray();
+        var brandBeforeUpload = brandReadIds.Length == 0 ? [] : await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && brandReadIds.Contains(product.Id)).ToDictionaryAsync(product => product.Id, product => product.BrandId, cancellationToken);
+        var brandAfterUpload = codeProducts.ToDictionary(id => id, id => brandBeforeUpload.GetValueOrDefault(id));
+        var newBrandCards = new HashSet<Guid>();
+        if (brandRows.Count > 0)
+        {
+            var brandRowModels = await ModelCardsAsync(tenantId, [.. brandRows.Select(change => change.ProductId).Distinct()], cancellationToken);
+            foreach (var ownRow in new[] { false, true })
+                foreach (var change in brandRows)
+                    foreach (var cardId in brandRowModels[change.ProductId].Where(id => brandAfterUpload.ContainsKey(id) && (id == change.ProductId) == ownRow
+                                 && (ownRow || brandBeforeUpload.GetValueOrDefault(id) == brandBeforeUpload.GetValueOrDefault(change.ProductId))))
+                    {
+                        brandAfterUpload[cardId] = currentBrandIds.GetValueOrDefault(change.ProductId);
+                        if (currentBrandIds.GetValueOrDefault(change.ProductId) is null) newBrandCards.Add(cardId);
+                        else newBrandCards.Remove(cardId);
+                    }
+        }
+        foreach (var brandGroup in modelCodeChanges.Where(change => !newBrandCards.Contains(byId[change.VariantId].ProductId)).GroupBy(change => brandAfterUpload.GetValueOrDefault(byId[change.VariantId].ProductId)))
         {
             var changedModelCodes = ModelCodeUniquenessPolicy.ChangedCodes(brandGroup.Select(change => (byId[change.VariantId].ModelCode, change.ModelCode)));
             if (changedModelCodes.Count > 0
