@@ -39,13 +39,15 @@ function useSettledValue(value: string, delayMs: number) {
   return settled
 }
 
-// enabled: on a new card only; an existing card (its family, a draft) keeps its own code.
-export function useModelCodeHolder(modelCode: string, enabled: boolean) {
+// enabled: on a new card only; an existing card (its family, a draft) keeps its own code. A model is its brand and its code
+// (owner, 17 Nov 2026): only a card of the chosen brand holds the code, so the brand is asked with it (none: no brand yet).
+export function useModelCodeHolder(modelCode: string, brandId: string, enabled: boolean) {
   const code = modelCodeToCheck(modelCode)
   const settled = useSettledValue(code, modelCodeCheckDelayMs)
+  const brand = brandId.trim()
   const query = useQuery({
-    queryKey: queryKeys.modelCodeHolder(settled),
-    queryFn: ({ signal }) => hubApi<ApiAnswer<'getCatalogModelCodesHolder'>>(`/catalog/model-codes/holder?code=${encodeURIComponent(settled)}`, { signal }),
+    queryKey: queryKeys.modelCodeHolder(settled, brand),
+    queryFn: ({ signal }) => hubApi<ApiAnswer<'getCatalogModelCodesHolder'>>(`/catalog/model-codes/holder?code=${encodeURIComponent(settled)}${brand ? `&brandId=${encodeURIComponent(brand)}` : ''}`, { signal }),
     enabled: enabled && Boolean(settled) && settled === code,
     staleTime: 15_000
   })

@@ -7,11 +7,27 @@ namespace MarketplaceHub.Api.Security;
 // correlationId, retryable), never with the framework's English ProblemDetails:
 //   - a body or parameters that cannot be read (malformed JSON, a value of the wrong type, a missing body): 400 / 413;
 //   - a row another session changed meanwhile (DbUpdateConcurrencyException): 409 CONCURRENCY_CONFLICT;
+//   - a save that met another one on the same rows (40001, 40P01, or 55P03 when the model-row lock wait ran out, review
+//     18 Nov 2026): 409 SAVE_CONFLICT_RETRY, try again (its transaction was rolled back);
 //   - an ArgumentException, in every endpoint group (RequestArgumentError): 400;
 //   - anything else: logged here with its stack trace and answered 500 INTERNAL_ERROR, without the exception's text.
 // A request the client abandoned and a response already started keep the framework's handling.
 public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler>? logger = null) : IExceptionHandler
 {
+    private static bool IsLockConflict(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+            if (current is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.SerializationFailure or Npgsql.PostgresErrorCodes.DeadlockDetected or Npgsql.PostgresErrorCodes.LockNotAvailable }) return true;
+        return false;
+    }
+
+    private static bool IsDeadlock(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+            if (current is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.DeadlockDetected }) return true;
+        return false;
+    }
+
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
         if (httpContext.Response.HasStarted) return false;
@@ -26,6 +42,11 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler>? logger = n
                 return true;
             case DbUpdateConcurrencyException:
                 await ApiProblems.WriteAsync(httpContext, "CONCURRENCY_CONFLICT", "Kayıt başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", StatusCodes.Status409Conflict);
+                return true;
+            case not null when IsLockConflict(exception):
+                // A deadlock stays an Error line so the error scan sees a repeating one; a lock wait or a serialization retry is a Warning.
+                logger?.Log(IsDeadlock(exception) ? LogLevel.Error : LogLevel.Warning, exception, "Save conflict for {Method} {Path}.", httpContext.Request.Method, httpContext.Request.Path.Value);
+                await ApiProblems.WriteAsync(httpContext, "SAVE_CONFLICT_RETRY", "Kayıt aynı anda başka bir işlemle çakıştı; tekrar deneyin.", StatusCodes.Status409Conflict);
                 return true;
             case ArgumentException argument:
                 var (code, message) = RequestArgumentError.From(argument);

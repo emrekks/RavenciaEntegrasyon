@@ -116,7 +116,7 @@ internal sealed partial class CatalogImportService
             // C-9: the marketplace changing this variant's model code to one a card it does not know holds (no link on
             // this connection) would merge two products into one family; the panel keeps its code and says why.
             if (!observeOnly && ModelCodeUniquenessPolicy.ChangedCodes([(variant.ModelCode, nextModelCode)]).Count > 0
-                && await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenantId, connectionId, nextModelCode!, product.Id, cancellationToken) is { } modelCodeHolder)
+                && await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenantId, connectionId, product.BrandId, nextModelCode!, product.Id, cancellationToken) is { } modelCodeHolder)
             {
                 await RecordIssue(tenantId, $"product-sync-model-code-conflict:{connectionId}:{variant.Id:N}", ModelCodeUniquenessPolicy.ChangeConflictCode,
                     $"Pazaryerindeki yeni model kodu ({nextModelCode}) '{modelCodeHolder.Title}' ürününde kullanılıyor; iki ürün birleşmesin diye {variant.Sku} varyantının model kodu değiştirilmedi.", cancellationToken);
@@ -414,15 +414,19 @@ internal sealed partial class CatalogImportService
 
     // The VAT an offer of a card takes when the marketplace reports none (review, 17 Nov 2026): the card's as every reader
     // reads it (EffectiveCatalog: its model's), and for a new colour card this import has not saved yet (whose copy is
-    // still empty, the model's VAT reaching it only at the save, ModelMirror) its code's model's. Before, such a colour
+    // still empty, the model's VAT reaching it only at the save, ModelMirror) its brand's model of its code (a model is its
+    // brand and its code; a card without a brand yet: the code's one branded model, as the reconcile links it). Before, such a colour
     // of a model with a VAT got a %0 offer and an OFFER_VAT_UNKNOWN warning.
     private async Task<decimal?> CardOrModelVatRateAsync(Guid tenantId, Guid productId, string? modelCode, CancellationToken cancellationToken)
     {
-        if (db.Products.Local.FirstOrDefault(x => x.Id == productId)?.VatRate is { } local) return local;
+        var local = db.Products.Local.FirstOrDefault(x => x.Id == productId);
+        if (local?.VatRate is { } localRate) return localRate;
         if (await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken) is { } stored) return stored;
-        return ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is { } key
-            ? await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => x.VatRate).FirstOrDefaultAsync(cancellationToken)
-            : null;
+        if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is not { } key) return null;
+        var brandId = local is not null ? local.BrandId : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => new { x.BrandId, x.VatRate }).ToListAsync(cancellationToken);
+        var branded = models.Where(x => x.BrandId is not null).ToList();
+        return (models.FirstOrDefault(x => x.BrandId == brandId) ?? (brandId is null && branded.Count == 1 ? branded[0] : null))?.VatRate;
     }
 
     // The VAT of an offer the raw import / mapping path opens (SeedChannelOfferAsync): the same rule as the catalog import

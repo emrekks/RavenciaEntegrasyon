@@ -3,12 +3,37 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// The tenant's card that already holds a model code (ModelCodeUniquenessPolicy). The database narrows to the variants
-// with a model code; the key is compared in memory, as the database upper case differs from the invariant one outside ASCII.
+// The tenant's card that already holds a model code in the model a card of the given brand would join
+// (ModelCodeUniquenessPolicy). A model is its brand and its code (owner, 17 Nov 2026): the same code under another brand is
+// free; a blank brand is one brand too. Which model a card joins is ProductModelLinks.LinkBrand, the reconcile's own rule
+// (review, 18 Nov 2026): a card without a brand joins the code's one branded model when the code has exactly one, so such a
+// code is in use for it too. The holders are the cards of that brand and the cards linked to that model; a query without a
+// brand also counts the cards without one. The database narrows to the variants with a model code; the key is compared in
+// memory, as the database upper case differs from the invariant one outside ASCII.
 public static class ModelCodeOwnership
 {
-    public static Task<ModelCodeUniquenessPolicy.Holder?> FindAsync(AppDbContext db, Guid tenantId, IEnumerable<string?> modelCodes, CancellationToken cancellationToken) =>
-        FindOtherAsync(db, tenantId, modelCodes, [], cancellationToken);
+    // Per key: the brand of the model a card of `brandId` joins (LinkBrand) and that model's ids.
+    private sealed record Target(Guid? Brand, HashSet<Guid> Models);
+
+    private static async Task<Dictionary<string, Target>> TargetsAsync(AppDbContext db, Guid tenantId, Guid? brandId, IReadOnlyCollection<string> keys, CancellationToken cancellationToken)
+    {
+        var keyArray = keys.ToArray();
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && keyArray.Contains(x.ModelCodeKey))
+            .Select(x => new { x.Id, x.BrandId, x.ModelCodeKey }).ToListAsync(cancellationToken);
+        return keys.Distinct(StringComparer.Ordinal).ToDictionary(key => key, key =>
+        {
+            var ofKey = models.Where(x => x.ModelCodeKey == key).ToList();
+            var brand = ProductModelLinks.LinkBrand(brandId, [.. ofKey.Where(x => x.BrandId is not null).Select(x => x.BrandId)]);
+            return new Target(brand, [.. ofKey.Where(x => x.BrandId == brand).Select(x => x.Id)]);
+        }, StringComparer.Ordinal);
+    }
+
+    private static bool Holds(IReadOnlyDictionary<string, Target> targets, Guid? brandId, string? modelCode, Guid? cardBrand, Guid? cardModel) =>
+        ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is { } key && targets.TryGetValue(key, out var target)
+        && (cardBrand == target.Brand || cardModel is Guid model && target.Models.Contains(model) || brandId is null && cardBrand is null);
+
+    public static Task<ModelCodeUniquenessPolicy.Holder?> FindAsync(AppDbContext db, Guid tenantId, Guid? brandId, IEnumerable<string?> modelCodes, CancellationToken cancellationToken) =>
+        FindOtherAsync(db, tenantId, brandId, modelCodes, [], cancellationToken);
 
     // The first card outside `ownProductIds` that holds one of the model codes. Scan C-9 (13 Nov 2026): a model code an
     // edit or an Excel upload changed to the code of another product joined that product's family, and Shopify and
@@ -18,7 +43,7 @@ public static class ModelCodeOwnership
     // on the connection, i.e. a card the marketplace does not know as part of its model. A marketplace import changing
     // a variant's code to such a card's code would join two unrelated products; cards of the same marketplace model
     // (linked on this connection) are its family and are not counted.
-    public static async Task<ModelCodeUniquenessPolicy.Holder?> FindUnlinkedHolderAsync(AppDbContext db, Guid tenantId, Guid connectionId, string modelCode, Guid ownProductId, CancellationToken cancellationToken)
+    public static async Task<ModelCodeUniquenessPolicy.Holder?> FindUnlinkedHolderAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid? brandId, string modelCode, Guid ownProductId, CancellationToken cancellationToken)
     {
         var keys = ModelCodeUniquenessPolicy.Keys([modelCode]);
         if (keys.Count == 0) return null;
@@ -31,11 +56,12 @@ public static class ModelCodeOwnership
                 join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
                     && variant.ProductId != ownProductId && candidates.Contains(variant.ProductId)
-                select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })
+                select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt, product.BrandId, product.FamilyId })
             .Distinct()
             .ToListAsync(cancellationToken))
-            .Where(row => ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is { } key && keys.Contains(key, StringComparer.Ordinal))
             .ToList();
+        var targets = await TargetsAsync(db, tenantId, brandId, keys, cancellationToken);
+        rows = [.. rows.Where(row => Holds(targets, brandId, row.ModelCode, row.BrandId, row.FamilyId))];
         if (rows.Count == 0) return null;
         var holderIds = rows.Select(row => row.ProductId).Distinct().ToArray();
         var linked = (await db.MarketplaceProductLinks.AsNoTracking()
@@ -76,7 +102,7 @@ public static class ModelCodeOwnership
         return db.Database.SqlQueryRaw<Guid>(sql, new Npgsql.NpgsqlParameter("key_tenant", tenantId), new Npgsql.NpgsqlParameter("key_keys", keys.ToArray()));
     }
 
-    public static async Task<ModelCodeUniquenessPolicy.Holder?> FindOtherAsync(AppDbContext db, Guid tenantId, IEnumerable<string?> modelCodes, IReadOnlyCollection<Guid> ownProductIds, CancellationToken cancellationToken)
+    public static async Task<ModelCodeUniquenessPolicy.Holder?> FindOtherAsync(AppDbContext db, Guid tenantId, Guid? brandId, IEnumerable<string?> modelCodes, IReadOnlyCollection<Guid> ownProductIds, CancellationToken cancellationToken)
     {
         var keys = ModelCodeUniquenessPolicy.Keys(modelCodes);
         if (keys.Count == 0) return null;
@@ -87,10 +113,11 @@ public static class ModelCodeOwnership
                 join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where variant.TenantId == tenantId && product.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != ""
                     && !own.Contains(variant.ProductId) && candidates.Contains(variant.ProductId)
-                select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt })
+                select new { variant.ProductId, product.Title, variant.ModelCode, product.CreatedAt, product.BrandId, product.FamilyId })
             .Distinct()
             .ToListAsync(cancellationToken);
-        return ModelCodeUniquenessPolicy.FirstHolder(keys, rows
+        var targets = await TargetsAsync(db, tenantId, brandId, keys, cancellationToken);
+        return ModelCodeUniquenessPolicy.FirstHolder(keys, rows.Where(row => Holds(targets, brandId, row.ModelCode, row.BrandId, row.FamilyId))
             .OrderBy(row => row.CreatedAt).ThenBy(row => row.ProductId)
             .Select(row => new ModelCodeUniquenessPolicy.Holder(row.ProductId, row.Title, row.ModelCode!)));
     }
