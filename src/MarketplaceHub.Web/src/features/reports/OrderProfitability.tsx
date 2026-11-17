@@ -2,7 +2,8 @@ import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, Pager, TitleHint, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Pager, TitleHint, UiIcon } from '../../shared/components'
+import { RrModal } from '../../shared/ui/rr-components'
 import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -149,8 +150,8 @@ function CopyNumber({ value }: { value: string }) {
 
 // Sipariş Analizi: the order's items and every charge with where it comes from, and what is left.
 function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () => void }) {
-  return <Modal open onClose={onClose} className="reports-order-modal" title={`Sipariş Analizi · #${order.orderNumber}`}
-    description={`${formatIstanbul(order.orderedAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${order.storeName}${order.microExport ? ` · Mikro ihracat (${order.storeFront})` : ''}`}>
+  return <RrModal onClose={onClose} size="xl" modalClass="reports-order-modal" title={`Sipariş Analizi · #${order.orderNumber}`}
+    desc={`${formatIstanbul(order.orderedAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${order.storeName}${order.microExport ? ` · Mikro ihracat (${order.storeFront})` : ''}`}>
     <div className="reports-order-columns">
       <section>
         <h3>Siparişteki Ürünler <em>{order.lines.length} kalem</em></h3>
@@ -183,5 +184,5 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
       <span>Bu siparişteki net kârınız<small>Tüm giderler çıkarıldıktan sonra</small></span>
       <strong>{order.profit === null ? unknownProfit(order) : money(order.profit)}</strong>
     </div>
-  </Modal>
+  </RrModal>
 }

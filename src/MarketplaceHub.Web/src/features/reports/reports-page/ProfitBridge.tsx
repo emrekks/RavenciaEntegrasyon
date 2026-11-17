@@ -1,5 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
 import { EmptyState, Modal, UiIcon } from '../../../shared/components'
+import { RrModal } from '../../../shared/ui/rr-components'
 import { formatCount, formatNumber, formatPercent, formatTl, platformColor, platformName, type ReportCosts, type ReportSales } from '../report-format'
 import { Progress } from '../report-visuals'
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
@@ -85,11 +86,11 @@ export function ProfitBridge({ data, money, onMore }: { data: ReportSales; money
       {/* The platforms open over the page, so nothing under the card moves. */}
       <Modal open={open} onClose={() => setOpen(false)} className="reports-journey-modal" title="Satış Tutarı"><SalesDetail data={data} /></Modal>
       {/* A row's breakdown: its short explanation under the title, the lines adding up to its figure. */}
-      <Modal open={picked !== null} onClose={() => setDetail(null)} className="reports-journey-modal reports-bridge-modal" title={picked?.label ?? ''}
-        description={picked ? picked.note.split('\n')[0] : undefined}>
-        {picked?.kind === 'end' ? <ProfitLedger data={data} money={money} />
-          : picked && pickedDetail ? <BridgeDetail detail={pickedDetail} total={picked.to - picked.from} /> : null}
-      </Modal>
+      {picked && <RrModal onClose={() => setDetail(null)} size="md" modalClass="reports-bridge-modal" title={picked.label}
+        desc={picked.note.split('\n')[0] || undefined}>
+        {picked.kind === 'end' ? <ProfitLedger data={data} money={money} />
+          : pickedDetail ? <BridgeDetail detail={pickedDetail} total={picked.to - picked.from} /> : null}
+      </RrModal>}
     </>}
   </Card>
 }
