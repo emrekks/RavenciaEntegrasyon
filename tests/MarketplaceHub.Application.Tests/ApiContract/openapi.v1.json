@@ -35989,6 +35989,13 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "knownValuesSentAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -36078,24 +36085,13 @@
       "ProductUpdatePreviewRequest": {
         "type": "object",
         "properties": {
-          "productIds": {
+          "targets": {
             "type": [
               "null",
               "array"
             ],
             "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          "connectionIds": {
-            "type": [
-              "null",
-              "array"
-            ],
-            "items": {
-              "type": "string",
-              "format": "uuid"
+              "$ref": "#/components/schemas/ProductUpdatePreviewTarget"
             }
           },
           "fields": {
@@ -36105,6 +36101,28 @@
             ],
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewTarget": {
+        "required": [
+          "connectionId"
+        ],
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         }

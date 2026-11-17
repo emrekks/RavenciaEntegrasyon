@@ -10,7 +10,7 @@ import { VariantFilterDropdown } from './VariantFilterDropdown'
 import type { EditorContext } from './editor-context'
 
 export function EditorWindows({ editor }: { editor: EditorContext }) {
-  const { submitting, variantRows, platformUpdateDialogOpen, setPlatformUpdateDialogOpen, platformUpdateConnectionIds, setPlatformUpdateConnectionIds, platformUpdatePreferences, savingPlatformUpdateChoice, lightboxImage, setLightboxImage, variantMediaModal, setVariantMediaModal, variantBulkEdit, setVariantBulkEdit, variantBulkEditFilterSelections, setVariantBulkEditFilterSelections, chartKey, productUpdateTargets, platformUpdateFamilyReach, updateFamilyProduct, mediaChoices, bulkMediaGroups, variantBulkEditFilterGroups, variantBulkEditMatchingRows, selectedBulkMediaMatchCount, selectedBulkMediaGroupMatchCount, selectedVariantMediaRefs, applyVariantBulkEdit, applyVariantMediaSelection, changePlatformUpdatePreferences, savePlatformUpdateChoice, sendPlatformUpdateChoice } = editor
+  const { submitting, variantRows, platformUpdateDialogOpen, setPlatformUpdateDialogOpen, platformUpdateConnectionIds, setPlatformUpdateConnectionIds, platformUpdatePreferences, savingPlatformUpdateChoice, lightboxImage, setLightboxImage, variantMediaModal, setVariantMediaModal, variantBulkEdit, setVariantBulkEdit, variantBulkEditFilterSelections, setVariantBulkEditFilterSelections, chartKey, productUpdateTargets, platformUpdateFamilyReach, platformUpdatePreviewCards, editorDirty, mediaChoices, bulkMediaGroups, variantBulkEditFilterGroups, variantBulkEditMatchingRows, selectedBulkMediaMatchCount, selectedBulkMediaGroupMatchCount, selectedVariantMediaRefs, applyVariantBulkEdit, applyVariantMediaSelection, changePlatformUpdatePreferences, savePlatformUpdateChoice, sendPlatformUpdateChoice } = editor
   return <>
     {platformUpdateDialogOpen && <PlatformUpdateDialog
       targets={productUpdateTargets}
@@ -22,7 +22,8 @@ export function EditorWindows({ editor }: { editor: EditorContext }) {
       onOpenGroupsChange={openGroups => changePlatformUpdatePreferences({ ...platformUpdatePreferences, openGroups })}
       submitting={submitting || savingPlatformUpdateChoice}
       familyReach={platformUpdateFamilyReach}
-      previewProductIds={updateFamilyProduct ? [...new Set([updateFamilyProduct.id, ...(updateFamilyProduct.familyProductIds ?? [])])] : undefined}
+      previewCards={platformUpdatePreviewCards}
+      previewUnsaved={editorDirty}
       onClose={() => setPlatformUpdateDialogOpen(false)}
       onSave={savePlatformUpdateChoice}
       onSend={sendPlatformUpdateChoice} />}

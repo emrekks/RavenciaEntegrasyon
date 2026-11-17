@@ -61,7 +61,8 @@ public sealed class ProductUpdatePreviewTests
         Assert.Equal("Bluz", values[first].Title);
         Assert.Equal("Açıklama", values[first].Description);
         Assert.False(values[first].DesiSent);
-        Assert.Null(values[second].Description);
+        Assert.False(values[second].DescriptionSent);
+        Assert.False(values[second].Carries(ProductUpdateFields.Description));
         Assert.True(values[second].DesiSent);
         Assert.Equal(2.5m, values[second].Desi);
 
@@ -84,5 +85,38 @@ public sealed class ProductUpdatePreviewTests
         Assert.Equal("Bluz", values[variant].Title);
         Assert.Equal("Uzun", values[variant].Description);
         Assert.Equal(2.5m, values[variant].Desi);
+    }
+
+    // Hepsiburada's package names every field, a missing one as null (HepsiburadaProductUpdateComposer: String() of an
+    // absent attribute). The file goes with "productName": null, so the field is sent; what Hepsiburada makes of it is not
+    // known, so the summary compares it as unknown instead of leaving it out.
+    [Fact]
+    public void AHepsiburadaFieldSentAsNullIsSent_WithNoValue()
+    {
+        var variant = Guid.NewGuid();
+        var draft = new ProductUpdateDraft(Guid.NewGuid(), new ProductUpdatePublication(Guid.NewGuid(), "APPROVED", "h", "{}",
+            """{"merchantId":"m","items":[{"hbSku":"HB1","merchantSku":"MZ-1M","productName":null,"productDescription":"Uzun","desi":null}]}""",
+            """{"items":[]}""", """{"items":[]}"""), [new(variant, "MZ-1M", "8690001")]);
+        var values = ProductUpdatePreviewService.SentValuesOf(draft)[variant];
+        Assert.True(values.Carries(ProductUpdateFields.Title));
+        Assert.Null(values.Title);
+        Assert.True(values.Carries(ProductUpdateFields.Desi));
+        Assert.Null(values.Desi);
+        Assert.Equal("Uzun", values.Description);
+    }
+
+    // Review finding (d): with Desi alone picked on an approved Trendyol product only the variant request goes, carrying
+    // dimensionalWeight; the title and description are not sent and must not be compared.
+    [Fact]
+    public void ADesiOnlyTrendyolUpdateCarriesNoTitleOrDescription()
+    {
+        var variant = Guid.NewGuid();
+        var draft = new ProductUpdateDraft(Guid.NewGuid(), new ProductUpdatePublication(Guid.NewGuid(), "APPROVED", "h", "{}",
+            """{"items":[]}""", """{"items":[{"barcode":"8690001","dimensionalWeight":2}]}""", """{"items":[]}"""), [new(variant, "MZ-1M", "8690001")]);
+        var values = ProductUpdatePreviewService.SentValuesOf(draft)[variant];
+        Assert.True(values.Carries(ProductUpdateFields.Desi));
+        Assert.False(values.Carries(ProductUpdateFields.Title));
+        Assert.False(values.Carries(ProductUpdateFields.Description));
+        Assert.False(values.Carries(ProductUpdateFields.Images));
     }
 }

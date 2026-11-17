@@ -1072,7 +1072,9 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
    changed colours / sizes behind a disclosure (marketplace value struck through → the value that goes). */
 .app-shell.stitch-shell main .platform-update-preview-stores { display: grid; gap: 10px; min-width: 0; }
 .app-shell.stitch-shell main .platform-update-preview-store { display: grid; gap: 6px; min-width: 0; padding: 10px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .platform-update-preview-store > strong { font-size: 14px; }
+.app-shell.stitch-shell main .platform-update-preview-store-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.app-shell.stitch-shell main .platform-update-preview-store-head > strong { font-size: 14px; }
+.app-shell.stitch-shell main .platform-update-preview-store-head > small { color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .platform-update-preview-store ul, .app-shell.stitch-shell main .platform-update-preview-store ol { display: grid; gap: 4px; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .app-shell.stitch-shell main .platform-update-preview-line, .app-shell.stitch-shell main .platform-update-preview-store summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; }
 .app-shell.stitch-shell main .platform-update-preview-store summary { align-items: center; cursor: pointer; list-style: none; }
@@ -1093,6 +1095,7 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-preview-problems li { color: var(--rv-color-muted); font-size: 12px; overflow-wrap: anywhere; }
 .app-shell.stitch-shell main .platform-update-preview-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.45; }
 .app-shell.stitch-shell main .platform-update-preview-note.is-error { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .platform-update-preview-note.is-unsaved { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .platform-update-preview-note > svg { flex: none; }
 
 /* The bulk publish footer's "Tümünü Seç": a quiet outline button beside the purple Yayınla. */

@@ -10,15 +10,21 @@ namespace MarketplaceHub.Application;
 // no marketplace call. The panel value is exactly what the update composer would send (its payload, not a re-derived
 // value); the marketplace value comes from IMarketplaceKnownListingValues, and a field whose marketplace value is not
 // known is reported as unknown, never as unchanged.
-public sealed record ProductUpdatePreviewRequest(IReadOnlyList<Guid>? ProductIds, IReadOnlyList<Guid>? ConnectionIds, IReadOnlyList<string>? Fields);
+// Targets: per store, the cards the send will reach there (the window builds them with the same rule as Gönder: an
+// editor family sends only its colour cards that are on the marketplace, the product list only the products on that
+// store), so the summary counts exactly what Gönder sends.
+public sealed record ProductUpdatePreviewRequest(IReadOnlyList<ProductUpdatePreviewTarget>? Targets, IReadOnlyList<string>? Fields);
+
+public sealed record ProductUpdatePreviewTarget(Guid ConnectionId, IReadOnlyList<Guid>? ProductIds);
 
 public sealed record ProductUpdatePreviewView(int MaxProducts, IReadOnlyList<ProductUpdatePreviewConnection> Connections);
 
 // Fields: the fields the update sends on this connection that are not compared per colour (images, attributes, VAT…):
 // their marketplace value is never known to the panel, so they are listed as unknown. Problems: the cards whose update
-// could not be prepared (the send would refuse them the same way). KnownValuesReadAt: the oldest read behind a known
-// marketplace value used here (how fresh the comparison is); null when no value was known.
-public sealed record ProductUpdatePreviewConnection(Guid ConnectionId, string PlatformCode, string DisplayName, IReadOnlyList<ProductUpdatePreviewModel> Models, IReadOnlyList<string> UnknownFields, IReadOnlyList<ProductUpdatePreviewProblem> Problems, DateTimeOffset? KnownValuesReadAt);
+// could not be prepared (the send would refuse them the same way). KnownValuesReadAt: the oldest marketplace read behind
+// a value compared here ("Pazaryerinde Okunan"); KnownValuesSentAt: the oldest accepted send behind one ("Son
+// Gönderilen"). Each is null when no compared value came from it.
+public sealed record ProductUpdatePreviewConnection(Guid ConnectionId, string PlatformCode, string DisplayName, IReadOnlyList<ProductUpdatePreviewModel> Models, IReadOnlyList<string> UnknownFields, IReadOnlyList<ProductUpdatePreviewProblem> Problems, DateTimeOffset? KnownValuesReadAt, DateTimeOffset? KnownValuesSentAt = null);
 
 public sealed record ProductUpdatePreviewModel(string Label, IReadOnlyList<ProductUpdatePreviewField> Fields);
 
@@ -57,15 +63,16 @@ public static class ProductUpdatePreviewPolicy
     public const int ExcerptLength = 80;
 }
 
-// The marketplace's last known values of one listed variant, as a catalog read saw them, and when. A null field is not
-// known (never read, or the read did not carry it).
-public sealed record KnownListingValues(string? Title, string? Description, decimal? Desi, DateTimeOffset ReadAt);
+// One known marketplace value: the value, where it came from (IMPORT: a product read of the marketplace carried it;
+// SENT: the marketplace accepted an update carrying it) and when.
+public sealed record KnownListingValue<T>(T Value, string Source, DateTimeOffset ReadAt);
 
-// Where the last known marketplace values come from. Today the panel keeps none of them (17 Nov 2026): the product import
-// reads the title, description and desi but only keeps a hash of the listing (marketplace_product_links.
-// LastImportedPayloadHash) and its staging rows are deleted when the import completes; listing profiles made by an
-// import carry no override. So the production source answers nothing and every field is reported as unknown until a
-// store is added (see the report of the feature branch feat/guncelleme-fark-ozeti).
+// The marketplace's last known values of one listed variant, each with its own source and date. A null field is not known
+// (never read and never sent, the read did not carry it, or a send left it unclear).
+public sealed record KnownListingValues(KnownListingValue<string>? Title, KnownListingValue<string>? Description, KnownListingValue<decimal>? Desi);
+
+// Where the last known marketplace values come from: catalog.marketplace_known_listing_values, written by the product
+// import and by an accepted update (MarketplaceKnownListingValueStore).
 public interface IMarketplaceKnownListingValues
 {
     Task<IReadOnlyDictionary<Guid, KnownListingValues>> ReadAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken);

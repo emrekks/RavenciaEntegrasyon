@@ -19,8 +19,12 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
 
     public async Task<ServiceResult<ProductUpdatePreviewView>> PreviewAsync(Guid tenantId, ProductUpdatePreviewRequest request, CancellationToken cancellationToken)
     {
-        var productIds = (request.ProductIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList();
-        var connectionIds = (request.ConnectionIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList();
+        // Per store the cards Gönder sends there, in the window's order; a store named twice keeps its first list.
+        var targets = (request.Targets ?? []).Where(target => target is not null && target.ConnectionId != Guid.Empty)
+            .GroupBy(target => target.ConnectionId).Select(group => (ConnectionId: group.Key, ProductIds: (group.First().ProductIds ?? []).Where(id => id != Guid.Empty).Distinct().ToList()))
+            .Where(target => target.ProductIds.Count > 0).ToList();
+        var productIds = targets.SelectMany(target => target.ProductIds).Distinct().ToList();
+        var connectionIds = targets.Select(target => target.ConnectionId).ToList();
         if (productIds.Count == 0 || connectionIds.Count == 0)
             return Fail("VALIDATION_FAILED", "En az bir ürün ve bir mağaza seçin.");
         if (productIds.Count > ProductUpdatePreviewPolicy.MaxProducts)
@@ -64,10 +68,12 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                 continue;
             }
 
+            var reached = targets.Single(target => target.ConnectionId == connection.Id).ProductIds;
+            var cardsHere = reached.Select(id => ordered.FirstOrDefault(card => card.Id == id)).OfType<Card>().ToList();
             var sent = new Dictionary<Guid, SentValues>();
             var problems = new List<ProductUpdatePreviewProblem>();
             var composer = new ProductUpdateComposer(db, configuration);
-            foreach (var card in ordered)
+            foreach (var card in cardsHere)
             {
                 var draft = await composer.BuildAsync(tenantId, card.Id, connection.Id, cancellationToken, sections.Value);
                 if (!draft.Succeeded)
@@ -80,13 +86,15 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
             }
             var known = sent.Count == 0 ? new Dictionary<Guid, KnownListingValues>() : await knownValues.ReadAsync(tenantId, connection.Id, [.. sent.Keys], cancellationToken);
             var compared = ComparedFields.Where(field => sent.Values.Any(values => values.Carries(field))).ToList();
-            var models = ordered
+            var used = new List<(string Source, DateTimeOffset At)>();
+            var models = cardsHere
                 .GroupBy(card => card.FamilyId ?? card.Id)
-                .Select(group => Model(group.ToList(), variants, sent, known, compared))
+                .Select(group => Model(group.ToList(), variants, sent, known, compared, used))
                 .Where(model => model.Fields.Count > 0)
                 .ToList();
-            var usedReads = sent.Keys.Where(known.ContainsKey).Select(id => known[id].ReadAt).ToList();
-            result.Add(new(connection.Id, platform, connection.DisplayName, models, OrderedFields(sentPicks.Where(field => !compared.Contains(field))), problems, usedReads.Count == 0 ? null : usedReads.Min()));
+            DateTimeOffset? Oldest(string source) => used.Where(x => x.Source == source).Select(x => (DateTimeOffset?)x.At).Min();
+            result.Add(new(connection.Id, platform, connection.DisplayName, models, OrderedFields(sentPicks.Where(field => !compared.Contains(field))), problems,
+                Oldest(MarketplaceKnownListingValueStore.ImportSource), Oldest(MarketplaceKnownListingValueStore.SentSource)));
         }
         return ServiceResult<ProductUpdatePreviewView>.Ok(new(ProductUpdatePreviewPolicy.MaxProducts, result));
     }
@@ -94,13 +102,15 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
     private sealed record Card(Guid Id, Guid? FamilyId, string Title, string? ModelCode);
     private sealed record VariantRow(Guid Id, Guid ProductId, string Sku, string? ModelCode, string OptionSignature, int SortOrder);
 
-    // What the payload carries for one variant: a field left out is not sent (null Title is "not sent", "" is sent empty).
-    internal sealed record SentValues(string? Title, string? Description, bool DesiSent, decimal? Desi)
+    // What the payload carries for one variant: a field the item names is sent (Sent), with its value. A field sent with
+    // no usable value (Hepsiburada's package writes a missing one as null) is sent all the same, and what the marketplace
+    // makes of it is not known: it is compared as unknown, never left out and never "the same".
+    internal sealed record SentValues(bool TitleSent, string? Title, bool DescriptionSent, string? Description, bool DesiSent, decimal? Desi)
     {
         public bool Carries(string field) => field switch
         {
-            ProductUpdateFields.Title => Title is not null,
-            ProductUpdateFields.Description => Description is not null,
+            ProductUpdateFields.Title => TitleSent,
+            ProductUpdateFields.Description => DescriptionSent,
             ProductUpdateFields.Desi => DesiSent,
             _ => false
         };
@@ -127,18 +137,18 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                 if (Text(item, "merchantSku") is { } sku && bySku.TryGetValue(sku.Trim(), out var skuVariant)) variantId = skuVariant;
                 else if (Text(item, "barcode") is { } barcode && byBarcode.TryGetValue(barcode.Trim(), out var barcodeVariant)) variantId = barcodeVariant;
                 else continue;
-                var current = values.GetValueOrDefault(variantId) ?? new SentValues(null, null, false, null);
-                var title = Text(item, "title") ?? Text(item, "productName");
-                var description = Text(item, "description") ?? Text(item, "productDescription");
-                var desi = item.TryGetProperty("dimensionalWeight", out var weight) ? weight : item.TryGetProperty("desi", out var hbDesi) ? hbDesi : default;
-                var desiSent = desi.ValueKind is JsonValueKind.Number or JsonValueKind.String;
-                values[variantId] = new SentValues(title ?? current.Title, description ?? current.Description, current.DesiSent || desiSent, desiSent ? ImportedDesi.FromJson(desi) : current.Desi);
+                var current = values.GetValueOrDefault(variantId) ?? new SentValues(false, null, false, null, false, null);
+                var read = MarketplaceKnownListingValueStore.ReadItem(item);
+                values[variantId] = new SentValues(
+                    current.TitleSent || read.TitlePresent, read.TitlePresent ? read.Title : current.Title,
+                    current.DescriptionSent || read.DescriptionPresent, read.DescriptionPresent ? read.Description : current.Description,
+                    current.DesiSent || read.DesiPresent, read.DesiPresent ? read.Desi : current.Desi);
             }
         }
         return values;
     }
 
-    private static ProductUpdatePreviewModel Model(IReadOnlyList<Card> cards, IReadOnlyList<VariantRow> variants, IReadOnlyDictionary<Guid, SentValues> sent, IReadOnlyDictionary<Guid, KnownListingValues> known, IReadOnlyList<string> compared)
+    private static ProductUpdatePreviewModel Model(IReadOnlyList<Card> cards, IReadOnlyList<VariantRow> variants, IReadOnlyDictionary<Guid, SentValues> sent, IReadOnlyDictionary<Guid, KnownListingValues> known, IReadOnlyList<string> compared, List<(string Source, DateTimeOffset At)> used)
     {
         var first = cards[0];
         var label = !string.IsNullOrWhiteSpace(first.ModelCode) ? first.ModelCode.Trim()
@@ -153,10 +163,11 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                 foreach (var variant in variants.Where(x => cards.Any(card => card.Id == x.ProductId)).OrderBy(x => cards.ToList().FindIndex(card => card.Id == x.ProductId)).ThenBy(x => x.SortOrder))
                 {
                     if (!sent.TryGetValue(variant.Id, out var values) || !values.DesiSent) continue;
-                    if (!known.TryGetValue(variant.Id, out var marketplace) || marketplace.Desi is null) { unknown++; continue; }
-                    if (MarketplaceTextComparison.SameDesi(marketplace.Desi, values.Desi)) { same++; continue; }
+                    if (values.Desi is null || !known.TryGetValue(variant.Id, out var marketplace) || marketplace.Desi is not { } desi) { unknown++; continue; }
+                    used.Add((desi.Source, desi.ReadAt));
+                    if (MarketplaceTextComparison.SameDesi(desi.Value, values.Desi)) { same++; continue; }
                     changed++;
-                    changes.Add(new(variant.Sku.Trim(), MarketplaceTextComparison.DesiText(marketplace.Desi), MarketplaceTextComparison.DesiText(values.Desi)));
+                    changes.Add(new(variant.Sku.Trim(), MarketplaceTextComparison.DesiText(desi.Value), MarketplaceTextComparison.DesiText(values.Desi)));
                 }
                 if (changed + same + unknown > 0) fields.Add(Field(field, ProductUpdatePreviewStates.VariantUnit, changed, same, unknown, changes));
                 continue;
@@ -174,8 +185,9 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                 {
                     var panel = field == ProductUpdateFields.Title ? sent[variant.Id].Title : sent[variant.Id].Description;
                     var marketplace = known.TryGetValue(variant.Id, out var read) ? field == ProductUpdateFields.Title ? read.Title : read.Description : null;
-                    if (marketplace is null) { anyUnknown = true; continue; }
-                    if (!MarketplaceTextComparison.SameText(marketplace, panel)) { difference = (marketplace, panel ?? ""); break; }
+                    if (panel is null || marketplace is null) { anyUnknown = true; continue; }
+                    used.Add((marketplace.Source, marketplace.ReadAt));
+                    if (!MarketplaceTextComparison.SameText(marketplace.Value, panel)) { difference = (marketplace.Value, panel); break; }
                 }
                 var colour = ColourLabel(card, cardVariants);
                 if (difference is { } pair)
@@ -234,13 +246,4 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static ServiceResult<ProductUpdatePreviewView> Fail(string code, string message) => ServiceResult<ProductUpdatePreviewView>.Fail(code, message, 422);
-}
-
-// The production source of last known marketplace values: none are kept yet (IMarketplaceKnownListingValues), so every
-// compared field is reported as unknown.
-public sealed class NoKnownListingValues : IMarketplaceKnownListingValues
-{
-    private static readonly IReadOnlyDictionary<Guid, KnownListingValues> Empty = new Dictionary<Guid, KnownListingValues>();
-
-    public Task<IReadOnlyDictionary<Guid, KnownListingValues>> ReadAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken) => Task.FromResult(Empty);
 }

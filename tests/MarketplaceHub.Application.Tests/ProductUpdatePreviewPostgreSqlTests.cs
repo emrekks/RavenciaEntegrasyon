@@ -40,6 +40,13 @@ public sealed class ProductUpdatePreviewPostgreSqlTests(PostgreSqlTenantIsolatio
 
     private static readonly IConfiguration Configuration = new ConfigurationBuilder().Build();
 
+    private static KnownListingValues Known(string? title, string? description, decimal? desi, DateTimeOffset at, string source = MarketplaceKnownListingValueStore.ImportSource) =>
+        new(title is null ? null : new(title, source, at), description is null ? null : new(description, source, at), desi is null ? null : new(desi.Value, source, at));
+
+    // Every card on every store, as the window builds it when each card is on each store.
+    private static ProductUpdatePreviewRequest Request(IReadOnlyList<Guid> cards, IReadOnlyList<Guid> connections, IReadOnlyList<string>? fields) =>
+        new([.. connections.Select(connection => new ProductUpdatePreviewTarget(connection, cards))], fields);
+
     // The values the update composer sends for each variant on a connection: the summary must compare exactly these.
     private static async Task<Dictionary<Guid, ProductUpdatePreviewService.SentValues>> SentAsync(AppDbContext db, Seed seed, PlatformConnection connection)
     {
@@ -65,12 +72,12 @@ public sealed class ProductUpdatePreviewPostgreSqlTests(PostgreSqlTenantIsolatio
         // Siyah: another title on the marketplace and a desi of 3 on its L size; Bordo: the same texts written with other
         // whitespace and markup; Gri: nothing known.
         foreach (var variant in seed.Variants[black])
-            known.Values[(seed.Trendyol.Id, variant.Id)] = new("Kadın Siyah Eski Bluz", sent[variant.Id].Description, variant.SortOrder == 1 ? 3m : 1m, readAt);
+            known.Values[(seed.Trendyol.Id, variant.Id)] = Known("Kadın Siyah Eski Bluz", sent[variant.Id].Description, variant.SortOrder == 1 ? 3m : 1m, readAt);
         foreach (var variant in seed.Variants[burgundy])
-            known.Values[(seed.Trendyol.Id, variant.Id)] = new($"  {sent[variant.Id].Title!.Replace(" ", "  ", StringComparison.Ordinal)} ", $"\n{sent[variant.Id].Description!.Replace(",", ",\r\n", StringComparison.Ordinal)}  ", 1.00m, readAt.AddHours(1));
+            known.Values[(seed.Trendyol.Id, variant.Id)] = Known($"  {sent[variant.Id].Title!.Replace(" ", "  ", StringComparison.Ordinal)} ", $"\n{sent[variant.Id].Description!.Replace(",", ",\r\n", StringComparison.Ordinal)}  ", 1.00m, readAt.AddHours(1));
         var jobsBefore = await db.IntegrationJobs.CountAsync(x => x.TenantId == seed.Data.Tenant.Id);
 
-        var result = await new ProductUpdatePreviewService(db, Configuration, known).PreviewAsync(seed.Data.Tenant.Id, new([black, burgundy, grey], [seed.Trendyol.Id], [ProductUpdateFields.Title, ProductUpdateFields.Desi]), CancellationToken.None);
+        var result = await new ProductUpdatePreviewService(db, Configuration, known).PreviewAsync(seed.Data.Tenant.Id, Request([black, burgundy, grey], [seed.Trendyol.Id], [ProductUpdateFields.Title, ProductUpdateFields.Desi]), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
         var connection = Assert.Single(result.Value!.Connections);
@@ -104,13 +111,13 @@ public sealed class ProductUpdatePreviewPostgreSqlTests(PostgreSqlTenantIsolatio
         await using var db = fixture.CreateContext();
         var sent = await SentAsync(db, seed, seed.Hepsiburada);
         foreach (var variant in seed.Variants.Values.SelectMany(x => x))
-            known.Values[(seed.Hepsiburada.Id, variant.Id)] = new(
+            known.Values[(seed.Hepsiburada.Id, variant.Id)] = Known(
                 variant.ProductId == seed.Data.Cards[2].Id ? "Kadın Gri Eski Bluz" : sent[variant.Id].Title,
                 sent[variant.Id].Description!.Replace(" ", "  ", StringComparison.Ordinal).Replace(",", ",\n", StringComparison.Ordinal),
                 1m, seed.Data.Now);
         var ids = seed.Data.Cards.Select(x => x.Id).ToList();
 
-        var result = await new ProductUpdatePreviewService(db, Configuration, known).PreviewAsync(seed.Data.Tenant.Id, new(ids, [seed.Hepsiburada.Id, seed.N11.Id], [ProductUpdateFields.Description]), CancellationToken.None);
+        var result = await new ProductUpdatePreviewService(db, Configuration, known).PreviewAsync(seed.Data.Tenant.Id, Request(ids, [seed.Hepsiburada.Id, seed.N11.Id], [ProductUpdateFields.Description]), CancellationToken.None);
 
         Assert.True(result.Succeeded, result.Error?.Message);
         var hepsiburada = result.Value!.Connections.Single(x => x.PlatformCode == "HEPSIBURADA");
@@ -128,8 +135,8 @@ public sealed class ProductUpdatePreviewPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal([ProductUpdateFields.Description], n11.UnknownFields);
         Assert.Null(n11.KnownValuesReadAt);
 
-        // The production source keeps no marketplace value: every compared field is unknown, never "the same".
-        var unknown = await new ProductUpdatePreviewService(db, Configuration, new NoKnownListingValues()).PreviewAsync(seed.Data.Tenant.Id, new(ids, [seed.Hepsiburada.Id], [ProductUpdateFields.Description]), CancellationToken.None);
+        // The production source before any read or send: every compared field is unknown, never "the same".
+        var unknown = await new ProductUpdatePreviewService(db, Configuration, new MarketplaceKnownListingValuesReader(db)).PreviewAsync(seed.Data.Tenant.Id, Request(ids, [seed.Hepsiburada.Id], [ProductUpdateFields.Description]), CancellationToken.None);
         Assert.All(Assert.Single(Assert.Single(unknown.Value!.Connections).Models).Fields, field => Assert.Equal((ProductUpdatePreviewStates.Unknown, 0, 0), (field.State, field.Changed, field.Same)));
     }
 
@@ -138,15 +145,15 @@ public sealed class ProductUpdatePreviewPostgreSqlTests(PostgreSqlTenantIsolatio
     {
         var seed = await SeedAsync();
         await using var db = fixture.CreateContext();
-        var service = new ProductUpdatePreviewService(db, Configuration, new NoKnownListingValues());
+        var service = new ProductUpdatePreviewService(db, Configuration, new FakeKnownValues());
         var tooMany = Enumerable.Range(0, ProductUpdatePreviewPolicy.MaxProducts + 1).Select(_ => Guid.NewGuid()).ToList();
-        var capped = await service.PreviewAsync(seed.Data.Tenant.Id, new(tooMany, [seed.Trendyol.Id], [ProductUpdateFields.Title]), CancellationToken.None);
+        var capped = await service.PreviewAsync(seed.Data.Tenant.Id, Request(tooMany, [seed.Trendyol.Id], [ProductUpdateFields.Title]), CancellationToken.None);
         Assert.Equal(("PRODUCT_UPDATE_PREVIEW_TOO_MANY", 422), (capped.Error?.Code, capped.Error?.Status));
-        Assert.Equal("PRODUCT_UPDATE_FIELD_UNKNOWN", (await service.PreviewAsync(seed.Data.Tenant.Id, new([seed.Data.Cards[0].Id], [seed.Trendyol.Id], ["PRICE"]), CancellationToken.None)).Error?.Code);
-        Assert.Equal("VALIDATION_FAILED", (await service.PreviewAsync(seed.Data.Tenant.Id, new([], [seed.Trendyol.Id], null), CancellationToken.None)).Error?.Code);
+        Assert.Equal("PRODUCT_UPDATE_FIELD_UNKNOWN", (await service.PreviewAsync(seed.Data.Tenant.Id, Request([seed.Data.Cards[0].Id], [seed.Trendyol.Id], ["PRICE"]), CancellationToken.None)).Error?.Code);
+        Assert.Equal("VALIDATION_FAILED", (await service.PreviewAsync(seed.Data.Tenant.Id, Request([], [seed.Trendyol.Id], null), CancellationToken.None)).Error?.Code);
 
         var other = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
-        var foreign = await service.PreviewAsync(other.Tenant.Id, new([seed.Data.Cards[0].Id], [seed.Trendyol.Id], [ProductUpdateFields.Title]), CancellationToken.None);
+        var foreign = await service.PreviewAsync(other.Tenant.Id, Request([seed.Data.Cards[0].Id], [seed.Trendyol.Id], [ProductUpdateFields.Title]), CancellationToken.None);
         Assert.True(foreign.Succeeded);
         Assert.Empty(foreign.Value!.Connections);
     }

@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProductUpdatePreviewConnection } from '../../../shared/api/generated/api-types'
 import { PlatformUpdatePreview } from './PlatformUpdatePreview'
-import { previewStores } from './platform-update-preview'
+import { previewStores, type PreviewTarget } from './platform-update-preview'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -41,16 +41,19 @@ const trendyol: ProductUpdatePreviewConnection = {
   }],
   unknownFields: ['IMAGES', 'VAT_RATE'],
   problems: [{ productId: 'p3', label: 'MZ300 · Gri', code: 'LISTING_PROFILE_REQUIRED', message: 'Yayın kaydı yok.' }],
-  knownValuesReadAt: null
+  knownValuesReadAt: '2026-11-17T09:00:00Z',
+  knownValuesSentAt: '2026-11-17T22:30:00Z'
 }
 
 const sameStore: ProductUpdatePreviewConnection = { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada Mağaza', models: [{ label: 'MZ300', fields: [{ field: 'TITLE', unit: 'COLOR', state: 'SAME', changed: 0, same: 3, unknown: 0, changes: [] }] }], unknownFields: [], problems: [], knownValuesReadAt: null }
 
-async function render(productIds: string[], fields = ['TITLE', 'DESI'] as const) {
+const everywhere = (productIds: string[]): PreviewTarget[] => [{ connectionId: 'ty', productIds }, { connectionId: 'hb', productIds }]
+
+async function render(targets: PreviewTarget[], fields = ['TITLE', 'DESI'] as const, unsaved = false) {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  await act(async () => root?.render(<QueryClientProvider client={client}><PlatformUpdatePreview productIds={productIds} connectionIds={['ty', 'hb']} fields={[...fields, 'PRICE']} /></QueryClientProvider>))
+  await act(async () => root?.render(<QueryClientProvider client={client}><PlatformUpdatePreview targets={targets} fields={[...fields, 'PRICE']} unsaved={unsaved} /></QueryClientProvider>))
   for (let tick = 0; tick < 5; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
 }
 
@@ -68,14 +71,21 @@ describe('platform update preview', () => {
     expect(store.unknownFields).toBe('Görseller, KDV Oranı')
     expect(store.allSame).toBe(false)
     expect(same.allSame).toBe(true)
+    // Where the compared values come from, in Istanbul dates; a store that knew none says nothing.
+    expect(store.known).toBe('Pazaryerinde Okunan · 17.11.2026 · Son Gönderilen · 18.11.2026')
+    expect(same.known).toBe('')
   })
 
   it('asks the server with the product fields only and shows the changes, unknown fields and problems', async () => {
     hubApi.mockResolvedValue({ maxProducts: 50, connections: [trendyol, sameStore] })
-    await render(['p1', 'p2', 'p3'])
+    // Review finding (a): each store is asked for the cards Gönder reaches there (Gri is not on Hepsiburada); a store the
+    // send reaches with no card is left out.
+    await render([{ connectionId: 'ty', productIds: ['p1', 'p2', 'p3'] }, { connectionId: 'hb', productIds: ['p1', 'p2'] }, { connectionId: 'n11', productIds: [] }])
     const [path, init] = hubApi.mock.calls[0]
     expect(path).toBe('/products/update-preview')
-    expect(JSON.parse(init.body)).toEqual({ productIds: ['p1', 'p2', 'p3'], connectionIds: ['ty', 'hb'], fields: ['TITLE', 'DESI'] })
+    expect(JSON.parse(init.body)).toEqual({ targets: [{ connectionId: 'ty', productIds: ['p1', 'p2', 'p3'] }, { connectionId: 'hb', productIds: ['p1', 'p2'] }], fields: ['TITLE', 'DESI'] })
+    expect(text()).toContain('Trendyol MağazaPazaryerinde Okunan · 17.11.2026 · Son Gönderilen · 18.11.2026')
+    expect(text()).not.toContain('Kaydedilmemiş değişiklikler')
     expect(text()).toContain('Ürün Adı2 Renk Değişecek · 1 Renk Bilinmiyor')
     expect(text()).toContain('Kadın Siyah Eski Bluz')
     expect(text()).toContain('Görseller, KDV OranıPazaryerindeki Değer Bilinmiyor')
@@ -85,18 +95,19 @@ describe('platform update preview', () => {
 
   it('says when the summary failed, without holding anything back', async () => {
     hubApi.mockRejectedValue(new Error('Sunucuya ulaşılamadı.'))
-    await render(['p1'])
+    await render(everywhere(['p1']))
     expect(host?.querySelector('[role="alert"]')?.textContent).toContain('Değişiklik özeti alınamadı: Sunucuya ulaşılamadı.')
   })
 
   it('shows a loading line while it is prepared', async () => {
     hubApi.mockReturnValue(new Promise(() => {}))
-    await render(['p1'])
+    await render(everywhere(['p1']))
     expect(text()).toContain('Değişiklik özeti hazırlanıyor…')
   })
 
   it('does not ask above the cap and says so', async () => {
-    await render(Array.from({ length: 51 }, (_, index) => `p${index}`))
+    // The cap counts distinct cards across the stores.
+    await render(everywhere(Array.from({ length: 51 }, (_, index) => `p${index}`)))
     expect(hubApi).not.toHaveBeenCalled()
     expect(text()).toContain('Değişiklik özeti en çok 50 ürün için gösterilir; Gönder bundan etkilenmez.')
   })
@@ -105,8 +116,17 @@ describe('platform update preview', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    await act(async () => root?.render(<QueryClientProvider client={client}><PlatformUpdatePreview productIds={['p1']} connectionIds={['ty']} fields={['PRICE', 'STOCK']} /></QueryClientProvider>))
+    await act(async () => root?.render(<QueryClientProvider client={client}><PlatformUpdatePreview targets={everywhere(['p1'])} fields={['PRICE', 'STOCK']} /></QueryClientProvider>))
     expect(hubApi).not.toHaveBeenCalled()
     expect(text()).toBe('')
+  })
+
+  // Review finding (b): with edits not saved yet the summary (of the saved card) says so above everything else.
+  it('says that edits not saved yet are not in the summary', async () => {
+    hubApi.mockResolvedValue({ maxProducts: 50, connections: [sameStore] })
+    await render(everywhere(['p1']), ['TITLE', 'DESI'], true)
+    const note = host?.querySelector('.platform-update-preview-note.is-unsaved')
+    expect(note?.textContent).toBe('Kaydedilmemiş değişiklikler bu özette yok; Gönder önce kaydeder, sonra gönderir.')
+    expect(host?.querySelector('.platform-update-preview > header')?.nextElementSibling).toBe(note)
   })
 })

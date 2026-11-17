@@ -57,7 +57,7 @@ type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: Platfor
 // The product list's "Platformlara Güncelle" opens the same window for several products (BulkPlatformUpdateDialog):
 // with its own eyebrow and intro, the selected products above the fields, no Kaydet, and Gönder held while
 // `sendBlocked` names a reason.
-export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave, onSend, eyebrow = 'Hızlı Güncelle Ayarı', intro, sendBlocked, previewProductIds, children }: {
+export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onSave, onSend, eyebrow = 'Hızlı Güncelle Ayarı', intro, sendBlocked, previewCards, previewUnsaved, children }: {
   targets: PlatformUpdateTarget[]
   selectedIds: string[]
   onSelectedIdsChange: (connectionIds: string[]) => void
@@ -78,9 +78,11 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   intro?: ReactNode
   // Why Gönder waits (the products are still being checked, none of them can go); empty when it can go.
   sendBlocked?: string
-  // The cards the send reaches: with them, the window shows above Gönder what the update will change on each picked store
-  // (PlatformUpdatePreview, read only). Without them (still being checked) no summary is shown.
-  previewProductIds?: string[]
+  // The cards the send reaches on a store (the same rule as Gönder): with it, the window shows above Gönder what the update
+  // will change on each picked store (PlatformUpdatePreview, read only). Without it (still being checked) no summary.
+  previewCards?: (connection: MarketplaceConnection) => string[]
+  // The editor holds edits not saved yet: the summary says they are not in it (Gönder saves them first).
+  previewUnsaved?: boolean
   // Shown above the fields (the product list: the selected products and their state).
   children?: ReactNode
 }) {
@@ -146,7 +148,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
               ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} familyReach={familyReach} onToggle={() => toggleStore(target.connection.id)} />)}</div>
               : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Entegrasyonlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
           </section>
-          {previewProductIds && <Suspense fallback={null}><PlatformUpdatePreview productIds={previewProductIds} connectionIds={selected.map(target => target.connection.id)} fields={visibleFields} /></Suspense>}
+          {previewCards && <Suspense fallback={null}><PlatformUpdatePreview targets={selected.map(target => ({ connectionId: target.connection.id, productIds: previewCards(target.connection) }))} fields={visibleFields} unsaved={previewUnsaved} /></Suspense>}
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
           <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : !sendsAnything ? 'Seçili mağazalara gidecek bir bilgi seçilmedi.' : sendBlocked || writeClosedNote || (onSave ? 'Kaydet seçimi saklar; Gönder saklayıp hemen gönderir.' : 'Gönder seçili bilgileri seçili mağazalara hemen gönderir.')}</small></div>

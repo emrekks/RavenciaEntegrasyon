@@ -1090,6 +1090,9 @@ internal sealed partial class ProductJobService
             x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId))
             .ToListAsync(cancellationToken);
         db.MarketplaceVariantLinks.RemoveRange(variantLinks);
+        // The listing's last known values go with its links (MarketplaceKnownListingValueStore).
+        db.MarketplaceKnownListingValues.RemoveRange(await db.MarketplaceKnownListingValues.Where(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken));
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
