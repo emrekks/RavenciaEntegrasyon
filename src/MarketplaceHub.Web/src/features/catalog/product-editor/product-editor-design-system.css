@@ -219,9 +219,6 @@
 }
 
 @layer features {
-}
-
-@layer features {
   .variant-table-row input.has-platform-code-issue { border-color: var(--rv-color-danger); box-shadow: inset 0 0 0 1px var(--rv-color-danger); }
 }
 
@@ -328,15 +325,6 @@
 
 @layer features {
   .variant-bulk-edit-filters { display: grid; gap: var(--rv-space-2); }
-}
-
-@layer features {
-}
-
-@layer features {
-}
-
-@layer features {
 }
 
 @layer features {
@@ -809,9 +797,6 @@
 }
 
 @media (max-width: 700px) {
-}
-
-@media (max-width: 700px) {
   .variant-table-toolbar-actions, .product-submit-actions { width: 100%; }
 }
 .app-shell.stitch-shell main .rich-text-editor-pro {
@@ -1278,10 +1263,9 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
    text is set here. */
 .rr-layer.rr-layer .editor-confirm-text { color: var(--rr-muted); line-height: 1.6; overflow-wrap: anywhere; }
 .rr-layer.rr-layer .variant-code-confirm-body { display: grid; gap: 12px; }
-.rr-layer.rr-layer .variant-code-confirm-body > :is(p, small) { color: var(--rr-muted); }
-/* Desi Hesapla on RrModal: two measures a row, one on a phone. */
+.rr-layer.rr-layer .variant-code-confirm-body > :is(p, small) { color: var(--rr-muted); font-size: inherit; }
+/* Desi Hesapla on RrModal: two measures a row, on a phone too (as before). */
 .rr-layer.rr-layer .desi-calculator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-@media (max-width: 700px) { .rr-layer.rr-layer .desi-calculator-grid { grid-template-columns: 1fr; } }
 /* Varyant Düzenleme on RrModal: the read-only name field and the switch row's help line (the rr layer resets small). */
 .rr-layer.rr-layer .variant-option-edit-pair .rr-in:disabled { color: var(--rr-muted); background: var(--rr-raised); }
 .rr-layer.rr-layer .variant-option-edit-switch small { color: var(--rr-muted); font-size: 12px; }
