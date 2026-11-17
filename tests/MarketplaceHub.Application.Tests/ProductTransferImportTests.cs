@@ -373,7 +373,7 @@ public sealed class ProductTransferImportTests
         {
             new ProductTransferFileRow(2, "A-1", null, Empty, Empty, Title: Text("Yeni Gömlek"), Vat: Set(20m)),
             new ProductTransferFileRow(3, "A-2", null, Empty, Empty, Title: Text("Yeni Gömlek"), Vat: Set(20m)),
-            new ProductTransferFileRow(4, "C-1", null, Empty, Empty, Title: Text("Pantolon"), Vat: Set(20m)),
+            new ProductTransferFileRow(4, "C-1", null, Empty, Empty, Title: Text("Uzun Pantolon"), Vat: Set(20m)),
             new ProductTransferFileRow(5, "C-2", null, Empty, Empty, Title: Text("Başka Pantolon"), Vat: Set(20m)),
         };
 
@@ -386,6 +386,36 @@ public sealed class ProductTransferImportTests
         var row = preview.Rows.Single(item => item.RowNumber == 2);
         Assert.Equal(("Gömlek", "Yeni Gömlek", "SET", 10m, 20m, "SET"), (row.ProductTitle, row.NewTitle, row.TitleChange, row.OldVatRate, row.NewVatRate, row.VatChange));
         Assert.All(preview.Rows.Where(item => item.RowNumber >= 4), item => Assert.Contains("farklı ürün adı", item.Message));
+    }
+
+    // KATALOG-14 phase D5b review 6b: the rows of one model are compared only where the file CHANGES the field. A file
+    // exported and loaded back with only the cost changed is not refused though its rows carry the sizes' differing desi;
+    // one row changed alone gives its value (the other rows keep the old one, unchanged); two rows changed to two values
+    // are refused.
+    [Fact]
+    public void AModelsRowsConflict_OnlyWhereTheFileChangesTheField()
+    {
+        var model = Guid.CreateVersion7();
+        ProductTransferCandidate Size(string sku, decimal desi) => Candidate(sku, null, 50m, desi) with { ProductId = model, ModelCode = "MZ900", ProductTitle = "Etek", VatRate = 10m };
+        var candidates = new[] { Size("E-1", 1m), Size("E-2", 2m), Size("E-3", 2m) };
+        ProductTransferFileRow Line(int number, string sku, decimal cost, decimal desi) => new(number, sku, null, Set(cost), Set(desi));
+
+        // Exported and loaded back, only the cost changed: no conflict.
+        var costOnly = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "E-1", 60m, 1m), Line(3, "E-2", 60m, 2m), Line(4, "E-3", 60m, 2m)], candidates, [ProductTransferFields.Cost, ProductTransferFields.Desi]);
+        Assert.Equal(0, costOnly.Errors);
+        Assert.Equal(3, costOnly.Changes.Count(change => change.SetCost));
+        Assert.DoesNotContain(costOnly.Changes, change => change.SetDesi);
+
+        // One row changed alone: its value is the change, the rows keeping the old value are unchanged.
+        var oneRow = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "E-1", 50m, 3m), Line(3, "E-2", 50m, 2m), Line(4, "E-3", 50m, 2m)], candidates, [ProductTransferFields.Cost, ProductTransferFields.Desi]);
+        Assert.Equal(0, oneRow.Errors);
+        var desi = Assert.Single(oneRow.Changes, change => change.SetDesi);
+        Assert.Equal((candidates[0].VariantId, (decimal?)3m), (desi.VariantId, desi.Desi));
+
+        // Two rows changed to two values: the model's rows are refused.
+        var two = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "E-1", 50m, 3m), Line(3, "E-2", 50m, 4m), Line(4, "E-3", 50m, 2m)], candidates, [ProductTransferFields.Cost, ProductTransferFields.Desi]);
+        Assert.Empty(two.Changes);
+        Assert.All(two.Rows, row => Assert.Contains("Aynı modelin (MZ900) satırlarında farklı desi var", row.Message));
     }
 
     [Fact]

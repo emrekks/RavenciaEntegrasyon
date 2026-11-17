@@ -421,12 +421,12 @@ public static class ProductTransferImportPlanner
 
         var pendingRows = resolved.Where(item => item.Outcome == "PENDING").Select(item => (item.Row, Variant: item.Variant!)).ToList();
         var conflicts = new ProductConflicts(
-            Disagreements(pendingRows, item => item.Row.Title, TitleKey, "ürün adı"),
-            Disagreements(pendingRows, item => item.Row.Vat, item => Key(item.Row.Vat), "KDV oranı"),
+            Disagreements(pendingRows, item => item.Row.Title, TitleKey, "ürün adı", item => !string.Equals(item.Row.Title.Text, item.Variant.ProductTitle.Trim(), StringComparison.Ordinal)),
+            Disagreements(pendingRows, item => item.Row.Vat, item => Key(item.Row.Vat), "KDV oranı", item => item.Variant.VatRate is not decimal storedVat || Rounded(storedVat) != item.Row.Vat.Amount),
             BrandDisagreements(pendingRows),
             ModelCodeDisagreements(pendingRows, variants),
             // KATALOG-14 phase D5b: the desi is the model's too, one value on every size of every colour.
-            Disagreements(pendingRows, item => item.Row.Desi, item => Key(item.Row.Desi), "desi"));
+            Disagreements(pendingRows, item => item.Row.Desi, item => Key(item.Row.Desi), "desi", item => item.Variant.Desi is not decimal storedDesi || Rounded(storedDesi) != item.Row.Desi.Amount));
         // A barcode asked for by more than one variant in the file cannot be given to any of them.
         var barcodeClaims = pendingRows
             .Where(item => item.Row.NewBarcode.Kind == ProductTransferValueKind.Set && !string.Equals(item.Row.NewBarcode.Text, item.Variant.Barcode?.Trim(), StringComparison.Ordinal))
@@ -560,10 +560,13 @@ public static class ProductTransferImportPlanner
     // KATALOG-3: the name and the VAT are the model's (the cards sharing the model code; a card without one is a model of its
     // own), as the editor and Toplu Değer Ata keep them: the products of a model whose rows ask for more than one value, with
     // the message their rows get. A name is compared without its row's colour word (each colour card names its own colour).
-    private static Dictionary<Guid, string> Disagreements(IEnumerable<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), ProductTransferValue> value, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), string> key, string label)
+    // KATALOG-14 phase D5b review 6b: only the rows that CHANGE the field are compared (changes): a file exported and loaded
+    // back with another column changed is no conflict though its rows carry the colours' differing values, and a row
+    // changed alone gives its value to the model while the rows that keep the old value count as unchanged.
+    private static Dictionary<Guid, string> Disagreements(IEnumerable<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), ProductTransferValue> value, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), string> key, string label, Func<(ProductTransferFileRow Row, ProductTransferCandidate Variant), bool> changes)
     {
         var result = new Dictionary<Guid, string>();
-        foreach (var model in rows.Where(item => value(item).Kind == ProductTransferValueKind.Set)
+        foreach (var model in rows.Where(item => value(item).Kind == ProductTransferValueKind.Set && changes(item))
                      .GroupBy(item => ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) ?? item.Variant.ProductId.ToString("N"), StringComparer.Ordinal))
         {
             if (model.Select(key).Distinct(StringComparer.Ordinal).Count() < 2) continue;
