@@ -153,7 +153,7 @@ describe('returns page', () => {
     const cargoCell = host.querySelector<HTMLElement>('[data-l="Kargo"]')!
     expect(cargoCell.textContent).toContain('PZ15649905156')
     expect(cargoCell.textContent).not.toContain('İade Kargo Kodu')
-    expect(host.querySelector('.rr-ordercell')!.textContent).toContain('İade Kargo Kodu')
+    expect(host.querySelector('.rr-ordercell')!.textContent).not.toContain('İade Kargo Kodu')
     expect(cargoCell.querySelector('[title="Pazarama\'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."]')).not.toBeNull()
     expect(cargoCell.querySelector('a')).toBeNull()
   })

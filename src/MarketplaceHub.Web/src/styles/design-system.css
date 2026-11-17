@@ -497,7 +497,6 @@
   .mapping-action { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin-top: var(--rv-space-5); padding-top: var(--rv-space-4); color: var(--rv-color-muted); border-top: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-sm); }
   .mapping-action > span { min-width: 0; overflow-wrap: anywhere; }
   .mapping-popup-content { min-width: 0; padding-top: var(--rv-space-4); border-top: 1px solid var(--rv-color-border); }
-  .mapping-advanced-backdrop { padding: clamp(12px, 3vw, 32px); }
   .mapping-advanced-modal { width: min(1180px, 100%); max-height: min(900px, calc(100dvh - 32px)); }
   .mapping-advanced-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .mapping-advanced-modal > header h2, .mapping-advanced-modal > header p { margin-bottom: var(--rv-space-1); }
@@ -1135,7 +1134,7 @@
 
   /* The mapping workspace uses a stable card grid; value lists open in a
      focused surface so the main comparison remains scannable. */
-  .mapping-advanced-modal { width: min(1320px, calc(100vw - 48px)); max-height: min(920px, calc(100dvh - 32px)); }
+  .mapping-advanced-modal { width: min(1320px, calc(100vw - 32px)); max-height: min(920px, calc(100dvh - 32px)); }
   .mapping-advanced-modal-body .mapping-popup-content { padding-top: 0; border-top: 0; }
   .value-mapping-heading h3, .value-mapping-heading p { margin: 0; }
   .value-mapping-heading p { margin-top: var(--rv-space-1); font-size: var(--rv-font-size-sm); }

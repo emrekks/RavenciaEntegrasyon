@@ -420,6 +420,14 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { line-height: 17.25px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act .rr-btn.rr-link { display: inline; height: auto; min-height: 0; padding: 0; font-size: 11.5px; font-weight: 600; line-height: 17.25px; vertical-align: top; }
 }
+/* Store cards (tablet and phone): İncele sits in the title row right beside the store name (8px), the Webhook row no longer carries it. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-title > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt .rr-mx-inline { display: none; }
+@media (max-width: 1024px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt .rr-mx-inline { display: inline; flex: none; height: auto; min-height: 0; padding: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { display: none; }
+}
 /* Touch screens: a card keeps its own look after a tap or a drag over it (the browser leaves :hover on the last card
    touched, which looked pressed). */
 @media (hover: none) {
