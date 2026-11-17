@@ -87,6 +87,13 @@ function button(label: string) {
   return found
 }
 
+// Windows (RrModal) are drawn in the body, outside the page's container.
+function windowButton(label: string) {
+  const found = Array.from(document.querySelectorAll<HTMLButtonElement>('.rr-modal button')).find(item => item.textContent?.includes(label))
+  if (!found) throw new Error(`Could not find window button containing “${label}”`)
+  return found
+}
+
 function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   act(() => {
     const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set
@@ -281,33 +288,33 @@ describe('QuestionsPage workspace flows', () => {
     expect(lastQuestionRequest().get('platform')).toBeNull()
     act(() => button('Hazır Cevaplar').click())
     await settle()
-    expect(container.querySelector('.rv-question-template-editor')).not.toBeNull()
-    expect(container.querySelector('.qi-templates-modal')?.textContent).toContain('Ölçü bilgisi')
+    expect(document.querySelector('.rv-question-template-editor')).not.toBeNull()
+    expect(document.querySelector('.qi-templates-modal')?.textContent).toContain('Ölçü bilgisi')
   })
 
   it('creates, edits, and deletes shared quick replies using mocked API calls', async () => {
     await renderPage()
     act(() => button('Hazır Cevaplar').click())
     await settle()
-    const fields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
+    const fields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(fields[0] as HTMLInputElement, 'Kargo bilgisi')
     input(fields[1] as HTMLTextAreaElement, 'Kargonuz yola çıktığında takip bağlantısı paylaşılır.')
-    act(() => button('Hazır Cevabı Oluştur').click())
+    act(() => windowButton('Hazır Cevabı Oluştur').click())
     await settle()
     expect(apiState.calls.some(call => call.path === '/question-templates' && call.method === 'POST')).toBe(true)
-    expect(container.textContent).toContain('Kargo bilgisi')
+    expect(document.body.textContent).toContain('Kargo bilgisi')
 
-    act(() => container.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[2].click())
+    act(() => document.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[2].click())
     await settle()
-    const editFields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
+    const editFields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(editFields[0] as HTMLInputElement, 'Kargo güncellemesi')
     input(editFields[1] as HTMLTextAreaElement, 'Yeni takip bağlantısını siparişlerimden görebilirsiniz.')
-    act(() => button('Değişiklikleri Kaydet').click())
+    act(() => windowButton('Değişiklikleri Kaydet').click())
     await settle()
     expect(apiState.calls.some(call => call.path.startsWith('/question-templates/template-') && call.method === 'PUT')).toBe(true)
-    expect(container.textContent).toContain('Kargo güncellemesi')
+    expect(document.body.textContent).toContain('Kargo güncellemesi')
 
-    act(() => container.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[3].click())
+    act(() => document.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[3].click())
     await settle()
     // One click only asks; nothing is deleted until the dialog is confirmed.
     expect(apiState.calls.some(call => call.method === 'DELETE')).toBe(false)
@@ -315,7 +322,7 @@ describe('QuestionsPage workspace flows', () => {
     act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('.qi-template-delete-modal button')).find(item => item.textContent?.includes('Hazır Cevabı Sil'))!.click())
     await settle()
     expect(apiState.calls.some(call => call.path.startsWith('/question-templates/template-') && call.method === 'DELETE')).toBe(true)
-    expect(container.textContent).not.toContain('Kargo güncellemesi')
+    expect(document.body.textContent).not.toContain('Kargo güncellemesi')
   })
 
   it('shows conversation history and rejection reasons, inserts a quick reply, and submits the edited answer', async () => {

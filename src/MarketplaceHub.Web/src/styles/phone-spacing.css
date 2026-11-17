@@ -74,11 +74,11 @@
   :root .app-shell.stitch-shell main .ss-card > .ss-pane > .ss-head { padding: var(--m-pad) 0 12px !important; }
 
   /* Centred windows: 12px from the screen edges, filling the width between */
-  :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop),
-  :root .app-shell.stitch-shell main :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-inline: var(--m-gutter) !important; }
+  :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .integration-modal-backdrop),
+  :root .app-shell.stitch-shell main :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .integration-modal-backdrop) { padding-inline: var(--m-gutter) !important; }
   :root body .rr-overlay.rr-overlay { grid-template-columns: minmax(0, 1fr) !important; }
-  :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop:not(.image-lightbox-backdrop) > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card, .missing-value-mapping-backdrop > *, .brand-mapping-modal-backdrop > *, .integration-modal-backdrop > *),
-  :root .app-shell.stitch-shell main :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop:not(.image-lightbox-backdrop) > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card, .missing-value-mapping-backdrop > *, .brand-mapping-modal-backdrop > *, .integration-modal-backdrop > *) { width: 100% !important; max-width: 100% !important; margin-inline: 0 !important; justify-self: stretch !important; }
+  :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop:not(.image-lightbox-backdrop) > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card, .missing-value-mapping-backdrop > *, .integration-modal-backdrop > *),
+  :root .app-shell.stitch-shell main :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop:not(.image-lightbox-backdrop) > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card, .missing-value-mapping-backdrop > *, .integration-modal-backdrop > *) { width: 100% !important; max-width: 100% !important; margin-inline: 0 !important; justify-self: stretch !important; }
 
   /* Window parts */
   :root .rr-layer.rr-layer .rr-modal > .rr-m-head { padding: var(--m-pad) !important; }
@@ -119,7 +119,7 @@
   :root .app-shell.stitch-shell .rv-topbar { padding-top: var(--m-safe-top) !important; min-height: calc(62px + var(--m-safe-top)) !important; }
   :root body .rr-anchor:not(.rr-dropdown) > :is(.rr-menu, .rr-pop):not(.rr-static) { padding-bottom: calc(10px + var(--m-safe-bottom)) !important; }
   :root body .rr-fopen .rr-fbtns { padding-bottom: calc(12px + var(--m-safe-bottom)) !important; }
-  :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-top: max(24px, calc(var(--m-safe-top) + 12px)) !important; padding-bottom: max(24px, calc(var(--m-safe-bottom) + 12px)) !important; }
+  :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .integration-modal-backdrop) { padding-top: max(24px, calc(var(--m-safe-top) + 12px)) !important; padding-bottom: max(24px, calc(var(--m-safe-bottom) + 12px)) !important; }
   :root body :is(.integration-settings-modal, .job-detail-drawer, .rv-drawer) { padding-top: var(--m-safe-top) !important; padding-bottom: var(--m-safe-bottom) !important; }
 }
 

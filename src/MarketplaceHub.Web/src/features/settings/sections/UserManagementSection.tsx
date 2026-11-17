@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { LoadingState, Modal } from '../../../shared/components'
+import { RrModal } from '../../../shared/ui/rr-components'
 import { SettingsNotice, type SettingsNoticeState } from '../SettingsNotifications'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { copyText } from '../../../shared/copy-text'
@@ -178,8 +179,8 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
       </form>
     </Modal>
 
-    <Modal open={dialog?.kind === 'manage' && !!managed} title={managed ? managed.displayName : 'Kullanıcı'} description={managed ? `${managed.email ?? ''} · ${userRoleLabel(managed.role)}` : undefined} className="ss-modal is-md" onClose={close}
-      footer={step ? <><button type="button" className="ss-btn" disabled={busy} onClick={() => chooseStep(null)}><SettingsIcon name="back" />Geri</button><button type="submit" form="ss-user-action" className={`ss-btn${actionCopy?.danger ? ' is-danger is-solid' : ' is-primary'}`} disabled={busy || (step === 'role' && role === managed?.role)}>{busy ? 'İşlem Yapılıyor…' : actionCopy?.confirm}</button></> : <button type="button" className="ss-btn" onClick={close}>Kapat</button>}>
+    {dialog?.kind === 'manage' && managed && <RrModal title={managed.displayName} desc={`${managed.email ?? ''} · ${userRoleLabel(managed.role)}`} size="md" locked={busy} container={document.querySelector('main')} layerClass="ss-page" onClose={close}
+      foot={step ? <><span className="rr-note" /><button type="button" className="ss-btn" disabled={busy} onClick={() => chooseStep(null)}><SettingsIcon name="back" />Geri</button><button type="submit" form="ss-user-action" className={`ss-btn${actionCopy?.danger ? ' is-danger is-solid' : ' is-primary'}`} disabled={busy || (step === 'role' && role === managed?.role)}>{busy ? 'İşlem Yapılıyor…' : actionCopy?.confirm}</button></> : <><span className="rr-note" /><button type="button" className="ss-btn" onClick={close}>Kapat</button></>}>
       {managed && !step && <>
         <div className="ss-sum">
           <div><SettingsGlyph state={managed.mfaEnabled ? 'done' : 'none'} /><span>İki Adımlı Doğrulama</span><span className="ss-sum-r">{managed.mfaEnabled ? 'Açık' : 'Kapalı'}</span></div>
@@ -196,7 +197,7 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
         <ReauthFields password={password} onPassword={setPassword} factor={factor} onFactor={setFactor} mfa={mfa} />
         {error && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{error}</span>}
       </form>}
-    </Modal>
+    </RrModal>}
 
     <Modal open={!!oneTime} title={oneTime?.title ?? ''} description={oneTime?.email ?? undefined} className="ss-modal is-sm" onClose={() => setOneTime(null)} footer={<><button type="button" className="ss-btn is-quiet" onClick={() => void copyOneTime()}><SettingsIcon name="copy" />Kopyala</button><span className="ss-modal-note" /><button type="button" className="ss-btn is-primary" onClick={() => setOneTime(null)}>Parolayı Not Aldım</button></>}>
       {oneTime && <><div className="ss-codes ss-users-otp"><code>{oneTime.password}</code></div><div className="ss-callout is-warn"><SettingsIcon name="alert" /><span><b>Bu parola yalnız şimdi gösterilir.</b> Kullanıcıya güvenli bir yoldan iletin; ilk girişte kendi parolasını belirlemesi istenir.</span></div></>}

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../../shared/api'
 import { Busy, ErrorBox, Modal, TitleHint, UiIcon, useConfirmDialog, DialogSurface } from '../../../../shared/components'
+import { RrModal } from '../../../../shared/ui/rr-components'
 import { mappingSaveErrorMessage, refreshMappingConflicts } from '../mapping-refresh'
 import { mappedLocalIds, valueListQuery, valueMappingProgressQuery, valueMappingsQuery } from '../value-field-queries'
 import { draftsKeptAfterSave, groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from '../value-drafts'
@@ -655,9 +656,9 @@ export function CategoryAttributeWorkspace({ platformCode, connectionId, localCa
       </div>
       </ValueDraftContext.Provider>
     </>}
-    <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" hint={`Ürünlerde boş kalan alanlar için ${dative(platformLabel)} gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
+    {extraPanel === 'defaults' && <RrModal title="Platform Varsayılanları" hint={`Ürünlerde boş kalan alanlar için ${dative(platformLabel)} gönderilecek sabit değerler.`} size="lg" modalClass="cm-defaults-modal" onClose={() => setExtraPanel('')}>
       {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={platformCode === 'N11' ? references.data.items.filter(item => item.externalId !== n11BrandAttributeId) : references.data.items} onNotice={onNotice} expanded />}
-    </Modal>
+    </RrModal>}
     <Modal open={extraPanel === 'conflicts'} title="Gözden Geçirilecek Eşlemeler" hint={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
       {mappingConflictCount ? <MappingConflictsPanel connectionId={connectionId} platformLabel={platformLabel} onNotice={onNotice} expanded /> : <EmptyState icon="circleCheck" title="Eşleme Yok">Gözden geçirilecek eşleme yok.</EmptyState>}
     </Modal>
