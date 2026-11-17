@@ -215,7 +215,9 @@ public static class MarketplaceKnownListingValueStore
         WHERE "TenantId" = @tenant AND "ConnectionId" = @connection AND "VariantId" = ANY(@variants) AND ("DesiReadAt" IS NULL OR "DesiReadAt" <= @at)
         """;
 
-    // A field is replaced only when the new value is there and not older than the kept one.
+    // A field is replaced only when the new value is there and not older than the kept one. A variant deleted meanwhile is
+    // skipped: its row is locked (FOR KEY SHARE) so a delete cannot commit between the check and the insert, and one that
+    // committed first is not joined (migration review, 18 Nov 2026).
     private const string UpsertSql = """
         INSERT INTO catalog.marketplace_known_listing_values AS k
             ("Id", "TenantId", "ConnectionId", "VariantId", "Title", "TitleSource", "TitleReadAt", "Description", "DescriptionSource", "DescriptionReadAt", "Desi", "DesiSource", "DesiReadAt", "Version")
@@ -225,7 +227,8 @@ public static class MarketplaceKnownListingValueStore
             r.desi, CASE WHEN r.desi IS NULL THEN NULL ELSE @source END, CASE WHEN r.desi IS NULL THEN NULL ELSE @at END,
             1
         FROM unnest(@variants, @titles, @descriptions, @desis) AS r(variant, title, description, desi)
-        WHERE EXISTS (SELECT 1 FROM catalog.product_variants v WHERE v."TenantId" = @tenant AND v."Id" = r.variant)
+        JOIN catalog.product_variants v ON v."TenantId" = @tenant AND v."Id" = r.variant
+        FOR KEY SHARE OF v
         ON CONFLICT ("TenantId", "ConnectionId", "VariantId") DO UPDATE SET
             "Title" = CASE WHEN EXCLUDED."Title" IS NULL OR EXCLUDED."TitleReadAt" < k."TitleReadAt" THEN k."Title" ELSE EXCLUDED."Title" END,
             "TitleSource" = CASE WHEN EXCLUDED."Title" IS NULL OR EXCLUDED."TitleReadAt" < k."TitleReadAt" THEN k."TitleSource" ELSE EXCLUDED."TitleSource" END,

@@ -8,6 +8,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class MarketplaceKnownListingValues : Migration
     {
+        // The marketplace values the panel last knew per listed variant (MarketplaceKnownListingValueStore), for the
+        // "Platformlarda Güncelle" summary. Additive only: a new, empty table, no row of another table changes. Its indexes
+        // are built with it (an empty table: nothing to build CONCURRENTLY). Its one key, to product_variants, cascades, so
+        // the code running before this deploy (which knows nothing of the table) still deletes variants as it did; rows of a
+        // connection go by name in the connection deletes and resets (ConnectionDataInventory, PanelFactoryResetInventory).
+        // The key takes a SHARE ROW EXCLUSIVE lock on product_variants for an instant (empty table, nothing to validate),
+        // bounded by DatabaseMigrator's lock_timeout and retries.
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -57,6 +64,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 columns: new[] { "TenantId", "VariantId" });
         }
 
+        // Drops the known values: a cache of marketplace reads and accepted sends, filled again by the next product pull.
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
