@@ -173,6 +173,104 @@ public sealed class PazaramaTokenRecoveryTests
         Assert.DoesNotContain("my-client-secret", string.Join("\n", logger.Lines));
     }
 
+    [Theory]
+    [InlineData("İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz.")]
+    [InlineData("Lütfen daha sonra tekrar deneyiniz")]
+    public void ABusyTokenEnvelopeIsAPassingRemoteErrorNotARefusedKey(string message)
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, $$"""{"data":null,"success":false,"userMessage":"{{message}}"}""");
+
+        Assert.Equal("PAZARAMA_TOKEN_REMOTE_ERROR", token.Error!.Code);
+        Assert.Equal(AdapterErrorClass.Remote5xx, token.Error.Class);
+        Assert.Contains(message, token.Error.SafeMessage);
+        Assert.Equal(JobCompletionKind.Retry, JobExecutionResult.FromAdapterError(token.Error).Kind);
+    }
+
+    [Theory]
+    [InlineData("""{"data":null,"success":false,"userMessage":"Oturum bilgileriniz alınamadı"}""", "Oturum bilgileriniz alınamadı")]
+    [InlineData("""{"data":null,"success":false}""", "mesaj yok")]
+    public void AnUnclearSuccessFalseIsUnknownNotARefusedKey(string body, string shown)
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, body);
+
+        Assert.Equal("PAZARAMA_TOKEN_INVALID", token.Error!.Code);
+        Assert.Equal(AdapterErrorClass.ContractViolation, token.Error.Class);
+        Assert.Contains(shown, token.Error.SafeMessage);
+        Assert.Contains("anahtar reddi sayılmadı", token.Error.SafeMessage);
+    }
+
+    [Theory]
+    [InlineData("Geçersiz anahtar")]
+    [InlineData("Client bilgileri hatalı")]
+    [InlineData("invalid client credentials")]
+    public void ASuccessFalseThatSaysTheKeyIsWrongIsStillARefusal(string message) =>
+        Assert.Equal("PAZARAMA_CREDENTIALS_REJECTED", PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, $$"""{"success":false,"userMessage":"{{message}}"}""").Error!.Code);
+
+    [Fact]
+    public void A5xxWithAnUnclearEnvelopeStaysAServerError() =>
+        Assert.Equal("PAZARAMA_REMOTE_ERROR", PazaramaHttpClient.TokenResponse(HttpStatusCode.ServiceUnavailable, """{"success":false,"userMessage":"Sistem hatası"}""").Error!.Code);
+
+    [Theory]
+    [InlineData("<!DOCTYPE html><html><body>Bakım</body></html>")]
+    [InlineData("<html><body>maintenance</body></html>")]
+    [InlineData("[]")]
+    public void AnHtmlPageOrAnEmptyListInA200IsAPassingRemoteError(string body)
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, body);
+
+        Assert.Equal("PAZARAMA_TOKEN_REMOTE_ERROR", token.Error!.Code);
+        Assert.Equal(JobCompletionKind.Retry, JobExecutionResult.FromAdapterError(token.Error).Kind);
+    }
+
+    [Fact]
+    public void A400WithNoBodyIsUnknownNeitherRetriedNorARefusedKey()
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.BadRequest, "");
+
+        Assert.Equal("PAZARAMA_TOKEN_INVALID", token.Error!.Code);
+        Assert.Equal(AdapterErrorClass.ContractViolation, token.Error.Class);
+    }
+
+    [Fact]
+    public void TheOAuthErrorIsKeptUpTo64CharactersOnly()
+    {
+        var at64 = new string('e', 64);
+        var at65 = new string('e', 65);
+
+        Assert.Equal(at64, PazaramaHttpClient.OAuthError($$"""{"error":"{{at64}}"}"""));
+        Assert.Null(PazaramaHttpClient.OAuthError($$"""{"error":"{{at65}}"}"""));
+        Assert.Null(PazaramaHttpClient.OAuthError("""{"error":""}"""));
+        Assert.Null(PazaramaHttpClient.OAuthError("not json"));
+    }
+
+    [Fact]
+    public async Task TheLoggedSizeIsInBytes()
+    {
+        // 7 characters, 8 bytes in UTF-8.
+        var handler = new TokenHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"ş":1}""", Encoding.UTF8, "application/json") });
+        var logger = new CapturingLogger();
+
+        await Client(handler, logger, new PazaramaTokenCache(TimeProvider.System)).TestAsync(Account(), CancellationToken.None);
+
+        Assert.Contains("(application/json, 8 bayt)", Assert.Single(logger.Lines));
+    }
+
+    [Fact]
+    public async Task AHeldFailureIsNotKeptLongerWhenTheClockGoesBack()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 11, 17, 22, 27, 0, TimeSpan.Zero));
+        var cache = new PazaramaTokenCache(clock);
+        var credentialId = Guid.NewGuid();
+        var issued = 0;
+        Task<PazaramaToken> Empty(CancellationToken _) { issued++; return Task.FromResult(Failure("PAZARAMA_TOKEN_REMOTE_ERROR", AdapterErrorClass.Remote5xx)); }
+
+        await cache.GetAsync(credentialId, Empty, CancellationToken.None);
+        clock.Advance(TimeSpan.FromHours(-1));
+        await cache.GetAsync(credentialId, Empty, CancellationToken.None);
+
+        Assert.Equal(2, issued);
+    }
+
     private static PazaramaToken Failure(string code, AdapterErrorClass @class) => new(null, TimeSpan.Zero, new(@class, code, code, 200, null, null));
 
     private static PazaramaHttpClient Client(TokenHandler handler, CapturingLogger logger, PazaramaTokenCache cache) => new(

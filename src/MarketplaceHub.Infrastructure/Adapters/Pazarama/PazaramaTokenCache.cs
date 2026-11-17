@@ -15,14 +15,14 @@ public sealed class PazaramaTokenCache(TimeProvider timeProvider)
     internal static readonly TimeSpan FailureHold = TimeSpan.FromSeconds(30);
     private readonly SingleFlightTokenCache<Guid, CachedToken> tokens = new(timeProvider, (cached, now) => cached.Token.IsSuccess
         ? cached.ExpiresAt - RenewBefore > now
-        : cached.ExpiresAt > now);
+        : now >= cached.StoredAt && now < cached.StoredAt + FailureHold);
 
     public Task<PazaramaToken> GetAsync(Guid credentialId, Func<CancellationToken, Task<PazaramaToken>> issue, CancellationToken cancellationToken) =>
         tokens.GetAsync(
             credentialId,
             issue,
-            (token, now) => token.IsSuccess ? new CachedToken(token, now + token.ExpiresIn)
-                : IsPassing(token.Error) ? new CachedToken(token, now + FailureHold)
+            (token, now) => token.IsSuccess ? new CachedToken(token, now, now + token.ExpiresIn)
+                : IsPassing(token.Error) ? new CachedToken(token, now, now + FailureHold)
                 : null,
             cached => cached.Token,
             cancellationToken);
@@ -34,7 +34,8 @@ public sealed class PazaramaTokenCache(TimeProvider timeProvider)
     internal static bool IsPassing(AdapterError? error) =>
         error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.RateLimit;
 
-    private sealed record CachedToken(PazaramaToken Token, DateTimeOffset ExpiresAt);
+    // StoredAt bounds a held failure on both sides: a clock set back (NTP step) must not keep it for longer than FailureHold.
+    private sealed record CachedToken(PazaramaToken Token, DateTimeOffset StoredAt, DateTimeOffset ExpiresAt);
 }
 
 public sealed record PazaramaToken(string? AccessToken, TimeSpan ExpiresIn, MarketplaceHub.Application.AdapterError? Error)

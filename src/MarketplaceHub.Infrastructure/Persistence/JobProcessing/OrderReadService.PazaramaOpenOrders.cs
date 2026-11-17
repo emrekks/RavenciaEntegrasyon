@@ -28,6 +28,7 @@ internal sealed partial class OrderReadService
         // J3 (15 Nov 2026) the scan stops there with that code instead of finishing and moving its watermark past open
         // orders it did not read; the next scan reads them again.
         var truncatedWindows = new List<DateTime>();
+        var tally = new OpenOrderReadTally();
         var repeatedPage = false;
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
@@ -40,6 +41,7 @@ internal sealed partial class OrderReadService
                     new(page, PazaramaOrderHistoryPolicy.PageSize),
                     cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                tally.Answered();
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
                 return new PageStep(result.Value.HasMore ? result.Value.NextCursor : null, PazaramaOrderPageKey(result.Value.Items));
@@ -75,10 +77,17 @@ internal sealed partial class OrderReadService
         {
             TrackRequest();
             var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{externalOrderId}"), externalOrderId, cancellationToken);
-            if (!result.IsSuccess) { if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error); continue; }
+            if (!result.IsSuccess)
+            {
+                if (result.Error?.Class == AdapterErrorClass.NotFound) tally.Answered();
+                else { TrackResultFailure(result.Error); tally.Failed(result.Error); }
+                continue;
+            }
             TrackReceived();
+            tally.Answered();
             received.Add(result.Value!);
         }
+        await FailWhenNothingRead(tally, null, null, cancellationToken);
         if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
         return true;
     }

@@ -233,7 +233,7 @@ public sealed partial class PazaramaHttpClient(
             // token) tells an empty answer from an unknown envelope or a refusal.
             if (!token.IsSuccess)
                 logger.LogWarning("Pazarama token alınamadı. ConnectionId: {ConnectionId}, Attempt: {Attempt}, Status: {Status}, Code: {Code}, OAuthError: {OAuthError}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)",
-                    account.Connection.Id, attempt, (int)response.StatusCode, token.Error?.Code, OAuthError(text) ?? "yok", token.Error?.SafeMessage, ShapeOf(text), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", text.Length);
+                    account.Connection.Id, attempt, (int)response.StatusCode, token.Error?.Code, OAuthError(text) ?? "yok", token.Error?.SafeMessage, ShapeOf(text), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", Encoding.UTF8.GetByteCount(text));
             return token;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -259,7 +259,7 @@ public sealed partial class PazaramaHttpClient(
         catch (JsonException) { return null; }
     }
 
-    // A 2xx with nothing in it: no body, "{}" or "null". The token service said nothing about the credentials.
+    // A 2xx with nothing in it: no body, "{}", "[]" or "null". The token service said nothing about the credentials.
     internal static bool IsEmptyAnswer(string body)
     {
         if (string.IsNullOrWhiteSpace(body)) return true;
@@ -267,7 +267,9 @@ public sealed partial class PazaramaHttpClient(
         {
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
-            return root.ValueKind == JsonValueKind.Null || root.ValueKind == JsonValueKind.Object && !root.EnumerateObject().Any();
+            return root.ValueKind == JsonValueKind.Null
+                || root.ValueKind == JsonValueKind.Object && !root.EnumerateObject().Any()
+                || root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 0;
         }
         catch (JsonException) { return false; }
     }
@@ -299,7 +301,13 @@ public sealed partial class PazaramaHttpClient(
         // The token service behind the same gateway: a 403 that is an HTML page never reached it (see Error()).
         if (status == HttpStatusCode.Forbidden && LooksLikeHtml(body))
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED", "Pazarama'nın güvenlik geçidi oturum isteğini engelledi (API yerine HTML sayfa döndü). Geçici olabilir; 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null));
-        if (error is "invalid_client" or "unauthorized_client" || status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || successFalse)
+        // success:false with Pazarama's "try later" words is its busy answer, as on the order service (SaysTryLater): the
+        // service could not answer now, which says nothing about the key.
+        if (successFalse && SaysTryLater(userMessage))
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_TOKEN_REMOTE_ERROR", $"Pazarama oturum servisi şu an yanıt veremediğini bildirdi ({userMessage}); işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(60), null));
+        // A refusal of the key is only an OAuth refusal (invalid_client, unauthorized_client), a 401/403, or success:false
+        // whose words say the key is wrong (SaysCredentialsRefused).
+        if (error is "invalid_client" or "unauthorized_client" || status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden || successFalse && SaysCredentialsRefused(userMessage))
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", userMessage is null
                 ? "Pazarama Client Id ve Client Secret çiftini kabul etmedi. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel değerleri girin; orada yeni anahtar üretildiyse eskisi geçersiz olur."
                 : $"Pazarama Client Id ve Client Secret çiftini kabul etmedi: {userMessage}", (int)status, null, null));
@@ -309,12 +317,32 @@ public sealed partial class PazaramaHttpClient(
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama oturum servisi istek sınırına ulaştı; biraz sonra yeniden denenecek.", 429, TimeSpan.FromSeconds(60), null));
         if ((int)status >= 500)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama oturum servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(30), null));
+        // success:false whose words are neither busy nor a refusal ("Oturum bilgileriniz alınamadı", or no message) does
+        // not say the key is wrong: unknown stays unknown. Not a credentials refusal (that would hold the connection and
+        // show the key as rejected) but the token contract question (manual review that a later successful read of the
+        // same series closes, ScheduledReadSupersession), with Pazarama's words.
+        if (successFalse && error is null)
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", userMessage is null
+                ? "Pazarama oturum servisi token vermedi ve nedenini söylemedi (success:false, mesaj yok); anahtar reddi sayılmadı."
+                : $"Pazarama oturum servisi token vermedi: {userMessage}. Bu mesaj anahtarın yanlış olduğunu söylemiyor; anahtar reddi sayılmadı.", (int)status, null, null));
         // An empty 2xx says nothing about the credentials or the contract: it came with 504s during a Pazarama outage
         // (17 Nov 2026) and is retried like a 5xx. An answer with fields but no token stays a contract question below.
         if ((int)status is >= 200 and < 300 && IsEmptyAnswer(body))
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_TOKEN_REMOTE_ERROR", "Pazarama oturum servisi boş yanıt verdi (token yok); geçici bir Pazarama arızası sayılır, işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(60), null));
+        // A 2xx that is an HTML page came from a gateway or maintenance page in front of the token service, not from it.
+        if ((int)status is >= 200 and < 300 && LooksLikeHtml(body))
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_TOKEN_REMOTE_ERROR", "Pazarama oturum servisi token yerine HTML sayfa döndü; geçici bir Pazarama arızası sayılır, işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(60), null));
+        // Anything else stays the contract question, a 400 with no body included: a 400 refuses the request as sent (no
+        // outage seen on Pazarama looked like it), and with no body it does not say whether the key, the form or the
+        // scope was refused, so it is neither retried as a passing error nor taken as a refused key.
         return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", $"Pazarama oturum servisi beklenen token yanıtını vermedi (yanıt alanları: {ShapeOf(body)}).", (int)status, null, null));
     }
+
+    // Words of a success:false token answer that say the key itself was refused.
+    private static readonly string[] CredentialRefusalWords = ["geçersiz", "hatalı", "yanlış", "yetkisiz", "invalid", "unauthorized", "reddedildi"];
+
+    internal static bool SaysCredentialsRefused(string? message) =>
+        message is not null && CredentialRefusalWords.Any(word => message.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     private static void ReadToken(JsonElement element, ref string? accessToken, ref TimeSpan expiresIn)
     {

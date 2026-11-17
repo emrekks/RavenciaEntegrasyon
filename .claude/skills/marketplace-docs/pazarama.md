@@ -22,7 +22,18 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   asked again after 2 s and 5 s inside the single token flight, the failure held 30 s per credential, then the job is
   requeued (`PazaramaHttpClient.IssueWithRetriesAsync`, `PazaramaTokenCache.FailureHold`). A 2xx with fields but no token
   stays `PAZARAMA_TOKEN_INVALID` (contract, manual review). Each failed token answer is logged with status, OAuth
-  `error`, field names, content type and length (never values). Source: worker logs and `integration.jobs`, 17 Nov 2026.
+  `error`, field names, content type and length in bytes (never values). Source: worker logs and `integration.jobs`, 17 Nov 2026.
+- Token answer rules since the 18 Nov review (no official source; our own conservative reading): a 200 HTML page or
+  `[]` is the same passing remote error; `success:false` with the busy words (`SaysTryLater`, as the order service
+  says them) is a passing remote error, not a refused key; a refused key is only OAuth `invalid_client` /
+  `unauthorized_client`, 401/403, or `success:false` whose words say so (geçersiz, hatalı, yanlış, yetkisiz, invalid,
+  unauthorized, reddedildi); any other `success:false` (e.g. "Oturum bilgileriniz alınamadı") and a 400 with no body
+  stay `PAZARAMA_TOKEN_INVALID` (unknown). A held token failure counts from when it was stored, so a clock set back
+  does not keep it.
+- An open-order status scan (`PAZARAMA_ORDER_STATUS_SYNC` and the other marketplaces' status scans) that asked and
+  got no answer at all, every failure passing (network, 5xx, quota, sign-in), now fails with that error instead of
+  ending SUCCEEDED and moving `ORDER_LIFECYCLE`; one with any answer stays a success and writes "N hatalı" on the job
+  (`OpenOrderReadTally`). Live 17 Nov: the scan ended SUCCEEDED every two minutes while no token could be had.
 
 ## Limits
 - Price/stock and product create: documented 10 s between requests per seller; code keeps 12.5 s, price and stock
