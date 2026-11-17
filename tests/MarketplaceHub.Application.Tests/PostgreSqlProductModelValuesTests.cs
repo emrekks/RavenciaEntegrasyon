@@ -941,4 +941,26 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(0, await check.OperationalIssues.CountAsync(x => x.TenantId == seed.Tenant.Id && x.Status == IssueStatus.Open
             && (x.Code == ProductModelValues.DifferCode || x.Code == ProductModelLinks.AmbiguousCode)));
     }
+
+    // KATALOG-14 phase D5b review 5: a model left without a colour is deleted by the whole-tenant reconcile, never
+    // re-branded or reused: the card that comes to its code opens a new model from its own values, so the stale model's
+    // VAT and brand reach nobody.
+    [PostgreSqlFact]
+    public async Task ACardlessModel_IsDeleted_NotRebranded_AndTheJoiningCardOpensANewModel()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var card = AddCard(db, seed, seed.Ravencia, "MZ900", "Siyah", "Kadın Siyah Etek", 0);
+        await db.SaveChangesAsync();
+        var stale = await ModelOfAsync(db, card.Id);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {card.Id}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "VatRate" = 99, "BrandId" = {seed.Lavian} WHERE "Id" = {stale.Id}""");
+
+        await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.False(await db.ProductModels.AnyAsync(x => x.Id == stale.Id));
+        var model = await ModelOfAsync(db, card.Id);
+        Assert.Equal(("MZ900", (Guid?)seed.Ravencia, (decimal?)10m), (model.ModelCodeKey, model.BrandId, model.VatRate));
+        Assert.Equal(10m, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id)).VatRate);
+    }
 }

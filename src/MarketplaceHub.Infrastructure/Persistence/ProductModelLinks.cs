@@ -451,15 +451,16 @@ public static class ProductModelLinks
             var current = keyModels.OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault();
             var target = current?.Id;
             var modelBrand = current?.BrandId;
-            // A model left without a colour (its cards deleted or re-coded) takes the brand of the cards that come to it, as a
-            // model opened for them would (no colour's brand changes; a blank brand never moves it).
+            // KATALOG-14 phase D5b review: a model left without a colour (its cards deleted or re-coded) is deleted, never
+            // re-branded or reused: the cards that come to its code open a new model from their own values (a stale model's
+            // old values would otherwise reach them, and no run touches a model's brand).
             if (current is not null && !linkedElsewhere.Any(x => x.FamilyId == current.Id)
-                && cards.Where(x => x.Card.BrandId is not null).GroupBy(x => x.Card.BrandId).OrderByDescending(x => x.Count()).ThenBy(x => x.Min(card => card.Card.CreatedAt)).Select(x => x.Key).FirstOrDefault() is Guid joining
-                && joining != modelBrand)
+                && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == current.Id && !db.Products.Any(product => product.TenantId == tenantId && product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken) == 1)
             {
-                await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == current.Id)
-                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, joining).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
-                modelBrand = joining;
+                rekeyed.Add(current.Id);
+                current = null;
+                target = null;
+                modelBrand = null;
             }
             // KATALOG-2: the cards' code was corrected together. A model is kept by its id, not re-opened under the new
             // code: when every card linked to one model of another key now holds this key (none stays behind on the old
