@@ -1068,6 +1068,29 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
     .app-shell.stitch-shell main .platform-update-actions { width: 100%; }
   .app-shell.stitch-shell main .platform-update-actions > button { flex: 1 1 0; }
 }
+/* "Pazaryerinde Değişecekler" (PlatformUpdatePreview), above the bar: one frame per store, one line per field, the
+   changed colours / sizes behind a disclosure (marketplace value struck through → the value that goes). */
+.app-shell.stitch-shell main .platform-update-preview-stores { display: grid; gap: 10px; min-width: 0; }
+.app-shell.stitch-shell main .platform-update-preview-store { display: grid; gap: 6px; min-width: 0; padding: 10px 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .platform-update-preview-store > strong { font-size: 14px; }
+.app-shell.stitch-shell main .platform-update-preview-store ul, .app-shell.stitch-shell main .platform-update-preview-store ol { display: grid; gap: 4px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .platform-update-preview-line, .app-shell.stitch-shell main .platform-update-preview-store summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; }
+.app-shell.stitch-shell main .platform-update-preview-store summary { cursor: pointer; }
+.app-shell.stitch-shell main .platform-update-preview-store li.is-changes > details > summary > span { color: var(--rv-color-warning); font-weight: 600; }
+.app-shell.stitch-shell main .platform-update-preview-store li.is-unknown span, .app-shell.stitch-shell main .platform-update-preview-line > span { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .platform-update-preview-store li.is-same span, .app-shell.stitch-shell main .platform-update-preview-line.is-same > span { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .platform-update-preview-store details ol { margin-top: 6px; }
+.app-shell.stitch-shell main .platform-update-preview-store details ol > li { display: grid; gap: 2px; min-width: 0; padding: 6px 10px; background: var(--rv-color-surface-soft); border-radius: 7px; }
+.app-shell.stitch-shell main .platform-update-preview-store details ol small { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .platform-update-preview-store details ol span { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; font-size: 13px; }
+.app-shell.stitch-shell main .platform-update-preview-store details ol s { color: var(--rv-color-muted); overflow-wrap: anywhere; }
+.app-shell.stitch-shell main .platform-update-preview-store details ol ins { color: var(--rv-color-ink); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.app-shell.stitch-shell main .platform-update-preview-store details ol svg { flex: none; color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .platform-update-preview-problems summary { color: var(--rv-color-warning); font-size: 12px; }
+.app-shell.stitch-shell main .platform-update-preview-problems li { color: var(--rv-color-muted); font-size: 12px; overflow-wrap: anywhere; }
+.app-shell.stitch-shell main .platform-update-preview-note { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--rv-color-muted); font-size: 12.5px; line-height: 1.45; }
+.app-shell.stitch-shell main .platform-update-preview-note.is-error { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .platform-update-preview-note > svg { flex: none; }
 
 /* The bulk publish footer's "Tümünü Seç": a quiet outline button beside the purple Yayınla. */
 .app-shell.stitch-shell main .publish-selection-footer > button.publish-select-all { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 14px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-weight: 600; }

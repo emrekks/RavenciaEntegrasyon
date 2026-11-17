@@ -187,6 +187,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     onOpenGroupsChange={openGroups => setEditedPreferences({ ...preferences, openGroups })}
     submitting={submitting}
     sendBlocked={sendBlocked}
+    previewProductIds={checking ? undefined : sendable.map(record => record.id)}
     onClose={close}
     onSend={fields => void send(fields)}>
     <section className="platform-update-section bulk-platform-update-products" aria-labelledby="bulk-platform-update-products-title">
