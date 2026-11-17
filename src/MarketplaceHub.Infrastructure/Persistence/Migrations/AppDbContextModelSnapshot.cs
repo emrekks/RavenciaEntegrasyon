@@ -5661,8 +5661,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CategoryId");
 
-                    b.HasIndex("TenantId", "ModelCodeKey")
-                        .IsUnique();
+                    b.HasIndex("TenantId", "ModelCodeKey");
 
                     b.HasIndex("TenantId", "BrandId", "ModelCodeKey")
                         .IsUnique();
