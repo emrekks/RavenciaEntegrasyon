@@ -458,7 +458,10 @@ packages only, no claim events.
   or variant link) keeps the panel code, or the link's spelling when it is the same code key (Trendyol compares
   case-sensitively: "Ryp003t" / "RYP003T"); a card sent before but not linked yet keeps the code its last create job
   carried. No link, a link no variant link holds, a code over 40 characters or an open `PRODUCT_MODEL_AMBIGUOUS` for
-  the model's key: the panel model code. The update composer builds on the same payload, so an update never moves a
+  the model's key: the panel model code. (Since 17 Nov 2026 a model is brand + model code, the same code under two
+  brands is two models, `ProductModelLinks` resolves open `PRODUCT_MODEL_AMBIGUOUS` issues and opens none, so the last
+  case no longer occurs; the composer check stays.)
+- The composer reads the model code from the model record (KATALOG-14 D5b, as the Hepsiburada, n11 and Pazarama ones do). The update composer builds on the same payload, so an update never moves a
   live card's productMainId.
 
 ## Claim-built orders (15 Nov 2026, ADAPTOR-TY-HB-1)
