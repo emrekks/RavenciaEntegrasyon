@@ -17,7 +17,7 @@ import { PanelSelect } from '../../../shared/PanelSelect'
 import { queryKeys } from '../../../shared/api/query-keys'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
-export type ProductTransferField = 'TITLE' | 'BRAND' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
+export type ProductTransferField = 'TITLE' | 'DESCRIPTION' | 'BRAND' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
 export type ProductTransferOutcome = 'UPDATE' | 'UNCHANGED' | 'SKIPPED' | 'UNMATCHED' | 'AMBIGUOUS' | 'ERROR'
 export type ProductTransferFieldChange = 'SET' | 'CLEAR' | null
 export type ProductTransferPrice = { connectionId: string; storeName: string; oldSalePrice: number; newSalePrice: number; oldListPrice: number; newListPrice: number }
@@ -34,6 +34,8 @@ export type ProductTransferRow = {
   oldPanelSalePrice?: number | null; newPanelSalePrice?: number | null; oldPanelListPrice?: number | null; newPanelListPrice?: number | null; panelPriceChange?: ProductTransferFieldChange
   oldVatRate?: number | null; newVatRate?: number | null; vatChange?: ProductTransferFieldChange
   oldBrand?: string | null; newBrand?: string | null; brandChange?: ProductTransferFieldChange
+  // The description is shown by its length only, never as HTML in the table.
+  descriptionChange?: ProductTransferFieldChange; newDescriptionLength?: number | null
 }
 type TransferPreviewAnswer = ApiAnswer<'postProductsTransferImport'>
 // The changes go back as the apply body as the answer gave them (the apply request reads numbers or strings).
@@ -44,7 +46,7 @@ export type ProductTransferProductChange = NonNullable<TransferPreviewAnswer['pr
 // answer writes numbers. It declares the fields as strings; ProductTransferFields holds only ProductTransferField's codes.
 export type ProductTransferPreview = Omit<TransferPreviewAnswer, 'availableFields' | 'fields' | 'rows'> & { availableFields: ProductTransferField[]; fields: ProductTransferField[]; rows: ProductTransferRow[] }
 
-const transferFields: ReadonlySet<string> = new Set<ProductTransferField>(['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES'])
+const transferFields: ReadonlySet<string> = new Set<ProductTransferField>(['TITLE', 'DESCRIPTION', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES'])
 const transferOutcomes: ReadonlySet<string> = new Set<ProductTransferOutcome>(['UPDATE', 'UNCHANGED', 'SKIPPED', 'UNMATCHED', 'AMBIGUOUS', 'ERROR'])
 const isTransferField = (code: string): code is ProductTransferField => transferFields.has(code)
 const isTransferOutcome = (code: string): code is ProductTransferOutcome => transferOutcomes.has(code)
@@ -68,7 +70,8 @@ export function readTransferPreview(raw: TransferPreviewAnswer): ProductTransfer
         message: isTransferOutcome(row.outcome) ? row.message : [`Bilinmeyen sonuç: ${row.outcome}`, row.message].filter(Boolean).join(' · '),
         costChange: fieldChange(row.costChange), desiChange: fieldChange(row.desiChange), stockChange: fieldChange(row.stockChange),
         titleChange: fieldChange(row.titleChange), barcodeChange: fieldChange(row.barcodeChange), modelCodeChange: fieldChange(row.modelCodeChange),
-        panelPriceChange: fieldChange(row.panelPriceChange), vatChange: fieldChange(row.vatChange), brandChange: fieldChange(row.brandChange)
+        panelPriceChange: fieldChange(row.panelPriceChange), vatChange: fieldChange(row.vatChange), brandChange: fieldChange(row.brandChange),
+        descriptionChange: fieldChange(row.descriptionChange ?? null)
       }
     })
   }
@@ -78,21 +81,22 @@ export type ProductTransferApplyResult = {
   titlesUpdated?: number; barcodesUpdated?: number; modelCodesUpdated?: number; modelCodesCleared?: number; panelPricesUpdated?: number; vatUpdated?: number; brandsUpdated?: number; brandsCreated?: number
   // KATALOG-14 phase D5b: the colour cards of the models a model field (name, VAT, brand, desi) reached.
   modelColours?: number
+  descriptionsUpdated?: number
 }
 export type ProductTransferExportFilter = 'all' | 'cost' | 'desi'
 
 export const productTransferSummaryKey = queryKeys.products('transfer-summary')
 // The exported columns an upload can write, grouped as the seller thinks of them. A group of one field is that field.
 export const productTransferFieldGroups: ReadonlyArray<{ label: string; fields: ProductTransferField[] }> = [
-  { label: 'Ürün Bilgileri', fields: ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE'] },
+  { label: 'Ürün Bilgileri', fields: ['TITLE', 'DESCRIPTION', 'BRAND', 'BARCODE', 'MODEL_CODE'] },
   { label: 'Fiyat ve Vergi', fields: ['PANEL_PRICES', 'VAT'] },
   { label: 'Stok ve Lojistik', fields: ['STOCK', 'DESI'] },
   { label: 'Maliyet', fields: ['COST'] },
   { label: 'Mağaza Fiyatları', fields: ['PRICES'] }
 ]
 // The order the server lists the fields in (ProductTransferFields.All); a pick is sent in it.
-const allFields: ProductTransferField[] = ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
-const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', BRAND: 'Marka', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
+const allFields: ProductTransferField[] = ['TITLE', 'DESCRIPTION', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
+const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', DESCRIPTION: 'Açıklama', BRAND: 'Marka', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
 const defaultFields: ProductTransferField[] = ['COST', 'DESI']
 
 export function productTransferExportHref(filter: ProductTransferExportFilter) {
@@ -252,7 +256,7 @@ function FieldCheck({ field, label, fields, available, disabled, onToggle }: { f
 
 function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void; onToggleGroup: (group: readonly ProductTransferField[]) => void }) {
   return <fieldset className="pci-fields">
-    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Marka</b> modele aittir: modelin tüm renklerine yazılır; panelde aynı adlı marka yoksa açılır, kapatılmış marka yeniden açılmaz. Satışa açık ya da kapalı üründe desi ve model kodu silinemez. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
+    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Açıklama</b> modele aittir: değişen açıklama modelin tüm renklerine yazılır; boş hücre açıklamayı değiştirmez, silmez. <b>Marka</b> modele aittir: modelin tüm renklerine yazılır; panelde aynı adlı marka yoksa açılır, kapatılmış marka yeniden açılmaz. Satışa açık ya da kapalı üründe desi ve model kodu silinemez. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
     <div className="pci-groups">{productTransferFieldGroups.map(group => {
       if (group.fields.length === 1) return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
         <FieldCheck field={group.fields[0]} label={group.label} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />
@@ -273,12 +277,13 @@ function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: {
 }
 
 function appliedTotal(done: ProductTransferApplyResult) {
-  return done.variants + (done.titlesUpdated ?? 0) + (done.vatUpdated ?? 0) + (done.brandsUpdated ?? 0)
+  return done.variants + (done.titlesUpdated ?? 0) + (done.descriptionsUpdated ?? 0) + (done.vatUpdated ?? 0) + (done.brandsUpdated ?? 0)
 }
 
 function appliedText(done: ProductTransferApplyResult) {
   const parts = [
     done.titlesUpdated ? `${count(done.titlesUpdated)} ürün adı güncellendi` : '',
+    done.descriptionsUpdated ? `${count(done.descriptionsUpdated)} açıklama güncellendi` : '',
     done.brandsUpdated ? `${count(done.brandsUpdated)} ürün kartının markası güncellendi${done.brandsCreated ? ` (${count(done.brandsCreated)} yeni marka açıldı)` : ''}` : '',
     done.barcodesUpdated ? `${count(done.barcodesUpdated)} barkod güncellendi` : '',
     done.modelCodesUpdated ? `${count(done.modelCodesUpdated)} model kodu güncellendi` : '',
@@ -300,6 +305,16 @@ function FieldCell<T>({ change, oldValue, newValue, format }: { change: ProductT
   if (change === 'SET') return <><span className="pci-old">{format(oldValue ?? null)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b>{format(newValue ?? null)}</b></>
   if (change === 'CLEAR') return <><span className="pci-old">{format(oldValue ?? null)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b className="pci-clear">Silinecek</b></>
   return <span className="pci-same">{oldValue == null ? '—' : format(oldValue)}</span>
+}
+
+// A changed description by its length ("Açıklama Değişti (N Karakter)"): the HTML itself never goes into the table.
+export function descriptionChangeText(row: Pick<ProductTransferRow, 'descriptionChange' | 'newDescriptionLength'>) {
+  return row.descriptionChange === 'SET' ? `Açıklama Değişti (${count(row.newDescriptionLength ?? 0)} Karakter)` : null
+}
+
+function DescriptionCell({ row }: { row: ProductTransferRow }) {
+  const text = descriptionChangeText(row)
+  return text ? <b>{text}</b> : <span className="pci-same">Değişmiyor</span>
 }
 
 function PanelPriceCell({ row }: { row: ProductTransferRow }) {
@@ -327,6 +342,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
   const stats: Array<[string, number, string]> = [
     ['Güncellenecek Varyant', preview.updates, 'ok'],
     ...stat('TITLE', 'Ürün Adı Değişen', preview.titleUpdates ?? 0),
+    ...stat('DESCRIPTION', 'Açıklama Değişen', preview.descriptionUpdates ?? 0),
     ...stat('BRAND', 'Marka Değişen', preview.brandUpdates ?? 0),
     ...stat('BARCODE', 'Barkod Değişen', preview.barcodeUpdates ?? 0),
     ...stat('MODEL_CODE', 'Model Kodu Değişen', modelCodeChanges),
@@ -358,6 +374,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
       <thead><tr>
         <th scope="col">Satır</th><th scope="col">Ürün</th>
         {picked.has('TITLE') && <th scope="col">Ürün Adı</th>}
+        {picked.has('DESCRIPTION') && <th scope="col">Açıklama</th>}
         {picked.has('BRAND') && <th scope="col">Marka</th>}
         {picked.has('BARCODE') && <th scope="col">Barkod</th>}
         {picked.has('MODEL_CODE') && <th scope="col">Model Kodu</th>}
@@ -376,6 +393,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
           <td className="pci-num">{row.rowNumber}</td>
           <td><span className="pci-title">{row.productTitle ?? row.sku ?? row.barcode ?? '—'}</span><small>{[row.variantLabel, row.sku, row.barcode].filter(Boolean).join(' · ') || '—'}</small></td>
           {picked.has('TITLE') && <td className="pci-text">{matched ? <FieldCell change={row.titleChange} oldValue={row.productTitle} newValue={row.newTitle} format={formatText} /> : formatText(row.newTitle ?? null)}</td>}
+          {picked.has('DESCRIPTION') && <td className="pci-desc">{matched ? <DescriptionCell row={row} /> : '—'}</td>}
           {picked.has('BRAND') && <td className="pci-text">{matched ? <FieldCell change={row.brandChange} oldValue={row.oldBrand} newValue={row.newBrand} format={formatText} /> : formatText(row.newBrand ?? null)}</td>}
           {picked.has('BARCODE') && <td className="pci-money">{matched ? <FieldCell change={row.barcodeChange} oldValue={row.oldBarcode} newValue={row.newBarcode} format={formatText} /> : formatText(row.newBarcode ?? null)}</td>}
           {picked.has('MODEL_CODE') && <td className="pci-money">{matched ? <FieldCell change={row.modelCodeChange} oldValue={row.oldModelCode} newValue={row.newModelCode} format={formatText} /> : formatText(row.newModelCode ?? null)}</td>}
