@@ -19,10 +19,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //   with another value keeps the model's (its copy is written back) and PRODUCT_MODEL_VALUES_DIFFER names the model, the
 //   field and both values. A new colour card never moves its model either; a model the save opens took its colours'
 //   values when it was opened (most colours, on a tie the oldest card: the editor's rule).
-// - The startup pass, the nightly scan and a serializable caller's post-commit refresh close a gap in the VAT, category,
-//   warranty or delivery days (CloseGapsAsync): a card changed after its model (UpdatedAt) by a path that wrote the card
-//   alone (the previous release during a deploy) gives its value to the model and every colour, and the caller logs
-//   it; otherwise the model's value goes back to the card. The name, description and desi are not closed automatically.
+// - The startup pass, the deploy refresh and the nightly scan write none of these fields and mark no link (review,
+//   17 Nov 2026): a colour whose copy differs from its model's (the previous release wrote the card alone during a
+//   deploy) is only reported (ReportGapsAsync); the owner's own save closes it.
 // The card and variant copies stay a mirror of the model, so a rollback to phase A reads the same values.
 public static class ModelMirror
 {
@@ -263,35 +262,42 @@ public static class ModelMirror
               AND NOT (l."SyncStatus" = 'LOCAL_CHANGES_PENDING' AND coalesce(l."DirtyFieldsJson", '[]'::jsonb) @> '["product"]'::jsonb)
             """, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("products", productIds.ToArray())], cancellationToken);
 
-    // The VAT, category, warranty and delivery days of every model whose colours' copies differ from it (a path that
-    // wrote the cards alone: the previous release during a deploy, a raw edit): the card changed latest after the model
-    // (UpdatedAt) gives its values to the model, so the owner's change is kept (the caller logs it); otherwise the
-    // model's go back to the cards. modelIds null: every model of the tenant.
-    public static async Task<(int ModelsTakingACard, IReadOnlyList<string> Taken)> CloseGapsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid>? modelIds, DateTimeOffset now, CancellationToken cancellationToken)
+    // KATALOG-14 phase D5b (review, 17 Nov 2026; "yeni kart kazanır" withdrawn): the automatic paths (the deploy refresh,
+    // the Worker's startup pass, the nightly scan) write nothing in the eight model fields and mark no marketplace link.
+    // A colour whose VAT, category, warranty, delivery days or brand copy differs from its model's (the previous release
+    // wrote the card alone during a deploy, a raw edit) is only reported: one PRODUCT_MODEL_VALUES_DIFFER warning per model
+    // naming the colour, the field and both values. The readers read the model, so the invoice takes the model's VAT (and
+    // stops when it is unknown). Only the owner's own save (the editor, Excel, Toplu Değer Ata) closes the difference. A
+    // colour whose copy is empty (unknown) is no difference: unknown stays unknown and never counts as another value.
+    // Returns the models with a difference (code and fields), for the caller's log; resolves the warning of a model that
+    // no longer has one.
+    public const string GapDedupePrefix = "product-model-gap:";
+
+    public sealed record Gap(Guid ModelId, string ModelCode, IReadOnlyList<string> Fields);
+
+    public static async Task<IReadOnlyList<Gap>> ReportGapsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var ids = modelIds?.ToArray();
-        var gaps = await (from card in db.Products.AsNoTracking()
+        var rows = await (from card in db.Products.AsNoTracking()
                           join model in db.ProductModels.AsNoTracking() on new { card.TenantId, Id = card.FamilyId } equals new { model.TenantId, Id = (Guid?)model.Id }
-                          where card.TenantId == tenantId && (ids == null || ids.Contains(model.Id))
-                                && (card.VatRate != model.VatRate || card.VatInclusion != model.VatInclusion || card.CategoryId != model.CategoryId
-                                    || card.WarrantyMonths != model.WarrantyMonths || card.DeliveryDays != model.DeliveryDays || card.BrandId != model.BrandId)
+                          where card.TenantId == tenantId
+                                && ((card.VatRate != null && (card.VatRate != model.VatRate || card.VatInclusion != model.VatInclusion))
+                                    || (card.CategoryId != null && card.CategoryId != model.CategoryId)
+                                    || (card.WarrantyMonths != null && card.WarrantyMonths != model.WarrantyMonths)
+                                    || (card.DeliveryDays != null && card.DeliveryDays != model.DeliveryDays)
+                                    || (card.BrandId != null && card.BrandId != model.BrandId))
+                          orderby model.ModelCode, card.CreatedAt, card.Id
                           select new
                           {
                               ModelId = model.Id,
                               model.ModelCode,
-                              ModelUpdatedAt = model.UpdatedAt,
-                              model.Title,
-                              model.TitleColor,
-                              model.Description,
                               model.VatRate,
                               model.VatInclusion,
                               model.CategoryId,
                               model.WarrantyMonths,
                               model.DeliveryDays,
-                              model.Desi,
                               model.BrandId,
                               CardId = card.Id,
-                              CardUpdatedAt = card.UpdatedAt,
+                              CardTitle = card.Title,
                               CardVatRate = card.VatRate,
                               CardVatInclusion = card.VatInclusion,
                               CardCategoryId = card.CategoryId,
@@ -300,25 +306,64 @@ public static class ModelMirror
                               CardBrandId = card.BrandId
                           })
             .ToListAsync(cancellationToken);
-        var taken = new List<string>();
-        var fields = new Dictionary<string, IReadOnlySet<Guid>?>(StringComparer.Ordinal) { [ProductModelValues.Vat] = null, [ProductModelValues.Category] = null, [ProductModelValues.Warranty] = null, [ProductModelValues.DeliveryDays] = null, [ProductModelValues.Brand] = null };
-        foreach (var model in gaps.GroupBy(x => x.ModelId).OrderBy(x => x.Key))
+        var cardIds = rows.Select(x => x.CardId).Distinct().ToArray();
+        var colours = cardIds.Length == 0 ? [] : (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId))
+                .Select(x => new { x.ProductId, x.SortOrder, x.Id, x.OptionSignature }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => ProductFamilyColorOrder.ColorOf(x.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)));
+        var categoryIds = rows.SelectMany(x => new[] { x.CategoryId, x.CardCategoryId }).OfType<Guid>().Distinct().ToArray();
+        var categories = categoryIds.Length == 0 ? [] : await db.Categories.AsNoTracking().Where(x => x.TenantId == tenantId && categoryIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+        var brandIds = rows.SelectMany(x => new[] { x.BrandId, x.CardBrandId }).OfType<Guid>().Distinct().ToArray();
+        var brands = brandIds.Length == 0 ? [] : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && brandIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+        string Named(Guid? id, Dictionary<Guid, string> names) => id is Guid value && names.TryGetValue(value, out var name) ? $"\"{Clip(name)}\"" : "boş";
+
+        var gaps = new List<Gap>();
+        var at = now.ToUniversalTime();
+        foreach (var model in rows.GroupBy(x => x.ModelId))
         {
             var first = model.First();
-            var values = new Values(first.Title, first.TitleColor, first.Description, first.VatRate, first.VatInclusion, first.CategoryId, first.WarrantyMonths, first.DeliveryDays, first.Desi, first.BrandId);
-            var newer = model.Where(x => x.CardUpdatedAt > x.ModelUpdatedAt).OrderByDescending(x => x.CardUpdatedAt).ThenBy(x => x.CardId).FirstOrDefault();
-            if (newer is not null)
+            var fields = new List<string>();
+            var lines = new List<string>();
+            foreach (var card in model)
             {
-                values = values with { VatRate = newer.CardVatRate, VatInclusion = newer.CardVatInclusion, CategoryId = newer.CardCategoryId, WarrantyMonths = newer.CardWarranty, DeliveryDays = newer.CardDelivery, BrandId = newer.CardBrandId };
-                await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == model.Key)
-                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.VatRate, values.VatRate).SetProperty(x => x.VatInclusion, values.VatInclusion)
-                        .SetProperty(x => x.CategoryId, values.CategoryId).SetProperty(x => x.WarrantyMonths, values.WarrantyMonths).SetProperty(x => x.DeliveryDays, values.DeliveryDays)
-                        .SetProperty(x => x.BrandId, values.BrandId).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
-                taken.Add($"{first.ModelCode} ({newer.CardId})");
+                var parts = new List<string>();
+                void Differs(string field, string cardValue, string modelValue)
+                {
+                    parts.Add($"{field} {cardValue} (modelin: {modelValue})");
+                    if (!fields.Contains(field)) fields.Add(field);
+                }
+                if (card.CardVatRate is not null && (card.CardVatRate != card.VatRate || card.CardVatInclusion != card.VatInclusion))
+                    Differs(ProductModelValues.Vat, Show((card.CardVatRate, card.CardVatInclusion)), Show((card.VatRate, card.VatInclusion)));
+                if (card.CardCategoryId is not null && card.CardCategoryId != card.CategoryId) Differs(ProductModelValues.Category, Named(card.CardCategoryId, categories), Named(card.CategoryId, categories));
+                if (card.CardWarranty is not null && card.CardWarranty != card.WarrantyMonths) Differs(ProductModelValues.Warranty, Show(card.CardWarranty), Show(card.WarrantyMonths));
+                if (card.CardDelivery is not null && card.CardDelivery != card.DeliveryDays) Differs(ProductModelValues.DeliveryDays, Show(card.CardDelivery), Show(card.DeliveryDays));
+                if (card.CardBrandId is not null && card.CardBrandId != card.BrandId) Differs(ProductModelValues.Brand, Named(card.CardBrandId, brands), Named(card.BrandId, brands));
+                if (parts.Count == 0) continue;
+                var colour = colours.GetValueOrDefault(card.CardId) is { } word ? $"{word.Trim()} rengi" : $"\"{Clip(card.CardTitle)}\" kartı";
+                lines.Add($"{colour}: {string.Join(", ", parts)}");
             }
-            await MirrorAsync(db, tenantId, model.Key, values, fields, [], null, true, cancellationToken);
+            if (lines.Count == 0) continue;
+            var code = string.IsNullOrWhiteSpace(first.ModelCode) ? $"\"{Clip(model.First().CardTitle)}\"" : first.ModelCode;
+            gaps.Add(new Gap(model.Key, code, fields));
+            var summary = $"{code} modelinin renk kartında modelinkinden farklı değer kayıtlı: {string.Join("; ", lines)}. Otomatik olarak hiçbir şey değiştirilmedi: ekranlar, pazaryeri gönderimleri ve faturalar modelin değerini kullanır. Doğru değer renkteki ise modeli düzenleme ekranında açıp o değeri girip kaydedin; bütün renklere uygulanır.";
+            if (summary.Length > 1000) summary = summary[..1000];
+            var key = $"{GapDedupePrefix}{model.Key:N}";
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
+                VALUES ({Guid.CreateVersion7()}, {tenantId}, {key}, {ProductModelValues.DifferCode}, {summary}, 'Open', {at}, {at}, 1, NULL)
+                ON CONFLICT ("TenantId", "DedupeKey") DO UPDATE SET
+                    "Summary" = EXCLUDED."Summary", "LastSeenAt" = EXCLUDED."LastSeenAt",
+                    "OccurrenceCount" = i."OccurrenceCount" + CASE WHEN i."Status" = 'Resolved' THEN 1 ELSE 0 END,
+                    "Status" = CASE WHEN i."Status" = 'Resolved' THEN 'Open' ELSE i."Status" END, "ResolvedAt" = NULL
+                """, cancellationToken);
         }
-        return (taken.Count, taken);
+        // The warnings of models whose colours agree with them again (or that are gone).
+        var open = gaps.Select(x => $"{GapDedupePrefix}{x.ModelId:N}").ToArray();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE ops.operational_issues SET "Status" = 'Resolved', "ResolvedAt" = {at}, "LastSeenAt" = {at}
+            WHERE "TenantId" = {tenantId} AND "Code" = {ProductModelValues.DifferCode} AND "DedupeKey" LIKE {GapDedupePrefix + "%"} AND "Status" <> 'Resolved' AND NOT ("DedupeKey" = ANY({open}))
+            """, cancellationToken);
+        return gaps;
     }
 
     // One warning per model (its own dedupe key; the tenant-wide values warning stays as it is), in Turkish, where the

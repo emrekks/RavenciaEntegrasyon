@@ -151,12 +151,12 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal([72m, 72m], (await sizeCharts.GetAsync(seed.Tenant.Id, gri.Id, CancellationToken.None))!.Measurements!.Rows.Select(row => row.Values[0]!.Value));
     }
 
-    // KATALOG-14 phase D5b: the refresh votes on none of the eight model fields (the model is their source): a model keeps
-    // its name and description though its colours' copies say otherwise, only a model without a desi yet takes what most
-    // of its variants hold (the variants keep their own); a colour's VAT changed before its model was gets the model's
-    // back (CloseGapsAsync); idempotent; no card's Version or UpdatedAt is written and the readers read the copies.
+    // KATALOG-14 phase D5b (review, 17 Nov 2026): the backfill (deploy) and the nightly scan write none of the eight model
+    // fields: a model keeps its name, description and missing desi though its colours' copies say otherwise; a colour whose
+    // VAT differs from its model's opens PRODUCT_MODEL_VALUES_DIFFER and nothing is written (no card, no variant, no model
+    // field, no link); idempotent; the readers read the copies' text.
     [PostgreSqlFact]
-    public async Task TheBackfill_VotesOnNoModelField_IsIdempotent_AndClosesAnOlderCardsGap()
+    public async Task TheBackfill_WritesNoModelField_AVatDifferenceOpensAWarning_AndIsIdempotent()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -171,22 +171,30 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Desi" = NULL, "Description" = 'eski', "UpdatedAt" = now() WHERE "TenantId" = {seed.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "Desi" = CASE WHEN "ProductId" = {majority.Id} THEN 1 ELSE 2 END WHERE "ProductId" IN ({majority.Id}, {majorityMavi.Id}, {majorityGri.Id})""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20, "UpdatedAt" = now() - interval '1 hour' WHERE "Id" = {agreeingMavi.Id}""");
-        var cardsBefore = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Version, x.UpdatedAt, x.Title, x.Description }).ToListAsync();
+        var cardsBefore = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Version, x.UpdatedAt, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.BrandId }).ToListAsync();
         var variantsBefore = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Desi }).ToListAsync();
+        var modelsBefore = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.Desi, x.BrandId, x.Version }).ToListAsync();
 
         var first = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-        Assert.Equal((2, 2), (first.Models, first.Written));
-        Assert.Equal((1m, "eski"), ((await ModelOfAsync(db, agreeing.Id)).Desi, (await ModelOfAsync(db, agreeing.Id)).Description));
-        Assert.Equal((2m, "eski"), ((await ModelOfAsync(db, majority.Id)).Desi, (await ModelOfAsync(db, majority.Id)).Description));
-        Assert.Equal((10m, 10m), ((await ModelOfAsync(db, agreeing.Id)).VatRate, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == agreeingMavi.Id)).VatRate));
-        Assert.Empty(first.Differing);
+        Assert.Equal((2, 0, 1), (first.Models, first.Written, first.Gaps));
+        Assert.Equal(((decimal?)null, "eski"), ((await ModelOfAsync(db, agreeing.Id)).Desi, (await ModelOfAsync(db, agreeing.Id)).Description));
+        Assert.Equal(((decimal?)null, "eski"), ((await ModelOfAsync(db, majority.Id)).Desi, (await ModelOfAsync(db, majority.Id)).Description));
+        // The VAT difference: the model keeps 10, the colour's copy keeps 20, and the owner is told.
+        Assert.Equal((10m, 20m), ((await ModelOfAsync(db, agreeing.Id)).VatRate, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == agreeingMavi.Id)).VatRate));
+        var gap = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
+        Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
+        Assert.Contains("AGREE1 modelinin", gap.Summary);
+        Assert.Contains("Mavi rengi: KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
 
-        // Again: nothing to write.
+        // Again: nothing to write, the warning counted once.
         var second = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         Assert.Equal((2, 0), (second.Models, second.Written));
-        // No card's text, Version or UpdatedAt, no variant's desi was written; every reader reads the copies.
-        Assert.Equal(JsonSerializer.Serialize(cardsBefore), JsonSerializer.Serialize(await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Version, x.UpdatedAt, x.Title, x.Description }).ToListAsync()));
+        Assert.Equal(1, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == gap.Id)).OccurrenceCount);
+        // No card's text, model field, Version or UpdatedAt, no variant's desi, no model field was written; every reader
+        // reads the copies' text.
+        Assert.Equal(JsonSerializer.Serialize(cardsBefore), JsonSerializer.Serialize(await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Version, x.UpdatedAt, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.BrandId }).ToListAsync()));
         Assert.Equal(JsonSerializer.Serialize(variantsBefore), JsonSerializer.Serialize(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Desi }).ToListAsync()));
+        Assert.Equal(JsonSerializer.Serialize(modelsBefore), JsonSerializer.Serialize(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.Desi, x.BrandId, x.Version }).ToListAsync()));
         Assert.Equal(cardsBefore.Select(x => (x.Title, x.Description)), (await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Title, x.Description }).ToListAsync()).Select(x => (x.Title, x.Description)));
     }
 

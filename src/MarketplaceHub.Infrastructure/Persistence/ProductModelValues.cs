@@ -200,7 +200,9 @@ public static class ProductModelValues
         (card.Title == ProductFamilySharedFields.TitleFor(modelTitle, modelTitleColor, card.Color) ? null : card.Title,
          card.Description == modelDescription ? null : card.Description);
 
-    private static Target? Compute(Snapshot snapshot, ProductModel model)
+    // openDesi: a save's refresh opens a model's missing desi from its variants; the automatic paths (deploy, nightly
+    // scan) write none of the eight model fields (KATALOG-14 phase D5b review, 17 Nov 2026).
+    private static Target? Compute(Snapshot snapshot, ProductModel model, bool openDesi)
     {
         var cards = snapshot.CardsByModel[model.Id].ToList();
         if (cards.Count == 0) return null;
@@ -221,7 +223,7 @@ public static class ProductModelValues
         List<CardOverride> overrides = [];
         fields = new ProductFamilySharedFields.ModelFields(title, description, model.BrandId, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays);
 
-        var desi = model.Desi ?? ModelDesi(cards.SelectMany(card => snapshot.VariantsByCard[card.Id]).Select(x => x.Desi));
+        var desi = model.Desi ?? (openDesi ? ModelDesi(cards.SelectMany(card => snapshot.VariantsByCard[card.Id].OrderBy(x => x.SortOrder).ThenBy(x => x.Id)).Select(x => x.Desi)) : null);
 
         var sets = cards.Select(card => snapshot.AttributesByCard[card.Id].Where(row => !snapshot.ColorAttributeIds.Contains(row.AttributeId)).ToList()).ToList();
         var setKeys = sets.Select(AttributeSetKey).ToList();
@@ -263,7 +265,9 @@ public static class ProductModelValues
     }
 
     // Skipped: models left for the next run because their refresh failed (a lock wait timeout, a deadlock).
-    public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing, int Skipped = 0);
+    // Gaps: the models whose colours' copies differ from the model's own values (ModelMirror.ReportGapsAsync; the
+    // automatic paths only).
+    public sealed record Outcome(int Models, int Written, IReadOnlyList<(string ModelCode, IReadOnlyList<string> Fields)> Differing, int Skipped = 0, int Gaps = 0);
 
     // How long the refresh's own transaction waits for a model row (and anything else) a save holds locked.
     public const string LockTimeout = "3s";
@@ -274,7 +278,7 @@ public static class ProductModelValues
     // short transaction of its own that first locks the model row and only then reads its cards, so a save of the model
     // made meanwhile is either seen or waits (VERITABANI-DAGITIM-12's rule for the attribute recompute); the wait is
     // bounded by LockTimeout there, never in a caller's transaction.
-    public static async Task<Outcome> RefreshAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid>? modelIds, DateTimeOffset now, CancellationToken cancellationToken)
+    public static async Task<Outcome> RefreshAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid>? modelIds, DateTimeOffset now, CancellationToken cancellationToken, bool openDesi = true)
     {
         var ids = modelIds?.Distinct().Order().ToArray();
         if (ids is { Length: 0 }) return new(0, 0, []);
@@ -297,7 +301,7 @@ public static class ProductModelValues
             await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {previous}, true) AS "Value" """).ToListAsync(cancellationToken);
             var snapshot = await ReadAsync(db, tenantId, ids, cancellationToken);
             foreach (var model in snapshot.Models)
-                if (Compute(snapshot, model) is { } target)
+                if (Compute(snapshot, model, openDesi) is { } target)
                 {
                     if (await WriteAsync(db, target, now, cancellationToken)) written++;
                     if (target.Differing.Count > 0) differing.Add((model.ModelCode, target.Differing));
@@ -323,7 +327,7 @@ public static class ProductModelValues
                 if (locked.Count == 1)
                 {
                     var snapshot = await ReadAsync(db, tenantId, [modelId], cancellationToken);
-                    if (snapshot.Models.Count == 1 && Compute(snapshot, snapshot.Models[0]) is { } computed)
+                    if (snapshot.Models.Count == 1 && Compute(snapshot, snapshot.Models[0], openDesi) is { } computed)
                     {
                         target = computed;
                         wrote = await WriteAsync(db, target, now, cancellationToken);
@@ -397,15 +401,16 @@ public static class ProductModelValues
             """, cancellationToken) > 0;
     }
 
-    // KATALOG-14 phase D5b: run once when the Worker starts, before it takes a job. The VAT, category, warranty and
-    // delivery days the previous release wrote to a card alone during a deploy (UpdatedAt after its model's) go to the
-    // model and every colour, so the owner's change is kept (ModelMirror.CloseGapsAsync); any other gap takes the model's
-    // value back; own models follow their card's brand. Returns the models written and those that took a card's values.
-    public static async Task<(int Written, IReadOnlyList<string> TakenFromACard)> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // KATALOG-14 phase D5b: run once when the Worker starts, before it takes a job. A card the previous release linked
+    // during the deploy to a model of its own although it carries a code is linked to its code's model (the reconcile);
+    // then a colour whose copy the previous release changed alone (VAT, category, warranty, delivery days, brand) is only
+    // reported (ModelMirror.ReportGapsAsync, review 17 Nov 2026: the automatic paths write none of the eight model fields
+    // and mark no link; "the newer card wins" is withdrawn). Returns the models whose colours differ, for the log.
+    public static async Task<(int Written, IReadOnlyList<string> Differing)> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var tenants = await db.ProductModels.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
         var written = 0;
-        var taken = new List<string>();
+        var differing = new List<string>();
         foreach (var tenantId in tenants)
         {
             // A card the previous release linked during the deploy to a model of its own although it carries a code (its
@@ -413,45 +418,43 @@ public static class ProductModelValues
             // its code's model when the brand is the model's, else leaves it alone and opens PRODUCT_MODEL_AMBIGUOUS.
             await ProductModelLinks.ReconcileTenantAsync(db, tenantId, now, cancellationToken);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-            var closed = await ModelMirror.CloseGapsAsync(db, tenantId, null, now, cancellationToken);
-            written += closed.ModelsTakingACard + await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);
-            taken.AddRange(closed.Taken);
+            written += await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);
+            differing.AddRange((await ModelMirror.ReportGapsAsync(db, tenantId, now, cancellationToken)).Select(x => $"{x.ModelCode} ({string.Join(", ", x.Fields)})"));
             await transaction.CommitAsync(cancellationToken);
         }
-        return (written, taken);
+        return (written, differing);
     }
 
     // The backfill and the nightly scan: every model of every tenant, then one PRODUCT_MODEL_VALUES_DIFFER warning per
-    // tenant naming the models whose cards disagree (resolved when none does). Nothing is merged or chosen for the owner:
-    // the cards keep their values and the screens keep showing what they showed. Idempotent; a model a save holds
-    // locked waits for it, a model that fails is left for the next run. Returns (models, written, differing).
-    public static async Task<(int Models, int Written, int Differing)> RefreshAllAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // tenant naming the models whose cards disagree (resolved when none does) and one per model whose colours' copies
+    // differ from it (ModelMirror.ReportGapsAsync). Nothing is merged or chosen for the owner and none of the eight model
+    // fields is written: the screens keep showing what they showed. Idempotent; a model a save holds locked waits for it,
+    // a model that fails is left for the next run. Returns (models, written, differing, models whose colours differ).
+    public static async Task<(int Models, int Written, int Differing, int Gaps)> RefreshAllAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var tenants = await db.ProductModels.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
         tenants.AddRange((await db.OperationalIssues.AsNoTracking().Where(x => x.Code == DifferCode && x.Status != IssueStatus.Resolved && x.TenantId != null).Select(x => x.TenantId!.Value).ToListAsync(cancellationToken)).Except(tenants));
-        int models = 0, written = 0, differing = 0;
+        int models = 0, written = 0, differing = 0, gaps = 0;
         foreach (var tenantId in tenants)
         {
             var outcome = await RefreshTenantAsync(db, tenantId, now, cancellationToken);
             models += outcome.Models;
             written += outcome.Written;
             differing += outcome.Differing.Count;
+            gaps += outcome.Gaps;
         }
-        return (models, written, differing);
+        return (models, written, differing, gaps);
     }
 
-    // One tenant's models and its PRODUCT_MODEL_VALUES_DIFFER warning.
+    // One tenant's models and its PRODUCT_MODEL_VALUES_DIFFER warnings. KATALOG-14 phase D5b (review, 17 Nov 2026): the
+    // scan and the deploy write none of the eight model fields (no desi opened either) and mark no link; a colour whose
+    // copy differs from its model is only reported.
     public static async Task<Outcome> RefreshTenantAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        // KATALOG-14 phase D5b: the scan and the deploy first close the gaps between the models and their colours' copies.
-        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
-        {
-            await ModelMirror.CloseGapsAsync(db, tenantId, null, now, cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-        }
-        var outcome = await RefreshAsync(db, tenantId, null, now, cancellationToken);
+        var gaps = await ModelMirror.ReportGapsAsync(db, tenantId, now, cancellationToken);
+        var outcome = await RefreshAsync(db, tenantId, null, now, cancellationToken, openDesi: false);
         await RecordDifferingAsync(db, tenantId, outcome.Differing, outcome.Skipped, now, cancellationToken);
-        return outcome;
+        return outcome with { Gaps = gaps.Count };
     }
 
     // The warning's text. What the editor's save makes alike is said field by field: a save writes the model's shared

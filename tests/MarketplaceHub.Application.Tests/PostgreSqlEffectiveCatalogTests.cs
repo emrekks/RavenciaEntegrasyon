@@ -89,32 +89,62 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         }
     }
 
-    // The deploy: the previous release (phase A) wrote a card alone. The startup pass keeps a value written after the
-    // model's last change (the owner's) and gives it to the model and every colour; an older gap takes the model's back.
+    // What the automatic paths may not write: every column of the eight model fields of the tenant's models, cards and
+    // variants, their Version and UpdatedAt, and the marketplace links' sync marks.
+    private static async Task<string> ModelFieldsSnapshotAsync(AppDbContext db, Guid tenantId) =>
+        System.Text.Json.JsonSerializer.Serialize(new
+        {
+            Models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.Title, x.TitleColor, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.Desi, x.BrandId, x.Version, x.UpdatedAt }).ToListAsync(),
+            Cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.FamilyId, x.Title, x.Description, x.VatRate, x.VatInclusion, x.CategoryId, x.WarrantyMonths, x.DeliveryDays, x.BrandId, x.Version, x.UpdatedAt }).ToListAsync(),
+            Variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id).Select(x => new { x.Id, x.Desi, x.Version, x.UpdatedAt }).ToListAsync(),
+            Links = await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Id).Select(x => new { x.Id, x.SyncStatus, x.DirtyFieldsJson, x.Version }).ToListAsync(),
+        });
+
+    // The deploy: the previous release (phase A) wrote a card alone, after the model's last change. KATALOG-14 phase D5b
+    // review (17 Nov 2026, "yeni kart kazanır" withdrawn): the Worker's startup pass, the nightly scan and the deploy refresh
+    // write none of the eight model fields and mark no link; they open PRODUCT_MODEL_VALUES_DIFFER naming the model, the
+    // colour, the field and both values. The invoice takes the model's VAT meanwhile.
     [PostgreSqlFact]
-    public async Task ACardThePreviousReleaseChangedDuringADeploy_KeepsTheOwnersValue_AtWorkerStartup()
+    public async Task ACardThePreviousReleaseChangedDuringADeploy_IsOnlyWarnedAbout_NothingIsWritten()
     {
         var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
         var changed = seeded.Cards[1];
+        string before;
         await using (var db = fixture.CreateContext())
         {
             var model = await ModelOfAsync(db, changed.Id);
             await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20, "UpdatedAt" = {model.UpdatedAt.AddMinutes(5)} WHERE "Id" = {changed.Id}""");
+            before = await ModelFieldsSnapshotAsync(db, seeded.Tenant.Id);
         }
         await using (var db = fixture.CreateContext())
         {
-            var (written, taken) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
-            Assert.True(written >= 1);
-            Assert.Contains(taken, x => x.StartsWith("MZ300", StringComparison.Ordinal));
-            Assert.Equal(20m, (await ModelOfAsync(db, changed.Id)).VatRate);
-            Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
+            var (_, differing) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Contains(differing, x => x.StartsWith("MZ300", StringComparison.Ordinal));
+            await ProductModelValues.RefreshTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            await ProductModelValues.RefreshAllAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Equal(before, await ModelFieldsSnapshotAsync(db, seeded.Tenant.Id));
+            Assert.Equal(10m, (await ModelOfAsync(db, changed.Id)).VatRate);
 
-            // A card left apart by an older write takes the model's value back.
-            var model = await ModelOfAsync(db, changed.Id);
-            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 1, "UpdatedAt" = {model.UpdatedAt.AddMinutes(-5)} WHERE "Id" = {seeded.Cards[0].Id}""");
-            var second = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
-            Assert.DoesNotContain(second.TakenFromACard, x => x.StartsWith("MZ300", StringComparison.Ordinal));
-            Assert.Equal(20m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[0].Id)).VatRate);
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
+            Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open, 1), (issue.Code, issue.Status, issue.OccurrenceCount));
+            Assert.Contains("MZ300 modelinin", issue.Summary);
+            Assert.Contains("Bordo rengi: KDV %20 dahil (modelin: %10 dahil)", issue.Summary);
+
+            // The invoice: the colour is invoiced at the model's rate.
+            var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == changed.Id).OrderBy(x => x.SortOrder).FirstAsync();
+            var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ExternalLineId = "l-gap", Sku = variant.Sku, TitleSnapshot = "Bluz", RawStatus = "Created", VariantId = variant.Id };
+            var trendyol = seeded.Connections.Single(x => x.PlatformCode == "TRENDYOL");
+            Assert.Equal(10m, (await InvoiceLineVatRates.ResolveAsync(db, seeded.Tenant.Id, "TRENDYOL", trendyol.Id, [line], CancellationToken.None))[line.Id]);
+
+            // The owner's own save closes the difference (every colour takes the value) and the next scan settles the warning.
+            (await db.Products.SingleAsync(x => x.Id == seeded.Cards[0].Id)).VatRate = 20m;
+            await db.SaveChangesAsync();
+            Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
+            await ProductModelValues.RefreshTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == issue.Id)).Status);
         }
     }
 

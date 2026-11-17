@@ -131,17 +131,17 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
     }
 
-    // KATALOG-14 phase D5b: before any job is taken, the gaps between models and their colours are closed (a card the previous
-    // release changed during the deploy gives its newer value to the model and every colour; ProductModelValues.AlignStaleAsync).
-    // A failure is logged and the nightly model scan repairs the rest.
+    // KATALOG-14 phase D5b: before any job is taken, the cards the previous release linked during the deploy are linked to
+    // their code's model and a colour whose copy differs from its model is reported, nothing of the model fields written
+    // (ProductModelValues.AlignStaleAsync). A failure is logged and the nightly model scan repeats it.
     private async Task AlignProductModelsAtStartupAsync(CancellationToken cancellationToken)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var (written, taken) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
-            logger.LogInformation("Product models aligned at startup: {Models} written; models that took a card's newer value: {Taken}", written, string.Join(", ", taken));
+            var (written, differing) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
+            logger.LogInformation("Product models checked at startup: {Models} written; {Count} models whose colours differ from them (warned, nothing written): {Differing}", written, differing.Count, string.Join(", ", differing.Take(50)));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
