@@ -792,4 +792,68 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await editor.SaveChangesAsync();
         await transaction.CommitAsync();
     }
+
+    // Holds a save right after its first UPDATE of a card row (the row then stays locked) until Release.
+    private sealed class PauseAfterCardUpdate : DbCommandInterceptor
+    {
+        private int _armed = 1;
+        public TaskCompletionSource Reached { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        private async Task HoldAsync(System.Data.Common.DbCommand command)
+        {
+            if (!command.CommandText.Contains("UPDATE catalog.products", StringComparison.Ordinal) || Interlocked.Exchange(ref _armed, 0) == 0) return;
+            Reached.TrySetResult();
+            await Release.Task;
+        }
+
+        public override async ValueTask<System.Data.Common.DbDataReader> ReaderExecutedAsync(System.Data.Common.DbCommand command, CommandExecutedEventData eventData, System.Data.Common.DbDataReader result, CancellationToken cancellationToken = default)
+        {
+            await HoldAsync(command);
+            return result;
+        }
+
+        public override async ValueTask<int> NonQueryExecutedAsync(System.Data.Common.DbCommand command, CommandExecutedEventData eventData, int result, CancellationToken cancellationToken = default)
+        {
+            await HoldAsync(command);
+            return result;
+        }
+    }
+
+    // KATALOG-14 phase D5b review 3: two saves of sibling colours at once (Toplu Değer Ata × Excel, Excel × an import) took
+    // their locks in opposite orders (own card row, then the model, then the siblings) and one died of a deadlock (40P01).
+    // A save that changes a model field now locks its models' rows (id order) before it writes a card, so the second save
+    // waits for the first and both stand.
+    [PostgreSqlFact]
+    public async Task TwoSavesOfSiblingColoursAtOnce_TakeTurns_InsteadOfDeadlocking()
+    {
+        Seed seed;
+        Product siyah, mavi;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            siyah = AddCard(setup, seed, seed.Ravencia, "MZ700", "Siyah", "Kadın Siyah Etek", 0);
+            mavi = AddCard(setup, seed, seed.Ravencia, "MZ700", "Mavi", "Kadın Mavi Etek", 1);
+            AddCard(setup, seed, seed.Ravencia, "MZ700", "Gri", "Kadın Gri Etek", 2);
+            await setup.SaveChangesAsync();
+        }
+        var pause = new PauseAfterCardUpdate();
+        await using var first = ContextWith(pause);
+        await using var second = fixture.CreateContext();
+        (await first.Products.SingleAsync(x => x.Id == siyah.Id)).VatRate = 1m;
+        (await second.Products.SingleAsync(x => x.Id == mavi.Id)).VatRate = 20m;
+
+        var firstSave = Task.Run(() => first.SaveChangesAsync());
+        await pause.Reached.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        var secondSave = Task.Run(() => second.SaveChangesAsync());
+        // The second save is now waiting on a row the first holds; the first then goes on.
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        pause.Release.TrySetResult();
+        await firstSave;
+        await secondSave;
+
+        await using var check = fixture.CreateContext();
+        Assert.Equal(20m, (await ModelOfAsync(check, siyah.Id)).VatRate);
+        Assert.All(await check.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
+    }
 }

@@ -68,6 +68,11 @@ public sealed partial class CatalogService
             {
                 failures.Add(new(family.Model, BulkFieldChangedMeanwhile));
             }
+            // KATALOG-14 phase D5b review 3: another save of the model met this one (40P01 / 40001); nothing of it was written.
+            catch (Exception exception) when (SerializableWriteRetry.IsLockConflict(exception))
+            {
+                failures.Add(new(family.Model, BulkFieldChangedMeanwhile));
+            }
             catch (ModelRuleException conflict)
             {
                 failures.Add(new(family.Model, conflict.Message));

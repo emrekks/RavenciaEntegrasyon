@@ -22,6 +22,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     private const int Chunk = 2_000;
     private const string ImportReason = "Ürün dosyası içe aktarma";
     public const string ModelFieldMixedCode = "PRODUCT_TRANSFER_MODEL_FIELD_MIXED";
+    public const string LockConflictCode = "PRODUCT_TRANSFER_BUSY";
 
     public async Task<ServiceResult<ProductTransferSummaryView>> SummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -644,6 +645,14 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             await transaction.RollbackAsync(CancellationToken.None);
             db.ChangeTracker.Clear();
             return Stale("Bazı kayıtlar kayıt sırasında değişti; hiçbir değişiklik kaydedilmedi. Dosyayı yeniden yükleyin.");
+        }
+        catch (Exception exception) when (SerializableWriteRetry.IsLockConflict(exception))
+        {
+            // KATALOG-14 phase D5b review 3: another save of the same models (Toplu Değer Ata, a marketplace import) met
+            // this one; nothing of the file is written and the owner can load it again.
+            await transaction.RollbackAsync(CancellationToken.None);
+            db.ChangeTracker.Clear();
+            return ServiceResult<ProductTransferApplyResult>.Fail(LockConflictCode, "Aynı modellerin ürünleri şu anda başka bir işlemde (Toplu Değer Ata, pazaryeri aktarımı) kaydediliyor; hiçbir değişiklik kaydedilmedi. Birkaç saniye sonra dosyayı yeniden yükleyin.", 409);
         }
         catch (ModelRuleException conflict)
         {

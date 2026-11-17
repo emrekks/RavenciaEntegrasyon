@@ -180,6 +180,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         try
         {
             int saved;
+            // KATALOG-14 phase D5b review 3: the models the save gives a field to are locked before any card row is written.
+            if (models is not null) ProductModelLinks.LockPendingModelsAsync(this, models, CancellationToken.None).GetAwaiter().GetResult();
             _saving = true;
             try { saved = base.SaveChanges(acceptAllChangesOnSuccess && owned is null); }
             finally { _saving = false; }
@@ -219,6 +221,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         try
         {
             int saved;
+            // KATALOG-14 phase D5b review 3: the models the save gives a field to are locked before any card row is written.
+            if (models is not null) await ProductModelLinks.LockPendingModelsAsync(this, models, cancellationToken);
             _saving = true;
             // In its own transaction the changes are accepted only after the commit: a link or model write that fails rolls
             // the save back and leaves the tracked entities as they were, so the caller's next save writes them again.

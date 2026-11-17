@@ -573,9 +573,14 @@ internal sealed partial class CatalogImportService
             {
                 throw;
             }
-            catch (DbUpdateConcurrencyException conflict) when (modelAttempt == 1)
+            // KATALOG-14 phase D5b review 3: a deadlock or serialization failure with another save of the same model (Excel,
+            // Toplu Değer Ata) wrote nothing either: the model is read and written again, up to three attempts.
+            catch (Exception conflict) when (conflict is DbUpdateConcurrencyException ? modelAttempt == 1 : SerializableWriteRetry.IsLockConflict(conflict) && modelAttempt < SerializableWriteRetry.MaxAttempts)
             {
-                logger?.LogWarning(conflict, "Product import model {ModelKey} of job {JobId} hit a version conflict; retrying it once. Conflicting rows: {ConflictingRows}", modelKey, importJobId, ConcurrencyConflictRows(conflict));
+                if (conflict is DbUpdateConcurrencyException versionConflict)
+                    logger?.LogWarning(conflict, "Product import model {ModelKey} of job {JobId} hit a version conflict; retrying it once. Conflicting rows: {ConflictingRows}", modelKey, importJobId, ConcurrencyConflictRows(versionConflict));
+                else
+                    logger?.LogWarning(conflict, "Product import model {ModelKey} of job {JobId} met another save of the model (deadlock); retrying it (attempt {Attempt})", modelKey, importJobId, modelAttempt);
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();

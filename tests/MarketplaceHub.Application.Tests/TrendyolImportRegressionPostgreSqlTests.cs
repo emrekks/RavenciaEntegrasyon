@@ -867,6 +867,20 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         if (job is not null) Assert.Equal(0, job.ProgressFailed);
     }
 
+    [PostgreSqlFact]
+    public async Task ADeadlockOnAModelsSave_IsRetried_AndEveryCardOpensOnce()
+    {
+        var seed = await SeedAsync();
+        var deadlock = new DeadlockOnProductSave(times: 2);
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}", saveInterceptor: deadlock);
+
+        Assert.Equal(2, deadlock.Thrown);
+        await using var db = fixture.CreateContext();
+        Assert.Equal(Colours.Length, (await CardsAsync(db, seed)).Count);
+        Assert.False(await db.ProductImportStagingRecords.AnyAsync(row => row.TenantId == seed.TenantId && row.State != "COMPLETED"));
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED"));
+    }
+
     // A conflict that comes back on the retry fails the model as before, and the issue names the conflicting rows.
     [PostgreSqlFact]
     public async Task VersionConflictAgainOnTheRetry_FailsTheModel_AndNamesTheConflictingRows()
@@ -997,6 +1011,23 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     }
 
     // Throws a version conflict, naming the card being added, on the first `times` saves that add a card.
+    // KATALOG-14 phase D5b review 3: a deadlock with another save of the same model (Excel, Toplu Değer Ata) fails a
+    // model save that wrote nothing; the import reads and writes the model again instead of counting its cards failed.
+    private sealed class DeadlockOnProductSave(int times) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public int Thrown { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<Product>().Any(entry => entry.State == EntityState.Added) && Thrown < times)
+            {
+                Thrown++;
+                throw new InvalidOperationException("transient", new Npgsql.PostgresException("deadlock detected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.DeadlockDetected));
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     private sealed class ConflictOnProductSave(int times) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
     {
         public int Thrown { get; private set; }

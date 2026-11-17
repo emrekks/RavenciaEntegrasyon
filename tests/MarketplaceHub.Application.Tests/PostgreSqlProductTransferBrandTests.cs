@@ -111,6 +111,38 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         Assert.Equal(IssueStatus.Resolved, await AmbiguityAsync(db, seed));
     }
 
+    // Fails every card UPDATE with a deadlock (40P01) while set.
+    private sealed class DeadlockOnCardUpdate : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        private static void Check(System.Data.Common.DbCommand command)
+        {
+            if (command.CommandText.Contains("UPDATE catalog.products", StringComparison.Ordinal))
+                throw new Npgsql.PostgresException("deadlock detected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.DeadlockDetected);
+        }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default) { Check(command); return ValueTask.FromResult(result); }
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> NonQueryExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default) { Check(command); return ValueTask.FromResult(result); }
+    }
+
+    // KATALOG-14 phase D5b review 3: a file whose save meets another save of the same models (40P01 / 40001) is answered
+    // with a 409 the owner can act on, not a 500, and nothing of it is written.
+    [PostgreSqlFact]
+    public async Task AFileMeetingADeadlock_IsAnsweredWithAMeaningfulConflict_AndWritesNothing()
+    {
+        Seed seed;
+        await using (var db = fixture.CreateContext()) seed = await SeedAsync(db);
+        await using var plain = fixture.CreateContext();
+        await using var failing = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(plain.Database.GetConnectionString()).AddInterceptors(new DeadlockOnCardUpdate()).Options);
+
+        var applied = await new ProductTransferService(failing, fixture.TimeProvider).ApplyAsync(seed.TenantId, Guid.CreateVersion7(), new ApplyProductTransferCommand([],
+            [new ProductTransferProductChange(seed.A1.Id, 1, null, 20m)]), $"transfer-deadlock-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.False(applied.Succeeded);
+        Assert.Equal((ProductTransferService.LockConflictCode, 409), (applied.Error!.Code, applied.Error.Status));
+        var cards = await CardsAsync(plain, seed);
+        Assert.All(cards.Values, card => Assert.Equal((1L, 10m), (card.Version, card.VatRate!.Value)));
+    }
+
     // KATALOG-3: the server refuses, as the preview does, a file whose rows give two cards of one model two names (the
     // colour word aside) or two VAT rates, and writes nothing.
     [PostgreSqlTheory]

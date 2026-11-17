@@ -196,6 +196,32 @@ public static class ProductModelLinks
         return pending.IsEmpty ? null : pending;
     }
 
+    // KATALOG-14 phase D5b review 3: a save that gives a model field (or a model code) to a card writes the model and then
+    // its sibling colours (ModelMirror, PropagateCodeChangesAsync). Two such saves of sibling colours at once took the
+    // locks in opposite orders (own card row, model, siblings) and one died of a deadlock. Before the save writes any card,
+    // the rows of the models its cards belong to (and of the codes it touches) are locked in one statement, in id order,
+    // so the second save waits for the first. In the save's transaction; not in a serializable caller's (its model writes
+    // run after its commit, and a row lock there would only add serialization failures).
+    public static async Task LockPendingModelsAsync(AppDbContext db, Pending pending, CancellationToken cancellationToken)
+    {
+        if (db.Database.CurrentTransaction is not { } current
+            || Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(current).IsolationLevel == System.Data.IsolationLevel.Serializable) return;
+        foreach (var tenantId in pending.FieldChanges.Keys.Concat(pending.CodeChanges.Keys).Distinct().Order())
+        {
+            var productIds = (pending.FieldChanges.GetValueOrDefault(tenantId)?.Keys ?? Enumerable.Empty<Guid>())
+                .Concat(pending.CodeChanges.GetValueOrDefault(tenantId)?.Keys ?? Enumerable.Empty<Guid>())
+                .Concat(pending.ProductIds.GetValueOrDefault(tenantId) ?? []).Distinct().ToArray();
+            var keys = (pending.Keys.GetValueOrDefault(tenantId) ?? []).ToArray();
+            await db.Database.SqlQuery<int>($"""
+                SELECT 1 AS "Value" FROM catalog.product_models
+                WHERE "TenantId" = {tenantId}
+                  AND ("Id" IN (SELECT p."FamilyId" FROM catalog.products p WHERE p."TenantId" = {tenantId} AND p."Id" = ANY({productIds}) AND p."FamilyId" IS NOT NULL)
+                       OR "ModelCodeKey" = ANY({keys}))
+                ORDER BY "Id" FOR UPDATE
+                """).ToListAsync(cancellationToken);
+        }
+    }
+
     private static bool Changed<TEntity, T>(PropertyEntry<TEntity, T> property) where TEntity : class =>
         property.IsModified && !EqualityComparer<T>.Default.Equals(property.OriginalValue, property.CurrentValue);
 
