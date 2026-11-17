@@ -31,10 +31,11 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    // Products imported before desi was read are preserved on the next import (updateExistingProducts off); their
-    // empty desi is still filled from the marketplace, while a desi entered locally stays.
+    // Products imported before desi was read are preserved on the next import (updateExistingProducts off). KATALOG-14
+    // phase D5b: the desi is the model's, so the desi entered locally on one variant is every variant's (the empty one takes
+    // it when the card is saved) and the marketplace's values move neither the model nor a variant.
     [PostgreSqlFact]
-    public async Task ProductSync_FillsAnEmptyDesiOfAPreservedProductAndKeepsAnEnteredOne()
+    public async Task ProductSync_KeepsTheModelsDesi_OnEveryVariantOfAPreservedProduct()
     {
         var tenant = NewTenant("marketplace-desi-fill");
         var connection = NewQuestionConnection(tenant);
@@ -90,7 +91,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             }
 
             await using var verificationDb = fixture.CreateContext();
-            Assert.Equal(4.5m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == emptyVariantId)).Desi);
+            Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == emptyVariantId)).Desi);
             Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == enteredVariantId)).Desi);
             Assert.Equal("Local title", (await verificationDb.Products.AsNoTracking().SingleAsync(row => row.Id == productId)).Title);
         }
@@ -882,8 +883,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         Assert.True(currentDesi.Succeeded, currentDesi.Error?.Message);
         db.ChangeTracker.Clear();
         var afterDesi = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
-        // An unsent desi leaves the stored one as it is.
-        Assert.Equal([3m, null], afterDesi.Select(x => x.Desi));
+        // KATALOG-14 phase D5b: the desi is the model's, so the one given to a variant reaches every variant.
+        Assert.Equal([3m, 3m], afterDesi.Select(x => x.Desi));
 
         await transaction.RollbackAsync();
     }

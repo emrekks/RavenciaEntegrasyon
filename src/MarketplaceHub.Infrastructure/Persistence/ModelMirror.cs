@@ -77,8 +77,10 @@ public static class ModelMirror
             {
                 var set = given.Where(x => isSet(x.Change)).ToList();
                 if (set.Count == 0) return;
-                touched[field] = [.. set.Select(x => x.Card.Id)];
                 var currentKey = key(current);
+                // Only a card whose value differs from the model's takes it back: one that brought the model's value in
+                // another spelling (a colour word written in lower case) keeps its text.
+                touched[field] = [.. set.Where(x => key(valueOf(x)) != currentKey).Select(x => x.Card.Id)];
                 var added = set.Where(x => x.Change.Added).Select(valueOf).Where(value => key(value) != currentKey).ToList();
                 var changed = set.Where(x => !x.Change.Added).Select(valueOf).GroupBy(key, StringComparer.Ordinal).Select(g => g.First()).ToList();
                 if (added.Count > 0) conflicts.Add($"{field} ({string.Join(" / ", added.Select(value => Show(value)).Distinct())}; modelin: {Show(current)})");
@@ -109,8 +111,7 @@ public static class ModelMirror
             if (desiGiven.Count > 0)
             {
                 touched[ProductModelValues.Desi] = [];
-                var addedDesis = desiGiven.Where(x => x.Added).Select(x => x.Desi).OfType<decimal>().Where(value => value != target.Desi).Distinct().ToList();
-                if (addedDesis.Count > 0 && target.Desi is not null) conflicts.Add($"{ProductModelValues.Desi} ({string.Join(" / ", addedDesis.Select(value => Show((decimal?)value)))}; modelin: {Show(target.Desi)})");
+                var addedValues = desiGiven.Where(x => x.Added).Select(x => x.Desi).OfType<decimal>().ToList();
                 var changedDesis = desiGiven.Where(x => !x.Added).Select(x => x.Desi).OfType<decimal>().Distinct().ToList();
                 if (changedDesis.Count > 1 || (changedDesis.Count == 1 && db.MarketplaceCatalogImport && target.Desi is not null))
                 {
@@ -121,12 +122,16 @@ public static class ModelMirror
                     target = target with { Desi = changedDesis[0] };
                     fields.Add(ProductModelValues.Desi);
                 }
-                // A model without a desi yet takes a new colour's (the first colour to bring one).
-                else if (target.Desi is null && addedDesis.Count > 0)
+                // A model without a desi yet takes the one most of its new sizes bring (on a tie the smaller), as the
+                // refresh does.
+                else if (target.Desi is null && changedDesis.Count == 0 && ProductModelValues.ModelDesi(addedValues.Select(value => (decimal?)value)) is { } opened)
                 {
-                    target = target with { Desi = addedDesis[0] };
+                    target = target with { Desi = opened };
                     fields.Add(ProductModelValues.Desi);
                 }
+                // New sizes that came with another desi take the model's, and the owner is told.
+                var addedDesis = addedValues.Where(value => value != target.Desi).Distinct().ToList();
+                if (addedDesis.Count > 0 && target.Desi is not null) conflicts.Add($"{ProductModelValues.Desi} ({string.Join(" / ", addedDesis.Select(value => Show((decimal?)value)))}; modelin: {Show(target.Desi)})");
             }
 
             if (fields.Count > 0)
@@ -142,7 +147,7 @@ public static class ModelMirror
             // A field the model took goes to every colour (and every variant); otherwise only the cards and variants that
             // brought a value take the model's back.
             var scope = touched.ToDictionary(x => x.Key, x => fields.Contains(x.Key) ? null : (IReadOnlySet<Guid>)x.Value, StringComparer.Ordinal);
-            await MirrorAsync(db, tenantId, model.Id, target, scope, members, fields.Contains(ProductModelValues.Desi) ? null : desiVariants, cancellationToken);
+            await MirrorAsync(db, tenantId, model.Id, target, scope, members, fields.Contains(ProductModelValues.Desi) ? null : desiVariants, !db.MarketplaceCatalogImport, cancellationToken);
             db.ModelMirrorReport.Add(new Applied(model.Id, model.ModelCode, members.Count, fields, conflicts.Count > 0));
         }
     }
@@ -180,8 +185,10 @@ public static class ModelMirror
     // Writes the model's value of each given field, where the copy differs, to the field's cards (null: every colour of
     // the model; the name with each colour's word) and the desi to the given variants (null: every variant of the model).
     // Only those columns are written (Version and UpdatedAt stay). The colours whose copies changed get their marketplace
-    // links marked edited, as a card edit marks them (a link already marked keeps its version).
-    private static async Task MirrorAsync(AppDbContext db, Guid tenantId, Guid modelId, Values values, IReadOnlyDictionary<string, IReadOnlySet<Guid>?> fields, IReadOnlyList<CardRow> members, IReadOnlySet<Guid>? desiVariants, CancellationToken cancellationToken)
+    // links marked edited, as a card edit marks them (a link already marked keeps its version); not in a marketplace
+    // import, which only gives a colour its model's value back (the listing's other value is reported, and marking the
+    // link would make the next import keep the card whole as if the owner had edited it).
+    private static async Task MirrorAsync(AppDbContext db, Guid tenantId, Guid modelId, Values values, IReadOnlyDictionary<string, IReadOnlySet<Guid>?> fields, IReadOnlyList<CardRow> members, IReadOnlySet<Guid>? desiVariants, bool markLinks, CancellationToken cancellationToken)
     {
         if (fields.Count == 0) return;
         var changedCards = new HashSet<Guid>();
@@ -220,7 +227,7 @@ public static class ModelMirror
                 changedCards.UnionWith(variants.Select(x => x.ProductId));
             }
         }
-        if (changedCards.Count == 0) return;
+        if (changedCards.Count == 0 || !markLinks) return;
         await db.Database.ExecuteSqlRawAsync("""
             UPDATE catalog.marketplace_product_links l
             SET "SyncStatus" = 'LOCAL_CHANGES_PENDING',
@@ -282,7 +289,7 @@ public static class ModelMirror
                         .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
                 taken.Add($"{first.ModelCode} ({newer.CardId})");
             }
-            await MirrorAsync(db, tenantId, model.Key, values, fields, [], null, cancellationToken);
+            await MirrorAsync(db, tenantId, model.Key, values, fields, [], null, true, cancellationToken);
         }
         return (taken.Count, taken);
     }

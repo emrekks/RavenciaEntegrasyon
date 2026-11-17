@@ -256,7 +256,9 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         db.ChangeTracker.Clear();
         var applicationLinks = await LinksAsync(db, seed.Tenant.Id);
 
-        // As before the migration: no model, no link, no report.
+        // As before the migration: no model, no link, no report, the cards' names as an older release left them (KATALOG-14
+        // phase D5b gave the Zümrüt card its model's name when it was saved).
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "Title" = 'Kadın Lacivert Bluz' WHERE "Id" = {a3.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "TenantId" = {seed.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_models WHERE "TenantId" = {seed.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM ops.operational_issues WHERE "TenantId" = {seed.Tenant.Id}""");

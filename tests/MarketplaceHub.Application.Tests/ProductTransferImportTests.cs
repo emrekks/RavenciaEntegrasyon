@@ -531,12 +531,15 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Aktarım Ürünü", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        // KATALOG-14 phase D5b: the desi is the model's, so a variant without one is a variant of another model (here two
+        // cards without a model code, each its own model).
+        var other = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Aktarım Ürünü 2", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
         var first = Variant(tenant, product, "COST-1", "8690000100001", cost: null, desi: 2m, now);
-        var second = Variant(tenant, product, "COST-2", "8690000100002", cost: 4m, desi: null, now);
+        var second = Variant(tenant, other, "COST-2", "8690000100002", cost: 4m, desi: null, now);
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
-            seed.Products.Add(product);
+            seed.Products.AddRange(product, other);
             seed.ProductVariants.AddRange(first, second);
             await seed.SaveChangesAsync();
         }
@@ -561,7 +564,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes), "transfer-test", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
-        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 1), applied.Value);
+        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 2), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var stored = await check.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();

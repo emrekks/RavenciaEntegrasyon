@@ -97,8 +97,9 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
             }
         }
 
-        // Before: each colour card goes with its own name and description.
-        await AssertPayloads(colour => $"Kadın {colour} Triko Bluz", colour => $"{colour} eski açıklama");
+        // Before: each colour card goes with its own colour's name; KATALOG-14 phase D5b: the description is the model's,
+        // which it took from the oldest colour when the cards were saved.
+        await AssertPayloads(colour => $"Kadın {colour} Triko Bluz", _ => "Siyah eski açıklama");
 
         // The owner edits the model's name and description from the Siyah row (FamilySharedFields): every colour card
         // takes them, each name with its own colour word; the pictures and the content split per colour stay as they were.

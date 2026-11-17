@@ -120,8 +120,10 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
 
     private static string MarketplaceModelLinks_Backfill => Infrastructure.Persistence.Migrations.MarketplaceModelLinks.BackfillSql;
 
+    // KATALOG-14 phase D5b: the model is the source of its fields, so the startup pass no longer recomputes a model's
+    // fields from its cards (saved by the editor or not).
     [PostgreSqlFact]
-    public async Task TheFieldsTheEditorNeverSaved_AreRecomputedByTheEditorsRule_SavedOnesStay()
+    public async Task TheModelsFields_AreNeverRecomputedFromTheirCards()
     {
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -135,16 +137,11 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         var saved = DateTimeOffset.UtcNow;
         await db.ProductModels.Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ071").ExecuteUpdateAsync(s => s.SetProperty(x => x.Title, "Editörün adı").SetProperty(x => x.FieldsSavedAt, saved));
 
-        Assert.True(await ProductModelLinks.RecomputeUnsavedFieldsAsync(db, CancellationToken.None) >= 1);
+        var version = (await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ070")).Version;
+        Assert.Equal(0, await ProductModelLinks.RecomputeUnsavedFieldsAsync(db, CancellationToken.None));
         var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.ModelCodeKey);
-        // The oldest card's name on a tie, with its colour.
-        Assert.Equal(("Kadın Gri Bluz", "Gri"), (models["MZ070"].Title, models["MZ070"].TitleColor));
-        Assert.Null(models["MZ070"].FieldsSavedAt);
+        Assert.Equal(("Eski", null, version), (models["MZ070"].Title, models["MZ070"].TitleColor, models["MZ070"].Version));
         Assert.Equal("Editörün adı", models["MZ071"].Title);
-        // Again: nothing of this tenant to write.
-        var version = models["MZ070"].Version;
-        await ProductModelLinks.RecomputeUnsavedFieldsAsync(db, CancellationToken.None);
-        Assert.Equal(version, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == models["MZ070"].Id)).Version);
         await transaction.RollbackAsync();
     }
 

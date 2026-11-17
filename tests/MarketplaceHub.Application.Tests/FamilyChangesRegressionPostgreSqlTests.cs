@@ -27,6 +27,9 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         ("Lacivert", "lacivert", 3, 2m), ("Kahverengi", "kahve", 3, 1.5m), ("Mürdüm", "murdum", 3, 1.5m)
     ];
     private static readonly string[] Platforms = ["HEPSIBURADA", "N11", "PAZARAMA", "PTTAVM"];
+    // KATALOG-14 phase D5b: the desi is the model's. The Lacivert sizes came with 2, the model took what most sizes hold
+    // and every size of every colour holds it.
+    private const decimal ModelDesi = 1.5m;
 
     private static string Url(string name) => $"https://cdn.example.com/mz051byc/{name}.jpg";
     private static string[] Pictures(string key, int count) => [.. Enumerable.Range(1, count).Select(index => $"{key}-{index}")];
@@ -44,7 +47,7 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         var seed = await SeedAsync(live: false);
         await using var db = fixture.CreateContext();
         var composer = new ProductPublicationComposer(db, new ConfigurationBuilder().Build());
-        foreach (var (colour, key, count, desi) in Colours)
+        foreach (var (colour, key, count, _) in Colours)
         {
             var card = seed.Cards[colour];
             var barcodes = seed.Sizes[colour].Select(variant => variant.Barcode!).ToArray();
@@ -60,7 +63,7 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
                 Assert.Equal("Ravencia", item["Marka"]!.GetValue<string>());
                 Assert.Equal($"Ravencia {title}", item["UrunAdi"]!.GetValue<string>());
                 Assert.Equal(ModelCode, item["VaryantGroupID"]!.GetValue<string>());
-                Assert.Equal(desi.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), item["kg"]!.GetValue<string>());
+                Assert.Equal(ModelDesi.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), item["kg"]!.GetValue<string>());
             });
 
             var n11 = JsonNode.Parse(await BuildAsync(composer, seed, "N11", card.Id))!["payload"]!["skus"]!.AsArray();
@@ -81,19 +84,19 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
                 Assert.Equal(Expected(key, count, 8), item!["images"]!.AsArray().Select(image => image!["imageurl"]!.GetValue<string>()));
                 Assert.Equal(title, item["name"]!.GetValue<string>());
                 Assert.Equal(seed.PazaramaBrandExternalId, item["brandId"]!.GetValue<string>());
-                Assert.Equal((int)Math.Ceiling(desi), item["desi"]!.GetValue<int>());
+                Assert.Equal((int)Math.Ceiling(ModelDesi), item["desi"]!.GetValue<int>());
                 Assert.Equal(ModelCode, item["groupCode"]!.GetValue<string>());
             });
         }
 
         // PttAVM keeps one product for the model: every colour card's variants under the model code, each colour's first
-        // picture first, the brand as text, the largest desi.
+        // picture first, the brand as text, the largest desi rounded up (the model's).
         foreach (var opened in new[] { "Bordo", "Siyah" })
         {
             var ptt = JsonNode.Parse(await BuildAsync(composer, seed, "PTTAVM", seed.Cards[opened].Id))!.AsObject();
             Assert.Equal(ModelCode, ptt["barcode"]!.GetValue<string>());
             Assert.Equal("Ravencia", ptt["brand"]!.GetValue<string>());
-            Assert.Equal(2m, ptt["desi"]!.GetValue<decimal>());
+            Assert.Equal(Math.Ceiling(ModelDesi), ptt["desi"]!.GetValue<decimal>());
             Assert.Equal("Kadın Bordo Triko Bluz", ptt["name"]!.GetValue<string>());
             var variants = ptt["variants"]!.AsArray();
             Assert.Equal(Colours.Length * Sizes.Length, variants.Count);
@@ -377,14 +380,14 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         Assert.True(export.Succeeded, export.Error?.Message);
         var table = ImportFileReader.ReadXlsxTable(new MemoryStream(export.Value!), 64 * 1024 * 1024);
         int Column(string header) => table.Headers.ToList().IndexOf(header);
-        foreach (var (colour, _, _, desi) in Colours)
+        foreach (var (colour, _, _, _) in Colours)
             foreach (var variant in seed.Sizes[colour])
             {
                 var row = table.Rows.Single(row => row.Cells[Column("Stok Kodu")] == variant.Sku);
                 Assert.Equal(title(colour), row.Cells[Column("Ürün Adı")]);
                 Assert.Equal(brand, row.Cells[Column("Marka")]);
                 Assert.Equal(ModelCode, row.Cells[Column("Model Kodu")]);
-                Assert.Equal(desi, decimal.Parse(row.Cells[Column("Desi")]!, System.Globalization.CultureInfo.InvariantCulture));
+                Assert.Equal(ModelDesi, decimal.Parse(row.Cells[Column("Desi")]!, System.Globalization.CultureInfo.InvariantCulture));
             }
         var roundTrip = await service.PreviewAsync(seed.Tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), [ProductTransferFields.Title, ProductTransferFields.Barcode, ProductTransferFields.ModelCode, ProductTransferFields.Vat, ProductTransferFields.Desi], CancellationToken.None);
         Assert.True(roundTrip.Succeeded, roundTrip.Error?.Message);

@@ -105,7 +105,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using var db = fixture.CreateContext();
         var cards = await CardsAsync(db, seed);
         Assert.Equal(Colours.Length, cards.Count);
-        foreach (var (colour, key, count, desi) in Colours)
+        foreach (var (colour, key, count, _) in Colours)
         {
             var card = cards[ContentId(colour)];
             var colourIndex = ColourIndex(colour);
@@ -124,7 +124,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
                 Assert.Equal(ModelCode, variant.ModelCode);
                 Assert.Contains($"Renk: {colour}", variant.OptionSignature, StringComparison.Ordinal);
                 Assert.Contains($"Beden: {size}", variant.OptionSignature, StringComparison.Ordinal);
-                Assert.Equal(desi, variant.Desi);
+                // KATALOG-14 phase D5b: the desi is the model's, what most sizes brought (the Lacivert sizes' 2 is told).
+                Assert.Equal(1.5m, variant.Desi);
                 var link = Assert.Single(seed.VariantLinks(db), row => row.VariantId == variant.Id);
                 Assert.Equal((VariantId(colourIndex, sizeIndex), Barcode(colourIndex, sizeIndex), StockCode(colourIndex, sizeIndex)), (link.ExternalId, link.ExternalBarcode, link.ExternalSku));
             }
@@ -198,14 +199,15 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using (var db = fixture.CreateContext())
         {
             // The owner's edit holds: the full import preserves an edited card (LOCAL_CHANGES_PENDING), title included.
-            Assert.Equal("Sahibin Siyah Başlığı", (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).Title);
+            Assert.Equal(Title("Siyah"), (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).Title);
             var link = await db.MarketplaceProductLinks.AsNoTracking().SingleAsync(row => row.ProductId == siyah.ProductId);
             Assert.Equal("LOCAL_CHANGES_PENDING", link.SyncStatus);
         }
 
-        // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" takes Trendyol's title over the owner's edit
-        // (ProductImportMergePolicy.OverwriteLocalChanges, owner decision 7 Nov), and still keeps the owner's pictures.
-        // The card's warranty (24 here) is never touched: a listing carries none.
+        // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" overwrites the owner's edit (ProductImportMergePolicy.
+        // OverwriteLocalChanges, owner decision 7 Nov) and still keeps the owner's pictures. KATALOG-14 phase D5b (owner,
+        // 17 Nov 2026): the name is the model's and an import never moves a model, so Trendyol's other name for this one
+        // colour is not taken; the owner is told. The card's warranty (24 here) is never touched: a listing carries none.
         await using (var db = fixture.CreateContext())
             await db.Products.Where(row => row.Id == siyah.ProductId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 24));
         await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), $"{{\"productLookup\":\"{ModelCode}\",\"updateExistingProducts\":true}}");
@@ -214,7 +216,9 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using (var db = fixture.CreateContext())
         {
             var card = await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId);
-            Assert.Equal(("Trendyol Siyah Başlık", (int?)24), (card.Title, card.WarrantyMonths));
+            Assert.Equal((Title("Siyah"), (int?)24), (card.Title, card.WarrantyMonths));
+            Assert.Contains(await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open).Select(row => row.Summary).ToListAsync(),
+                summary => summary.Contains("Trendyol Siyah Başlık", StringComparison.Ordinal));
         }
 
         // The lookup cleared the card's marks; a later changed full import still keeps the pictures, because the card
@@ -332,9 +336,11 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
     }
 
-    // 4. Model fields: Trendyol brings another title and description for one colour only.
+    // 4. Model fields: Trendyol brings another title and description for one colour only. KATALOG-14 phase D5b (owner,
+    // 17 Nov 2026): the name and description are the model's and an import never moves a model, so that colour keeps the
+    // model's and the owner is told which values Trendyol sent.
     [PostgreSqlFact]
-    public async Task ChangedTitleOfOneColour_ChangesOnlyThatColoursCard_AndAnOwnersFamilyEditHoldsOnEveryCard()
+    public async Task ChangedTitleOfOneColour_MovesNoColour_AndAnOwnersFamilyEditHoldsOnEveryCard()
     {
         var seed = await SeedAsync();
         await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
@@ -346,11 +352,10 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using (var db = fixture.CreateContext())
         {
             var cards = await CardsAsync(db, seed);
-            // Each colour card follows its own Trendyol content: the cards are left differing (Trendyol itself keeps
-            // one title per content); the import never copies one content's title to the other colours.
-            Assert.Equal(("Kadın Bordo Triko Bluz Yeni", "Yeni açıklama."), (cards[ContentId("Bordo")].Product.Title, cards[ContentId("Bordo")].Product.Description));
-            foreach (var (colour, _, _, _) in Colours.Where(entry => entry.Colour != "Bordo"))
+            foreach (var (colour, _, _, _) in Colours)
                 Assert.Equal((Title(colour), "Yumuşak dokulu triko bluz."), (cards[ContentId(colour)].Product.Title, cards[ContentId(colour)].Product.Description));
+            var warning = Assert.Single(await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Summary.Contains("Yeni açıklama.")).ToListAsync());
+            Assert.Contains("Kadın Bordo Triko Bluz Yeni", warning.Summary, StringComparison.Ordinal);
         }
 
         // The owner writes the description to the whole family (the editor's model field marks every colour card's
@@ -371,7 +376,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         {
             var products = await db.Products.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
             Assert.All(products, row => Assert.Equal("Sahibin model açıklaması.", row.Description));
-            Assert.Equal("Kadın Bordo Triko Bluz Yeni", products.Single(row => row.Title.StartsWith("Kadın Bordo", StringComparison.Ordinal)).Title);
+            Assert.Equal(Title("Bordo"), products.Single(row => row.Title.StartsWith("Kadın Bordo", StringComparison.Ordinal)).Title);
         }
     }
 
@@ -452,7 +457,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         var xs = Assert.Single(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
         Assert.Contains("Renk: Siyah", xs.OptionSignature, StringComparison.Ordinal);
         Assert.Single(seed.VariantLinks(db), row => row.VariantId == xs.Id);
-        Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
+        Assert.Equal(Title("Siyah"), card.Product.Title);
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
         Assert.Equal(Colours.Length * Sizes.Length + 1, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
     }
@@ -470,7 +475,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         {
             var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
             Assert.DoesNotContain(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
-            Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
+            Assert.Equal(Title("Siyah"), card.Product.Title);
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED");
             Assert.Equal(IssueStatus.Open, issue.Status);
             Assert.Contains("1 yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
@@ -1274,8 +1279,9 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             var sizeM = card.Variants.Single(row => row.Barcode == Barcode(ColourIndex("Siyah"), 1));
             foreach (var (row, index) in gallery.Take(2).Select((row, index) => (row, index)))
                 db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ProductId = productId, VariantId = sizeM.Id, FileAssetId = row.FileAssetId, MediaRole = index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY", SortOrder = index * 10, Status = "ACTIVE" });
+            // KATALOG-14 phase D5b: the owner's edit of this colour alone is its pictures (a name is the model's and would
+            // reach every colour).
             var product = await db.Products.SingleAsync(row => row.Id == productId);
-            product.Title = "Sahibin Siyah Başlığı";
             product.Version++;
             await db.SaveChangesAsync();
             await CatalogLocalEdits.MarkLinksDirtyAsync(db, seed.TenantId, [productId], CatalogLocalEdits.ProductField, CancellationToken.None);

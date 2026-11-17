@@ -105,5 +105,7 @@
       "ExternalSku": "123asd"
     }
   ],
-  "Issues": []
+  "Issues": [
+    "PRODUCT_MODEL_VALUES_DIFFER"
+  ]
 }
