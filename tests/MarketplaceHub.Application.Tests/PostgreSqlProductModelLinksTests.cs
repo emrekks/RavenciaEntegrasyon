@@ -318,8 +318,10 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         }
         await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_models WHERE "TenantId" = {seed.Tenant.Id} AND "ModelCodeKey" LIKE 'TEMP%'""");
         await ProductModelLinks.EnsureOwnModelsAsync(db, seed.Tenant.Id, [same.Id, other.Id], DateTimeOffset.UtcNow, CancellationToken.None);
-        var stuck = await (from card in db.Products.AsNoTracking() join record in db.ProductModels.AsNoTracking() on card.FamilyId equals record.Id
-                           where card.TenantId == seed.Tenant.Id && record.ModelCodeKey.StartsWith("#") select card.Id).ToListAsync();
+        var stuck = await (from card in db.Products.AsNoTracking()
+                           join record in db.ProductModels.AsNoTracking() on card.FamilyId equals record.Id
+                           where card.TenantId == seed.Tenant.Id && record.ModelCodeKey.StartsWith("#")
+                           select card.Id).ToListAsync();
         Assert.Equal(new[] { same.Id, other.Id }.Order(), stuck.Order());
 
         // What the startup pass (ProductModelValues.AlignStaleAsync) and the nightly scan run for each tenant.
