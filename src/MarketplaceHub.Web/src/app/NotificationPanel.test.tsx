@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { NotificationPanel } from './NotificationPanel'
+import { NotificationPanel, notificationPanelFirstFrameCards } from './NotificationPanel'
 import type { AppNotification } from '../shared/notifications'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -62,5 +62,29 @@ describe('notification panel', () => {
     expect(panel.querySelector('.rv-notification-title')?.textContent).toBe('Yayın Durumu Sorgulanamadı')
     expect(panel.querySelector('.rv-notification-source')?.textContent).toBe('Ürün Kataloğu')
     expect(panel.querySelector('.rv-notification-logo')).toBeNull()
+  })
+})
+
+describe('opening the panel', () => {
+  const many = (count: number): AppNotification[] => Array.from({ length: count }, (_, index) => ({
+    id: `n${index}`, message: `Bildirim ${index}`, title: `Bildirim ${index}`, kind: 'info', createdAt: now, read: false
+  }))
+
+  it('draws only the first cards in its first frame and the rest once it has opened, with full day counts', async () => {
+    const frames: FrameRequestCallback[] = []
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length })
+    try {
+      const panel = render(many(20))
+      expect(panel.querySelectorAll('.rv-notification-history-item')).toHaveLength(notificationPanelFirstFrameCards)
+      expect(panel.querySelector('.rv-notification-group > b')?.textContent).toBe('20')
+      await act(async () => {
+        frames.splice(0).forEach(callback => callback(performance.now()))
+        await new Promise(resolve => setTimeout(resolve, 0))
+        await Promise.resolve()
+      })
+      expect(panel.querySelectorAll('.rv-notification-history-item')).toHaveLength(20)
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 })

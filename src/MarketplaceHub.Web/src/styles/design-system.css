@@ -338,7 +338,7 @@
   .rv-icon-button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
   .app-shell.stitch-shell main :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { width: 100%; min-height: var(--rv-control-height-md); padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
   .app-shell.stitch-shell main textarea { min-height: 110px; padding-top: var(--rv-space-3); padding-bottom: var(--rv-space-3); resize: vertical; }
-  .app-shell.stitch-shell main input[type="checkbox"], .app-shell.stitch-shell main input[type="radio"] { accent-color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main input[type="radio"] { accent-color: var(--rv-color-primary); }
   .app-shell.stitch-shell main input[type="file"] { height: auto; padding: var(--rv-space-2); }
   .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) { border-color: var(--rv-color-primary); }
   :where(.app-shell.stitch-shell main button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-button):not(.rv-icon-button), .app-shell.stitch-shell main .button-link) { display: inline-flex; min-height: var(--rv-control-height-md); align-items: center; justify-content: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-4); color: #fff; background: var(--rv-color-primary); border: 1px solid var(--rv-color-primary); border-radius: var(--rv-radius-md); text-decoration: none; font-weight: 600; }
@@ -497,7 +497,6 @@
   .mapping-action { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin-top: var(--rv-space-5); padding-top: var(--rv-space-4); color: var(--rv-color-muted); border-top: 1px solid var(--rv-color-border); font-size: var(--rv-font-size-sm); }
   .mapping-action > span { min-width: 0; overflow-wrap: anywhere; }
   .mapping-popup-content { min-width: 0; padding-top: var(--rv-space-4); border-top: 1px solid var(--rv-color-border); }
-  .mapping-advanced-backdrop { padding: clamp(12px, 3vw, 32px); }
   .mapping-advanced-modal { width: min(1180px, 100%); max-height: min(900px, calc(100dvh - 32px)); }
   .mapping-advanced-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .mapping-advanced-modal > header h2, .mapping-advanced-modal > header p { margin-bottom: var(--rv-space-1); }
@@ -882,7 +881,7 @@
   .rv-auth-password-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
   .rv-auth-field > select { width: 100%; min-height: 50px; padding-inline: var(--rv-space-3); color: var(--rv-auth-ink); background: color-mix(in srgb, var(--rv-auth-bg) 78%, transparent); border: 1px solid var(--rv-auth-border-strong); border-radius: 7px; }
   .rv-auth-remember { display: flex; align-items: center; gap: var(--rv-space-2); color: var(--rv-auth-muted); font-size: var(--rv-font-size-sm); }
-  .rv-auth-remember input { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-auth-primary); }
+  .rv-auth-remember input { margin: 0; }
   .rv-auth-error { display: flex; align-items: flex-start; gap: var(--rv-space-2); padding: var(--rv-space-3); color: var(--rv-auth-danger); background: color-mix(in srgb, var(--rv-auth-danger) 14%, transparent); border: 1px solid color-mix(in srgb, var(--rv-auth-danger) 54%, transparent); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
   .rv-auth-error > i { width: 7px; height: 7px; flex: 0 0 7px; margin-top: .45em; background: currentColor; border-radius: 50%; }
   .rv-auth-hint { color: var(--rv-auth-subtle); font-size: var(--rv-font-size-xs); font-weight: 500; line-height: 1.45; }
@@ -1135,7 +1134,7 @@
 
   /* The mapping workspace uses a stable card grid; value lists open in a
      focused surface so the main comparison remains scannable. */
-  .mapping-advanced-modal { width: min(1320px, calc(100vw - 48px)); max-height: min(920px, calc(100dvh - 32px)); }
+  .mapping-advanced-modal { width: min(1320px, calc(100vw - 32px)); max-height: min(920px, calc(100dvh - 32px)); }
   .mapping-advanced-modal-body .mapping-popup-content { padding-top: 0; border-top: 0; }
   .value-mapping-heading h3, .value-mapping-heading p { margin: 0; }
   .value-mapping-heading p { margin-top: var(--rv-space-1); font-size: var(--rv-font-size-sm); }
@@ -2956,9 +2955,7 @@ small,
 
 .app-shell.stitch-shell main select { padding-right: 38px; }
 
-.app-shell.stitch-shell main input[type="checkbox"],
 .app-shell.stitch-shell main input[type="radio"],
-.rv-auth-page input[type="checkbox"],
 .rv-auth-page input[type="radio"] {
   width: 17px;
   height: 17px;
@@ -2966,6 +2963,8 @@ small,
   flex: 0 0 17px;
   margin: 0;
 }
+.app-shell.stitch-shell main input[type="checkbox"],
+.rv-auth-page input[type="checkbox"] { margin: 0; }
 
 .app-shell.stitch-shell main :where(button:not(.modal-close):not(.row-menu-trigger):not(.order-column-filter-trigger):not(.platform-multi-select-trigger.is-compact):not(.product-delete-button):not(.logout-link):not(.sidebar-pin-toggle):not(.rv-icon-button)) {
   min-height: 44px;
@@ -5844,7 +5843,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 }
 .invoice-workspace-preview-modal { width: min(1120px, 100%); }
 .invoice-workspace-internet-sales-toggle { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 13px; cursor: pointer; }
-.invoice-workspace-internet-sales-toggle input { flex: 0 0 auto; accent-color: var(--rv-color-primary); }
+.invoice-workspace-internet-sales-toggle input { flex: 0 0 auto; }
 .invoice-workspace-preview-card { display: grid; gap: 16px; padding: 18px; color: var(--rv-color-ink); border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface); }
 .invoice-workspace-preview-card + .invoice-workspace-preview-card { margin-top: 16px; }
 .invoice-workspace-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
@@ -5966,14 +5965,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-reference-platform-heading { position: relative; gap: 4px; padding-right: var(--rv-space-2); }
 .invoice-reference-platform-heading > strong { flex: 1 1 auto; }
 .invoice-reference-select-all { position: static; display: grid; width: 18px; height: 18px; flex: 0 0 18px; place-items: center; transform: none; }
-.app-shell.stitch-shell main .invoice-reference-select-all input, .app-shell.stitch-shell main .invoice-reference-select { appearance: none; -webkit-appearance: none; box-sizing: border-box; display: grid; width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; place-items: center; margin: 0; padding: 0; color: #fff; border: 1px solid var(--rv-color-border-strong); border-radius: 4px; background: var(--rv-color-surface-raised); cursor: pointer; }
-.app-shell.stitch-shell main .invoice-reference-select-all input::after, .app-shell.stitch-shell main .invoice-reference-select::after { width: 7px; height: 4px; content: ""; border-bottom: 2px solid currentColor; border-left: 2px solid currentColor; opacity: 0; transform: translateY(-1px) rotate(-45deg); }
-.app-shell.stitch-shell main .invoice-reference-select-all input:checked, .app-shell.stitch-shell main .invoice-reference-select:checked { border-color: var(--rv-color-primary); background: var(--rv-color-primary); }
-.app-shell.stitch-shell main .invoice-reference-select-all input:checked::after, .app-shell.stitch-shell main .invoice-reference-select:checked::after { opacity: 1; }
-.app-shell.stitch-shell main .invoice-reference-select-all input:indeterminate, .app-shell.stitch-shell main .invoice-reference-select:indeterminate { border-color: var(--rv-color-primary); background: var(--rv-color-primary); }
-.app-shell.stitch-shell main .invoice-reference-select-all input:indeterminate::after, .app-shell.stitch-shell main .invoice-reference-select:indeterminate::after { width: 8px; height: 0; border: 0; border-top: 2px solid currentColor; opacity: 1; transform: none; }
-.app-shell.stitch-shell main .invoice-reference-select-all input:focus-visible, .app-shell.stitch-shell main .invoice-reference-select:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 55%, transparent); outline-offset: 2px; }
-.app-shell.stitch-shell main .invoice-reference-select-all input:disabled { cursor: default; opacity: .45; }
 .invoice-reference-order { position: relative; }
 .invoice-reference-order > .invoice-reference-select { position: absolute; top: 10px; right: 10px; z-index: 1; }
 .invoice-reference-bulk-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--rv-color-primary) 48%, var(--rv-color-border)); border-radius: var(--rv-radius-md); background: color-mix(in srgb, var(--rv-color-primary) 8%, var(--rv-color-surface-raised)); }
