@@ -141,7 +141,7 @@ describe('returns page', () => {
     expect(row.querySelector('.rr-thumb-none')).toBeNull()
   })
 
-  it('shows a Pazarama return cargo code bare in the Kargo column (the order cell names it), with a hint, and never links it', async () => {
+  it('shows a Pazarama return cargo code in the Kargo column under its own label (owner, 18 Nov 2026), with a hint, and never links it', async () => {
     const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementationOnce(fn: (path: string) => Promise<unknown>): void }
     const original = hubApi.getMockImplementation()!
     hubApi.mockImplementationOnce(async (path: string) => {
@@ -152,7 +152,7 @@ describe('returns page', () => {
     await waitFor(() => host.textContent!.includes('PZ15649905156'))
     const cargoCell = host.querySelector<HTMLElement>('[data-l="Kargo"]')!
     expect(cargoCell.textContent).toContain('PZ15649905156')
-    expect(cargoCell.textContent).not.toContain('İade Kargo Kodu')
+    expect(cargoCell.textContent).toContain('İade Kargo Kodu')
     expect(host.querySelector('.rr-ordercell')!.textContent).not.toContain('İade Kargo Kodu')
     expect(cargoCell.querySelector('[title="Pazarama\'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."]')).not.toBeNull()
     expect(cargoCell.querySelector('a')).toBeNull()

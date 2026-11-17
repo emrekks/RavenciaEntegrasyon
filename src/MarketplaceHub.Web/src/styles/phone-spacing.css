@@ -164,3 +164,10 @@
 @media (max-width: 760px) {
   :root body :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="button"], [type="submit"], [type="reset"], [type="image"], [type="hidden"]), select, textarea):not(#phone-field) { font-size: 16px; }
 }
+
+/* Sideways strips on a phone (owner, 18 Nov 2026): the tab bars, the segmented groups and the count chips slide only left and right — no
+   vertical give (overflow-y hidden), no scroll chaining into the page sideways, no scroll bar. Measured at 375 px on Raporlar, Siparişler and
+   İşlem Takibi: none of them has content taller than its box, so nothing needs its height fixed; this keeps it that way. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :is(.rv-tabs, .rv-view-tabs, .reports-segmented, .jobs-category-segment, .jobs-reference-status-summary, .promotion-sections) { overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
+}
