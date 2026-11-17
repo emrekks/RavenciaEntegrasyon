@@ -9,7 +9,7 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // Owner decision 17 Nov 2026 (MarketplaceInvoiceLinkPolicy): a new delivery sends E-Faturam's permanent document URL, the
-// one the PDF was downloaded from and checked; n11 and Pazarama, whose link rule wants a document extension, keep the panel
+// one the PDF was downloaded from and checked; n11, Pazarama and PTT AVM, whose link rule wants a document extension, keep the panel
 // link; the Panel setting brings the panel link back everywhere; a delivery keeps the link it carried; a missing or
 // unusable provider URL stops the delivery instead of falling back. Fakes only: no provider or marketplace is called.
 [Collection("postgres-integration")]
@@ -22,7 +22,6 @@ public sealed class PostgreSqlProviderInvoiceLinkTests(PostgreSqlTenantIsolation
     [PostgreSqlTheory]
     [InlineData("TRENDYOL")]
     [InlineData("HEPSIBURADA")]
-    [InlineData("PTTAVM")]
     [InlineData("SHOPIFY")]
     public async Task ANewDeliverySendsTheProviderUrlAndRecordsIt(string platformCode)
     {
@@ -49,8 +48,9 @@ public sealed class PostgreSqlProviderInvoiceLinkTests(PostgreSqlTenantIsolation
     [InlineData("N11", null)]
     [InlineData("PAZARAMA", null)]
     [InlineData("TRENDYOL", "Panel")]
-    [InlineData("PTTAVM", "panel")]
-    public async Task NElevenPazaramaAndThePanelSettingSendThePanelLink(string platformCode, string? setting)
+    [InlineData("PTTAVM", null)]
+    [InlineData("HEPSIBURADA", "panel")]
+    public async Task NElevenPazaramaPttAvmAndThePanelSettingSendThePanelLink(string platformCode, string? setting)
     {
         var seed = NewSeed($"panel-{platformCode}", platformCode);
         await SeedAsync(seed);

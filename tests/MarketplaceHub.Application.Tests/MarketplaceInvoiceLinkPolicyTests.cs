@@ -21,7 +21,7 @@ public sealed class MarketplaceInvoiceLinkPolicyTests
     [Theory]
     [InlineData("TRENDYOL", null, true)]
     [InlineData("HEPSIBURADA", "Provider", true)]
-    [InlineData("PTTAVM", "", true)]
+    [InlineData("PTTAVM", "", false)]
     [InlineData("SHOPIFY", "provider", true)]
     [InlineData("TRENDYOL", "something-else", true)]
     [InlineData("N11", null, false)]
@@ -29,7 +29,7 @@ public sealed class MarketplaceInvoiceLinkPolicyTests
     [InlineData("TRENDYOL", "Panel", false)]
     [InlineData("HEPSIBURADA", " panel ", false)]
     [InlineData(null, null, false)]
-    public void TheProviderLinkIsTheDefaultExceptNElevenPazaramaAndThePanelSetting(string? platformCode, string? setting, bool provider) =>
+    public void TheProviderLinkIsTheDefaultExceptNElevenPazaramaPttAvmAndThePanelSetting(string? platformCode, string? setting, bool provider) =>
         Assert.Equal(provider, MarketplaceInvoiceLinkPolicy.UsesProviderLink(platformCode, setting));
 
     [Theory]
@@ -55,7 +55,8 @@ public sealed class MarketplaceInvoiceLinkPolicyTests
         Assert.Equal(MarketplaceInvoiceLinkPolicy.ProviderLinkInvalidCode,
             MarketplaceInvoiceLinkPolicy.ProviderLinkRejection("HEPSIBURADA", "https://apigateway.trendyolecozum.com/" + new string('a', 2100))?.Code);
         Assert.Equal(MarketplaceInvoiceLinkPolicy.ProviderLinkInvalidCode, MarketplaceInvoiceLinkPolicy.ProviderLinkRejection("N11", ProviderUrl)?.Code);
-        Assert.Null(MarketplaceInvoiceLinkPolicy.ProviderLinkRejection("PTTAVM", ProviderUrl));
+        Assert.Equal(MarketplaceInvoiceLinkPolicy.ProviderLinkInvalidCode, MarketplaceInvoiceLinkPolicy.ProviderLinkRejection("PTTAVM", ProviderUrl)?.Code);
+        Assert.Null(MarketplaceInvoiceLinkPolicy.ProviderLinkRejection("HEPSIBURADA", ProviderUrl));
     }
 
     [Fact]
@@ -82,13 +83,16 @@ public sealed class MarketplaceInvoiceLinkPolicyTests
         Assert.Equal(ProviderUrl, request!.InvoiceLink.AbsoluteUri);
     }
 
+    // PTT AVM keeps the panel link (its documentation asks for a ".pdf, html, htm" url; an extensionless one is untried),
+    // which its adapter sends as the .pdf alias.
     [Fact]
-    public void PttAvmSendsTheProviderUrlAsTheInvoiceLink()
+    public void PttAvmKeepsThePanelLinkSentAsPdf()
     {
-        var request = PttAvmInvoiceMapper.Request(Payload(new Dictionary<string, object?> { ["orderNumber"] = "PTT-1", ["lineItemIds"] = new[] { 101L, 102L } }));
+        Assert.False(MarketplaceInvoiceLinkPolicy.UsesProviderLink("PTTAVM", MarketplaceInvoiceLinkPolicy.ProviderSource));
+        var request = PttAvmInvoiceMapper.Request(Payload(new Dictionary<string, object?> { ["orderNumber"] = "PTT-1", ["lineItemIds"] = new[] { 101L, 102L } }, PanelLink));
         Assert.Null(request.Error);
-        Assert.Equal(ProviderUrl, request.Link);
-        Assert.Equal(ProviderUrl, request.StoredLink);
+        Assert.Equal(InvoiceDocumentLink.PdfAlias(PanelLink), request.Link);
+        Assert.Equal(PanelLink, request.StoredLink);
     }
 
     // Why n11 and Pazarama keep the panel link: their adapters take only links whose path ends in a document extension,

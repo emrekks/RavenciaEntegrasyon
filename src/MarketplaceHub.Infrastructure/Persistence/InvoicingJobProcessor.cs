@@ -1181,7 +1181,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             return true;
         // The link of a delivery that carried none yet (MarketplaceInvoiceLinkPolicy, 17 Nov 2026): E-Faturam's permanent
         // URL, which the PDF was downloaded from and checked, unless the setting says Panel or the marketplace takes only
-        // links ending in a document extension (n11, Pazarama); those get the document-bound panel link, which the API
+        // links ending in a document extension (n11, Pazarama, PTT AVM); those get the document-bound panel link, which the API
         // also serves as .../invoice.pdf. An invoice that already has a panel delivery link keeps it. A delivery in
         // flight, or one that recorded its link, is never given another one here.
         var choosesLink = state?.InvoiceLink is null

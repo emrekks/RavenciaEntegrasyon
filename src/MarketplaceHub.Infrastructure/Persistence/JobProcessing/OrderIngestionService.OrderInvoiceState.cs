@@ -181,7 +181,7 @@ internal sealed partial class OrderIngestionService
         {
             var remoteInvoiceNumber = observation?.InvoiceNumber?.Trim();
             // Every link the panel stored for this invoice is its own: E-Faturam's permanent URL (deliveries since
-            // 17 Nov 2026, and Trendyol/Hepsiburada before) and the panel link (n11, Pazarama, older PTT AVM deliveries).
+            // 17 Nov 2026, and Trendyol/Hepsiburada before) and the panel link (n11, Pazarama, PTT AVM and older deliveries).
             var localInvoiceLinks = await InvoiceDeliveredLinks.OwnAsync(db, invoice.TenantId, invoice.Id, cancellationToken);
             var exactProof = InvoiceDeliveryProofPolicy.HasExactProof(
                 new(package.ExternalPackageId, observation?.RawStatus ?? string.Empty, true,

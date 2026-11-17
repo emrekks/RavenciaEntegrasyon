@@ -4,8 +4,10 @@ namespace MarketplaceHub.Application;
 /// Which link an issued invoice's marketplace delivery carries (owner decision, 17 Nov 2026): E-Faturam's own permanent
 /// document URL, the one the panel downloaded the PDF from and checked (the PDF row's PermanentUrl), instead of the panel's
 /// public link. One setting, <see cref="SettingKey"/>: <c>Provider</c> (default) or <c>Panel</c> (every marketplace gets the
-/// panel's public link again). n11 and Pazarama always get the panel link: their link rule wants a path ending in a
-/// document extension (.pdf/.png/.jpeg) and E-Faturam's URL has none (…/api/invoice/documents/download/&lt;number&gt;).
+/// panel's public link again). n11, Pazarama and PTT AVM always get the panel link: n11 and Pazarama want a path ending in
+/// a document extension (.pdf/.png/.jpeg), PTT AVM's documentation asks for a ".pdf, html, htm" url (whether it takes one
+/// without an extension is unknown and untried, so it is not risked), and E-Faturam's URL has none
+/// (…/api/invoice/documents/download/&lt;number&gt;).
 /// A delivery that already carried a link keeps it (MarketplaceDeliveryState.InvoiceLink); this policy only chooses the
 /// link of a delivery that has none yet.
 /// </summary>
@@ -18,7 +20,7 @@ public static class MarketplaceInvoiceLinkPolicy
     public const string ProviderLinkInvalidCode = "INVOICE_PROVIDER_LINK_INVALID";
     public const int MaximumLinkLength = 2048;
 
-    private static readonly HashSet<string> PanelOnlyPlatforms = new(StringComparer.OrdinalIgnoreCase) { "N11", "PAZARAMA" };
+    private static readonly HashSet<string> PanelOnlyPlatforms = new(StringComparer.OrdinalIgnoreCase) { "N11", "PAZARAMA", "PTTAVM" };
 
     // Anything but an explicit "Panel" keeps the provider link (the owner's default), so a typo cannot silently bring the
     // panel link back.
@@ -46,7 +48,7 @@ public static class MarketplaceInvoiceLinkPolicy
         if (uri.AbsoluteUri.Length > MaximumLinkLength)
             return (ProviderLinkInvalidCode, $"E-Faturam'ın kalıcı belge linki {MaximumLinkLength} karakterden uzun; fatura linki {marketplace} pazaryerine gönderilmedi ve panel linkine geçilmedi.");
         if (PanelOnlyPlatforms.Contains(platformCode ?? ""))
-            return (ProviderLinkInvalidCode, $"{marketplace} yalnız pdf, png veya jpeg ile biten fatura linklerini kabul ediyor; E-Faturam linki gönderilmedi.");
+            return (ProviderLinkInvalidCode, $"{marketplace} yalnız belge uzantısıyla (pdf vb.) biten fatura linki istiyor; uzantısız E-Faturam linki gönderilmedi.");
         return null;
     }
 

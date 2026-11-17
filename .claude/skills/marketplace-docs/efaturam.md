@@ -67,12 +67,15 @@ insufficient balance surfaces only as 409 `…/gateway/insufficient-credit` on i
   - Pazarama `order/invoice-link`: only a sample `https://faturaUrl.pdf` (`pazarama-api-son.md:3540-3590`); the adapter
     requires https, max 2048 and a document extension since phase 6, so Pazarama keeps the panel link too.
   - PTT AVM SaveInvoince: "url: Faturanın .pdf, html ve htm formatında url bilgisi" (`pttavm-api-son.md:1924`); the
-    adapter requires https only. Acceptance is read back from the order lines' IsInvoice.
+    adapter requires https only. Whether PTT AVM takes a link without an extension: unknown, never tried, so PTT AVM
+    keeps the panel link (owner, 17 Nov 2026: no live risk without proof).
 - Before 17 Nov 2026 Trendyol, Hepsiburada and Shopify already received the provider URL (the latest document with a
-  PermanentUrl is the PDF row); only n11, Pazarama and PTT AVM received the panel link.
+  PermanentUrl is the PDF row); only n11, Pazarama and PTT AVM received the panel link. Verified on live 17 Nov 2026 by
+  read-only SQL (coordinator): Hepsiburada invoices hold only the PDF row, host apigateway.trendyolecozum.com; Pazarama
+  invoices hold the panel row.
 - Since 17 Nov 2026 (`MarketplaceInvoiceLinkPolicy`, setting `Invoicing:MarketplaceInvoiceLink` = `Provider` default |
-  `Panel`): Trendyol, Hepsiburada, PTT AVM and Shopify get the provider URL of the verified PDF row; n11 and Pazarama
-  always the panel link. Each delivery stores the link it carried (`marketplace_delivery_states.InvoiceLink`); retries,
+  `Panel`): Trendyol, Hepsiburada and Shopify get the provider URL of the verified PDF row; n11, Pazarama and PTT AVM
+  always the panel link, so the release changes no marketplace's delivered link. Each delivery stores the link it carried (`marketplace_delivery_states.InvoiceLink`); retries,
   the Hepsiburada exchange re-send, confirmation and link removal use that link, and a delivery recorded before the
   column keeps its old link (the panel row when one exists, else the latest document). A missing or unusable provider
   URL stops the delivery (INVOICE_PROVIDER_LINK_MISSING / _INVALID, MarketplaceFailed, Tekrar Gönder) without falling
