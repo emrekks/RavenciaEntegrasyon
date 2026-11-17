@@ -8,8 +8,9 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // KATALOG-14 phase D5b (owner, 17 Nov 2026: "Model kartına yazılan ad, açıklama, KDV, teslimat süresi, garanti süresi,
 // marka, kategori, desi model kartına yazılır; varyantlar buradan alır, yani ortaktır"). No colour or variant holds its
-// own value of these. The brand is the model's key (ProductModelLinks re-links a card whose brand changes); the other
-// seven are written here:
+// own value of these. The brand is part of the model's key with the code (owner, 17 Nov 2026): a brand a save gives the
+// model moves it with every colour to that brand's key, refused when that brand already holds the code (ApplyAsync and
+// ProductModelLinks); a marketplace import moves no model, its card goes to its brand's model. All eight are written here:
 // - A save that gives a card (or a variant, the desi) one of these values (the editor, Toplu Değer Ata, an Excel row of
 //   one card, the API) gives it to the model and mirrors it to every colour and every variant of the model, in the save's
 //   transaction (ApplyAsync). Only the fields the save changed are mirrored: a field nobody touched keeps what the cards
@@ -17,8 +18,8 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 //   in one save leave the model as it is and the difference is reported (the Excel file refuses such rows first).
 // - A marketplace product import (AppDbContext.MarketplaceCatalogImport) never moves a model: a colour that comes in
 //   with another value keeps the model's (its copy is written back) and PRODUCT_MODEL_VALUES_DIFFER names the model, the
-//   field and both values. A new colour card never moves its model either; a model the save opens took its colours'
-//   values when it was opened (most colours, on a tie the oldest card: the editor's rule).
+//   field and both values (only a VAT difference is warned about). A new colour card never moves its model either; a
+//   model the save opens took the first card's values (ProductFamilySharedFields.NewModelValues).
 // - The startup pass, the deploy refresh and the nightly scan write none of these fields and mark no link (review,
 //   17 Nov 2026): a colour whose copy differs from its model's (the previous release wrote the card alone during a
 //   deploy) is only reported (ReportGapsAsync); the owner's own save closes it.

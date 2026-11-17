@@ -591,18 +591,16 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
 
     // Model Kaydı Faz 2b, the productMainId a Trendyol send carries (owner, 14 Nov 2026: "eşlenmiş olduğuna eklesin"). The
     // model link (the productMainId an import read from the model's Trendyol product, held by a variant link of the model:
-    // MarketplaceModelLinks.ForCardAsync) is the code Trendyol keeps the model by; a model whose code key is under several
-    // brands (open PRODUCT_MODEL_AMBIGUOUS) has none. ProductMainIdFor decides between it and the panel's model code.
+    // MarketplaceModelLinks.ForCardAsync) is the code Trendyol keeps the model by (a model is its brand and its code, so a
+    // code under several brands is several models, each with its own link). ProductMainIdFor decides between it and the
+    // panel's model code.
     private static async Task<string> TrendyolProductMainIdAsync(AppDbContext db, Guid tenantId, Guid connectionId, Product product, Guid[] cardVariantIds, string panelCode, CancellationToken cancellationToken)
     {
         string? modelLinkCode = null;
         if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken, cardLinksAreModelLevel: false) is { ExternalId: { } linked } modelLink)
         {
             var modelKey = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == modelLink.ModelId).Select(x => x.ModelCodeKey).SingleOrDefaultAsync(cancellationToken);
-            var ambiguousKeys = new[] { ProductModelLinks.AmbiguousDedupeKey(modelKey ?? ""), ProductModelLinks.AmbiguousDedupeKey(ProductFamilyKeyPolicy.ModelCodeKey(panelCode) ?? "") };
-            var ambiguous = modelKey is null || await db.OperationalIssues.AsNoTracking()
-                .AnyAsync(x => x.TenantId == tenantId && x.Code == ProductModelLinks.AmbiguousCode && x.Status != IssueStatus.Resolved && ambiguousKeys.Contains(x.DedupeKey), cancellationToken);
-            if (!ambiguous) modelLinkCode = linked;
+            if (modelKey is not null) modelLinkCode = linked;
         }
         var onMarketplace = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == product.Id, cancellationToken)
             || await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && cardVariantIds.Contains(x.VariantId), cancellationToken);

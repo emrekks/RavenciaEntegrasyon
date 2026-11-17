@@ -132,10 +132,10 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         {
             new object?[] { "Ürün dosyası nasıl düzenlenir?" },
             new object?[] { "Her satır bir varyanttır. Yüklerken hangi alanların panele yazılacağını siz seçersiniz: Ürün Adı, Açıklama, Marka, Barkod, Model Kodu, Panel Fiyatı, KDV Oranı, Stok, Desi, Maliyet ve mağaza fiyatları. Seçmediğiniz sütunlar dosyada olsa da okunmaz." },
-            new object?[] { "Marka modele aittir: modelin (aynı model kodlu tüm renklerin) satırlarına aynı markayı yazın; marka modelin tüm renk kartlarına yazılır. Panelde aynı adlı marka varsa o kullanılır (büyük/küçük harf, Türkçe karakter ve boşluk farkı gözetilmez), yoksa yeni marka açılır; kapatılmış bir marka yeniden açılmaz, o satır hatalı olur. Marka silinemez." },
+            new object?[] { "Model, marka ile model kodudur: aynı model kodu başka bir markada o markanın ayrı modelidir. Marka değişikliği modeli bütün renkleriyle yeni markaya taşır; o markada aynı model kodlu bir model zaten varsa birleştirilmez, değişiklik reddedilir. Panelde aynı adlı marka varsa o kullanılır (büyük/küçük harf, Türkçe karakter ve boşluk farkı gözetilmez), yoksa yeni marka açılır; kapatılmış bir marka yeniden açılmaz, o satır hatalı olur. Marka silinemez." },
             new object?[] { "Varyant, Kategori ve Durum sütunları yalnız bilgi içindir; değiştirmeniz hiçbir şeyi değiştirmez. Stok Kodu satırın eşleştirme anahtarıdır ve değiştirilemez." },
-            new object?[] { "Açıklama modele aittir: modelin (aynı model kodlu tüm renklerin) satırlarına aynı açıklamayı yazın; değişen açıklama modele ve bütün renklerine yazılır. Yalnız bir satırı değiştirmeniz yeterlidir; eski açıklamayı taşıyan diğer satırlar değişmemiş sayılır, satırlarda iki farklı yeni açıklama olursa o modelin satırları reddedilir. HTML yazılabilir; editördeki gibi temizlenir, en fazla 60.000 karakter olur ve boş olamaz. Boş hücre açıklamayı değiştirmez, silmez." },
-            new object?[] { "Ürün Adı ve KDV Oranı ürünün kendisine aittir: bir ürünün tüm satırlarına aynı değeri yazın. Barkod tek bir varyantta olabilir ve silinemez; barkodu değiştirirken satır yalnız Stok Kodu ile eşleştirilir. Model kodunu silmek için - yazın; satışa açık ya da kapalı üründe model kodu ve desi zorunludur, yalnız taslakta silinebilir." },
+            new object?[] { "Açıklama da modele aittir. HTML yazılabilir; editördeki gibi temizlenir, en fazla 60.000 karakter olur ve boş olamaz. Boş hücre açıklamayı değiştirmez, silmez." },
+            new object?[] { "Ürün Adı, Açıklama, KDV Oranı, Desi ve Marka modele aittir (aynı marka ve model kodlu bütün renkler ve bedenler): bir satırdaki değişiklik modelin bütün renklerine ve bedenlerine uygulanır (ad, her rengin kendi renk adıyla). Yalnız bir satırı değiştirmeniz yeterlidir; eski değeri taşıyan diğer satırlar değişmemiş sayılır, aynı modelin satırlarına iki farklı yeni değer yazılırsa o modelin satırları reddedilir. Barkod tek bir varyantta olabilir ve silinemez; barkodu değiştirirken satır yalnız Stok Kodu ile eşleştirilir. Model kodunu silmek için - yazın; satışa açık ya da kapalı üründe model kodu ve desi zorunludur, yalnız taslakta silinebilir." },
             new object?[] { "Panel Satış Fiyatı ve Panel Liste Fiyatı ürünün panel ana fiyatıdır; liste fiyatı satış fiyatından küçük olamaz. Panel fiyatı ve KDV panele kaydedilir, pazaryerine fiyat göndermez." },
             new object?[] { "Maliyet: 1 adetin Türk lirası maliyeti, ürün kartındaki \"Maliyet\" alanıyla aynı değer. Kâr raporu bu değeri, müşterinin ödediği KDV dahil satış tutarından düşer. 0 maliyet girilmemiş sayılır: kayıtlı maliyeti siler, kâr hesaplanmaz ve varyant eksik maliyet listesinde kalır." },
             new object?[] { $"Desi: kargo hacim ağırlığı. Raporlar kargo ücretini, pazaryeri kargo tutarı gelmediğinde bu değerle tahmin eder. 0'dan büyük ve en fazla {ProductDesi.MaximumText} olmalıdır." },
@@ -371,10 +371,17 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         // C-9: a model code the file changes to one another product holds (a product this upload does not change) would
         // join that product's family; the upload is refused before anything is written.
         var modelCodeChanges = changes.Where(change => change.SetModelCode).ToList();
-        var changedModelCodes = ModelCodeUniquenessPolicy.ChangedCodes(modelCodeChanges.Select(change => (byId[change.VariantId].ModelCode, change.ModelCode)));
-        if (changedModelCodes.Count > 0
-            && await ModelCodeOwnership.FindOtherAsync(db, tenantId, changedModelCodes, changes.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray(), cancellationToken) is { } modelCodeHolder)
-            return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", $"Dosyadaki yeni bir model kodu '{modelCodeHolder.Title}' ürününde kullanılıyor; yazılırsa iki ürün tek ürünün renkleri gibi birleşir. Dosyayı düzeltip yeniden yükleyin.", 409);
+        // A model is its brand and its code (owner, 17 Nov 2026): only a card of the row's own brand holding the code counts.
+        var fileProductIds = changes.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
+        var codeProducts = modelCodeChanges.Select(change => byId[change.VariantId].ProductId).Distinct().ToArray();
+        var brandOfRecoded = codeProducts.Length == 0 ? [] : await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId && codeProducts.Contains(product.Id)).ToDictionaryAsync(product => product.Id, product => product.BrandId, cancellationToken);
+        foreach (var brandGroup in modelCodeChanges.GroupBy(change => brandOfRecoded.GetValueOrDefault(byId[change.VariantId].ProductId)))
+        {
+            var changedModelCodes = ModelCodeUniquenessPolicy.ChangedCodes(brandGroup.Select(change => (byId[change.VariantId].ModelCode, change.ModelCode)));
+            if (changedModelCodes.Count > 0
+                && await ModelCodeOwnership.FindOtherAsync(db, tenantId, brandGroup.Key, changedModelCodes, fileProductIds, cancellationToken) is { } modelCodeHolder)
+                return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_MODEL_CODE_TAKEN", $"Dosyadaki yeni bir model kodu '{modelCodeHolder.Title}' ürününde kullanılıyor; yazılırsa iki ürün tek ürünün renkleri gibi birleşir. Dosyayı düzeltip yeniden yükleyin.", 409);
+        }
         // KATALOG-1: the model code is the model's: every row of a card the upload re-codes ends on one code (the preview
         // refuses it too; checked again here, as the client's plan is not trusted).
         var recodedChanges = modelCodeChanges.Where(change => ProductFamilyKeyPolicy.ModelCodeKey(byId[change.VariantId].ModelCode) != ProductFamilyKeyPolicy.ModelCodeKey(change.ModelCode)).ToList();

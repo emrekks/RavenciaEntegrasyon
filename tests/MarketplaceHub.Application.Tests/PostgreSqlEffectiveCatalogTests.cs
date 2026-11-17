@@ -307,6 +307,26 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         }
     }
 
+    // Owner's rule (17 Nov 2026), pinned: the startup pass, the nightly scan and the deploy refresh open
+    // PRODUCT_MODEL_VALUES_DIFFER only for a VAT that differs from the model's; a colour whose category, warranty or
+    // delivery days differ is only returned for the log (no warning, nothing written).
+    [PostgreSqlFact]
+    public async Task AColourDifferingOnlyInCategoryWarrantyOrDelivery_IsOnlyLogged_NoWarningOpens()
+    {
+        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
+        var card = seeded.Cards[1];
+        await using (var db = fixture.CreateContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "CategoryId" = NULL, "WarrantyMonths" = 3, "DeliveryDays" = 9 WHERE "Id" = {card.Id}""");
+        await using (var db = fixture.CreateContext())
+        {
+            var logged = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.Contains(logged, x => x.Contains(ProductModelValues.Warranty, StringComparison.Ordinal) && x.Contains(ProductModelValues.DeliveryDays, StringComparison.Ordinal));
+            await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            await ProductModelValues.RefreshAllAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
+        }
+    }
+
     // A card without a model code holds a model of its own, whose brand follows the card's.
     [PostgreSqlFact]
     public async Task ACodelessCard_HoldsItsOwnModel_WhoseBrandFollowsTheCard()

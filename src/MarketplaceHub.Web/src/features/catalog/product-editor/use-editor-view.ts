@@ -71,7 +71,7 @@ export function useEditorView(c: EditorProps & EditorStateResult & EditorMediaPo
   // Kaydet, Hızlı Güncelle and Yayınlamaya Devam Et wait while a code field is red; they say why and lead to it.
   const codeRuleSaveBlock = variantCodeIssueSummary?.title ?? ''
   // "Yeni Ürün" only: the card that already holds the typed model code stops the create (and a new draft).
-  const modelCodeHolder = useModelCodeHolder(form.modelCode, !editProductId)
+  const modelCodeHolder = useModelCodeHolder(form.modelCode, form.brandId, !editProductId)
   const modelCodeCreateBlock = !editProductId && modelCodeHolder ? modelCodeHolder.message : ''
   function goToFirstVariantCodeIssue() {
     if (!publishOnly && wizardStep !== 1) setWizardStep(1)

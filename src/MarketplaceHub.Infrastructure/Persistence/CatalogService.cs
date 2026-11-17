@@ -1114,7 +1114,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (MixedModelCodes<ProductView>(command.Variants.Select(x => x.ModelCode)) is { } createMixed) return createMixed;
         // A model code belongs to one product: a new card (a draft too) may not take one the catalog already holds. Checked
         // before the stock codes, which the editor generates from the model code and would clash first.
-        if (await ModelCodeOwnership.FindAsync(db, tenantId, command.Variants.Select(x => x.ModelCode), cancellationToken) is { } modelCodeHolder)
+        if (await ModelCodeOwnership.FindAsync(db, tenantId, command.BrandId, command.Variants.Select(x => x.ModelCode), cancellationToken) is { } modelCodeHolder)
         {
             var modelCodeMessage = ModelCodeUniquenessPolicy.Message(modelCodeHolder.Title);
             return ServiceResult<ProductView>.Fail(ModelCodeUniquenessPolicy.ConflictCode, modelCodeMessage, 409, new Dictionary<string, string[]> { [ModelCodeUniquenessPolicy.Field] = [modelCodeMessage] });
@@ -1653,7 +1653,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (updateClashes.Count > 0) return CodeConflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir üründe kullanılıyor", updateClashes);
             // C-9: a row whose model code changes to one another product (outside this family save) holds is refused.
             var changedModelCodes = ModelCodeUniquenessPolicy.ChangedCodes(variantUpdates.Select(update => (existingVariants.Single(x => x.Id == update.Id).ModelCode, update.ModelCode)));
-            if (changedModelCodes.Count > 0 && await ModelCodeOwnership.FindOtherAsync(db, tenantId, changedModelCodes, familyVariantProductIds, cancellationToken) is { } changedHolder)
+            if (changedModelCodes.Count > 0 && await ModelCodeOwnership.FindOtherAsync(db, tenantId, command.BrandId, changedModelCodes, familyVariantProductIds, cancellationToken) is { } changedHolder)
             {
                 var changeMessage = ModelCodeUniquenessPolicy.ChangeMessage(changedHolder.Title);
                 return ServiceResult<ProductView>.Fail(ModelCodeUniquenessPolicy.ChangeConflictCode, changeMessage, 409, new Dictionary<string, string[]> { [ModelCodeUniquenessPolicy.Field] = [changeMessage] });

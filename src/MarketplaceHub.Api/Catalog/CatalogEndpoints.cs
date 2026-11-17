@@ -100,12 +100,13 @@ public static partial class CatalogEndpoints
             return Results.Ok(new { items = taken });
         }).Produces<TakenVariantCodesView>().Idempotent(WriteReasons.ReadOnly);
         // Read only: the card that already holds a model code, for the "Yeni Ürün" editor (a new card may not take it).
-        api.MapGet("/catalog/model-codes/holder", async (string? code, HttpContext http, AppDbContext db) =>
+        // A model is its brand and its code (owner, 17 Nov 2026): only a card of the same brand (brandId; none: a blank brand) holds it.
+        api.MapGet("/catalog/model-codes/holder", async (string? code, Guid? brandId, HttpContext http, AppDbContext db) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var modelCode = code?.Trim() ?? "";
             if (modelCode.Length > ModelCodeUniquenessPolicy.MaxCodeLength) return Problem(http, new("VALIDATION_FAILED", $"Model kodu en fazla {ModelCodeUniquenessPolicy.MaxCodeLength} karakter olabilir.", 422));
-            var holder = await ModelCodeOwnership.FindAsync(db, tenant.TenantId, [modelCode], http.RequestAborted);
+            var holder = await ModelCodeOwnership.FindAsync(db, tenant.TenantId, brandId, [modelCode], http.RequestAborted);
             return Results.Ok(new { taken = holder is not null, productId = holder?.ProductId, productTitle = holder?.Title, message = holder is null ? null : ModelCodeUniquenessPolicy.Message(holder.Title) });
         }).Produces<ModelCodeHolderView>();
         api.MapGet("/products/{id:guid}/marketplace-codes", async (Guid id, HttpContext http, ICatalogService service) =>

@@ -962,6 +962,31 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.False(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelLinks.AmbiguousCode && row.Status == IssueStatus.Open));
     }
 
+    // Today's behaviour, pinned (review, 17 Nov 2026): Trendyol brings a colour the panel holds under another brand (the
+    // listing's brand changed there) and the run writes the card ("Mevcut Ürün Bilgilerini Güncelle"). An import moves no
+    // model: the card takes the listing's brand and goes to that brand's model of the code (opened here), the other colours
+    // stay on their brand's model, untouched.
+    [PostgreSqlFact]
+    public async Task AHeldColourComingBackUnderAnotherBrand_MovesAloneToThatBrandsModel_TheOthersStay()
+    {
+        var seed = await SeedAsync();
+        var lavian = await AddLavianAsync(seed);
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki")])), "{\"full\":true}");
+        ProductModel held;
+        await using (var db = fixture.CreateContext()) held = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
+
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { BrandExternal = "789", BrandName = "Lavian" }])), "{\"full\":true,\"updateExistingProducts\":true}");
+
+        await using var check = fixture.CreateContext();
+        var cards = await CardsAsync(check, seed);
+        Assert.Equal((seed.BrandId, held.Id), (cards[ContentId("Bordo")].Product.BrandId!.Value, cards[ContentId("Bordo")].Product.FamilyId!.Value));
+        Assert.Equal(lavian, cards[ContentId("Haki")].Product.BrandId);
+        var hakiModel = await check.ProductModels.AsNoTracking().SingleAsync(row => row.Id == cards[ContentId("Haki")].Product.FamilyId);
+        Assert.Equal((lavian, ModelCode), (hakiModel.BrandId!.Value, hakiModel.ModelCodeKey));
+        Assert.Equal(held.BrandId, (await check.ProductModels.AsNoTracking().SingleAsync(row => row.Id == held.Id)).BrandId);
+        Assert.False(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelLinks.AmbiguousCode && row.Status == IssueStatus.Open));
+    }
+
     // Owner (17 Nov 2026, "farklı markalar aynı model kodunu kullanabiliyor"): one import group bringing the same model code
     // under two brands opens two models, one per brand; every listing comes in and nothing is warned about.
     [PostgreSqlFact]

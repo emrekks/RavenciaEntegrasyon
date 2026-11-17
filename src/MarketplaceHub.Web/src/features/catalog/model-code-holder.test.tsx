@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const hubApi = vi.hoisted(() => vi.fn(async (path: string) => {
-  if (path === '/catalog/model-codes/holder?code=MZ021Y-CD') return { taken: true, productId: 'p-1', productTitle: 'Kadın Bluz', message: "Bu model kodu 'Kadın Bluz' ürününde kullanılıyor. Yeni renk veya beden eklemek için o ürünü düzenleyin." }
+  if (path === '/catalog/model-codes/holder?code=MZ021Y-CD&brandId=b-ravencia') return { taken: true, productId: 'p-1', productTitle: 'Kadın Bluz', message: "Bu model kodu 'Kadın Bluz' ürününde kullanılıyor. Yeni renk veya beden eklemek için o ürünü düzenleyin." }
   if (path.startsWith('/catalog/model-codes/holder?code=')) return { taken: false }
   throw new Error(`Test API fixture does not handle ${path}`)
 }))
@@ -34,13 +34,13 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function Probe({ code, enabled }: { code: string; enabled: boolean }) {
-  const holder = useModelCodeHolder(code, enabled)
+function Probe({ code, brandId, enabled }: { code: string; brandId: string; enabled: boolean }) {
+  const holder = useModelCodeHolder(code, brandId, enabled)
   return <div><span data-testid="state">{holder ? 'blocked' : 'free'}</span><ModelCodeHolderNotice holder={holder} /></div>
 }
 
-async function renderProbe(code: string, enabled = true) {
-  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><Probe code={code} enabled={enabled} /></MemoryRouter></QueryClientProvider>) })
+async function renderProbe(code: string, enabled = true, brandId = 'b-ravencia') {
+  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><Probe code={code} brandId={brandId} enabled={enabled} /></MemoryRouter></QueryClientProvider>) })
 }
 
 async function settle() {
@@ -70,7 +70,7 @@ describe('model code holder', () => {
     expect(hubApi).not.toHaveBeenCalled()
     expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('free')
     await settle()
-    expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD&brandId=b-ravencia', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('blocked')
     const notice = container.querySelector('.model-code-holder-notice')
     expect(notice?.textContent).toContain('Kullanımda: Kadın Bluz.')
@@ -91,5 +91,15 @@ describe('model code holder', () => {
     await settle()
     expect(hubApi).not.toHaveBeenCalled()
     expect(container.querySelector('.model-code-holder-notice')).toBeNull()
+  })
+})
+
+describe('model code holder per brand', () => {
+  it('asks with the chosen brand: the same code under another brand is free (a model is its brand and its code)', async () => {
+    vi.useFakeTimers()
+    await renderProbe('MZ021Y-CD', true, 'b-lavian')
+    await settle()
+    expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD&brandId=b-lavian', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('free')
   })
 })

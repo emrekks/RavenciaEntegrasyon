@@ -4972,6 +4972,7 @@ export interface ApiOperations {
     pathParams: Record<string, never>
     query: {
       code?: string
+      brandId?: string
     }
     headers: Record<string, never>
     body: never
