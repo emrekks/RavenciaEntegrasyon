@@ -1,4 +1,5 @@
-const shipmentDeadlineExemptStatuses = new Set(['ON_HOLD', 'PAYMENT_PENDING'])
+// A returned order (or one on its way back) has no shipping deadline left to miss: it was shipped (owner, 17 Nov 2026).
+const shipmentDeadlineExemptStatuses = new Set(['ON_HOLD', 'PAYMENT_PENDING', 'RETURNED', 'RETURN_IN_TRANSIT'])
 
 export function onHoldOrderStatusText(platformCode: string, rawStatuses: readonly string[] = []) {
   if (platformCode.trim().toUpperCase() !== 'HEPSIBURADA') return 'Askıda'

@@ -9,6 +9,14 @@ export type DeliveryInfo = { kind: DeliveryKind; label: string; value: string; n
 
 function longDate(value: string) { return formatIstanbul(new Date(value), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 
+// A parcel the carrier could not deliver and brought back (Trendyol UnDeliveredAndReturned), as opposed to a return the
+// customer started: the order says "Teslim Edilemedi" and "İade Döndü" instead of "İade Edildi" (owner, 17 Nov 2026).
+export function undeliveredReturn(item: Pick<Order, 'derivedStatus' | 'packages' | 'lines'>) {
+  if (item.derivedStatus !== 'RETURNED') return false
+  const raw = [...(item.packages ?? []).map(value => value.rawStatus), ...(item.lines ?? []).map(value => value.rawStatus)]
+  return raw.some(status => (status ?? '').replace(/[^a-z]/giu, '').toUpperCase() === 'UNDELIVEREDANDRETURNED')
+}
+
 export function deliveryText(item: Order): DeliveryInfo {
   const shipment = orderDisplayShipment(item)
   const rawStatuses = [...(item.packages ?? []).map(value => value.rawStatus), ...(item.lines ?? []).map(value => value.rawStatus)]
@@ -18,6 +26,10 @@ export function deliveryText(item: Order): DeliveryInfo {
   if (item.derivedStatus === 'PAYMENT_PENDING') return { kind: 'status', label: 'Sipariş Durumu', value: 'Ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }
   // An undelivered order reads the same on every marketplace, Hepsiburada included (item 6, 5 Nov 2026).
   if (['SHIPPED', 'UNDELIVERED'].includes(item.derivedStatus)) return { kind: 'shipping', label: 'Taşıma Durumunda', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Kargo zamanı bekleniyor', note: 'Kargoya teslim edildi', overdue: false }
+  // A parcel that came back (undelivered and returned, or a customer return) is past its shipping deadline for good:
+  // it says what happened instead of counting days late.
+  if (item.derivedStatus === 'RETURNED') return { kind: 'status', label: 'Sipariş Durumu', value: undeliveredReturn(item) ? 'İade Döndü' : 'İade Edildi', note: null, overdue: false }
+  if (item.derivedStatus === 'RETURN_IN_TRANSIT') return { kind: 'status', label: 'Sipariş Durumu', value: 'İade Yolda', note: null, overdue: false }
   if (item.derivedStatus === 'ON_HOLD') return { kind: 'status', label: 'Sipariş Durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }
   const dueAt = usableShipmentDueAt(item.shipmentDueAt)
   const overdueDays = overdueShipmentDays(item.derivedStatus, dueAt)

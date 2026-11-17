@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Order } from '../shared'
-import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from './order-delivery'
+import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail, undeliveredReturn } from './order-delivery'
 
 const order = (patch: Partial<Order>): Order => ({ id: 'o1', orderNumber: '1', derivedStatus: 'NEW', platformCode: 'TRENDYOL', isMicroExport: false, shipmentDueAt: null, packages: [], lines: [], ...patch }) as Order
 
@@ -37,6 +37,28 @@ describe('order delivery line', () => {
     const trendyol = deliveryText(order({ derivedStatus: 'UNDELIVERED', platformCode: 'TRENDYOL' }))
     expect(hepsiburada).toEqual(trendyol)
     expect(hepsiburada.kind).toBe('shipping')
+  })
+
+  it('says a returned order was returned instead of counting days late past its old deadline', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-17T09:00:00Z'))
+    const returned = deliveryText(order({ derivedStatus: 'RETURNED', shipmentDueAt: '2026-11-11T20:59:00Z' }))
+    expect(returned.kind).toBe('status')
+    expect(returned.value).toBe('İade Edildi')
+    expect(returned.overdue).toBe(false)
+    expect(deliveryDueLine(returned)).toBeNull()
+    expect(deliveryText(order({ derivedStatus: 'RETURN_IN_TRANSIT', shipmentDueAt: '2026-11-11T20:59:00Z' })).value).toBe('İade Yolda')
+    vi.useRealTimers()
+  })
+
+  it('tells a parcel that could not be delivered and came back from a customer return', () => {
+    const cameBack = order({ derivedStatus: 'RETURNED', lines: [{ rawStatus: 'UnDeliveredAndReturned' }] as Order['lines'] })
+    expect(undeliveredReturn(cameBack)).toBe(true)
+    expect(deliveryText(cameBack).value).toBe('İade Döndü')
+    const customerReturn = order({ derivedStatus: 'RETURNED', lines: [{ rawStatus: 'Returned' }] as Order['lines'] })
+    expect(undeliveredReturn(customerReturn)).toBe(false)
+    expect(deliveryText(customerReturn).value).toBe('İade Edildi')
+    expect(undeliveredReturn(order({ derivedStatus: 'SHIPPED', lines: [{ rawStatus: 'UnDeliveredAndReturned' }] as Order['lines'] }))).toBe(false)
   })
 
   it('counts the days an overdue order is late', () => {
