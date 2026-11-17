@@ -40,9 +40,11 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var variants = ListedVariants(tenantId);
         if (filter == ProductTransferExportFilter.MissingCost) variants = variants.Where(variant => variant.CostPrice == null || variant.CostPrice <= 0);
         if (filter == ProductTransferExportFilter.MissingDesi) variants = variants.Where(variant => variant.Desi == null);
+        // KATALOG-14 phase D5 B2: the brand, category and VAT columns (and the brand/category filters) are the model's, read
+        // through EffectiveCatalog as every other reader; the card's copy columns are not read.
         var rows = await (
             from variant in variants
-            join product in db.Products on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
+            join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
             where (brandId == null || product.BrandId == brandId) && (categoryId == null || product.CategoryId == categoryId)
             join brand in db.Brands on new { product.TenantId, Id = product.BrandId ?? Guid.Empty } equals new { brand.TenantId, brand.Id } into brands
             from brand in brands.DefaultIfEmpty()

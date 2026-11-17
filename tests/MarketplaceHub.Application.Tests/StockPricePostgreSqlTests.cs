@@ -2083,9 +2083,12 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(changed.Succeeded, changed.Error?.Message);
         Assert.Equal((10m, "INCLUDED"), (changed.Value!.VatRate, changed.Value.VatInclusion));
 
-        // A card with no VAT yet (an import that read none) cannot be saved until one is chosen; then it keeps it.
+        // A card with no VAT yet (an import that read none) cannot be saved until one is chosen; then it keeps it. The VAT is
+        // its model's (KATALOG-14 phase D5 B2: the card's copy column is not read), so the model's is the unknown one.
         db.ChangeTracker.Clear();
         await db.Products.Where(x => x.Id == created.Value.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, (decimal?)null).SetProperty(p => p.VatInclusion, (string?)null));
+        await db.ProductModels.Where(x => x.Id == db.Products.Where(p => p.Id == created.Value.Id).Select(p => p.FamilyId).Single())
+            .ExecuteUpdateAsync(x => x.SetProperty(m => m.VatRate, (decimal?)null).SetProperty(m => m.VatInclusion, (string?)null));
         var unknown = await db.Products.AsNoTracking().SingleAsync(x => x.Id == created.Value.Id);
         var blocked = await service.UpdateProductAsync(tenant.Id, unknown.Id, unknown.Version, new UpdateProductCommand("KDV Bluz", "Açıklama", null, null), CancellationToken.None);
         Assert.Equal((422, "KDV oranı zorunludur."), (blocked.Error!.Status, blocked.Error.FieldErrors!["vatRate"][0]));
