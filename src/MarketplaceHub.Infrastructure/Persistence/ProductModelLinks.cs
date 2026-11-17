@@ -53,6 +53,10 @@ public static class ProductModelLinks
         // KATALOG-14 phase D5b: the model codes the save changed, per tenant and card (before, after): the model takes the
         // new code and every colour's copy follows (PropagateCodeChangesAsync).
         public Dictionary<Guid, Dictionary<Guid, (string? Before, string? After)>> CodeChanges { get; } = [];
+        // KATALOG-14 D5 step B1 (expand): the own models ("#<card id>") given to the save's new cards before their insert
+        // (GiveNewCardsModels), per tenant, and the tracked pairs to undo when the save fails.
+        public Dictionary<Guid, HashSet<Guid>> FreshModels { get; } = [];
+        internal List<(ProductModel Model, Product Card)> FreshPairs { get; } = [];
 
         internal void AddCodeChange(Guid tenantId, Guid productId, string? before, string? after)
         {
@@ -87,6 +91,8 @@ public static class ProductModelLinks
         {
             if (modelId is { } id) Set(ModelIds, tenantId).Add(id);
         }
+
+        internal static HashSet<T> SetOf<T>(Dictionary<Guid, HashSet<T>> map, Guid tenantId) => Set(map, tenantId);
 
         private static HashSet<T> Set<T>(Dictionary<Guid, HashSet<T>> map, Guid tenantId)
         {
@@ -216,6 +222,80 @@ public static class ProductModelLinks
         }
     }
 
+    // KATALOG-14 D5 step B1 (expand-contract phase 1): a card is never written without its model, so products.FamilyId can
+    // become NOT NULL. Every card the save adds without a model gets, before its insert and in the save itself, a model of
+    // its own ("#<card id>", the card's brand and values: what EnsureOwnModelsAsync gave it after the save until now); EF
+    // inserts the model before the card. The reconcile after the save treats such a fresh model as no link at all: a coded
+    // card joins (or opens) its brand's model of the code exactly as before and the fresh model, left without a card, goes;
+    // a card without a code keeps it as its own model.
+    internal static void GiveNewCardsModels(AppDbContext db, Pending pending, DateTimeOffset now)
+    {
+        foreach (var entry in db.ChangeTracker.Entries<Product>().Where(x => x.State == EntityState.Added && x.Entity.FamilyId is null).ToList())
+        {
+            var card = entry.Entity;
+            var model = new ProductModel
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = card.TenantId,
+                BrandId = card.BrandId,
+                ModelCode = "",
+                ModelCodeKey = $"{OwnModelKeyPrefix}{card.Id:N}",
+                Title = Short(card.Title, 320),
+                TitleColor = null,
+                Description = card.Description,
+                CategoryId = card.CategoryId,
+                VatRate = card.VatRate,
+                VatInclusion = card.VatInclusion,
+                WarrantyMonths = card.WarrantyMonths,
+                DeliveryDays = card.DeliveryDays,
+                FieldsSavedAt = null,
+                CreatedAt = now,
+                UpdatedAt = now,
+                Version = 1,
+            };
+            db.ProductModels.Add(model);
+            card.FamilyId = model.Id;
+            Pending.SetOf(pending.FreshModels, card.TenantId).Add(model.Id);
+            pending.FreshPairs.Add((model, card));
+        }
+    }
+
+    // After the save and its links: the fresh models leave the tracker (the reconcile wrote or deleted them by SQL) and each
+    // new card's tracked FamilyId is the one the reconcile gave it.
+    internal static async Task SettleFreshModelsAsync(AppDbContext db, Pending pending, CancellationToken cancellationToken)
+    {
+        if (pending.FreshPairs.Count == 0) return;
+        foreach (var (model, _) in pending.FreshPairs) db.Entry(model).State = EntityState.Detached;
+        foreach (var tenant in pending.FreshPairs.GroupBy(x => x.Card.TenantId))
+        {
+            var ids = tenant.Select(x => x.Card.Id).ToArray();
+            var links = await db.Products.AsNoTracking().Where(x => x.TenantId == tenant.Key && ids.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.FamilyId, cancellationToken);
+            foreach (var (_, card) in tenant)
+            {
+                var entry = db.Entry(card);
+                if (entry.State == EntityState.Detached || !links.TryGetValue(card.Id, out var familyId)) continue;
+                var property = entry.Property(x => x.FamilyId);
+                property.CurrentValue = familyId;
+                if (entry.State == EntityState.Added) continue;
+                property.OriginalValue = familyId;
+                property.IsModified = false;
+            }
+        }
+        pending.FreshPairs.Clear();
+    }
+
+    // A save that failed: its new cards are as the caller made them (no model) and the fresh models leave the tracker, so a
+    // retry of the same save gives them new ones.
+    internal static void ForgetFreshModels(AppDbContext db, Pending pending)
+    {
+        foreach (var (model, card) in pending.FreshPairs)
+        {
+            if (db.Entry(model).State == EntityState.Added) db.Entry(model).State = EntityState.Detached;
+            if (db.Entry(card).State == EntityState.Added && card.FamilyId == model.Id) card.FamilyId = null;
+        }
+        pending.FreshPairs.Clear();
+    }
+
     // How long a save waits for the model rows another save holds (review, 17 Nov 2026): a lock left by a session that
     // never ends (a stuck request) fails the save with 55P03 instead of holding it, and its request, forever; the import
     // retries the model, Excel and Toplu Değer Ata answer with a conflict (SerializableWriteRetry.IsLockConflict).
@@ -263,7 +343,7 @@ public static class ProductModelLinks
             if (keys.Count > 0)
             {
                 // The save's cards and the brands it gave.
-                await ReconcileAsync(db, tenantId, keys, now, cancellationToken, new SaveScope(new HashSet<Guid>([.. productIds ?? [], .. brandChanges.Keys]), brandChanges));
+                await ReconcileAsync(db, tenantId, keys, now, cancellationToken, new SaveScope(new HashSet<Guid>([.. productIds ?? [], .. brandChanges.Keys]), brandChanges, pending.FreshModels.GetValueOrDefault(tenantId)));
             }
             // KATALOG-14 phase D5a: a card the model-code rule links to no model (no code) gets a model of its own.
             if (productIds is { Count: > 0 })
@@ -380,7 +460,8 @@ public static class ProductModelLinks
     // (shared tenant lock, exclusive for the whole tenant), so such reconciles take turns and a failure leaves nothing
     // half done. Inside a caller's transaction it runs as before (no lock, so a long import holds nothing for others).
     // save: a save's reconcile (KATALOG-14 phase D5b): a card of the save joining a code under another brand fails the save.
-    public sealed record SaveScope(IReadOnlySet<Guid> Products, IReadOnlyDictionary<Guid, Guid?> BrandChanges);
+    // FreshModels: the own models the save gave its new cards before their insert (GiveNewCardsModels), read as no link.
+    public sealed record SaveScope(IReadOnlySet<Guid> Products, IReadOnlyDictionary<Guid, Guid?> BrandChanges, IReadOnlySet<Guid>? FreshModels = null);
 
     // The one rule of which brand's model of a code a card joins when it is not linked to one of the code yet: the reconcile
     // below and every "is this code in use" check (ModelCodeOwnership) ask it. A card of a brand joins its brand's model. A
@@ -447,13 +528,20 @@ public static class ProductModelLinks
                 .Where(x => x.StartsWith(AmbiguousKeyPrefix, StringComparison.Ordinal)).Select(x => x[AmbiguousKeyPrefix.Length..]));
         }
         cardKeys = cardKeys.Where(card => targetKeys.Contains(card.Key!)).ToList();
+        // KATALOG-14 D5 step B1: a fresh own model the save gave a new card before its insert counts as no link (the card
+        // joins its code's model as an unlinked card did); the card's real link stays in actualFamilies, so the fresh model is
+        // among the models cards leave and goes once cardless.
+        var fresh = save?.FreshModels ?? new HashSet<Guid>();
+        var freshIds = fresh.ToArray();
         var cardIds = cardKeys.Select(x => x.ProductId).ToArray();
-        var products = (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.Id))
+        var productRows = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.Id))
                 .Select(x => new { x.Id, x.BrandId, x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
-                .ToListAsync(cancellationToken))
+                .ToListAsync(cancellationToken);
+        var actualFamilies = productRows.ToDictionary(x => x.Id, x => x.FamilyId);
+        var products = productRows.Select(x => new { x.Id, x.BrandId, FamilyId = x.FamilyId is Guid family && fresh.Contains(family) ? null : x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
             .ToDictionary(x => x.Id);
         var targetKeyArray = targetKeys.ToArray();
-        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && targetKeyArray.Contains(x.ModelCodeKey))
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && targetKeyArray.Contains(x.ModelCodeKey) && !freshIds.Contains(x.Id))
             .Select(x => new { x.Id, x.BrandId, x.ModelCodeKey }).ToListAsync(cancellationToken);
         var modelIds = models.Select(x => x.Id).ToArray();
         var linkedElsewhere = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId != null && modelIds.Contains(x.FamilyId.Value))
@@ -558,6 +646,12 @@ public static class ProductModelLinks
         {
             var ids = group.Select(pair => pair.Key).ToArray();
             var familyId = group.Key;
+            // KATALOG-14 D5 step B1: a card taken off its model goes straight to a model of its own (no NULL link).
+            if (familyId is null)
+            {
+                await GiveOwnModelsAsync(db, tenantId, ids, now, cancellationToken);
+                continue;
+            }
             await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && x.FamilyId != familyId)
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, familyId), cancellationToken);
         }
@@ -581,7 +675,7 @@ public static class ProductModelLinks
         await ResolveWarningsOfMissingModelsAsync(db, tenantId, now, cancellationToken);
 
         Guid? CurrentFamily(Guid productId) =>
-            products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
+            actualFamilies.TryGetValue(productId, out var family) ? family : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
     }
 
     // KATALOG-14 phase D5b (owner, 17 Nov 2026: "ilk çekilen"): the cards of a model in the order they were brought in, the
@@ -652,8 +746,26 @@ public static class ProductModelLinks
         if (productIds is { Length: 0 }) return 0;
         var cards = await db.Products.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.FamilyId == null && (productIds == null || productIds.Contains(x.Id)))
-            .Select(x => new { x.Id, x.BrandId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+            .Select(x => new OwnModelCard(x.Id, x.BrandId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))
             .ToListAsync(cancellationToken);
+        return await LinkOwnModelsAsync(db, tenantId, cards, now, cancellationToken);
+    }
+
+    // KATALOG-14 D5 step B1: cards the reconcile takes off their model (their code gone) move straight to a model of their own,
+    // never through a NULL link (products.FamilyId NOT NULL).
+    private static async Task GiveOwnModelsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var cards = await db.Products.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && productIds.Contains(x.Id))
+            .Select(x => new OwnModelCard(x.Id, x.BrandId, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))
+            .ToListAsync(cancellationToken);
+        await LinkOwnModelsAsync(db, tenantId, cards, now, cancellationToken);
+    }
+
+    private sealed record OwnModelCard(Guid Id, Guid? BrandId, string Title, string Description, Guid? CategoryId, decimal? VatRate, string? VatInclusion, int? WarrantyMonths, int? DeliveryDays);
+
+    private static async Task<int> LinkOwnModelsAsync(AppDbContext db, Guid tenantId, List<OwnModelCard> cards, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         foreach (var card in cards)
         {
             var key = $"{OwnModelKeyPrefix}{card.Id:N}";
@@ -664,7 +776,7 @@ public static class ProductModelLinks
                 """, cancellationToken);
             var modelId = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
             if (modelId is Guid id)
-                await db.Products.Where(x => x.TenantId == tenantId && x.Id == card.Id && x.FamilyId == null)
+                await db.Products.Where(x => x.TenantId == tenantId && x.Id == card.Id && x.FamilyId != id)
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, id), cancellationToken);
         }
         if (cards.Count > 0) await SyncMediaFamiliesAsync(db, tenantId, [.. cards.Select(x => x.Id)], cancellationToken);

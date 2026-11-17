@@ -198,7 +198,30 @@ public static class PanelFactoryResetInventory
         new("catalog.product_attribute_assignments", "catalog.attribute_definitions", """DELETE FROM catalog.product_attribute_assignments WHERE "TenantId" = @tenant"""),
         new("catalog.product_attribute_assignments", "catalog.attribute_values", """DELETE FROM catalog.product_attribute_assignments WHERE "TenantId" = @tenant"""),
         new("catalog.products", "catalog.categories", """UPDATE catalog.products SET "CategoryId" = NULL WHERE "TenantId" = @tenant AND "CategoryId" IS NOT NULL"""),
-        new("catalog.products", "catalog.brands", """UPDATE catalog.products SET "BrandId" = NULL WHERE "TenantId" = @tenant AND "BrandId" IS NOT NULL"""),
+        // KATALOG-14 D5 step B1: a model goes with its brand (ON DELETE CASCADE) but a card cannot lose its model any more
+        // (products.FamilyId NOT NULL, ON DELETE RESTRICT). Before the brands go, a one-card model ("#<card id>") just drops its
+        // brand, and every card of a branded model with a code moves to a model of its own without a brand (the card's values,
+        // as ProductModelLinks.EnsureOwnModelsAsync opens one); the branded models are then cardless and go with their brand.
+        // The next reconcile (the nightly scan) links the cards of a code to one model again, as it linked the unlinked
+        // cards before. The pictures follow their card's model.
+        new("catalog.products", "catalog.brands", """
+            UPDATE catalog.products SET "BrandId" = NULL WHERE "TenantId" = @tenant AND "BrandId" IS NOT NULL;
+            UPDATE catalog.product_models m SET "BrandId" = NULL, "UpdatedAt" = now(), "Version" = m."Version" + 1
+            WHERE m."TenantId" = @tenant AND m."BrandId" IS NOT NULL AND m."ModelCodeKey" LIKE '#%'
+              AND NOT EXISTS (SELECT 1 FROM catalog.product_models o WHERE o."TenantId" = m."TenantId" AND o."BrandId" IS NULL AND o."ModelCodeKey" = m."ModelCodeKey");
+            INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+            SELECT gen_random_uuid(), p."TenantId", NULL, '', '#' || replace(p."Id"::text, '-', ''), left(p."Title", 320), NULL, p."Description", p."CategoryId", p."VatRate", p."VatInclusion", p."WarrantyMonths", p."DeliveryDays", NULL, now(), now(), 1
+            FROM catalog.products p JOIN catalog.product_models m ON m."TenantId" = p."TenantId" AND m."Id" = p."FamilyId"
+            WHERE p."TenantId" = @tenant AND m."BrandId" IS NOT NULL
+            ON CONFLICT DO NOTHING;
+            UPDATE catalog.products p SET "FamilyId" = o."Id"
+            FROM catalog.product_models m, catalog.product_models o
+            WHERE p."TenantId" = @tenant AND m."TenantId" = p."TenantId" AND m."Id" = p."FamilyId" AND m."BrandId" IS NOT NULL
+              AND o."TenantId" = p."TenantId" AND o."BrandId" IS NULL AND o."ModelCodeKey" = '#' || replace(p."Id"::text, '-', '');
+            UPDATE catalog.product_media md SET "FamilyId" = p."FamilyId"
+            FROM catalog.products p
+            WHERE md."TenantId" = @tenant AND p."TenantId" = md."TenantId" AND p."Id" = md."ProductId" AND md."FamilyId" IS DISTINCT FROM p."FamilyId"
+            """),
         // No key, but the same link: an order line keeps its text and loses its variant.
         new("sales.order_lines", "catalog.product_variants", """UPDATE sales.order_lines SET "VariantId" = NULL WHERE "TenantId" = @tenant AND "VariantId" IS NOT NULL"""),
     ];
