@@ -468,7 +468,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await Task.Delay(500);
         Assert.False(waiting.IsCompleted);
         await transaction.CommitAsync();
-        await waiting;
+        // Bounded: a save that never ends fails this test by name instead of hanging the run.
+        await waiting.WaitAsync(ConcurrencyTimeout);
 
         Assert.Equal("Yeni açıklama", (await ModelOfAsync(db, siyah.Id)).Description);
         Assert.Equal(["Yeni açıklama", "Yeni açıklama"], await DescriptionsAsync(db, siyah.Id, mavi.Id));
@@ -706,11 +707,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {unlinked.Id}""");
 
-        Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["mz500"], CancellationToken.None))?.ProductId);
+        Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Ravencia, ["mz500"], CancellationToken.None))?.ProductId);
+        // A model is its brand and its code (owner, 17 Nov 2026): another brand finds no holder of the code.
+        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Lavian, ["mz500"], CancellationToken.None));
         Assert.Contains(unlinked.Id, await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["KENE02"]).ToListAsync());
         // The model's key decides for a linked card: with the model moved to another key the card is not found by the old.
         await db.ProductModels.Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ500").ExecuteUpdateAsync(s => s.SetProperty(x => x.ModelCodeKey, "MZ501"));
-        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["MZ500"], CancellationToken.None));
+        Assert.Null(await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Ravencia, ["MZ500"], CancellationToken.None));
         Assert.Equal([linked.Id], await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["MZ501"]).ToListAsync());
     }
 
@@ -816,6 +819,10 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         await transaction.CommitAsync();
     }
 
+    // The longest any concurrency test waits for a save: past it the test fails by name (CI saw a lane cut by its job
+    // timeout with no test named).
+    private static readonly TimeSpan ConcurrencyTimeout = TimeSpan.FromSeconds(60);
+
     // Holds a save right after its first UPDATE of a card row (the row then stays locked) until Release.
     private sealed class PauseAfterCardUpdate : DbCommandInterceptor
     {
@@ -827,7 +834,8 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         {
             if (!command.CommandText.Contains("UPDATE catalog.products", StringComparison.Ordinal) || Interlocked.Exchange(ref _armed, 0) == 0) return;
             Reached.TrySetResult();
-            await Release.Task;
+            // Bounded: a test that never releases it fails instead of holding the connection and its locks for ever.
+            await Release.Task.WaitAsync(ConcurrencyTimeout);
         }
 
         public override async ValueTask<System.Data.Common.DbDataReader> ReaderExecutedAsync(System.Data.Common.DbCommand command, CommandExecutedEventData eventData, System.Data.Common.DbDataReader result, CancellationToken cancellationToken = default)
@@ -867,13 +875,21 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         (await second.Products.SingleAsync(x => x.Id == mavi.Id)).VatRate = 20m;
 
         var firstSave = Task.Run(() => first.SaveChangesAsync());
-        await pause.Reached.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        var secondSave = Task.Run(() => second.SaveChangesAsync());
-        // The second save is now waiting on a row the first holds; the first then goes on.
-        await Task.Delay(TimeSpan.FromSeconds(2));
-        pause.Release.TrySetResult();
-        await firstSave;
-        await secondSave;
+        Task<int>? secondSave = null;
+        try
+        {
+            await pause.Reached.Task.WaitAsync(ConcurrencyTimeout);
+            secondSave = Task.Run(() => second.SaveChangesAsync());
+            // The second save is now waiting on a row the first holds; the first then goes on.
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            // Released whatever happened above, so no save is left holding its locks.
+            pause.Release.TrySetResult();
+        }
+        await firstSave.WaitAsync(ConcurrencyTimeout);
+        await secondSave!.WaitAsync(ConcurrencyTimeout);
 
         await using var check = fixture.CreateContext();
         Assert.Equal(20m, (await ModelOfAsync(check, siyah.Id)).VatRate);
@@ -1065,5 +1081,37 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var first = await OpenAsync(reversed: false);
         Assert.Equal(("Kadın Bordo Midi Etek", "Bordonun", (decimal?)10m), first);
         Assert.Equal(first, await OpenAsync(reversed: true));
+    }
+
+    // Review (17 Nov 2026, CI lane cut by its timeout): a save waits for the model rows another session holds at most
+    // ModelLockTimeout, then fails with 55P03 (a lock conflict the import retries and Excel / Toplu Değer Ata answer),
+    // instead of hanging with its request; once the holder ends the save goes through.
+    [PostgreSqlFact]
+    public async Task ASaveBehindAModelLockThatIsNeverReleased_FailsWithinTheLockTimeout_InsteadOfHanging()
+    {
+        Seed seed;
+        Product siyah;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            siyah = AddCard(setup, seed, seed.Ravencia, "MZ960", "Siyah", "Kadın Siyah Etek", 0);
+            AddCard(setup, seed, seed.Ravencia, "MZ960", "Mavi", "Kadın Mavi Etek", 1);
+            await setup.SaveChangesAsync();
+        }
+        await using var holder = fixture.CreateContext();
+        await using var held = await holder.Database.BeginTransactionAsync();
+        await holder.Database.SqlQuery<int>($"""SELECT 1 AS "Value" FROM catalog.product_models WHERE "TenantId" = {seed.Tenant.Id} FOR UPDATE""").ToListAsync();
+
+        await using var saver = fixture.CreateContext();
+        saver.ModelLockTimeout = "1s";
+        (await saver.Products.SingleAsync(x => x.Id == siyah.Id)).VatRate = 20m;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() => saver.SaveChangesAsync().WaitAsync(ConcurrencyTimeout));
+        Assert.True(SerializableWriteRetry.IsLockConflict(failure), failure.ToString());
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(20), $"waited {clock.Elapsed}");
+
+        await held.RollbackAsync();
+        await saver.SaveChangesAsync().WaitAsync(ConcurrencyTimeout);
+        Assert.Equal(20m, (await ModelOfAsync(saver, siyah.Id)).VatRate);
     }
 }

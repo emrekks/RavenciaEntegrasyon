@@ -216,16 +216,27 @@ public static class ProductModelLinks
         }
     }
 
+    // How long a save waits for the model rows another save holds (review, 17 Nov 2026): a lock left by a session that
+    // never ends (a stuck request) fails the save with 55P03 instead of holding it, and its request, forever; the import
+    // retries the model, Excel and Toplu Değer Ata answer with a conflict (SerializableWriteRetry.IsLockConflict).
+    public const string ModelLockTimeout = "30s";
+
     // The rows of the models the given cards are linked to and of the given keys, locked in one statement in id order (the
-    // one order every model write takes them in), in the caller's transaction.
-    internal static Task<List<int>> LockModelsOfCardsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, string[] keys, CancellationToken cancellationToken) =>
-        db.Database.SqlQuery<int>($"""
+    // one order every model write takes them in), in the caller's transaction, waiting at most ModelLockTimeout; the
+    // caller's own lock_timeout is put back after it.
+    internal static async Task LockModelsOfCardsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, string[] keys, CancellationToken cancellationToken)
+    {
+        var previous = (await db.Database.SqlQuery<string>($"""SELECT current_setting('lock_timeout') AS "Value" """).ToListAsync(cancellationToken)).Single();
+        await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {db.ModelLockTimeout}, true) AS "Value" """).ToListAsync(cancellationToken);
+        await db.Database.SqlQuery<int>($"""
             SELECT 1 AS "Value" FROM catalog.product_models
             WHERE "TenantId" = {tenantId}
               AND ("Id" IN (SELECT p."FamilyId" FROM catalog.products p WHERE p."TenantId" = {tenantId} AND p."Id" = ANY({productIds}) AND p."FamilyId" IS NOT NULL)
                    OR "ModelCodeKey" = ANY({keys}))
             ORDER BY "Id" FOR UPDATE
             """).ToListAsync(cancellationToken);
+        await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {previous}, true) AS "Value" """).ToListAsync(cancellationToken);
+    }
 
     private static bool Changed<TEntity, T>(PropertyEntry<TEntity, T> property) where TEntity : class =>
         property.IsModified && !EqualityComparer<T>.Default.Equals(property.OriginalValue, property.CurrentValue);
@@ -456,7 +467,7 @@ public static class ProductModelLinks
             // A brand a save gives a linked colour moves its model to that brand's key: refused here, in the save's transaction,
             // when that brand already has a model of the code (nothing is merged; the editor's deferred model write would be late).
             if (save is not null && keyCards.FirstOrDefault(x => save.BrandChanges.TryGetValue(x.Card.Id, out var given) && keyModels.FirstOrDefault(model => model.Id == x.Card.FamilyId) is { } linked
-                    && given != linked.BrandId && keyModels.Any(model => model.Id != linked.Id && model.BrandId == given)) is { Card: not null } moving)
+                    && given is not null && given != linked.BrandId && keyModels.Any(model => model.Id != linked.Id && model.BrandId == given)) is { Card: not null } moving)
             {
                 var brandName = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == save.BrandChanges[moving.Card.Id]).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
                 throw ModelRuleException.BrandCodeTaken(moving.Code, brandName ?? "markasız");
