@@ -201,7 +201,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
     // Phase C: the editor's GET of every card of a rich catalog is byte-identical before the backfill and after it. The
     // reference is today's rule (ProductModelLinks.SavedFieldsAsync, else ProductFamilySharedFields.ModelValues), kept here.
     [PostgreSqlFact]
-    public async Task TheEditorsResponse_IsTheSame_BeforeAndAfterTheBackfill_AndShowsTheModelsFields()
+    public async Task TheEditorsResponse_IsTheSame_BeforeAndAfterTheBackfill_AndWithAScrambledRecordShowsOnlyTheModelsFields()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -270,9 +270,10 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             if ((await service.GetProductAsync(seed.Tenant.Id, card.Id, CancellationToken.None)).Value is not { } view) continue;
             var expected = JsonSerializer.Deserialize<ProductView>(after[cards.IndexOf(card)])!;
             var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).FamilyId!.Value;
-            var scrambled = scrambledModels.Contains(modelId);
-            Assert.Equal((expected.Title, expected.Description), (view.Title, view.Description));
-            Assert.Equal(scrambled ? (99m, 99, 99) : (expected.VatRate, expected.WarrantyMonths, expected.DeliveryDays), (view.VatRate, view.WarrantyMonths, view.DeliveryDays));
+            // KATALOG-14 phase D5b review 6c: the whole response is the one before the scramble with only the model's VAT,
+            // warranty and delivery days in it (byte for byte otherwise), and the editor-saved record is untouched.
+            if (scrambledModels.Contains(modelId)) expected = expected with { VatRate = 99.0000m, WarrantyMonths = 99, DeliveryDays = 99 };
+            Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(view));
         }
     }
 

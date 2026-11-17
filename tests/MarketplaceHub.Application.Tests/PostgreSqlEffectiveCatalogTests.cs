@@ -89,6 +89,61 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         }
     }
 
+    // KATALOG-14 phase D5b review 6c (the former AMinorityColour_IsReadWithItsOwnValues test in its new-rule form): a colour
+    // whose VAT, delivery days and warranty copies differ from its model's (a raw write, the previous release) opens a
+    // PRODUCT_MODEL_VALUES_DIFFER warning at the scan, and every reader (the list, the marketplace payload, the invoice)
+    // reads the model's values; when the model's VAT is unknown the invoice stops (no rate, never 0, never the card's).
+    [PostgreSqlFact]
+    public async Task AMinorityColour_IsWarnedAbout_AndInvoicedAtTheModelsVat_WhichStopsTheInvoiceWhenUnknown()
+    {
+        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
+        var card = seeded.Cards[0];
+        await using (var db = fixture.CreateContext())
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20, "DeliveryDays" = 5, "WarrantyMonths" = 12 WHERE "Id" = {card.Id}""");
+
+        await using (var db = fixture.CreateContext())
+        {
+            await ProductModelScan.RunTenantAsync(db, seeded.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            var gap = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.DedupeKey.StartsWith(ModelMirror.GapDedupePrefix));
+            Assert.Equal((ProductModelValues.DifferCode, IssueStatus.Open), (gap.Code, gap.Status));
+            Assert.Contains("KDV %20 dahil (modelin: %10 dahil)", gap.Summary);
+            Assert.Contains("teslimat süresi 5 (modelin: 2)", gap.Summary);
+            Assert.Contains("garanti 12 (modelin: 24)", gap.Summary);
+
+            var model = await ModelOfAsync(db, card.Id);
+            Assert.Equal((10m, (int?)2, (int?)24), (model.VatRate, model.DeliveryDays, model.WarrantyMonths));
+            var read = await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id);
+            Assert.Equal((10m, (int?)2, (int?)24), (read.VatRate, read.DeliveryDays, read.WarrantyMonths));
+
+            // The invoice: a Trendyol line without its own VAT takes the model's.
+            var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == card.Id).OrderBy(x => x.SortOrder).FirstAsync();
+            var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ExternalLineId = "l-1", Sku = variant.Sku, TitleSnapshot = "Bluz", RawStatus = "Created", VariantId = variant.Id };
+            var trendyol = seeded.Connections.Single(x => x.PlatformCode == "TRENDYOL");
+            Assert.Equal(10m, (await InvoiceLineVatRates.ResolveAsync(db, seeded.Tenant.Id, "TRENDYOL", trendyol.Id, [line], CancellationToken.None))[line.Id]);
+
+            // The model's VAT unknown: no rate, and the invoice stops (the card's 20 is not used).
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "VatRate" = NULL WHERE "Id" = {model.Id}""");
+            var rates = await InvoiceLineVatRates.ResolveAsync(db, seeded.Tenant.Id, "TRENDYOL", trendyol.Id, [line], CancellationToken.None);
+            Assert.Null(rates[line.Id]);
+            Assert.False(InvoiceLineVatRates.TryApply([line], rates, out _));
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "VatRate" = 10 WHERE "Id" = {model.Id}""");
+        }
+
+        var payloads = await ModelComposerGoldenPostgreSqlTests.PayloadsAsync(fixture, seeded);
+        var publication = payloads.Single(x => x.StartsWith("TRENDYOL card0 publication: ", StringComparison.Ordinal));
+        // The serialized draft escapes the inner payload's quotes: the delivery time is the model's.
+        Assert.Contains("deliveryDuration\\u0022:2", publication, StringComparison.Ordinal);
+        Assert.DoesNotContain("deliveryDuration\\u0022:5", publication, StringComparison.Ordinal);
+
+        // The product list: the colour's row carries the model's VAT.
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CatalogService(db, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), TimeProvider.System), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+            var page = await service.ListProductsAsync(seeded.Tenant.Id, 50, null, null, null, null, null, null, CancellationToken.None);
+            Assert.Contains(page.Items, item => item.Id == card.Id && item.VatRate == 10m);
+        }
+    }
+
     // KATALOG-14 phase D5b review 4: a marketplace import opens a new colour of an existing model with no warranty of its own
     // (the listing carries none: 0), no delivery days, no VAT, no category and no description, and brings an existing
     // colour without a category or description. Unknown is no difference: the colours take the model's values and no
