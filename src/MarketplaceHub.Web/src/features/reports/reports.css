@@ -1224,3 +1224,10 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-platforms { flex: 1 1 180px; min-width: 180px; max-width: 280px; }
   .app-shell.stitch-shell main .reports-page .reports-period-row > :is(.reports-period-custom, .reports-period-platforms) :is(.date-range-picker, .pf-field, .rr-fld, .date-range-picker-trigger, .pf-trigger) { width: 100%; min-width: 0; }
 }
+
+/* Promosyon on a phone (owner, 18 Nov 2026): the content grid and the section bar may shrink to the screen (the bar's buttons were
+   one 594 px line that widened the whole page); the section buttons slide sideways inside the bar. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .promotions-page .rv-tab-slide-grid { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .promotions-page .promotions-bar { min-width: 0; max-width: 100%; }
+}
