@@ -439,11 +439,12 @@ public static class ProductModelLinks
         var ownModelIds = models.Where(x => IsOwnModelKey(x.ModelCodeKey)).Select(x => x.Id).ToHashSet();
         // Models given another key in this run (KATALOG-2): no longer a model of the key they were read under.
         var rekeyed = new HashSet<Guid>();
+        var externalIds = await ExternalIdsAsync(db, tenantId, cardIds, cancellationToken);
         foreach (var key in targetKeys.Order(StringComparer.Ordinal))
         {
-            var cards = cardKeys.Where(x => x.Key == key && products.ContainsKey(x.ProductId))
-                .Select(x => (Card: products[x.ProductId], x.Color, x.Code))
-                .OrderBy(x => x.Card.CreatedAt).ThenBy(x => x.Card.Id).ToList();
+            // In the order the cards were brought in (FirstBroughtIn): the first gives a new model its values.
+            var cards = FirstBroughtIn(db, cardKeys.Where(x => x.Key == key && products.ContainsKey(x.ProductId)).Select(x => (Card: products[x.ProductId], x.Color, x.Code)),
+                x => x.Card.Id, x => x.Card.CreatedAt, x => x.Color, externalIds);
             // KATALOG-14 phase D5b (owner, 17 Nov 2026): a model is its code alone, one per key; the brand is one of its
             // fields (ModelMirror gives a brand change of one colour to the model and every colour).
             var keyModels = models.Where(x => x.ModelCodeKey == key && !rekeyed.Contains(x.Id)).ToList();
@@ -560,6 +561,29 @@ public static class ProductModelLinks
 
         Guid? CurrentFamily(Guid productId) =>
             products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
+    }
+
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026: "ilk çekilen"): the cards of a model in the order they were brought in, the
+    // first one giving a new model its values. Cards pulled before this save come first (the earlier pulled wins), by
+    // CreatedAt; the cards a marketplace import brings in this save follow in the order the marketplace sent them (page and
+    // row, AppDbContext.ModelOrderHint). Ties are broken by the colour's key (CatalogKeyNormalizer, ordinal), then the
+    // card's external id (its marketplace listing, ordinal), then its id, so the same catalog pulled twice from scratch
+    // gives the same model whatever the clock.
+    internal static List<T> FirstBroughtIn<T>(AppDbContext db, IEnumerable<T> cards, Func<T, Guid> id, Func<T, DateTimeOffset> createdAt, Func<T, string?> colour, IReadOnlyDictionary<Guid, string> externalIds) =>
+        [.. cards.OrderBy(card => db.ModelOrderHint.ContainsKey(id(card)) ? 1 : 0)
+            .ThenBy(card => db.ModelOrderHint.TryGetValue(id(card), out var position) ? position : 0)
+            .ThenBy(createdAt)
+            .ThenBy(card => CatalogKeyNormalizer.Key(colour(card)), StringComparer.Ordinal)
+            .ThenBy(card => externalIds.GetValueOrDefault(id(card)) ?? "", StringComparer.Ordinal)
+            .ThenBy(id)];
+
+    // The external id of each card (its marketplace listings' smallest, ordinal), for FirstBroughtIn's last tie-break.
+    internal static async Task<Dictionary<Guid, string>> ExternalIdsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> productIds, CancellationToken cancellationToken)
+    {
+        if (productIds.Count == 0) return [];
+        var ids = productIds.ToArray();
+        return (await db.MarketplaceProductLinks.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).Select(x => new { x.ProductId, x.ExternalId }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.Select(x => x.ExternalId).Order(StringComparer.Ordinal).First());
     }
 
     // KATALOG-14 phase D5b (review, 17 Nov 2026): the models the given cards were linked to that no card holds any more go

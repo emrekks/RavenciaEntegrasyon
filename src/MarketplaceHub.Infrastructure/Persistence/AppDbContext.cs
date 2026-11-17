@@ -272,6 +272,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // result messages of the writers ("Model İçindeki 3 Renge Uygulandı"). Read and cleared by the writer.
     internal List<ModelMirror.Applied> ModelMirrorReport { get; } = [];
 
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026): the order a marketplace import brought its new cards in (page and row), per
+    // card: the first one gives a new model its values (ProductModelLinks.FirstBroughtIn). Set by the import, cleared after
+    // each model group.
+    internal Dictionary<Guid, int> ModelOrderHint { get; } = [];
+
     // KATALOG-14 phase D5b review: what a save that failed or was rolled back reported (its models were not written): it is
     // dropped, so "Model İçindeki N Renge Uygulandı" counts only what stands.
     internal void ForgetModelMirrorReport(int from)

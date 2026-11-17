@@ -1034,4 +1034,30 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.Status == IssueStatus.Open));
         db.MarketplaceCatalogImport = false;
     }
+
+    // Owner (17 Nov 2026, "ilk çekilen"), deterministic: new cards saved together with the same CreatedAt (one millisecond)
+    // and no marketplace order are ordered by their colour's key, so the same cards in any insertion order open the same
+    // model in two tenants.
+    [PostgreSqlFact]
+    public async Task CardsOfTheSameMillisecond_OpenTheSameModel_WhateverTheirOrder()
+    {
+        async Task<(string Title, string Description, decimal? Vat)> OpenAsync(bool reversed)
+        {
+            await using var db = fixture.CreateContext();
+            var seed = await SeedAsync(db);
+            var specs = new (string Colour, string Title, string Description, decimal Vat)[] { ("Siyah", "Kadın Siyah Uzun Etek", "Siyahın", 20m), ("Bordo", "Kadın Bordo Midi Etek", "Bordonun", 10m), ("Gri", "Kadın Gri Kısa Etek", "Grinin", 1m) };
+            var at = DateTimeOffset.UtcNow;
+            foreach (var spec in reversed ? specs.Reverse() : specs)
+            {
+                var card = AddCard(db, seed, seed.Ravencia, "SAMEMS", spec.Colour, spec.Title, 0, description: spec.Description, vat: spec.Vat);
+                card.CreatedAt = at;
+            }
+            await db.SaveChangesAsync();
+            var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+            return (model.Title, model.Description, model.VatRate);
+        }
+        var first = await OpenAsync(reversed: false);
+        Assert.Equal(("Kadın Bordo Midi Etek", "Bordonun", (decimal?)10m), first);
+        Assert.Equal(first, await OpenAsync(reversed: true));
+    }
 }

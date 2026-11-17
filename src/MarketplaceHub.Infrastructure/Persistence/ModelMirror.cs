@@ -69,7 +69,7 @@ public static class ModelMirror
             if (model is null) continue;
             var members = await CardsAsync(db, tenantId, model.Id, cancellationToken);
             var colors = members.Select(x => x.Color?.Trim()).OfType<string>().Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            // Oldest colour first (members are by CreatedAt, Id): a new model's desi goes by the oldest card on a tie.
+            // In the order the colours were brought in (members, ProductModelLinks.FirstBroughtIn): a new model's desi is the first's.
             var given = group.Select(x => (Card: members.First(member => member.Id == x.Id), Change: changes[x.Id])).OrderBy(x => members.IndexOf(x.Card)).ToList();
             var target = new Values(model.Title, model.TitleColor, model.Description, model.VatRate, model.VatInclusion, model.CategoryId, model.WarrantyMonths, model.DeliveryDays, model.Desi, model.BrandId);
             var fields = new List<string>();
@@ -220,13 +220,15 @@ public static class ModelMirror
     private static async Task<List<CardRow>> CardsAsync(AppDbContext db, Guid tenantId, Guid modelId, CancellationToken cancellationToken)
     {
         var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId == modelId)
-            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Select(x => new { x.Id, x.Title, x.Description }).ToListAsync(cancellationToken);
+            .Select(x => new { x.Id, x.Title, x.Description, x.CreatedAt }).ToListAsync(cancellationToken);
         var ids = cards.Select(x => x.Id).ToArray();
         var signatures = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId))
                 .Select(x => new { x.ProductId, x.SortOrder, x.Id, x.OptionSignature }).ToListAsync(cancellationToken))
             .ToLookup(x => x.ProductId);
-        return [.. cards.Select(x => new CardRow(x.Id, x.Title, x.Description,
-            signatures[x.Id].OrderBy(v => v.SortOrder).ThenBy(v => v.Id).Select(v => ProductFamilyColorOrder.ColorOf(v.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color))))];
+        var rows = cards.Select(x => (Row: new CardRow(x.Id, x.Title, x.Description,
+            signatures[x.Id].OrderBy(v => v.SortOrder).ThenBy(v => v.Id).Select(v => ProductFamilyColorOrder.ColorOf(v.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color))), x.CreatedAt));
+        // In the order they were brought in (ProductModelLinks.FirstBroughtIn): a new model's desi comes from the first one.
+        return [.. ProductModelLinks.FirstBroughtIn(db, rows, x => x.Row.Id, x => x.CreatedAt, x => x.Row.Color, await ProductModelLinks.ExternalIdsAsync(db, tenantId, ids, cancellationToken)).Select(x => x.Row)];
     }
 
     // Writes the model's value of each given field, where the copy differs, to the field's cards (null: every colour of

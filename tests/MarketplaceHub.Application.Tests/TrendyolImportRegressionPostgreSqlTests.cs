@@ -887,6 +887,27 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "OFFER_VAT_UNKNOWN"));
     }
 
+    // Owner (17 Nov 2026, "ilk çekilen"): a new model takes its values from the first listing the marketplace sent (page and
+    // row order), not from a clock tie or a random id; pulling the same catalog into two empty tenants gives the same model.
+    [PostgreSqlFact]
+    public async Task TheSameCatalogPulledTwiceFromScratch_GivesTheSameModel_FromTheFirstListing()
+    {
+        var specs = Colours.Select(entry => entry.Colour == "Bordo" ? Spec("Bordo") with { Title = "Kadın Bordo Triko Bluz Özel", Description = "İlk ilanın açıklaması." } : Spec(entry.Colour)).ToList();
+        async Task<(string Title, string Description, decimal? Vat, string HakiTitle)> PullAsync()
+        {
+            var seed = await SeedAsync();
+            await RunAsync(seed, new TrendyolCatalogPort(Read(specs)), "{\"full\":true}");
+            await using var db = fixture.CreateContext();
+            var model = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
+            var haki = (await CardsAsync(db, seed))[ContentId("Haki")].Product;
+            return (model.Title, model.Description, model.VatRate, haki.Title);
+        }
+        var first = await PullAsync();
+        var second = await PullAsync();
+        Assert.Equal(("Kadın Bordo Triko Bluz Özel", "İlk ilanın açıklaması.", (decimal?)10m, "Kadın Haki Triko Bluz Özel"), first);
+        Assert.Equal(first, second);
+    }
+
     [PostgreSqlFact]
     public async Task ADeadlockOnAModelsSave_IsRetried_AndEveryCardOpensOnce()
     {

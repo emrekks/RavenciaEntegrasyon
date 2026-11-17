@@ -263,6 +263,8 @@ internal sealed partial class CatalogImportService
         if (product is null)
         {
             isNewProduct = true;
+            // KATALOG-14 phase D5b: the order the marketplace sent the listings in (page and row) decides which new card gives a
+            // new model its values (ProductModelLinks.FirstBroughtIn).
             var listingVatRate = ListingVatRate(snapshot);
             product = new Product
             {
@@ -283,6 +285,7 @@ internal sealed partial class CatalogImportService
                 Version = 1
             };
             db.Products.Add(product);
+            db.ModelOrderHint[product.Id] = db.ModelOrderHint.Count;
             run.InsertedCount++;
             if (link is null)
             {

@@ -621,6 +621,7 @@ internal sealed partial class CatalogImportService
                 run.CatalogStockReadAt = null;
                 // An import reads no "N Renge Uygulandı": what its saves reported (a retried attempt included) is dropped.
                 db.ModelMirrorReport.Clear();
+                db.ModelOrderHint.Clear();
                 db.ChangeTracker.Clear();
                 categoryContexts.Clear();
                 importedAttributeLibrary.Clear();
