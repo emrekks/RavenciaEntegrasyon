@@ -269,14 +269,14 @@ public static partial class ProductTransferFileParser
 
     // The product title: text up to 320 characters; it cannot be removed.
     public static ProductTransferValue ParseTitle(string text, bool fromCsv) =>
-        ParseText(text, "Ürün adı", MaximumTitleLength, clearable: false, requireKey: false);
+        ParseText(text, "Ürün adı", MaximumTitleLength, clearable: false, requireKey: false, deferFormula: true);
 
     // The model's description, read as written (HTML allowed; it is cleaned and checked by the editor's rules when it
     // changes, ProductTransferImportPlanner): an empty cell changes nothing and it cannot be removed (an export leaves a
     // description longer than an Excel cell holds empty, and that empty cell must not delete it); a value starting like
-    // a formula is refused. Excel's cell limit is the upper bound here.
+    // a formula is refused only when it changes the description (deferFormula). Excel's cell limit is the upper bound here.
     public static ProductTransferValue ParseDescription(string text, bool fromCsv) =>
-        ParseText(text, "Açıklama", MaximumDescriptionCell, clearable: false, requireKey: false);
+        ParseText(text, "Açıklama", MaximumDescriptionCell, clearable: false, requireKey: false, deferFormula: true);
 
     // The most characters one Excel cell holds.
     public const int MaximumDescriptionCell = 32_767;
@@ -294,14 +294,18 @@ public static partial class ProductTransferFileParser
         ParseText(text, "Model kodu", MaximumCodeLength, clearable: true, requireKey: true);
 
     // Text that starts like a formula is refused in .xlsx too: the value would turn into one in a later CSV export.
-    private static ProductTransferValue ParseText(string text, string label, int maximum, bool clearable, bool requireKey)
+    // deferFormula (the name and the description): a text the panel already holds may start so ("- %100 pamuk", "+90 …"),
+    // and the export writes it back as it is; it is read as a value carrying the refusal in Error, and the planner refuses
+    // it only when it changes the stored value (an unchanged one is no change, ProductTransferImportPlanner).
+    private static ProductTransferValue ParseText(string text, string label, int maximum, bool clearable, bool requireKey, bool deferFormula = false)
     {
         var trimmed = text.Trim();
         if (trimmed.Length == 0) return ProductTransferValue.Empty;
         if (trimmed is "-" or "–" or "—" || CatalogKeyNormalizer.Key(trimmed) == "SIL")
             return clearable ? ProductTransferValue.Clear : ProductTransferValue.Invalid($"{label} silinemez; hücreyi boş bırakırsanız değişmez.");
-        if (ImportFileReader.LooksLikeFormula(trimmed)) return ProductTransferValue.Invalid($"{label}: formül benzeri içerik kabul edilmez.");
         if (trimmed.Length > maximum) return ProductTransferValue.Invalid($"{label} en fazla {maximum} karakter olabilir.");
+        if (ImportFileReader.LooksLikeFormula(trimmed))
+            return deferFormula ? new ProductTransferValue(ProductTransferValueKind.Set, null, $"{label}: formül benzeri içerik kabul edilmez.", trimmed) : ProductTransferValue.Invalid($"{label}: formül benzeri içerik kabul edilmez.");
         if (requireKey && CatalogKeyNormalizer.Key(trimmed).Length == 0) return ProductTransferValue.Invalid($"{label} en az bir harf ya da rakam içermelidir.");
         return ProductTransferValue.SetText(trimmed);
     }
@@ -441,7 +445,7 @@ public static class ProductTransferImportPlanner
 
         var pendingRows = resolved.Where(item => item.Outcome == "PENDING").Select(item => (item.Row, Variant: item.Variant!)).ToList();
         var conflicts = new ProductConflicts(
-            Disagreements(pendingRows, item => item.Row.Title, TitleKey, "ürün adı", item => !string.Equals(item.Row.Title.Text, item.Variant.ProductTitle.Trim(), StringComparison.Ordinal)),
+            Disagreements(pendingRows, item => item.Row.Title, TitleKey, "ürün adı", item => TextChanged(item.Row.Title.Text, item.Variant.ProductTitle)),
             Disagreements(pendingRows, item => item.Row.Vat, item => Key(item.Row.Vat), "KDV oranı", item => item.Variant.VatRate is not decimal storedVat || Rounded(storedVat) != item.Row.Vat.Amount),
             BrandDisagreements(pendingRows),
             ModelCodeDisagreements(pendingRows, variants),
@@ -652,8 +656,10 @@ public static class ProductTransferImportPlanner
         if (row.Title.Kind == ProductTransferValueKind.Set && conflicts.Title.TryGetValue(variant.ProductId, out var titleConflict)) return RowPlan.None with { Error = titleConflict };
         if (row.Vat.Kind == ProductTransferValueKind.Set && conflicts.Vat.TryGetValue(variant.ProductId, out var vatConflict)) return RowPlan.None with { Error = vatConflict };
         if (row.Desi.Kind == ProductTransferValueKind.Set && conflicts.Desi.TryGetValue(variant.ProductId, out var desiConflict)) return RowPlan.None with { Error = desiConflict };
-        var title = row.Title.Kind == ProductTransferValueKind.Set && !string.Equals(row.Title.Text, variant.ProductTitle.Trim(), StringComparison.Ordinal)
-            ? new TextPlan(ProductTransferFieldChange.Set, row.Title.Text) : default;
+        var titleChanged = row.Title.Kind == ProductTransferValueKind.Set && TextChanged(row.Title.Text, variant.ProductTitle);
+        // A name refused at reading (it starts like a formula) is refused only when it changes the stored one.
+        if (titleChanged && row.Title.Error is { } titleRefusal) return RowPlan.None with { Error = titleRefusal };
+        var title = titleChanged ? new TextPlan(ProductTransferFieldChange.Set, row.Title.Text) : default;
         var vat = row.Vat.Kind == ProductTransferValueKind.Set && (variant.VatRate is not decimal storedVat || Rounded(storedVat) != row.Vat.Amount)
             ? new FieldPlan(ProductTransferFieldChange.Set, row.Vat.Amount) : default;
         TextPlan brand = default;
@@ -676,6 +682,7 @@ public static class ProductTransferImportPlanner
             if (conflicts.Description.TryGetValue(variant.ProductId, out var descriptionConflict)) return RowPlan.None with { Error = descriptionConflict };
             if (DescriptionChanged(row.Description.Text, variant.Description))
             {
+                if (row.Description.Error is { } descriptionRefusal) return RowPlan.None with { Error = descriptionRefusal };
                 var (cleaned, descriptionError) = clean(row.Description.Text!);
                 if (descriptionError is not null) return RowPlan.None with { Error = descriptionError };
                 if (DescriptionChanged(cleaned, variant.Description)) description = new TextPlan(ProductTransferFieldChange.Set, cleaned);
@@ -724,10 +731,18 @@ public static class ProductTransferImportPlanner
     };
 
     // A description as a file holds it against the stored one: line ends and the ends of the text aside, the same text.
-    internal static bool DescriptionChanged(string? fileText, string? stored) =>
-        !string.Equals(NormalizeDescription(fileText), NormalizeDescription(stored), StringComparison.Ordinal);
+    // (a carriage return or another control character Excel or a CSV adds or drops is no change either).
+    internal static bool DescriptionChanged(string? fileText, string? stored) => TextChanged(fileText, stored);
 
-    private static string NormalizeDescription(string? text) => (text ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
+    // The name or the description of a row against the stored one, compared as the export wrote it.
+    internal static bool TextChanged(string? fileText, string? stored) =>
+        !string.Equals(NormalizeText(fileText), NormalizeText(stored), StringComparison.Ordinal);
+
+    // A carriage return reads back as a line end (XML normalises it), so line ends are compared as one; other control
+    // characters are dropped.
+    private static string NormalizeText(string? text) =>
+        string.Concat((text ?? "").Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n')
+            .Where(character => !char.IsControl(character) || character is '\n' or '\t')).Trim();
 
     // The description a file asks for as it would be saved: its HTML cleaned as every file import cleans it
     // (ImportedHtmlSanitizer, the allowlist of the rich-text renderer), then checked by the editor's and Toplu Değer Ata's

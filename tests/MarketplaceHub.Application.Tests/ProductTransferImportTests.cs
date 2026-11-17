@@ -969,6 +969,42 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal((0, 2), (refused.Value!.ProductChanges!.Count, refused.Value.Errors));
     }
 
+    // Review (17 Nov 2026): a name or description the panel holds may start like a formula ("- %100 pamuk", "+90 …", "@…",
+    // "=…") or carry a lone carriage return; the export writes it back as it is, and the file loaded back untouched
+    // changes nothing (its rows, cost and stock included, are not refused). Only a changed value starting so is refused.
+    [PostgreSqlFact]
+    public async Task ANameOrDescriptionStartingLikeAFormula_LoadedBackUntouched_ChangesNothing()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-formula-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        string[] descriptions = ["- %100 pamuk, yıkanabilir", "+90 532 bilgi hattı", "@ravencia koleksiyonu", "=Yeni sezon", "Birinci satır\rİkinci satır"];
+        string[] titles = ["- Kısa Etek", "+ Uzun Etek", "Etek C", "Etek D", "Etek E"];
+        var products = descriptions.Select((description, index) => new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = titles[index], Description = description, Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now.AddMinutes(index), UpdatedAt = now }).ToList();
+        var variants = products.Select((product, index) => Variant(tenant, product, $"FORM-{index}", $"869000060000{index}", cost: 5m, desi: 1m, now)).ToList();
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Products.AddRange(products);
+            seed.ProductVariants.AddRange(variants);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var export = await service.ExportAsync(tenant.Id, ProductTransferExportFilter.All, null, null, CancellationToken.None);
+        var roundTrip = await service.PreviewAsync(tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), [ProductTransferFields.Title, ProductTransferFields.Description, ProductTransferFields.Cost, ProductTransferFields.Desi], CancellationToken.None);
+        Assert.True(roundTrip.Succeeded, roundTrip.Error?.Message);
+        Assert.Equal((0, 0, 0, 5), (roundTrip.Value!.Errors, roundTrip.Value.Changes.Count, roundTrip.Value.ProductChanges!.Count, roundTrip.Value.Unchanged));
+
+        // A changed value starting like a formula is refused; the other rows still go through.
+        var csv = "Stok Kodu;Ürün Adı;Açıklama;Maliyet\r\nFORM-0;- Kısa Etek;=HYPERLINK(1);7\r\nFORM-1;+ Uzun Siyah Etek;+90 532 bilgi hattı;7\r\nFORM-2;Etek C;@ravencia koleksiyonu;7\r\n";
+        var changed = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Title, ProductTransferFields.Description, ProductTransferFields.Cost], CancellationToken.None);
+        Assert.True(changed.Succeeded, changed.Error?.Message);
+        Assert.Contains("Açıklama: formül benzeri", changed.Value!.Rows.Single(row => row.RowNumber == 2).Message);
+        Assert.Contains("Ürün adı: formül benzeri", changed.Value.Rows.Single(row => row.RowNumber == 3).Message);
+        Assert.Equal(("UPDATE", "SET"), (changed.Value.Rows.Single(row => row.RowNumber == 4).Outcome, changed.Value.Rows.Single(row => row.RowNumber == 4).CostChange));
+    }
+
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, decimal? desi, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(),
