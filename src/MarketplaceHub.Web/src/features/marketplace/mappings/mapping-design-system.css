@@ -92,10 +92,6 @@
 }
 
 @layer features {
-  .brand-mapping-modal > header small { color: var(--rv-color-primary); font-size: var(--rv-font-size-xs); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-}
-
-@layer features {
 
   .mapping-reference-heading { align-items: center; }
 }

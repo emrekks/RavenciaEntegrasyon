@@ -521,14 +521,6 @@
   .searchable-select-options > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
   .searchable-select-options > button[aria-selected="true"] { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
   .searchable-select-empty { display: block; padding: var(--rv-space-3); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .brand-mapping-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
-  .brand-mapping-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
-  .brand-mapping-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
-  .brand-mapping-modal > header h2, .brand-mapping-modal > header p { margin-bottom: var(--rv-space-1); }
-  .brand-mapping-modal-body { display: grid; min-height: 0; gap: var(--rv-space-4); overflow-y: auto; padding: var(--rv-space-5) var(--rv-space-6); }
-  .brand-mapping-selected-local { display: grid; gap: 2px; padding: var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
-  .brand-mapping-selected-local small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); }
-  .brand-mapping-modal > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
   .jobs-reference-toolbar, .invoice-reference-filter-shell { display: flex; flex-wrap: wrap; align-items: end; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
   .jobs-reference-table, .invoice-reference-table { min-width: 980px; }
   .jobs-reference-row, .invoice-reference-row { display: grid; align-items: center; min-height: 64px; border-top: 1px solid var(--rv-color-border); }
@@ -6380,8 +6372,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .integration-settings-modal :is(.integration-detail-section-heading, .integration-detail-write-heading) h2 { margin: 2px 0 4px; font-size: 16px; font-weight: 600; }
 .integration-settings-modal :is(.integration-detail-section-heading, .integration-detail-write-heading) p:not(.eyebrow) { margin: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
 
-/* The phone filter sheet pieces never show above phone width (responsive.css only loads up to 1024px, so this lives in the main sheet). */
-.mfs > .mfs-header, .mfs > .mfs-open, .mfs > .mfs-footer, .mfs > .mfs-sort { display: none; }
 
 /* Passive / hidden integration cards: a solid rule closes the status block above the footer. */
 .reference-integration-card-error .reference-integration-footer,

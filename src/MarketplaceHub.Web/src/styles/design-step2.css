@@ -6,7 +6,7 @@
  */
 
 /* Backdrop: one colour and blur for every window (the image lightbox keeps its own). */
-:root:root:root :is(.rr-overlay, .rv-overlay:not(.rv-drawer-overlay), .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .brand-mapping-modal-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .jobs-reference-drawer-backdrop) {
+:root:root:root :is(.rr-overlay, .rv-overlay:not(.rv-drawer-overlay), .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .jobs-reference-drawer-backdrop) {
   background: var(--rv-color-backdrop);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);

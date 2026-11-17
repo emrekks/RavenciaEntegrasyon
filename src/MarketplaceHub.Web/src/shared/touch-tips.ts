@@ -51,7 +51,7 @@ const EDGE = 12
 const GAP = 6
 const SCROLL_SLOP = 8
 // Elements that stay on top of the page while it scrolls; a tip never opens under them.
-const STICKY_TOP = '.rv-topbar, .rv-view-tabs, .ss-gtabs, .mfs-header, [data-sticky-top]'
+const STICKY_TOP = '.rv-topbar, .rv-view-tabs, .ss-gtabs, [data-sticky-top]'
 
 type Open = { host: HTMLElement; tip: HTMLElement; bubble: boolean }
 let open: Open | null = null

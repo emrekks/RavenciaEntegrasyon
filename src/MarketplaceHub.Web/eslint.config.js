@@ -43,11 +43,9 @@ const handWrittenBackdropFiles = [
   'src/features/invoicing/pages.tsx',
   'src/features/marketplace/integrations/IntegrationPages.tsx',
   'src/features/marketplace/mappings/MappingPages.tsx',
-  'src/features/marketplace/mappings/mapping-pages/BrandMappingPage.tsx',
   'src/features/marketplace/mappings/mapping-pages/CategoryAttributeWorkspace.tsx',
   'src/features/marketplace/mappings/mapping-pages/ValueMappingEditors.tsx',
   'src/features/operations/pages.tsx',
-  'src/shared/MobileFilterShell.tsx',
 ]
 
 // Lint for the panel: language and TypeScript basics, hook rules (a missed dependency is an error, not a warning),
