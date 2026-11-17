@@ -76,6 +76,8 @@ export function readTransferPreview(raw: TransferPreviewAnswer): ProductTransfer
 export type ProductTransferApplyResult = {
   variants: number; costsUpdated: number; costsCleared: number; desiUpdated: number; desiCleared: number; stocksUpdated: number; pricesUpdated: number; products: number
   titlesUpdated?: number; barcodesUpdated?: number; modelCodesUpdated?: number; modelCodesCleared?: number; panelPricesUpdated?: number; vatUpdated?: number; brandsUpdated?: number; brandsCreated?: number
+  // KATALOG-14 phase D5b: the colour cards of the models a model field (name, VAT, brand, desi) reached.
+  modelColours?: number
 }
 export type ProductTransferExportFilter = 'all' | 'cost' | 'desi'
 
@@ -290,7 +292,8 @@ function appliedText(done: ProductTransferApplyResult) {
     done.stocksUpdated ? `${count(done.stocksUpdated)} stok güncellendi` : '',
     done.pricesUpdated ? `${count(done.pricesUpdated)} mağaza fiyatı güncellendi` : ''
   ].filter(Boolean)
-  return `${count(done.variants)} varyant kaydedildi (${count(done.products)} ürün): ${parts.join(', ')}.`
+  const model = done.modelColours ? ` Model İçindeki ${count(done.modelColours)} Renge Uygulandı.` : ''
+  return `${count(done.variants)} varyant kaydedildi (${count(done.products)} ürün): ${parts.join(', ')}.${model}`
 }
 
 function FieldCell<T>({ change, oldValue, newValue, format }: { change: ProductTransferFieldChange | undefined; oldValue: T | null | undefined; newValue: T | null | undefined; format: (value: T | null) => string }) {

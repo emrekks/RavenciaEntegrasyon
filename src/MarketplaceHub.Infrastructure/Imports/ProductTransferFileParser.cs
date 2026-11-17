@@ -382,7 +382,7 @@ public static class ProductTransferImportPlanner
 
     // Rows of one product that ask for different product-level values (title, VAT), and rows of one model asking for
     // different brands: the products and the message their rows get.
-    private sealed record ProductConflicts(Dictionary<Guid, string> Title, Dictionary<Guid, string> Vat, Dictionary<Guid, string> Brand, Dictionary<Guid, string> ModelCode);
+    private sealed record ProductConflicts(Dictionary<Guid, string> Title, Dictionary<Guid, string> Vat, Dictionary<Guid, string> Brand, Dictionary<Guid, string> ModelCode, Dictionary<Guid, string> Desi);
 
     public static ProductTransferImportPreview Plan(string fileName, IReadOnlyList<ProductTransferFileRow> rows, IReadOnlyList<ProductTransferCandidate> variants, IReadOnlyCollection<string>? fields = null, IReadOnlyList<ProductTransferStoreView>? stores = null, IReadOnlyList<string>? availableFields = null, IReadOnlyCollection<string>? switchedOffBrandKeys = null)
     {
@@ -424,7 +424,9 @@ public static class ProductTransferImportPlanner
             Disagreements(pendingRows, item => item.Row.Title, TitleKey, "ürün adı"),
             Disagreements(pendingRows, item => item.Row.Vat, item => Key(item.Row.Vat), "KDV oranı"),
             BrandDisagreements(pendingRows),
-            ModelCodeDisagreements(pendingRows, variants));
+            ModelCodeDisagreements(pendingRows, variants),
+            // KATALOG-14 phase D5b: the desi is the model's too, one value on every size of every colour.
+            Disagreements(pendingRows, item => item.Row.Desi, item => Key(item.Row.Desi), "desi"));
         // A barcode asked for by more than one variant in the file cannot be given to any of them.
         var barcodeClaims = pendingRows
             .Where(item => item.Row.NewBarcode.Kind == ProductTransferValueKind.Set && !string.Equals(item.Row.NewBarcode.Text, item.Variant.Barcode?.Trim(), StringComparison.Ordinal))
@@ -527,7 +529,7 @@ public static class ProductTransferImportPlanner
                      .GroupBy(item => ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) ?? item.Variant.ProductId.ToString("N"), StringComparer.Ordinal))
         {
             if (model.Select(item => Persistence.PanelBrandByName.Key(item.Row.Brand.Text)).Distinct(StringComparer.Ordinal).Count() < 2) continue;
-            var message = $"Aynı modelin satırlarında farklı marka var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); marka modelin tüm renklerinde aynıdır, tüm satırlara aynı markayı yazın.";
+            var message = $"Aynı modelin ({ModelName(model.First())}) satırlarında farklı marka var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); marka modelin tüm renklerinde aynıdır, tüm satırlara aynı markayı yazın.";
             foreach (var item in model) result[item.Variant.ProductId] = message;
         }
         return result;
@@ -565,11 +567,15 @@ public static class ProductTransferImportPlanner
                      .GroupBy(item => ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) ?? item.Variant.ProductId.ToString("N"), StringComparer.Ordinal))
         {
             if (model.Select(key).Distinct(StringComparer.Ordinal).Count() < 2) continue;
-            var message = $"Aynı modelin satırlarında farklı {label} var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın.";
+            var message = $"Aynı modelin ({ModelName(model.First())}) satırlarında farklı {label} var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın.";
             foreach (var item in model) result[item.Variant.ProductId] = message;
         }
         return result;
     }
+
+    // The model a refused row belongs to, as the owner knows it: its model code, else its card's name.
+    private static string ModelName((ProductTransferFileRow Row, ProductTransferCandidate Variant) item) =>
+        string.IsNullOrWhiteSpace(item.Variant.ModelCode) ? item.Variant.ProductTitle.Trim() : item.Variant.ModelCode.Trim();
 
     private static string TitleKey((ProductTransferFileRow Row, ProductTransferCandidate Variant) item) =>
         ModelTitleKey(item.Row.Title.Text, ProductFamilyColorOrder.ColorOf(item.Variant.VariantLabel));
@@ -619,6 +625,7 @@ public static class ProductTransferImportPlanner
         // Product-level fields: every row of the product must ask for the same value.
         if (row.Title.Kind == ProductTransferValueKind.Set && conflicts.Title.TryGetValue(variant.ProductId, out var titleConflict)) return RowPlan.None with { Error = titleConflict };
         if (row.Vat.Kind == ProductTransferValueKind.Set && conflicts.Vat.TryGetValue(variant.ProductId, out var vatConflict)) return RowPlan.None with { Error = vatConflict };
+        if (row.Desi.Kind == ProductTransferValueKind.Set && conflicts.Desi.TryGetValue(variant.ProductId, out var desiConflict)) return RowPlan.None with { Error = desiConflict };
         var title = row.Title.Kind == ProductTransferValueKind.Set && !string.Equals(row.Title.Text, variant.ProductTitle.Trim(), StringComparison.Ordinal)
             ? new TextPlan(ProductTransferFieldChange.Set, row.Title.Text) : default;
         var vat = row.Vat.Kind == ProductTransferValueKind.Set && (variant.VatRate is not decimal storedVat || Rounded(storedVat) != row.Vat.Amount)

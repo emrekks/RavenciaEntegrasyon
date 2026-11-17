@@ -73,6 +73,7 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
         counts.updatedCount += response?.updatedCount ?? 0
         counts.unchangedCount += response?.unchangedCount ?? 0
         counts.variantCount += response?.variantCount ?? 0
+        counts.modelColours = (counts.modelColours ?? 0) + (response?.modelColours ?? 0)
         counts.failures.push(...(response?.failures ?? []))
         skipped.push(...(response?.skipped ?? []))
       }, (done, all) => setProgress({ done, total: all }))
