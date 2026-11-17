@@ -103,11 +103,11 @@ export function notificationKindFromMessage(message: string): ReturnNoticeKind {
   if (/(kuyruğa|sıraya alındı|sırada|sürüyor|gönderiliyor|işleniyor|bekleniyor|salt-okunur|değişiklik yok|henüz)/u.test(normalized)) return 'info'
   return 'success'
 }
-// Column filter popover: one radio list, "Filtreyi Temizle" once a value is picked. counts: rows per option value
+// Column filter popover: one radio list, "Temizle" (purple, top right like the platform filter) once a value is picked. counts: rows per option value
 // under the other filters (optional; null while they load), shown next to every option but the first ("Tümü").
 export function ReturnColumnPop({ label, options, value, onPick, right, width = 240, counts }: { label: string; options: Array<{ value: string; label: string }>; value: string; onPick: (value: string) => void; right?: boolean; width?: number; counts?: Record<string, number> | null }) {
   const active = value !== 'ALL'
-  return <div className={`rr-pop${right ? ' rr-right' : ''}`} role="dialog" aria-label={label} style={{ minWidth: width }}><div className="rr-ph">{label}</div>{options.map((option, index) => { const on = active ? option.value === value : index === 0; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => onPick(option.value)}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span>{counts !== undefined && index > 0 && <OptionCount value={platformOptionCount(counts, option.value)} />}</button> })}{active && <div className="rr-foot"><span /><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} onClick={() => onPick('ALL')}>Filtreyi Temizle</button></div>}</div>
+  return <div className={`rr-pop${right ? ' rr-right' : ''}`} role="dialog" aria-label={label} style={{ minWidth: width }}><div className="rr-ph"><span>{label}</span>{active && <button type="button" className="rr-btn rr-link" onClick={() => onPick('ALL')}>Temizle</button>}</div>{options.map((option, index) => { const on = active ? option.value === value : index === 0; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => onPick(option.value)}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span>{counts !== undefined && index > 0 && <OptionCount value={platformOptionCount(counts, option.value)} />}</button> })}</div>
 }
 // counts: rows per platform code (or option value) under the other filters (optional; null while they load, shown as a placeholder).
 export function platformOptionCount(counts: Record<string, number> | null | undefined, code: string) {

@@ -574,3 +574,4 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 @media (prefers-reduced-motion: reduce) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-job .rr-bar.rr-bar-wait i { animation-duration: 3s; }
 }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

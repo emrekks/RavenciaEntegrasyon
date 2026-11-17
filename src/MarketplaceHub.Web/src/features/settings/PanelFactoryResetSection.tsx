@@ -46,6 +46,8 @@ export function PanelFactoryResetSection() {
   const [error, setError] = useState<string | null>(null)
   const [showEmpty, setShowEmpty] = useState(false)
   const [showSteps, setShowSteps] = useState(false)
+  // A finished reset shows its box only in the visit that ran it (or watched it run); an old finished one is not shown again.
+  const [seenRunning, setSeenRunning] = useState(false)
   const job = view.data?.job ?? null
   const filled = (view.data?.groups ?? []).filter(group => group.count > 0)
   const empty = (view.data?.groups ?? []).filter(group => group.count <= 0)
@@ -57,7 +59,7 @@ export function PanelFactoryResetSection() {
   // Once the job ends, every screen reads again: nothing of what they cached is left.
   const wasRunning = useRef(false)
   useEffect(() => {
-    if (running) { wasRunning.current = true; return }
+    if (running) { wasRunning.current = true; setSeenRunning(true); return }
     if (wasRunning.current && job) {
       wasRunning.current = false
       // The notification history lives in this browser: the Bildirimler category takes it too.
@@ -75,6 +77,7 @@ export function PanelFactoryResetSection() {
     try {
       const next = await hubApi<ApiAnswer<'postSettingsFactoryReset'>>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: normalizePanelResetConfirmation(confirmation), ...reauthBody(password, factor) }) })
       queryClient.setQueryData(queryKey, next)
+      setSeenRunning(true)
       setConfirmation(''); setPassword(''); setFactor('')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Sıfırlama başlatılamadı.')
@@ -87,7 +90,7 @@ export function PanelFactoryResetSection() {
   const states = panelResetStepStates(steps, job)
   const failed = panelResetFailed(job?.status)
   const finished = job?.status === 'SUCCEEDED'
-  const showProgress = job !== null && (running || failed || job.status === 'SUCCEEDED')
+  const showProgress = job !== null && (running || failed || (finished && seenRunning))
   const percent = job?.status === 'SUCCEEDED' ? 100 : job?.progressPercent ?? 0
 
   return <section className="ss-dr-group ss-fr" aria-labelledby="panel-factory-reset-title">
