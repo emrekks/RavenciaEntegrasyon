@@ -814,8 +814,6 @@
   .variant-media-picker-modal > footer > button:first-child { margin-right: auto; }
   .quick-edit-product-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .quick-edit-product-title { display: -webkit-box; overflow-wrap: anywhere; color: var(--rv-color-ink); line-height: 1.25; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-  .media-removal-confirm-body > p { margin: 0; color: var(--rv-color-muted); line-height: 1.6; overflow-wrap: anywhere; }
-  .variant-code-confirm-body > p, .variant-code-confirm-body > small { margin: 0; color: var(--rv-color-muted); }
   .publish-platform-card.selected { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px var(--rv-color-primary); }
   .publish-platform-card-head:disabled .publish-platform-toggle { background: color-mix(in srgb, var(--rv-color-danger) 30%, var(--rv-color-border)); }
   .publish-platform-card-head > span:nth-child(2) { display: grid; min-width: 0; gap: 3px; }

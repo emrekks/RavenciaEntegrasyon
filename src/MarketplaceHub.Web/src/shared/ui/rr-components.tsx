@@ -333,7 +333,9 @@ function closeOnlyFoot(foot: ReactNode): boolean {
   return filled.length === 1 && isValidElement<{ children?: ReactNode }>(filled[0]) && filled[0].props.children === 'Kapat'
 }
 
-export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; hint?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
+// `role="alertdialog"` for a confirmation that asks before something is lost; `describedBy` names the element whose text
+// a screen reader reads after the title (the confirmation's question).
+export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false, role = 'dialog', describedBy }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; hint?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean; role?: 'dialog' | 'alertdialog'; describedBy?: string }) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   // Closing from the window itself (the cross, a tap outside, Escape) first plays the closing motion, then closes.
@@ -351,7 +353,7 @@ export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onC
   const dialog = useDialogSurface<HTMLDivElement>(true, () => close.current())
   return createPortal(<div className={['rr-layer', layerClass, closing ? 'rr-closing' : ''].filter(Boolean).join(' ')}>
     <div className="rr-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close.current() }}>
-      <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
+      <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role={role} aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)} aria-describedby={describedBy}>
         <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : (label ?? 'Pencere')}>{hint}</TitleHint> : null}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
         <div className={`rr-m-body${flush ? ' rr-flush' : ''}`}>{children}</div>
         {foot && <footer className={closeOnlyFoot(foot) ? 'rr-m-foot rr-m-foot-close-only' : 'rr-m-foot'}>{foot}</footer>}

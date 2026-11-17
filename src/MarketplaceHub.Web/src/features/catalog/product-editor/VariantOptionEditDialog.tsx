@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { DialogSurface, UiIcon } from '../../../shared/components'
+import { RrModal } from '../../../shared/ui/rr-components'
 import { PanelSelect } from '../../../shared/PanelSelect'
 
 export type VariantOptionEditField = {
@@ -27,25 +27,20 @@ export function VariantOptionEditDialog({ label, fields, sameValueCount, onClose
     .map(field => ({ name: field.name, from: field.value, to: draft[field.name].trim(), valueId: field.values?.find(value => value.value === draft[field.name])?.id ?? null }))
   const affected = changes.reduce((total, change) => Math.max(total, sameValueCount(change.name, change.from)), 0)
 
-  return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}>
-    <DialogSurface as="section" onClose={onClose} className="workspace-modal variant-option-edit-modal" aria-labelledby="variant-option-edit-title" onMouseDown={event => event.stopPropagation()}>
-      <header><div><p className="eyebrow">Varyant Düzenleme</p><h2 id="variant-option-edit-title">{label}</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
-      {/* No <form>: the dialog sits inside the editor form, and a nested form would submit the page. */}
-      <div className="variant-option-edit-body">
-        <div className="variant-option-edit-grid">
-          {fields.map(field => <div className="variant-option-edit-pair" key={field.name}>
-            <label>Seçenek Adı<input value={field.name} readOnly disabled /></label>
-            <label>Seçenek Değeri{field.values
-              ? <PanelSelect ariaLabel={field.name} value={draft[field.name] ?? ''} onChange={next => setDraft(current => ({ ...current, [field.name]: next }))} options={[...(field.values.some(value => value.value === field.value) ? [] : [{ value: field.value, label: field.value }]), ...field.values.map(value => ({ value: value.value, label: value.value }))]} />
-              : <input value={draft[field.name] ?? ''} onChange={event => setDraft(current => ({ ...current, [field.name]: event.target.value }))} />}</label>
-          </div>)}
-        </div>
-        <label className="variant-option-edit-switch marketplace-pricing-switch">
-          <span><strong>Tüm Aynı Varyantlarda Düzelt</strong><small>{applyToAll ? (affected > 1 ? `Aynı değeri taşıyan ${affected} varyantın tümü değişir.` : 'Aynı değeri taşıyan tüm varyantlar değişir.') : 'Yalnız bu varyant değişir.'}</small></span>
-          <input type="checkbox" role="switch" checked={applyToAll} onChange={event => setApplyToAll(event.target.checked)} aria-label="Tüm aynı varyantlarda düzelt" />
-        </label>
-        <footer><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={!changes.length} onClick={() => onSave(changes, applyToAll)}>Uygula</button></footer>
-      </div>
-    </DialogSurface>
-  </div>
+  return <RrModal crumb="Varyant Düzenleme" title={label} size="md" modalClass="variant-option-edit-modal" onClose={onClose}
+    foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!changes.length} onClick={() => onSave(changes, applyToAll)}>Uygula</button></>}>
+    {/* No <form>: the window's React tree sits inside the editor form, and a nested form would submit the page. */}
+    <div className="variant-option-edit-grid">
+      {fields.map(field => <div className="variant-option-edit-pair" key={field.name}>
+        <label className="rr-fld"><small>Seçenek Adı</small><input className="rr-in" value={field.name} readOnly disabled /></label>
+        <label className="rr-fld"><small>Seçenek Değeri</small>{field.values
+          ? <PanelSelect ariaLabel={field.name} value={draft[field.name] ?? ''} onChange={next => setDraft(current => ({ ...current, [field.name]: next }))} options={[...(field.values.some(value => value.value === field.value) ? [] : [{ value: field.value, label: field.value }]), ...field.values.map(value => ({ value: value.value, label: value.value }))]} />
+          : <input className="rr-in" value={draft[field.name] ?? ''} onChange={event => setDraft(current => ({ ...current, [field.name]: event.target.value }))} />}</label>
+      </div>)}
+    </div>
+    <label className="variant-option-edit-switch">
+      <span><strong>Tüm Aynı Varyantlarda Düzelt</strong><small>{applyToAll ? (affected > 1 ? `Aynı değeri taşıyan ${affected} varyantın tümü değişir.` : 'Aynı değeri taşıyan tüm varyantlar değişir.') : 'Yalnız bu varyant değişir.'}</small></span>
+      <input type="checkbox" role="switch" className="rr-qt-switch" checked={applyToAll} onChange={event => setApplyToAll(event.target.checked)} aria-label="Tüm aynı varyantlarda düzelt" />
+    </label>
+  </RrModal>
 }
