@@ -116,6 +116,7 @@ public static class DependencyInjection
             .AddHttpMessageHandler<MarketplaceCircuitBreakerHandler>()
             .AddHttpMessageHandler(() => new MarketplaceHub.Infrastructure.Telemetry.MarketplaceRequestMetricsHandler("Shopify"))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
+        services.AddSingleton<ShopifyTokenCache>();
         services.AddScoped<ShopifyAuthenticationHandler>();
         services.AddScoped<ShopifyHttpClient>();
         services.AddScoped<ShopifyWebhookVerifier>();

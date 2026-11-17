@@ -4,6 +4,7 @@ import type { HubConnection } from '@microsoft/signalr'
 import { RecentOperationEventIds } from '../operations-event-deduplication'
 import { RealtimeInvalidationThrottle, realtimeInvalidationsFor, realtimeReconnectQueryKeys, skipsRealtimeRefetch, type RealtimeEvent } from '../realtime-query-keys'
 import { onUnauthorized } from '../../shared/api/client'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Seconds before the next connection try: 3, 6, 12, 24, then every 60.
 export function realtimeRetryDelayMs(attempt: number) {
@@ -30,13 +31,18 @@ export function useOperationsRealtime(enabled: boolean) {
     const refetchable = (query: Query) => !skipsRealtimeRefetch(query.queryKey, query.state.data)
     const throttle = new RealtimeInvalidationThrottle(queryKey => { void client.invalidateQueries({ queryKey, predicate: refetchable }) })
     // The job a screen has open (İşlem Takibi's detail) follows its own changes at once.
-    const isWatchedJob = (jobId: string) => client.getQueryCache().findAll({ queryKey: ['job', jobId], exact: true, type: 'active' }).length > 0
+    const isWatchedJob = (jobId: string) => client.getQueryCache().findAll({ queryKey: queryKeys.job(jobId), exact: true, type: 'active' }).length > 0
     const flush = () => {
       flushTimer = null
       const resources = [...pendingResources]
       const events = pendingEvents.splice(0)
       pendingResources.clear()
       for (const invalidation of realtimeInvalidationsFor(resources, events, isWatchedJob)) throttle.request(invalidation)
+    }
+    // After the connection comes back, by SignalR's own reconnect or by a new start, anything may have changed meanwhile.
+    let hadConnection = false
+    const refreshAfterGap = () => {
+      for (const queryKey of realtimeReconnectQueryKeys) void client.invalidateQueries({ queryKey, predicate: refetchable })
     }
     const scheduleStart = () => {
       if (stopped || retryTimer !== null) return
@@ -57,9 +63,7 @@ export function useOperationsRealtime(enabled: boolean) {
         pendingEvents.push(...(events ?? []))
         if (flushTimer === null) flushTimer = window.setTimeout(flush, 250)
       })
-      built.onreconnected(() => {
-        for (const queryKey of realtimeReconnectQueryKeys) void client.invalidateQueries({ queryKey })
-      })
+      built.onreconnected(refreshAfterGap)
       built.onclose(() => scheduleStart())
       return built
     }
@@ -70,6 +74,10 @@ export function useOperationsRealtime(enabled: boolean) {
         if (stopped || connection.state !== 'Disconnected') return
         await connection.start()
         failures = 0
+        // Started again after the connection closed (a gap longer than the automatic reconnect: a deploy, sleep, a
+        // network change): changes announced meanwhile were missed, as after an automatic reconnect.
+        if (hadConnection) refreshAfterGap()
+        hadConnection = true
       } catch (error) {
         // The session is gone: trying again cannot help; the app shows the sign-in screen and a new sign-in starts over.
         if (signedOut(error)) { stopped = true; onUnauthorized(); return }
@@ -77,8 +85,18 @@ export function useOperationsRealtime(enabled: boolean) {
       }
     }
     void start()
+    // WEB-ALTYAPI-2 step 3: a tab that becomes visible again (back from sleep, another tab) with the connection down does
+    // not wait out the backoff (up to 60 s): it tries at once, and a successful start refreshes the lists.
+    const reconnectWhenVisible = () => {
+      if (stopped || document.visibilityState !== 'visible') return
+      if (connection && connection.state !== 'Disconnected') return
+      if (retryTimer !== null) { window.clearTimeout(retryTimer); retryTimer = null }
+      void start()
+    }
+    document.addEventListener('visibilitychange', reconnectWhenVisible)
     return () => {
       stopped = true
+      document.removeEventListener('visibilitychange', reconnectWhenVisible)
       if (retryTimer !== null) window.clearTimeout(retryTimer)
       if (flushTimer !== null) window.clearTimeout(flushTimer)
       throttle.dispose()

@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 
@@ -33,7 +33,7 @@ internal static class HepsiburadaFinanceRequestContract
     }
 
     // Istanbul calendar days, as the guide's example (dueDateStart=2021-08-01&dueDateEnd=2021-08-31); a date-time was refused (400).
-    private static string Local(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(3)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    private static string Local(DateTimeOffset value) => TurkeyTime.Format(value, "yyyy-MM-dd");
 }
 
 public static class HepsiburadaFinanceMapper
@@ -69,33 +69,14 @@ public static class HepsiburadaFinanceMapper
         return new(items, count, skipped);
     }
 
-    private static (decimal? Value, string? Currency) Money(JsonElement item, string name)
-    {
-        if (!item.TryGetProperty(name, out var money) || money.ValueKind != JsonValueKind.Object) return (null, null);
-        decimal? value = money.TryGetProperty("value", out var number) && number.ValueKind == JsonValueKind.Number && number.TryGetDecimal(out var parsed) ? parsed : null;
-        return (value, Text(money, "currencyCode"));
-    }
+    // The finance amount is a {value, currencyCode} object whose value is read as a JSON number only
+    // (RemoteFields.JsonNumber); a text value has never been read from this service.
+    private static (decimal? Value, string? Currency) Money(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var money) && money.ValueKind == JsonValueKind.Object
+            ? (JsonNumber(money, "value"), Text(money, "currencyCode"))
+            : (null, null);
 
-    private static string? Text(JsonElement element, string name)
-    {
-        if (!element.TryGetProperty(name, out var value)) return null;
-        var text = value.ValueKind switch { JsonValueKind.String => value.GetString(), JsonValueKind.Number => value.GetRawText(), _ => null };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-    }
-
-    private static bool? Bool(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
-
-    // A time without an offset is Istanbul's.
-    internal static DateTimeOffset? Time(JsonElement element, string name)
-    {
-        var text = Text(element, name);
-        if (text is null) return null;
-        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var withOffset)
-            && (text.EndsWith('Z') || text.Contains('+') || text.LastIndexOf('-') > 9))
-            return withOffset.ToUniversalTime();
-        return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(3)).ToUniversalTime()
-            : null;
-    }
+    // Hepsiburada writes Istanbul local times: a time without an offset is Istanbul's, one with Z or an offset keeps it
+    // (TurkeyTime, the policy of every Hepsiburada text timestamp; it replaced the old "a '-' after index 9" guess).
+    internal static DateTimeOffset? Time(JsonElement element, string name) => TurkeyTime.Parse(Text(element, name));
 }

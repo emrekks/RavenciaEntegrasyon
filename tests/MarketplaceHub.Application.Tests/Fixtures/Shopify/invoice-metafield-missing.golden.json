@@ -1,0 +1,5 @@
+{
+  "Class": "NotFound",
+  "Code": "SHOPIFY_ORDER_NOT_FOUND",
+  "HttpStatus": 404
+}

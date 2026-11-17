@@ -29,7 +29,6 @@ public sealed partial class PttAvmHttpClient(
     internal const string Orders = "SiparisKontrolListesiV2";
     internal const string StockList = "StokKontrolListesi";
     // PTT AVM works in Turkey time; order dates are sent as plain dates, as in the documented sample.
-    internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private readonly PttAvmOptions settings = options.Value;
 
     private TimeSpan RequestTimeout => settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30);
@@ -40,24 +39,13 @@ public sealed partial class PttAvmHttpClient(
     internal AdapterResult<T>? WriteBlocked<T>(PttAvmRequestContext account, string what)
     {
         var connection = account.Connection;
-        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
-            && ConnectionWritesEnabled(connection.SettingsJson)
-            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        var allowed = ExternalWriteGate.AllowsProductionWrite(connection, ExternalWriteGate.GlobalWritesEnabled(configuration));
         return allowed
             ? null
             : Failure<T>(AdapterErrorClass.Validation, "PTTAVM_EXTERNAL_WRITES_DISABLED", $"PttAVM bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
     }
 
-    internal static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool ConnectionWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
@@ -143,7 +131,7 @@ public sealed partial class PttAvmHttpClient(
     // SiparisKontrolListesiV2: at most 40 days apart; AktifSiparisler=0 returns every status.
     internal static IReadOnlyList<SoapParameter> OrderProbeParameters(DateTimeOffset now)
     {
-        var today = now.ToOffset(TurkeyOffset).Date;
+        var today = now.ToOffset(TurkeyTime.Offset).Date;
         return [new("BaslangicTarihi", Day(today.AddDays(-1))), new("BitisTarihi", Day(today)), new("AktifSiparisler", "0")];
     }
 

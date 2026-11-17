@@ -59,13 +59,16 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // MZ035YNC: two colour cards, one Shopify product.
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ035YNC", "Siyah", "Kadın Siyah Bluz", 0, "gid-1");
         var mavi = AddCard(db, seed, seed.Ravencia, "MZ035YNC", "Mavi", "Kadın Mavi Bluz", 1, "gid-1");
-        // KENE01: one code under two brands, no model.
+        // KENE01: one code under two brands (from before KATALOG-14 phase D5b), the code's model and a card on a model of its
+        // own; one Shopify product spans both: no model link.
         AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 2, "gid-2");
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 3, "gid-2");
+        var keneRavencia = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Etek", 3, "gid-2");
         // MZ040: listed as one Shopify product per colour.
         AddCard(db, seed, seed.Ravencia, "MZ040", "Gri", "Kadın Gri Etek", 4, "gid-3");
         AddCard(db, seed, seed.Ravencia, "MZ040", "Bej", "Kadın Bej Etek", 5, "gid-4");
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {keneRavencia.Id}""");
+        await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         var variantLinksBefore = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.VariantId, x.ExternalId, x.Version }).ToListAsync();
 
         var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
@@ -99,25 +102,33 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // A model with a product link on one card while another card holds Shopify variants of another product.
         var linked = AddCard(db, seed, seed.Ravencia, "MZ061", "Siyah", "Kadın Siyah Ceket", 1, "gid-7");
         AddCard(db, seed, seed.Ravencia, "MZ061", "Mavi", "Kadın Mavi Ceket", 2, "gid-8");
-        // KENE01 card with a product link: no model, no model link.
+        // KENE01 card with a product link (a code under two brands from before KATALOG-14 phase D5b: no save puts a card of
+        // another brand under a code): the code's model, the other brand's card on a model of its own.
         var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 3, "gid-9");
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 4, null);
+        var other = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Etek", 4, null);
         foreach (var (card, external) in new[] { (single, "8001"), (linked, "8002"), (kene, "8003") })
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Shopify.Id, ProductId = card.Id, ExternalId = external, SyncStatus = "SYNCED", Version = 1 });
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {other.Id}""");
+        await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
 
         await db.Database.ExecuteSqlRawAsync(MarketplaceModelLinks_Backfill);
         await db.Database.ExecuteSqlRawAsync(MarketplaceModelLinks_Backfill);
-        var link = Assert.Single(await ModelLinksAsync(db, seed));
-        Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == single.Id).Select(x => x.FamilyId).SingleAsync(), "8001"), ((Guid?)link.ModelId, link.ExternalId));
+        // The KENE01 card's model is a one-card model the backfill links like any other.
+        var modelLinks = (await ModelLinksAsync(db, seed)).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
+        Assert.Equal(2, modelLinks.Count);
+        Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == single.Id).Select(x => x.FamilyId).SingleAsync(), "8001"), ((Guid?)modelLinks[0].ModelId, modelLinks[0].ExternalId));
+        Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == kene.Id).Select(x => x.FamilyId).SingleAsync(), "8003"), ((Guid?)modelLinks[1].ModelId, modelLinks[1].ExternalId));
         Assert.Equal(3, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
         await transaction.RollbackAsync();
     }
 
     private static string MarketplaceModelLinks_Backfill => Infrastructure.Persistence.Migrations.MarketplaceModelLinks.BackfillSql;
 
+    // KATALOG-14 phase D5b: the model is the source of its fields, so the startup pass no longer recomputes a model's
+    // fields from its cards (saved by the editor or not).
     [PostgreSqlFact]
-    public async Task TheFieldsTheEditorNeverSaved_AreRecomputedByTheEditorsRule_SavedOnesStay()
+    public async Task TheModelsFields_AreNeverRecomputedFromTheirCards()
     {
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -131,16 +142,11 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         var saved = DateTimeOffset.UtcNow;
         await db.ProductModels.Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ071").ExecuteUpdateAsync(s => s.SetProperty(x => x.Title, "Editörün adı").SetProperty(x => x.FieldsSavedAt, saved));
 
-        Assert.True(await ProductModelLinks.RecomputeUnsavedFieldsAsync(db, CancellationToken.None) >= 1);
+        var version = (await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ070")).Version;
+        Assert.Equal(0, await ProductModelLinks.RecomputeUnsavedFieldsAsync(db, CancellationToken.None));
         var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.ModelCodeKey);
-        // The oldest card's name on a tie, with its colour.
-        Assert.Equal(("Kadın Gri Bluz", "Gri"), (models["MZ070"].Title, models["MZ070"].TitleColor));
-        Assert.Null(models["MZ070"].FieldsSavedAt);
+        Assert.Equal(("Eski", null, version), (models["MZ070"].Title, models["MZ070"].TitleColor, models["MZ070"].Version));
         Assert.Equal("Editörün adı", models["MZ071"].Title);
-        // Again: nothing of this tenant to write.
-        var version = models["MZ070"].Version;
-        await ProductModelLinks.RecomputeUnsavedFieldsAsync(db, CancellationToken.None);
-        Assert.Equal(version, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == models["MZ070"].Id)).Version);
         await transaction.RollbackAsync();
     }
 
@@ -215,9 +221,9 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // MZ093: two colours, the PTT AVM link on one card while the other card holds PTT AVM variant links: left to the import.
         var lacivert = AddCard(db, seed, seed.Ravencia, "MZ093", "Lacivert", "Kadın Lacivert Bluz", 7, "p93");
         var yesil = AddCard(db, seed, seed.Ravencia, "MZ093", "Yesil", "Kadın Yeşil Bluz", 8, "p93");
-        // KENE01 without a model.
+        // KENE01: a one-card model (KATALOG-14 phase D5b: a code is one model, the other brand's card holds another code).
         var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 5, null);
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 6, null);
+        AddCard(db, seed, seed.Ravencia, "KENE02", "Siyah", "Kadın Siyah Etek", 6, null);
         void Link(PlatformConnection connection, Product card, string external, string? code = null) =>
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ProductId = card.Id, ExternalId = external, ExternalCode = code, SyncStatus = "SYNCED", Version = 1 });
         Link(ptt, siyah, "1523", "MZ090");
@@ -238,13 +244,15 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         await db.Database.ExecuteSqlRawAsync(backfill);
         await db.Database.ExecuteSqlRawAsync(backfill);
         var model = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
-        var links = (await ModelLinksAsync(db, seed)).Select(x => ((Guid?)x.ModelId, x.ConnectionId, x.ExternalId, x.ExternalCode)).OrderBy(x => x.ExternalId).ToList();
-        Assert.Equal([(model, ptt.Id, "1523", (string?)"MZ090"), (model, pazarama.Id, "group:g-90", "g-90"), (model, n11.Id, "main:MZ090", null)], links);
+        var links = (await ModelLinksAsync(db, seed)).Select(x => ((Guid?)x.ModelId, x.ConnectionId, x.ExternalId, x.ExternalCode)).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
+        // The KENE01 card's model takes its PTT AVM product like any one-card model.
+        var keneModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == kene.Id)).FamilyId;
+        Assert.Equal([(model, ptt.Id, "1523", (string?)"MZ090"), (keneModel, ptt.Id, "1700", "KENE01"), (model, pazarama.Id, "group:g-90", "g-90"), (model, n11.Id, "main:MZ090", null)], links);
         Assert.Equal(10, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
         await transaction.RollbackAsync();
     }
     [PostgreSqlFact]
-    public async Task APicture_BelongsToItsCardsModel_AndFollowsTheCardToAnotherModel()
+    public async Task APicture_BelongsToItsCardsModel_AndStaysWithItWhenTheModelIsRecoded()
     {
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -260,10 +268,18 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         var mz100 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ100");
         Assert.Equal(mz100.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
 
-        // The card is re-coded to MZ101: it and its picture move to that model.
+        // KATALOG-14 phase D5b: a code changed on one colour is the model's new code; the model keeps its id and the picture
+        // stays with it. A code another model holds (MZ101) is refused.
+        db.ChangeTracker.Clear();
         foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ101";
+        await transaction.CreateSavepointAsync("taken");
+        await Assert.ThrowsAsync<ModelRuleException>(() => db.SaveChangesAsync());
+        await transaction.RollbackToSavepointAsync("taken");
+        db.ChangeTracker.Clear();
+        foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ102";
         await db.SaveChangesAsync();
-        var mz101 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ101");
+        var mz101 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ102");
+        Assert.Equal(mz100.Id, mz101.Id);
         Assert.Equal(mz101.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
 
         // The backfill gives the same value.
@@ -298,8 +314,9 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         await db.SaveChangesAsync();
         var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ110");
 
-        // Two of three cards hold Pamuk: the model's set, without Renk; again writes nothing.
-        Assert.True(await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None) >= 1);
+        // Two of three cards hold Pamuk: the model's set, without Renk, written by the save itself (KATALOG-14 phase B
+        // write-through); the deploy-time recompute agrees and writes nothing.
+        await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);
         var rows = await db.ProductModelAttributes.AsNoTracking().Where(x => x.ModelId == model.Id).ToListAsync();
         Assert.Equal((kumas.Id, (Guid?)pamuk.Id), (Assert.Single(rows).AttributeId, rows[0].ValueId));
         await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);
@@ -312,5 +329,73 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         await ProductModelLinks.RecomputeUnsavedAttributesAsync(db, CancellationToken.None);
         Assert.Equal((Guid?)keten.Id, (await db.ProductModelAttributes.AsNoTracking().SingleAsync(x => x.ModelId == model.Id)).ValueId);
         await transaction.RollbackAsync();
+    }
+
+    // VERITABANI-DAGITIM-12: the deploy-time recompute read the unsaved model while an editor save of it was still open;
+    // it waits for the save and leaves the model as the editor saved it (before, it replaced the saved set with the
+    // cards' majority).
+    [PostgreSqlFact]
+    public async Task TheRecompute_LeavesAModelTheEditorSavedWhileItRan()
+    {
+        Seed seed;
+        Product gri;
+        Guid modelId, keten;
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = AddSeed(setup);
+            gri = AddCard(setup, seed, seed.Ravencia, "MZ112", "Gri", "Kadın Gri Bluz", 0, null);
+            var siyah = AddCard(setup, seed, seed.Ravencia, "MZ112", "Siyah", "Kadın Siyah Bluz", 1, null);
+            var mavi = AddCard(setup, seed, seed.Ravencia, "MZ112", "Mavi", "Kadın Mavi Bluz", 2, null);
+            var kumas = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"kumas-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.SingleSelect, CreatedAt = now, UpdatedAt = now };
+            setup.AttributeDefinitions.Add(kumas);
+            var pamukValue = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, AttributeId = kumas.Id, Value = "Pamuk", NormalizedValue = "pamuk" };
+            var ketenValue = new AttributeValue { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, AttributeId = kumas.Id, Value = "Keten", NormalizedValue = "keten" };
+            setup.AttributeValues.AddRange(pamukValue, ketenValue);
+            keten = ketenValue.Id;
+            foreach (var (card, value) in new[] { (gri, ketenValue), (siyah, pamukValue), (mavi, pamukValue) })
+                setup.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = kumas.Id, ValueId = value.Id, Version = 1 });
+            await setup.SaveChangesAsync();
+            modelId = await setup.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ112").Select(x => x.Id).SingleAsync();
+        }
+
+        try
+        {
+            // The editor saves the Gri card's set (Keten) and has not committed yet.
+            await using var editor = fixture.CreateContext();
+            await using (var save = await editor.Database.BeginTransactionAsync())
+            {
+                await ProductModelLinks.WriteAttributesAsync(editor, seed.Tenant.Id, gri.Id, now, CancellationToken.None);
+
+                // The recompute starts meanwhile: the model still reads as unsaved, so it is on its list and waits.
+                await using var deploy = fixture.CreateContext();
+                var recompute = ProductModelLinks.RecomputeUnsavedAttributesAsync(deploy, CancellationToken.None);
+                await Task.Delay(500);
+                Assert.False(recompute.IsCompleted);
+                await save.CommitAsync();
+                await recompute;
+            }
+
+            await using var verification = fixture.CreateContext();
+            var rows = await verification.ProductModelAttributes.AsNoTracking().Where(x => x.ModelId == modelId).ToListAsync();
+            Assert.Equal((Guid?)keten, Assert.Single(rows).ValueId);
+            Assert.Equal(now, (await verification.ProductModels.AsNoTracking().SingleAsync(x => x.Id == modelId)).AttributesSavedAt);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            var tenantId = seed.Tenant.Id;
+            await cleanup.ProductModelAttributes.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.ProductAttributeAssignments.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.ProductVariants.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.Products.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.ProductModels.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.AttributeValues.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.AttributeDefinitions.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.Brands.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.IntegrationOutboxEvents.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.PlatformConnections.Where(x => x.TenantId == tenantId).ExecuteDeleteAsync();
+            await cleanup.Tenants.Where(x => x.Id == tenantId).ExecuteDeleteAsync();
+        }
     }
 }

@@ -94,6 +94,14 @@ public static class InvoiceDeliveryProofPolicy
             ? numberMatches && linkMatches
             : numberMatches || linkMatches;
     }
+
+    // Every link the panel stored for this invoice is its own (E-Faturam's permanent URL for invoices delivered with it,
+    // the panel's public link and its .pdf alias for the older ones and for n11/Pazarama): the marketplace showing any of
+    // them shows this invoice. An empty set proves nothing by link.
+    public static bool HasExactProof(InvoiceDeliveryStatus status, string? invoiceNumber, IReadOnlyCollection<string> ownInvoiceLinks) =>
+        ownInvoiceLinks.Count == 0
+            ? HasExactProof(status, invoiceNumber, (string?)null)
+            : ownInvoiceLinks.Any(link => HasExactProof(status, invoiceNumber, link));
 }
 public sealed record RemoteMissingInvoicePackage(string OrderNumber, string PackageNumber, string? OrderStatus);
 
@@ -616,7 +624,14 @@ public sealed record InvoiceWorkspacePageView(
     IReadOnlyList<string> InvoiceStatuses,
     // Packages per platform code under the tab and every filter except the platform filter, so the platform
     // popover shows how many each platform would bring; every workspace platform is listed, 0 included.
-    IReadOnlyDictionary<string, int>? PlatformCounts = null);
+    IReadOnlyDictionary<string, int>? PlatformCounts = null)
+{
+    /// <summary>Unified paging (API-GUVENLIK-8): the cursor of the next page, null on the last page.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Unified paging: whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+}
 public sealed record InvoiceLineView(Guid Id, int LineSequence, string Description, string? Sku, string Unit, decimal Quantity, decimal UnitPrice, decimal DiscountAmount, decimal VatRate, decimal VatAmount, decimal LineTotal);
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);

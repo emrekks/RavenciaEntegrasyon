@@ -72,7 +72,11 @@ public sealed class BackupSetDirectory(string root) : IBackupSetSource
         foreach (var name in names.Take(10))
         {
             var (set, problem) = await TryOpenAsync(name, cancellationToken);
-            if (set is not null) return (set, notes);
+            if (set is not null)
+            {
+                notes.AddRange(LastExtraNotes.Select(note => $"{ExtraFolder}/{note}"));
+                return (set, notes);
+            }
             notes.Add($"{name}: {problem}");
         }
         return (null, notes);
@@ -110,6 +114,7 @@ public sealed class BackupSetDirectory(string root) : IBackupSetSource
                     if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) return (await DisposeAll(opened), $"{file} sağlama toplamı tutmuyor.");
                 }
             }
+            await AttachExtrasAsync(opened, cancellationToken);
             return (new VerifiedBackupSet(name, opened), null);
         }
         catch (Exception exception) when (exception is FileNotFoundException or UnauthorizedAccessException or IOException)
@@ -122,6 +127,73 @@ public sealed class BackupSetDirectory(string root) : IBackupSetSource
             await DisposeAll(opened);
             throw;
         }
+    }
+
+    // Host-made, already age-encrypted additions to every off-site copy (VERITABANI-DAGITIM-8 and -9): the secrets escrow
+    // (deploy/backup/secrets-escrow.sh) and the WAL archive (deploy/backup/wal-archive.sh), each in its own folder
+    // <root>/offsite-extra/<part>/ with SHA256SUMS and a .verified marker written last. They travel as <set>/extra/<part>/<file>.
+    // Only files named *.age that start with the age header are taken: a plain file is never sent, whatever its name.
+    // A part that is incomplete, unreadable or does not match its checksums is left out; the set itself still goes.
+    public const string ExtraFolder = "offsite-extra";
+    private static readonly byte[] AgeHeader = "age-encryption.org/v1\n"u8.ToArray();
+
+    public IReadOnlyList<string> LastExtraNotes { get; private set; } = [];
+
+    private async Task AttachExtrasAsync(List<(string, FileStream)> opened, CancellationToken cancellationToken)
+    {
+        var notes = new List<string>();
+        var extraRoot = Path.Combine(Root, ExtraFolder);
+        IEnumerable<string> parts;
+        try
+        {
+            parts = Directory.Exists(extraRoot) ? Directory.EnumerateDirectories(extraRoot).Order(StringComparer.Ordinal).ToList() : [];
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or IOException)
+        {
+            LastExtraNotes = [$"{ExtraFolder} okunamadı ({exception.Message})."];
+            return;
+        }
+        foreach (var part in parts)
+        {
+            var partName = Path.GetFileName(part);
+            // A part being published (".escrow.incoming-<pid>") or replaced ("escrow.old") is not a part.
+            if (!partName.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-')) continue;
+            var taken = new List<(string, FileStream)>();
+            try
+            {
+                if (!File.Exists(Path.Combine(part, VerifiedMarker))) { notes.Add($"{partName}: {VerifiedMarker} yok."); continue; }
+                var sums = ParseSums(await File.ReadAllLinesAsync(Path.Combine(part, "SHA256SUMS"), cancellationToken));
+                var problem = sums.Count == 0 ? "SHA256SUMS boş." : null;
+                foreach (var (file, expected) in sums.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                {
+                    if (problem is not null) break;
+                    if (!file.EndsWith(".age", StringComparison.Ordinal)) { problem = $"{file} şifreli (.age) değil."; break; }
+                    var stream = new FileStream(Path.Combine(part, file), FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    taken.Add(($"extra/{partName}/{file}", stream));
+                    var header = new byte[AgeHeader.Length];
+                    if (await stream.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, cancellationToken) != header.Length || !header.AsSpan().SequenceEqual(AgeHeader))
+                    { problem = $"{file} age ile şifrelenmiş değil."; break; }
+                    stream.Position = 0;
+                    var actual = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
+                    if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) problem = $"{file} sağlama toplamı tutmuyor.";
+                }
+                if (problem is null)
+                {
+                    opened.AddRange(taken);
+                    taken.Clear();
+                }
+                else notes.Add($"{partName}: {problem}");
+            }
+            catch (Exception exception) when (exception is FileNotFoundException or UnauthorizedAccessException or IOException)
+            {
+                notes.Add($"{partName}: okunamadı ({exception.Message}).");
+            }
+            finally
+            {
+                foreach (var (_, stream) in taken) await stream.DisposeAsync();
+            }
+        }
+        LastExtraNotes = notes;
     }
 
     private static async Task<VerifiedBackupSet?> DisposeAll(List<(string, FileStream)> opened)

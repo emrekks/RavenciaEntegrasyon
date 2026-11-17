@@ -1,15 +1,17 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { UiIcon, DialogSurface, TitleHint } from '../../shared/components'
 import type { PublicationValueMappingFix } from './publication-attribute-readiness'
-import { filterValueCandidates, rankValueCandidates, type ValueCandidate } from './value-mapping-suggestions'
+import { filterValueCandidates, rankValueCandidates } from './value-mapping-suggestions'
 import { mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from '../marketplace/mappings/mapping-refresh'
 import './missing-value-mapping-dialog.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
-type ValueList = { snapshotId: string; items: Array<ValueCandidate & { isActive: boolean }> }
-type ValueMapping = { localId: string; externalId: string; version: number }
+type ValueList = ApiAnswer<'getReferenceDataCategoriesByCategoryIdAttributesByAttributeIdValues'>
+type ValueMapping = ApiAnswer<'getMappingsAttributeValues'>[number]
 
 // "Şimdi eşle": maps the panel values a publish card reports as unmapped without leaving the
 // product page. Each value gets the closest marketplace values as suggestions plus a search over
@@ -26,8 +28,8 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
   const attributeIds = useMemo(() => [...new Set(fixes.map(fix => fix.externalAttributeId))], [fixes])
   const lists = useQueries({
     queries: attributeIds.map(externalAttributeId => ({
-      queryKey: ['reference-attribute-values', connectionId, `${categoryScope}/${externalAttributeId}`],
-      queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+      queryKey: queryKeys.referenceAttributeValues(connectionId, `${categoryScope}/${externalAttributeId}`),
+      queryFn: ({ signal }) => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
       retry: false
     }))
   })
@@ -63,8 +65,8 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
       })
     })
     try {
-      for (const scope of new Set(targets.map(target => target.scope))) await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, scope] })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+      for (const scope of new Set(targets.map(target => target.scope))) await client.invalidateQueries({ queryKey: queryKeys.attributeValueMappings(connectionId, scope) })
+      await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
       await refreshMappingConflicts(client, connectionId)
     } finally { setSaving(false) }
     if (result.failures.length) {

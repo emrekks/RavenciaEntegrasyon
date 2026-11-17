@@ -86,18 +86,34 @@ public static class SizeChartPlacement
     public static async Task<Guid?> ModelAssetIdAsync(AppDbContext db, Guid tenantId, Product product, IReadOnlyCollection<ProductVariant> cardVariants, CancellationToken cancellationToken)
     {
         if (await AssetIdAsync(db, tenantId, product.Id, cancellationToken) is Guid own) return own;
+        // KATALOG-13 / KATALOG-14 phase D4: the model's own chart picture (product_model_size_charts), an active product file.
+        if (product.FamilyId is Guid modelId && await ModelRowAssetIdAsync(db, tenantId, modelId, cancellationToken) is Guid modelAsset) return modelAsset;
         var modelCode = cardVariants.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         familyIds.Remove(product.Id);
         return await FamilyAssetIdAsync(db, tenantId, familyIds, cancellationToken);
     }
 
+    // The model row's chart picture while a colour of the model still shows it (Shown's rule: an active picture row of a
+    // colour holds it, or it is a colour's last generated chart) and its file is an active product picture; null
+    // otherwise, so a chart removed from every colour goes to none (review, 17 Nov 2026).
+    public static Task<Guid?> ModelRowAssetIdAsync(AppDbContext db, Guid tenantId, Guid modelId, CancellationToken cancellationToken) =>
+        (from chart in db.ProductModelSizeCharts.AsNoTracking()
+         join asset in db.FileAssets.AsNoTracking() on chart.FileAssetId equals asset.Id
+         where chart.TenantId == tenantId && chart.ModelId == modelId && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
+               && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+               && (db.ProductMedia.Any(media => media.TenantId == tenantId && media.FileAssetId == chart.FileAssetId && media.Status == "ACTIVE"
+                       && db.Products.Any(card => card.TenantId == tenantId && card.Id == media.ProductId && card.FamilyId == modelId))
+                   || db.ProductSizeCharts.Any(own => own.TenantId == tenantId && own.LastGeneratedAssetId == chart.FileAssetId
+                       && db.Products.Any(card => card.TenantId == tenantId && card.Id == own.ProductId && card.FamilyId == modelId)))
+         select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);
+
     // A model family's chart: that of its earliest card (CreatedAt, then id) not archived that has one; null when none has.
     public static async Task<Guid?> FamilyAssetIdAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> familyIds, CancellationToken cancellationToken)
     {
         if (familyIds.Count == 0) return null;
         return await (from chart in Shown(db, tenantId)
-                      join card in db.Products.AsNoTracking() on chart.ProductId equals card.Id
+                      join card in EffectiveCatalog.Products(db) on chart.ProductId equals card.Id
                       where card.TenantId == tenantId && familyIds.Contains(chart.ProductId) && card.Status != ProductStatus.Archived
                       orderby card.CreatedAt, card.Id
                       select chart.FileAssetId).FirstOrDefaultAsync(cancellationToken);

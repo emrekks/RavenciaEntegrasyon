@@ -67,12 +67,12 @@ public sealed class ReturnsAndJobTrackingFixesTests
             .Append(Claim(tenantId, Guid.NewGuid(), ReturnClaimStatus.Requested, "Created"))
             .ToArray();
 
-        var followed = MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "N11").Select(x => x.Status).ToArray();
+        var followed = ReturnReadService.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "N11").Select(x => x.Status).ToArray();
 
         Assert.Equal([ReturnClaimStatus.Requested, ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Disputed], followed);
         Assert.All(Enum.GetValues<ReturnClaimStatus>(), status => Assert.Equal(followed.Contains(status), ReturnCadencePolicy.IsOpen(status)));
         // Trendyol also follows a rejected claim until its package back to the customer has left (or is never sent).
-        var trendyol = MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "TRENDYOL").Select(x => x.Status).ToArray();
+        var trendyol = ReturnReadService.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "TRENDYOL").Select(x => x.Status).ToArray();
         Assert.Equal([.. followed.Take(4), ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed], trendyol);
     }
 
@@ -88,7 +88,7 @@ public sealed class ReturnsAndJobTrackingFixesTests
         var connectionId = Guid.NewGuid();
         var claim = Claim(tenantId, connectionId, ReturnClaimStatus.Rejected, "Rejected");
         claim.RejectedPackageState = packageState;
-        Assert.Equal(followed, MarketplaceJobProcessor.ReturnLifecycleCandidates(new[] { claim }.AsQueryable(), tenantId, connectionId, "TRENDYOL").Any());
+        Assert.Equal(followed, ReturnReadService.ReturnLifecycleCandidates(new[] { claim }.AsQueryable(), tenantId, connectionId, "TRENDYOL").Any());
     }
 
     [Fact]
@@ -103,11 +103,11 @@ public sealed class ReturnsAndJobTrackingFixesTests
             Claim(tenantId, connectionId, ReturnClaimStatus.Approved, "Accepted")
         };
 
-        var followed = MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "HEPSIBURADA").Select(x => x.RawStatus).ToArray();
+        var followed = ReturnReadService.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "HEPSIBURADA").Select(x => x.RawStatus).ToArray();
 
         Assert.Equal(["AwaitingAction"], followed);
         // No open claim: nothing for the scheduler to queue.
-        Assert.Empty(MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.Skip(1).AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
+        Assert.Empty(ReturnReadService.ReturnLifecycleCandidates(claims.Skip(1).AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
     }
 
     [Fact]
@@ -118,10 +118,10 @@ public sealed class ReturnsAndJobTrackingFixesTests
         claim.LastRemoteModifiedAt = modifiedAt;
 
         Assert.True(ReturnClaimStateMachine.CanTransition(ReturnClaimStatus.Approved, ReturnClaimStatus.Approved));
-        Assert.False(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.ToOffset(TimeSpan.FromHours(3))));
-        Assert.True(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Completed, "Accepted", modifiedAt));
-        Assert.True(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Refunded", modifiedAt));
-        Assert.True(MarketplaceJobProcessor.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.AddMinutes(1)));
+        Assert.False(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.ToOffset(TimeSpan.FromHours(3))));
+        Assert.True(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Completed, "Accepted", modifiedAt));
+        Assert.True(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Refunded", modifiedAt));
+        Assert.True(ReturnIngestionService.ReturnStatusObservationChanges(claim, ReturnClaimStatus.Approved, "Accepted", modifiedAt.AddMinutes(1)));
     }
 
     [Fact]

@@ -1,4 +1,6 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import type { VariantPlatformStatus } from '../shared'
+import { parseEditorNumber } from './editor-number'
 
 // Pazaryerlerine Özel Fiyat on a new card: a marketplace with an entry has its own price, one without sells at the
 // main (panel) price. Every switch starts off and its two inputs show 0 until the user turns it on and types a price.
@@ -23,10 +25,10 @@ export function copiedChannelPricing(platforms: VariantPlatformStatus[], listPri
   }))
 }
 
-export type SavedChannelOffer = { id: string; version: number; listPrice: number; salePrice: number; currency: string }
+export type SavedChannelOffer = ApiAnswer<'postChannelOffers'>
 // One saved (variant, marketplace) offer written into the form's rows at once: when a later write of the same save
 // fails, the offers already written keep their new versions, so the next try does not send a stale version (412).
-export function rowsWithSavedOffer<R extends { key: string; platformStatuses?: VariantPlatformStatus[] | null }>(rows: ReadonlyArray<R>, rowKey: string, connectionId: string, saved: SavedChannelOffer): R[] {
+export function rowsWithSavedOffer<R extends { key: string; platformStatuses?: VariantPlatformStatus[] | null }>(rows: ReadonlyArray<R>, rowKey: string, connectionId: string, saved: Pick<SavedChannelOffer, 'id' | 'version' | 'listPrice' | 'salePrice' | 'currency'>): R[] {
   return rows.map(row => row.key !== rowKey ? row : {
     ...row,
     platformStatuses: row.platformStatuses?.map(platform => platform.connectionId === connectionId
@@ -46,7 +48,7 @@ export function channelOfferPostKey(store: Map<string, { key: string; body: stri
   return key
 }
 
-const samePrice = (left: string, right: string) => left.trim() === right.trim() || (left.trim() !== '' && right.trim() !== '' && Number(left) === Number(right))
+const samePrice = (left: string, right: string) => left.trim() === right.trim() || (left.trim() !== '' && right.trim() !== '' && parseEditorNumber(left) === parseEditorNumber(right))
 
 // The price table's drafts after its rows were read again (each saved offer is written into the rows at once): a
 // typed cell whose stored price now equals what was typed was saved and starts clean; every other typed cell keeps

@@ -67,7 +67,7 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         var lostLinks = linkHealth.Count == 0 ? [] : await (
                 from link in db.MarketplaceVariantLinks.AsNoTracking()
                 join variant in db.ProductVariants.AsNoTracking() on link.VariantId equals variant.Id
-                join product in db.Products.AsNoTracking() on variant.ProductId equals product.Id
+                join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
                 where link.TenantId == tenantId && variant.TenantId == tenantId && product.TenantId == tenantId && ids.Contains(link.ConnectionId)
                     && (link.HealthStatus == MarketplaceVariantLinkHealth.NotFound || link.HealthStatus == MarketplaceVariantLinkHealth.Rejected)
                 select new LostLink(link.ConnectionId, product.Id, product.Title, link.HealthStatus!, variant.Sku, link.HealthChangedAt))
@@ -153,13 +153,9 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             .ToListAsync(cancellationToken);
         var jobs = queued.Where(job => PriceStockEmergencyStopPolicy.Cancels(job.JobType, job.PayloadJson)).ToList();
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = "AUTOMATIC_WRITES_STOPPED";
-            job.LastErrorSummary = "Tüm otomatik yazmalar acil durdurmayla kapatıldı; iş gönderilmeden iptal edildi.";
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, "AUTOMATIC_WRITES_STOPPED", "Tüm otomatik yazmalar acil durdurmayla kapatıldı; iş gönderilmeden iptal edildi.", Jobs.JobEvent.None);
+        // K2: one "jobs" event for the whole stop (it may close thousands of waiting jobs), not one per job.
+        Jobs.JobStateMachine.PublishBulk(db, tenantId, now, JobStatus.Cancelled, jobs.Count);
         var connectionsStopped = policies.Select(x => x.ConnectionId).Distinct().Count();
         db.AuditLogs.Add(new AuditLog
         {

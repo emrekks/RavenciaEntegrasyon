@@ -1,0 +1,352 @@
+{
+  "totalJs": 3094470,
+  "chunks": {
+    "ApiHealthView.css": [
+      3494
+    ],
+    "ApiHealthView.js": [
+      13875
+    ],
+    "BulkFieldDialog.css": [
+      1337
+    ],
+    "BulkFieldDialog.js": [
+      10674
+    ],
+    "BulkPlatformUpdateDialog.css": [
+      1367
+    ],
+    "BulkPlatformUpdateDialog.js": [
+      6613
+    ],
+    "BulkPublishDialog.css": [
+      2042
+    ],
+    "BulkPublishDialog.js": [
+      19502
+    ],
+    "ChangePill.css": [
+      437
+    ],
+    "ChangePill.js": [
+      891
+    ],
+    "color-value-format.js": [
+      305
+    ],
+    "components.css": [
+      10168
+    ],
+    "components.js": [
+      69729
+    ],
+    "connection-data-reset.js": [
+      3929
+    ],
+    "copy-text.js": [
+      509
+    ],
+    "dashboard-operational-links.js": [
+      629
+    ],
+    "DashboardPage.js": [
+      30890
+    ],
+    "date-range.js": [
+      854
+    ],
+    "DateRangePicker.js": [
+      6926
+    ],
+    "dist.js": [
+      145822
+    ],
+    "elevated-role.js": [
+      295
+    ],
+    "format-date.js": [
+      1923
+    ],
+    "format-money.js": [
+      452
+    ],
+    "GoogleDriveCallbackPage.js": [
+      1402
+    ],
+    "ImportPages.js": [
+      8214
+    ],
+    "IntegrationPages.css": [
+      63578
+    ],
+    "IntegrationPages.js": [
+      126278
+    ],
+    "IntegrationStatusPanel.css": [
+      45105
+    ],
+    "IntegrationStatusPanel.js": [
+      7522
+    ],
+    "InvoiceWorkspacePreviewModal.js": [
+      35621
+    ],
+    "idempotency.js": [
+      1077
+    ],
+    "instant-notification-status.css": [
+      2719
+    ],
+    "instant-notification-status.js": [
+      6968
+    ],
+    "integration-helpers.js": [
+      7872
+    ],
+    "invoicing.css": [
+      79635
+    ],
+    "invoicing.js": [
+      88349
+    ],
+    "job-outcome-notice.js": [
+      592
+    ],
+    "job-outcome.js": [
+      7386
+    ],
+    "list-url-state.js": [
+      1188
+    ],
+    "mapping-focus.js": [
+      777
+    ],
+    "mapping-platforms.js": [
+      495
+    ],
+    "MappingPages.css": [
+      177385
+    ],
+    "MappingPages.js": [
+      203625
+    ],
+    "marketplace-platform-support.js": [
+      2464
+    ],
+    "marketplace-product-link.js": [
+      250
+    ],
+    "metric-value.js": [
+      353
+    ],
+    "NotificationCenter.css": [
+      4546
+    ],
+    "NotificationCenter.js": [
+      9945
+    ],
+    "NotificationPanel.css": [
+      11111
+    ],
+    "NotificationPanel.js": [
+      6910
+    ],
+    "offsite-backup.js": [
+      4770
+    ],
+    "OperationLogs.css": [
+      19252
+    ],
+    "OperationLogs.js": [
+      19771
+    ],
+    "operations.css": [
+      30208
+    ],
+    "operations.js": [
+      81233
+    ],
+    "OrdersPage.css": [
+      15533
+    ],
+    "OrdersPage.js": [
+      122581
+    ],
+    "package-label.js": [
+      77
+    ],
+    "person-name.js": [
+      122
+    ],
+    "phone-spacing.css": [
+      12861
+    ],
+    "platform-names.js": [
+      690
+    ],
+    "platform-square-mark.js": [
+      584
+    ],
+    "PlatformFilter.js": [
+      2943
+    ],
+    "PriceStockSendLog.js": [
+      9374
+    ],
+    "product-editor-hydration.css": [
+      73761
+    ],
+    "product-image-lookups.js": [
+      607
+    ],
+    "product-media-save.js": [
+      16135
+    ],
+    "ProductEditorPages.css": [
+      13792
+    ],
+    "ProductEditorPages.js": [
+      309874
+    ],
+    "ProductQuickEditModal.js": [
+      29053
+    ],
+    "ProductsPage.css": [
+      6856
+    ],
+    "ProductsPage.js": [
+      103376
+    ],
+    "PromotionsPage.js": [
+      81797
+    ],
+    "PublicationJobVariants.css": [
+      2560
+    ],
+    "PublicationJobVariants.js": [
+      21581
+    ],
+    "PublishIssueBadge.css": [
+      4729
+    ],
+    "PublishIssueBadge.js": [
+      40066
+    ],
+    "questions.css": [
+      38253
+    ],
+    "questions.js": [
+      33030
+    ],
+    "QueueQuotaView.css": [
+      7142
+    ],
+    "QueueQuotaView.js": [
+      12468
+    ],
+    "reference-value-sync.js": [
+      545
+    ],
+    "remembered-height.js": [
+      550
+    ],
+    "reports.css": [
+      124824
+    ],
+    "reports.js": [
+      4941
+    ],
+    "ReportsPage.js": [
+      196793
+    ],
+    "responsive.css": [
+      27677
+    ],
+    "ReturnPages.js": [
+      88510
+    ],
+    "rolldown-runtime.js": [
+      1116
+    ],
+    "safe-url.js": [
+      477
+    ],
+    "sanitizeHtml.js": [
+      1748
+    ],
+    "shared.css": [
+      114815,
+      31071
+    ],
+    "shared.js": [
+      11746,
+      7205
+    ],
+    "ShipmentPages.js": [
+      16136
+    ],
+    "shipping.css": [
+      3138
+    ],
+    "shipping.js": [
+      20219
+    ],
+    "SystemSettingsPage.css": [
+      61744
+    ],
+    "SystemSettingsPage.js": [
+      149729
+    ],
+    "tab-slide.js": [
+      1738
+    ],
+    "tablet-catalog.css": [
+      17411
+    ],
+    "tablet-ops.css": [
+      9419
+    ],
+    "tr-number.js": [
+      710
+    ],
+    "turkey-map.js": [
+      66385
+    ],
+    "unit-price-alignment.js": [
+      631
+    ],
+    "unit-profit.css": [
+      57024
+    ],
+    "unit-profit.js": [
+      3686
+    ],
+    "use-metric-source.js": [
+      1070
+    ],
+    "useDismissable.js": [
+      1788
+    ],
+    "useMenuFlip.js": [
+      1659
+    ],
+    "ValuePicker.css": [
+      2667
+    ],
+    "ValuePicker.js": [
+      6803
+    ],
+    "variant-stock-set.js": [
+      38180
+    ],
+    "view-tabs.css": [
+      10351
+    ],
+    "view-tabs.js": [
+      8468
+    ],
+    "world-map.js": [
+      167759
+    ]
+  }
+}

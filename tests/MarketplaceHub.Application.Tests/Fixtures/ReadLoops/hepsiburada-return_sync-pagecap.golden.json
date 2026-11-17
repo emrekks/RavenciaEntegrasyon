@@ -1,0 +1,35 @@
+{
+  "JobType": "HEPSIBURADA_RETURN_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "ManualReview",
+      "ErrorCode": "HEPSIBURADA_RETURN_PAGE_CAP",
+      "Calls": {
+        "Count": 2000,
+        "Head": [
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:0 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:1 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=1 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:2 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=2 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:3 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=3 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:4 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=4 limit=100"
+        ],
+        "Tail": [
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:1997 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=1997 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:1998 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=1998 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:1999 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=1999 limit=100"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURNS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"hepsiburada-returns-v2\",\"StatusIndex\":0,\"Offset\":1999,\"Full\":true,\"StatusChangedAfter\":null,\"AnchorEnd\":\"2026-11-16T09:00:02+00:00\"}",
+      "Version": 2003
+    }
+  ],
+  "Issues": []
+}

@@ -1,0 +1,80 @@
+{
+  "claim": {
+    "ExternalClaimId": "356189794",
+    "ExternalOrderId": "2152988946",
+    "RawStatus": "AwaitingAction",
+    "ReasonCode": "",
+    "ReasonText": "",
+    "ActionDueAt": null,
+    "LastModifiedAt": "2021-10-14T11:03:17.676+00:00",
+    "Lines": [
+      {
+        "ExternalLineId": "61680dc6-b404-55fe-1171-d92506060606",
+        "ExternalOrderLineId": "61680dc6-b404-55fe-1171-d92506060606",
+        "Quantity": 1,
+        "AlternateExternalOrderLineIds": [],
+        "RawStatus": null,
+        "AcceptDetail": null,
+        "Note": null,
+        "Resolved": null,
+        "AcceptedBySeller": null,
+        "ProductCode": null,
+        "StockCode": null
+      }
+    ],
+    "RawJson": "<raw 1254 chars sha256:1513c10fbea1>",
+    "CargoProviderName": null,
+    "CargoTrackingNumber": "6225816234669",
+    "CargoTrackingLink": null,
+    "OrderCreatedAt": "2021-10-14T11:00:20+00:00",
+    "ActionDueAtEstimated": false,
+    "RejectedPackageState": null,
+    "DecidedAt": null,
+    "CustomerRequest": "CHANGE",
+    "ResolvedWith": null,
+    "RequestedAt": "2021-10-14T11:03:17.676+00:00"
+  },
+  "order": {
+    "ExternalOrderId": "2152988946",
+    "OrderNumber": "2152988946",
+    "OrderedAt": "2021-10-14T11:00:20+00:00",
+    "LastModifiedAt": "1970-01-01T00:00:00+00:00",
+    "Currency": "TRY",
+    "GrossAmount": 56.0,
+    "DiscountAmount": 0,
+    "NetAmount": 56.0,
+    "CustomerSnapshotJson": {
+      "name": "Test Musteri",
+      "customerId": "b5b0f469-dd8f-4b99-bc64-1a1f9e78dfae",
+      "_ravenciaReadModelSource": "RETURN_CLAIM"
+    },
+    "ShipmentAddressSnapshotJson": {},
+    "InvoiceAddressSnapshotJson": {},
+    "Lines": [
+      {
+        "ExternalLineId": "61680dc6-b404-55fe-1171-d92506060606",
+        "Sku": "KIVIRCIK20",
+        "Barcode": null,
+        "Title": "George Adams Erkek Klasik Gömlek",
+        "Quantity": 1,
+        "UnitPrice": 56.0,
+        "VatRate": null,
+        "RawStatus": "ClaimCreated",
+        "SourceSnapshotJson": "<raw 503 chars sha256:7aa0b53d15ee>",
+        "CancelledQuantity": 0,
+        "CancelledAt": null,
+        "PlatformDiscount": null
+      }
+    ],
+    "Packages": [],
+    "RawJson": "<raw 1254 chars sha256:1513c10fbea1>",
+    "ShipmentDueAt": null,
+    "PaymentStatus": "UNKNOWN",
+    "CancellationStatus": "UNKNOWN",
+    "RefundStatus": "UNKNOWN",
+    "RefundedAmount": 0,
+    "Refunds": null,
+    "LifecycleStatus": null,
+    "StoreFrontCode": null
+  }
+}

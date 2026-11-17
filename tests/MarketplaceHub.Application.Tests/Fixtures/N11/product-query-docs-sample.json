@@ -1,0 +1,21 @@
+// Source: n11 GetProductQuery example (developer.n11.com, no offline copy), the values N11ProductMapperTests.DocumentedPage
+// uses, plus a second hand-built item without saleStatus (sale state must stay unknown) on the same schema.
+{
+  "content": [
+    {
+      "n11ProductId": 123456789, "sellerId": 9876543, "sellerNickname": "testMagaza", "stockCode": "TestSKU123", "title": "Test Ürünü Kontrol Amaçlı Gri",
+      "description": "Açıklama bilgisi uzun açıklama", "categoryId": 1231231, "productMainId": "GrupKoduModellemeİçin", "status": "Active", "saleStatus": "On_Sale",
+      "preparingDay": 3, "shipmentTemplate": "1", "catalogId": 987654321, "barcode": null, "groupId": 12345678, "currencyType": "TL", "salePrice": 10000.0, "listPrice": 10000, "quantity": 2,
+      "attributes": [ { "attributeId": 1, "attributeName": "Marka", "attributeValue": "Diğer" }, { "attributeId": 429, "attributeName": "Renk", "attributeValue": "Gri" }, { "attributeId": 845, "attributeName": "Ölçüler", "attributeValue": "0.5 CMx 1 M" } ],
+      "imageUrls": [ "https://n11scdn3.akamaized.net/a1/org/07/76/32/73/IMG-4395477787604309691.jpg" ], "vatRate": 10, "commissionRate": 8
+    },
+    {
+      "n11ProductId": 123456790, "sellerId": 9876543, "stockCode": "TestSKU124", "title": "Satış Durumu Gelmeyen Ürün",
+      "categoryId": 1231231, "productMainId": "GrupKoduModellemeİçin", "status": "Active",
+      "currencyType": "TL", "salePrice": "149.90", "listPrice": "199.90", "quantity": "5",
+      "attributes": [ { "attributeId": 429, "attributeName": "Renk", "attributeValue": "Siyah" } ],
+      "imageUrls": [], "vatRate": 10
+    }
+  ],
+  "pageable": { "pageNumber": 0, "pageSize": 20 }, "last": true, "totalElements": 2, "totalPages": 1, "first": true, "number": 0, "numberOfElements": 2, "size": 20, "empty": false
+}

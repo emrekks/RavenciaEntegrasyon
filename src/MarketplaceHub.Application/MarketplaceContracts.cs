@@ -763,7 +763,10 @@ public static class TrendyolInvoiceReconciliationPolicy
 // judge the package's lines (a status observation, a claim, a marketplace that refuses such a package instead).
 public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false, DateTimeOffset? CancelledAt = null, int? UnreadableLineCount = null, string? CargoBarcode = null);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
-public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null, string? StoreFrontCode = null);
+// PaymentStatus, CancellationStatus and RefundStatus are what the marketplace said; a mapper that did not read one leaves
+// it "UNKNOWN" (a missing field is not "paid", "not cancelled" or "not refunded"; ADAPTOR-TY-HB-6). Only Shopify's
+// financial observations read them today, and its mapper sets all three.
+public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "UNKNOWN", string RefundStatus = "UNKNOWN", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null, string? StoreFrontCode = null);
 // The order as the panel last saw it: when it was placed, last changed and which storefront it belongs to.
 public sealed record OrderLookupHint(DateTimeOffset? OrderedAt, DateTimeOffset? LastModifiedAt, string? StoreFrontCode);
 // InvoiceOnly: the caller needs the package record itself, not its cargo fields, so the first match is final.
@@ -1031,7 +1034,17 @@ public sealed record AnswerQuestionCommand(string Text, long Version);
 public sealed record QuestionSyncView(int Added, int Updated, DateTimeOffset SyncedAt, string? Error = null, AdapterError? Failure = null);
 public sealed record MarketplaceQuestionSyncStateView(Guid ConnectionId, string PlatformCode, string StoreName, bool HistoryImported, DateTimeOffset? HistoryStartedAt, string ProgressStatus, int ImportedCount, DateTimeOffset? LastRunStartedAt, DateTimeOffset? LastSuccessAt, string? LastError, int ProductQuestionCount = 0, int OrderQuestionCount = 0);
 public sealed record QuestionListQuery(string Kind, string? Status, string? PlatformCode, Guid? ConnectionId, DateTimeOffset? DateFrom, DateTimeOffset? DateTo, string? Search, int Page = 1, int Limit = 50, string Sort = "NEWEST");
-public sealed record MarketplaceQuestionListPage(IReadOnlyList<MarketplaceQuestionView> Items, int Page, int Limit, int TotalCount);
+public sealed record MarketplaceQuestionListPage(IReadOnlyList<MarketplaceQuestionView> Items, int Page, int Limit, int TotalCount)
+{
+    /// <summary>Unified paging (API-GUVENLIK-8): the cursor of the next page, null on the last page or where the order is not total.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Unified paging: whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+
+    /// <summary>NumberedPage: the page size (the same as <see cref="Limit"/>, its older name).</summary>
+    public int PageSize { get; init; }
+}
 
 public interface IMarketplaceQuestionService
 {
@@ -1366,7 +1379,7 @@ public sealed record OrderBuyerTypeView(string Kind, string Reason)
 }
 // Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
 // marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
-// MicroExport: Trendyol micro=true; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
+// MicroExport: the "Mikro İhracat" label's rule (OrderMicroExportRules); MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
 // DeliveryPoint: Trendyol deliveryAddressType=CollectionPoint, n11 deliveryAddressType (KTN, EASYPOINT, PUP).
 // FastDeliveryType: Trendyol fastDeliveryType TodayDelivery, SameDayShipping or FastDelivery.
 public sealed record OrderRowMarks(bool MicroExport, string? MicroExportCountryCode, bool DeliveryPoint, string? DeliveryPointType, string? FastDeliveryType);
@@ -1701,7 +1714,10 @@ public sealed record ReturnDetailView(
     // The marketplace decides the whole claim at once (ReturnDecisionScope): the screens lock the line choice.
     bool WholeClaimDecision = false,
     // A denial must name the shipment of the product back to the buyer (n11 ClaimReturnDeny, N11ReturnDenyRule).
-    bool RejectNeedsReturnShipment = false);
+    bool RejectNeedsReturnShipment = false,
+    // SIPARIS-STOK-5: the decision answer only: the marketplace took the approval, but its stock choice could not be
+    // written now (the rows kept changing); the decision stays SUBMITTED and the next read of the claim adds the stock.
+    bool StockPendingNextSync = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null, ReturnShipmentCommand? ReturnShipment = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);

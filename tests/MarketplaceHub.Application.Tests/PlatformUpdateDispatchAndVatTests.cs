@@ -60,13 +60,13 @@ public sealed class PlatformUpdateDispatchAndVatTests
     public void HepsiburadaUpdate_GoesOnToTheDispatchPhase_AndKeepsTheProductTrackingId()
     {
         var payload = new ProductUpdateJobPayload(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "POLL_UNAPPROVED", "UNAPPROVED", "H", "{\"items\":[1]}", "{\"items\":[]}", "{\"items\":[]}", "{\"items\":[1]}", "PRODUCT_UPDATE:T1", DateTimeOffset.UnixEpoch);
-        var next = MarketplaceJobProcessor.AdvanceUpdate(payload, "POLL_UNAPPROVED")!;
+        var next = ProductJobService.AdvanceUpdate(payload, "POLL_UNAPPROVED")!;
         Assert.Equal("SUBMIT_DELIVERY", next.Phase);
         Assert.Null(next.ExternalOperationId);
         Assert.Equal("PRODUCT_UPDATE:T1", next.ProductOperationId);
         // The dispatch upload's own id does not replace it.
         var afterDispatch = next with { Phase = "POLL_DELIVERY", ExternalOperationId = "LISTING_SHIPPING:U1" };
-        Assert.Null(MarketplaceJobProcessor.AdvanceUpdate(afterDispatch, "POLL_DELIVERY"));
+        Assert.Null(ProductJobService.AdvanceUpdate(afterDispatch, "POLL_DELIVERY"));
         Assert.Equal("PRODUCT_UPDATE:T1", afterDispatch.ProductOperationId);
     }
 
@@ -86,7 +86,7 @@ public sealed class PlatformUpdateDispatchAndVatTests
     [InlineData(new[] { "LIVE", "APPROVAL_PENDING" }, "PARTIAL_LIVE")]
     [InlineData(new[] { "APPROVAL_PENDING", "APPROVAL_PENDING" }, "APPROVAL_PENDING")]
     public void InPlaceUpdate_LeavesTheCardAsItsListingsAre(string[] listings, string expected) =>
-        Assert.Equal(expected, MarketplaceJobProcessor.ProductProfileStatusAfterInPlaceUpdate(listings));
+        Assert.Equal(expected, ProductJobService.ProductProfileStatusAfterInPlaceUpdate(listings));
 
     [Fact]
     public void PazaramaVatRate_BodyIsTheDocumentedListingVatRates()

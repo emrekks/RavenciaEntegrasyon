@@ -94,12 +94,7 @@ internal static class InvoiceDeliveryJobHygiene
             var invoiceId = InvoicingJobProcessor.DeliveryJobTarget(job.PayloadJson)!.Value.InvoiceId;
             var previous = $"{job.Status}:{job.LastErrorCode}";
             var reason = CloseReason(statuses[invoiceId], targetConfirmed: false)!.Value;
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = reason.Code;
-            job.LastErrorSummary = reason.Summary;
-            job.Version++;
-            db.IntegrationOutboxEvents.Add(JobLeaseService.NewJobEvent(job, now));
+            Jobs.JobStateMachine.Cancel(db, job, now, reason.Code, reason.Summary, Jobs.JobEvent.Publish);
             db.AuditLogs.Add(new AuditLog
             {
                 TenantId = tenantId,
@@ -194,15 +189,12 @@ internal static class InvoiceDeliveryJobHygiene
                 ? states.Any(state => state.PackageId == packageId && state.Status == "CONFIRMED")
                 : states.Count > 0 && states.All(state => state.Status == "CONFIRMED");
             if (CloseReason(invoiceStatus.Value, targetConfirmed, ownerConfirmed) is not { } reason) continue;
-            closed += await db.IntegrationJobs
-                .Where(item => item.Id == job.Id && item.TenantId == tenantId && item.Status == job.Status)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.Status, JobStatus.Cancelled)
-                    .SetProperty(item => item.LastErrorCode, reason.Code)
-                    .SetProperty(item => item.LastErrorSummary, reason.Summary)
-                    .SetProperty(item => item.CompletedAt, now)
-                    .SetProperty(item => item.Version, item => item.Version + 1), cancellationToken);
+            closed += await Jobs.JobStateMachine.CancelWhereAsync(
+                db.IntegrationJobs.Where(item => item.Id == job.Id && item.TenantId == tenantId && item.Status == job.Status),
+                now, reason.Code, reason.Summary, keepEarlierCompletedAt: false, cancellationToken);
         }
+        // K2: the job screens hear of the closed deliveries (one event for all of them).
+        await Jobs.JobStateMachine.PublishBulkAsync(db, new Dictionary<Guid, int> { [tenantId] = closed }, now, JobStatus.Cancelled, cancellationToken);
         return closed;
     }
 }

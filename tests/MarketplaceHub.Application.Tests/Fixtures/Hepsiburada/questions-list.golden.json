@@ -1,0 +1,125 @@
+{
+  "Items": [
+    {
+      "Id": "HBQ-FAKE-1",
+      "Kind": "PRODUCT",
+      "Status": "WAITING_FOR_ANSWER",
+      "Text": "Bu ürün orijinal mi?",
+      "ProductName": "Fake HB Ürün 10",
+      "ProductImageUrl": null,
+      "ProductSku": "SKU-FAKE-HB10",
+      "ProductBarcode": "0000000000110",
+      "ProductModelCode": null,
+      "CustomerName": "T*** M***",
+      "OrderNumber": null,
+      "CreatedAt": "2026-11-05T07:00:00+00:00",
+      "ExpiresAt": "2026-11-06T07:00:00+00:00",
+      "LastModifiedAt": "2026-11-05T07:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Bu ürün orijinal mi?",
+          "CreatedAt": "2026-11-05T07:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "HBQ-FAKE-2",
+      "Kind": "PRODUCT",
+      "Status": "ANSWERED",
+      "Text": "Kargo ne zaman?",
+      "ProductName": null,
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": "4000000101",
+      "CreatedAt": "2026-11-05T07:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2026-11-05T09:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Kargo ne zaman?",
+          "CreatedAt": "2026-11-05T07:00:00+00:00",
+          "RejectionReason": null
+        },
+        {
+          "Author": "Merchant",
+          "Text": "Yarın çıkar.",
+          "CreatedAt": "2026-11-05T09:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "HBQ-FAKE-3",
+      "Kind": "PRODUCT",
+      "Status": "EXPIRED",
+      "Text": "Cevapsız kalan soru",
+      "ProductName": null,
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": null,
+      "CreatedAt": "2026-11-04T07:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2026-11-04T07:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Merchant",
+          "Text": "Cevapsız kalan soru",
+          "CreatedAt": "2026-11-04T07:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    },
+    {
+      "Id": "HBQ-FAKE-4",
+      "Kind": "PRODUCT",
+      "Status": "UNKNOWN",
+      "Text": "Durumu gelmeyen soru",
+      "ProductName": null,
+      "ProductImageUrl": null,
+      "ProductSku": null,
+      "ProductBarcode": null,
+      "ProductModelCode": null,
+      "CustomerName": null,
+      "OrderNumber": null,
+      "CreatedAt": "2026-11-04T07:00:00+00:00",
+      "ExpiresAt": null,
+      "LastModifiedAt": "2026-11-04T07:00:00+00:00",
+      "Conversations": [
+        {
+          "Author": "Customer",
+          "Text": "Durumu gelmeyen soru",
+          "CreatedAt": "2026-11-04T07:00:00+00:00",
+          "RejectionReason": null
+        }
+      ],
+      "ProductUrl": null,
+      "CustomerKey": null,
+      "ProductExternalId": null,
+      "Subject": null
+    }
+  ],
+  "Page": 1,
+  "TotalPages": 1,
+  "TotalElements": 5
+}

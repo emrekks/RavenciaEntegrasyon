@@ -1,4 +1,6 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { hubApi } from '../../../shared/api'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // The two reads a field's value table needs, shared by the table, the Web Color editor and the field list's prefetch
 // (hover, focus, a click), so a field opened from the list usually finds both in the cache.
@@ -9,8 +11,8 @@ export const valueMappingStaleTime = 2 * 60_000
 
 export function valueListQuery<T>(connectionId: string, categoryScope: string, externalAttributeId: string) {
   return {
-    queryKey: ['reference-attribute-values', connectionId, `${categoryScope}/${externalAttributeId}`] as const,
-    queryFn: () => hubApi<T>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`),
+    queryKey: queryKeys.referenceAttributeValues(connectionId, `${categoryScope}/${externalAttributeId}`),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<T>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
     retry: false,
     staleTime: valueListStaleTime
   }
@@ -18,8 +20,8 @@ export function valueListQuery<T>(connectionId: string, categoryScope: string, e
 
 export function valueMappingsQuery<T>(connectionId: string, valueScope: string) {
   return {
-    queryKey: ['attribute-value-mappings', connectionId, valueScope] as const,
-    queryFn: () => hubApi<T>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`),
+    queryKey: queryKeys.attributeValueMappings(connectionId, valueScope),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<T>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`, { signal }),
     retry: false,
     staleTime: valueMappingStaleTime
   }
@@ -31,8 +33,8 @@ export function valueMappingsQuery<T>(connectionId: string, valueScope: string) 
 export type ValueMappingProgress = Record<string, string[]>
 export function valueMappingProgressQuery(connectionId: string, categoryScope: string) {
   return {
-    queryKey: ['attribute-value-mappings', connectionId, `${categoryScope}/*`, 'progress'] as const,
-    queryFn: () => hubApi<ValueMappingProgress>(`/mappings/attribute-value-progress?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`),
+    queryKey: queryKeys.attributeValueMappings(connectionId, `${categoryScope}/*`, 'progress'),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getMappingsAttributeValueProgress'>>(`/mappings/attribute-value-progress?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`, { signal }),
     retry: false,
     staleTime: valueMappingStaleTime
   }

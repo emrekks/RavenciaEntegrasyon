@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
@@ -178,24 +179,9 @@ internal static class TrendyolFinanceMapper
         return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0);
     }
 
-    // Ids and numbers come as JSON numbers or strings ("725041340"); either is read as text.
-    internal static string? Text(JsonElement element, string name)
-    {
-        if (!element.TryGetProperty(name, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-    }
-
-    internal static decimal? Number(JsonElement element, string name)
-    {
-        if (!element.TryGetProperty(name, out var value)) return null;
-        return RemoteJson.Decimal(value);
-    }
+    // Ids and numbers come as JSON numbers or strings ("725041340"); RemoteFields.Text reads either as trimmed text and
+    // RemoteFields.Decimal reads amounts dot-decimal (every caller in this mapper hands in an object, as its old copies needed).
+    private static decimal? Number(JsonElement element, string name) => RemoteFields.Decimal(element, name);
 
     private static int? Int(JsonElement element, string name) => Number(element, name) is { } number ? (int)Math.Clamp(Math.Truncate(number), int.MinValue, int.MaxValue) : null;
 

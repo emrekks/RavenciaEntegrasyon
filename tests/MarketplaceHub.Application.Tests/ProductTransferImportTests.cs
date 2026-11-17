@@ -373,7 +373,7 @@ public sealed class ProductTransferImportTests
         {
             new ProductTransferFileRow(2, "A-1", null, Empty, Empty, Title: Text("Yeni Gömlek"), Vat: Set(20m)),
             new ProductTransferFileRow(3, "A-2", null, Empty, Empty, Title: Text("Yeni Gömlek"), Vat: Set(20m)),
-            new ProductTransferFileRow(4, "C-1", null, Empty, Empty, Title: Text("Pantolon"), Vat: Set(20m)),
+            new ProductTransferFileRow(4, "C-1", null, Empty, Empty, Title: Text("Uzun Pantolon"), Vat: Set(20m)),
             new ProductTransferFileRow(5, "C-2", null, Empty, Empty, Title: Text("Başka Pantolon"), Vat: Set(20m)),
         };
 
@@ -386,6 +386,81 @@ public sealed class ProductTransferImportTests
         var row = preview.Rows.Single(item => item.RowNumber == 2);
         Assert.Equal(("Gömlek", "Yeni Gömlek", "SET", 10m, 20m, "SET"), (row.ProductTitle, row.NewTitle, row.TitleChange, row.OldVatRate, row.NewVatRate, row.VatChange));
         Assert.All(preview.Rows.Where(item => item.RowNumber >= 4), item => Assert.Contains("farklı ürün adı", item.Message));
+    }
+
+    // KATALOG-14 phase D5b review 6b: the rows of one model are compared only where the file CHANGES the field. A file
+    // exported and loaded back with only the cost changed is not refused though its rows carry the sizes' differing desi;
+    // one row changed alone gives its value (the other rows keep the old one, unchanged); two rows changed to two values
+    // are refused.
+    [Fact]
+    public void AModelsRowsConflict_OnlyWhereTheFileChangesTheField()
+    {
+        var model = Guid.CreateVersion7();
+        ProductTransferCandidate Size(string sku, decimal desi) => Candidate(sku, null, 50m, desi) with { ProductId = model, ModelCode = "MZ900", ProductTitle = "Etek", VatRate = 10m };
+        var candidates = new[] { Size("E-1", 1m), Size("E-2", 2m), Size("E-3", 2m) };
+        ProductTransferFileRow Line(int number, string sku, decimal cost, decimal desi) => new(number, sku, null, Set(cost), Set(desi));
+
+        // Exported and loaded back, only the cost changed: no conflict.
+        var costOnly = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "E-1", 60m, 1m), Line(3, "E-2", 60m, 2m), Line(4, "E-3", 60m, 2m)], candidates, [ProductTransferFields.Cost, ProductTransferFields.Desi]);
+        Assert.Equal(0, costOnly.Errors);
+        Assert.Equal(3, costOnly.Changes.Count(change => change.SetCost));
+        Assert.DoesNotContain(costOnly.Changes, change => change.SetDesi);
+
+        // One row changed alone: its value is the change, the rows keeping the old value are unchanged.
+        var oneRow = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "E-1", 50m, 3m), Line(3, "E-2", 50m, 2m), Line(4, "E-3", 50m, 2m)], candidates, [ProductTransferFields.Cost, ProductTransferFields.Desi]);
+        Assert.Equal(0, oneRow.Errors);
+        var desi = Assert.Single(oneRow.Changes, change => change.SetDesi);
+        Assert.Equal((candidates[0].VariantId, (decimal?)3m), (desi.VariantId, desi.Desi));
+
+        // Two rows changed to two values: the model's rows are refused.
+        var two = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "E-1", 50m, 3m), Line(3, "E-2", 50m, 4m), Line(4, "E-3", 50m, 2m)], candidates, [ProductTransferFields.Cost, ProductTransferFields.Desi]);
+        Assert.Empty(two.Changes);
+        Assert.All(two.Rows, row => Assert.Contains("Aynı modelin (MZ900) satırlarında farklı desi var", row.Message));
+    }
+
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026): the "Açıklama" column is the model's description. An empty cell changes
+    // nothing and it cannot be removed; a formula-like value is refused; a changed one is cleaned (HTML allowlist) and
+    // checked by the editor's rules. Only the rows that CHANGE it are compared: one row changed alone gives its value
+    // (the rows still carrying the old text are unchanged), two rows changed to two texts refuse the model's rows.
+    [Fact]
+    public void TheDescription_IsTheModels_ChangedRowsAloneAreCompared_AndItIsCleanedAndChecked()
+    {
+        var csv = "Stok Kodu;Açıklama\r\nA-1;<p>Yeni</p>\r\nA-2;\r\nA-3;-\r\nA-4;=HYPERLINK(1)\r\n";
+        var file = ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes(csv)));
+        Assert.Equal([ProductTransferFields.Description], file.AvailableFields);
+        Assert.Equal((ProductTransferValueKind.Set, "<p>Yeni</p>"), (file.Rows[0].Description.Kind, file.Rows[0].Description.Text));
+        Assert.Equal(ProductTransferValueKind.Empty, file.Rows[1].Description.Kind);
+        Assert.Contains("silinemez", file.Rows[2].Description.Error);
+        Assert.Contains("formül", file.Rows[3].Description.Error);
+
+        var model = Guid.CreateVersion7();
+        var siyah = Guid.CreateVersion7();
+        ProductTransferCandidate Size(string sku, Guid product) => Candidate(sku, null, null, null) with { ProductId = product, ModelCode = "MZ910", ProductTitle = "Etek", Description = "<p>Eski</p>" };
+        var candidates = new[] { Size("S-1", siyah), Size("S-2", siyah), Size("M-1", model), Size("M-2", model) };
+        ProductTransferFileRow Line(int number, string sku, string text) => new(number, sku, null, Empty, Empty, Description: Text(text));
+        string[] picked = [ProductTransferFields.Description];
+
+        // Loaded back unchanged: nothing.
+        var same = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "S-1", "<p>Eski</p>"), Line(3, "S-2", "<p>Eski</p>"), Line(4, "M-1", "<p>Eski</p>"), Line(5, "M-2", "<p>Eski</p>")], candidates, picked);
+        Assert.Equal((0, 0, 4), (same.ProductChanges!.Count, same.Errors, same.Unchanged));
+
+        // One row changed alone: its cleaned value is the change (the event handler is removed), the other rows are unchanged.
+        var one = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "S-1", "<p onclick=\"x()\">Yeni <b>metin</b></p>"), Line(3, "S-2", "<p>Eski</p>"), Line(4, "M-1", "<p>Eski</p>"), Line(5, "M-2", "<p>Eski</p>")], candidates, picked);
+        Assert.Equal(0, one.Errors);
+        var change = Assert.Single(one.ProductChanges!);
+        Assert.Equal((siyah, "<p>Yeni <b>metin</b></p>"), (change.ProductId, change.Description));
+        Assert.Equal(1, one.DescriptionUpdates);
+        var view = one.Rows.Single(row => row.RowNumber == 2);
+        Assert.Equal(("SET", (int?)"<p>Yeni <b>metin</b></p>".Length), (view.DescriptionChange, view.NewDescriptionLength));
+
+        // Two rows changed to two texts: the model's rows are refused.
+        var two = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "S-1", "<p>Bir</p>"), Line(3, "S-2", "<p>Bir</p>"), Line(4, "M-1", "<p>İki</p>"), Line(5, "M-2", "<p>Eski</p>")], candidates, picked);
+        Assert.Empty(two.ProductChanges!);
+        Assert.All(two.Rows, row => Assert.Contains("Aynı modelin (MZ910) satırlarında farklı açıklama var", row.Message));
+
+        // The editor's rules: an empty text after cleaning is refused.
+        var empty = ProductTransferImportPlanner.Plan("f.xlsx", [Line(2, "S-1", "<script></script>")], candidates, picked);
+        Assert.Equal("Açıklama boş olamaz.", Assert.Single(empty.Rows).Message);
     }
 
     [Fact]
@@ -454,6 +529,63 @@ public sealed class ProductTransferImportTests
         Assert.Equal((true, (string?)null, "CLEAR"), (clear.Changes[0].SetModelCode, clear.Changes[0].ModelCode, clear.Rows[0].ModelCodeChange));
     }
 
+    // KATALOG-1: a model code is one value on every row of a card. A file that re-codes only some rows of a card (or names
+    // two codes on one card) is refused on those rows; every row of the card re-coded together goes through.
+    [Fact]
+    public void AModelCode_ChangesOnEveryRowOfACardTogether()
+    {
+        var card = Guid.CreateVersion7();
+        var s = Candidate("MZ100-S", null, null, null) with { ProductId = card, ModelCode = "MZ100" };
+        var m = Candidate("MZ100-M", null, null, null) with { ProductId = card, ModelCode = "MZ100" };
+        var l = Candidate("MZ100-L", null, null, null) with { ProductId = card, ModelCode = "MZ100" };
+        string[] fields = [ProductTransferFields.ModelCode];
+
+        // Only the S row takes a new code: the card would hold two codes.
+        var partial = ProductTransferImportPlanner.Plan("f.xlsx", [new ProductTransferFileRow(2, "MZ100-S", null, Empty, Empty, ModelCode: Text("MZ100A"))], [s, m, l], fields);
+        Assert.Empty(partial.Changes);
+        Assert.Equal("ERROR", Assert.Single(partial.Rows).Outcome);
+        Assert.Contains("tüm satırlarında birlikte", partial.Rows[0].Message);
+
+        // Two codes on one card's rows.
+        var split = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ100-S", null, Empty, Empty, ModelCode: Text("MZ200")),
+            new ProductTransferFileRow(3, "MZ100-M", null, Empty, Empty, ModelCode: Text("MZ300")),
+            new ProductTransferFileRow(4, "MZ100-L", null, Empty, Empty, ModelCode: Text("MZ300"))], [s, m, l], fields);
+        Assert.Empty(split.Changes);
+        Assert.All(split.Rows, row => Assert.Equal("ERROR", row.Outcome));
+
+        // Every row together (another spelling of one code is the same code).
+        var together = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ100-S", null, Empty, Empty, ModelCode: Text("MZ200")),
+            new ProductTransferFileRow(3, "MZ100-M", null, Empty, Empty, ModelCode: Text("MZ200")),
+            new ProductTransferFileRow(4, "MZ100-L", null, Empty, Empty, ModelCode: Text("mz200"))], [s, m, l], fields);
+        Assert.Equal(3, together.Changes.Count);
+        Assert.All(together.Rows, row => Assert.Equal("UPDATE", row.Outcome));
+    }
+
+    // KATALOG-3: the name and the VAT are the model's: rows of two colour cards of one model asking for different VATs are
+    // refused; names that differ only by each card's own colour word are one name.
+    [Fact]
+    public void TheNameAndVat_AreCheckedAcrossTheColourCardsOfAModel()
+    {
+        var siyah = Candidate("MZ600-S", null, null, null) with { ModelCode = "MZ600", VariantLabel = "Renk: Siyah | Beden: S", ProductTitle = "Kadın Siyah Bluz" };
+        var mavi = Candidate("MZ600-M", null, null, null) with { ModelCode = "MZ600", VariantLabel = "Renk: Mavi | Beden: S", ProductTitle = "Kadın Mavi Bluz" };
+        string[] fields = [ProductTransferFields.Title, ProductTransferFields.Vat];
+
+        var vat = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ600-S", null, Empty, Empty, Vat: Set(20m)),
+            new ProductTransferFileRow(3, "MZ600-M", null, Empty, Empty, Vat: Set(10m))], [siyah, mavi], fields);
+        Assert.Empty(vat.ProductChanges!);
+        Assert.All(vat.Rows, row => Assert.Equal("ERROR", row.Outcome));
+        Assert.Contains("Aynı modelin", vat.Rows[0].Message);
+
+        var names = ProductTransferImportPlanner.Plan("f.xlsx", [
+            new ProductTransferFileRow(2, "MZ600-S", null, Empty, Empty, Title: Text("Kadın Siyah Yeni Bluz")),
+            new ProductTransferFileRow(3, "MZ600-M", null, Empty, Empty, Title: Text("Kadın Mavi Yeni Bluz"))], [siyah, mavi], fields);
+        Assert.Equal(2, names.ProductChanges!.Count);
+        Assert.All(names.Rows, row => Assert.Equal("UPDATE", row.Outcome));
+    }
+
     private static ProductTransferValue Empty => ProductTransferValue.Empty;
     private static ProductTransferValue Set(decimal value) => ProductTransferValue.Set(value);
     private static ProductTransferValue Text(string value) => ProductTransferValue.SetText(value);
@@ -474,12 +606,15 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Aktarım Ürünü", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        // KATALOG-14 phase D5b: the desi is the model's, so a variant without one is a variant of another model (here two
+        // cards without a model code, each its own model).
+        var other = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Aktarım Ürünü 2", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
         var first = Variant(tenant, product, "COST-1", "8690000100001", cost: null, desi: 2m, now);
-        var second = Variant(tenant, product, "COST-2", "8690000100002", cost: 4m, desi: null, now);
+        var second = Variant(tenant, other, "COST-2", "8690000100002", cost: 4m, desi: null, now);
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
-            seed.Products.Add(product);
+            seed.Products.AddRange(product, other);
             seed.ProductVariants.AddRange(first, second);
             await seed.SaveChangesAsync();
         }
@@ -504,7 +639,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes), "transfer-test", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
-        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 1), applied.Value);
+        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 2, ModelColours: 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var stored = await check.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();
@@ -540,6 +675,10 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "N11", Environment = "STAGE", DisplayName = "N11", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "VERIFIED", ApiVersion = "V1" };
         var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 3m, Available = 3m };
         var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 500m, SalePrice = 400m, Currency = "TRY", VatRate = 10m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE" };
+        // SIPARIS-STOK-8: an order line found too little stock earlier; the count the file sets answers its notice.
+        var shortLineId = Guid.CreateVersion7();
+        var shortfallMarker = new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenant.Id, InventoryItemId = item.Id, MovementType = OrderInventoryStockPolicy.ShortfallMovementType, QuantityDelta = 0m, SourceType = "ORDER_LINE", SourceId = shortLineId.ToString(), SourceEventId = $"short-{shortLineId:N}", IdempotencyKey = $"short-{shortLineId:N}", OccurredAt = now, RecordedAt = now, CorrelationId = "seed" };
+        var shortfallNotice = new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = StockShortfallNotices.DedupeKey(shortLineId), Code = StockShortfallNotices.IssueCode, Summary = "stok yetersiz", Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 };
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
@@ -548,6 +687,9 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
             seed.PlatformConnections.Add(connection);
             seed.InventoryItems.Add(item);
             seed.ChannelOffers.Add(offer);
+            await seed.SaveChangesAsync();
+            seed.StockLedgerEntries.Add(shortfallMarker);
+            seed.OperationalIssues.Add(shortfallNotice);
             await seed.SaveChangesAsync();
         }
 
@@ -565,15 +707,20 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var preview = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Stock, ProductTransferFields.Prices], CancellationToken.None);
         Assert.True(preview.Succeeded, preview.Error?.Message);
-        var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value!.Changes), "transfer-stock", CancellationToken.None);
+        var userId = Guid.CreateVersion7();
+        var applied = await service.ApplyAsync(tenant.Id, userId, new ApplyProductTransferCommand(preview.Value!.Changes), "transfer-stock", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
         Assert.Equal(new ProductTransferApplyResult(1, 0, 0, 0, 0, 1, 1, 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var storedItem = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == item.Id);
-            Assert.Equal((8m, 8m, 2L), (storedItem.OnHand, storedItem.Available, storedItem.ProjectionVersion));
-            var ledger = await check.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
-            Assert.Equal(("MANUAL_ADJUSTMENT", 5m), (ledger.MovementType, ledger.QuantityDelta));
+            Assert.Equal((8m, 8m, 0m, 2L), (storedItem.OnHand, storedItem.Available, storedItem.Reserved, storedItem.ProjectionVersion));
+            var ledger = await check.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.MovementType != OrderInventoryStockPolicy.ShortfallMovementType);
+            Assert.Equal(("MANUAL_ADJUSTMENT", 5m, "MANUAL", "Ürün dosyası içe aktarma", (Guid?)userId, "transfer-stock"), (ledger.MovementType, ledger.QuantityDelta, ledger.SourceType, ledger.SourceId, ledger.ActorUserId, ledger.CorrelationId));
+            Assert.StartsWith("product-transfer:", ledger.IdempotencyKey);
+            Assert.Equal(ledger.SourceEventId, ledger.IdempotencyKey);
+            var notice = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == shortfallNotice.Id);
+            Assert.Equal(IssueStatus.Resolved, notice.Status);
             var storedOffer = await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
             Assert.Equal((450m, 500m, 2L), (storedOffer.SalePrice, storedOffer.ListPrice, storedOffer.PriceVersion));
             Assert.Equal(1, await check.ChannelPriceHistory.CountAsync(x => x.OfferId == offer.Id));
@@ -632,7 +779,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes, preview.Value.ProductChanges), "transfer-info", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
-        Assert.Equal(new ProductTransferApplyResult(2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1), applied.Value);
+        Assert.Equal(new ProductTransferApplyResult(2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, ModelColours: 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var storedProduct = await check.Products.AsNoTracking().SingleAsync(x => x.Id == product.Id);
@@ -756,6 +903,106 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
         }
         await using (var db = fixture.CreateContext())
             Assert.Null(await ModelCodeOwnership.FindUnlinkedHolderAsync(db, tenant.Id, connection.Id, "ORTAK-MODEL", imported.Id, CancellationToken.None));
+    }
+
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026): the export carries the model's description on every row; one longer than
+    // an Excel cell holds is left empty and named in the notes, and its empty cell changes nothing on the way back. A
+    // description changed on one row goes to the model and every colour, and the result says how many colours.
+    [PostgreSqlFact]
+    public async Task TheDescription_IsExported_AndAChangeOnOneRowGoesToTheModelAndEveryColour()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-desc-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        Product Card(string colour, int minute, string description) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Kadın {colour} Etek", Description = description, Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now.AddMinutes(minute), UpdatedAt = now };
+        var cards = new[] { Card("Siyah", 0, "<p>Eski açıklama</p>"), Card("Mavi", 1, "<p>Eski açıklama</p>"), Card("Gri", 2, "<p>Eski açıklama</p>") };
+        var longCard = Card("Uzun", 3, new string('x', ProductTransferFileParser.MaximumDescriptionCell + 10));
+        var variants = cards.Select((card, index) => Variant(tenant, card, $"DESC-{index}", $"869000040000{index}", cost: null, desi: 1m, now)).ToList();
+        foreach (var variant in variants) variant.ModelCode = "DESC1";
+        var longVariant = Variant(tenant, longCard, "LONG-1", "8690000500001", cost: null, desi: 1m, now);
+        longVariant.ModelCode = "LONG1";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Products.AddRange([.. cards, longCard]);
+            seed.ProductVariants.AddRange([.. variants, longVariant]);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var export = await service.ExportAsync(tenant.Id, ProductTransferExportFilter.All, null, null, CancellationToken.None);
+        var table = ImportFileReader.ReadXlsxTable(new MemoryStream(export.Value!), 64 * 1024 * 1024);
+        var column = table.Headers.ToList().IndexOf("Açıklama");
+        Assert.True(column >= 0);
+        Assert.Equal(3, table.Rows.Count(row => row.Cells.Count > column && row.Cells[column] == "<p>Eski açıklama</p>"));
+        var longRow = table.Rows.Single(row => row.Cells.Contains("LONG-1"));
+        Assert.True(longRow.Cells.Count <= column || string.IsNullOrEmpty(longRow.Cells[column]));
+        using (var zip = new System.IO.Compression.ZipArchive(new MemoryStream(export.Value!)))
+        {
+            var sheets = string.Concat(zip.Entries.Where(entry => entry.FullName.StartsWith("xl/", StringComparison.Ordinal) && entry.FullName.EndsWith(".xml", StringComparison.Ordinal))
+                .Select(entry => new StreamReader(entry.Open()).ReadToEnd()));
+            Assert.Contains("Bu Modelin Açıklaması Excel İçin Çok Uzun, Editörden Düzenleyin: LONG1", sheets);
+        }
+        // Loaded straight back with the description picked: nothing changes, the long one is not deleted.
+        var roundTrip = await service.PreviewAsync(tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), [ProductTransferFields.Description], CancellationToken.None);
+        Assert.True(roundTrip.Succeeded, roundTrip.Error?.Message);
+        Assert.Equal((0, 0), (roundTrip.Value!.ProductChanges!.Count, roundTrip.Value.Errors));
+
+        // One row of the model changed (the others keep the old text): the model and all three colours take it.
+        var csv = "Stok Kodu;Açıklama\r\nDESC-0;<p onclick='x()'>Yeni açıklama</p>\r\nDESC-1;<p>Eski açıklama</p>\r\nDESC-2;<p>Eski açıklama</p>\r\n";
+        var preview = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Description], CancellationToken.None);
+        Assert.True(preview.Succeeded, preview.Error?.Message);
+        Assert.Equal((1, 0), (preview.Value!.DescriptionUpdates, preview.Value.Errors));
+        var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes, preview.Value.ProductChanges), "transfer-desc", CancellationToken.None);
+        Assert.True(applied.Succeeded, applied.Error?.Message);
+        Assert.Equal((1, 3), (applied.Value!.DescriptionsUpdated, applied.Value.ModelColours));
+        await using var check = fixture.CreateContext();
+        var ids = cards.Select(card => card.Id).ToArray();
+        Assert.All(await check.Products.AsNoTracking().Where(x => ids.Contains(x.Id)).ToListAsync(), x => Assert.Equal("<p>Yeni açıklama</p>", x.Description));
+        var model = await check.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ModelCodeKey == "DESC1");
+        Assert.Equal("<p>Yeni açıklama</p>", model.Description);
+        Assert.Equal(longCard.Description, (await check.Products.AsNoTracking().SingleAsync(x => x.Id == longCard.Id)).Description);
+
+        // Two rows of the model asking for two new texts: refused, nothing written.
+        var mixed = "Stok Kodu;Açıklama\r\nDESC-0;<p>Bir</p>\r\nDESC-1;<p>İki</p>\r\n";
+        var refused = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(mixed)), [ProductTransferFields.Description], CancellationToken.None);
+        Assert.Equal((0, 2), (refused.Value!.ProductChanges!.Count, refused.Value.Errors));
+    }
+
+    // Review (17 Nov 2026): a name or description the panel holds may start like a formula ("- %100 pamuk", "+90 …", "@…",
+    // "=…") or carry a lone carriage return; the export writes it back as it is, and the file loaded back untouched
+    // changes nothing (its rows, cost and stock included, are not refused). Only a changed value starting so is refused.
+    [PostgreSqlFact]
+    public async Task ANameOrDescriptionStartingLikeAFormula_LoadedBackUntouched_ChangesNothing()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"transfer-formula-{Guid.NewGuid():N}", DisplayName = "transfer", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        string[] descriptions = ["- %100 pamuk, yıkanabilir", "+90 532 bilgi hattı", "@ravencia koleksiyonu", "=Yeni sezon", "Birinci satır\rİkinci satır"];
+        string[] titles = ["- Kısa Etek", "+ Uzun Etek", "Etek C", "Etek D", "Etek E"];
+        var products = descriptions.Select((description, index) => new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = titles[index], Description = description, Status = ProductStatus.Draft, VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now.AddMinutes(index), UpdatedAt = now }).ToList();
+        var variants = products.Select((product, index) => Variant(tenant, product, $"FORM-{index}", $"869000060000{index}", cost: 5m, desi: 1m, now)).ToList();
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.Products.AddRange(products);
+            seed.ProductVariants.AddRange(variants);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new ProductTransferService(db, fixture.TimeProvider);
+        var export = await service.ExportAsync(tenant.Id, ProductTransferExportFilter.All, null, null, CancellationToken.None);
+        var roundTrip = await service.PreviewAsync(tenant.Id, "urunler.xlsx", new MemoryStream(export.Value!), [ProductTransferFields.Title, ProductTransferFields.Description, ProductTransferFields.Cost, ProductTransferFields.Desi], CancellationToken.None);
+        Assert.True(roundTrip.Succeeded, roundTrip.Error?.Message);
+        Assert.Equal((0, 0, 0, 5), (roundTrip.Value!.Errors, roundTrip.Value.Changes.Count, roundTrip.Value.ProductChanges!.Count, roundTrip.Value.Unchanged));
+
+        // A changed value starting like a formula is refused; the other rows still go through.
+        var csv = "Stok Kodu;Ürün Adı;Açıklama;Maliyet\r\nFORM-0;- Kısa Etek;=HYPERLINK(1);7\r\nFORM-1;+ Uzun Siyah Etek;+90 532 bilgi hattı;7\r\nFORM-2;Etek C;@ravencia koleksiyonu;7\r\n";
+        var changed = await service.PreviewAsync(tenant.Id, "urunler.csv", new MemoryStream(Encoding.UTF8.GetBytes(csv)), [ProductTransferFields.Title, ProductTransferFields.Description, ProductTransferFields.Cost], CancellationToken.None);
+        Assert.True(changed.Succeeded, changed.Error?.Message);
+        Assert.Contains("Açıklama: formül benzeri", changed.Value!.Rows.Single(row => row.RowNumber == 2).Message);
+        Assert.Contains("Ürün adı: formül benzeri", changed.Value.Rows.Single(row => row.RowNumber == 3).Message);
+        Assert.Equal(("UPDATE", "SET"), (changed.Value.Rows.Single(row => row.RowNumber == 4).Outcome, changed.Value.Rows.Single(row => row.RowNumber == 4).CostChange));
     }
 
     private static ProductVariant Variant(Tenant tenant, Product product, string sku, string barcode, decimal? cost, decimal? desi, DateTimeOffset now) => new()

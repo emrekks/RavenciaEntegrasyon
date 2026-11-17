@@ -56,7 +56,7 @@ export function jobListQueryString(status: string, timeRange: JobListTimeRange, 
   const params = new URLSearchParams()
   if (status) params.set('status', status)
   const since = timeRangeStart(timeRange, now)
-  if (since) params.set('since', since)
+  if (since) params.set('dateFrom', since)
   const query = params.toString()
   return query ? `?${query}` : ''
 }
@@ -77,7 +77,7 @@ export function isJobInTimeRange(job: { createdAt: string; completedAt: string |
 // cursor of the previous page, so every filter is applied by the server on every page.
 export function jobPageQueryString(status: string, timeRange: JobListTimeRange, options: { jobTypes?: readonly string[] | null; after?: string | null; limit?: number; platform?: string | null } = {}, now = Date.now()) {
   const params = new URLSearchParams(jobListQueryString(status, timeRange, now).slice(1))
-  if (options.platform) params.set('platform', options.platform)
+  if (options.platform) params.set('platforms', options.platform)
   if (options.jobTypes?.length) params.set('jobTypes', options.jobTypes.join(','))
   params.set('limit', String(options.limit ?? jobPageSize))
   if (options.after) params.set('after', options.after)
@@ -110,7 +110,7 @@ export function jobLookupQueryString(term: string) {
 // The tab and status counts: the selected range and platform.
 export function jobCountsQueryString(timeRange: JobListTimeRange, platform: string | null, now = Date.now()) {
   const params = new URLSearchParams(jobListQueryString('', timeRange, now).slice(1))
-  if (platform) params.set('platform', platform)
+  if (platform) params.set('platforms', platform)
   const query = params.toString()
   return query ? `?${query}` : ''
 }

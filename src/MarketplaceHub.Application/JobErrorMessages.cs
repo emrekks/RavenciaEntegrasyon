@@ -63,6 +63,8 @@ public static class JobErrorMessages
         ["PRICE_INVENTORY_SUPERSEDED"] = "Fiyat veya stok bu arada yeniden değişti; eski değerler gönderilmedi, yenileri gönderilecek.",
         ["PRICE_INVENTORY_STATE_INCOMPLETE"] = "Fiyat-stok kontrolü için panelin stok hesabı eksik; pazaryerine stok gönderilmedi. Stok yeniden hesaplanınca otomatik denenecek.",
         ["STOCK_PROJECTION_PAYLOAD_INVALID"] = "Stok hesaplama isteği hatalı hazırlandı; pazaryerine stok gönderilmedi.",
+        ["PAZARAMA_BATCH_ID_MISSING"] = "Pazarama fiyat-stok isteğine işlem numarası vermedi; sonucu okunamayan bu kısım gönderilmemiş sayıldı ve bir sonraki fiyat-stok gönderiminde yeniden gönderilecek.",
+        ["TRENDYOL_FINANCE_PAGE_CAP"] = "Trendyol finans kayıtları panelin bir okumada okuyabildiği sayfa sınırını aştı; kalan kayıtlar okunmadı ve bu dönem okunmuş sayılmadı. Kodu destekle paylaşın.",
 
         // Shipping labels and the test-store checks
         ["COMMON_LABEL_PAYLOAD_INVALID"] = "Kargo etiketi isteği eksik bilgiyle hazırlandı; etiket istenmedi. Etiketi yeniden isteyin.",
@@ -88,6 +90,7 @@ public static class JobErrorMessages
         ["INVOICE_PARTY_SNAPSHOT_INVALID"] = "Faturadaki alıcı bilgileri okunamadı; fatura gönderilmedi. Siparişi yenileyip faturayı yeniden hazırlayın.",
         ["INVOICE_SUBMIT_CONNECTION_MISMATCH"] = "Fatura başka bir e-Fatura bağlantısına ait; gönderilmedi. Faturayı doğru e-Fatura bağlantısından yeniden gönderin.",
         ["INVOICE_SUBMIT_INVOICE_NOT_FOUND"] = "Gönderilecek fatura bulunamadı; gönderim yapılmadı. Fatura ekranından yeniden deneyin.",
+        ["INVOICE_PROVIDER_IDENTITY_TAKEN"] = "E-fatura sağlayıcısı, panelde başka bir faturada kayıtlı olan bir fatura numarası veya ETTN döndürdü. Fatura yeniden gönderilmedi; iki faturayı sağlayıcı portalında karşılaştırıp inceleyin.",
         ["INVOICE_SUBMIT_STATE_MISMATCH"] = "Fatura gönderime hazır durumda değil; gönderilmedi. Faturanın durumunu kontrol edip Tekrar Gönder'i kullanın.",
         ["REMOTE_STATUS_MAPPING_REQUIRED"] = "Fatura sağlayıcısı panelin tanımadığı bir durum bildirdi; faturanın sonucu bilinmiyor. Sağlayıcı panelinde kontrol edin.",
         ["DELIVERY_REFERENCE_MISSING"] = "Gönderilmiş fatura bağlantısının pazaryerindeki numarası bulunamadı; yeniden gönderilmedi.",

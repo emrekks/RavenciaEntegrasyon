@@ -44,7 +44,8 @@ jobs:
           set -Eeuo pipefail
           backend="$(git ls-tree -r HEAD -- src tests global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln .editorconfig .config .github/workflows/ci.yml Dockerfile .dockerignore \
             | awk -F'\t' '$2 !~ /^src\/MarketplaceHub\.Web\//' | sha256sum | cut -d' ' -f1)"
-          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web .github/workflows/ci.yml deploy/caddy .dockerignore | sha256sum | cut -d' ' -f1)"
+          # The frontend checks its generated API types against the API's contract file, so a change to it re-runs the frontend.
+          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web tests/MarketplaceHub.Application.Tests/ApiContract .github/workflows/ci.yml deploy/caddy .dockerignore | sha256sum | cut -d' ' -f1)"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
 
@@ -100,6 +101,11 @@ jobs:
       # ci-entrypoint decisions and the shutdown guard's lock wait.
       - name: Test deployment shell scripts
         run: bash tests/ops/run.sh
+
+      # The previous API and Worker run while a deploy migrates: new migrations stay additive and lock-free
+      # (docs/CI-CD-DEPLOY.md "Migration kuralları").
+      - name: Migration expand-contract and lock rules
+        run: bash tests/ops/migration-guard.sh
 
       - name: Validate systemd timer schedules
         run: |
@@ -165,6 +171,9 @@ jobs:
             and (["migrate", "api", "worker", "caddy"] | all(. as $n | $s[$n].read_only == true))
             and ($s.caddy.user // "0" | test("^0(:|$)") | not)
           ' >/dev/null || { echo "Container hardening (no-new-privileges, cap_drop ALL, pids_limit, read_only, non-root edge) is missing." >&2; exit 1; }
+          # API and worker finish running requests and hand jobs back before SIGKILL (VERITABANI-DAGITIM-4, API-GUVENLIK-1).
+          "${compose[@]}" config --format json | jq -e '.services.api.stop_grace_period and .services.worker.stop_grace_period' >/dev/null \
+            || { echo "api and worker need a stop_grace_period (Docker's 10 s default cuts running requests and jobs)." >&2; exit 1; }
 
       # RFC 9116: an expired security.txt is treated as absent. Fail 30 days ahead so it gets renewed in time.
       - name: security.txt is not about to expire
@@ -576,6 +585,14 @@ jobs:
       - name: Lint frontend
         working-directory: src/MarketplaceHub.Web
         run: npm run lint
+
+      - name: Check generated API types
+        working-directory: src/MarketplaceHub.Web
+        run: npm run check:api-types
+
+      - name: Check CSS specificity growth
+        working-directory: src/MarketplaceHub.Web
+        run: npm run check:css
 
       - name: Test frontend
         working-directory: src/MarketplaceHub.Web

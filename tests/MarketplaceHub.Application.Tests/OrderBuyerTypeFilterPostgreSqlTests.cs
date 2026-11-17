@@ -119,4 +119,153 @@ public sealed class OrderBuyerTypeFilterPostgreSqlTests(PostgreSqlTenantIsolatio
             await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
         }
     }
+
+    // 16 Nov 2026: the migration RecomputeHepsiburadaBuyerType clears only Hepsiburada orders' stored kind, and the
+    // maintenance backfill stores the new rule's answer: the company with 11111111111 beside its VKN becomes Corporate,
+    // the individual stays Individual, another marketplace's stored kind and every order's version stay as they were.
+    [PostgreSqlFact]
+    public async Task TheHepsiburadaRelabelClearsOnlyHepsiburadaOrdersAndTheBackfillStoresTheNewRule()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"hr-{Guid.NewGuid():N}"[..16], DisplayName = "hr", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var hepsiburada = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "HEPSIBURADA", Environment = "STAGE", DisplayName = "hb", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var trendyol = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "ty", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var cases = new (PlatformConnection Connection, string Customer, string Address, string Expected)[]
+        {
+            (hepsiburada, HepsiburadaCorporateBuyerTests.CorporateCustomer, HepsiburadaCorporateBuyerTests.CorporateInvoiceAddress, OrderBuyerTypeView.Corporate),
+            (hepsiburada, "{}", """{"name":"Ayşe Yılmaz","turkishIdentityNumber":"11111111111","taxNumber":"","taxOffice":null}""", OrderBuyerTypeView.Individual),
+            // Stored Individual on purpose (not what the rule gives): the migration must leave it alone.
+            (trendyol, """{"commercial":true}""", """{"company":"Firma A.Ş.","taxNumber":"1234567890","taxOffice":"Kadıköy"}""", OrderBuyerTypeView.Individual),
+        };
+        var orders = cases.Select((item, index) => new Order
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = item.Connection.Id,
+            ExternalOrderId = $"hr-{index}",
+            OrderNumber = $"HR{index}",
+            Currency = "TRY",
+            OrderedAt = now.AddMinutes(-index),
+            LastRemoteModifiedAt = now,
+            CustomerSnapshotJson = item.Customer,
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = item.Address,
+            DerivedStatus = "NEW",
+            CreatedAt = now,
+            UpdatedAt = now,
+            Version = 1
+        }).ToList();
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                db.Tenants.Add(tenant);
+                db.PlatformConnections.AddRange(hepsiburada, trendyol);
+                db.Orders.AddRange(orders);
+                await db.SaveChangesAsync();
+                // As live held them before the fix: every order stored Individual.
+                await db.Orders.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BuyerType, OrderBuyerTypeView.Individual));
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var versions = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version);
+                // The migration's statement, kept to this test's tenant so parallel tests are not touched.
+                Assert.Equal(2, await db.Database.ExecuteSqlRawAsync(
+                    MarketplaceHub.Infrastructure.Persistence.Migrations.RecomputeHepsiburadaBuyerType.Clear + " AND o.\"TenantId\" = {0}", tenant.Id));
+                var cleared = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.BuyerType);
+                Assert.Equal([null, null, OrderBuyerTypeView.Individual], orders.Select(order => cleared[order.Id]));
+
+                Assert.True(await OrderBuyerTypes.BackfillAsync(db, CancellationToken.None) >= 2);
+                var after = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => new { x.BuyerType, x.Version });
+                Assert.Equal(cases.Select(item => item.Expected), orders.Select(order => after[order.Id].BuyerType));
+                Assert.All(orders, order => Assert.Equal(versions[order.Id], after[order.Id].Version));
+            }
+        }
+        finally
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Orders.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    // SIPARIS-STOK-3 (owner, 16 Nov 2026): the "Mikro İhracat" label's rule is the rule. "Fatura Bölgesi", the Mikro
+    // İhracat filter, the micro-export card and the row's flag all give the label's answer, for every way the label reads a
+    // micro export; not a text search over the package: a domestic company named "... İthalat İhracat Ltd." or a
+    // "MICRO FIBER" product stays in Türkiye.
+    [PostgreSqlFact]
+    public async Task TheInvoiceRegionFilterMatchesTheRowMicroExportFlag()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"rg-{Guid.NewGuid():N}"[..16], DisplayName = "rg", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "rg", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var customers = new[]
+        {
+            """{"micro":false,"invoiceAddress":{"company":"ABC TEKSTİL İTHALAT İHRACAT LTD. ŞTİ."},"lines":[{"productName":"MICRO FIBER HAVLU"}]}""",
+            """{"micro":true,"countryCode":"AZ"}""",
+            // Micro export by the label before 16 Nov 2026 too, but "Türkiye" in the filter: the 3P partner export, the
+            // package type, Trendyol's former export partner, the flag as text.
+            """{"micro":false,"3pByTrendyol":true}""",
+            """{"micro":false,"shipmentPackageType":"MICRO_EXPORT"}""",
+            """{"customerFirstName":"PM3","customerLastName":"ARVATO EXPORT"}""",
+            """{"micro":"true"}""",
+        };
+        var microIndexes = new[] { 1, 2, 3, 4, 5 };
+        var orders = customers.Select((customer, index) => new Order
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = connection.Id,
+            ExternalOrderId = $"rg-{index}",
+            OrderNumber = $"RG{index}",
+            Currency = "TRY",
+            OrderedAt = now.AddMinutes(-index),
+            LastRemoteModifiedAt = now,
+            CustomerSnapshotJson = customer,
+            ShipmentAddressSnapshotJson = "{}",
+            InvoiceAddressSnapshotJson = "{}",
+            DerivedStatus = "NEW",
+            CreatedAt = now,
+            UpdatedAt = now,
+            Version = 1
+        }).ToList();
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                db.Tenants.Add(tenant);
+                db.PlatformConnections.Add(connection);
+                db.Orders.AddRange(orders);
+                await db.SaveChangesAsync();
+            }
+            await using var service = fixture.CreateContext();
+            var sales = new MarketplaceSalesService(service, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
+            var domestic = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(InvoiceRegion: "TR"), CancellationToken.None);
+            var micro = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(InvoiceRegion: "MICRO_EXPORT"), CancellationToken.None);
+            var microCard = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(MicroExport: true), CancellationToken.None);
+
+            var all = await sales.OrdersAsync(tenant.Id, 100, 1, null, new OrderListQuery(), CancellationToken.None);
+            var counter = await sales.OrderSummaryAsync(tenant.Id, new OrderListQuery(MicroExport: true), CancellationToken.None, ["ALL"]);
+
+            var expected = microIndexes.Select(index => orders[index].Id).Order().ToList();
+            Assert.Equal(orders[0].Id, Assert.Single(domestic.Items).Id);
+            Assert.Equal(expected, micro.Items.Select(row => row.Id).Order());
+            Assert.Equal(expected, microCard.Items.Select(row => row.Id).Order());
+            Assert.Equal(expected.Count, counter.MicroExport);
+            // The label (Mikro İhracat type) and the row's flag say the same of every order.
+            Assert.Equal(expected, all.Items.Where(row => row.OrderType == "MIKRO_IHRACAT").Select(row => row.Id).Order());
+            Assert.Equal(expected, all.Items.Where(row => row.Marks?.MicroExport == true).Select(row => row.Id).Order());
+            Assert.All(all.Items, row => Assert.Equal(row.OrderType == "MIKRO_IHRACAT", row.IsMicroExport));
+        }
+        finally
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Orders.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
 }

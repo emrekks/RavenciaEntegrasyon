@@ -1,0 +1,224 @@
+{
+  "Items": [
+    {
+      "ExternalOrderId": "300000001",
+      "OrderNumber": "300000001",
+      "OrderedAt": "2026-11-05T07:15:00+00:00",
+      "LastModifiedAt": "2026-11-05T09:30:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 300,
+      "DiscountAmount": 15,
+      "NetAmount": 285,
+      "CustomerSnapshotJson": {
+        "customerName": "Test Musteri",
+        "customerFirstName": "Test",
+        "customerLastName": "Musteri",
+        "customerEmail": "customer@example.test",
+        "email": "customer@example.test",
+        "pazaramaOrderId": "00000000-0000-4000-8000-000000000301",
+        "invoiceType": "1"
+      },
+      "ShipmentAddressSnapshotJson": {
+        "nameSurname": "Test Musteri",
+        "cityName": "İzmir",
+        "districtName": "Bornova",
+        "addressDetail": "Fake Sokak 4",
+        "phoneNumber": "05550000000",
+        "fullAddress": "Fake Sokak 4",
+        "address1": "Fake Sokak 4",
+        "firstName": "Test",
+        "lastName": "Musteri",
+        "fullName": "Test Musteri",
+        "city": "İzmir",
+        "district": "Bornova",
+        "phone": "05550000000"
+      },
+      "InvoiceAddressSnapshotJson": {
+        "nameSurname": "Test Musteri",
+        "cityName": "İzmir",
+        "districtName": "Bornova",
+        "addressDetail": "Fake Sokak 4",
+        "invoiceType": 1,
+        "identityNumber": null,
+        "fullAddress": "Fake Sokak 4",
+        "address1": "Fake Sokak 4",
+        "firstName": "Test",
+        "lastName": "Musteri",
+        "fullName": "Test Musteri",
+        "city": "İzmir",
+        "district": "Bornova"
+      },
+      "Lines": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-0000000003a1",
+          "Sku": "SKU-FAKE-PZ1",
+          "Barcode": "0000000000401",
+          "Title": "Fake Pazarama Ürün 1",
+          "Quantity": 3,
+          "UnitPrice": 100,
+          "VatRate": 20,
+          "RawStatus": "Picking",
+          "SourceSnapshotJson": "<raw 889 chars sha256:64ce0a728abf>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        },
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-0000000003a2",
+          "Sku": "SKU-FAKE-PZ2",
+          "Barcode": "0000000000402",
+          "Title": "Fake Pazarama Ürün 2",
+          "Quantity": 1,
+          "UnitPrice": 40,
+          "VatRate": 10,
+          "RawStatus": "Cancelled",
+          "SourceSnapshotJson": "<raw 700 chars sha256:c2ffa8022e58>",
+          "CancelledQuantity": 1,
+          "CancelledAt": "2026-11-05T09:30:00+00:00",
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "order:300000001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Picking",
+          "OccurredAt": "2026-11-05T09:30:00+00:00",
+          "CargoProviderExternalId": "Yurtiçi Kargo",
+          "CargoTrackingNumber": "PZ00000000301",
+          "Allocations": [
+            {
+              "ExternalLineId": "00000000-0000-4000-8000-0000000003a1",
+              "AllocatedQuantity": 3,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            },
+            {
+              "ExternalLineId": "00000000-0000-4000-8000-0000000003a2",
+              "AllocatedQuantity": 0,
+              "CancelledQuantity": 1,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 300,
+          "DiscountAmount": 15,
+          "NetAmount": 285,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 2614 chars sha256:37e9bdc4e736>",
+      "ShipmentDueAt": "2026-11-06T16:00:00+00:00",
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    },
+    {
+      "ExternalOrderId": "300000002",
+      "OrderNumber": "300000002",
+      "OrderedAt": "2026-11-05T07:15:00+00:00",
+      "LastModifiedAt": "2026-11-05T07:15:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 51.00,
+      "DiscountAmount": 0.00,
+      "NetAmount": 51.00,
+      "CustomerSnapshotJson": {
+        "pazaramaOrderId": "00000000-0000-4000-8000-000000000302"
+      },
+      "ShipmentAddressSnapshotJson": {},
+      "InvoiceAddressSnapshotJson": {},
+      "Lines": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-0000000003b1",
+          "Sku": "SKU-FAKE-PZ3",
+          "Barcode": "0000000000403",
+          "Title": "Fake Pazarama Ürün 3",
+          "Quantity": 2,
+          "UnitPrice": 25.50,
+          "VatRate": 20,
+          "RawStatus": "Unknown99",
+          "SourceSnapshotJson": "<raw 298 chars sha256:9186a25209f5>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "order:300000002",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Unknown99",
+          "OccurredAt": "2026-11-05T07:15:00+00:00",
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "Allocations": [
+            {
+              "ExternalLineId": "00000000-0000-4000-8000-0000000003b1",
+              "AllocatedQuantity": 2,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 51.00,
+          "DiscountAmount": 0.00,
+          "NetAmount": 51.00,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 592 chars sha256:e521efedca6e>",
+      "ShipmentDueAt": null,
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    }
+  ],
+  "NextCursor": null,
+  "HasMore": false,
+  "TotalCount": null,
+  "Issues": [
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "300000003",
+      "Message": "Pazarama siparişi 300000003 içeri alınmadı: siparişin kendi tarihi (orderDate) yok; kalem değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.",
+      "RereadOrderId": "300000003"
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "300000004",
+      "Message": "Pazarama siparişi 300000004 içeri alınmadı: para birimi tanınmadı (XYZ); Pazarama yalnız TL ile satar, sipariş yeniden okunacak.",
+      "RereadOrderId": "300000004"
+    },
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "00000000-0000-4000-8000-000000000305",
+      "Message": "Pazarama siparişi içeri alınmadı: sipariş numarası yok.",
+      "RereadOrderId": null
+    }
+  ],
+  "LastModifiedSeen": null
+}

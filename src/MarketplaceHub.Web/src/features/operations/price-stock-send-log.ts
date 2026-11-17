@@ -1,41 +1,14 @@
 import { istanbulDayBoundary } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { timeRangeStart, type JobListTimeRange } from './job-list-query'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // The price/stock send log (İşlem Takibi › Loglar): one row per line of a price/stock request sent to a marketplace,
 // read from GET /price-stock-send-log. These helpers turn a row into the text the table shows and the filters into
 // the request; they read no state of their own.
 
-export type PriceStockSendLogEntry = {
-  id: string
-  createdAt: string
-  completedAt: string | null
-  connectionId: string
-  platformCode: string
-  storeName: string | null
-  jobId: string
-  variantId: string
-  productId: string | null
-  productTitle: string | null
-  imageUrl: string | null
-  barcode: string
-  stockCode: string | null
-  modelCode: string | null
-  previousQuantity: number | null
-  newQuantity: number | null
-  previousSalePrice: number | null
-  newSalePrice: number | null
-  previousListPrice: number | null
-  newListPrice: number | null
-  currency: string
-  trigger: string
-  result: string
-  errorCode: string | null
-  errorMessage: string | null
-  externalRequestId: string | null
-}
-
-export type PriceStockSendLogPage = { items: PriceStockSendLogEntry[]; nextCursor: string | null; hasMore: boolean }
+export type PriceStockSendLogPage = ApiAnswer<'getPriceStockSendLog'>
+export type PriceStockSendLogEntry = PriceStockSendLogPage['items'][number]
 
 export const sendLogPageSize = 50
 
@@ -196,12 +169,12 @@ function sendLogTimeParams(params: URLSearchParams, filters: SendLogFilters, now
   if (hasDays(filters)) {
     const from = istanbulDayToIso(filters.from)
     const to = istanbulDayToIso(filters.to, true)
-    if (from) params.set('from', from)
-    if (to) params.set('to', to)
+    if (from) params.set('dateFrom', from)
+    if (to) params.set('dateTo', to)
     return
   }
   const start = timeRangeStart(filters.range, now)
-  if (start) params.set('from', start)
+  if (start) params.set('dateFrom', start)
 }
 
 function sendLogCommonParams(params: URLSearchParams, filters: SendLogFilters) {
@@ -210,7 +183,7 @@ function sendLogCommonParams(params: URLSearchParams, filters: SendLogFilters) {
   if (filters.platforms.length) params.set('platforms', [...new Set(filters.platforms.map(code => code.toUpperCase()))].join(','))
 }
 
-/** The summary's request: the list's filters without the result filter (?search=…&platforms=…&triggers=…&from=…&to=…). */
+/** The summary's request: the list's filters without the result filter (?search=…&platforms=…&triggers=…&dateFrom=…&dateTo=…). */
 export function sendLogCountsQueryString(filters: SendLogFilters, now = Date.now()) {
   const params = new URLSearchParams()
   sendLogCommonParams(params, filters)
@@ -228,7 +201,7 @@ export function istanbulDayToIso(day: string, endOfDay = false) {
   return Number.isNaN(instant.getTime()) ? '' : instant.toISOString()
 }
 
-/** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&from=…&to=…&order=asc&after=… */
+/** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&dateFrom=…&dateTo=…&order=asc&after=… */
 export function sendLogQueryString(filters: SendLogFilters, after: string | null = null, limit = sendLogPageSize, oldestFirst = false, now = Date.now()) {
   const params = new URLSearchParams()
   params.set('limit', String(Math.min(Math.max(1, limit), 100)))

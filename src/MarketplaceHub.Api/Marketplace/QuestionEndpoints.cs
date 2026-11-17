@@ -1,4 +1,5 @@
 using MarketplaceHub.Api.Catalog;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -13,26 +14,38 @@ public static class QuestionEndpoints
 
     public static IEndpointRouteBuilder MapQuestionEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1");
-        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort) =>
+        var api = endpoints.MapGroup("/api/v1").WithGates(ApiGate.SignedIn, ApiGate.Operations);
+        // Unified paging (PagingContract): after, the nextCursor of the previous page, wins over page. The cursor is given
+        // where the order is total: newest and oldest first (ties by id), not UPDATED (ties by the creation time only).
+        api.MapGet("/questions", async (HttpContext http, IMarketplaceQuestionService service, string? kind, string? status, string? platform, Guid? connectionId, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, int? page, int? limit, string? sort, string? after, int? pageSize, string? platforms) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-            return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, platform, connectionId, dateFrom, dateTo, search, page ?? 1, limit ?? 50, sort ?? "NEWEST"), http.RequestAborted));
-        });
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            var order = sort ?? "NEWEST";
+            var orderIsTotal = !order.Trim().Equals("UPDATED", StringComparison.OrdinalIgnoreCase);
+            OffsetCursor.RefuseWhereOrderIsNotTotal(after, orderIsTotal);
+            // The service brings limit into 1-100; the cursor is cut for that size.
+            // NumberedPage: page with pageSize (limit, its older name, still read); the cursor pages by limit.
+            var size = string.IsNullOrWhiteSpace(after) ? pageSize ?? limit ?? 50 : limit ?? 50;
+            var cursorPage = OffsetCursor.PageIndex(after, Math.Clamp(size, 1, 100));
+            var result = await service.ListAsync(tenant.TenantId, new(kind ?? "ALL", status, EndpointHelpers.SinglePlatform(platforms, platform), connectionId, dateFrom, dateTo, search, cursorPage is { } index ? index + 1 : page ?? 1, size, order), http.RequestAborted);
+            var hasMore = (long)result.Page * result.Limit < result.TotalCount;
+            return Results.Ok(result with { PageSize = result.Limit, HasMore = hasMore, NextCursor = orderIsTotal ? OffsetCursor.Next(result.Page - 1, result.Limit, result.TotalCount) : null });
+        }).Produces<MarketplaceQuestionListPage>();
         api.MapGet("/questions/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var question = await service.GetAsync(tenant.TenantId, id, http.RequestAborted);
             return question is null ? MarketplaceHub.Api.Security.ApiProblems.NotFound(http, "Soru bulunamadı.") : Results.Ok(question);
-        });
+        }).Produces<MarketplaceQuestionView>();
         api.MapGet("/questions/{id:guid}/customer-history", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             var history = await service.CustomerHistoryAsync(tenant.TenantId, id, http.RequestAborted);
             return history is null ? MarketplaceHub.Api.Security.ApiProblems.NotFound(http, "Soru bulunamadı.") : Results.Ok(history);
-        });
+        }).Produces<IReadOnlyList<MarketplaceQuestionView>>();
         api.MapPost("/questions/sync", async (QuestionSyncRequest request, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -58,12 +71,12 @@ public static class QuestionEndpoints
             }
             if (jobs.Count == 0 && firstError is not null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, firstError);
             return Results.Accepted(value: new { jobs, queuedConnections = jobs.Count, skippedConnections = connections.Count - jobs.Count });
-        });
+        }).RequireIdempotencyKey().Produces<QuestionSyncQueuedView>(StatusCodes.Status202Accepted);
         api.MapGet("/questions/sync-state", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.SyncStatesAsync(tenant.TenantId, http.RequestAborted));
-        });
+        }).Produces<IReadOnlyList<MarketplaceQuestionSyncStateView>>();
         api.MapPost("/questions/{id:guid}/answer", async (Guid id, AnswerQuestionCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -75,7 +88,7 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, MarketplaceErrorStatus.ForPanel(result.Error!));
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        }).WithServerBudget();
+        }).WithServerBudget().RequireIdempotencyKey().Produces<MarketplaceQuestionView>();
         // What reporting a question means on a marketplace: whether it is possible, the reasons, the states that allow it.
         api.MapGet("/questions/report-reasons", (HttpContext http, IMarketplaceQuestionService service, string? platform) =>
         {
@@ -84,7 +97,7 @@ public static class QuestionEndpoints
             if (string.IsNullOrWhiteSpace(platform) || !QuestionPlatforms.Contains(platform.Trim().ToUpperInvariant()))
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, "QUESTION_REPORT_PLATFORM_INVALID", "Soru bildirme kuralları için desteklenen platformu seçin.", 400);
             return Results.Ok(service.ReportCapability(platform.Trim().ToUpperInvariant()));
-        });
+        }).Produces<QuestionReportCapability>();
         api.MapPost("/questions/{id:guid}/report", async (Guid id, ReportQuestionCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -95,19 +108,21 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, MarketplaceErrorStatus.ForPanel(result.Error!));
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        }).WithServerBudget();
+        }).WithServerBudget().RequireIdempotencyKey().Produces<MarketplaceQuestionView>();
         api.MapGet("/question-templates", async (HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             return tenant is null ? MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http) : Results.Ok(await service.TemplatesAsync(tenant.TenantId, http.RequestAborted));
-        });
+        }).Produces<IReadOnlyList<MarketplaceQuestionTemplateView>>();
         api.MapPost("/question-templates", async (SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            // Each call creates a template: the key makes a repeat replay the first answer instead of a duplicate.
+            if (EndpointHelpers.RequireIdempotency(http) is { } missingKey) return missingKey;
             var result = await service.SaveTemplateAsync(tenant.TenantId, null, null, command, http.RequestAborted);
             return result.Succeeded ? Results.Created($"/api/v1/question-templates/{result.Value!.Id:D}", result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces<MarketplaceQuestionTemplateView>(StatusCodes.Status201Created).RequireIdempotencyKey();
         api.MapPut("/question-templates/{id:guid}", async (Guid id, SaveQuestionTemplateCommand command, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -117,7 +132,7 @@ public static class QuestionEndpoints
             if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
             http.Response.Headers.ETag = $"\"v{result.Value!.Version}\"";
             return Results.Ok(result.Value);
-        });
+        }).Produces<MarketplaceQuestionTemplateView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         api.MapDelete("/question-templates/{id:guid}", async (Guid id, HttpContext http, IMarketplaceQuestionService service) =>
         {
             var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
@@ -125,7 +140,7 @@ public static class QuestionEndpoints
             if (!TryVersion(http.Request.Headers.IfMatch, out var version)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IF_MATCH_REQUIRED", "Silme için geçerli If-Match sürümü zorunludur.", 400);
             var result = await service.DeleteTemplateAsync(tenant.TenantId, id, version, http.RequestAborted);
             return result.Succeeded ? Results.NoContent() : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
-        });
+        }).Produces(StatusCodes.Status204NoContent).IfMatch().Idempotent(WriteReasons.VersionGuarded);
         return endpoints;
     }
 
@@ -135,7 +150,7 @@ public static class QuestionEndpoints
     private static bool TryVersion(string? value, out long version)
     {
         version = 0;
-        return value is { Length: >= 5 }
+        return value is { Length: >= 4 }
             && value.StartsWith("\"v", StringComparison.Ordinal)
             && value.EndsWith('"')
             && long.TryParse(value[2..^1], out version)

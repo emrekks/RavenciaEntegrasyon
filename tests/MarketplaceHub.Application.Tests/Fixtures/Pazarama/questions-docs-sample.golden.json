@@ -1,0 +1,106 @@
+{
+  "page": {
+    "Items": [
+      {
+        "Id": "56643287-ad2c-40be-9088-08dc076bf0d7",
+        "Kind": "PRODUCT",
+        "Status": "WAITING_FOR_APPROVE",
+        "Text": "garanti var mı",
+        "ProductName": "Tükenmez Kalem",
+        "ProductImageUrl": "https://cdn.pazarama.com/asset/MSTK55550/images/tkenmezkalem-1.jpeg",
+        "ProductSku": null,
+        "ProductBarcode": "MSTK55550",
+        "ProductModelCode": null,
+        "CustomerName": "M**** S****",
+        "OrderNumber": null,
+        "CreatedAt": "2023-12-28T06:12:16.333+00:00",
+        "ExpiresAt": null,
+        "LastModifiedAt": "2023-12-28T07:17:13.023+00:00",
+        "Conversations": [
+          {
+            "Author": "Merchant",
+            "Text": "Merhaba, Evet efendim, tüm ürünlerimiz garanti kapsamındadır. Güle güle kullanmanız dileğiyle.",
+            "CreatedAt": "2023-12-28T07:17:13.023+00:00",
+            "RejectionReason": null
+          }
+        ],
+        "ProductUrl": null,
+        "CustomerKey": null,
+        "ProductExternalId": null,
+        "Subject": null
+      },
+      {
+        "Id": "00000000-0000-4000-8000-000000000702",
+        "Kind": "PRODUCT",
+        "Status": "WAITING_FOR_ANSWER",
+        "Text": "Beden tablosu var mı?",
+        "ProductName": "Fake Pazarama Ürün 1",
+        "ProductImageUrl": null,
+        "ProductSku": null,
+        "ProductBarcode": "0000000000401",
+        "ProductModelCode": null,
+        "CustomerName": "T**** M****",
+        "OrderNumber": null,
+        "CreatedAt": "2026-11-05T07:00:00+00:00",
+        "ExpiresAt": null,
+        "LastModifiedAt": "2026-11-05T07:00:00+00:00",
+        "Conversations": [],
+        "ProductUrl": null,
+        "CustomerKey": null,
+        "ProductExternalId": null,
+        "Subject": null
+      },
+      {
+        "Id": "00000000-0000-4000-8000-000000000701",
+        "Kind": "PRODUCT",
+        "Status": "UNKNOWN",
+        "Text": "Durumu gelmeyen soru",
+        "ProductName": "Durumsuz Ürün",
+        "ProductImageUrl": null,
+        "ProductSku": null,
+        "ProductBarcode": null,
+        "ProductModelCode": null,
+        "CustomerName": null,
+        "OrderNumber": null,
+        "CreatedAt": "2026-11-05T07:00:00+00:00",
+        "ExpiresAt": null,
+        "LastModifiedAt": "2026-11-05T07:00:00+00:00",
+        "Conversations": [],
+        "ProductUrl": null,
+        "CustomerKey": null,
+        "ProductExternalId": null,
+        "Subject": null
+      }
+    ],
+    "Page": 1,
+    "TotalPages": 1,
+    "TotalElements": 3
+  },
+  "withoutText": {
+    "Items": [],
+    "Page": 1,
+    "TotalPages": 1,
+    "TotalElements": 2
+  },
+  "detail": {
+    "Id": "a82a1cf6-d113-4e73-0c48-08dde351ae8d",
+    "Kind": "ORDER",
+    "Status": "WAITING_FOR_ANSWER",
+    "Text": "Teslimat ve Kargo: Yarın kargoya verme ihtimaliniz var mı?",
+    "ProductName": "DeFacto Wide Leg Bol Rahat Kesim Kargo Cepli Keten Görünümlü Yazlık Pantolon B9407AX24SMBG743",
+    "ProductImageUrl": "https://img.pzrmcdn.com/asset/8683525133020/images/widelegkargocepliketengrnmlpantolon-1.jpg",
+    "ProductSku": null,
+    "ProductBarcode": "8683525133020",
+    "ProductModelCode": null,
+    "CustomerName": "T**** G****",
+    "OrderNumber": "567800436",
+    "CreatedAt": "2025-08-25T15:45:42.773+00:00",
+    "ExpiresAt": null,
+    "LastModifiedAt": "2025-08-25T15:45:42.773+00:00",
+    "Conversations": [],
+    "ProductUrl": null,
+    "CustomerKey": null,
+    "ProductExternalId": null,
+    "Subject": null
+  }
+}

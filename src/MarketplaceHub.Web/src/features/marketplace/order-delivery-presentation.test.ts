@@ -26,6 +26,11 @@ describe('overdueShipmentDays', () => {
     expect(overdueShipmentDays('ON_HOLD', '2026-05-19T22:56:00Z', now)).toBe(0)
   })
 
+  it('does not mark a returned order, or one on its way back, overdue: it was shipped', () => {
+    expect(overdueShipmentDays('RETURNED', '2026-09-20T12:00:00Z', now)).toBe(0)
+    expect(overdueShipmentDays('RETURN_IN_TRANSIT', '2026-09-20T12:00:00Z', now)).toBe(0)
+  })
+
   it('continues to calculate overdue days for an order awaiting shipment', () => {
     expect(overdueShipmentDays('NEW', '2026-09-29T12:00:00Z', now)).toBe(2)
   })

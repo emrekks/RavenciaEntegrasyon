@@ -1,11 +1,12 @@
 // İadeler (/returns, /returns/:id).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { copyText } from '../../../shared/copy-text'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { observeUnitPriceAlignment } from '../unit-price-alignment'
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
+import { hubApi, hubPoll } from '../../../shared/api'
 import { CardBackgroundIcon, cargoCarrier, cargoFilterOptions, cargoLabel, CountUp, StickyActionBar, TitleHint } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
@@ -15,7 +16,7 @@ import { statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
 import { isSellerFaultReturn, returnReasonPresentation, returnReasonSummary } from '../return-reference-presentation'
-import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../returns-ui'
+import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoading, RrModal, RrPageSize, RrRing, RrThumb, RrWordmark, titleTr, type RingTone } from '../../../shared/ui/rr-components'
 import { appendNotification, integrationNotificationTarget, isExternalWriteMessage, notificationError, notificationLinks, type NotificationContext, type NotificationDetail, type NotificationTarget } from '../../../shared/notifications'
 import { resolveReturnStatus } from '../../../shared/dashboard-operational-links'
 import { code128Bars } from '../../shipping'
@@ -33,14 +34,17 @@ import { useTabSlide } from '../../../shared/tab-slide'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { returnLabelContent } from './return-label'
-import { DEFAULT_RETURN_SORT, effectiveReturnSort, RETURN_SORTS, returnListParams, returnSortOptions, returnSummaryParams, type ReturnFilters, type ReturnRefinements, type ReturnSort, type ReturnSummary } from './return-list-query'
+import { DEFAULT_RETURN_SORT, effectiveReturnSort, returnShipmentCompaniesQuery, RETURN_SORTS, returnListParams, returnSortOptions, returnSummaryParams, type ReturnFilters, type ReturnRefinements, type ReturnSort } from './return-list-query'
 import { finalizedWithFor, finalizedWithLabels, type FinalizedWith } from '../return-finalized-with'
 import { ReturnFinalizedWithChoice } from '../ReturnFinalizedWithChoice'
-import { Connection, Order, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, type ReturnAmounts, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnOptionalValue, returnPlatformName, usableShipmentDueAt } from '../shared'
+import { Connection, Order, OrderLine, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, type ReturnAmounts, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnPlatformName, usableShipmentDueAt } from '../shared'
 import { personName } from '../../../shared/person-name'
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../use-metric-source'
 import { EmptyState } from '../../../shared/components/EmptyState'
+import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
+import { useCursorPager } from '../../../shared/list/useCursorPager'
+import { useListSelection } from '../../../shared/list/useListSelection'
 
 // Empty text of the tabs that list a special state, instead of the generic "sync the returns" line.
 const tabEmptyCopy: Record<string, [string, string]> = {
@@ -52,8 +56,10 @@ const PAZARAMA_RETURN_CODE_LABEL = 'İade Kargo Kodu'
 const PAZARAMA_RETURN_CODE_HINT = "Pazarama'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."
 const isPazarama = (platformCode: string | null | undefined) => platformCode?.toUpperCase() === 'PAZARAMA'
 
-type ReturnClaim = { id: string; externalClaimId: string; orderNumber: string; status: string; rawStatus: string; reasonText: string | null; reasonCode?: string | null; actionDueAt: string | null; approvedAt?: string | null; systemNote?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null; version: number; customerName: string; orderedAt: string | null; orderAmount: number; currency: string; cargoProviderName: string | null; cargoTrackingNumber: string | null; cargoTrackingLink?: string | null; orderCargoProviderName?: string | null; orderCargoTrackingNumber?: string | null; primaryImageUrl: string | null; productCount: number; primaryBarcode: string | null; lines: OrderLine[] | null; packageNumber: string | null; invoiceStatus: string; grossAmount: number; discountAmount: number; isMicroExport: boolean; connectionId: string | null; platformCode: string; platformDisplayName: string; lineStatuses?: Record<string, string> | null; actionDueAtEstimated?: boolean; returnAmounts?: ReturnAmounts | null; rowKey?: string; customerRequest?: string | null; orderReturnStatus?: string | null; requestedAt?: string | null }
-type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean; externalWritesEnabled: boolean; decisionPending?: boolean; wholeClaimDecision?: boolean; rejectNeedsReturnShipment?: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }; type ReturnShipmentCompany = { id: string; name: string }
+type ReturnClaim = ApiAnswer<'getReturns'>['items'][number]
+// GET /returns/{id} sends the claim's decision facts, not the list row's: no connectionId, platformDisplayName,
+// requestedAt or primaryImageUrl. The screens take those from the row where they have it.
+type ReturnDetail = ApiAnswer<'getReturnsById'>
 // N11 reason 41 ("İade Ürün Mağazaya Ulaşmadı") sends no shipment back; every other N11 denial names it (N11ReturnDenyRule).
 const n11ProductNotReceivedReasonId = '41'
 // The order's claims were decided both ways (N11 and Pazarama open one claim per product): shown beside a claim whose
@@ -128,10 +134,10 @@ function ReturnAmountCells({ amounts, money }: { amounts: ReturnAmounts | null |
   return <>{returnAmountRows(amounts).map(row => <span key={row.label} className={`rr-m${row.pay ? ' rr-pay' : ''}`}><span>{row.label}</span><ReturnAmountValue value={row.value} money={money} /></span>)}</>
 }
 // Facts strip of the decision and detail popups.
-function ReturnDetailFacts({ item, plain, money }: { item: ReturnClaim | ReturnDetail; plain?: boolean; money: (value: number) => string }) {
+function ReturnDetailFacts({ item, requestedAt, plain, money }: { item: ReturnClaim | ReturnDetail; requestedAt: string | null; plain?: boolean; money: (value: number) => string }) {
   const state = titleTr(statusLabel(item.status))
   const cargoIcon = cargoCarrier(item.cargoProviderName)?.iconUrl
-  return <div className="rr-facts"><div><small>Durum</small>{plain ? <RrBadge label={state} /> : <b>{state}</b>}</div>{item.reasonText && <div><small>İade Sebebi</small><b>{returnReasonPresentation(item).label}</b></div>}{(item.cargoTrackingNumber || item.cargoProviderName) && <div><small>Kargo</small>{cargoIcon ? <img className="rr-cargo-img rr-fact-cargo" src={cargoIcon} alt={cargoLabel(item.cargoProviderName)} title={cargoLabel(item.cargoProviderName)} referrerPolicy="no-referrer" loading="lazy" /> : item.cargoProviderName?.trim() && <b>{cargoLabel(item.cargoProviderName)}</b>}{item.cargoTrackingNumber && !isPazarama(item.platformCode) && <b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b>}</div>}{item.cargoTrackingNumber && isPazarama(item.platformCode) && <div title={PAZARAMA_RETURN_CODE_HINT}><small>{PAZARAMA_RETURN_CODE_LABEL}</small><b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b></div>}{returnAmountRows(item.returnAmounts).map(row => <div key={row.label}><small>{row.label}</small><ReturnAmountValue value={row.value} money={money} /></div>)}{item.requestedAt && <div><small>Talep Tarihi</small><b className="rr-num">{returnDateText(item.requestedAt)}</b></div>}{plain && item.approvedAt && <div><small>Onaylanma Tarihi</small><b className="rr-num">{returnDateText(item.approvedAt)}</b></div>}</div>
+  return <div className="rr-facts"><div><small>Durum</small>{plain ? <RrBadge label={state} /> : <b>{state}</b>}</div>{item.reasonText && <div><small>İade Sebebi</small><b>{returnReasonPresentation(item).label}</b></div>}{(item.cargoTrackingNumber || item.cargoProviderName) && <div><small>Kargo</small>{cargoIcon ? <img className="rr-cargo-img rr-fact-cargo" src={cargoIcon} alt={cargoLabel(item.cargoProviderName)} title={cargoLabel(item.cargoProviderName)} referrerPolicy="no-referrer" loading="lazy" /> : item.cargoProviderName?.trim() && <b>{cargoLabel(item.cargoProviderName)}</b>}{item.cargoTrackingNumber && !isPazarama(item.platformCode) && <b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b>}</div>}{item.cargoTrackingNumber && isPazarama(item.platformCode) && <div title={PAZARAMA_RETURN_CODE_HINT}><small>{PAZARAMA_RETURN_CODE_LABEL}</small><b className="rr-num rr-fact-track">{item.cargoTrackingNumber}</b></div>}{returnAmountRows(item.returnAmounts).map(row => <div key={row.label}><small>{row.label}</small><ReturnAmountValue value={row.value} money={money} /></div>)}{requestedAt && <div><small>Talep Tarihi</small><b className="rr-num">{returnDateText(requestedAt)}</b></div>}{plain && item.approvedAt && <div><small>Onaylanma Tarihi</small><b className="rr-num">{returnDateText(item.approvedAt)}</b></div>}</div>
 }
 function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, noBuyer }: { item: ReturnClaim; order: Order | null; onNotice?: ReturnNoticeHandler; selection?: { checked: boolean; onChange: () => void }; selectColumn?: boolean; noBuyer?: boolean }) {
   const [previewLine, setPreviewLine] = useState<OrderLine | null>(null)
@@ -140,7 +146,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const [dialogMode, setDialogMode] = useState<'DETAIL' | 'APPROVE' | 'REJECT' | null>(null)
   const [selectedReturnLineIds, setSelectedReturnLineIds] = useState<string[]>([])
   const rowRef = useRef<HTMLTableRowElement>(null)
-  const detailQuery = useQuery({ queryKey: ['return', item.id], queryFn: () => hubApi<ReturnDetail>(`/returns/${item.id}`), enabled: dialogMode !== null, staleTime: 30_000 })
+  const detailQuery = useQuery({ queryKey: queryKeys.return(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsById'>>(`/returns/${item.id}`, { signal }), enabled: dialogMode !== null, staleTime: 30_000 })
   const navigate = useNavigate()
   const lines = order?.lines?.length ? order.lines : item.lines ?? []
   const currency = order?.currency ?? item.currency
@@ -155,7 +161,8 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const canTrackReturn = !pazaramaCode && Boolean(item.cargoTrackingLink && /^https:\/\//i.test(item.cargoTrackingLink))
   const canTrackOrder = !rejected && Boolean(orderShipment?.id && trackingNumber?.trim())
   const detailItem = detailQuery.data ?? item
-  const detailLines = detailQuery.data?.lines ?? lines
+  // Drawn only once the claim is read; GET /returns/{id} always sends its lines (CONTRACT: declared nullable).
+  const detailLines = detailQuery.data?.lines ?? []
   const detailCurrency = detailItem.currency ?? currency
   const detailMoney = (value: number) => formatMoney(value, detailCurrency)
   const reasonPresentation = returnReasonPresentation(item)
@@ -197,7 +204,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
     {!noBuyer && <td className="rr-mid" data-l="Alıcı"><div className="rr-cust"><b title={personName(customer)}>{personName(customer).replace(/-/g, '‑')}</b></div></td>}
     <td className="rr-wide" data-l="Bilgiler"><div className="rr-plines">{lines.length ? lines.map(line => { const imageUrl = line.imageUrl ?? item.primaryImageUrl; const quantity = productLineQuantity(line); const facts = returnLineFacts(item.platformCode, line); return <div className="rr-pline" key={line.id}><RrThumb src={imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={quantity} alt={line.title} onOpen={() => setPreviewLine(line)} /><div><b title={line.title}><ProductTitleLink platformCode={item.platformCode} line={line} /></b><small className="rr-card-only"><span>Birim Fiyatı:</span> <b className="rr-num">{money(line.unitPrice)}</b></small>{facts.map(([label, value]) => <small key={label} title={`${label}: ${value}`}><span>{label}:</span> <b className="rr-num">{value}</b></small>)}</div></div> }) : <div className="rr-pline"><RrThumb src={item.primaryImageUrl} alt={`${item.productCount} ürün`} /><div><b>{item.productCount} ürün</b><small><span>Barkod:</span> <b className="rr-num">{formatMarketplaceBarcode(item.platformCode, item.primaryBarcode) ?? '—'}</b></small></div></div>}</div></td>
     <td className="rr-mid rr-price-col" data-l="Birim Fiyat"><div className="rr-prices">{lines.length ? lines.map(line => { const quantity = productLineQuantity(line); return <div className="rr-pr" key={line.id}><b className="rr-num">{money(returnUnitPrice(line.unitPrice, line.returnAmounts, quantity))}</b>{quantity > 1 && <small>{quantity} adet</small>}</div> }) : <div className="rr-pr"><b className="rr-num">{money(item.orderAmount)}</b></div>}</div></td>
-    <td className="rr-mid" data-l="Kargo"><div className="rr-cargocell">{cargoIcon ? <img className="rr-cargo-img" src={cargoIcon} alt={cargoLabel(cargoProvider)} title={cargoLabel(cargoProvider)} referrerPolicy="no-referrer" loading="lazy" /> : <span className="rr-muted">{cargoProvider?.trim() ? cargoLabel(cargoProvider) : 'Kargo bilgisi bekleniyor'}</span>}<small className="rr-num" title={pazaramaCode ? PAZARAMA_RETURN_CODE_HINT : undefined}>{pazaramaCode && trackingNumber?.trim() ? `${PAZARAMA_RETURN_CODE_LABEL}: ` : ''}{trackingNumber?.trim() || '—'}</small>{canTrackReturn ? <a className="rr-btn rr-link" style={{ fontSize: 12 }} href={item.cargoTrackingLink!} target="_blank" rel="noopener noreferrer">Kargo Takip <RrIcon name="open" /></a> : canTrackOrder && orderShipment && <button type="button" className="rr-btn rr-link" style={{ fontSize: 12 }} onClick={() => navigate(`/shipments/${orderShipment.id}`)}>Paket Detayı <RrIcon name="open" /></button>}</div></td>
+    <td className="rr-mid" data-l="Kargo"><div className="rr-cargocell">{cargoIcon ? <img className="rr-cargo-img" src={cargoIcon} alt={cargoLabel(cargoProvider)} title={cargoLabel(cargoProvider)} referrerPolicy="no-referrer" loading="lazy" /> : <span className="rr-muted">{cargoProvider?.trim() ? cargoLabel(cargoProvider) : 'Kargo bilgisi bekleniyor'}</span>}<small className="rr-num" title={pazaramaCode ? PAZARAMA_RETURN_CODE_HINT : undefined}>{trackingNumber?.trim() || '—'}</small>{canTrackReturn ? <a className="rr-btn rr-link" style={{ fontSize: 12 }} href={item.cargoTrackingLink!} target="_blank" rel="noopener noreferrer">Kargo Takip <RrIcon name="open" /></a> : canTrackOrder && orderShipment && <button type="button" className="rr-btn rr-link" style={{ fontSize: 12 }} onClick={() => navigate(`/shipments/${orderShipment.id}`)}>Paket Detayı <RrIcon name="open" /></button>}</div></td>
     <td data-l="Fatura"><div className="rr-invcell"><ReturnAmountCells amounts={item.returnAmounts} money={money} /><ReturnInvoiceRing status={invoiceStatus} isMicroExport={item.isMicroExport} /></div></td>
     <td data-l="İade Sebebi"><div className="rr-reasoncell"><b className={sellerFault ? 'rr-fault' : undefined} title={sellerFault ? `${reasonPresentation.label}: satıcı kaynaklı iade, iade masrafları satıcıya yansıtılır.` : reasonPresentation.label}>{reasonPresentation.label}</b>{reasonNote && <small title={reasonNote[1]}><strong>{reasonNote[0]}:</strong> {reasonNote[1]}</small>}</div></td>
     <td className="rr-mid" data-l="Durum">{statusRing}</td>
@@ -205,24 +212,24 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   </tr>
     {previewLine && <ReturnImagePreview title={previewLine.title} imageUrl={previewLine.imageUrl ?? item.primaryImageUrl} fallbackUrl={previewLine.fallbackImageUrl} facts={returnLineFacts(item.platformCode, previewLine)} onClose={() => setPreviewLine(null)} />}
     {labelOpen && <ReturnLabelPreview item={item} lines={lines} onClose={() => setLabelOpen(false)} />}
-    {dialogMode === 'APPROVE' && useApproveDialog && <ReturnApproveDialog open claimId={item.id} version={detailItem.version} marketplaceName={marketplaceName} order={{ connectionId: detailItem.connectionId ?? item.connectionId ?? null, platformCode: detailItem.platformCode, platformName: marketplaceName, orderNumber: displayOrderNumber(detailItem.orderNumber), customer: detailItem.customerName, orderedAt: detailItem.orderedAt, packageNumber: item.packageNumber, claimCode: item.externalClaimId, reason: reasonPresentation.label }} rows={approveRows} wholeClaim={detailQuery.data?.wholeClaimDecision === true} finalizedWithChoice={approveIsHepsiburada} customerRequest={detailItem.customerRequest ?? item.customerRequest ?? null} loading={detailQuery.isLoading} error={detailQuery.isError ? detailQuery.error : null} onClose={closeDialog} onDone={(message, kind, details, target) => notifyReturn(onNotice, message, kind, details, target?.href.startsWith('/integrations') ? target : undefined, { ...returnNotificationContext(detailItem), title: kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi', operation: 'İade kabul kararı' })} />}
+    {dialogMode === 'APPROVE' && useApproveDialog && <ReturnApproveDialog open claimId={item.id} version={detailItem.version} marketplaceName={marketplaceName} order={{ connectionId: item.connectionId ?? null, platformCode: detailItem.platformCode ?? item.platformCode, platformName: marketplaceName, orderNumber: displayOrderNumber(detailItem.orderNumber), customer: detailItem.customerName, orderedAt: detailItem.orderedAt, packageNumber: item.packageNumber, claimCode: item.externalClaimId, reason: reasonPresentation.label }} rows={approveRows} wholeClaim={detailQuery.data?.wholeClaimDecision === true} finalizedWithChoice={approveIsHepsiburada} customerRequest={detailItem.customerRequest ?? item.customerRequest ?? null} loading={detailQuery.isLoading} error={detailQuery.isError ? detailQuery.error : null} onClose={closeDialog} onDone={(message, kind, details, target) => notifyReturn(onNotice, message, kind, details, target?.href.startsWith('/integrations') ? target : undefined, { ...returnNotificationContext(detailItem), title: kind === 'error' ? 'İade Kabul Kararı İletilemedi' : 'İade Kabul Kararı İletildi', operation: 'İade kabul kararı' })} />}
     {dialogMode && !(dialogMode === 'APPROVE' && useApproveDialog) && <RrModal crumb={`${marketplaceName} İade`} title={dialogMode === 'APPROVE' ? 'İade Onayı' : dialogMode === 'REJECT' ? 'İade Ret Talebi' : 'Detaylı Bilgi'} desc={`Sipariş ${displayOrderNumber(detailItem.orderNumber)} · ${detailItem.customerName}`} size="lg" onClose={closeDialog} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={closeDialog}>Kapat</button></>}>
       {detailQuery.isLoading ? <RrLoading text="İade detayları yükleniyor…" /> : detailQuery.isError || !detailQuery.data ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : <>
-        <ReturnDetailFacts item={detailItem} plain={dialogMode === 'DETAIL'} money={detailMoney} />
+        <ReturnDetailFacts item={detailItem} requestedAt={item.requestedAt} plain={dialogMode === 'DETAIL'} money={detailMoney} />
         <div className="rr-h3">Ürünler</div>
         {dialogMode === 'DETAIL' ? detailLines.map(line => {
           const approvedAt = returnLineFieldValue(line, ['onaylanma', 'approved'], 'approvedAt') ?? detailItem.approvedAt
-          const systemNote = returnLineFieldValue(line, ['sistem notu', 'system'], 'systemNote') ?? returnOptionalValue(detailItem.systemNote)
+          const systemNote = returnLineFieldValue(line, ['sistem notu', 'system'], 'systemNote')
           const reasonText = returnLineFieldValue(line, ['sebep', 'reason'], 'reasonText') ?? detailItem.reasonText
-          const sellerDescription = returnLineFieldValue(line, ['satıcı açıklaması', 'seller'], 'sellerDescription') ?? returnOptionalValue(detailItem.sellerDescription)
+          const sellerDescription = returnLineFieldValue(line, ['satıcı açıklaması', 'seller'], 'sellerDescription')
           // Trendyol's settlement of the line (acceptDetail, note, resolved, acceptedBySeller) fills these rows when nothing else does.
-          const settlement = line as Partial<ReturnLine>
-          const platformReason = returnLineFieldValue(line, ['trendyol onay nedeni', 'approval reason'], 'platformApprovalReason') ?? returnOptionalValue(detailItem.platformApprovalReason) ?? acceptDetailText(settlement.acceptDetail)
-          const platformDescription = returnLineFieldValue(line, ['trendyol açıklaması', 'platform description'], 'platformDescription') ?? returnOptionalValue(detailItem.platformDescription) ?? (settlement.marketplaceNote?.trim() || null)
+          const settlement = line
+          const platformReason = returnLineFieldValue(line, ['trendyol onay nedeni', 'approval reason'], 'platformApprovalReason') ?? acceptDetailText(settlement.acceptDetail)
+          const platformDescription = returnLineFieldValue(line, ['trendyol açıklaması', 'platform description'], 'platformDescription') ?? (settlement.marketplaceNote?.trim() || null)
           const disputeState = settlement.resolved == null ? null : settlement.resolved ? 'Çözüldü' : 'Çözülmedi'
           const sellerAccepted = settlement.acceptedBySeller == null ? null : settlement.acceptedBySeller ? 'Evet' : 'Hayır'
           const fields: Array<[string, string, string?]> = [['Onaylanma Tarihi', approvedAt ? returnDateText(approvedAt) : '-', approvedAt ? undefined : 'rr-empty'], ['Sistem Notu', systemNote ?? '-', systemNote ? 'rr-sys' : 'rr-empty'], ['Sebep', reasonText ?? '-', reasonText ? undefined : 'rr-empty'], ['Satıcı Açıklaması', sellerDescription ?? '-', sellerDescription ? undefined : 'rr-empty'], [`${marketplaceName} Onay Nedeni`, platformReason ?? '-', platformReason ? undefined : 'rr-empty'], [`${marketplaceName} Açıklaması`, platformDescription ?? '-', platformDescription ? undefined : 'rr-empty'], ...(detailItem.platformCode === 'TRENDYOL' ? [['İhtilaf Durumu', disputeState ?? '-', disputeState ? undefined : 'rr-empty'], ['Satıcı Onayı', sellerAccepted ?? '-', sellerAccepted ? undefined : 'rr-empty']] as Array<[string, string, string?]> : [])]
-          return <article className="rr-refline" key={line.id}><div className="rr-rh"><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={productLineQuantity(line as OrderLine)} large alt={line.title} /><div><b>{line.title}<button type="button" className="rr-icon-btn" title="Ürün adını kopyala" aria-label="Ürün adını kopyala" onClick={() => { void navigator.clipboard?.writeText(line.title).catch(() => undefined) }}><RrIcon name="copy" /></button></b><ReturnFactLines facts={returnLineFacts(detailItem.platformCode, line)} /></div></div><dl className="rr-kv">{fields.map(([label, value, className]) => <Fragment key={label}><dt>{label}</dt><dd className={className}>{value}</dd></Fragment>)}</dl></article>
+          return <article className="rr-refline" key={line.id}><div className="rr-rh"><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={productLineQuantity(line)} large alt={line.title} /><div><b>{line.title}<button type="button" className="rr-icon-btn" title="Ürün adını kopyala" aria-label="Ürün adını kopyala" onClick={() => { void navigator.clipboard?.writeText(line.title).catch(() => undefined) }}><RrIcon name="copy" /></button></b><ReturnFactLines facts={returnLineFacts(detailItem.platformCode, line)} /></div></div><dl className="rr-kv">{fields.map(([label, value, className]) => <Fragment key={label}><dt>{label}</dt><dd className={className}>{value}</dd></Fragment>)}</dl></article>
         }) : <div className="rr-pcards">{detailLines.map(line => {
           const selectable = decisionAvailable
           const selected = selectedReturnLineIds.includes(line.id)
@@ -264,7 +271,8 @@ function notifyReturn(onNotice: ReturnNoticeHandler | undefined, message: string
   onNotice?.(message, kind)
 }
 // The return a notice is about: its claim and order number (opening the return), its marketplace and store.
-function returnNotificationContext(item: Pick<ReturnClaim, 'id' | 'orderNumber' | 'externalClaimId' | 'platformCode' | 'connectionId' | 'platformDisplayName'>): NotificationContext {
+// A list row names its store; a claim read alone (GET /returns/{id}) does not, and its notice then goes without it.
+function returnNotificationContext(item: Pick<ReturnDetail, 'id' | 'orderNumber' | 'externalClaimId' | 'platformCode'> & Partial<Pick<ReturnClaim, 'connectionId' | 'platformDisplayName'>>): NotificationContext {
   const claim = item.externalClaimId?.trim()
   return { platformCode: item.platformCode, connectionId: item.connectionId ?? undefined, storeName: item.platformDisplayName || undefined, subject: { kind: 'return', id: item.id, label: `${displayOrderNumber(item.orderNumber)}${claim ? ` · Talep ${claim}` : ''}`, href: notificationLinks.return(item.id) } }
 }
@@ -274,8 +282,8 @@ function ReturnReceiptButton({ item, onNotice }: { item: ReturnDetail; onNotice?
     mutationFn: () => hubApi(`/returns/${item.id}/received`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` } }),
     onSuccess: async () => {
       notifyReturn(onNotice, 'İade paketi teslim alındı. Onay veya ret işlemleri açıldı.', 'success', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Paketi Teslim Alındı', operation: 'İade teslim alma' })
-      await client.invalidateQueries({ queryKey: ['return', item.id] })
-      await client.invalidateQueries({ queryKey: ['returns'] })
+      await client.invalidateQueries({ queryKey: queryKeys.return(item.id) })
+      await client.invalidateQueries({ queryKey: queryKeys.returns() })
     },
     onError: error => { const failure = notificationError(error, 'İade teslim alındı olarak işaretlenemedi.'); notifyReturn(onNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Teslim Alınamadı', operation: 'İade teslim alma', code: failure.code }) }
   })
@@ -290,12 +298,12 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   const fileInput = useRef<HTMLInputElement>(null)
   const resetDecision = useEffectEvent(() => { if (!isControlled) setLocalSelectedLineIds(lines.map(line => line.id)); setConfirmation(null); setShipmentCompanyId(''); setTrackingNumber(''); setFinalizedWith(finalizedWithFor(item.customerRequest)); setAction(initialAction ?? (isAwaitingPreApproval ? 'PREAPPROVAL_CONFIRM' : 'APPROVE')) })
   useEffect(() => resetDecision(), [item.id, item.version, item.lines, item.customerRequest, isControlled, isAwaitingPreApproval, initialAction])
-  const reasons = useQuery({ queryKey: ['return-reasons', item.id], queryFn: () => hubApi<ReturnIssueReason[]>(`/returns/${item.id}/rejection-reasons`), enabled: item.allowedActions.includes('REJECT'), retry: false })
+  const reasons = useQuery({ queryKey: queryKeys.returnReasons(item.id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsByIdRejectionReasons'>>(`/returns/${item.id}/rejection-reasons`, { signal }), enabled: item.allowedActions.includes('REJECT'), retry: false })
   // N11: a denial (other than reason 41) names the shipment of the product back to the buyer; CAMPAIGN is never offered.
   const needsReturnShipment = action === 'REJECT' && item.rejectNeedsReturnShipment === true && reasonId !== '' && reasonId !== n11ProductNotReceivedReasonId
-  const shipmentCompanies = useQuery({ queryKey: ['return-shipment-companies', item.connectionId], queryFn: () => hubApi<ReturnShipmentCompany[]>(`/returns/${item.id}/return-shipment-companies`), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
+  const shipmentCompanies = useQuery({ ...returnShipmentCompaniesQuery(item.id), enabled: action === 'REJECT' && item.rejectNeedsReturnShipment === true, retry: false, staleTime: 60 * 60_000 })
   const decision = useMutation({
-    mutationFn: (payload: ReturnDecisionDraft) => hubApi<ReturnDetail>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith, returnShipment: payload.returnShipment ? { shipmentCompanyId: payload.returnShipment.shipmentCompanyId, trackingNumber: payload.returnShipment.trackingNumber } : null }) }),
+    mutationFn: (payload: ReturnDecisionDraft) => hubApi<ApiAnswer<'postReturnsByIdActions'>>(`/returns/${item.id}/actions`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ action: payload.action, reasonCode: payload.reasonCode, explanation: payload.explanation, evidenceAssetIds: payload.evidenceAssetIds, returnLineIds: payload.returnLineIds, finalizedWith: payload.finalizedWith, returnShipment: payload.returnShipment ? { shipmentCompanyId: payload.returnShipment.shipmentCompanyId, trackingNumber: payload.returnShipment.trackingNumber } : null }) }),
     onSuccess: async (result, payload) => {
       setConfirmation(null)
       const response = result.rawStatus ? ` ${marketplaceName} durumu: ${returnPlatformStatusText(result.rawStatus, marketplaceName)}.` : ''
@@ -311,20 +319,20 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
       const kind = payload.action === 'PREAPPROVAL_CONFIRM' ? 'info' : result.status === 'REJECTED' ? 'error' : result.status === 'APPROVED' ? returnPlatformStatusKind(result.rawStatus) : 'info'
       const title = payload.action === 'PREAPPROVAL_CONFIRM' ? 'İnceleme Talebi İletildi' : result.status === 'APPROVED' ? 'İade Kabul Kararı İletildi' : result.status === 'REJECTED' ? 'İade Ret Kararı İletildi' : 'İade Kararı İletildi'
       notifyReturn(onNotice, message, kind, [{ label: 'Müşteri', value: item.customerName }, ...(result.rawStatus ? [{ label: `${marketplaceName} Durumu`, value: returnPlatformStatusText(result.rawStatus, marketplaceName) }] : [])], undefined, { ...returnNotificationContext(item), title, operation: 'İade kararı' })
-      await client.invalidateQueries({ queryKey: ['return', item.id] })
-      await client.invalidateQueries({ queryKey: ['returns'] })
+      await client.invalidateQueries({ queryKey: queryKeys.return(item.id) })
+      await client.invalidateQueries({ queryKey: queryKeys.returns() })
       onComplete?.()
     },
     onError: error => {
       const failure = notificationError(error, 'İade kararı başlatılamadı.')
       const reason = failure.message
-      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Müşteri', value: item.customerName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(item.connectionId, marketplaceName) : undefined, { ...returnNotificationContext(item), title: 'İade Kararı İletilemedi', operation: 'İade kararı', code: failure.code })
+      notifyReturn(onNotice, `${displayOrderNumber(item.orderNumber)} siparişinin iade kararı ${marketplaceName}’a iletilemedi: ${reason}`, 'error', [{ label: 'Müşteri', value: item.customerName }, { label: 'Neden', value: reason, tone: 'error' }], isExternalWriteMessage(reason) ? integrationNotificationTarget(null, marketplaceName) : undefined, { ...returnNotificationContext(item), title: 'İade Kararı İletilemedi', operation: 'İade kararı', code: failure.code })
     }
   })
   async function uploadFile(file: File) {
     if (!file.size) return
     const body = new FormData(); body.set('file', file)
-    try { const asset = await hubApi<{ id: string }>('/files/return-evidence', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body }); setEvidenceAssetIds(ids => ids.includes(asset.id) ? ids : [...ids, asset.id]); notifyReturn(onNotice, 'İade kanıtı güvenli depoya yüklendi.', 'success') } catch (error) { notifyReturn(onNotice, error instanceof Error ? error.message : 'Kanıt yüklenemedi.', 'error') }
+    try { const asset = await hubApi<ApiAnswer<'postFilesReturnEvidence'>>('/files/return-evidence', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body }); setEvidenceAssetIds(ids => ids.includes(asset.id) ? ids : [...ids, asset.id]); notifyReturn(onNotice, 'İade kanıtı güvenli depoya yüklendi.', 'success') } catch (error) { notifyReturn(onNotice, error instanceof Error ? error.message : 'Kanıt yüklenemedi.', 'error') }
   }
   const decisionActions = item.allowedActions.filter(value => value === 'APPROVE' || value === 'REJECT' || value === 'PREAPPROVAL_CONFIRM')
   const decisionLabel = (value: string) => value === 'PREAPPROVAL_CONFIRM' ? 'İnceleme İçin Geri Gönder' : value === 'APPROVE' ? 'Onayla' : value === 'REJECT' ? 'Reddet' : titleTr(statusLabel(value))
@@ -392,7 +400,7 @@ export function ReturnsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedStatus = searchParams.get('status') ?? 'ALL'
   const initialStatus = resolveReturnStatus(requestedStatus)
-  const [status, setStatus] = useState<string>(initialStatus); const [initialList] = useState(() => returnListFromUrl(searchParams)); const [search, setSearch] = useState(() => searchParams.get('search') ?? ''); const [from, setFrom] = useState(initialList.from); const [to, setTo] = useState(initialList.to); const [pageSize, setPageSize] = useState(initialList.pageSize); const [pageNumber, setPageNumber] = useState(initialList.pageNumber); const [jumpPage, setJumpPage] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [cargoFilter, setCargoFilter] = useState(initialList.cargo); const [reasonFilter, setReasonFilter] = useState(initialList.reason); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState(initialList.invoice); const [returnSort, setReturnSort] = useState<ReturnSort>(initialList.sort)
+  const [status, setStatus] = useState<string>(initialStatus); const [initialList] = useState(() => returnListFromUrl(searchParams)); const [search, setSearch] = useState(() => searchParams.get('search') ?? ''); const [from, setFrom] = useState(initialList.from); const [to, setTo] = useState(initialList.to); const [pageSize, setPageSize] = useState(initialList.pageSize); const [jumpPage, setJumpPage] = useState(''); const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(initialList.platforms); const [cargoFilter, setCargoFilter] = useState(initialList.cargo); const [reasonFilter, setReasonFilter] = useState(initialList.reason); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState(initialList.invoice); const [returnSort, setReturnSort] = useState<ReturnSort>(initialList.sort)
   const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   // A bulk approval that did not fully go through keeps its toast until it is closed: the popups are gone by then.
   const [noticeSticky, setNoticeSticky] = useState(false)
@@ -413,25 +421,25 @@ export function ReturnsPage() {
   const refinements: ReturnRefinements = { platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoiceStatus: invoiceStatusFilter }
   // The server sorts by the default (the newest return request) when the address names no order.
   const sort = effectiveReturnSort(appliedFilters.status, returnSort)
-  const [pageCursors, setPageCursors] = useState<Record<number, string | null>>({ 1: null })
   const listKey = JSON.stringify([appliedFilters, refinements, sort, pageSize])
-  const [cursorKey, setCursorKey] = useState(listKey)
-  if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
-  const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
+  // Another tab, filter, sort or page size goes back to page 1 and forgets the cursors (useCursorPager).
+  const pager = useCursorPager({ resetKey: listKey, initialPage: initialList.pageNumber })
+  const pageNumber = pager.page
+  const setPageNumber = pager.setPage
+  const cursor = pager.cursor
   useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: DEFAULT_RETURN_SORT, size: 20, page: 1 })
-  const query = useQuery({ queryKey: ['returns', 'list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor], queryFn: () => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
-  const summary = useQuery({ queryKey: ['returns', 'summary', appliedFilters, refinements], queryFn: () => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const query = useQuery({ queryKey: queryKeys.returns('list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getReturns'>>(`/returns?${returnListParams(appliedFilters, refinements, { sort: sort === DEFAULT_RETURN_SORT ? null : sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: queryKeys.returns('summary', appliedFilters, refinements), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getReturnsSummary'>>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
-  if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
-  const connections = useQuery({ queryKey: ['connections', 'returns'], queryFn: () => loadAllPages<Connection>('/connections') })
+  if (nextCursor && !query.isPlaceholderData) pager.rememberCursor(pageNumber + 1, nextCursor)
+  const connections = useQuery(connectionQueries.list<Connection>())
   const returnConnections = activeReturnSyncConnections(connections.data?.items ?? [])
-  const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
-  const [bulkIds, setBulkIds] = useState<string[]>([])
-  // The bulk selection belongs to the cards on screen: another tab, filter, page or page size starts it empty, so a
-  // return that is no longer shown is never approved or rejected by mistake.
-  const selectionKey = `${listKey}|${pageNumber}`
-  const [bulkSelectionKey, setBulkSelectionKey] = useState(selectionKey)
-  if (bulkSelectionKey !== selectionKey) { setBulkSelectionKey(selectionKey); setBulkIds([]) }
+  const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: queryKeys.returns() }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
+  // Another tab, filter or page size starts the bulk selection empty; a page change keeps it (owner, 16 Nov 2026,
+  // WEB-SAYFALAR-11): the returns picked on other pages count and are decided with the rest, from the copy taken when
+  // they were picked; the decision sends each claim's version, so one changed since is refused with its own message.
+  const bulk = useListSelection<ReturnClaim>({ filterKey: listKey, rowOf: id => query.data?.items.find(claim => claim.id === id && bulkEligible(claim)) })
+  const setBulkIds = bulk.set
   const [bulkMode, setBulkMode] = useState<'APPROVE' | 'REJECT' | null>(null)
   // On 1025-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
@@ -446,8 +454,8 @@ export function ReturnsPage() {
   // Bulk approval is offered only for returns that wait for the seller; Hepsiburada's pre-approval review keeps its own step.
   const bulkEligible = (claim: ReturnClaim) => status === 'ACTION_REQUIRED' && returnGroup(claim.status) === 'ACTION_REQUIRED' && claim.rawStatus.replace(/[_-]/gu, '').toUpperCase() !== 'AWAITINGPREAPPROVAL'
   const bulkItems = visibleItems.filter(bulkEligible)
-  const bulkSelected = bulkItems.filter(claim => bulkIds.includes(claim.id))
-  const allBulkSelected = bulkItems.length > 0 && bulkSelected.length === bulkItems.length
+  const bulkSelected = bulk.selectedRows(visibleItems, claim => claim.id).filter(bulkEligible)
+  const allBulkSelected = bulkItems.length > 0 && bulkItems.every(claim => bulk.has(claim.id))
   const bulkOverLimit = bulkDecisionLimitText(bulkSelected.length)
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages)
   const firstPage = Math.max(1, Math.min(currentPage - 1, totalPages - 3)); const pageList = Array.from({ length: Math.min(4, totalPages) }, (_, index) => firstPage + index)
@@ -505,7 +513,7 @@ export function ReturnsPage() {
       <div className={`rr-tblwrap${query.isPlaceholderData ? ' is-stale-data' : ''}`} aria-busy={query.isPlaceholderData || undefined}>{query.isLoading ? <RrLoading /> : query.isError ? <RrError error={query.error} onRetry={() => void query.refetch()} /> : <table className={`rr-tbl${selectColumn ? ' rr-has-select' : ''}${noBuyer ? ' rr-no-buyer' : ''}`}>
         <colgroup><col className="rr-c-order" />{!noBuyer && <col className="rr-c-buyer" />}<col className="rr-c-prod" /><col className="rr-c-price" /><col className="rr-c-cargo" /><col className="rr-c-inv" /><col className="rr-c-reason" /><col className="rr-c-status" /><col className="rr-c-act" /></colgroup>
         <thead><tr>
-          <ReturnHeadCell label="Sipariş Bilgileri" active={selectedPlatforms.length > 0} extra={selectColumn ? <input type="checkbox" className="rr-cb" checked={allBulkSelected} onChange={() => setBulkIds(allBulkSelected ? [] : bulkItems.map(claim => claim.id))} aria-label="Tüm iadeleri seç" style={{ marginRight: 8 }} /> : undefined} pop={() => <ReturnPlatformPop options={platformOptions} counts={optionCounts('platformCounts')} selected={selectedPlatforms} onChange={setSelectedPlatforms} />} />
+          <ReturnHeadCell label="Sipariş Bilgileri" active={selectedPlatforms.length > 0} extra={selectColumn ? <input type="checkbox" className="rr-cb" checked={allBulkSelected} onChange={() => bulk.toggleMany(bulkItems.map(claim => claim.id), !allBulkSelected)} aria-label="Tüm iadeleri seç" style={{ marginRight: 8 }} /> : undefined} pop={() => <ReturnPlatformPop options={platformOptions} counts={optionCounts('platformCounts')} selected={selectedPlatforms} onChange={setSelectedPlatforms} />} />
           {!noBuyer && <ReturnHeadCell label="Alıcı" />}
           <ReturnHeadCell label="Bilgiler" />
           <ReturnHeadCell label="Birim Fiyat" />
@@ -515,7 +523,7 @@ export function ReturnsPage() {
           <ReturnHeadCell label="Durum" active={status !== 'ALL'} pop={close => <ReturnColumnPop label="İade Durumu" options={statusPopOptions} value={status} right onPick={value => { selectStatus(value); close() }} />} />
           <ReturnHeadCell label="İşlemler" />
         </tr></thead>
-        <tbody>{visibleItems.map(item => <ReturnReferenceRow key={item.rowKey ?? item.id} selectColumn={selectColumn} noBuyer={noBuyer} selection={bulkEligible(item) ? { checked: bulkIds.includes(item.id), onChange: () => setBulkIds(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id]) } : undefined} item={item} order={null} onNotice={setNotice} />)}{!visibleItems.length && <tr><td className="rr-empty-row" colSpan={noBuyer ? 8 : 9}><EmptyState icon="returns" title={summary.data?.unfilteredCount ? 'İade Bulunamadı' : tabEmptyCopy[status]?.[0] ?? 'Henüz İade Yok'} onClearFilters={summary.data?.unfilteredCount ? clearFilters : undefined}>{summary.data?.unfilteredCount ? 'Seçili filtreyle eşleşen gösterilebilir iade yok.' : tabEmptyCopy[status]?.[1] ?? "Güncel talepleri çekmek için İade Senkronizasyonu'na basın."}</EmptyState></td></tr>}</tbody>
+        <tbody>{visibleItems.map(item => <ReturnReferenceRow key={item.rowKey ?? item.id} selectColumn={selectColumn} noBuyer={noBuyer} selection={bulkEligible(item) ? { checked: bulk.has(item.id), onChange: () => bulk.toggle(item.id) } : undefined} item={item} order={null} onNotice={setNotice} />)}{!visibleItems.length && <tr><td className="rr-empty-row" colSpan={noBuyer ? 8 : 9}><EmptyState icon="returns" title={summary.data?.unfilteredCount ? 'İade Bulunamadı' : tabEmptyCopy[status]?.[0] ?? 'Henüz İade Yok'} onClearFilters={summary.data?.unfilteredCount ? clearFilters : undefined}>{summary.data?.unfilteredCount ? 'Seçili filtreyle eşleşen gösterilebilir iade yok.' : tabEmptyCopy[status]?.[1] ?? "Güncel talepleri çekmek için İade Senkronizasyonu'na basın."}</EmptyState></td></tr>}</tbody>
       </table>}</div>
       {!query.isLoading && !query.isError && visibleItems.length > 0 && <div className="rr-pager"><span>Toplam <b style={{ color: 'var(--rr-ink)' }}>{totalCount.toLocaleString('tr-TR')}</b> adet</span><div className="rr-pages"><button type="button" aria-label="Önceki" disabled={currentPage <= 1} onClick={() => setPageNumber(Math.max(1, currentPage - 1))}><RrIcon name="left" /></button>{pageList.map(page => <button key={page} type="button" className={page === currentPage ? 'rr-on' : undefined} aria-current={page === currentPage ? 'page' : undefined} onClick={() => setPageNumber(page)}>{page}</button>)}<button type="button" aria-label="Sonraki" disabled={currentPage >= totalPages} onClick={() => setPageNumber(Math.min(totalPages, currentPage + 1))}><RrIcon name="right" /></button></div><label className="rr-jump"><span className="rr-jump-label">Sayfaya Git</span><input className="rr-in" type="number" min={1} max={totalPages} placeholder={`1–${totalPages}`} aria-label="Sayfa numarası" value={jumpPage} onChange={event => setJumpPage(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } } }} /><button type="button" className="rr-btn" onClick={() => { const page = Number(jumpPage); if (page >= 1) { setPageNumber(Math.min(totalPages, Math.floor(page))); setJumpPage('') } }}>Git</button></label></div>}
     </div>
@@ -532,7 +540,7 @@ export function ReturnDetailPage() {
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
-  const query = useQuery({ queryKey: ['return', id], queryFn: () => hubApi<ReturnDetail>(`/returns/${id}`) })
+  const query = useQuery({ queryKey: queryKeys.return(id), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsById'>>(`/returns/${id}`, { signal }) })
   // Each stock decision is its own request: a decision does not change the return's version, so a key
   // made from the version and the body would replay the first of two equal decisions (audit 2026-10-20 W11).
   // The key is kept per pending decision instead (sendStockDisposition): a resend after a lost answer replays it.
@@ -548,7 +556,7 @@ export function ReturnDetailPage() {
       const kind = String(data.get('disposition'))
       await dispositionRequest.mutateAsync({ lineId: line.id, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
       notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedildi', operation: 'İade stok kararı' })
-      await Promise.all([client.invalidateQueries({ queryKey: ['return', id] }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: ['products'] })] : [])])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.return(id) }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])])
     } catch (reason) { const failure = notificationError(reason, 'Stok kararı kaydedilemedi.'); notifyReturn(setNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedilemedi', operation: 'İade stok kararı', code: failure.code }) }
     finally { dispositionInFlight.current = false }
   }
@@ -565,7 +573,7 @@ export function ReturnDetailPage() {
         (the server accepts stock decisions only for approved lines, so a line approved on its own takes stock while the others wait). A rejected return has nothing to put back. */}
     {(item.stockDispositionAvailable ? lines.some(line => line.remainingQuantity > 0) : returnGroup(item.status) !== 'REJECTED' && returnGroup(item.status) !== 'APPROVED') && <>
     <article><div className="rr-h3">İade Paketi Ürünleri ve Stok Kabulü</div><div className="rr-callout rr-warn"><RrIcon name="alert" /><span><b>Stok otomatik artmaz.</b> Ürün fiziksel olarak kontrol edildikten sonra “Satılabilir” seçilirse stok artar; Karantina, Hasarlı ve Teslim Alınmadı seçimleri stoğu artırmaz.</span></div>
-      {!lines.length ? <EmptyState icon="returns" title="İade Satırı Bulunamadı" /> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl ?? item.primaryImageUrl} fallbackSrc={line.fallbackImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{(line.stockDispositionAvailable ?? item.stockDispositionAvailable) && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><DispositionSelect /><input className="rr-in rr-num" name="quantity" type="number" min="0.01" max={line.remainingQuantity} step="0.01" defaultValue={line.remainingQuantity} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.status?.toUpperCase() === 'REJECTED' ? 'Reddedildi' : line.stockPending ? 'Onay Kesinleşince Stoğa Eklenecek' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
+      {!lines.length ? <EmptyState icon="returns" title="İade Satırı Bulunamadı" /> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{(line.stockDispositionAvailable ?? item.stockDispositionAvailable) && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><DispositionSelect /><input className="rr-in rr-num" name="quantity" type="number" min="0.01" max={line.remainingQuantity} step="0.01" defaultValue={line.remainingQuantity} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.status?.toUpperCase() === 'REJECTED' ? 'Reddedildi' : line.stockPending ? 'Onay Kesinleşince Stoğa Eklenecek' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
     </article>
     </>}
   </div></section>

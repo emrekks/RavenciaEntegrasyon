@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -34,6 +32,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         ("catalog.product_media", "FileAssetId", "PRODUCTS"),
         ("catalog.product_size_charts", "FileAssetId", "PRODUCTS"),
         ("catalog.product_size_charts", "LastGeneratedAssetId", "PRODUCTS"),
+        ("catalog.product_model_size_charts", "FileAssetId", "PRODUCTS"),
         ("catalog.import_sessions", "SourceAssetId", "PRODUCTS"),
         ("integration.reference_snapshots", "AssetId", "REFERENCES"),
         ("billing.invoice_documents", "FileAssetId", "INVOICES"),
@@ -75,28 +74,16 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             await CancelWaitingJobsAsync(tenantId, null, now, cancellationToken);
             var payload = JsonSerializer.Serialize(new Payload(currentSessionId, actorUserId, [.. chosen.Select(x => x.Key)]));
             var dedup = $"panel-factory-reset:{tenantId:D}:{Guid.CreateVersion7():N}";
-            db.IntegrationJobs.Add(new IntegrationJob
+            var job = Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, null, PanelJobTypes.FactoryReset, payload, dedup, correlationId, now)
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                ConnectionId = null,
-                JobType = PanelJobTypes.FactoryReset,
-                PayloadJson = payload,
-                PayloadVersion = 1,
-                PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-                JobDedupKey = dedup,
-                EffectIdempotencyKey = dedup,
                 Priority = JobPriorityPolicy.UserAction,
                 TriggerType = "user",
-                AvailableAt = now,
-                CreatedAt = now,
-                CorrelationId = correlationId,
-                ProgressCurrent = 0,
-                ProgressTotal = PanelFactoryResetInventory.StepsFor(chosen).Count - 1,
-                ProgressPercent = 0,
-                ProgressLabel = "Sıfırlama sırada bekliyor",
-                Version = 1
+                CreatedAt = now
             });
+            job.ProgressCurrent = 0;
+            job.ProgressTotal = PanelFactoryResetInventory.StepsFor(chosen).Count - 1;
+            job.ProgressPercent = 0;
+            job.ProgressLabel = "Sıfırlama sırada bekliyor";
             await db.SaveChangesAsync(cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
@@ -158,6 +145,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
 
             db.Database.SetCommandTimeout(CommandTimeout);
             var removed = 0L;
+            var keptLegacyConnections = 0;
             var files = new HashSet<Guid>();
             var chosenKeys = chosen.Select(x => x.Key).ToHashSet(StringComparer.Ordinal);
             for (var index = 0; index < chosen.Count; index++)
@@ -174,7 +162,12 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
                 foreach (var table in plan.Order.Where(x => x.Group == group))
                     removed += await DeleteTableAsync(table, tenantId, jobId, plan.SelfReferencing.Contains(table.Name), cancellationToken);
                 if (group == PanelFactoryResetInventory.Jobs) await CleanUpConnectionsAsync(tenantId, connectionIds, cancellationToken);
-                if (group == PanelFactoryResetInventory.LegacyConnections) removed += await CleanUpLegacyConnectionsAsync(tenantId, cancellationToken);
+                if (group == PanelFactoryResetInventory.LegacyConnections)
+                {
+                    var (legacyRemoved, kept) = await CleanUpLegacyConnectionsAsync(tenantId, cancellationToken);
+                    removed += legacyRemoved;
+                    keptLegacyConnections += kept;
+                }
                 if (group == PanelFactoryResetInventory.Logs) removed += await db.Database.ExecuteSqlRawAsync($"DELETE FROM ops.audit_logs a WHERE {TenantlessAuditFilter}", [new NpgsqlParameter("tenant", tenantId)], cancellationToken);
                 if (group == PanelFactoryResetInventory.Invoices)
                     await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM iam.tenant_settings WHERE "TenantId" = {tenantId} AND "Key" = ANY({PanelFactoryResetInventory.HistorySettingKeys})""", cancellationToken);
@@ -205,7 +198,7 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             await db.SaveChangesAsync(cancellationToken);
             await ReportAsync(tenantId, jobId, steps, steps.Count - 1, cancellationToken);
             await RefreshDashboardBestEffortAsync(tenantId);
-            return JobExecutionResult.SuccessWithNote(full ? "PANEL_FACTORY_RESET_DONE" : "PANEL_DATA_RESET_DONE", full ? $"Panel sıfırlandı; {removed} kayıt silindi." : $"Seçilen veriler silindi; {removed} kayıt.");
+            return JobExecutionResult.SuccessWithNote(full ? "PANEL_FACTORY_RESET_DONE" : "PANEL_DATA_RESET_DONE", full ? $"Panel sıfırlandı; {removed} kayıt silindi." : PartialResetNote(removed, keptLegacyConnections));
         }
         finally
         {
@@ -294,15 +287,21 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         "integration.sync_cursors", "integration.marketplace_question_sync_states", "integration.marketplace_finance_sync_states",
         "sales.cargo_provider_mappings", "inventory.connection_inventory_policies", "inventory.connection_location_mappings",
         "catalog.connection_attribute_defaults", "catalog.attribute_mapping_templates", "catalog.attribute_value_mapping_templates", "catalog.mapping_template_dismissals",
+        // A deleted connection's commission tariffs (their rows, picks, selections and source files cascade) and its
+        // promotion and ad report files: no use without the connection, and since 20261116090100 they restrict deleting
+        // it. ConnectionLeftovers.PurgeAsync (the hourly sweep) removes them the same way. Only for DELETED connections.
+        "catalog.commission_tariffs", "catalog.promotion_offer_files", "catalog.ad_report_files",
     ];
 
     // Revoked credentials, and the connections deleted earlier with everything they still keep. A deleted connection whose
-    // records another category still holds (its orders, say, when Siparişler is not chosen) stays until they go.
-    private async Task<long> CleanUpLegacyConnectionsAsync(Guid tenantId, CancellationToken cancellationToken)
+    // records another category still holds (its orders, say, when Siparişler is not chosen) stays until they go; how many
+    // stayed is returned, so the job note says so instead of a plain success.
+    private async Task<(long Removed, int Kept)> CleanUpLegacyConnectionsAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var removed = (long)await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.platform_credentials WHERE "TenantId" = {tenantId} AND "RevokedAt" IS NOT NULL""", cancellationToken);
         var deleted = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status == "DELETED").Select(x => x.Id).ToListAsync(cancellationToken);
-        if (deleted.Count == 0) return removed;
+        if (deleted.Count == 0) return (removed, 0);
+        var kept = 0;
         foreach (var table in ConnectionSettingTables)
         {
             var sql = $"""DELETE FROM {Quote(table)} WHERE "TenantId" = @tenant AND "ConnectionId" = ANY(@ids)""";
@@ -319,13 +318,20 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
             {
                 removed += await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM integration.platform_connections WHERE "TenantId" = {tenantId} AND "Id" = {connectionId} AND "Status" = 'DELETED'""", cancellationToken);
             }
-            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+            catch (PostgresException exception) when (exception.SqlState is PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.RestrictViolation)
             {
                 logger.LogInformation("Silinmiş bağlantının kayıtları başka bir veri türünde duruyor; bağlantı satırı kaldı. ConnectionId: {ConnectionId}", connectionId);
+                kept++;
             }
         }
-        return removed;
+        return (removed, kept);
     }
+
+    // The job note of a partial reset: how many rows went, and the deleted connections that had to stay.
+    internal static string PartialResetNote(long removed, int keptLegacyConnections) =>
+        keptLegacyConnections > 0
+            ? $"Seçilen veriler silindi; {removed} kayıt. {keptLegacyConnections} silinmiş bağlantı, kayıtları başka veri türünde durduğu için kaldı."
+            : $"Seçilen veriler silindi; {removed} kayıt.";
 
     // A full reset drops every file of the tenant; a partial one the files the removed rows used that nothing else uses.
     private async Task DropUnusedFilesAsync(Guid tenantId, HashSet<Guid>? candidates, CancellationToken cancellationToken)
@@ -440,14 +446,9 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
     }
 
     private Task<int> CancelWaitingJobsAsync(Guid tenantId, Guid? keep, DateTimeOffset now, CancellationToken cancellationToken) =>
-        db.IntegrationJobs
-            .Where(x => x.TenantId == tenantId && WaitingJobStatuses.Contains(x.Status) && x.JobType != PanelJobTypes.FactoryReset && x.Id != keep)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, JobStatus.Cancelled)
-                .SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.LastErrorCode, "PANEL_FACTORY_RESET")
-                .SetProperty(x => x.LastErrorSummary, "Panel verileri sıfırlandığı için iptal edildi.")
-                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        Jobs.JobStateMachine.CancelWhereAsync(
+            db.IntegrationJobs.Where(x => x.TenantId == tenantId && WaitingJobStatuses.Contains(x.Status) && x.JobType != PanelJobTypes.FactoryReset && x.Id != keep),
+            now, "PANEL_FACTORY_RESET", "Panel verileri sıfırlandığı için iptal edildi.", keepEarlierCompletedAt: false, cancellationToken);
 
     private Task ReportAsync(Guid tenantId, Guid jobId, IReadOnlyList<string> steps, int step, CancellationToken cancellationToken)
     {

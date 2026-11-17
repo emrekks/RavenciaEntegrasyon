@@ -107,4 +107,14 @@ public static class ProductApprovalReconciliationPolicy
     // read again on later checks: only the barcodes still waiting are asked about.
     public static bool IsSettledLive(string? listingStatus, bool hasProductLink, bool hasVariantLink) =>
         string.Equals(listingStatus, "LIVE", StringComparison.Ordinal) && hasProductLink && hasVariantLink;
+
+    // Trendyol's contentId and variantId are numbers. Its unapproved list names neither, so a card imported from that list
+    // is linked under its productMainId (the model code) and each variant under its barcode until approval. Such a link is
+    // a placeholder: the ids the approval check reads replace it instead of opening an identity conflict (live MZ056
+    // Mürdüm/Kahverengi, 14.11.2026: product link "MZ056", variant links "MZ056-13".. went to review once approved).
+    public static bool IsTrendyolPlaceholderId(string? externalId)
+    {
+        var value = externalId?.Trim();
+        return !string.IsNullOrEmpty(value) && !value.All(char.IsAsciiDigit);
+    }
 }

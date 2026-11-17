@@ -672,6 +672,125 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         }
     }
 
+    // API-GUVENLIK-8: the order-profitability order is total (the sort key, then the order time, then the order id), so its
+    // pages are stable: every sort and direction, read three orders at a time, gives the one-page list's rows in its
+    // order, and that order is the previous one (key, then time) with ties now broken by the order id.
+    [PostgreSqlFact]
+    public async Task Order_profitability_pages_are_a_total_order()
+    {
+        var tenant = NewTenant("rep-profit-pages");
+        var trendyol = NewConnection(tenant.Id, "TRENDYOL", "PRODUCTION");
+        var orders = new List<Order>();
+        var lines = new List<OrderLine>();
+        for (var index = 0; index < 11; index++)
+        {
+            // Equal amounts and equal order times on purpose: the ties the id now breaks.
+            var order = NewOrder(tenant.Id, trendyol.Id, $"t-p{index}", TrendyolNoon.AddMinutes(index % 3), 100m + index % 4 * 10m, "DELIVERED", """{"city":"Ankara"}""", "{}");
+            orders.Add(order);
+            lines.Add(NewLine(order, $"t-p{index}-1", order.NetAmount, 1m, """{"commission":20}""", null));
+        }
+        try
+        {
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(trendyol);
+                seed.Orders.AddRange(orders);
+                seed.OrderLines.AddRange(lines);
+                await seed.SaveChangesAsync();
+            }
+            await using var db = fixture.CreateContext();
+            var service = new ReportsService(db, new FixedClock(Now));
+            foreach (var sort in new string?[] { null, "amount", "profit", "profitOnCost", "margin" })
+                foreach (var descending in new[] { true, false })
+                {
+                    var whole = (await service.OrderProfitabilityAsync(tenant.Id, new ReportOrderProfitQuery(Day, Day, null, null, sort, descending, 0, 200), CancellationToken.None)).Value!.Items;
+                    Assert.Equal(11, whole.Count);
+                    var paged = new List<ReportOrderProfitView>();
+                    for (var page = 0; page < 4; page++)
+                        paged.AddRange((await service.OrderProfitabilityAsync(tenant.Id, new ReportOrderProfitQuery(Day, Day, null, null, sort, descending, page, 3), CancellationToken.None)).Value!.Items);
+                    Assert.Equal(whole.Select(order => order.OrderId), paged.Select(order => order.OrderId));
+                    // The previous order (key, then the newest first) holds; within it the id decides.
+                    Func<ReportOrderProfitView, decimal?> key = sort switch
+                    {
+                        "amount" => order => order.Amount,
+                        "profit" => order => order.Profit,
+                        "profitOnCost" => order => order.ProfitOnCost,
+                        "margin" => order => order.Margin,
+                        _ => order => order.OrderedAt.UtcTicks
+                    };
+                    var known = whole.Where(order => key(order) is not null);
+                    var expected = (descending ? known.OrderByDescending(key) : known.OrderBy(key)).ThenByDescending(order => order.OrderedAt).ThenBy(order => order.OrderId)
+                        .Concat(whole.Where(order => key(order) is null).OrderByDescending(order => order.OrderedAt).ThenBy(order => order.OrderId));
+                    Assert.Equal(expected.Select(order => order.OrderId), whole.Select(order => order.OrderId));
+                }
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
+    // API-GUVENLIK-8: a payout's records in a total order (the transaction date, then the record id): read four at a time
+    // they are the hundred-a-page list's records in its order, and that order is the date order, ties by id.
+    [PostgreSqlFact]
+    public async Task Payout_lines_pages_are_a_total_order()
+    {
+        var tenant = NewTenant("rep-payout-pages");
+        var trendyol = NewConnection(tenant.Id, "TRENDYOL", "PRODUCTION");
+        var records = Enumerable.Range(0, 13).Select(index => new MarketplaceFinanceTransaction
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            ConnectionId = trendyol.Id,
+            PlatformCode = "TRENDYOL",
+            Source = "SETTLEMENTS",
+            ExternalId = $"po-{index}",
+            RequestedType = "Sale",
+            TransactionType = "Satış",
+            Category = MarketplaceFinanceCategories.Sale,
+            // Equal dates on purpose: the ties the id now breaks.
+            TransactionDate = TrendyolNoon.AddHours(-(index % 4)),
+            OrderNumber = $"o-{index}",
+            PaymentOrderId = "PO-PAGES",
+            Country = "Türkiye",
+            Credit = 10m + index,
+            CommissionAmount = 1m,
+            RawJson = "{}",
+            FirstSeenAt = Now,
+            UpdatedAt = Now
+        }).ToList();
+        try
+        {
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(trendyol);
+                seed.MarketplaceFinanceTransactions.AddRange(records);
+                await seed.SaveChangesAsync();
+            }
+            await using var db = fixture.CreateContext();
+            var service = new PayoutsService(db, new FixedClock(Now));
+            var scope = new PayoutQuery([], null, false);
+            var whole = (await service.LinesAsync(tenant.Id, scope, new PayoutLinesQuery(null, "PO-PAGES", null, null, null, 0), CancellationToken.None)).Value!;
+            Assert.Equal((13, 100), (whole.TotalCount, whole.PageSize));
+            var paged = new List<PayoutLineView>();
+            for (var page = 0; page < 4; page++)
+                paged.AddRange((await service.LinesAsync(tenant.Id, scope, new PayoutLinesQuery(null, "PO-PAGES", null, null, null, page, null, 4), CancellationToken.None)).Value!.Items);
+            Assert.Equal(whole.Items.Select(line => line.ExternalId), paged.Select(line => line.ExternalId));
+            var byId = records.ToDictionary(record => record.ExternalId);
+            var expected = records.OrderBy(record => record.TransactionDate).ThenBy(record => record.Id).Select(record => record.ExternalId).ToList();
+            // The database orders uuids its own way: the date order must hold, and equal dates keep one fixed order.
+            Assert.Equal(expected.Select(id => byId[id].TransactionDate), whole.Items.Select(line => byId[line.ExternalId].TransactionDate));
+            var again = (await service.LinesAsync(tenant.Id, scope, new PayoutLinesQuery(null, "PO-PAGES", null, null, null, 0), CancellationToken.None)).Value!;
+            Assert.Equal(whole.Items.Select(line => line.ExternalId), again.Items.Select(line => line.ExternalId));
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<ReportSalesView> ReportAsync(Guid tenantId, bool includeTest)
     {
         await using var db = fixture.CreateContext();

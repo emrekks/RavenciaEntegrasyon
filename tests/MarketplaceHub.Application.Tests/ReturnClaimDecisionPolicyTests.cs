@@ -36,4 +36,15 @@ public sealed class ReturnClaimDecisionPolicyTests
 
         Assert.Equal(ReturnClaimStatus.AwaitingShipment, result);
     }
+
+    // SIPARIS-STOK-1: "Teslim Aldım" only where the decision is sent for the whole claim.
+    [Theory]
+    [InlineData("TRENDYOL", false)]
+    [InlineData("N11", false)]
+    [InlineData("PAZARAMA", false)]
+    [InlineData("PTTAVM", false)]
+    [InlineData("HEPSIBURADA", true)]
+    [InlineData("SHOPIFY", true)]
+    public void ReturnReceipt_OnlyForWholeClaimMarketplaces(string platformCode, bool allowed) =>
+        Assert.Equal(allowed, MarketplaceHub.Infrastructure.Persistence.ReturnQueryService.ReturnReceiptAllowed(platformCode));
 }

@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Adapters.Trendyol.ErrorMapping;
 using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
@@ -35,13 +34,13 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
     {
         var subscription = await db.WebhookSubscriptions.AsNoTracking()
             .SingleOrDefaultAsync(x => x.ConnectionId == connectionId && x.Id == subscriptionId && x.Status == "ACTIVE", cancellationToken);
-        if (subscription is null) return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Unsupported("Aktif Shopify webhook subscription bulunamadı."));
+        if (subscription is null) return AdapterResult<VerifiedWebhookEnvelope>.Failure(AdapterErrors.Unsupported("Aktif Shopify webhook subscription bulunamadı."));
 
         WebhookVerifierPayload? payload;
         try { payload = JsonSerializer.Deserialize<WebhookVerifierPayload>(BoundSecret.UnprotectForConnection(protector, subscription.TenantId, subscription.ConnectionId, subscription.ProtectedVerifierSecret)); }
         catch (Exception exception) when (exception is CryptographicException or JsonException or ArgumentException)
         {
-            return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Configuration());
+            return AdapterResult<VerifiedWebhookEnvelope>.Failure(AdapterErrors.Configuration());
         }
 
         // Shopify signs with the app's client secret; the API key field is an older place for it.
@@ -66,11 +65,11 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         try
         {
             using var document = JsonDocument.Parse(rawBody);
-            if (document.RootElement.ValueKind != JsonValueKind.Object) return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Contract());
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return AdapterResult<VerifiedWebhookEnvelope>.Failure(AdapterErrors.Contract());
         }
         catch (JsonException)
         {
-            return AdapterResult<VerifiedWebhookEnvelope>.Failure(TrendyolErrorMapper.Contract());
+            return AdapterResult<VerifiedWebhookEnvelope>.Failure(AdapterErrors.Contract());
         }
 
         var payloadHash = Convert.ToHexString(SHA256.HashData(rawBody.Span));
@@ -121,6 +120,6 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         catch (FormatException) { return false; }
     }
 
-    private static string? Header(IReadOnlyDictionary<string, string> headers, string name) => headers.FirstOrDefault(x => string.Equals(x.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
+    private static string? Header(IReadOnlyDictionary<string, string> headers, string name) => Webhooks.WebhookAuth.Header(headers, name);
     private sealed record WebhookVerifierPayload(string? Username, string? Password, string? ApiKey, string? ClientSecret);
 }

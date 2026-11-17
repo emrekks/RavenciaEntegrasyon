@@ -1,0 +1,130 @@
+{
+  "Items": [
+    {
+      "ExternalProductId": "group:254abe46-2ab5-4fbf-bc5d-f6fafc0f5323",
+      "ProductMainId": "254abe46-2ab5-4fbf-bc5d-f6fafc0f5323",
+      "Title": "test asd 2 3123",
+      "Description": "",
+      "BrandExternalId": null,
+      "BrandName": "1001ambalaj",
+      "CategoryExternalId": null,
+      "CategoryName": "İkiz Bebek Arabası",
+      "ImageUrls": [],
+      "Variants": [
+        {
+          "ExternalVariantId": "ta213xxse1",
+          "Sku": "123asd",
+          "Barcode": "ta213xxse1",
+          "ModelCode": null,
+          "Options": {},
+          "Archived": false,
+          "SalePrice": 111,
+          "ListPrice": 113,
+          "VatRate": 10,
+          "StockQuantity": 2,
+          "Currency": "TRY",
+          "RawJson": "<raw 768 chars sha256:b2b82c8da094>",
+          "ImageUrls": [],
+          "InventoryLevels": null,
+          "Desi": null,
+          "FulfilledByMarketplace": null,
+          "SaleState": null,
+          "SaleStateReason": null
+        }
+      ],
+      "RawJson": "<raw 768 chars sha256:b2b82c8da094>",
+      "IsDraft": false,
+      "IsPendingApproval": false,
+      "ApprovalStatus": null,
+      "RejectionReason": null
+    },
+    {
+      "ExternalProductId": "group:00000000-0000-4000-8000-000000000801",
+      "ProductMainId": "00000000-0000-4000-8000-000000000801",
+      "Title": "Fake Pazarama Ürün 1 Siyah",
+      "Description": "",
+      "BrandExternalId": null,
+      "BrandName": "Fake Marka",
+      "CategoryExternalId": "00000000-0000-4000-8000-000000000802",
+      "CategoryName": "Tişört",
+      "ImageUrls": [
+        "https://img.example.test/pz1.jpg"
+      ],
+      "Variants": [
+        {
+          "ExternalVariantId": "0000000000401",
+          "Sku": "SKU-FAKE-PZ1",
+          "Barcode": "0000000000401",
+          "ModelCode": null,
+          "Options": {
+            "Renk": "Siyah"
+          },
+          "Archived": false,
+          "SalePrice": 100,
+          "ListPrice": 120,
+          "VatRate": 20,
+          "StockQuantity": 0,
+          "Currency": "TRY",
+          "RawJson": "<raw 683 chars sha256:e39921a7eed8>",
+          "ImageUrls": [
+            "https://img.example.test/pz1.jpg"
+          ],
+          "InventoryLevels": null,
+          "Desi": null,
+          "FulfilledByMarketplace": null,
+          "SaleState": "ON_SALE",
+          "SaleStateReason": null
+        }
+      ],
+      "RawJson": "<raw 683 chars sha256:e39921a7eed8>",
+      "IsDraft": false,
+      "IsPendingApproval": false,
+      "ApprovalStatus": null,
+      "RejectionReason": null
+    },
+    {
+      "ExternalProductId": "group:00000000-0000-4000-8000-000000000801",
+      "ProductMainId": "00000000-0000-4000-8000-000000000801",
+      "Title": "Fake Pazarama Ürün 2",
+      "Description": "",
+      "BrandExternalId": null,
+      "BrandName": null,
+      "CategoryExternalId": null,
+      "CategoryName": null,
+      "ImageUrls": [],
+      "Variants": [
+        {
+          "ExternalVariantId": "0000000000402",
+          "Sku": "SKU-FAKE-PZ2",
+          "Barcode": "0000000000402",
+          "ModelCode": null,
+          "Options": {},
+          "Archived": false,
+          "SalePrice": 40.00,
+          "ListPrice": 45.00,
+          "VatRate": 10,
+          "StockQuantity": 3,
+          "Currency": "TRY",
+          "RawJson": "<raw 289 chars sha256:adb3d705bb54>",
+          "ImageUrls": [],
+          "InventoryLevels": null,
+          "Desi": null,
+          "FulfilledByMarketplace": null,
+          "SaleState": null,
+          "SaleStateReason": null
+        }
+      ],
+      "RawJson": "<raw 289 chars sha256:adb3d705bb54>",
+      "IsDraft": false,
+      "IsPendingApproval": false,
+      "ApprovalStatus": null,
+      "RejectionReason": null
+    }
+  ],
+  "Issues": [],
+  "NextCursor": "cursor-fake-pz-2",
+  "HasNextPage": null,
+  "HasPreviousPage": null,
+  "TotalCount": null,
+  "FirstCode": "ta213xxse1"
+}

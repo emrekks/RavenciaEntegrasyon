@@ -166,7 +166,7 @@ public sealed class ProductRequiredFieldsTests
         Assert.Equal(3, preview.BrandUpdates);
         Assert.Equal(("UNCHANGED", null), (preview.Rows.Single(row => row.RowNumber == 4).Outcome, preview.Rows.Single(row => row.RowNumber == 4).BrandChange));
         Assert.Equal(("Eski Marka", "Ravencia", "SET"), (preview.Rows.Single(row => row.RowNumber == 2).OldBrand, preview.Rows.Single(row => row.RowNumber == 2).NewBrand, preview.Rows.Single(row => row.RowNumber == 2).BrandChange));
-        Assert.All(preview.Rows.Where(row => row.RowNumber is 6 or 7), row => Assert.Contains("Aynı modelin satırlarında farklı marka var", row.Message));
+        Assert.All(preview.Rows.Where(row => row.RowNumber is 6 or 7), row => Assert.Contains("Aynı modelin (MOD-4) satırlarında farklı marka var", row.Message));
         Assert.Contains("markası panelde kapalı", preview.Rows.Single(row => row.RowNumber == 8).Message);
         Assert.Empty(preview.Changes);
     }

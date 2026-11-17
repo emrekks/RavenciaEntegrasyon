@@ -1,9 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
+using MarketplaceHub.Infrastructure.Jobs;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -247,18 +246,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             job.Priority = Math.Min(job.Priority, InvoicingBillingService.InvoiceJobPriority(job.JobType));
         }
 
-        job.Status = JobStatus.RetryScheduled;
-        job.AvailableAt = now;
-        job.CompletedAt = null;
-        job.LeaseTokenHash = null;
-        job.LeaseExpiresAt = null;
-        job.HeartbeatAt = null;
-        job.LastErrorCode = null;
-        job.LastErrorSummary = null;
-        job.MaxAttempts = Math.Max(job.MaxAttempts, job.AttemptCount + 1);
         // The retry's attempt is spent on running the job: a busy lock or quota wait right after it keeps the attempt.
-        job.RetriedAt = now;
-        job.Version++;
+        JobStateMachine.Retry(db, job, now, JobEvent.Publish);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
@@ -359,29 +348,16 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                 sourceJobId = sourceJob.Id
             }
         });
-        var job = new IntegrationJob
+        var job = JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, package.ConnectionId, InvoicingJobTypes.MarketplaceDelivery, payload, dedupKey, correlationId, now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = package.ConnectionId,
-            JobType = InvoicingJobTypes.MarketplaceDelivery,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = dedupKey,
             EffectIdempotencyKey = $"{InvoicingJobTypes.MarketplaceDelivery}:one-time:{invoice.Id:N}:{idempotencyKey}",
             Priority = JobPriorityPolicy.UserAction,
             MaxAttempts = 1,
-            Status = JobStatus.Pending,
-            AvailableAt = now,
             TriggerType = "manual",
             ResourceType = "invoices",
             OperationType = "marketplace-delivery-once",
-            CorrelationId = correlationId,
-            CreatedAt = now,
-            Version = 1
-        };
-        db.IntegrationJobs.Add(job);
+            CreatedAt = now
+        });
         AddOutboxEvent(job, now);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
@@ -401,6 +377,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         return true;
     }
 
+    // The operator's stop as the job and its attempt list show it (K3: plain Turkish, no "job").
+    internal const string RunningStoppedNote = "Çalışan iş kullanıcı tarafından durduruldu.";
+    internal const string CancelledNote = "İş kullanıcı tarafından iptal edildi.";
+
     public async Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
@@ -410,31 +390,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var now = timeProvider.GetUtcNow();
         var wasLeased = job.Status == JobStatus.Leased;
-        if (wasLeased)
-        {
-            var attempt = await db.JobAttempts.SingleOrDefaultAsync(x =>
-                x.JobId == job.Id && x.AttemptNumber == job.AttemptCount && x.CompletedAt == null,
-                cancellationToken);
-            if (attempt is not null)
-            {
-                attempt.CompletedAt = now;
-                attempt.Succeeded = false;
-                attempt.ErrorCode = "CANCELLED_BY_OPERATOR";
-                attempt.ErrorSummary = "Çalışan job kullanıcı tarafından durduruldu.";
-            }
-        }
-
-        job.Status = JobStatus.Cancelled;
-        job.CompletedAt = now;
-        job.LastErrorCode = "CANCELLED_BY_OPERATOR";
-        job.LastErrorSummary = wasLeased
-            ? "Çalışan job kullanıcı tarafından durduruldu."
-            : "Job kullanıcı tarafından iptal edildi.";
-        job.LeaseTokenHash = null;
-        job.LeaseExpiresAt = null;
-        job.HeartbeatAt = null;
-        job.Version++;
-        AddOutboxEvent(job, now);
+        await JobStateMachine.CloseRunningAttemptAsync(db, job, now, "CANCELLED_BY_OPERATOR", RunningStoppedNote, cancellationToken);
+        JobStateMachine.Cancel(db, job, now, "CANCELLED_BY_OPERATOR", wasLeased ? RunningStoppedNote : CancelledNote, JobEvent.Publish, clearLease: true);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
@@ -495,7 +452,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         summary = await WithHepsiburadaStageReadBackAsync(job, summary, cancellationToken);
         // The product the job is about (product publications, updates and approval checks carry it), for a link.
         var productId = PayloadGuid(job.PayloadJson, "productId");
-        if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
+        if (productId is { } payloadProductId && !await EffectiveCatalog.Products(db).AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
             productId = null;
         var read = await ReadSummaryAsync(job, summary.Marketplace, cancellationToken);
         var change = Change(job);
@@ -522,7 +479,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (JobWritePayloadReader.Read(job.JobType, job.PayloadJson) is not { } write) return null;
         if (productId is { } cardId)
         {
-            var title = await db.Products.AsNoTracking().Where(x => x.TenantId == job.TenantId && x.Id == cardId).Select(x => x.Title).FirstOrDefaultAsync(cancellationToken);
+            var title = await EffectiveCatalog.Products(db).Where(x => x.TenantId == job.TenantId && x.Id == cardId).Select(x => x.Title).FirstOrDefaultAsync(cancellationToken);
             var modelCodes = await db.ProductVariants.AsNoTracking()
                 .Where(x => x.TenantId == job.TenantId && x.ProductId == cardId && x.ModelCode != null && x.ModelCode != "")
                 .Select(x => x.ModelCode!).Distinct().OrderBy(x => x).Take(10).ToListAsync(cancellationToken);
@@ -1260,6 +1217,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var detail = job.LastErrorSummary switch
             {
                 "EFATURAM_RECIPIENT_TAX_ID_REQUIRED" => "Alıcı için gerekli vergi kimlik numarası bulunamadı. Bireysel e-Arşiv alıcılarında 11111111111 kullanılır; kurumsal alıcı için şirket VKN'si, e-Fatura alıcısı için gerçek TCKN gerekir. Eksik şirket veya alıcı bilgisi pazaryeri fatura adresine girilip sipariş eşitlendikten sonra yeniden deneyin. Bu fatura kesilmiş sayılmaz.",
+                InvoiceIssuePolicy.RecipientKindUnknownCode => InvoiceIssuePolicy.RecipientKindUnknown.Message + " Fatura kesilmiş sayılmaz.",
+                InvoiceIssuePolicy.RecipientPlaceholderForCorporateCode => InvoiceIssuePolicy.RecipientPlaceholderForCorporate.Message + " Fatura kesilmiş sayılmaz.",
                 "EFATURAM_RECIPIENT_TAX_ID_PLACEHOLDER_NOT_ALLOWED" => "Bu eski denemede 11111111111 nedeniyle fatura gönderilmedi. Bireysel e-Arşiv alıcılarında bu değer kullanılır; kurumsal ve e-Fatura alıcılarında gerçek VKN/TCKN gerekir. Sipariş bilgilerini güncelleyip fatura denemesini yeniden kuyruğa alın. Fatura kesilmiş sayılmaz.",
                 _ => "E-Faturam isteği kabul etmedi. Bu kayıt fatura olarak kesilmiş sayılmaz; hata ayrıntısındaki alıcı/fatura bilgileri düzeltilip güvenli yeniden deneme yapılmalıdır."
             };

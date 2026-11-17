@@ -1,10 +1,11 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { PanelSelect } from '../../shared/PanelSelect'
-import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from './returns-ui'
+import { RrBadge, RrIcon, RrLogo, RrModal, RrThumb } from '../../shared/ui/rr-components'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
-import { allocateStock, stockedUnits, totalUnits, type ApprovedReturn } from './return-stock-allocation'
+import { allocateStock, stockedUnits, totalUnits } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
@@ -13,6 +14,7 @@ import { bulkApproveConfirmText, bulkApproveFailureText } from './return-bulk-ap
 import { isActionableReturnLine } from './return-claim-visibility'
 import { finalizedWithFor, type FinalizedWith } from './return-finalized-with'
 import { ReturnFinalizedWithChoice } from './ReturnFinalizedWithChoice'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type BulkDecisionLine = {
   id: string
@@ -49,10 +51,8 @@ export type BulkDecisionItem = {
 const isHepsiburada = (item: BulkDecisionItem) => item.platformCode.toUpperCase() === 'HEPSIBURADA'
 
 type Outcome = { id: string; ok: boolean; message: string }
-type RejectReason = { id: string; name: string; evidenceRequired: boolean }
 // The return lines (claim items) of a claim: the ids the stock request has to name.
-type DetailLine = { id: string; orderLineId: string; quantity: number; remainingQuantity: number; status?: string | null; decisionPending?: boolean; hasInventoryMapping: boolean; title: string; imageUrl: string | null }
-type DetailLines = { lines: DetailLine[] | null }
+type DetailLine = NonNullable<ApiAnswer<'getReturnsById'>['lines']>[number]
 
 type ProductGroup = { key: string; lines: { id: string; quantity: number }[]; units: number; mapped: boolean; display: BulkDecisionLine | undefined; fallbackTitle: string; fallbackImage: string | null }
 
@@ -89,8 +89,8 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   // Stock is chosen per product, so the claim details give the line ids and whether each product maps to stock.
   const details = useQueries({
     queries: items.map(item => ({
-      queryKey: ['return', item.id],
-      queryFn: () => hubApi<DetailLines>(`/returns/${item.id}`),
+      queryKey: queryKeys.return(item.id),
+      queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsById'>>(`/returns/${item.id}`, { signal }),
       enabled: approving,
       staleTime: 15_000
     }))
@@ -116,8 +116,8 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   // Rejecting needs a reason the marketplace accepts without evidence files. The reasons come from the
   // first selected return; a reason a later return does not accept is reported on that return only.
   const reasons = useQuery({
-    queryKey: ['return-reasons', 'bulk', items[0]?.id],
-    queryFn: () => hubApi<RejectReason[]>(`/returns/${items[0]!.id}/rejection-reasons`),
+    queryKey: queryKeys.returnReasons('bulk', items[0]?.id),
+    queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsByIdRejectionReasons'>>(`/returns/${items[0]!.id}/rejection-reasons`, { signal }),
     enabled: !approving && singlePlatform && items.length > 0,
     retry: false
   })
@@ -136,7 +136,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
         const body = JSON.stringify(approving
           ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: isHepsiburada(item) ? finalized[item.id] || null : null, stockLines }
           : { action: 'REJECT', reasonCode: reasonId, explanation: explanation.trim(), evidenceAssetIds: [], finalizedWith: null })
-        const answer = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', item.id, item.version, body), key => hubApi<ApprovedReturn>(`/returns/${item.id}/actions`, {
+        const answer = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', item.id, item.version, body), key => hubApi<ApiAnswer<'postReturnsByIdActions'>>(`/returns/${item.id}/actions`, {
           method: 'POST',
           headers: { 'Idempotency-Key': key, 'If-Match': `"v${item.version}"` },
           body
@@ -152,7 +152,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     if (!approving) setRunning(false)
     // ['returns'] does not reach the detail cache (['return', id]): each decided claim's detail is read again, or its
     // next action would send the old version in If-Match and get 409.
-    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...items.map(item => client.invalidateQueries({ queryKey: ['return', item.id] })), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])]).catch(() => undefined)
+    await Promise.all([client.invalidateQueries({ queryKey: queryKeys.returns() }), ...items.map(item => client.invalidateQueries({ queryKey: queryKeys.return(item.id) })), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])]).catch(() => undefined)
     const okCount = results.filter(outcome => outcome.ok).length
     const failCount = results.length - okCount
     const noun = approving ? 'onaylandı' : 'reddedildi'

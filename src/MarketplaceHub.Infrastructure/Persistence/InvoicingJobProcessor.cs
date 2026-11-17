@@ -432,12 +432,36 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 await db.SaveChangesAsync(CancellationToken.None);
                 return string.Equals(invoice.ExternalReference, submitted.ExternalReference, StringComparison.Ordinal);
             }
+            catch (DbUpdateException exception) when (InvoiceProviderIdentityConflict.Matches(exception))
+            {
+                await SaveProviderIdentityConflict(invoice, submitted);
+                throw new JobProcessingException(JobExecutionResult.ManualReview(InvoiceProviderIdentityConflict.Code, InvoiceProviderIdentityConflict.Message, submitted.RemoteRequestId));
+            }
             catch (Exception exception) when (retry < SubmissionSuccessSaveDelays.Length
                 && exception is DbUpdateException or System.Data.Common.DbException or TimeoutException or InvalidOperationException)
             {
                 await Task.Delay(SubmissionSuccessSaveDelays[retry], CancellationToken.None);
             }
         }
+    }
+
+    // The provider issued the invoice but answered with a number or ETTN another invoice holds (VERITABANI-DAGITIM-11).
+    // The invoice keeps the provider's reference, so it counts as issued and is never sent again, and goes to the
+    // owner's review without the number and ETTN that clash; the attempt keeps the answer. No status read is queued:
+    // it would meet the same clash.
+    private async Task SaveProviderIdentityConflict(Invoice invoice, InvoiceSubmissionResult submitted)
+    {
+        foreach (var queued in db.ChangeTracker.Entries<IntegrationJob>().Where(x => x.State == EntityState.Added).ToList())
+            queued.State = EntityState.Detached;
+        var entry = db.Entry(invoice);
+        await entry.ReloadAsync(CancellationToken.None);
+        if (entry.State == EntityState.Detached) return;
+        if (string.IsNullOrWhiteSpace(invoice.ExternalReference)) invoice.ExternalReference = submitted.ExternalReference;
+        invoice.Status = InvoiceStatus.ManualReview;
+        invoice.LastErrorCode = InvoiceProviderIdentityConflict.Code;
+        invoice.UpdatedAt = timeProvider.GetUtcNow();
+        invoice.Version++;
+        await db.SaveChangesAsync(CancellationToken.None);
     }
 
     // Queues the read of the UUID an uncertain attempt sent (InvoiceReconcile settles it by a status read, never by
@@ -732,8 +756,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 $"Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; Hepsiburada'ya yeniden gönderilmedi ({facts})."));
         var state = await db.MarketplaceDeliveryStates.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
         var document = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
-        if (state?.Status != "CONFIRMED" || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
-            || !Uri.TryCreate(document?.PermanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps)
+        // The SAME link means the one this package's delivery carried (E-Faturam's URL or the panel link), never the one
+        // the setting would choose today.
+        var deliveredLink = state?.InvoiceLink ?? document?.PermanentUrl;
+        if (state?.Status != "CONFIRMED" || string.IsNullOrWhiteSpace(invoice.InvoiceNumber) || document is null
+            || !Uri.TryCreate(deliveredLink, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps)
             throw new JobProcessingException(JobExecutionResult.Blocked("HEPSIBURADA_EXCHANGE_INVOICE_NOT_DELIVERED",
                 $"Bu paketin faturası Hepsiburada'ya teslim edilmiş görünmüyor veya fatura bağlantısı yok; yeniden gönderilmedi ({facts})."));
 
@@ -1135,9 +1162,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (package is null || package.ConnectionId != jobConnectionId) return false;
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var permanentDocument = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
-        var permanentUrl = permanentDocument?.PermanentUrl;
 
         var state = await LoadDeliveryState(tenantId, invoice.Id, package.Id, cancellationToken);
+        // A delivery that already carried a link keeps it (resends, confirmation, recovery); one recorded before the link
+        // was stored keeps the link it was chosen with then, the latest document's.
+        var permanentUrl = state?.InvoiceLink ?? permanentDocument?.PermanentUrl;
         // A link in removal (or already removed) belongs to a cancelled invoice and is never sent again.
         if (InvoiceDeliveryGuardPolicy.StateBlocksDelivery(state?.Status))
             throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.LinkRevocationOpenCode,
@@ -1150,18 +1179,34 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (oneTimeAuthorization is null && state?.Status is "UNKNOWN" or "STARTED" && InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(platformCode)
             && await SettleUncertainDeliveryAsync(tenantId, invoice, package, state, platformCode!, order?.OrderNumber, order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, correlationId, cancellationToken))
             return true;
-        // n11, Pazarama and PTT AVM take only links that end in a document extension, so their deliveries always use the
-        // document-bound link, which the API also serves as .../invoice.pdf.
-        if ((oneTimeAuthorization is not null && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
-                || string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
-            && state?.Status is not ("STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED"))
+        // The link of a delivery that carried none yet (MarketplaceInvoiceLinkPolicy, 17 Nov 2026): E-Faturam's permanent
+        // URL, which the PDF was downloaded from and checked, unless the setting says Panel or the marketplace takes only
+        // links ending in a document extension (n11, Pazarama, PTT AVM); those get the document-bound panel link, which the API
+        // also serves as .../invoice.pdf. An invoice that already has a panel delivery link keeps it. A delivery in
+        // flight, or one that recorded its link, is never given another one here.
+        var choosesLink = state?.InvoiceLink is null
+            && state?.Status is not ("STARTED" or "UNKNOWN" or "SUBMITTED" or "CONFIRMATION_RETRYABLE" or "CONFIRMED");
+        var existingPanelLink = choosesLink
+            ? await db.InvoiceDocuments.SingleOrDefaultAsync(x => x.TenantId == tenantId
+                && x.InvoiceId == invoice.Id && x.DocumentType == InvoiceDeliveredLinks.MarketplaceDeliveryDocumentType, cancellationToken)
+            : null;
+        var panelLink = choosesLink
+            && (existingPanelLink is not null
+                || oneTimeAuthorization is not null && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
+                || !MarketplaceInvoiceLinkPolicy.UsesProviderLink(platformCode, configuration[MarketplaceInvoiceLinkPolicy.SettingKey]));
+        var providerLinkChosen = choosesLink && !panelLink;
+        if (providerLinkChosen)
         {
-            // Provider URLs may require authentication. Publish only the already
-            // stored PDF, through a document-bound bearer link, for this explicit delivery.
-            var deliveryLinkDocument = await db.InvoiceDocuments.SingleOrDefaultAsync(x => x.TenantId == tenantId
-                && x.InvoiceId == invoice.Id && x.DocumentType == "MARKETPLACE_DELIVERY", cancellationToken);
+            // Only the PDF row INVOICE_DOCUMENT_FETCH wrote after the download and the PDF checks passed holds a verified
+            // E-Faturam URL; it is checked right before the send below.
+            permanentUrl = await db.InvoiceDocuments.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF" && x.PermanentUrl != null)
+                .OrderByDescending(x => x.CreatedAt).Select(x => x.PermanentUrl).FirstOrDefaultAsync(cancellationToken);
+        }
+        if (panelLink)
+        {
+            // Publish only the already stored PDF, through a document-bound bearer link.
+            var deliveryLinkDocument = existingPanelLink;
             if (deliveryLinkDocument is null)
             {
                 var document = await db.InvoiceDocuments.Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == "PDF")
@@ -1241,14 +1286,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         {
             if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase))
             {
-                var unknownPermanentUrl = await LoadPermanentInvoiceUrlAsync(tenantId, invoice.Id, cancellationToken);
+                var unknownPermanentUrl = await DeliveredLinkAsync(tenantId, invoice.Id, state, cancellationToken);
                 var orderGid = ShopifyOrderGid(order?.ExternalOrderId);
                 var liveReadback = await marketplace.QueryDeliveryAsync(
                     Context(tenantId, package.ConnectionId, correlationId, $"delivery-recovery-read:{invoice.Id:N}"),
                     new(state.ExternalReference ?? package.ExternalPackageId, order?.OrderNumber, orderGid, invoice.InvoiceNumber, unknownPermanentUrl, LookupFor(order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, package)),
                     cancellationToken);
                 if (!liveReadback.IsSuccess) throw JobProcessingException.FromAdapter(liveReadback.Error!);
-                if (HasExactDeliveryProof(liveReadback.Value!, invoice.InvoiceNumber, unknownPermanentUrl))
+                if (HasExactDeliveryProof(liveReadback.Value!, invoice.InvoiceNumber, await InvoiceDeliveredLinks.OwnAsync(db, tenantId, invoice.Id, cancellationToken)))
                 {
                     AppendDeliveryHistory(state, "CONFIRMED", liveReadback.Value!.ExternalReference, null, timeProvider.GetUtcNow());
                     await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken);
@@ -1466,7 +1511,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
             if (!explicitlyNotInvoiced)
             {
-                if (HasExactDeliveryProof(latestMarketplaceInvoice, invoice.InvoiceNumber, permanentUrl))
+                // Any link the panel stored for this invoice is its own: E-Faturam's URL or the panel link, whichever
+                // an earlier delivery (or the seller) put there.
+                if (HasExactDeliveryProof(latestMarketplaceInvoice, invoice.InvoiceNumber, await InvoiceDeliveredLinks.OwnAsync(db, tenantId, invoice.Id, cancellationToken)))
                 {
                     state ??= new MarketplaceDeliveryState
                     {
@@ -1519,6 +1566,17 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
         await db.SaveChangesAsync(cancellationToken);
 
+        // E-Faturam's URL missing or unusable: nothing is sent and the panel link is not put in its place. The invoice
+        // shows why and the owner's Tekrar Gönder (or the Panel setting) sends it again.
+        if (providerLinkChosen && MarketplaceInvoiceLinkPolicy.ProviderLinkRejection(platformCode, permanentUrl) is { } rejection)
+        {
+            if (InvoiceDeliveryGuardPolicy.BackgroundMayMove(invoice.Status, InvoiceStatus.MarketplaceFailed)) invoice.Status = InvoiceStatus.MarketplaceFailed;
+            invoice.LastErrorCode = rejection.Code;
+            invoice.UpdatedAt = timeProvider.GetUtcNow();
+            invoice.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.Blocked(rejection.Code, rejection.Message));
+        }
         if (string.IsNullOrWhiteSpace(permanentUrl) || !Uri.TryCreate(permanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps) return false;
 
         var deliveryPayload = new Dictionary<string, object?>
@@ -1628,6 +1686,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             db.MarketplaceDeliveryStates.Add(state);
         }
 
+        // The link this delivery sends, kept with it: a resend, the confirmation and the Hepsiburada exchange re-send use
+        // exactly this link whatever the setting says later.
+        state.InvoiceLink = link.AbsoluteUri;
         AppendDeliveryHistory(state, "STARTED", null, null, now);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -1940,6 +2001,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private static bool HasExactDeliveryProof(InvoiceDeliveryStatus status, string? invoiceNumber, string? invoiceLink) =>
         InvoiceDeliveryProofPolicy.HasExactProof(status, invoiceNumber, invoiceLink);
 
+    private static bool HasExactDeliveryProof(InvoiceDeliveryStatus status, string? invoiceNumber, IReadOnlyCollection<string> ownInvoiceLinks) =>
+        InvoiceDeliveryProofPolicy.HasExactProof(status, invoiceNumber, ownInvoiceLinks);
+
+    // The link one delivery carried: the one it recorded, else (recorded before 17 Nov 2026) the latest document's.
+    private async Task<string?> DeliveredLinkAsync(Guid tenantId, Guid invoiceId, MarketplaceDeliveryState? state, CancellationToken cancellationToken) =>
+        state?.InvoiceLink ?? await LoadPermanentInvoiceUrlAsync(tenantId, invoiceId, cancellationToken);
+
     private sealed record PermanentInvoiceDocument(string? PermanentUrl, string? MimeType);
 
     private MarketplaceDelivery AppendDeliveryHistory(MarketplaceDeliveryState state, string status, string? externalReference, string? errorCode, DateTimeOffset now) =>
@@ -1951,7 +2019,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_REFERENCE_MISSING", "Gönderilmiş fatura bağlantısı için uzak referans bulunamadı."));
 
         var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => new { x.OrderNumber, x.ExternalOrderId, x.OrderedAt, x.LastRemoteModifiedAt, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
-        var permanentUrl = await LoadPermanentInvoiceUrlAsync(tenantId, invoice.Id, cancellationToken);
+        var permanentUrl = await DeliveredLinkAsync(tenantId, invoice.Id, state, cancellationToken);
         if (submittedResult?.SameAttemptVerified == true
             && string.Equals(submittedResult.VerifiedInvoiceNumber, invoice.InvoiceNumber, StringComparison.Ordinal)
             && string.Equals(submittedResult.VerifiedInvoiceLink, permanentUrl, StringComparison.Ordinal))
@@ -2022,7 +2090,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             throw new JobProcessingException(JobExecutionResult.Blocked(errorCode, "Pazaryeri fatura bağlantısı teslimini reddetti.", state.ExternalReference));
         }
 
-        if (!HasExactDeliveryProof(confirmation.Value, invoice.InvoiceNumber, permanentUrl))
+        if (!HasExactDeliveryProof(confirmation.Value, invoice.InvoiceNumber, await InvoiceDeliveredLinks.OwnAsync(db, tenantId, invoice.Id, cancellationToken)))
         {
             invoice.Status = InvoiceStatus.ManualReview;
             invoice.LastErrorCode = "DELIVERY_PROOF_MISSING";
@@ -2315,12 +2383,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 ? invoiceStates.Any(state => state.PackageId == packageId && state.Status == "CONFIRMED")
                 : invoiceStates.Count > 0 && invoiceStates.All(state => state.Status == "CONFIRMED");
             if (!settled) continue;
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = DeliverySettledElsewhereCode;
-            job.LastErrorSummary = "Fatura pazaryerine başka bir işle iletildi ve doğrulandı; bu iş otomatik kapatıldı.";
-            job.Version++;
-            db.IntegrationOutboxEvents.Add(JobLeaseService.NewJobEvent(job, now));
+            Jobs.JobStateMachine.Cancel(db, job, now, DeliverySettledElsewhereCode, "Fatura pazaryerine başka bir işle iletildi ve doğrulandı; bu iş otomatik kapatıldı.", Jobs.JobEvent.Publish);
         }
     }
 
@@ -2528,22 +2591,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
             if (!queuedRecoveryKeys.Add(dedup)) continue;
 
-            db.IntegrationJobs.Add(new IntegrationJob
+            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, candidate.ConnectionId, InvoicingJobTypes.MarketplaceDelivery, payload, dedup,
+                $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}", now)
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                ConnectionId = candidate.ConnectionId,
-                JobType = InvoicingJobTypes.MarketplaceDelivery,
-                PayloadJson = payload,
-                PayloadVersion = 1,
-                PayloadHash = Hash(payload),
-                JobDedupKey = dedup,
-                EffectIdempotencyKey = dedup,
                 // A recovery nobody clicked: it yields to single user actions in the user lane.
-                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true),
-                AvailableAt = now,
-                CorrelationId = $"invoice-delivery-recovery:{candidate.Id:N}:{candidate.PackageId:N}",
-                Version = 1
+                Priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true)
             });
             // One automatic attempt per invoice and pass; the uncertain resend counts its own in the delivery job.
             if (!UncertainResendRecovery(candidate.StateStatus, candidate.PlatformCode) && countedRecoveries.Add(candidate.Id)
@@ -2710,7 +2762,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task EnqueueAutomaticJob(Guid tenantId, Guid connectionId, Guid invoiceId, string jobType, string suffix, string correlationId, CancellationToken cancellationToken)
     {
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
-        if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
+        // The key first, then the delivery hold, then the priority lookup: a key already taken costs no further query.
+        if (await Jobs.JobEnqueuer.KeyTakenAsync(db, tenantId, jobType, dedup, cancellationToken)) return;
         // At most one delivery job of an invoice waits, runs or sits in review at a time, whatever key started it: a
         // later trigger adds none next to it. The owner's own retry (its key carries "delivery-retry:manual:") is not held
         // by a job in review, only by one that still runs.
@@ -2727,7 +2780,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .OrderByDescending(job => job.CreatedAt)
             .Select(job => (int?)job.Priority)
             .FirstOrDefaultAsync(cancellationToken);
-        db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.ForFollowUp(submitPriority), TriggerType = "user", AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 });
+        Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, connectionId, jobType, payload, dedup, correlationId, timeProvider.GetUtcNow()) { Priority = JobPriorityPolicy.ForFollowUp(submitPriority), TriggerType = "user" });
     }
 
     private static readonly HashSet<string> AcceptedDeliveryStatuses = new(StringComparer.Ordinal)

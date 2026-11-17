@@ -23,7 +23,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
 {
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
@@ -56,7 +56,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var familyIds = await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId);
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
         // Card order is creation order (the id breaks a tie), so the family keeps one order on every publication.
-        var members = await db.Products.AsNoTracking()
+        var members = await EffectiveCatalog.Products(db)
             .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active) // never an archived card or a draft
             .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
@@ -199,8 +199,10 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             .ToListAsync(cancellationToken))
             .GroupBy(x => x.ProductId).ToDictionary(group => group.Key, group => group.First().AssetId);
         // A card without a chart of its own goes with the model's (SizeChartPlacement.ModelAssetIdAsync, live RYP003T).
+        // KATALOG-14 phase D4: the model row's picture first, then the family's earliest chart.
         var familyChart = members.All(member => chartByMember.ContainsKey(member.Id)) ? null
-            : await SizeCharts.SizeChartPlacement.FamilyAssetIdAsync(db, tenantId, await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId,
+            : (product.FamilyId is Guid modelId ? await SizeCharts.SizeChartPlacement.ModelRowAssetIdAsync(db, tenantId, modelId, cancellationToken) : null)
+            ?? await SizeCharts.SizeChartPlacement.FamilyAssetIdAsync(db, tenantId, await ProductFamilyScope.ProductIdsAsync(db, tenantId, product.BrandId,
                 familyVariants.Where(x => x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
                 db.ProductVariants.AsNoTracking(), cancellationToken, product.FamilyId), cancellationToken);
         Guid? ChartOf(Guid memberId) => chartByMember.TryGetValue(memberId, out var own) ? own : familyChart;

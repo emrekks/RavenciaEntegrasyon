@@ -1,0 +1,104 @@
+{
+  "Runs": [
+    {
+      "Run": "test",
+      "JobType": "SHOPIFY_CONNECTION_TEST",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "AUTH_REJECTED",
+        "ErrorSummary": "golden: AUTH_REJECTED",
+        "RetryAfter": "00:05:00",
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": true,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "connection.Test key=connection-test"
+      ]
+    },
+    {
+      "Run": "test-again",
+      "JobType": "SHOPIFY_CONNECTION_TEST",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "AUTH_REJECTED",
+        "ErrorSummary": "golden: AUTH_REJECTED",
+        "RetryAfter": "00:05:00",
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": true,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "connection.Test key=connection-test"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "SHOPIFY",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": "Authentication",
+          "LastErrorCode": "AUTH_REJECTED",
+          "LastSuccessAt": null,
+          "LastTestedAt": "T+00:01:06",
+          "PlatformCode": "SHOPIFY",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "DRAFT",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 2,
+          "CursorStagnantSince": null,
+          "Id": "id1",
+          "LastAttemptAt": "T+00:01:05",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "AUTH_REJECTED",
+          "LastErrorAt": "T+00:01:08",
+          "LastFailedCount": 2,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 1,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "CONNECTION_TEST",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "connections PlatformConnection updated x2"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+using MarketplaceHub.Application;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+
+namespace MarketplaceHub.Infrastructure.Persistence;
+
+// ISLEYICI-9 stage 4 (16 Nov 2026): the services of one run of one job, made once each when first needed, on the job's
+// AppDbContext and the processor's ports, cursor store and issue recorder. The processor and the run job handlers
+// (IRunJobHandler) take them from the same instance, so a run has one order ingestion, one catalog import and so on,
+// whichever of them calls first (they used to be the processor's own per-run properties, built the same way).
+internal sealed class JobRunServices(
+    AppDbContext db,
+    IssueRecorder issues,
+    SyncCursorStore cursors,
+    IConnectionPort connections,
+    IReferenceDataPort references,
+    IProductPort products,
+    IInventoryPricePort inventoryPrice,
+    IOrderPort orders,
+    IOrderPackageReadPort orderPackages,
+    IHepsiburadaInvoiceStatusPort hepsiburadaInvoiceStatus,
+    IReturnPort returns,
+    IConfiguration configuration,
+    TimeProvider timeProvider,
+    IInvoicingBillingService? invoiceBilling,
+    ILogger? logger,
+    VariantLinkBookkeeping variantLinks,
+    IPrivateFileStorage files,
+    ExternalEffectGuard effectGuard,
+    JobWriteSwitches writeSwitches,
+    JobRunContext run)
+{
+    private OrderIngestionService? orderIngestion;
+    private ReturnIngestionService? returnIngestion;
+    private OrderReadService? orderRead;
+    private ReturnReadService? returnRead;
+    private ReferenceSyncService? referenceSync;
+    private CatalogAttributeService? catalogAttributes;
+    private CatalogImportService? catalogImport;
+    private InvoiceReconciliationService? invoiceReconciliation;
+    private ListingVerificationService? listingVerification;
+    private ConnectionTestService? connectionTest;
+
+    public JobRunContext Run => run;
+
+    public OrderIngestionService OrderIngestion => orderIngestion ??= new(db, issues, cursors, timeProvider, invoiceBilling, run);
+
+    public ReturnIngestionService ReturnIngestion => returnIngestion ??= new(db, issues, timeProvider, configuration, OrderIngestion, run);
+
+    public OrderReadService OrderRead => orderRead ??= new(db, issues, cursors, orders, orderPackages, hepsiburadaInvoiceStatus, configuration, timeProvider, OrderIngestion, run);
+
+    public ReturnReadService ReturnRead => returnRead ??= new(db, issues, cursors, returns, orders, configuration, timeProvider, OrderIngestion, ReturnIngestion, run);
+
+    public ReferenceSyncService ReferenceSync => referenceSync ??= new(db, references, timeProvider, OrderIngestion, run);
+
+    public CatalogAttributeService CatalogAttributes => catalogAttributes ??= new(db, timeProvider, ReferenceSync, run);
+
+    public CatalogImportService CatalogImport => catalogImport ??= new(db, issues, cursors, products, timeProvider, logger, CatalogAttributes, variantLinks, OrderIngestion, run);
+
+    public InvoiceReconciliationService InvoiceReconciliation => invoiceReconciliation ??= new(db, issues, cursors, orders, hepsiburadaInvoiceStatus, configuration, timeProvider, OrderIngestion, OrderRead, run);
+
+    public ListingVerificationService ListingVerification => listingVerification ??= new(db, issues, cursors, products, timeProvider, variantLinks, CatalogImport, OrderIngestion, run);
+
+    public ConnectionTestService ConnectionTest => connectionTest ??= new(db, connections, timeProvider, run);
+
+    private ExternalEffectReconcileService? externalEffectReconcile;
+
+    public ExternalEffectReconcileService ExternalEffectReconcile => externalEffectReconcile ??= new(db, issues, orders, returns, timeProvider, OrderIngestion, ReturnIngestion, run);
+
+    // ISLEYICI-9 stage 5 step 3: the write services open, send and close their effect records through the processor's
+    // one ExternalEffectGuard and check the same write switches.
+    private ActionJobService? actionJobs;
+
+    private WebhookIngestService? webhookIngest;
+
+    public WebhookIngestService WebhookIngest => webhookIngest ??= new(db, issues, orders, orderPackages, configuration, timeProvider, OrderIngestion, ReturnIngestion, OrderRead, ReturnRead, ActionJobs, run);
+
+    private ProductJobService? productJobs;
+
+    public ProductJobService ProductJobs => productJobs ??= new(db, issues, products, references, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, variantLinks, run);
+
+    private PriceStockService? priceStock;
+
+    public PriceStockService PriceStock => priceStock ??= new(db, issues, products, inventoryPrice, configuration, timeProvider, effectGuard, writeSwitches, OrderIngestion, ListingVerification, run);
+
+    private LabelJobService? labelJobs;
+
+    public LabelJobService LabelJobs => labelJobs ??= new(db, orders, files, timeProvider, effectGuard, OrderIngestion, run);
+
+    public ActionJobService ActionJobs => actionJobs ??= new(db, issues, orders, returns, files, timeProvider, effectGuard, writeSwitches, OrderIngestion, ReturnIngestion, ExternalEffectReconcile, run);
+}

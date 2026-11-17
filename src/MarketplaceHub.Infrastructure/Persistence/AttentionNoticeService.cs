@@ -63,7 +63,7 @@ public sealed class AttentionNoticeService(AppDbContext db, TimeProvider timePro
         {
             var profileIds = expired.Select(x => x.Id).ToArray();
             var productIds = expired.Select(x => x.ProductId).Distinct().ToArray();
-            var titles = await db.Products.AsNoTracking()
+            var titles = await EffectiveCatalog.Products(db)
                 .Where(x => x.TenantId == tenantId && productIds.Contains(x.Id))
                 .Select(x => new { x.Id, x.Title })
                 .ToDictionaryAsync(x => x.Id, x => x.Title, cancellationToken);

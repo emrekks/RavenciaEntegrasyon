@@ -1,0 +1,41 @@
+// Source: Ravencia-API-Docs/hepsiburada-api-son.md "Aksiyon Bekleyen Talep Bildirimi (awaitingaction)" request body
+// (~26159-26213), customer name replaced by a fake value. A return claim with one line and an exchange request.
+{
+  "claimNumber": "356189794",
+  "type": "Return",
+  "quantity": 1,
+  "status": "AwaitingAction",
+  "customerId": "b5b0f469-dd8f-4b99-bc64-1a1f9e78dfae",
+  "customerName": "Test Musteri",
+  "orderNumber": "2152988946",
+  "explanation": "",
+  "claimDate": "2021-10-14T11:03:17.676Z",
+  "orderDate": "2021-10-14T11:00:20Z",
+  "line": {
+    "lineItemId": "61680dc6-b404-55fe-1171-d92506060606",
+    "productName": "George Adams Erkek Klasik Gömlek",
+    "listingId": "224a525b-54be-4c85-b8b7-a48883cf53c9",
+    "merchantId": "1a514334-5b66-45f9-9f47-7223ed8ca1db",
+    "hbSku": "GYGEO11009AXL",
+    "merchantSku": "KIVIRCIK20",
+    "price": { "currency": "TRY", "amount": 56.0 },
+    "totalPrice": { "currency": "TRY", "amount": 56.0 },
+    "productImageUrlFormat": "https://productimages.hepsiburada.net/s/7/{size}/9073518510130.jpg"
+  },
+  "reason": "",
+  "reports": [],
+  "delivery": {
+    "code": "6225816234669",
+    "status": "Delivered",
+    "direction": "CustomerToMerchant",
+    "createdDate": "2021-10-14T11:03:17.781Z"
+  },
+  "requestedProduct": {
+    "sku": "GYGEO11009AM",
+    "variantProperties": [
+      { "name": "Beden", "value": "M" },
+      { "name": "Renk", "value": "Açık Mavi" }
+    ],
+    "changeOption": "WithDifferentVariant"
+  }
+}

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { markShippingLabelPrinted, type ShippingLabelFormat } from '../../shipping'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // After the print dialog closed (window.print blocks until then): the local mark, and the server keeps
 // the first print per order so every computer sees it, for a single label too (audit 2026-10-20 S8).
@@ -12,6 +13,6 @@ export function recordShippingLabelsPrinted(ids: readonly string[], format: Ship
   onPrinted()
   return Promise.allSettled(ids.map(id => hubApi<void>(`/orders/${id}/label-printed`, { method: 'POST' }))).then(() => {
     onPrinted()
-    return client.invalidateQueries({ queryKey: ['orders'] })
+    return client.invalidateQueries({ queryKey: queryKeys.orders() })
   })
 }

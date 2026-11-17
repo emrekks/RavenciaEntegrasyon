@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useQuery } from '@tanstack/react-query'
 import { jobStatusLabel } from '../../../shared/job-status-labels'
 import { createPortal } from 'react-dom'
@@ -9,22 +10,11 @@ import { platformLogoSource } from '../../../shared/platform-logos'
 import { jobPresentation } from '../../operations/job-presentation'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobLabel } from '../../operations/job-waiting'
 import { publicationJobPollInterval } from '../publication-job-poll'
-import { PublicationJobVariants, type JobVariantResults } from './PublicationJobVariants'
+import { PublicationJobVariants } from './PublicationJobVariants'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 type JobAttempt = { attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }
-type JobChange = { label: string; value: string; detail: string | null }
-export type PublicationJobDialogDetail = {
-  job: {
-    id: string; jobType: string; status: string; attemptCount: number; maxAttempts: number; correlationId: string
-    createdAt: string; startedAt: string | null; completedAt: string | null; nextRetryAt: string | null; heartbeatAt: string | null
-    progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null
-    lastErrorCode: string | null; lastErrorSummary: string | null
-    waiting?: boolean; waitingChecks?: number; attemptBudget?: number
-  }
-  attempts?: JobAttempt[]
-  change?: JobChange | null
-  variantResults?: JobVariantResults | null
-}
+export type PublicationJobDialogDetail = ApiAnswer<'getJobsById'>
 
 const statusTones: Record<string, string> = { SUCCEEDED: 'success', DEAD: 'danger', BLOCKED: 'danger', CANCELLED: 'neutral', MANUAL_REVIEW: 'warning', RETRY_SCHEDULED: 'warning' }
 
@@ -34,7 +24,7 @@ export function publicationJobStatusLabel(status: string) {
 }
 
 // "%40 · 2/5 · Renkler gönderiliyor" or nothing while no progress is known.
-export function publicationJobProgress(job: PublicationJobDialogDetail['job']) {
+export function publicationJobProgress(job: Pick<PublicationJobDialogDetail['job'], 'progressPercent' | 'progressTotal' | 'progressCurrent' | 'progressLabel'>) {
   const parts = [
     job.progressPercent != null ? `%${job.progressPercent}` : null,
     job.progressTotal != null ? `${job.progressCurrent}/${job.progressTotal}` : null,
@@ -61,8 +51,8 @@ const when = (value: string | null | undefined) => value
 // The API job behind a publication card's status: what it does, where it stands, its tries and the marketplace's answer.
 export function PublicationJobDialog({ jobId, platformCode, platformName, storeName, onClose }: { jobId: string; platformCode: string; platformName: string; storeName: string; onClose: () => void }) {
   const detail = useQuery({
-    queryKey: ['publication-job-detail', jobId],
-    queryFn: () => hubPoll<PublicationJobDialogDetail>(`/jobs/${jobId}`),
+    queryKey: queryKeys.publicationJobDetail(jobId),
+    queryFn: ({ signal }) => hubPoll<PublicationJobDialogDetail>(`/jobs/${jobId}`, { signal }),
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error')
   })
   const job = detail.data?.job

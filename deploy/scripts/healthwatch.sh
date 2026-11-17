@@ -91,6 +91,29 @@ if [[ -n "$postgres_id" ]]; then
       problems+=("PostgreSQL connections ${connections}/${max_connections} (limit ${connection_limit_percent}%)")
     fi
   fi
+  # WAL archive (VERITABANI-DAGITIM-8; only once archive_mode is on, docs/RUNBOOK-GERI-ALMA.md section 9): a failing
+  # archive_command keeps WAL on the data disk until it fills, and the recovery point stops moving.
+  # "<archive_mode> <seconds since the last archived segment or -1> <failed_count> <failed after the last success>"
+  archiver="$("${sudo_cmd[@]}" docker exec "$postgres_id" psql -U marketplacehub -d marketplacehub -AtF ' ' -c \
+    "select current_setting('archive_mode'), coalesce(extract(epoch from now() - last_archived_time)::bigint, -1), failed_count,
+            coalesce(last_failed_time > coalesce(last_archived_time, '-infinity'), false) from pg_stat_archiver" 2>/dev/null || true)"
+  wal_max_age_minutes="${RAVENCIA_WAL_ARCHIVE_MAX_AGE_MINUTES:-20}"
+  if [[ "$archiver" =~ ^on\ (-?[0-9]+)\ ([0-9]+)\ ([tf])$ ]]; then
+    archived_ago="${BASH_REMATCH[1]}"
+    if [[ "${BASH_REMATCH[3]}" == t ]]; then
+      problems+=("WAL archiving is failing (${BASH_REMATCH[2]} failures; wal-archive.sh status)")
+    elif (( archived_ago < 0 || archived_ago >= wal_max_age_minutes * 60 )); then
+      problems+=("no WAL segment archived for $(( archived_ago < 0 ? -1 : archived_ago / 60 )) min (limit ${wal_max_age_minutes} min)")
+    fi
+  fi
+fi
+
+# Secrets escrow (VERITABANI-DAGITIM-9), once the owner switched it on: the escrow in the off-site copies must not be
+# older than the secrets it stands for (a renewed certificate, a new credential key, a changed age key).
+if "${sudo_cmd[@]}" test -e "$repository_root/deploy/secrets/secrets_escrow.enabled"; then
+  escrow_status=0
+  escrow_output="$("${sudo_cmd[@]}" bash "$repository_root/deploy/backup/secrets-escrow.sh" --check 2>&1)" || escrow_status=$?
+  if (( escrow_status != 0 )); then problems+=("${escrow_output##*$'\n'} (secrets-escrow.sh)"); fi
 fi
 
 # Newest backup set in the staging volume (11:59 and 23:59 Istanbul and before
@@ -99,7 +122,17 @@ fi
 backup_max_age_hours="${RAVENCIA_BACKUP_MAX_AGE_HOURS:-30}"
 backup_mountpoint="$("${sudo_cmd[@]}" docker volume inspect --format '{{.Mountpoint}}' marketplacehub_backup_staging 2>/dev/null || true)"
 if [[ -n "$backup_mountpoint" ]]; then
-  newest_backup="$("${sudo_cmd[@]}" find "$backup_mountpoint" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' -printf '%f\n' 2>/dev/null | sort | tail -n 1 || true)"
+  # Only a complete set counts (backup.sh backup_set_complete): its .verified marker, or SHA256SUMS on a set
+  # written before the marker existed. A half-written set must not make the backup look fresh.
+  newest_backup=""
+  while IFS= read -r candidate; do
+    [[ "$candidate" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || continue
+    if "${sudo_cmd[@]}" test -f "$backup_mountpoint/$candidate/.verified" \
+      || { (( 10#${candidate//[TZ]/} < 20261116000000 )) && "${sudo_cmd[@]}" test -f "$backup_mountpoint/$candidate/SHA256SUMS"; }; then
+      newest_backup="$candidate"
+      break
+    fi
+  done < <("${sudo_cmd[@]}" find "$backup_mountpoint" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' -printf '%f\n' 2>/dev/null | sort -r || true)
   if [[ "$newest_backup" =~ ^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})Z$ ]]; then
     backup_epoch="$(date -u -d "${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]}:${BASH_REMATCH[6]} UTC" +%s 2>/dev/null)" || backup_epoch="$now"
     backup_age_hours="$(( (now - backup_epoch) / 3600 ))"

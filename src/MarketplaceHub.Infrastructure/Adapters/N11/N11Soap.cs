@@ -3,6 +3,7 @@ using System.Security;
 using System.Xml;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
@@ -31,37 +32,30 @@ public sealed partial class N11HttpClient
         request.Options.Set(N11RateLimitHandler.AccountKeyOption, account.AppKey);
         if (rateBucket is not null) request.Options.Set(N11RateLimitHandler.BucketKey, rateBucket);
         // A named slow bucket (1/min) may queue the call for a minute or more; the request timeout starts once it has its token.
-        using var timeout = new QuotaAwareTimeout(request, N11RateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
-        try
+        using var exchange = await Transport.SendAsync(clients, request, RequestTimeout, cancellationToken);
+        if (exchange.Error is { } transportError)
         {
-            using var response = await clients.CreateBoundedClient("N11").SendAsync(request, timeout.Token);
-            var body = await response.Content.ReadAsStringAsync(timeout.Token);
-            if (LocalCircuitResponse.Refusal(response, "N11", "N11") is { } localCircuit) return AdapterResult<XElement>.Failure(localCircuit);
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(60), null));
-            if (SoapHttpError(response.StatusCode, body, operation) is { } httpError)
-            {
-                logger.LogWarning("N11 SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}, Status: {Status}, Code: {Code}", account.Connection.Id, operation, (int)response.StatusCode, httpError.Code);
-                return AdapterResult<XElement>.Failure(httpError);
-            }
-            var parsed = SoapResponse(body, operation, requireResult);
-            if (parsed.Error is { } error)
-            {
-                logger.LogWarning("N11 SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Code: {Code}, Message: {Message}", account.Connection.Id, operation, error.Code, error.SafeMessage);
-                return AdapterResult<XElement>.Failure(error);
-            }
-            return AdapterResult<XElement>.Success(parsed.Response!);
+            if (exchange.Exception is { } exception) logger.LogWarning(exception, "N11 SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
+            return AdapterResult<XElement>.Failure(transportError);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        var response = exchange.Response!;
+        var body = exchange.Body;
+        if (LocalCircuitResponse.Refusal(response, "N11", "N11") is { } localCircuit) return AdapterResult<XElement>.Failure(localCircuit);
+        // The SOAP 429 reads Retry-After seconds only (no date), as it always has.
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(60), null));
+        if (SoapHttpError(response.StatusCode, body, operation) is { } httpError)
         {
-            if (!timeout.QuotaAcquired) return LocalQuotaWait<XElement>();
-            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_TIMEOUT", "N11 isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+            logger.LogWarning("N11 SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}, Status: {Status}, Code: {Code}", account.Connection.Id, operation, (int)response.StatusCode, httpError.Code);
+            return AdapterResult<XElement>.Failure(httpError);
         }
-        catch (HttpRequestException exception)
+        var parsed = SoapResponse(body, operation, requireResult);
+        if (parsed.Error is { } error)
         {
-            logger.LogWarning(exception, "N11 SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}", account.Connection.Id, operation);
-            return AdapterResult<XElement>.Failure(new(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR", "N11 bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            logger.LogWarning("N11 SOAP isteği reddedildi. ConnectionId: {ConnectionId}, Operation: {Operation}, Code: {Code}, Message: {Message}", account.Connection.Id, operation, error.Code, error.SafeMessage);
+            return AdapterResult<XElement>.Failure(error);
         }
+        return AdapterResult<XElement>.Success(parsed.Response!);
     }
 
     internal static (XElement? Response, AdapterError? Error) SoapResponse(string body, string operation, bool requireResult = true)

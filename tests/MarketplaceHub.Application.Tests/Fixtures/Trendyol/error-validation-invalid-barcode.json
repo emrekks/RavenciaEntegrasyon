@@ -1,0 +1,10 @@
+// Source: Ravencia-API-Docs/trendyol-api-son.md "Örnek Hata Cevapları - Geçersiz Barkod Hatası" (~3372-3384).
+{
+  "errors": [
+    {
+      "key": "invalid.barcode",
+      "message": "Barkod formatı geçersiz",
+      "errorCode": "400"
+    }
+  ]
+}

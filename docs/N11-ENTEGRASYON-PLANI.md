@@ -183,7 +183,7 @@ Envantere göre platform kodu birçok yerde sabit yazılı. N11 için dokunulaca
 - `JobPriorityPolicy.cs`, `MarketplaceSyncExecutionLock.cs` (çakışma listeleri), `Worker.cs` (kuyruklar).
 - `ScheduledJobProducer.cs` ve `ScheduledOrderPollingCadencePolicy.cs`.
 - `SynchronizationPolicies.cs`: yeni `N11OrderHistoryPolicy` ve `N11ReturnHistoryPolicy`.
-- `MarketplaceJobProcessor.cs`:
+- `JobProcessing/MarketplaceJobProcessor.*.cs`:
   - Varsayılan yol Trendyol yoludur.
   - N11'in farkları ayrı politika sınıflarıyla ifade edilir (aşağıda). Mevcut `isHepsiburada` dallarının yanına dağınık `isN11` kontrolleri eklenmez.
 - `InvoicingJobProcessor.cs`, `MarketplaceQuestionService.cs`, `ConnectionDataResetPolicy`.

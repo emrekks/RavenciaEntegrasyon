@@ -46,9 +46,25 @@ function writeAnsweredVersionedKeys() {
   try { localStorage.setItem(answeredVersionedKeyStorage, JSON.stringify([...answeredVersionedKeys])) } catch { /* storage unavailable: the in-memory map still covers this page */ }
 }
 
-/** True when the failed request reached the server and got an HTTP answer (any status); false for a network error. */
+/**
+ * True when the failed request reached the server and got an HTTP answer (any status); false for a network error, an
+ * abort, or a read that ran out of time on the panel's side (status 0, CLIENT_TIMEOUT in shared/api/client.ts).
+ */
 export function failedWithHttpAnswer(error: unknown) {
-  return error instanceof Error && typeof (error as { status?: unknown }).status === 'number'
+  const status = (error as { status?: unknown } | null)?.status
+  return error instanceof Error && typeof status === 'number' && status > 0
+}
+
+/** Title of the information notice shown for a still-running answer. */
+export const stillRunningTitle = 'İşlem Sürüyor'
+
+/**
+ * True when the server is still working on the same key (409 IDEMPOTENCY_IN_PROGRESS): the first attempt has not
+ * finished, so the key must stay. A fresh key would let a third click start the same work a second time.
+ */
+export function isStillRunning(error: unknown) {
+  // Read by shape like failedWithHttpAnswer: tests that mock the API client replace the ApiRequestError class.
+  return failedWithHttpAnswer(error) && (error as { status: number }).status === 409 && (error as { code?: unknown }).code === 'IDEMPOTENCY_IN_PROGRESS'
 }
 
 /** The key for the next attempt of a versioned request: the versioned key until the server answered it with an error. */
@@ -58,7 +74,8 @@ export function idempotencyKeyForAttempt(versionedKey: string) {
 
 /**
  * Sends a versioned request with the right key for this attempt. A double click or a resend after a lost answer
- * (network error, no HTTP answer) reuses the key; after any HTTP error the next attempt gets a fresh key, so a stored
+ * (network error, no HTTP answer) or "still running" (409 IDEMPOTENCY_IN_PROGRESS) reuses the key; after any other HTTP
+ * error the next attempt gets a fresh key, so a stored
  * 4xx is not replayed and a 5xx cannot lock the action behind 409 IDEMPOTENCY_RESULT_UNKNOWN for 24 hours. After a
  * success the key in use is kept, so a repeat on the same version replays the success instead of acting twice.
  */
@@ -67,7 +84,7 @@ export async function sendWithVersionedIdempotencyKey<T>(versionedKey: string, s
   try {
     return await send(key)
   } catch (error) {
-    if (failedWithHttpAnswer(error)) {
+    if (failedWithHttpAnswer(error) && !isStillRunning(error)) {
       answeredVersionedKeys.delete(versionedKey)
       answeredVersionedKeys.set(versionedKey, newIdempotencyKey(versionedKey.split(':')[0] || undefined))
       while (answeredVersionedKeys.size > answeredVersionedKeyLimit) {

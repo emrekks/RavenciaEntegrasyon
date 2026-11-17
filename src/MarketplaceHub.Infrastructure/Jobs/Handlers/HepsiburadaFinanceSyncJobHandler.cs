@@ -15,7 +15,12 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
     internal const string Source = "HEPSIBURADA_TRANSACTIONS";
     internal const string FailureCode = "HEPSIBURADA_FINANCE_SYNC_FAILED";
     // A guard against a paging answer that never ends: 300 pages of 100.
-    private const int MaximumPages = 300;
+    internal const int MaximumPages = 300;
+    // ISLEYICI-7 (16 Nov 2026): a window that reaches MaximumPages with pages left fails the run with its own code; before,
+    // the loop ended quietly and the records read so far were written as the whole run.
+    internal const string PageCapCode = "HEPSIBURADA_FINANCE_PAGE_CAP";
+    private static readonly AdapterError PageCap = new(AdapterErrorClass.ContractViolation, PageCapCode,
+        $"Hepsiburada muhasebe kayıtları {MaximumPages} sayfayı aştı; kalan kayıtlar okunmadı ve aralık okunmuş sayılmadı.", null, null, null);
     private const int PageSize = Adapters.Hepsiburada.HepsiburadaHttpClient.FinancePageSize;
     private const int WindowDays = 30;
 
@@ -44,6 +49,7 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
             for (var from = start; from < end; from = from.AddDays(WindowDays))
             {
                 var to = from.AddDays(WindowDays - 1) < end ? from.AddDays(WindowDays - 1) : end;
+                var pagesEnded = false;
                 for (var page = 0; page < MaximumPages; page++)
                 {
                     requests++;
@@ -52,8 +58,10 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
                     foreach (var item in result.Value!.Items) records[item.Id] = item;
                     skipped.AddRange(result.Value.Skipped);
                     // A skipped record still fills its place on the page.
-                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) break;
+                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) { pagesEnded = true; break; }
                 }
+                // ISLEYICI-7: a window cut at the cap is not taken as read; nothing of the run is written.
+                if (!pagesEnded) return await FailAsync(request, PageCap, now, new(requests, records.Count, 0, 0, 0, 1), cancellationToken);
             }
         }
 
@@ -155,32 +163,17 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
         db.ChangeTracker.Clear();
         var key = FailureKey(request.ConnectionId);
         var summary = Short($"Hepsiburada muhasebe kayıtları okunamadı ({error.Code}: {error.SafeMessage}); hiçbir kayıt yazılmadı, sonraki çalışmada yeniden denenecek.", 1000)!;
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == request.TenantId && item.DedupeKey == key, cancellationToken);
-        if (issue is null)
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = request.TenantId, DedupeKey = key, Code = FailureCode, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
-        else
-        {
-            issue.Code = FailureCode;
-            issue.Summary = summary;
-            issue.Status = IssueStatus.Open;
-            issue.LastSeenAt = now;
-            issue.OccurrenceCount++;
-        }
+        // ISLEYICI-12 point 5: the shared IssueRecorder.
+        await new IssueRecorder(db).RecordAsync(request.TenantId, key, FailureCode, summary, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return new(JobExecutionResult.FromAdapterError(error), telemetry);
     }
 
-    private async Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key && item.Status != IssueStatus.Resolved, cancellationToken);
-        if (issue is null) return;
-        issue.Status = IssueStatus.Resolved;
-        issue.LastSeenAt = now;
-        issue.ResolvedAt = now;
-    }
+    private Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).ResolveAsync(tenantId, key, now, cancellationToken, IssueResolveStamps.ResolvedAt | IssueResolveStamps.LastSeenAt);
 
     private int Setting(string name, int fallback, int minimum, int maximum) =>
         Math.Clamp(configuration.GetValue($"MarketplaceSync:HepsiburadaFinance:{name}", fallback), minimum, maximum);
 
-    private static string? Short(string? value, int length) => value is null || value.Length <= length ? value : value[..length];
+    private static string? Short(string? value, int length) => TextValues.Truncate(value, length);
 }

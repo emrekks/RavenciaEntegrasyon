@@ -35,7 +35,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
       // A phone stacks the presets over the calendar (about 600px): it takes the room it has and scrolls the rest.
       const desiredHeight = Math.min(viewportWidth <= 760 ? 640 : 330, viewportHeight - 32)
       // In a phone filter sheet it stops above the sheet's sticky Temizle / Filtrele bar instead of covering it.
-      const sheetBar = phone ? root.current?.closest('.rr-filters, .mfs')?.querySelector<HTMLElement>(':scope > .rr-fbtns, :scope > .mfs-footer') : null
+      const sheetBar = phone ? root.current?.closest('.rr-filters')?.querySelector<HTMLElement>(':scope > .rr-fbtns') : null
       const barTop = sheetBar?.getBoundingClientRect().top
       const bottomEdge = barTop && barTop > bounds.bottom ? Math.min(viewportHeight - 16, barTop - 8) : viewportHeight - 16
       const spaceBelow = bottomEdge - bounds.bottom
@@ -52,6 +52,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     if (open) { setOpen(false); return }
     const position = computePosition()
     if (position) setPopoverPosition(position)
+    setActiveDay(null)
     setOpen(true)
   }
   const showSelectedMonth = useEffectEvent(() => setMonth(firstShownMonth(from, future)))
@@ -66,6 +67,66 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow) }
   }, [open])
   useDismissable(open, [root, popover], () => setOpen(false))
+  // Keyboard: on opening, focus goes to the chosen day (else the first ready range, else the first day); the arrow keys
+  // move a day or a week, Home/End to the start/end of the week, turning the month when needed; Tab stays inside.
+  const [activeDay, setActiveDay] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const surface = popover.current
+    const first = surface?.querySelector<HTMLElement>('[role="gridcell"][aria-selected="true"]:not(:disabled)')
+      ?? surface?.querySelector<HTMLElement>('.date-range-picker-presets button, [role="gridcell"]:not(:disabled)')
+    first?.focus({ preventScroll: true })
+  }, [open])
+  useEffect(() => {
+    if (open && activeDay) popover.current?.querySelector<HTMLElement>(`[data-day="${activeDay}"]`)?.focus({ preventScroll: true })
+  }, [open, activeDay, month])
+  const secondMonth = new Date(month.getFullYear(), month.getMonth() + 1, 1)
+  const visibleMonthKeys = [dateKey(month).slice(0, 7), dateKey(secondMonth).slice(0, 7)]
+  const dayEnabled = (value: string) => future || value <= today
+  const dayVisible = (value: string) => visibleMonthKeys.includes(value.slice(0, 7))
+  // One day of the two calendars is in the Tab order (roving tabindex): the one moved to, else the start of the range,
+  // else the first day that can be picked.
+  const firstEnabledDay = [month, secondMonth].flatMap(visible => Array.from({ length: new Date(visible.getFullYear(), visible.getMonth() + 1, 0).getDate() }, (_, index) => dateKey(new Date(visible.getFullYear(), visible.getMonth(), index + 1)))).find(dayEnabled)
+  const tabbableDay = [activeDay, from, to].find((value): value is string => !!value && dayVisible(value) && dayEnabled(value)) ?? firstEnabledDay
+  function moveDay(event: KeyboardEvent) {
+    const current = (event.target as HTMLElement).closest<HTMLElement>('[data-day]')?.dataset.day
+    // W4: from the ready ranges, ArrowDown or ArrowRight goes into the calendar: to today, else the day in the Tab order.
+    if (!current && (event.key === 'ArrowDown' || event.key === 'ArrowRight') && (event.target as HTMLElement).closest('.date-range-picker-presets')) {
+      const target = dayVisible(today) && dayEnabled(today) ? today : tabbableDay
+      if (!target) return
+      event.preventDefault()
+      setActiveDay(target)
+      popover.current?.querySelector<HTMLElement>(`[data-day="${target}"]`)?.focus({ preventScroll: true })
+      return
+    }
+    if (!current) return
+    const date = new Date(`${current}T12:00:00`)
+    const weekday = (date.getDay() + 6) % 7
+    const shift = ({ ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7, Home: -weekday, End: 6 - weekday } as Record<string, number>)[event.key]
+    if (shift === undefined) return
+    event.preventDefault()
+    const target = dateKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() + shift))
+    if (!dayEnabled(target)) return
+    if (target.slice(0, 7) < visibleMonthKeys[0]) setMonth(monthStart(target))
+    else if (target.slice(0, 7) > visibleMonthKeys[1]) { const next = monthStart(target); setMonth(new Date(next.getFullYear(), next.getMonth() - 1, 1)) }
+    setActiveDay(target)
+  }
+  function keepTabInside(event: KeyboardEvent) {
+    if (event.key !== 'Tab') return
+    const focusable = Array.from(popover.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? []).filter(element => element.tabIndex >= 0)
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+  }
+  const onPopoverKey = useEffectEvent((event: KeyboardEvent) => { keepTabInside(event); moveDay(event) })
+  useEffect(() => {
+    const surface = open ? popover.current : null
+    if (!surface) return
+    surface.addEventListener('keydown', onPopoverKey)
+    return () => surface.removeEventListener('keydown', onPopoverKey)
+  }, [open])
   const nextMonthBlocked = !future && new Date(month.getFullYear(), month.getMonth() + 2, 1) > monthStart(today)
   const renderMonth =(visibleMonth: Date) => {
     const monthStartWeekday = (visibleMonth.getDay() + 6) % 7
@@ -74,7 +135,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     const monthLabel = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' }).format(visibleMonth)
     return <section className="date-range-picker-month" aria-label={monthLabel} key={`${visibleMonth.getFullYear()}-${visibleMonth.getMonth()}`}>
       <strong>{monthLabel}</strong>
-      <div className="date-range-picker-grid" role="grid">{['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span role="columnheader" key={day}>{day}</span>)}{cells.map((day, index) => day < 1 || day > daysInMonth ? <span key={`empty-${index}`} aria-hidden="true" /> : (() => { const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day); const value = dateKey(date); const selected = value === from || value === to; const inRange = Boolean(from && to && value > from && value < to); const later = !future && value > today; return <button type="button" role="gridcell" aria-label={new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(date)} aria-selected={selected} disabled={later} className={`${selected ? 'is-selected' : ''}${inRange ? ' is-in-range' : ''}`} key={value} onClick={() => { const range = selectDateRangeDay({ from, to }, value); onChange(range); if (range.from && range.to) setOpen(false) }}>{day}</button> })())}</div>
+      <div className="date-range-picker-grid" role="grid">{['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span role="columnheader" key={day}>{day}</span>)}{cells.map((day, index) => day < 1 || day > daysInMonth ? <span key={`empty-${index}`} aria-hidden="true" /> : (() => { const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day); const value = dateKey(date); const selected = value === from || value === to; const inRange = Boolean(from && to && value > from && value < to); const later = !future && value > today; return <button type="button" role="gridcell" aria-label={new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(date)} aria-selected={selected} disabled={later} data-day={value} tabIndex={value === tabbableDay ? 0 : -1} className={`${selected ? 'is-selected' : ''}${inRange ? ' is-in-range' : ''}`} key={value} onClick={() => { const range = selectDateRangeDay({ from, to }, value); onChange(range); if (range.from && range.to) setOpen(false) }}>{day}</button> })())}</div>
     </section>
   }
   return <div className={`date-range-picker${className ? ` ${className}` : ''}`} ref={root}>

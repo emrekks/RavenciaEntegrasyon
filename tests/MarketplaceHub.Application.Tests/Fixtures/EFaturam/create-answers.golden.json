@@ -1,0 +1,27 @@
+{
+  "created": {
+    "ExternalReference": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "InvoiceNumber": "RVN2026000000001",
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "RawStatus": "10",
+    "RemoteRequestId": "req-1"
+  },
+  "withoutNumber": {
+    "Refused": "JsonException",
+    "Message": "invoiceId missing"
+  },
+  "partial": {
+    "ExternalReference": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "InvoiceNumber": null,
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "RawStatus": "10",
+    "RemoteRequestId": "req-2"
+  },
+  "fromTruncated": {
+    "ExternalReference": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "InvoiceNumber": null,
+    "EttnUuid": "96a8b0f1-7e10-4a44-8d78-eb961539bb4b",
+    "RawStatus": "UNKNOWN",
+    "RemoteRequestId": "req-3"
+  }
+}

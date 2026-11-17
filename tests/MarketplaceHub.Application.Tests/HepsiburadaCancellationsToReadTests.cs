@@ -17,7 +17,7 @@ public sealed class HepsiburadaCancellationsToReadTests
             ["full"] = []
         };
 
-        Assert.Equal(["full"], MarketplaceJobProcessor.HepsiburadaCancellationsToRead(listed, open, 25));
+        Assert.Equal(["full"], OrderReadService.HepsiburadaCancellationsToRead(listed, open, 25));
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public sealed class HepsiburadaCancellationsToReadTests
             ["other-line"] = ["line-1"]
         };
 
-        Assert.Equal(["no-line", "other-line"], MarketplaceJobProcessor.HepsiburadaCancellationsToRead(listed, open, 25));
+        Assert.Equal(["no-line", "other-line"], OrderReadService.HepsiburadaCancellationsToRead(listed, open, 25));
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class HepsiburadaCancellationsToReadTests
     {
         var listed = new[] { new RemoteCancelledOrderLine("cancelled-or-unknown", "line-1", Now) };
 
-        Assert.Empty(MarketplaceJobProcessor.HepsiburadaCancellationsToRead(listed, new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.Ordinal), 25));
+        Assert.Empty(OrderReadService.HepsiburadaCancellationsToRead(listed, new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.Ordinal), 25));
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public sealed class HepsiburadaCancellationsToReadTests
             ["middle"] = []
         };
 
-        Assert.Equal(["new", "middle"], MarketplaceJobProcessor.HepsiburadaCancellationsToRead(listed, open, 2));
+        Assert.Equal(["new", "middle"], OrderReadService.HepsiburadaCancellationsToRead(listed, open, 2));
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class HepsiburadaCancellationsToReadTests
             new RemoteCancelledOrderLine("o-2", "l-3", Now)
         };
 
-        var read = MarketplaceJobProcessor.WithHepsiburadaListedCancelTimes(Order("o-1", "l-1", "l-2", "l-3"), listed);
+        var read = OrderReadService.WithHepsiburadaListedCancelTimes(Order("o-1", "l-1", "l-2", "l-3"), listed);
 
         Assert.Equal(Now.AddHours(-1), read.Lines[0].CancelledAt);
         Assert.Null(read.Lines[1].CancelledAt);
@@ -103,7 +103,7 @@ public sealed class HepsiburadaCancellationsToReadTests
     {
         var order = Order("o-9", "l-1");
 
-        var read = MarketplaceJobProcessor.WithHepsiburadaListedCancelTimes(order, [new RemoteCancelledOrderLine("o-1", "l-1", Now)]);
+        var read = OrderReadService.WithHepsiburadaListedCancelTimes(order, [new RemoteCancelledOrderLine("o-1", "l-1", Now)]);
 
         Assert.Same(order, read);
         Assert.Null(OrderLineCancelTime.Reported("l-1", read));
@@ -113,7 +113,7 @@ public sealed class HepsiburadaCancellationsToReadTests
     public void ListedTimesAreKeptInUtcPerOrderAndLine()
     {
         var istanbul = new DateTimeOffset(2026, 10, 21, 12, 0, 0, TimeSpan.FromHours(3));
-        var times = MarketplaceJobProcessor.HepsiburadaListedCancelTimes(
+        var times = OrderReadService.HepsiburadaListedCancelTimes(
         [
             new RemoteCancelledOrderLine("o-1", "l-1", istanbul),
             new RemoteCancelledOrderLine("o-1", null, Now),

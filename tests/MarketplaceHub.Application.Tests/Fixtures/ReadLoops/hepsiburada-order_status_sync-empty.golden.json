@@ -1,0 +1,59 @@
+{
+  "JobType": "HEPSIBURADA_ORDER_STATUS_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "cancelled.List key=hepsiburada-cancelled:0 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=- limit=50",
+          "cancelled.List key=hepsiburada-cancelled:1 window=2026-10-17T09:00:03.000Z..2026-11-16T09:00:03.000Z cursor=1 limit=50"
+        ],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "HEPSIBURADA_PACKAGE_STATUS_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:00:08.000Z",
+      "OpaqueCursor": null,
+      "Version": 2
+    },
+    {
+      "ResourceType": "ORDER_CANCELLATIONS",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:00:03.000Z",
+      "OpaqueCursor": null,
+      "Version": 2
+    },
+    {
+      "ResourceType": "ORDER_CANCELLATIONS_WIDE",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:00:03.000Z",
+      "OpaqueCursor": null,
+      "Version": 2
+    },
+    {
+      "ResourceType": "ORDER_LIFECYCLE",
+      "Watermark": "2026-11-16T09:10:15.000Z",
+      "LastSuccess": "2026-11-16T09:10:16.000Z",
+      "OpaqueCursor": null,
+      "Version": 7
+    }
+  ],
+  "Issues": []
+}

@@ -72,6 +72,21 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Equal(-2, JobConflictPolicy.Apply(busy, -2).ConflictCount);
     }
 
+    // VERITABANI-DAGITIM-11: an invoice number or ETTN another invoice holds goes to review at once; no retry.
+    [Theory]
+    [InlineData(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.EttnIndex)]
+    [InlineData(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.InvoiceNumberIndex)]
+    public void AnInvoiceIdentityAnotherInvoiceHoldsGoesToReviewWithoutARetry(string index)
+    {
+        var violation = new PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation, constraintName: index);
+        var result = WorkerService.ExceptionResult(new DbUpdateException("save failed", violation));
+
+        Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+        Assert.Equal(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Code, result.ErrorCode);
+        Assert.Equal(MarketplaceHub.Infrastructure.Persistence.InvoiceProviderIdentityConflict.Message, result.ErrorSummary);
+        Assert.Equal(JobCompletionKind.ManualReview, JobConflictPolicy.Apply(result, 0).Result.Kind);
+    }
+
     [Fact]
     public void ADuplicateInsertIsRetriedTwiceBeforeItGoesToReview()
     {
@@ -359,34 +374,34 @@ public sealed class BackgroundProcessingAuditTests
     [Fact]
     public void TheOpenPackageScanResumesFromItsSavedPosition()
     {
-        var recent = new MarketplaceJobProcessor.TrendyolOpenScanPosition(false, "3345");
-        var older = new MarketplaceJobProcessor.TrendyolOpenScanPosition(true, "11697863999");
+        var recent = new OrderReadService.TrendyolOpenScanPosition(false, "3345");
+        var older = new OrderReadService.TrendyolOpenScanPosition(true, "11697863999");
 
-        Assert.Equal(recent, MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.TrendyolOpenScanCursor(recent)));
-        Assert.Equal(older, MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.TrendyolOpenScanCursor(older)));
-        Assert.Equal(new MarketplaceJobProcessor.TrendyolOpenScanPosition(true, null), MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.TrendyolOpenScanCursor(new(true, null))));
+        Assert.Equal(recent, OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.TrendyolOpenScanCursor(recent)));
+        Assert.Equal(older, OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.TrendyolOpenScanCursor(older)));
+        Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(true, null), OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.TrendyolOpenScanCursor(new(true, null))));
         // Another cursor (none, or the Hepsiburada lifecycle cursor) starts a new scan.
-        Assert.Equal(new MarketplaceJobProcessor.TrendyolOpenScanPosition(false, null), MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(null));
-        Assert.Equal(new MarketplaceJobProcessor.TrendyolOpenScanPosition(false, null), MarketplaceJobProcessor.ReadTrendyolOpenScanCursor(MarketplaceJobProcessor.HepsiburadaLifecycleCursor("4736002251")));
-        Assert.Equal(["3346", "3400"], MarketplaceJobProcessor.TrendyolOpenScanRemaining(["3400", "3345", "3100", "3346", "3346"], "3345"));
-        Assert.Equal(["1", "2"], MarketplaceJobProcessor.TrendyolOpenScanRemaining(["2", "1"], null));
+        Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(false, null), OrderReadService.ReadTrendyolOpenScanCursor(null));
+        Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(false, null), OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.HepsiburadaLifecycleCursor("4736002251")));
+        Assert.Equal(["3346", "3400"], OrderReadService.TrendyolOpenScanRemaining(["3400", "3345", "3100", "3346", "3346"], "3345"));
+        Assert.Equal(["1", "2"], OrderReadService.TrendyolOpenScanRemaining(["2", "1"], null));
     }
 
     [Fact]
     public void TheTrendyolReturnReadHandsBackItsSlotBetweenStorefrontsAndEveryFewPages()
     {
-        Assert.True(MarketplaceJobProcessor.ReturnSyncSliceEnds(movedToNextStorefront: true, pagesThisSlice: 1));
-        Assert.False(MarketplaceJobProcessor.ReturnSyncSliceEnds(movedToNextStorefront: false, pagesThisSlice: MarketplaceJobProcessor.ReturnSyncPagesPerSlice - 1));
-        Assert.True(MarketplaceJobProcessor.ReturnSyncSliceEnds(movedToNextStorefront: false, pagesThisSlice: MarketplaceJobProcessor.ReturnSyncPagesPerSlice));
+        Assert.True(ReturnReadService.ReturnSyncSliceEnds(movedToNextStorefront: true, pagesThisSlice: 1));
+        Assert.False(ReturnReadService.ReturnSyncSliceEnds(movedToNextStorefront: false, pagesThisSlice: ReturnReadService.ReturnSyncPagesPerSlice - 1));
+        Assert.True(ReturnReadService.ReturnSyncSliceEnds(movedToNextStorefront: false, pagesThisSlice: ReturnReadService.ReturnSyncPagesPerSlice));
     }
 
     [Fact]
     public void AFailedReturnRunResumesItsSavedStateInsteadOfStartingOver()
     {
-        var saved = new MarketplaceJobProcessor.ReturnSyncState(MarketplaceJobProcessor.ReturnSyncStateVersion, 0, 7, false, Now.AddHours(-3), Now.AddHours(-1));
-        var cursor = new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = MarketplaceJobProcessor.SerializeReturnSyncState(saved), ConsecutiveFailureCount = 3, LastError = "TRENDYOL_RATE_LIMITED", LastModifiedWatermark = Now.AddHours(-4) };
+        var saved = new ReturnReadService.ReturnSyncState(ReturnReadService.ReturnSyncStateVersion, 0, 7, false, Now.AddHours(-3), Now.AddHours(-1));
+        var cursor = new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = ReturnReadService.SerializeReturnSyncState(saved), ConsecutiveFailureCount = 3, LastError = "TRENDYOL_RATE_LIMITED", LastModifiedWatermark = Now.AddHours(-4) };
 
-        Assert.Equal(saved, MarketplaceJobProcessor.ReadReturnSyncState(cursor, Now, TimeSpan.FromMinutes(15)));
+        Assert.Equal(saved, ReturnReadService.ReadReturnSyncState(cursor, Now, TimeSpan.FromMinutes(15)));
     }
 
     [Fact]
@@ -419,10 +434,10 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Equal("order-invoices", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.OrderInvoiceReconciliation));
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation));
         Assert.Equal("orders", MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation));
-        Assert.True(MarketplaceJobProcessor.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Version)], MarketplaceJobProcessor.PackageInvoiceColumns));
-        Assert.False(MarketplaceJobProcessor.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Status)], MarketplaceJobProcessor.PackageInvoiceColumns));
-        Assert.True(MarketplaceJobProcessor.OnlyChanges([nameof(Order.CustomerSnapshotJson), nameof(Order.Version)], MarketplaceJobProcessor.OrderSnapshotColumns));
-        Assert.False(MarketplaceJobProcessor.OnlyChanges([nameof(Order.DerivedStatus)], MarketplaceJobProcessor.OrderSnapshotColumns));
+        Assert.True(InvoiceReconciliationService.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Version)], InvoiceReconciliationService.PackageInvoiceColumns));
+        Assert.False(InvoiceReconciliationService.OnlyChanges([nameof(ShipmentPackage.MarketplaceInvoiceStatus), nameof(ShipmentPackage.Status)], InvoiceReconciliationService.PackageInvoiceColumns));
+        Assert.True(InvoiceReconciliationService.OnlyChanges([nameof(Order.CustomerSnapshotJson), nameof(Order.Version)], InvoiceReconciliationService.OrderSnapshotColumns));
+        Assert.False(InvoiceReconciliationService.OnlyChanges([nameof(Order.DerivedStatus)], InvoiceReconciliationService.OrderSnapshotColumns));
     }
 
     [Fact]

@@ -27,6 +27,23 @@ export async function flush(times = 3) {
   for (let index = 0; index < times; index += 1) await act(async () => { await Promise.resolve() })
 }
 
+/**
+ * Lets a page settle until it is quiet (W3): React updates are flushed in short rounds until `activity()` (the mocked
+ * requests made so far) has not moved for `quietRounds` rounds in a row. A fixed number of 10 ms rounds re-rendered a
+ * heavy page (the product editor) dozens of times for nothing on a fast machine and could still end too early on a loaded
+ * one; this ends as soon as the request chain is done and keeps going while it is not (bounded by rounds, not by time).
+ */
+export async function settleUntilQuiet(activity: () => number, { quietRounds = 3, maxRounds = 200, stepMs = 5 } = {}) {
+  let last = activity()
+  let quiet = 0
+  for (let round = 0; round < maxRounds && quiet < quietRounds; round += 1) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, stepMs)) })
+    const now = activity()
+    quiet = now === last ? quiet + 1 : 0
+    last = now
+  }
+}
+
 export function byText<T extends HTMLElement = HTMLElement>(root: ParentNode, selector: string, text: string) {
   const found = Array.from(root.querySelectorAll<T>(selector)).find(element => element.textContent?.includes(text))
   if (!found) throw new Error(`No ${selector} containing “${text}”`)

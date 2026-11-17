@@ -1,0 +1,11 @@
+// Source: https://api.n11.com/ws/SettlementService.wsdl answer types (n11.md "Settlements"), the shape N11SettlementTests
+// uses: settlementList rows with payment/deduction/settlement amounts, dd/MM/yyyy or ISO days, status.
+<GetSettlementListResponse xmlns="http://www.n11.com/ws/schemas">
+  <result><status>success</status></result>
+  <settlementListData>
+    <settlementList><paymentAmount>1200.50</paymentAmount><deductionAmount>200.10</deductionAmount><settlementAmount>1000.40</settlementAmount>
+      <settlementDate>05/11/2026</settlementDate><remittanceDate>06/11/2026</remittanceDate><status>ODEME_BEKLENIYOR</status></settlementList>
+    <settlementList><paymentAmount>10</paymentAmount><deductionAmount>0</deductionAmount><settlementAmount>10</settlementAmount><settlementDate>2026-10-29</settlementDate></settlementList>
+    <metadata><currentPage>0</currentPage><pageSize>100</pageSize><totalCount>2</totalCount><pageCount>1</pageCount></metadata>
+  </settlementListData>
+</GetSettlementListResponse>

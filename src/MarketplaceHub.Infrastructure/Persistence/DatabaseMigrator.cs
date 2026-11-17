@@ -26,8 +26,8 @@ public static class DatabaseMigrator
     }
 
     internal static bool IsLockTimeout(Exception exception) =>
-        exception is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable }
-        || exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable };
+        exception is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable or PostgresErrorCodes.DeadlockDetected }
+        || exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.LockNotAvailable or PostgresErrorCodes.DeadlockDetected };
 
     public static async Task MigrateAsync(AppDbContext applicationContext, ILogger logger, CancellationToken cancellationToken)
     {
@@ -63,6 +63,42 @@ public static class DatabaseMigrator
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {
                     logger.LogWarning(exception, "Product model attributes were not recomputed");
+                }
+                // KATALOG-14 phase B backfill: every model takes its cards' shared values (the desi and the size chart
+                // included) and the models whose cards disagree are reported. Same rule as every save's write-through;
+                // idempotent, one short transaction per model. Phase D2: the name and description move only when every
+                // colour agrees, a colour that differs gets its own text as an override (the colour overrides' backfill).
+                try
+                {
+                    var (models, written, differing, gaps) = await ProductModelValues.RefreshAllAsync(migrationContext, DateTimeOffset.UtcNow, cancellationToken);
+                    logger.LogInformation("Product model values refreshed: {Models} models, {Written} written, {Differing} with cards that disagree, {Gaps} whose colours differ from the model (warned, nothing written)", models, written, differing, gaps);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Product model values were not refreshed");
+                }
+                // SIPARIS-STOK-9: the Returns page's card columns of claims written before they existed (or by the previous
+                // code while this deploy runs). The rule is C#, so not a migration; idempotent and batched. A failure only
+                // keeps the page on its old computation until the worker's repair pass; it does not stop the deploy.
+                try
+                {
+                    var (claims, written, lost) = await ReturnCardColumns.RepairAsync(migrationContext, cancellationToken);
+                    logger.LogInformation("Return card columns: {Claims} claims read, {Written} written, {Lost} changed meanwhile", claims, written, lost);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Return card columns were not filled");
+                }
+                // SIPARIS-STOK-9: the orders' kept customer names (the Returns search), filled at deploy instead of at the
+                // worker's first maintenance pass. Batched and idempotent; a failure leaves them to that pass.
+                try
+                {
+                    var filled = await OrderCustomerSearchNames.BackfillAsync(migrationContext, cancellationToken);
+                    logger.LogInformation("Order customer search names: {Filled} filled", filled);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Order customer search names were not filled");
                 }
                 return;
             }

@@ -90,6 +90,158 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // Audit 2026-11-15 FATURA-FINANS-4: the reports' order and line rows now read the overview's per-order figures
+    // (OrderRevenueQuery) and accepted return claims instead of their own copies. On the same data the rows are the old
+    // ones to the last digit, scale included, and the report's revenue is the overview's.
+    [PostgreSqlTheory]
+    [MemberData(nameof(Periods))]
+    public async Task The_report_rows_read_from_the_overviews_figures_give_the_old_rows(string from, string to)
+    {
+        var tenant = NewTenant("rep-eq");
+        try
+        {
+            await SeedAsync(tenant);
+            var period = DashboardPerformancePeriod.Resolve(DateOnly.Parse(from, CultureInfo.InvariantCulture), DateOnly.Parse(to, CultureInfo.InvariantCulture), Now, TimeZoneInfo.FindSystemTimeZoneById(Timezone)).Value!;
+
+            await using var db = fixture.CreateContext();
+            await db.Database.ExecuteSqlRawAsync("ANALYZE");
+            await db.Database.OpenConnectionAsync();
+            await db.Database.ExecuteSqlRawAsync("SET jit = off");
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(3));
+            var tenantId = tenant.Id;
+            var allowed = await db.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).ToArrayAsync();
+            var start = period.PreviousStart;
+            var end = period.CurrentEnd;
+            IQueryable<ReportsService.PeriodOrder> PeriodOrders() => from order in db.Orders.AsNoTracking()
+                                                                     where order.TenantId == tenantId && allowed.Contains(order.ConnectionId) && order.OrderedAt >= start && order.OrderedAt < end
+                                                                     select new ReportsService.PeriodOrder { Order = order, RealAt = order.OrderedAt };
+
+            var oldOrders = await LegacyReportQueries.OrderRows(db, tenantId, PeriodOrders()).ToListAsync();
+            var newOrders = await ReportsService.OrderRows(db, tenantId, PeriodOrders()).ToListAsync();
+            Assert.NotEmpty(oldOrders);
+            Assert.Contains(oldOrders, x => x.PackagesBack > 0 || x.LineBack > 0);
+            Assert.Contains(oldOrders, x => !x.ReturnBooked);
+            Assert.Equal(Json(oldOrders), Json(newOrders));
+
+            var oldLines = await LegacyReportQueries.LineRows(db, tenantId, PeriodOrders()).ToListAsync();
+            var newLines = await ReportsService.LineRows(db, tenantId, PeriodOrders()).ToListAsync();
+            Assert.Contains(oldLines, x => x.AcceptedReturnQuantity > 0);
+            Assert.Equal(Json(oldLines), Json(newLines));
+
+            // One formula on both pages: the overview's amount and returned amount of each order it counts are the
+            // report rows' (ReportBuilder takes the larger of the packages and the lines sent back, as the overview does).
+            var overview = await DashboardReadService.PerformanceOrders(db, tenantId, period, Timezone).ToListAsync();
+            Assert.NotEmpty(overview);
+            var reportById = newOrders.ToDictionary(x => x.Id);
+            foreach (var row in overview)
+            {
+                var report = reportById[row.Id];
+                Assert.Equal(row.Amount, report.Amount);
+                var linesBack = report.LineValue > 0 ? report.Amount * report.LineBack / report.LineValue : 0m;
+                Assert.Equal(Math.Round(row.ReturnedAmount, 6), Math.Round(report.PackagesBack > linesBack ? report.PackagesBack : linesBack, 6));
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
+    // Audit 2026-11-15 FATURA-FINANS-2 (owner, 15 Nov 2026: one rule, the invoice's): for every claim status, every line
+    // status word and spelling, exchanges with and without a refund, the overview's and the reports' accepted return
+    // quantity of a line is the one the sale invoice leaves out, in the database as in memory. The old SQL is run beside
+    // it: it differs exactly where LegacyAcceptedReturnRule says it did.
+    [PostgreSqlFact]
+    public async Task The_overview_and_reports_count_a_returned_unit_exactly_when_the_invoice_does()
+    {
+        var tenant = NewTenant("acc-ret");
+        try
+        {
+            var store = NewConnection(tenant.Id, "TRENDYOL", "ACTIVE");
+            var order = NewOrder(tenant.Id, store.Id, "matrix", Now, 100m, "DELIVERED");
+            var expectedOld = new Dictionary<Guid, bool>();
+            var expectedNew = new Dictionary<Guid, bool>();
+            var names = new Dictionary<Guid, string>();
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(store);
+                seed.Orders.Add(order);
+                var ordinal = 0;
+                foreach (var claimStatus in Enum.GetValues<ReturnClaimStatus>())
+                    foreach (var lineStatus in AcceptedReturnRuleParityTests.LineStatuses)
+                        foreach (var (request, raw) in new (string?, string)[] { (null, "Whatever"), (ReturnCustomerRequestPolicy.Change, "Approved"), (ReturnCustomerRequestPolicy.Change, "Refunded") })
+                        {
+                            var line = NewLine(order, $"l{++ordinal}", 10m, 3m);
+                            seed.OrderLines.Add(line);
+                            var claim = new ReturnClaim
+                            {
+                                Id = Guid.CreateVersion7(),
+                                TenantId = tenant.Id,
+                                ConnectionId = store.Id,
+                                OrderId = order.Id,
+                                ExternalClaimId = $"c{ordinal}",
+                                Status = claimStatus,
+                                RawStatus = raw,
+                                CustomerRequest = request,
+                                LastRemoteModifiedAt = Now,
+                                CreatedAt = Now,
+                                UpdatedAt = Now
+                            };
+                            seed.ReturnClaims.Add(claim);
+                            seed.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, OrderLineId = line.Id, ExternalLineId = $"cl{ordinal}", Quantity = 2m, RawStatus = lineStatus });
+                            var exchangeKept = request == ReturnCustomerRequestPolicy.Change && raw != "Refunded";
+                            expectedOld[line.Id] = !exchangeKept && LegacyAcceptedReturnRule.Counts(claimStatus, lineStatus);
+                            expectedNew[line.Id] = !exchangeKept && LegacyAcceptedReturnRule.NewCounts(claimStatus, lineStatus);
+                            names[line.Id] = $"{claimStatus}/{lineStatus ?? "null"}/{request ?? "-"}/{raw}";
+                        }
+                await seed.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var invoice = await InvoiceSaleReturns.ApprovedClaimQuantitiesAsync(db, tenant.Id, [order.Id], CancellationToken.None);
+            var report = await DashboardReadService.AcceptedReturnQuantities(db, tenant.Id).ToDictionaryAsync(x => x.OrderLineId, x => x.Quantity);
+            var acceptedClaims = LegacyAcceptedReturnRule.ClaimStatuses;
+            var acceptedLines = LegacyAcceptedReturnRule.LineRawStatuses;
+            var tenantId = tenant.Id;
+            var old = await db.ReturnLines.AsNoTracking()
+                .Where(returned => returned.TenantId == tenantId
+                    && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
+                        && (returned.RawStatus == null || returned.RawStatus == ""
+                            ? acceptedClaims.Contains(claim.Status)
+                            : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
+                .GroupBy(returned => returned.OrderLineId)
+                .ToDictionaryAsync(group => group.Key, group => group.Sum(returned => returned.Quantity));
+
+            Assert.Equal(expectedNew.Count, expectedOld.Count);
+            Assert.Contains(expectedNew, x => x.Value);
+            Assert.Contains(expectedNew, x => expectedOld[x.Key] != x.Value);
+            Assert.Empty(expectedNew.Where(x => invoice.GetValueOrDefault(x.Key) != (x.Value ? 2m : 0m)).Select(x => "invoice " + names[x.Key]));
+            Assert.Empty(expectedNew.Where(x => report.GetValueOrDefault(x.Key) != invoice.GetValueOrDefault(x.Key)).Select(x => "report " + names[x.Key]));
+            Assert.Empty(expectedOld.Where(x => old.GetValueOrDefault(x.Key) != (x.Value ? 2m : 0m)).Select(x => "old " + names[x.Key]));
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
+    // The report's order statement no longer repeats a package read per figure.
+    [Fact]
+    public void The_report_order_statement_reads_each_source_once()
+    {
+        using var db = DashboardOrderVisibilityTests.MetadataOnlyContext();
+        var tenantId = Guid.NewGuid();
+        var orders = db.Orders.Where(x => x.TenantId == tenantId).Select(order => new ReportsService.PeriodOrder { Order = order, RealAt = order.OrderedAt });
+        var sql = ReportsService.OrderRows(db, tenantId, orders).ToQueryString();
+        var legacySql = LegacyReportQueries.OrderRows(db, tenantId, orders).ToQueryString();
+        Assert.True(Count(sql, "shipment_packages") <= 6, $"{Count(sql, "shipment_packages")} package reads");
+        Assert.True(Count(sql, "shipment_packages") < Count(legacySql, "shipment_packages"), $"{Count(sql, "shipment_packages")} against {Count(legacySql, "shipment_packages")}");
+        Assert.Equal(1, Count(sql, "return_lines"));
+    }
+
+    private static List<string> Json<T>(IEnumerable<T> rows) => rows.Select(row => System.Text.Json.JsonSerializer.Serialize(row)).OrderBy(x => x, StringComparer.Ordinal).ToList();
+
     // The statement stays one screen of SQL: every source is read once, not once per use.
     [Fact]
     public void The_revenue_statement_reads_each_source_once()
@@ -219,6 +371,16 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
             db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = returnedPackage.Id, OrderLineId = back.Id, AllocatedQuantity = 1m, SourceEventId = $"s{++ordinal}" });
             Claim(partial, back, 1m, ReturnClaimStatus.Completed);
             Claim(partial, kept, 1m, ReturnClaimStatus.Completed, lineStatus: "Rejected");
+
+            // Every claim and line status combination live had on 15 Nov 2026 (FATURA-FINANS-2): Approved/Accepted,
+            // Completed/no status (a refund request), InTransit/Created, Rejected/Rejected and Requested/Created.
+            var liveCombinations = Add(hepsiburada, 1500m);
+            Package(liveCombinations, $"p{++ordinal}", 1500m, 1500m, ShipmentPackageStatus.Delivered);
+            Claim(liveCombinations, Line(liveCombinations, 100m, 2m), 1m, ReturnClaimStatus.Approved, lineStatus: "Accepted", raw: "Accepted");
+            Claim(liveCombinations, Line(liveCombinations, 200m, 1m), 1m, ReturnClaimStatus.Completed, request: "REFUND", raw: "Refunded");
+            Claim(liveCombinations, Line(liveCombinations, 300m, 1m), 1m, ReturnClaimStatus.InTransit, lineStatus: "Created", raw: "Created");
+            Claim(liveCombinations, Line(liveCombinations, 400m, 1m), 1m, ReturnClaimStatus.Rejected, lineStatus: "Rejected", raw: "Rejected");
+            Claim(liveCombinations, Line(liveCombinations, 400m, 1m), 1m, ReturnClaimStatus.Requested, lineStatus: "Created", raw: "Created");
 
             // Returned quantities on the line only, an exchange not refunded and one refunded.
             var exchanged = Add(trendyol, 777.77m);

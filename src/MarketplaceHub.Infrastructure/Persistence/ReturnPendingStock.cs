@@ -49,18 +49,25 @@ internal static class ReturnPendingStock
     // Locks the return lines (ordered by id, so two settlements never wait on each other crosswise) until the open
     // transaction ends. Every path that puts a return line's units somewhere takes this lock before it reads what the
     // line already received. Without an open transaction nothing could hold the lock, so nothing is locked.
+    // The order lines of the locked return lines are locked too (a transaction-scoped advisory lock per order line, taken
+    // in one order), so two claims of the same order line restock one after the other and each sees what the other put
+    // back (SIPARIS-STOK-6, StockMovementWriter.ReturnRestockRoomAsync). Only these return paths take that lock.
     public static async Task LockLinesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> lineIds, CancellationToken cancellationToken)
     {
         if (lineIds.Count == 0 || db.Database.CurrentTransaction is null) return;
         var ids = lineIds.Distinct().Order().ToArray();
-        await db.Database.SqlQuery<int>($"""
-                SELECT 1 AS "Value"
+        var orderLineKeys = (await db.Database.SqlQuery<Guid>($"""
+                SELECT "OrderLineId" AS "Value"
                 FROM sales.return_lines
                 WHERE "TenantId" = {tenantId} AND "Id" = ANY({ids})
                 ORDER BY "Id"
                 FOR UPDATE
                 """)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken))
+            .Distinct()
+            .Select(orderLineId => $"return-restock:{tenantId:N}:{orderLineId:N}")
+            .ToArray();
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(s.h) FROM (SELECT DISTINCT hashtextextended(k, 0) AS h FROM unnest({orderLineKeys}) AS k ORDER BY 1) s", cancellationToken);
     }
 
     // The units of a return line already put somewhere (stock, quarantine, damaged, not received): committed ones and
@@ -144,12 +151,41 @@ internal static class ReturnPendingStock
         var item = db.InventoryItems.Local.FirstOrDefault(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN")
             ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
         if (item is null) return (false, null);
+        // SIPARIS-STOK-6: with the other claims of the same order line, never more back in stock than was sold. Such a
+        // restock is not cut down: it is left out and the owner sees why.
+        var room = await StockMovementWriter.ReturnRestockRoomAsync(db, tenantId, line.OrderLineId, cancellationToken);
+        if (receivable > room.Left)
+        {
+            await RecordRestockBeyondSoldAsync(db, tenantId, claim, line, receivable, room, now, cancellationToken);
+            return (false, null);
+        }
         db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, ReturnLineId = line.Id, InventoryItemId = item.Id, Disposition = ReturnStockDispositionKind.Pass, Quantity = receivable, IdempotencyKey = stockKey, Reason = reason, ActorUserId = decision.ActorUserId, CreatedAt = now });
-        item.OnHand += receivable;
-        item.Available = Math.Max(0, item.OnHand - item.Reserved);
-        item.ProjectionVersion++;
-        item.Version++;
-        db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = item.Id, MovementType = "RETURN_PASS", QuantityDelta = receivable, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = stockKey, IdempotencyKey = stockKey, OccurredAt = now, RecordedAt = now, ActorUserId = decision.ActorUserId, CorrelationId = correlationId });
-        return (true, new StockProjectionChange(item.VariantId, item.ProjectionVersion, stockKey));
+        return (true, StockMovementWriter.Move(db, item, receivable, StockMovementRounding.None, RestockSource(claim, stockKey, decision.ActorUserId, correlationId, now)));
     }
+
+    public const string RestockBeyondSoldIssueCode = "RETURN_RESTOCK_EXCEEDS_SOLD";
+
+    private static async Task RecordRestockBeyondSoldAsync(AppDbContext db, Guid tenantId, ReturnClaim claim, ReturnLine line, decimal units, ReturnRestockRoom room, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var key = $"return-restock-exceeds-sold:{line.Id:N}";
+        var summary = $"{claim.ExternalClaimId} numaralı iadenin {StockMovementWriter.Units(units)} adedi stoğa eklenmedi: bu sipariş satırından {StockMovementWriter.Units(room.Sold)} adet satıldı ve iade taleplerinden {StockMovementWriter.Units(room.Restocked)} adedi zaten stoğa eklendi. Stoğu kontrol edip gerekirse elle düzeltin.";
+        var issue = db.OperationalIssues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.DedupeKey == key)
+            ?? await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken);
+        if (issue is null)
+        {
+            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = RestockBeyondSoldIssueCode, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
+            return;
+        }
+        issue.Summary = summary;
+        issue.LastSeenAt = now;
+        issue.OccurrenceCount++;
+        if (issue.Status != IssueStatus.Resolved) return;
+        issue.Status = IssueStatus.Open;
+        issue.ResolvedAt = null;
+    }
+
+    // A return line's units put back in stock ("Stoğa Ekle", by hand or settled with an approval): the key is both the
+    // source event and the ledger row's idempotency key. Not rounded in code and no shortfall notice closed (kept as it was).
+    public static StockLedgerSource RestockSource(ReturnClaim claim, string key, Guid actorUserId, string correlationId, DateTimeOffset now) =>
+        new("RETURN_PASS", "RETURN_CLAIM", claim.ExternalClaimId, key, key, now, now, correlationId, actorUserId);
 }

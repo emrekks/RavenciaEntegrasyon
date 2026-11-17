@@ -1,7 +1,7 @@
 import { cargoLabel } from '../../../shared/components'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { statusLabel } from '../../../shared/status-labels'
-import { titleTr } from '../returns-ui'
+import { titleTr } from '../../../shared/ui/rr-components'
 import { displayOrderNumber, productLineQuantity, returnPlatformName, type OrderLine } from '../shared'
 
 export type ReturnLabelSource = {

@@ -1,0 +1,28 @@
+{
+  "JobType": "RETURN_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "returns.Poll key=shopify-return-sync:first window=2026-05-20T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- status=- statusWindow=-..- cursor=- limit=100",
+          "returns.Poll key=shopify-return-sync:1 window=2026-05-20T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- status=- statusWindow=-..- cursor=1 limit=100"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURNS",
+      "Watermark": "2026-11-16T09:00:02.000Z",
+      "LastSuccess": "2026-11-16T09:00:06.000Z",
+      "OpaqueCursor": null,
+      "Version": 5
+    }
+  ],
+  "Issues": []
+}

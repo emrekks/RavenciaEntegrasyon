@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -262,18 +263,6 @@ public static class N11OrderMapper
         return separator <= 0 ? (name, "") : (name[..separator].Trim(), name[(separator + 1)..].Trim());
     }
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
-    }
-
     private static decimal? Decimal(JsonElement element, string property)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
@@ -287,12 +276,10 @@ public static class N11OrderMapper
         return Decimal(document.RootElement, property);
     }
 
-    private static long? Long(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;
-
-    // n11 dates are epoch milliseconds.
+    // n11 dates are epoch milliseconds. Zero, negative and out-of-range values are unknown: one absurd epoch in a
+    // package must not throw and drop the whole page (the package loop catches only JsonException).
     private static DateTimeOffset? Instant(JsonElement element, string property) =>
-        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var milliseconds) && milliseconds > 0
-            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds)
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && RemoteJson.Int64(value) is > 0
+            ? RemoteJson.EpochMilliseconds(value)
             : null;
 }

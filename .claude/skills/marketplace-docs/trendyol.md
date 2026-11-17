@@ -4,9 +4,9 @@ Docs: https://developers.trendyol.com (`/docs/1-servis-limitleri`, `/v2.0/docs/a
 `/v2.0/docs/getshipmentpackagesstream`, `/v2.0/docs/getshipmentpackages`, `/v2.0/docs/getting-returned-orders-getclaims`,
 `/v2.0/docs/current-account-statement-integration.md`).
 
-Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `TrendyolFinance.cs`, `TrendyolQuestions.cs`,
+Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ the `TrendyolHttpClient.*.cs` partials: Catalog, Connection, Diagnostics, Invoices, Orders, Packages, ProductWrites, Returns, Transport, Webhooks), `TrendyolFinance.cs`, `TrendyolQuestions.cs`,
 `TrendyolAuthenticationHandler.cs`, `TrendyolResilienceHandler.cs`, `TrendyolOrderTier.cs`, `TrendyolOptions.cs`,
-`TrendyolStockRules.cs`, `Mapping/TrendyolJsonMapper.cs`.
+`TrendyolStockRules.cs`, `Mapping/TrendyolJsonMapper.cs` (+ `.Orders.cs`, `.Products.cs`, `.References.cs`, `.Returns.cs`).
 
 ## Connection
 - Prod `https://apigw.trendyol.com/integration/`, stage `https://stageapigw.trendyol.com/integration/`.
@@ -42,7 +42,9 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
 - V2 `GET order/sellers/{id}/v2/orders`: `startDate`, `endDate`, `orderNumber`, `shipmentPackageIds` (≤ 50), `page`,
   `size` (≤ 200). **Unverified:** 1 month back, ≤ 14 days per request, ≤ 10,000 records per query. An orderNumber
   that finds nothing is retried quoted.
-- Package lookup by status time: ±6 days, 3-month cutoff.
+- Package lookup by status time: ±6 days, 3-month cutoff. A package without a status time is looked for ±6 days
+  around its order's last change, else its order date (`TrendyolHttpClient.PackageStreamWindow`, since 16 Nov 2026);
+  outside V2's month and the stream's 3 months nothing is asked: TRENDYOL_PACKAGE_OUT_OF_READ_WINDOW (unknown, not 404-gone).
 - Claims `GET order/sellers/{id}/claims`: dates filter the claim's lastModifiedDate; one cursor bucket per
   `claimItemStatus`; page 200 and 3-month depth **unverified**; no storeFrontCode sent (TR only).
 - Finance `finance/che`: max 15-day window, page 500 or 1000, `supplierId` required.
@@ -373,6 +375,13 @@ purpose (`TurkeyTime.cs`).
 - A request whose quota wait ran out before it got its token was never sent: LOCAL_QUOTA_WAIT (RateLimit, the job
   keeps its attempt). One that was sent and timed out stays REMOTE_TIMEOUT (outcome unknown on a write)
   (`TrendyolHttpClient.SendAsync`, report item 16).
+- The unapproved list (`products/unapproved`) carries no `contentId` and no `variantId`, so a card imported from it is
+  linked under its `productMainId` and each variant under its barcode. Those links are placeholders: once the card is
+  sent again and approved, the approval check replaces them with the numeric `contentId` / `variantId` it reads (or drops
+  the product link when the content is a sibling card's of the same model); a link already holding a numeric id that
+  differs still stops for review (`ProductApprovalReconciliationPolicy.IsTrendyolPlaceholderId`). Source: live MZ056
+  Mürdüm/Kahverengi, approval job 01a1dc5a-d922-7bf6-84b0-dd4d2e49fc6d went to PRODUCT_APPROVAL_IDENTITY_CONFLICT on
+  14.11.2026 because the product link was "MZ056".
 - A product-create line refused as "Aynı barkodlu bir ürününüz bulunduğundan…" is not a refusal: it stays
   CREATE_RESULT_UNKNOWN and the approval check reads the barcode; the same now holds for any marketplace's
   "zaten mevcut/kayıtlı/var", "already exist" wording (`ProductBatchResultPolicy.SaysBarcodeExists`, report item 14).
@@ -382,6 +391,16 @@ purpose (`TurkeyTime.cs`).
   product waits for approval the seller panel shows these URLs from partner.trendyol.com itself, so the response must
   carry `Cross-Origin-Resource-Policy: cross-origin` or Chrome shows broken pictures there (live 2026-11-06, MZ028IH-10
   Zümrüt: two empty picture slots; `deploy/caddy/Caddyfile.production`).
+
+## Micro export flags (16 Nov 2026)
+- The order package carries `micro` (true for a micro-export order; independent of `countryCode`) and `3pByTrendyol`
+  (Trendyol export partnership: when true, `micro` is false and `invoiceAddress` holds Trendyol's company). Both are
+  package top-level fields (offline docs `trendyol-api-son.md` ~l.403, 802, 3822, 4100).
+- Live 16 Nov 2026 (read-only SQL): 216 of 1845 Trendyol orders have `micro: true`, always with `3pByTrendyol: false`;
+  none has `3pByTrendyol: true`, `microExport`, a micro `shipmentPackageType`/`orderType`, or `micro: true` anywhere but
+  the top level. The 216 are exactly the SA/AZ/BG/RO/GR/AE storefront orders.
+- The panel's one rule is `OrderMicroExportRules` (any positive indicator, any field order); the invoice keeps its own
+  `InvoiceIssuePolicy.IsMicroExport`.
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),
@@ -439,5 +458,15 @@ packages only, no claim events.
   or variant link) keeps the panel code, or the link's spelling when it is the same code key (Trendyol compares
   case-sensitively: "Ryp003t" / "RYP003T"); a card sent before but not linked yet keeps the code its last create job
   carried. No link, a link no variant link holds, a code over 40 characters or an open `PRODUCT_MODEL_AMBIGUOUS` for
-  the model's key: the panel model code. The update composer builds on the same payload, so an update never moves a
+  the model's key: the panel model code. (Since 17 Nov 2026 a model is brand + model code, the same code under two
+  brands is two models, `ProductModelLinks` resolves open `PRODUCT_MODEL_AMBIGUOUS` issues and opens none, so the last
+  case no longer occurs; the composer check stays.)
+- The composer reads the model code from the model record (KATALOG-14 D5b, as the Hepsiburada, n11 and Pazarama ones do). The update composer builds on the same payload, so an update never moves a
   live card's productMainId.
+
+## Claim-built orders (15 Nov 2026, ADAPTOR-TY-HB-1)
+- getClaims carries `orderDate` and each `orderLine.price` but **no currency field** (trendyol-api-son.md, getClaims
+  sample around :6830). An order built from a claim (`TrendyolJsonMapper.OrderFromReturnClaim`) takes lira when the
+  claim names no currency, refuses an unknown one, and builds no order without `orderDate` (the claim date is not the
+  order date) or with a line whose price is unreadable (never priced 0); the claim then waits as RETURN_ORDER_NOT_FOUND
+  until the order itself is read. Live 15 Nov 2026: 20 Trendyol orders still carry the RETURN_CLAIM mark.

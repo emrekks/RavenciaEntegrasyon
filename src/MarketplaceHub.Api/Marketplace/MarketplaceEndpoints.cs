@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
@@ -10,23 +11,24 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Marketplace;
 
-public static class MarketplaceEndpoints
+public static partial class MarketplaceEndpoints
 {
     public static IEndpointRouteBuilder MapMarketplaceEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1").AddEndpointFilter(async (context, next) => { try { return await next(context); } catch (ArgumentException exception) { var (code, message) = MarketplaceHub.Api.Security.RequestArgumentError.From(exception); return Problem(context.HttpContext, new(code, message, 400)); } });
-        api.MapGet("/connections", async (HttpContext http, IMarketplaceConnectionService service, int? limit, string? after) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
+        var api = endpoints.MapGroup("/api/v1").WithArgumentErrorsAnswered().WithGates(ApiGate.SignedIn, ApiGate.Operations);
+        api.MapGet("/connections", async (HttpContext http, IMarketplaceConnectionService service, int? limit, string? after) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<ConnectionView>>();
         api.MapPost("/connections", async (CreateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
             var result = await service.CreateAsync(tenant.TenantId, command, http.RequestAborted);
             if (result is { Succeeded: true, Value: { } created }) await AuditAsync(http, tenant, "CONNECTION_CREATED", created.Id, $"{created.PlatformCode}:{created.Environment}");
             return Created(result, "/api/v1/connections");
-        });
-        api.MapGet("/connections/{id:guid}", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ConnectionView>(StatusCodes.Status201Created);
+        api.MapGet("/connections/{id:guid}", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ConnectionView>();
         api.MapPatch("/connections/{id:guid}", async (Guid id, UpdateConnectionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -34,8 +36,8 @@ public static class MarketplaceEndpoints
             var result = await service.UpdateAsync(tenant.TenantId, id, version, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
             // The role refusal is the panel's own 403, not a marketplace's (which WithEtag reports as 502).
             return result.Error is { Code: "PERMISSION_DENIED" } denied ? Problem(http, denied) : WithEtag(http, result, x => x.Version);
-        });
-        api.MapPut("/connections/{id:guid}/credential", async (Guid id, CredentialCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RotateCredentialAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : MissingContext(http));
+        }).Produces<ConnectionView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
+        api.MapPut("/connections/{id:guid}/credential", async (Guid id, CredentialCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.RotateCredentialAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ConnectionView>().IfMatch();
         // Instant work below runs with the server's budget as http.RequestAborted, not the browser's connection.
         api.MapPost("/connections/{id:guid}/test-jobs", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceJobProcessor marketplaceProcessor, IInvoicingJobProcessor invoicingProcessor) =>
         {
@@ -51,7 +53,7 @@ public static class MarketplaceEndpoints
                 ? await marketplaceProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted)
                 : await invoicingProcessor.ProcessAsync(tenant.TenantId, id, jobType, "{}", http.TraceIdentifier, http.RequestAborted);
             return Results.Ok(result);
-        }).WithServerBudget();
+        }).WithServerBudget().RequireIdempotencyKey().Produces<JobExecutionResult>();
         // n11 cargo template names from the seller panel, offered as choices for the product create setting.
         api.MapGet("/connections/{id:guid}/n11-shipment-templates", async (Guid id, HttpContext http, AppDbContext db, MarketplaceHub.Infrastructure.Adapters.N11.N11HttpClient n11) =>
         {
@@ -61,52 +63,52 @@ public static class MarketplaceEndpoints
             if (connection.Status is not ("ACTIVE" or "VERIFIED")) return Problem(http, new("N11_CONNECTION_INACTIVE", "Kargo şablonları yalnız aktif veya doğrulanmış N11 bağlantısından okunur.", 409));
             var result = await n11.ShipmentTemplatesAsync(tenant.TenantId, id, http.RequestAborted);
             return result.IsSuccess ? Results.Ok(result.Value) : Problem(http, MarketplaceErrorStatus.ToServiceError(result.Error));
-        }).RequireSameOriginFetch();
-        api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget();
+        }).LiveMarketplaceRead().Produces<IReadOnlyList<string>>();
+        api.MapPut("/connections/{id:guid}/active", async (Guid id, ActiveCommand command, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.SetActiveAsync(tenant.TenantId, id, version, command.Active, http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ConnectionView>().IfMatch();
         api.MapPost("/connections/{id:guid}/initial-data-sync-jobs", async (Guid id, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
             if (!TryIfMatch(http, out var version, out var failure)) return failure!;
             return Accepted(await service.EnqueueInitialDataSyncAsync(tenant.TenantId, id, http.Request.Headers["Idempotency-Key"].ToString(), version, http.TraceIdentifier, http.RequestAborted));
-        });
-        api.MapPost("/connections/{id:guid}/deep-delete", DeepDeleteConnectionAsync);
-        api.MapGet("/connections/{id:guid}/full-reset", async (Guid id, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.FullResetAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/connections/{id:guid}/full-reset", FullResetConnectionAsync);
+        }).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted).IfMatch();
+        api.MapPost("/connections/{id:guid}/deep-delete", DeepDeleteConnectionAsync).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<OperationalDataResetView>().IfMatch();
+        api.MapGet("/connections/{id:guid}/full-reset", async (Guid id, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.FullResetAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireGate(ApiGate.Elevated).Produces<ConnectionFullResetView>();
+        api.MapPost("/connections/{id:guid}/full-reset", FullResetConnectionAsync).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ConnectionFullResetView>().IfMatch();
         // Paneli Tamamen Sıfırla (owner and administrators only, RoleAuthorizationMiddleware): the session that asks stays signed in.
-        api.MapGet("/settings/factory-reset", async (HttpContext http, IPanelFactoryResetService service) => Tenant(http) is { } tenant ? Result(await service.GetAsync(tenant.TenantId, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/settings/factory-reset", FactoryResetAsync);
-        api.MapGet("/connections/{id:guid}/capabilities", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.CapabilitiesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        api.MapGet("/settings/factory-reset", async (HttpContext http, IPanelFactoryResetService service) => Tenant(http) is { } tenant ? Result(await service.GetAsync(tenant.TenantId, http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireGate(ApiGate.Elevated).Produces<PanelFactoryResetView>();
+        api.MapPost("/settings/factory-reset", FactoryResetAsync).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<PanelFactoryResetView>();
+        api.MapGet("/connections/{id:guid}/capabilities", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.CapabilitiesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<CapabilityView>>();
         api.MapPost("/connections/{id:guid}/sync-policies/{resourceType}/runs", async (Guid id, string resourceType, HttpContext http, IScheduledJobProducer producer) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null
                 ? Accepted(await producer.RunNowAsync(tenant.TenantId, id, resourceType, OperationCorrelation(http), http.RequestAborted))
-                : MissingContext(http));
+                : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
         // G: the automatic price/stock pipeline of every connection, and the kill switch that turns it off everywhere.
-        api.MapGet("/price-stock-monitor", async (HttpContext http, IPriceStockMonitorService service) => Tenant(http) is { } tenant ? Results.Ok(await service.MonitorAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/price-stock-monitor", async (HttpContext http, IPriceStockMonitorService service) => Tenant(http) is { } tenant ? Results.Ok(await service.MonitorAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<PriceStockMonitorView>();
         // API Sağlığı: per connection, the key / schedule lag / error rate / quota / queue age / webhook signals from stored data.
-        api.MapGet("/api-health-signals", async (HttpContext http, IApiHealthSignalsService service) => Tenant(http) is { } tenant ? Results.Ok(await service.SignalsAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/api-health-signals", async (HttpContext http, IApiHealthSignalsService service) => Tenant(http) is { } tenant ? Results.Ok(await service.SignalsAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<ApiHealthSignalsView>();
         api.MapPost("/price-stock-monitor/emergency-stop", async (HttpContext http, IPriceStockMonitorService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
             return Results.Ok(await service.StopAllAutomaticWritesAsync(tenant.TenantId, tenant.UserId, OperationCorrelation(http), http.RequestAborted));
-        });
-        api.MapGet("/connections/{id:guid}/sync-policies", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.SyncPoliciesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<PriceStockEmergencyStopView>();
+        api.MapGet("/connections/{id:guid}/sync-policies", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.SyncPoliciesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<IReadOnlyList<SyncPolicyView>>();
         api.MapPut("/connections/{id:guid}/sync-policies/{resourceType}", async (Guid id, string resourceType, UpdateSyncPolicyCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
             var result = await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
             if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
             return Result(result, value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
-        });
+        }).Produces<SyncPolicyView>().IfMatch(required: false).Idempotent(WriteReasons.Replaces);
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(InvoiceLinkVisibility.ForRole(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, labelPrinted, cancelFrom, cancelTo, partialCancel, micro, resentNotShipped), http.RequestAborted), tenant.Role))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<PageResult<OrderListView>>();
         // Records that a shipping label of the order was printed, so every computer sees it.
         api.MapPost("/orders/{id:guid}/label-printed", async (Guid id, HttpContext http, IMarketplaceSalesService service) =>
             Tenant(http) is { } tenant
                 ? await service.MarkLabelPrintedAsync(tenant.TenantId, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound()
-                : Unauthorized(http));
+                : Unauthorized(http)).RequireGate(ApiGate.Working).Produces(StatusCodes.Status204NoContent).Idempotent("marks the order's label printed; a repeat marks it again");
         // Tab counters for the same filters as GET /orders (the status tab itself is ignored).
         api.MapGet("/orders/summary", async (HttpContext http, IMarketplaceSalesService service, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted, string? tabs, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant
@@ -114,15 +116,15 @@ public static class MarketplaceEndpoints
                 ? Results.Ok(await service.OrderSummaryAsync(tenant.TenantId, OrderQuery(null, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted, cancelFrom, cancelTo, partialCancel, micro, resentNotShipped), http.RequestAborted,
                     string.IsNullOrWhiteSpace(tabs) ? null : tabs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                     allowCached: true))
-                : Unauthorized(http));
+                : Unauthorized(http)).Produces<OrderSummaryView>();
         // Orders per platform and cargo choice for the same filters as GET /orders, status tab included.
         api.MapGet("/orders/facets", async (HttpContext http, IMarketplaceSalesService service, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.OrderFacetsAsync(tenant.TenantId, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted, cancelFrom, cancelTo, partialCancel, micro, resentNotShipped), http.RequestAborted))
-                : Unauthorized(http));
-        api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
-        api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName, string? size) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(size == "thumb" ? ProductImageThumbnailUrl(value) : value)) : Unauthorized(http)).RequireSameOriginFetch();
-        api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, InvoiceLinkVisibility.ForRole(await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), tenant.Role), x => x.Version) : Unauthorized(http));
+                : Unauthorized(http)).Produces<OrderFacetsView>();
+        api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ShopifyOrderCsvImportResult>();
+        api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName, string? size) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(size == "thumb" ? ProductImageThumbnailUrl(value) : value)) : Unauthorized(http)).LiveMarketplaceRead().Produces(StatusCodes.Status302Found);
+        api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, InvoiceLinkVisibility.ForRole(await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), tenant.Role), x => x.Version) : Unauthorized(http)).Produces<OrderDetailView>();
         api.MapGet("/orders/{id:guid}/finance", async (Guid id, HttpContext http, AppDbContext db, IOrderFinancePort finance, TimeProvider clock) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -136,25 +138,25 @@ public static class MarketplaceEndpoints
             return result.IsSuccess
                 ? Results.Ok(new { readAt = now, transactions = result.Value!.Transactions, commissionInvoices = result.Value.CommissionInvoices })
                 : Problem(http, MarketplaceErrorStatus.ToServiceError(result.Error));
-        }).RequireSameOriginFetch();
-        api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync);
+        }).LiveMarketplaceRead().Produces<OrderFinanceView>();
+        api.MapPut("/orders/{id:guid}/shopify-status", UpdateShopifyOrderStatusAsync).RequireIdempotencyKey().Produces<ShopifyOrderStatusResult>().IfMatch();
         api.MapPost("/orders/{id:guid}/instant-process", async (Guid id, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             if (RequireIdempotency(http) is { } missingContext) return missingContext;
             return await InstantProcessOrderAsync(id, tenant, http, db, service, marketplaceProcessor, http.RequestAborted);
-        }).WithServerBudget();
-        api.MapPost("/connections/{connectionId:guid}/order-sync-jobs", async (Guid connectionId, OrderSyncCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueOrderSyncAsync(tenant.TenantId, connectionId, command.ExternalOrderId, command.Full, http.TraceIdentifier, http.RequestAborted, command.PackageNumber)) : MissingContext(http));
-        api.MapPost("/connections/{connectionId:guid}/product-sync-jobs", async (Guid connectionId, bool? full, bool? newOnly, bool? existingOnly, bool? mappingOnly, bool? optionsOnly, bool? includeArchived, bool? includeDrafts, bool? includePendingApproval, bool? updateExistingProducts, bool? updatePrices, bool? updateStock, bool? updateExistingPricesAndStock, string? lookup, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductSyncAsync(tenant.TenantId, connectionId, full == true, newOnly == true, existingOnly == true, mappingOnly == true, optionsOnly == true, includeArchived == true, includeDrafts == true, includePendingApproval == true, updateExistingProducts != false, (updatePrices ?? updateExistingPricesAndStock) == true, (updateStock ?? updateExistingPricesAndStock) == true, lookup, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/connections/{connectionId:guid}/stage-test-order-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueStageTestOrderAsync(tenant.TenantId, tenant.UserId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/connections/{connectionId:guid}/catalog-structure-runs", async (Guid connectionId, string? mode, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnqueueCatalogStructureAsync(tenant.TenantId, connectionId, mode ?? "PREVIEW", http.TraceIdentifier, http.RequestAborted), value => Results.Accepted($"/api/v1/catalog-structure-runs/{value.Id:D}", value)) : MissingContext(http));
-        api.MapGet("/connections/{connectionId:guid}/catalog-structure-runs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Results.Ok(await service.CatalogStructureRunsAsync(tenant.TenantId, connectionId, http.RequestAborted)) : Unauthorized(http));
-        api.MapGet("/catalog-structure-runs/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.CatalogStructureRunAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/connections/{connectionId:guid}/reference-sync-jobs", async (Guid connectionId, string? resourceType, string? parentExternalId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReferenceSyncAsync(tenant.TenantId, connectionId, resourceType ?? "CATEGORIES", parentExternalId, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/orders/{id:guid}/packages", async (Guid id, OrderPackageCreateRequest command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.CreateOrderPackageInstantAsync(tenant.TenantId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), Results.Ok) : failure! : MissingContext(http)).WithServerBudget();
-        api.MapGet("/shipments", async (HttpContext http, IMarketplaceSalesService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ShipmentsAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
-        api.MapGet("/shipments/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ShipmentAsync(tenant.TenantId, id, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Package.Version}\""; return Results.Ok(value); }) : Unauthorized(http));
-        api.MapGet("/shipments/{id:guid}/changeable-cargo-companies", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ChangeableCargoCompaniesAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireSameOriginFetch();
+        }).WithServerBudget().RequireIdempotencyKey().Produces<ShipmentView>();
+        api.MapPost("/connections/{connectionId:guid}/order-sync-jobs", async (Guid connectionId, OrderSyncCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueOrderSyncAsync(tenant.TenantId, connectionId, command.ExternalOrderId, command.Full, http.TraceIdentifier, http.RequestAborted, command.PackageNumber)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
+        api.MapPost("/connections/{connectionId:guid}/product-sync-jobs", async (Guid connectionId, bool? full, bool? newOnly, bool? existingOnly, bool? mappingOnly, bool? optionsOnly, bool? includeArchived, bool? includeDrafts, bool? includePendingApproval, bool? updateExistingProducts, bool? updatePrices, bool? updateStock, bool? updateExistingPricesAndStock, string? lookup, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueProductSyncAsync(tenant.TenantId, connectionId, full == true, newOnly == true, existingOnly == true, mappingOnly == true, optionsOnly == true, includeArchived == true, includeDrafts == true, includePendingApproval == true, updateExistingProducts != false, (updatePrices ?? updateExistingPricesAndStock) == true, (updateStock ?? updateExistingPricesAndStock) == true, lookup, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
+        api.MapPost("/connections/{connectionId:guid}/stage-test-order-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueStageTestOrderAsync(tenant.TenantId, tenant.UserId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
+        api.MapPost("/connections/{connectionId:guid}/catalog-structure-runs", async (Guid connectionId, string? mode, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.EnqueueCatalogStructureAsync(tenant.TenantId, connectionId, mode ?? "PREVIEW", http.TraceIdentifier, http.RequestAborted), value => Results.Accepted($"/api/v1/catalog-structure-runs/{value.Id:D}", value)) : MissingContext(http)).RequireIdempotencyKey().Produces<CatalogStructureRunView>(StatusCodes.Status202Accepted);
+        api.MapGet("/connections/{connectionId:guid}/catalog-structure-runs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Results.Ok(await service.CatalogStructureRunsAsync(tenant.TenantId, connectionId, http.RequestAborted)) : Unauthorized(http)).Produces<IReadOnlyList<CatalogStructureRunView>>();
+        api.MapGet("/catalog-structure-runs/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.CatalogStructureRunAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<CatalogStructureRunView>();
+        api.MapPost("/connections/{connectionId:guid}/reference-sync-jobs", async (Guid connectionId, string? resourceType, string? parentExternalId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReferenceSyncAsync(tenant.TenantId, connectionId, resourceType ?? "CATEGORIES", parentExternalId, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
+        api.MapPost("/orders/{id:guid}/packages", async (Guid id, OrderPackageCreateRequest command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.CreateOrderPackageInstantAsync(tenant.TenantId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), Results.Ok) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<CreateOrderPackageResult>().IfMatch();
+        api.MapGet("/shipments", async (HttpContext http, IMarketplaceSalesService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ShipmentsAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http)).Produces<PageResult<ShipmentView>>();
+        api.MapGet("/shipments/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ShipmentAsync(tenant.TenantId, id, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Package.Version}\""; return Results.Ok(value); }) : Unauthorized(http)).Produces<ShipmentDetailView>();
+        api.MapGet("/shipments/{id:guid}/changeable-cargo-companies", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ChangeableCargoCompaniesAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<IReadOnlyList<RemoteCargoCompany>>();
         api.MapGet("/shipments/{id:guid}/documents/{documentId:guid}/content", async (Guid id, Guid documentId, HttpContext http, AppDbContext db, IPrivateFileStorage storage) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -165,7 +167,7 @@ public static class MarketplaceEndpoints
             if (asset is null) return Problem(http, new("SHIPMENT_DOCUMENT_NOT_FOUND", "Gönderi belgesi bulunamadı.", 404));
             var content = await storage.OpenReadAsync(tenant.TenantId, asset.RelativePath, http.RequestAborted);
             return Results.File(content, asset.MimeType, asset.OriginalNameSafe ?? "shipment-label.zpl", enableRangeProcessing: true);
-        });
+        }).RequireGate(ApiGate.Operations).ProducesFile("application/pdf", "application/zpl", "text/plain", "image/png", "image/jpeg");
         // INVOICED tells the marketplace the package's invoice number: like issuing and sending an invoice, it is for
         // the owner and administrators (the role gate leaves the other package actions to operations).
         api.MapPost("/shipments/{id:guid}/actions", async (Guid id, ShipmentActionCommand command, HttpContext http, IMarketplaceSalesService service) =>
@@ -174,26 +176,26 @@ public static class MarketplaceEndpoints
             if (string.Equals(command.Action?.Trim(), "INVOICED", StringComparison.OrdinalIgnoreCase) && !RoleAuthorizationMiddleware.IsElevated(tenant.Role))
                 return Problem(http, new("PERMISSION_DENIED", "Pazaryerine fatura bilgisi göndermek yalnız sahip ve yöneticiler içindir.", 403));
             return TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueShipmentActionAsync(tenant.TenantId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted)) : failure!;
-        });
-        api.MapPost("/shipments/{id:guid}/instant-process", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.ProcessShipmentInstantAsync(tenant.TenantId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); }) : failure! : MissingContext(http)).WithServerBudget();
-        api.MapPost("/shipments/{id:guid}/instant-cargo-provider", async (Guid id, ShipmentActionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.ChangeCargoProviderInstantAsync(tenant.TenantId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); }) : failure! : MissingContext(http)).WithServerBudget();
-        api.MapPost("/shipments/{id:guid}/common-label-jobs", async (Guid id, CommonLabelCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueCommonLabelAsync(tenant.TenantId, id, version, command.BoxQuantity, command.VolumetricHeight, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Format)) : failure! : MissingContext(http));
-        api.MapPost("/shipments/{id:guid}/label-capability-probes", async (Guid id, LabelCapabilityProbeCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueLabelCapabilityProbeAsync(tenant.TenantId, tenant.UserId, id, version, command.CapabilityCode, command.BoxQuantity, command.VolumetricHeight, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http));
-        api.MapGet("/returns", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? customer, string? orderNumber, string? claimCode, string? barcode, string? reason, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? latest, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus, string? sort) => Tenant(http) is { } tenant ? Results.Ok(await service.ReturnsAsync(tenant.TenantId, PageSize(limit), after, ReturnQuery(status, customer, orderNumber, claimCode, barcode, reason, dateFrom, dateTo, search, platforms, cargo, reasonKey, invoiceStatus, sort), latest == true, http.RequestAborted, PageNumber(page))) : Unauthorized(http));
+        }).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted).IfMatch();
+        api.MapPost("/shipments/{id:guid}/instant-process", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.ProcessShipmentInstantAsync(tenant.TenantId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); }) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ShipmentView>().IfMatch();
+        api.MapPost("/shipments/{id:guid}/instant-cargo-provider", async (Guid id, ShipmentActionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.ChangeCargoProviderInstantAsync(tenant.TenantId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); }) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ShipmentView>().IfMatch();
+        api.MapPost("/shipments/{id:guid}/common-label-jobs", async (Guid id, CommonLabelCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueCommonLabelAsync(tenant.TenantId, id, version, command.BoxQuantity, command.VolumetricHeight, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Format)) : failure! : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted).IfMatch();
+        api.MapPost("/shipments/{id:guid}/label-capability-probes", async (Guid id, LabelCapabilityProbeCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Accepted(await service.EnqueueLabelCapabilityProbeAsync(tenant.TenantId, tenant.UserId, id, version, command.CapabilityCode, command.BoxQuantity, command.VolumetricHeight, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted)) : failure! : MissingContext(http)).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted).IfMatch();
+        api.MapGet("/returns", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? customer, string? orderNumber, string? claimCode, string? barcode, string? reason, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? latest, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus, string? sort) => Tenant(http) is { } tenant ? Results.Ok(await service.ReturnsAsync(tenant.TenantId, PageSize(limit), after, ReturnQuery(status, customer, orderNumber, claimCode, barcode, reason, dateFrom, dateTo, search, platforms, cargo, reasonKey, invoiceStatus, sort), latest == true, http.RequestAborted, PageNumber(page))) : Unauthorized(http)).Produces<PageResult<ReturnListView>>();
         // Tab counts and filter choices of the Returns page, for the same filters as GET /returns.
-        api.MapGet("/returns/summary", async (HttpContext http, IMarketplaceSalesService service, string? status, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus) => Tenant(http) is { } tenant ? Results.Ok(await service.ReturnSummaryAsync(tenant.TenantId, ReturnQuery(status, null, null, null, null, null, dateFrom, dateTo, search, platforms, cargo, reasonKey, invoiceStatus, null), http.RequestAborted)) : Unauthorized(http));
+        api.MapGet("/returns/summary", async (HttpContext http, IMarketplaceSalesService service, string? status, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus) => Tenant(http) is { } tenant ? Results.Ok(await service.ReturnSummaryAsync(tenant.TenantId, ReturnQuery(status, null, null, null, null, null, dateFrom, dateTo, search, platforms, cargo, reasonKey, invoiceStatus, null), http.RequestAborted)) : Unauthorized(http)).Produces<ReturnSummaryView>();
         // Reads the return's status history from Trendyol live (getClaimItemAudits); nothing is stored or written.
-        api.MapGet("/returns/{id:guid}/audits", async (Guid id, HttpContext http, IReturnAuditReader reader) => Tenant(http) is { } tenant ? Result(await reader.ReturnAuditsAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapGet("/returns/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.ReturnAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
-        api.MapGet("/returns/{id:guid}/return-shipment-companies", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ReturnShipmentCompaniesAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireSameOriginFetch();
-        api.MapGet("/returns/{id:guid}/rejection-reasons", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ReturnIssueReasonsAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireSameOriginFetch();
-        api.MapPost("/connections/{connectionId:guid}/return-sync-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReturnSyncAsync(tenant.TenantId, connectionId, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http));
-        api.MapPost("/returns/{id:guid}/received", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.MarkReturnReceivedAsync(tenant.TenantId, tenant.UserId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget();
-        api.MapPost("/returns/{id:guid}/actions", async (Guid id, ReturnDecisionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ProcessReturnActionInstantAsync(tenant.TenantId, tenant.UserId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget();
-        api.MapPost("/returns/{id:guid}/stock-dispositions", async (Guid id, ReturnDispositionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? WithEtag(http, await service.ApplyDispositionAsync(tenant.TenantId, tenant.UserId, id, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version) : MissingContext(http));
-        api.MapPost("/files/return-evidence", UploadReturnEvidenceAsync).DisableAntiforgery();
+        api.MapGet("/returns/{id:guid}/audits", async (Guid id, HttpContext http, IReturnAuditReader reader) => Tenant(http) is { } tenant ? Result(await reader.ReturnAuditsAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<IReadOnlyList<ReturnLineAuditView>>();
+        api.MapGet("/returns/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.ReturnAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http)).Produces<ReturnDetailView>();
+        api.MapGet("/returns/{id:guid}/return-shipment-companies", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ReturnShipmentCompaniesAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<IReadOnlyList<ReturnShipmentCompany>>();
+        api.MapGet("/returns/{id:guid}/rejection-reasons", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? Result(await service.ReturnIssueReasonsAsync(tenant.TenantId, id, http.TraceIdentifier, http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<IReadOnlyList<ReturnIssueReason>>();
+        api.MapPost("/connections/{connectionId:guid}/return-sync-jobs", async (Guid connectionId, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueueReturnSyncAsync(tenant.TenantId, connectionId, http.TraceIdentifier, http.RequestAborted)) : MissingContext(http)).RequireIdempotencyKey().Produces<JobAccepted>(StatusCodes.Status202Accepted);
+        api.MapPost("/returns/{id:guid}/received", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.MarkReturnReceivedAsync(tenant.TenantId, tenant.UserId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
+        api.MapPost("/returns/{id:guid}/actions", async (Guid id, ReturnDecisionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ProcessReturnActionInstantAsync(tenant.TenantId, tenant.UserId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
+        api.MapPost("/returns/{id:guid}/stock-dispositions", async (Guid id, ReturnDispositionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? WithEtag(http, await service.ApplyDispositionAsync(tenant.TenantId, tenant.UserId, id, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version) : MissingContext(http)).RequireIdempotencyKey().Produces<ReturnDetailView>();
+        api.MapPost("/files/return-evidence", UploadReturnEvidenceAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ReturnEvidenceView>(StatusCodes.Status201Created);
 
-        api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).RequireSameOriginFetch();
+        api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<InstantNotificationView>();
         api.MapPost("/connections/{id:guid}/instant-notifications", async (Guid id, InstantNotificationCommand? command, HttpContext http, IInstantNotificationService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
@@ -208,200 +210,15 @@ public static class MarketplaceEndpoints
                 : await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret);
             if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, adopt ? "INSTANT_NOTIFICATIONS_ADOPTED" : restore ? "INSTANT_NOTIFICATIONS_RESTORED" : "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
             return Result(result, Results.Ok);
-        }).WithServerBudget();
-        api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget();
+        }).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
+        api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
-        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery();
-        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery();
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireGate(ApiGate.Open).Produces<WebhookAcceptedView>().Idempotent("a repeated delivery of the same marketplace message is queued once (deduplicated by its message id)");
+        // An event path answers as Hepsiburada's contracts show: a POST 201, a PUT 204, both without a body.
+        api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}/{**eventPath}", ["POST", "PUT"], ReceiveWebhookEvent).DisableAntiforgery().RequireGate(ApiGate.Open)
+            .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status204NoContent).Idempotent("a repeated delivery of the same marketplace message is queued once (deduplicated by its message id)");
         return endpoints;
     }
-
-    // If-Match carries the order version the operator saw (audit 2026-10-20 S20).
-    private static async Task<IResult> UpdateShopifyOrderStatusAsync(Guid id, ShopifyOrderStatusCommand command, HttpContext http, IMarketplaceSalesService service)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
-        if (!TryIfMatch(http, out var version, out var failure)) return failure!;
-        return WithEtag(http, await service.SetShopifyOrderStatusAsync(tenant.TenantId, tenant.UserId, id, version, command.Status, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
-    }
-
-    private sealed record ShopifyOrderStatusCommand(string Status);
-
-    private static async Task<IResult> ImportShopifyOrdersAsync(HttpContext http, IShopifyOrderCsvImportService service)
-    {
-        const long maximumFileBytes = 10 * 1024 * 1024;
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
-        var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
-        if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = maximumFileBytes + 128 * 1024;
-        if (http.Request.ContentLength is > maximumFileBytes + 128 * 1024)
-            return Problem(http, new("SHOPIFY_CSV_TOO_LARGE", "Shopify CSV dosyası en fazla 10 MiB olabilir.", 413));
-        if (!http.Request.HasFormContentType)
-            return Problem(http, new("SHOPIFY_CSV_FORM_REQUIRED", "multipart/form-data biçiminde bir CSV dosyası gönderilmelidir.", 400));
-
-        var form = await http.Request.ReadFormAsync(http.RequestAborted);
-        var file = form.Files.GetFile("file");
-        if (file is null || file.Length <= 0)
-            return Problem(http, new("SHOPIFY_CSV_FILE_REQUIRED", "Shopify sipariş dışa aktarım CSV dosyasını seçin.", 400));
-        if (file.Length > maximumFileBytes)
-            return Problem(http, new("SHOPIFY_CSV_TOO_LARGE", "Shopify CSV dosyası en fazla 10 MiB olabilir.", 413));
-        if (!string.Equals(Path.GetExtension(Path.GetFileName(file.FileName)), ".csv", StringComparison.OrdinalIgnoreCase))
-            return Problem(http, new("SHOPIFY_CSV_EXTENSION_INVALID", "Yalnız .csv uzantılı Shopify dışa aktarım dosyaları kabul edilir.", 415));
-        Guid? connectionId = null;
-        var connectionValue = form["connectionId"].ToString();
-        if (!string.IsNullOrWhiteSpace(connectionValue))
-        {
-            if (!Guid.TryParse(connectionValue, out var parsedConnectionId))
-                return Problem(http, new("SHOPIFY_CONNECTION_ID_INVALID", "Shopify bağlantı seçimi geçersiz.", 400));
-            connectionId = parsedConnectionId;
-        }
-
-        await using var input = file.OpenReadStream();
-        var result = await service.ImportAsync(tenant.TenantId, tenant.UserId, connectionId, input, OperationCorrelation(http), http.RequestAborted);
-        return Result(result, Results.Ok);
-    }
-
-    private static async Task<IResult> UploadReturnEvidenceAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider)
-    {
-        const long maximumBytes = 10 * 1024 * 1024;
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (RequireIdempotency(http) is { } missingKey) return missingKey;
-        if (!http.Request.HasFormContentType) return Problem(http, new("EVIDENCE_FORM_REQUIRED", "multipart/form-data body gereklidir.", 400));
-        var form = await http.Request.ReadFormAsync(http.RequestAborted);
-        var file = form.Files.GetFile("file");
-        if (file is null || file.Length <= 0) return Problem(http, new("EVIDENCE_FILE_REQUIRED", "file alanında kanıt dosyası gereklidir.", 400));
-        if (file.Length > maximumBytes) return Problem(http, new("EVIDENCE_TOO_LARGE", "İade kanıtı en fazla 10 MiB olabilir.", 413));
-
-        await using var input = file.OpenReadStream();
-        await using var buffer = new MemoryStream((int)file.Length);
-        await input.CopyToAsync(buffer, http.RequestAborted);
-        if (buffer.Length != file.Length || buffer.Length > maximumBytes) return Problem(http, new("EVIDENCE_SIZE_MISMATCH", "Dosya boyutu doğrulanamadı.", 422));
-        var bytes = buffer.ToArray();
-        var mimeType = DetectEvidenceMimeType(bytes);
-        if (mimeType is null) return Problem(http, new("EVIDENCE_TYPE_UNSUPPORTED", "Yalnız gerçek PDF, JPEG veya PNG iade kanıtı kabul edilir.", 415));
-        var hash = Convert.ToHexString(SHA256.HashData(bytes));
-        var asset = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Classification == "RETURN_EVIDENCE" && x.Sha256 == hash && x.ArchivedAt == null && x.Status == "ACTIVE", http.RequestAborted);
-        if (asset is null)
-        {
-            var id = Guid.CreateVersion7();
-            var extension = mimeType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
-            buffer.Position = 0;
-            var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
-            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "RETURN_EVIDENCE", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
-            db.FileAssets.Add(asset);
-            await db.SaveChangesAsync(http.RequestAborted);
-        }
-        return Results.Created($"/api/v1/files/return-evidence/{asset.Id:D}", new { asset.Id, asset.MimeType, asset.SizeBytes, asset.Sha256 });
-    }
-
-    private static string? DetectEvidenceMimeType(byte[] bytes) => bytes.Length >= 5 && bytes[..5].SequenceEqual("%PDF-"u8.ToArray()) ? "application/pdf"
-        : bytes.Length >= 3 && bytes[..3].SequenceEqual(new byte[] { 0xFF, 0xD8, 0xFF }) ? "image/jpeg"
-        : bytes.Length >= 8 && bytes[..8].SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }) ? "image/png"
-        : null;
-
-    // The connection's data goes in the delete; its settings, keys and the row itself right after (ConnectionLeftovers),
-    // and the hourly sweep finishes what a failure here leaves.
-    // Resets that empty data take the caller's password again (and the authenticator code when it is on); one passed check
-    // covers the session's resets for a few minutes (AuthEndpoints.ReauthenticateForResetAsync). The secrets never reach
-    // the services.
-    private static async Task<IResult> FullResetConnectionAsync(Guid id, FullResetConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service,
-        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
-    {
-        if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
-        if (!TryIfMatch(http, out var version, out var failure)) return failure!;
-        if (await AuthEndpoints.ReauthenticateForResetAsync(command.Password, command.Code, command.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
-        return Result(await service.RequestFullResetAsync(tenant.TenantId, tenant.UserId, id, version, command with { Password = null, Code = null, RecoveryCode = null }, http.TraceIdentifier, http.RequestAborted), Results.Ok);
-    }
-
-    private static async Task<IResult> FactoryResetAsync(PanelFactoryResetCommand command, HttpContext http, IPanelFactoryResetService service,
-        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
-    {
-        if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
-        if (await AuthEndpoints.ReauthenticateForResetAsync(command.Password, command.Code, command.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
-        return Result(await service.RequestAsync(tenant.TenantId, tenant.UserId, (http.Items["UserSession"] as UserSession)?.Id, command with { Password = null, Code = null, RecoveryCode = null }, http.TraceIdentifier, http.RequestAborted), Results.Ok);
-    }
-
-    private static async Task<IResult> DeepDeleteConnectionAsync(Guid id, DeleteConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service, AppDbContext db, TimeProvider timeProvider, ILoggerFactory loggers,
-        UserManager<ApplicationUser> users, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher)
-    {
-        if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
-        if (!TryIfMatch(http, out var version, out var failure)) return failure!;
-        if (await AuthEndpoints.ReauthenticateForResetAsync(command.Password, command.Code, command.RecoveryCode, http, users, db, protection, totp, hasher, timeProvider) is { } refusal) return refusal;
-        command = command with { Password = null, Code = null, RecoveryCode = null };
-        var result = await service.DeleteConnectionAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted);
-        if (result.Succeeded)
-        {
-            try
-            {
-                db.ChangeTracker.Clear();
-                await ConnectionLeftovers.PurgeAsync(db, tenant.TenantId, id, timeProvider.GetUtcNow(), http.RequestAborted);
-            }
-            catch (Exception exception) when (exception is DbUpdateException or Npgsql.NpgsqlException or InvalidOperationException)
-            {
-                loggers.CreateLogger("MarketplaceHub.Api.ConnectionDelete").LogWarning(exception, "Silinen bağlantının ayarları hemen kaldırılamadı; saatlik temizlik kaldıracak. ConnectionId: {ConnectionId}", id);
-            }
-        }
-        return Result(result, Results.Ok);
-    }
-
-    private static async Task<IResult> InstantProcessOrderAsync(Guid id, TenantContext tenant, HttpContext http, AppDbContext db, IMarketplaceSalesService service, IMarketplaceJobProcessor marketplaceProcessor, CancellationToken cancellationToken)
-    {
-        var detail = await service.OrderAsync(tenant.TenantId, id, cancellationToken);
-        if (!detail.Succeeded) return Problem(http, detail.Error!);
-        if (detail.Value!.Packages.Any(package => package.Status == "PAYMENT_PENDING"))
-            return Problem(http, new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden sipariş işleme alınamaz.", 409));
-        var package = PickingTarget(detail.Value!.Packages);
-        if (package is null)
-        {
-            if (detail.Value.ConnectionId is not { } connectionId)
-                return Problem(http, new("ORDER_CONNECTION_REQUIRED", "Siparişin aktif platform bağlantısı bulunamadı.", 422));
-
-            // Refresh an order without creating a worker job, then continue the
-            // picking action in the same request.
-            var platform = await db.PlatformConnections.AsNoTracking()
-                .Where(x => x.TenantId == tenant.TenantId && x.Id == connectionId)
-                .Select(x => x.PlatformCode)
-                .SingleOrDefaultAsync(cancellationToken);
-            var sync = await marketplaceProcessor.ProcessAsync(
-                tenant.TenantId,
-                connectionId,
-                MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.OrderSync),
-                JsonSerializer.Serialize(new { connectionId, externalOrderId = detail.Value.OrderNumber, full = false }),
-                OperationCorrelation(http),
-                cancellationToken);
-            if (!sync.Succeeded)
-            {
-                var status = sync.Kind == JobCompletionKind.Retry ? 503 : 422;
-                return Problem(http, new(sync.ErrorCode ?? "ORDER_REFRESH_FAILED", sync.ErrorSummary ?? (platform == "SHOPIFY" ? "Sipariş Shopify’dan anlık olarak yenilenemedi." : "Sipariş Trendyol’dan anlık olarak yenilenemedi."), status));
-            }
-
-            detail = await service.OrderAsync(tenant.TenantId, id, cancellationToken);
-            if (!detail.Succeeded) return Problem(http, detail.Error!);
-            if (detail.Value!.Packages.Any(package => package.Status == "PAYMENT_PENDING"))
-                return Problem(http, new("SHIPMENT_PAYMENT_PENDING", "Trendyol ödeme onayı vermeden sipariş işleme alınamaz.", 409));
-            package = PickingTarget(detail.Value!.Packages);
-        }
-
-        if (package is null)
-            return Problem(http, new("PICKING_PACKAGE_NOT_FOUND", "Sipariş yenilendi ancak işleme alınabilir kargo paketi bulunamadı.", 422));
-
-        return Result(await service.ProcessShipmentInstantAsync(
-            tenant.TenantId,
-            package.Id,
-            package.Version,
-            http.Request.Headers["Idempotency-Key"].ToString(),
-            OperationCorrelation(http),
-            cancellationToken), value =>
-        {
-            http.Response.Headers.ETag = $"\"v{value.Version}\"";
-            return Results.Ok(value);
-        });
-    }
-
-    // The order-level "İşleme Al" works on the package that is still new (a split order may hold
-    // shipped or cancelled packages first); without one, the first package answers why not.
-    internal static ShipmentView? PickingTarget(IReadOnlyList<ShipmentView> packages) =>
-        packages.FirstOrDefault(package => package.Status == "NEW") ?? packages.FirstOrDefault();
 
     internal static Task<IResult> ReceiveWebhookEvent(Guid connectionPublicId, string routeToken, string? eventPath, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota) =>
         ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, quota, eventPath);
@@ -446,7 +263,7 @@ public static class MarketplaceEndpoints
         }
         if (!result.Value)
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
-                .LogWarning("Webhook acknowledged but not processed (stale delivery) for connection {ConnectionPublicId}.", connectionPublicId);
+                .LogWarning("Webhook acknowledged but not processed (stale delivery or paused connection) for connection {ConnectionPublicId}.", connectionPublicId);
         // Hepsiburada's event paths answer as its contracts show: a POST (orders, packages, claims/packages) 201 Created,
         // a PUT 204; a repeated delivery gets the same answer. The base address keeps its body.
         if (eventPath is null) return Results.Ok(new { accepted = true });
@@ -463,7 +280,6 @@ public static class MarketplaceEndpoints
         }
         catch (System.Text.Json.JsonException) { return $"not JSON ({body.Length} bytes)"; }
     }
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     // A connection or a webhook subscription outlives the session that made it (G2): the audit log keeps who set it up.
     private static async Task AuditAsync(HttpContext http, TenantContext tenant, string action, Guid connectionId, string reason)
     {
@@ -475,20 +291,15 @@ public static class MarketplaceEndpoints
         Guid.TryParse(http.Request.Headers["X-Operation-ID"].ToString(), out var operationId)
             ? $"operation-{operationId:N}"
             : http.TraceIdentifier;
-    private static int PageSize(int? limit) => limit is null ? 50 : limit is >= 1 and <= 200 ? limit.Value : throw new ArgumentException("limit 1-200 arasında olmalıdır.");
     private static ReturnListQuery ReturnQuery(string? status, string? customer, string? orderNumber, string? claimCode, string? barcode, string? reason, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? search, string? platforms, string? cargo, string? reasonKey, string? invoiceStatus, string? sort) =>
         new(status, customer, orderNumber, claimCode, barcode, reason, dateFrom, dateTo, search,
             platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), cargo, reasonKey, invoiceStatus, sort);
     private static OrderListQuery OrderQuery(string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom = null, DateTimeOffset? cancelTo = null, bool? partialCancel = null, bool? microExport = null, bool? resentNotShipped = null) =>
         new(status, search, platform, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, platforms?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), labelPrinted, cancelFrom, cancelTo, partialCancel, microExport, resentNotShipped);
-    private static int PageNumber(int? page) => page is null ? 1 : page is >= 1 and <= 100_000 ? page.Value : throw new ArgumentException("page 1-100000 arasında olmalıdır.");
-    private static IResult? RequireIdempotency(HttpContext http) => string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"]) ? Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400)) : http.Request.Headers["Idempotency-Key"].ToString().Length > 256 ? Problem(http, new("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key en fazla 256 karakterdir.", 400)) : null;
-    private static bool TryIfMatch(HttpContext http, out long version, out IResult? failure) { var parsed = OptionalIfMatch(http, out failure); version = parsed ?? 0; if (failure is null && parsed is null) failure = Problem(http, new("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428)); return failure is null; }
-    private static long? OptionalIfMatch(HttpContext http, out IResult? failure) { failure = null; var value = http.Request.Headers.IfMatch.ToString(); if (string.IsNullOrWhiteSpace(value)) return null; if (value.Length >= 4 && value.StartsWith("\"v", StringComparison.Ordinal) && value.EndsWith('"') && long.TryParse(value[2..^1], out var version) && version > 0) return version; failure = Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400)); return null; }
-    private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, MarketplaceErrorStatus.ForPanel(result.Error!)); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
-    private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!)); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
-    private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, MarketplaceErrorStatus.ForPanel(result.Error!));
+    private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) => EndpointHelpers.WithEtag(http, result, version, MarketplaceErrorStatus.ForPanel);
+    private static IResult Created<T>(ServiceResult<T> result, string collection) => EndpointHelpers.Created(result, collection, MarketplaceErrorStatus.ForPanel);
+    private static IResult Accepted(ServiceResult<Guid> result) => EndpointHelpers.Accepted(result, MarketplaceErrorStatus.ForPanel);
+    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => EndpointHelpers.Result(result, success, MarketplaceErrorStatus.ForPanel);
     // ?size=thumb: a small frame asks Trendyol's CDN for its small copy (/mnresize/256/384/, ~10 KB) instead of the
     // ~145 KB full photo, the same rule as the panel's thumbnailUrl (shared/product-thumbnail.ts). Other hosts stay as
     // they are (Hepsiburada's size token has no documented sizes).
@@ -499,9 +310,6 @@ public static class MarketplaceEndpoints
         var path = System.Text.RegularExpressions.Regex.Replace(uri.AbsolutePath, "/{2,}", "/");
         return new UriBuilder(uri) { Path = "/mnresize/256/384" + path }.Uri.AbsoluteUri;
     }
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));
-    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     public sealed record ActiveCommand(bool Active);
     public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false, bool AdoptFromInactive = false);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);

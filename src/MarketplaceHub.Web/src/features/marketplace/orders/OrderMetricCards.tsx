@@ -17,7 +17,7 @@
 // as selected and tapping it again closes the list (back to Tümü).
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { CardBackgroundIcon, CountUp, UiIcon, type CardIconName, type CardTone } from '../../../shared/components'
-import { RrLogo } from '../returns-ui'
+import { RrLogo } from '../../../shared/ui/rr-components'
 import { countryName, Flag } from './order-row-marks'
 import type { DayCard } from './daily-cards'
 import { type OrderCargoCount } from './order-summary'

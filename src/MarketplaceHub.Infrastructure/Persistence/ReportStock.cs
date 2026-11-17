@@ -48,7 +48,7 @@ internal static class ReportStock
 
         var periodDays = to.DayNumber - from.DayNumber + 1;
         var deadBefore = new DateTimeOffset(today.AddDays(-DeadDays).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
-        decimal? Cover(decimal units, decimal sold) => sold > 0 && periodDays > 0 ? Math.Round(units / (sold / periodDays), 1) : null;
+        decimal? Cover(decimal units, decimal sold) => sold > 0 && periodDays > 0 ? MeasureRounding.Round(units / (sold / periodDays), 1) : null;
         var items = counted.Select(row =>
         {
             var units = Math.Max(0m, row.OnHand);
@@ -87,11 +87,11 @@ internal static class ReportStock
         var profit = both.Count == 0 ? (decimal?)null : bothValue - bothCapital;
         // Ex-VAT only when every costed variant's VAT rate is known.
         var capitalExVat = costed.All(x => x.Row.VatRate is not null)
-            ? Round(costed.Sum(x => x.Capital!.Value - ReportCosts.Vat(x.Capital!.Value, x.Row.VatRate!.Value)))
+            ? MoneyRounding.Round(costed.Sum(x => x.Capital!.Value - ReportCosts.Vat(x.Capital!.Value, x.Row.VatRate!.Value)))
             : (decimal?)null;
         var units = inStock.Sum(x => x.Units);
         var sold = items.Sum(x => x.Sold);
-        var daily = periodDays > 0 && sold > 0 ? Math.Round(sold / periodDays, 2) : (decimal?)null;
+        var daily = periodDays > 0 && sold > 0 ? MeasureRounding.Round(sold / periodDays, 2) : (decimal?)null;
         var products = items.GroupBy(x => x.Row.ProductId).ToList();
         var low = products.Count(group => group.Any(x => x.Units > 0) && ProductStockPolicy.IsLowStock(
             group.Select(x => new ProductVariant { Id = x.Row.VariantId, ProductId = x.Row.ProductId, Sku = "", SkuNormalized = "", OptionSignature = x.Row.OptionSignature }),
@@ -99,12 +99,12 @@ internal static class ReportStock
         var dead = inStock.Where(x => x.Dead).ToList();
         return new(units, inStock.Sum(x => Math.Max(0m, x.Row.Available)), products.Count, inStock.Select(x => x.Row.ProductId).Distinct().Count(),
             active.Count, active.Count(x => x.Units > 0), active.Count(x => x.Units <= 0), low,
-            Round(costed.Sum(x => x.Capital!.Value)), capitalExVat, inStock.Count(x => x.Cost is null), inStock.Where(x => x.Cost is null).Sum(x => x.Units),
-            priced.Count == 0 ? null : Round(priced.Sum(x => x.Value!.Value)), priced.Sum(x => x.Units), inStock.Where(x => x.Price is null).Sum(x => x.Units),
-            profit is { } p ? Round(p) : null, profit is { } m && bothValue > 0 ? Math.Round(m / bothValue, 4) : null,
-            profit is { } c && bothCapital > 0 ? Math.Round(c / bothCapital, 4) : null,
-            sold, daily, daily is > 0 ? Math.Round(units / daily.Value, 1) : null,
-            dead.Count, dead.Sum(x => x.Units), Round(dead.Sum(x => x.Capital ?? 0m)));
+            MoneyRounding.Round(costed.Sum(x => x.Capital!.Value)), capitalExVat, inStock.Count(x => x.Cost is null), inStock.Where(x => x.Cost is null).Sum(x => x.Units),
+            priced.Count == 0 ? null : MoneyRounding.Round(priced.Sum(x => x.Value!.Value)), priced.Sum(x => x.Units), inStock.Where(x => x.Price is null).Sum(x => x.Units),
+            profit is { } p ? MoneyRounding.Round(p) : null, profit is { } m && bothValue > 0 ? PercentRounding.Rate(m / bothValue) : null,
+            profit is { } c && bothCapital > 0 ? PercentRounding.Rate(c / bothCapital) : null,
+            sold, daily, daily is > 0 ? MeasureRounding.Round(units / daily.Value, 1) : null,
+            dead.Count, dead.Sum(x => x.Units), MoneyRounding.Round(dead.Sum(x => x.Capital ?? 0m)));
     }
 
     private static List<ReportStockPlatformView> Platforms(IReadOnlyDictionary<Guid, ReportChannelView> stores, Dictionary<Guid, List<ReportStockOfferRow>> offersByStore,
@@ -120,7 +120,7 @@ internal static class ReportStock
                 var listedUnits = listed.Sum(x => x.OnHand);
                 return new ReportStockPlatformView(store.Id, store.PlatformCode, store.DisplayName, store.IsTest, pair.Value.Count, active.Count, listedUnits,
                     stockedUnits - listedUnits,
-                    priced.Count == 0 ? null : Round(value), pricedUnits, pricedUnits > 0 ? Round(value / pricedUnits) : null);
+                    priced.Count == 0 ? null : MoneyRounding.Round(value), pricedUnits, pricedUnits > 0 ? MoneyRounding.Round(value / pricedUnits) : null);
             })
             .OrderByDescending(x => x.ListedUnits).ThenBy(x => x.PlatformCode, StringComparer.Ordinal).ThenBy(x => x.StoreName, StringComparer.Ordinal)
             .ToList();
@@ -136,8 +136,8 @@ internal static class ReportStock
         var priced = rows.Where(x => x.Price is not null).ToList();
         var units = rows.Sum(x => x.Units);
         var sold = rows.Sum(x => x.Sold);
-        return new(key, label, known, rows.Select(x => x.Row.ProductId).Distinct().Count(), rows.Count, units, Round(rows.Sum(x => x.Capital ?? 0m)),
-            priced.Count == 0 ? null : Round(priced.Sum(x => x.Value!.Value)), priced.Sum(x => x.Units), sold, cover(units, sold));
+        return new(key, label, known, rows.Select(x => x.Row.ProductId).Distinct().Count(), rows.Count, units, MoneyRounding.Round(rows.Sum(x => x.Capital ?? 0m)),
+            priced.Count == 0 ? null : MoneyRounding.Round(priced.Sum(x => x.Value!.Value)), priced.Sum(x => x.Units), sold, cover(units, sold));
     }
 
     // The price bands in order, each shown only when it holds stock; the variants with no price last.
@@ -185,7 +185,7 @@ internal static class ReportStock
                 var priced = group.Where(x => x.Value is not null).ToList();
                 return new ReportStockItemView(first.ProductId.ToString("N"), first.ProductId, null, first.Title, null, first.ModelCode,
                     string.IsNullOrWhiteSpace(first.Category) ? Unknown : first.Category, null, units,
-                    costed.Count == 0 ? null : Round(costed.Sum(x => x.Capital!.Value)), priced.Count == 0 ? null : Round(priced.Sum(x => x.Value!.Value)),
+                    costed.Count == 0 ? null : MoneyRounding.Round(costed.Sum(x => x.Capital!.Value)), priced.Count == 0 ? null : MoneyRounding.Round(priced.Sum(x => x.Value!.Value)),
                     sold, group.Sum(x => x.Recent), cover(units, sold));
             })
             .OrderByDescending(x => x.Capital ?? -1m).ThenByDescending(x => x.Units).ThenBy(x => x.Title, StringComparer.Ordinal)
@@ -197,9 +197,8 @@ internal static class ReportStock
         var row = item.Row;
         var options = string.Join(" / ", new[] { row.Color, row.Size }.Where(x => !string.IsNullOrWhiteSpace(x)));
         return new(row.VariantId.ToString("N"), row.ProductId, row.VariantId, row.Title, options.Length == 0 ? null : options, row.ModelCode,
-            string.IsNullOrWhiteSpace(row.Category) ? Unknown : row.Category, null, item.Units, item.Capital is { } capital ? Round(capital) : null,
-            item.Value is { } value ? Round(value) : null, item.Sold, item.Recent, item.Cover);
+            string.IsNullOrWhiteSpace(row.Category) ? Unknown : row.Category, null, item.Units, item.Capital is { } capital ? MoneyRounding.Round(capital) : null,
+            item.Value is { } value ? MoneyRounding.Round(value) : null, item.Sold, item.Recent, item.Cover);
     }
 
-    private static decimal Round(decimal value) => Math.Round(value, 2);
 }

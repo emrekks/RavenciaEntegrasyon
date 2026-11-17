@@ -1,0 +1,39 @@
+import { describe, expect, it } from 'vitest'
+
+// node:fs without @types/node, the way orders-sade-css.test.ts reads files.
+const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string): unknown } }).process.getBuiltinModule('node:fs') as { readFileSync(path: URL, encoding: 'utf8'): string }
+const testFileUrl = import.meta.url
+const css = fs.readFileSync(new URL('./rr-components.css', testFileUrl), 'utf8')
+
+// The CSS outside every @media block: rules that apply at every width.
+function unconditional() {
+  let out = ''
+  let depth = 0
+  let inMedia = false
+  for (let index = 0; index < css.length; index += 1) {
+    if (!inMedia && depth === 0 && css.startsWith('@media', index)) inMedia = true
+    const char = css[index]
+    if (char === '{') depth += 1
+    if (char === '}') { depth -= 1; if (inMedia && depth === 0) { inMedia = false; continue } }
+    if (!inMedia) out += char
+  }
+  return out
+}
+
+describe('card İşlemler menu', () => {
+  it('opens under the trigger on phones: the bottom-sheet rules skip a dropdown anchor', () => {
+    const sheet = css.slice(css.indexOf('every menu and popover opens as a sheet from the bottom'))
+    expect(sheet).toMatch(/\.rr-anchor:not\(\.rr-dropdown\) > :is\(\.rr-menu, \.rr-pop\):not\(\.rr-static\) \{ position: fixed !important/)
+    expect(sheet).not.toMatch(/\.rr-anchor > :is\(\.rr-menu, \.rr-pop\):not\(\.rr-static\) \{ position: fixed/)
+    expect(sheet).toMatch(/\.rr-anchor\.rr-dropdown > \.rr-anchor-scrim \{ background: transparent/)
+  })
+})
+
+describe('return product facts', () => {
+  it('never keeps a long barcode or stock code on one line, on phones or in the desktop table', () => {
+    // Live 1 Nov 2026: "MZ035DYD-B24MZ035DYD-B26" ran 8 px past a 375 px card, and in the desktop table over the
+    // price column beside it, because a rule kept the facts on one line.
+    expect(css).not.toMatch(/\.rr-pline > div > small:not\(\.rr-card-only\) \{[^}]*white-space: nowrap/)
+    expect(unconditional()).toMatch(/:is\(main \.rr\.rr, \.rr-layer\.rr-layer\) \.rr-pline > div > small:not\(\.rr-card-only\) \{[^}]*white-space: normal; overflow-wrap: anywhere;/)
+  })
+})

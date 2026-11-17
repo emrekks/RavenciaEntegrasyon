@@ -1,3 +1,4 @@
+import { testConnection } from '../../../test/connection'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -18,7 +19,7 @@ afterEach(() => {
 })
 
 const target = (id: string, platformCode: string, writable = true): PlatformUpdateTarget => ({
-  connection: { id, platformCode, displayName: `${platformCode} Mağaza`, externalStoreId: `${id}-store`, status: 'ACTIVE' },
+  connection: testConnection({ id, platformCode, displayName: `${platformCode} Mağaza`, externalStoreId: `${id}-store`, status: 'ACTIVE' }),
   capabilities: { writable, content: writable }
 })
 
@@ -224,7 +225,7 @@ describe('PlatformUpdateDialog', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    const closed: PlatformUpdateTarget = { connection: { id: 'n11', platformCode: 'N11', displayName: 'N11 Mağaza', externalStoreId: 'n11-store', status: 'ACTIVE', externalWritesEnabled: false }, capabilities: { writable: true, content: true } }
+    const closed: PlatformUpdateTarget = { connection: testConnection({ id: 'n11', platformCode: 'N11', displayName: 'N11 Mağaza', externalStoreId: 'n11-store', status: 'ACTIVE', externalWritesEnabled: false }), capabilities: { writable: true, content: true } }
     const open: PlatformUpdateTarget = { connection: { ...target('ty', 'TRENDYOL').connection, externalWritesEnabled: true }, capabilities: { writable: true, content: true } }
     const onSave = vi.fn()
     const draw = (selectedIds: string[]) => act(() => root?.render(<PlatformUpdateDialog targets={[open, closed]} selectedIds={selectedIds} onSelectedIdsChange={vi.fn()} fields={['PRICE', 'STOCK']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={onSave} onSend={vi.fn()} />))
@@ -248,7 +249,7 @@ describe('PlatformUpdateDialog', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    const ptt = (manualWritesEnabled?: boolean): PlatformUpdateTarget => ({ connection: { id: 'ptt', platformCode: 'PTTAVM', displayName: 'PttAVM Mağaza', externalStoreId: 'ptt-store', status: 'ACTIVE', externalWritesEnabled: true }, capabilities: { writable: true, content: true }, manualWritesEnabled })
+    const ptt = (manualWritesEnabled?: boolean): PlatformUpdateTarget => ({ connection: testConnection({ id: 'ptt', platformCode: 'PTTAVM', displayName: 'PttAVM Mağaza', externalStoreId: 'ptt-store', status: 'ACTIVE', externalWritesEnabled: true }), capabilities: { writable: true, content: true }, manualWritesEnabled })
     const draw = (store: PlatformUpdateTarget) => act(() => root?.render(<PlatformUpdateDialog targets={[store]} selectedIds={['ptt']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSave={vi.fn()} onSend={vi.fn()} />))
     draw(ptt(false))
     expect(card('PttAVM Mağaza')?.textContent).toContain('Manuel Dış Yazmalar kapalı · Entegrasyonlar › mağaza › Pazaryerine Yazma’dan açılır')

@@ -1,0 +1,85 @@
+{
+  "Orders": [
+    {
+      "ExternalOrderId": "4000000001",
+      "DerivedStatus": "NEW",
+      "Currency": "TRY",
+      "GrossAmount": 300.0000,
+      "DiscountAmount": 30.0000,
+      "NetAmount": 270.0000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "SKU-FAKE-HB1",
+          "Matched": true,
+          "OrderedQuantity": 3.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": []
+    },
+    {
+      "ExternalOrderId": "4000000002",
+      "DerivedStatus": "MANUAL_REVIEW",
+      "Currency": "TRY",
+      "GrossAmount": 50.0000,
+      "DiscountAmount": 0.0000,
+      "NetAmount": 50.0000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "SKU-FAKE-HB2",
+          "Matched": true,
+          "OrderedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": []
+    },
+    {
+      "ExternalOrderId": "4000000003",
+      "DerivedStatus": "MANUAL_REVIEW",
+      "Currency": "TRY",
+      "GrossAmount": 79.9000,
+      "DiscountAmount": 0.0000,
+      "NetAmount": 79.9000,
+      "StoreFrontCode": null,
+      "Lines": [
+        {
+          "Sku": "SKU-FAKE-HB3",
+          "Matched": true,
+          "OrderedQuantity": 2.0000,
+          "CancelledQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "ReturnedQuantity": 0.0000
+        }
+      ],
+      "Packages": []
+    }
+  ],
+  "LineCount": 3,
+  "PackageCount": 0,
+  "Ledger": [
+    {
+      "MovementType": "ORDER_RECEIVED",
+      "Entries": 3,
+      "Quantity": -6.0000
+    },
+    {
+      "MovementType": "ORDER_STOCK_BASELINE",
+      "Entries": 3,
+      "Quantity": 0.0000
+    }
+  ],
+  "OnHand": 24.0000,
+  "Reserved": 0.0000,
+  "Available": 24.0000,
+  "Issues": []
+}

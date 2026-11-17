@@ -3,15 +3,32 @@
 // once, only while the server has none; the local copy goes only after the server took it. A failed move (offline, a
 // role that may not save, a save from another device meanwhile) keeps the local copy, which this browser goes on using
 // until the next page open tries again.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, settingsIfMatch } from '../../../shared/api'
 import { clearLegacyPlatformUpdateChoice, readLegacyPlatformUpdateChoice, type PlatformUpdateChoiceRecord } from './platform-update-fields'
+import { queryKeys } from '../../../shared/api/query-keys'
 
-export type PlatformUpdateChoiceEnvelope = { settings: PlatformUpdateChoiceRecord | null; version: number }
-export const platformUpdateChoiceQueryKey = ['settings', 'platform-update'] as const
+type ChoiceAnswer = ApiAnswer<'getSettingsPlatformUpdate'>
+// CONTRACT: the API keeps the choice as a JSON object of any members; readChoiceEnvelope checks it is a choice record.
+export type PlatformUpdateChoiceEnvelope = Omit<ChoiceAnswer, 'settings'> & { settings: PlatformUpdateChoiceRecord | null }
+
+const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string')
+// A stored object that is not a choice record (another shape, a hand edit) reads as no choice: the dialog's defaults
+// and this browser's earlier copy apply, and the next Kaydet writes a proper record over it.
+export function readChoiceEnvelope(raw: ChoiceAnswer): PlatformUpdateChoiceEnvelope {
+  const value = raw.settings
+  const record = value && isStringList(value.fields) && isStringList(value.openGroups)
+    && (value.knownFields === undefined || isStringList(value.knownFields)) && (value.knownGroups === undefined || isStringList(value.knownGroups))
+    && (value.connectionIds === null || isStringList(value.connectionIds))
+    ? { fields: value.fields, openGroups: value.openGroups, connectionIds: value.connectionIds, ...(value.knownFields === undefined ? {} : { knownFields: value.knownFields }), ...(value.knownGroups === undefined ? {} : { knownGroups: value.knownGroups }) }
+    : null
+  return { version: raw.version, settings: record }
+}
+export const platformUpdateChoiceQueryKey = queryKeys.settings('platform-update')
 const path = '/settings/platform-update'
-const readChoice = () => hubApi<PlatformUpdateChoiceEnvelope>(path)
+const readChoice = async () => readChoiceEnvelope(await hubApi<ChoiceAnswer>(path))
 
 export function usePlatformUpdateChoice() {
   const client = useQueryClient()
@@ -24,7 +41,7 @@ export function usePlatformUpdateChoice() {
     const legacy = readLegacyPlatformUpdateChoice()
     if (!legacy) return
     migration.current = 'running'
-    hubApi<PlatformUpdateChoiceEnvelope>(path, { method: 'PUT', headers: settingsIfMatch(envelope.version), body: JSON.stringify(legacy) })
+    hubApi<ChoiceAnswer>(path, { method: 'PUT', headers: settingsIfMatch(envelope.version), body: JSON.stringify(legacy) }).then(readChoiceEnvelope)
       .then(saved => {
         client.setQueryData(platformUpdateChoiceQueryKey, saved)
         clearLegacyPlatformUpdateChoice()
@@ -42,7 +59,7 @@ export function usePlatformUpdateChoice() {
     const current = client.getQueryData<PlatformUpdateChoiceEnvelope>(platformUpdateChoiceQueryKey)
       ?? await client.fetchQuery({ queryKey: platformUpdateChoiceQueryKey, queryFn: readChoice })
     try {
-      const saved = await hubApi<PlatformUpdateChoiceEnvelope>(path, { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(next) })
+      const saved = readChoiceEnvelope(await hubApi<ChoiceAnswer>(path, { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(next) }))
       client.setQueryData(platformUpdateChoiceQueryKey, saved)
       // What this browser held from before is now superseded by the saved choice.
       clearLegacyPlatformUpdateChoice()

@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -25,7 +26,7 @@ public sealed record ReportProfitCost(bool Usable, decimal Known, decimal Estima
         var estimated = cost.CostedRevenue > 0m && cost.KeptRevenue >= cost.CostedRevenue
             ? cost.CostTotal * (cost.KeptRevenue - cost.CostedRevenue) / cost.CostedRevenue
             : cost.CostTotal * missing / cost.CostedQuantity;
-        return new(true, cost.CostTotal, Math.Round(estimated, 2), missing);
+        return new(true, cost.CostTotal, MoneyRounding.Round(estimated), missing);
     }
 }
 

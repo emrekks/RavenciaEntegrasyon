@@ -1,3 +1,4 @@
+import type { ApiAnswer } from './api/api-answer'
 import { backgroundPollInit, hubApi, isPermanentRequestError } from './api'
 import { istanbulDayBoundary } from './format-date'
 import { readStoredItem, writeStoredItem } from './local-storage'
@@ -19,27 +20,11 @@ export const notificationCategoryLabels: Record<NotificationCategory, string> = 
 }
 export const notificationSeverityLabels: Record<NotificationSeverity, string> = { ERROR: 'Hata', WARNING: 'Uyarı', SUCCESS: 'Başarılı', INFO: 'Bilgi' }
 
-export type CenterNotification = {
-  id: string
-  clientKey: string
-  severity: NotificationSeverity
-  category: NotificationCategory
-  title: string
-  message: string
-  href?: string | null
-  actionLabel?: string | null
-  platformCode?: string | null
-  storeName?: string | null
-  count: number
-  payload?: string | null
-  shared: boolean
-  createdAt: string
-  updatedAt: string
-  readAt?: string | null
-  dismissedAt?: string | null
-}
-export type CenterNotificationPage = { items: CenterNotification[]; nextCursor?: string | null; hasMore: boolean }
-export type CenterNotificationSummary = { total: number; unread: number; errors: number }
+// CONTRACT: the API declares severity and category as strings; PanelNotificationService saves only the codes of
+// PanelNotificationSeverities.All and PanelNotificationCategories.All (an unknown one becomes INFO / OTHER).
+export type CenterNotification = Omit<ApiAnswer<'getNotifications'>['items'][number], 'severity' | 'category'> & { severity: NotificationSeverity; category: NotificationCategory }
+export type CenterNotificationPage = Omit<ApiAnswer<'getNotifications'>, 'items'> & { items: CenterNotification[] }
+export type CenterNotificationSummary = ApiAnswer<'getNotificationsSummary'>
 
 const subjectCategories: Record<NotificationSubjectKind, NotificationCategory> = {
   product: 'PRODUCT', order: 'ORDER', package: 'PACKAGE', invoice: 'INVOICE', return: 'RETURN', connection: 'CONNECTION',
@@ -192,13 +177,13 @@ export function centerQueryString(filters: CenterFilters, after?: string | null)
   if (filters.state) params.set('state', filters.state)
   const from = filters.from ? istanbulDayBoundary(filters.from) : ''
   const to = filters.to ? istanbulDayBoundary(filters.to, true) : ''
-  if (from) params.set('from', from)
-  if (to) params.set('to', to)
+  if (from) params.set('dateFrom', from)
+  if (to) params.set('dateTo', to)
   if (filters.search.trim()) params.set('search', filters.search.trim().slice(0, 100))
   return `?${params.toString()}`
 }
 
-export const markCenterNotificationsRead = (selection: { ids?: string[]; all?: boolean }) => hubApi<{ updated: number }>('/notifications/read', { method: 'POST', body: JSON.stringify(selection) })
+export const markCenterNotificationsRead = (selection: { ids?: string[]; all?: boolean }) => hubApi<ApiAnswer<'postNotificationsRead'>>('/notifications/read', { method: 'POST', body: JSON.stringify(selection) })
 
 /** İşlem Takibi › Bildirimler, where the bell's "Tüm Bildirimler" leads (jobs-url-state: ?sekme=bildirimler). */
 export const notificationCenterHref = '/jobs?sekme=bildirimler'

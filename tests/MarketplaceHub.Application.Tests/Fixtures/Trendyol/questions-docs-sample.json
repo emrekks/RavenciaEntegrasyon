@@ -1,0 +1,60 @@
+// Source: Ravencia-API-Docs/trendyol-api-son.md "Müşteri Sorularını Filtreleme" sample answer (~7398-7435) filled
+// with fake values on the documented fields and statuses (WAITING_FOR_ANSWER, ANSWERED, REJECTED). The fourth question
+// carries no status at all and the fifth an undocumented one; the sixth has no id (left out).
+{
+  "content": [
+    {
+      "id": 70000001,
+      "text": "Bu ürünün kalıbı dar mı?",
+      "creationDate": 1762300800000,
+      "customerId": 888888888,
+      "userName": "T** M**",
+      "showUserName": false,
+      "status": "WAITING_FOR_ANSWER",
+      "productName": "Fake Ürün Q1",
+      "imageUrl": "https://cdn.example.test/q1.jpg",
+      "webUrl": "https://www.trendyol.com/fake/urun-p-1",
+      "public": true
+    },
+    {
+      "id": 70000002,
+      "text": "Kargo ne zaman çıkar?",
+      "creationDate": 1762300800000,
+      "customerId": 0,
+      "status": "ANSWERED",
+      "productName": "Fake Ürün Q2",
+      "webUrl": "https://phishing.example.test/urun",
+      "answer": { "creationDate": 1762304400000, "hasPrivateInfo": false, "id": 81, "text": "Aynı gün kargoya verilir." }
+    },
+    {
+      "id": 70000003,
+      "text": "İndirim var mı?",
+      "creationDate": 1762300800000,
+      "customerId": 888888889,
+      "status": "REJECTED",
+      "reason": "Cevap kurallara uygun değil",
+      "rejectedDate": 1762308000000,
+      "rejectedAnswer": { "creationDate": 1762304400000, "id": 82, "reason": "Kişisel bilgi içeriyor", "text": "Bizi telefonla arayın." }
+    },
+    {
+      "id": 70000004,
+      "text": "Durumu gelmeyen soru",
+      "creationDate": 1762300800000
+    },
+    {
+      "id": 70000005,
+      "text": "Bilinmeyen durumlu soru",
+      "creationDate": 1762300800000,
+      "status": "SOME_FUTURE_STATUS"
+    },
+    {
+      "text": "Kimliksiz soru",
+      "creationDate": 1762300800000,
+      "status": "WAITING_FOR_ANSWER"
+    }
+  ],
+  "page": 0,
+  "size": 50,
+  "totalElements": 6,
+  "totalPages": 1
+}

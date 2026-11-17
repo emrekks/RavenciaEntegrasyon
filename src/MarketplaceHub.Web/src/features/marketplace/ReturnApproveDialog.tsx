@@ -1,15 +1,17 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { PanelSelect } from '../../shared/PanelSelect'
-import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-ui'
+import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from '../../shared/ui/rr-components'
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
-import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock-allocation'
+import { allocateStock, stockedUnits } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
 import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { finalizedWithFor, finalizedWithLabels, type FinalizedWith } from './return-finalized-with'
 import { ReturnFinalizedWithChoice } from './ReturnFinalizedWithChoice'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type ReturnApproveRow = {
   id: string
@@ -72,6 +74,14 @@ const unitCount = (rows: ReturnApproveRow[]) => rows.reduce((sum, row) => sum + 
 
 // The approval dialog: order summary on top, then one framed row per product with a unit dropdown
 // and its own "put back in stock" switch, and a single confirmation.
+// The stock sentence of the approval notice. SIPARIS-STOK-5: when the approval went through but its stock could not be
+// written now (the answer's stockPendingNextSync), the next read of the return adds it.
+export function approvalStockSentence(stockRequested: boolean, added: number, pendingNextSync: boolean) {
+  if (!stockRequested) return ''
+  if (added > 0) return ` Stok ${added.toLocaleString('tr-TR')} adet artırıldı.`
+  return pendingNextSync ? ' Stok bir sonraki eşitlemede eklenecek.' : ' Stok artırılamadı; stok kararını iade detayından verin.'
+}
+
 export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, wholeClaim = false, finalizedWithChoice = false, customerRequest = null, onClose, onDone }: Props) {
   const client = useQueryClient()
   const groups = useMemo(() => groupByProduct(rows), [rows])
@@ -110,23 +120,23 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     mutationFn: () => {
       const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: finalizedWithChoice ? finalizedWith || null : null, stockLines: stockRequests })
       // A retry after an HTTP answer (a refusal, say external writes off) gets a fresh key instead of the stored answer.
-      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', claimId, version, body), key => hubApi<ApprovedReturn>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body }))
+      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', claimId, version, body), key => hubApi<ApiAnswer<'postReturnsByIdActions'>>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body }))
     },
     onSuccess: async result => {
       // The units the server actually put back (the return's stock decisions after the approval),
       // not the units that were asked for.
       const added = stockedUnits(result, stockRequests.map(request => request.returnLineId))
       const stockShort = stockRequests.length > 0 && added < stockQuantity
-      const stock = stockRequests.length === 0 ? '' : added > 0 ? ` Stok ${added.toLocaleString('tr-TR')} adet artırıldı.` : ' Stok artırılamadı; stok kararını iade detayından verin.'
+      const stock = approvalStockSentence(stockRequests.length > 0, added, result.stockPendingNextSync === true)
       onDone(`${order.orderNumber} siparişinin iade kabul kararı ${marketplaceName}’a iletildi.${stock}`, stockShort ? 'info' : 'success', [
         { label: 'Sipariş', value: `${order.orderNumber} · ${order.customer}`, tone: 'success' },
         ...chosenRows.map(row => ({ label: 'Ürün', value: `${row.title} (${row.quantity} adet)` })),
         ...(stockRequests.length > 0 ? [{ label: 'Stok', value: `+${added.toLocaleString('tr-TR')} / ${stockQuantity.toLocaleString('tr-TR')} adet stoğa eklendi`, tone: stockShort ? 'error' as const : 'success' as const }] : [])
       ], { href: `/returns?status=APPROVED&search=${encodeURIComponent(order.orderNumber.replace(/^#/, ''))}`, label: 'İadeyi Gör' })
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['return', claimId] }),
-        client.invalidateQueries({ queryKey: ['returns'] }),
-        ...(added > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])
+        client.invalidateQueries({ queryKey: queryKeys.return(claimId) }),
+        client.invalidateQueries({ queryKey: queryKeys.returns() }),
+        ...(added > 0 ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])
       ])
       onClose()
     },

@@ -44,15 +44,15 @@ describe('amount filter', () => {
 })
 
 const group = (overrides: Partial<PayoutGroup>): PayoutGroup => ({ key: 'due:abc:2026-11-05:TR_GULF', kind: 'DUE_DAY', connectionId: 'abc', platformCode: 'TRENDYOL', storeName: 'Ravencia',
-  region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED', ...overrides })
+  region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null, ...overrides })
 
 describe('payout lines query', () => {
   it('asks a due group by its store, day and region', () => {
-    expect(payoutLinesQuery({ platforms: ['TRENDYOL'], group: group({}) })).toBe('platformCodes=TRENDYOL&connectionId=abc&day=2026-11-05&region=TR_GULF&kind=DUE_DAY')
+    expect(payoutLinesQuery({ platforms: ['TRENDYOL'], group: group({}) })).toBe('platforms=TRENDYOL&connectionId=abc&day=2026-11-05&region=TR_GULF&kind=DUE_DAY&limit=100')
   })
   it('asks a payout by its id, a search alone by its number', () => {
-    expect(payoutLinesQuery({ platforms: null, group: group({ kind: 'PAYOUT', key: 'payout:abc:78542975', status: 'PAID' }) })).toBe('connectionId=abc&payoutId=78542975')
-    expect(payoutLinesQuery({ platforms: null, group: group({}), search: ' 10234 ', page: 2 })).toBe('q=10234&page=2')
+    expect(payoutLinesQuery({ platforms: null, group: group({ kind: 'PAYOUT', key: 'payout:abc:78542975', status: 'PAID' }) })).toBe('connectionId=abc&payoutId=78542975&limit=100')
+    expect(payoutLinesQuery({ platforms: null, group: group({}), search: ' 10234 ', page: 2 })).toBe('q=10234&limit=100&after=bzIwMA')
   })
 })
 
@@ -67,7 +67,7 @@ describe('payout gap', () => {
 
 describe('next payout of a picked region', () => {
   const group = (day: string, kind: PayoutGroup['kind'], amount: number): PayoutGroup => ({ key: `${day}:${kind}`, kind, connectionId: 'c', platformCode: 'TRENDYOL', storeName: 'Trendyol',
-    region: 'TR_GULF', regionName: null, day, amount, linesAmount: null, records: 1, status: 'EXPECTED' })
+    region: 'TR_GULF', regionName: null, day, amount, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null })
   const data = (upcoming: PayoutGroup[]) => ({ next: group('2026-11-09', 'PAYOUT_DAY', 500), regions: [{ region: 'TR_GULF' as const, expected: 0, records: 0,
     nextDay: '2026-11-16', nextAmount: 900, unknown: 0, pendingDelivery: 0, pendingDeliveryOrders: 0 }], upcoming })
   it('takes the server region figure, skipping a day that nets to nothing or less, as the region card does', () => {

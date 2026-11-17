@@ -1,32 +1,32 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
-import type { Product } from '../catalog/shared'
+import { readProductListPage, type ProductListItem } from '../catalog/product-list-item'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
 import { UiIcon } from '../../shared/components/UiIcon'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { pendingOrdersQuery } from '../../shared/order-navigation-count'
-import { RrIcon, RrLogo } from '../marketplace/returns-ui'
+import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { periodTrend as trend, channelTotals, dataStartsOn, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { periodTrend as trend, channelTotals, dataStartsOn, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, prefetchInTurn, presetLabels, presetOrder, primaryCurrency, revenueReport, type DayPoint, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { ChangePill, previousHasData, trendChange } from '../../shared/components/ChangePill'
 import { useMetricSource } from '../marketplace/use-metric-source'
-import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
+import { IntegrationStatusPanel, knownCount, useIntegrationHealth } from './IntegrationStatusPanel'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
-type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
 // GET /dashboard/cancellations: one store's cancellations of the day (DashboardCancellationRowView).
 type CancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
 type BreakdownRow = { key: string; code: string; name: string; value: string }
-type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 
 const PERIODS: Array<[Range, string]> = [...presetOrder.map(key => [key, presetLabels[key]] as [Range, string]), ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
@@ -165,24 +165,24 @@ export function DashboardPage() {
     window.addEventListener('scroll', close, { passive: true })
     return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', close) }
   }, [breakdownOpen])
-  const lowStock = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000 })
+  const lowStock = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<ProductListItem>('/products?stock=LOW', { limit: 200, signal }).then(readProductListPage), enabled: lowStockOpen, staleTime: 15_000 })
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   // Bekleyen Siparişler reads the menu badge's own query (the Siparişler page's Bekleyen tab), not the worker's snapshot:
   // the badge and the card are one answer and refresh together on every order change.
   const pendingSummary = useQuery(pendingOrdersQuery)
-  const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap', poll), ...refresh })
-  const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', poll), ...refresh })
-  const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary', poll), ...refresh })
+  const bootstrap = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { ...poll, signal }), ...refresh })
+  const invoiceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getInvoiceWorkspaceSummary'>>('/invoice-workspace/summary', { ...poll, signal }), ...refresh })
+  const productSummary = useQuery({ queryKey: queryKeys.products('summary'), queryFn: ({ signal }) => hubApi<ApiAnswer<'getProductsSummary'>>('/products/summary', { ...poll, signal }), ...refresh })
   const integration = useIntegrationHealth()
   // No active connection (or not the chosen store) feeds the cards: their big numbers read a dash (shared rule, shared/metric-value.ts).
   const noSource = useMetricSource({ connectionId: channel }) === false
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
   // Today's cancellations, each counted on the day the marketplace says it happened.
-  const cancellations = useQuery({ queryKey: ['dashboard', 'cancellations', today], queryFn: () => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, poll), ...refresh })
-  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
+  const cancellations = useQuery({ queryKey: queryKeys.dashboard('cancellations', today), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardCancellations'>>(`/dashboard/cancellations?day=${today}`, { ...poll, signal }), ...refresh })
+  const performance = useQuery({ placeholderData: keepPreviousData, queryKey: queryKeys.dashboard('performance', days?.from, days?.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?dateFrom=${days!.from}&dateTo=${days!.to}`, { ...poll, signal }), enabled: days !== null, ...refresh })
   // Once a period has loaded, the other ready-made periods are read in the background, one at a time when the browser
   // is idle, so switching to them is instant without a burst of parallel reads.
   const queryClient = useQueryClient()
@@ -192,7 +192,7 @@ export function DashboardPage() {
     let cancelled = false
     const reads = presetOrder.flatMap(other => {
       const span = periodDays(other, custom, today)
-      return span ? [() => queryClient.prefetchQuery({ queryKey: ['dashboard', 'performance', span.from, span.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, poll), staleTime: 60_000 })] : []
+      return span ? [() => queryClient.prefetchQuery({ queryKey: queryKeys.dashboard('performance', span.from, span.to), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardPerformance'>>(`/dashboard/performance?dateFrom=${span.from}&dateTo=${span.to}`, { ...poll, signal }), staleTime: 60_000 })] : []
     })
     void prefetchInTurn(reads, () => cancelled)
     return () => { cancelled = true }

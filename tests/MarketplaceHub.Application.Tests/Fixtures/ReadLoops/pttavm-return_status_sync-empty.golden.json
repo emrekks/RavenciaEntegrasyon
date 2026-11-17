@@ -1,0 +1,49 @@
+{
+  "JobType": "RETURN_STATUS_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURN_LIFECYCLE",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:10:04.000Z",
+      "OpaqueCursor": null,
+      "Version": 5
+    },
+    {
+      "ResourceType": "RETURN_LIFECYCLE_CARGO_COMPLETE",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    },
+    {
+      "ResourceType": "RETURN_LIFECYCLE_CARGO_MISSING",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    }
+  ],
+  "Issues": []
+}

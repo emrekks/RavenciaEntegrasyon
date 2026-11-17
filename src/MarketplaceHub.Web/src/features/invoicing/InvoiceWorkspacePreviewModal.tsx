@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { hubApi, hubPoll } from '../../shared/api'
 import { Busy, CargoProviderIcon, ErrorBox, UiIcon, DialogSurface } from '../../shared/components'
@@ -10,6 +11,7 @@ import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/
 import { notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
 import { bulkInvoiceNotice, followPendingInvoices, invoiceReadState, jobReadState, type BulkInvoiceFollow, type BulkInvoiceRead } from './invoice-bulk-outcome'
 import { invoiceFailureReason } from './invoice-failure-reasons'
+import { invoicePreviewSummary } from './invoice-preview-summary'
 import { invoiceEnvironmentLabel, invoiceTypeLabel, taxpayerStatusLabel } from './invoice-copy'
 import { personName } from '../../shared/person-name'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -35,11 +37,11 @@ type ConfirmResult = { items: Array<{ packageId: string; invoiceId: string | nul
 // One status read of an invoice (or of the queued job that makes it): read-only, never a submission.
 async function readInvoiceFollow(item: BulkInvoiceFollow): Promise<BulkInvoiceRead> {
   if (item.invoiceId) {
-    const invoice = await hubPoll<{ status: string; lastErrorCode: string | null }>(`/invoices/${item.invoiceId}`)
+    const invoice = await hubPoll<ApiAnswer<'getInvoicesById'>>(`/invoices/${item.invoiceId}`)
     return invoiceReadState(invoice.status, invoice.lastErrorCode ? invoiceFailureReason(invoice.lastErrorCode) ?? invoice.lastErrorCode : null)
   }
   if (item.jobId) {
-    const detail = await hubPoll<{ job: { status: string; lastErrorSummary: string | null } }>(`/jobs/${item.jobId}`)
+    const detail = await hubPoll<ApiAnswer<'getJobsById'>>(`/jobs/${item.jobId}`)
     return jobReadState(detail.job.status, detail.job.lastErrorSummary)
   }
   return { state: 'pending' }
@@ -96,7 +98,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
   useEffect(() => {
     let active = true
     setLoading(true); setError(null); setPreviews([])
-    void hubApi<PreviewItem[]>('/invoice-workspace/preview', { method: 'POST', body: JSON.stringify({ items: JSON.parse(targetPayload) as InvoicePreviewTarget[], includeInternetSalesInfo }) })
+    void hubApi<ApiAnswer<'postInvoiceWorkspacePreview'>>('/invoice-workspace/preview', { method: 'POST', body: JSON.stringify({ items: JSON.parse(targetPayload) as InvoicePreviewTarget[], includeInternetSalesInfo }) })
       .then(items => { if (active) setPreviews(items) })
       .catch(reason => { if (active) setError(reason) })
       .finally(() => { if (active) setLoading(false) })
@@ -120,7 +122,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
     }
     onClose()
     onNotice(eligible.length === 1 ? `${labels.get(eligible[0].packageId)} nolu siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…` : `${eligible.length} siparişin faturası oluşturuluyor ve pazaryerine iletiliyor…`, 'pending')
-    void hubApi<ConfirmResult>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
+    void hubApi<ApiAnswer<'postInvoiceWorkspaceConfirm'>>('/invoice-workspace/confirm', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('invoice-workspace-confirm') }, body })
       .then(response => {
         let succeeded = 0
 
@@ -192,6 +194,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
       <div className="invoice-detail-body">
         {loading ? <Busy text="Sipariş ve fatura verileri okunuyor…" /> : error && !previews.length ? <ErrorBox error={error} /> : <>
           {error && <ErrorBox error={error} />}
+          {previews.length > 0 && <p className="invoice-detail-muted" role="status">{invoicePreviewSummary(previews)}</p>}
           {previews.map(item => {
             const address = addressLines(item.invoiceAddressJson)
             return <article className="invoice-workspace-preview-card" key={item.orderId}>

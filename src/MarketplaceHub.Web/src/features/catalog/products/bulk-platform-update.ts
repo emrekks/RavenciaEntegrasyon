@@ -1,7 +1,7 @@
 import { editorOpenedDesi } from '../product-editor-state'
 import { platformUpdatePlan, type PlatformUpdateField } from '../product-editor/platform-update-fields'
-import { missingRequiredEditorFields, requiredEditorFieldLabels, type RequiredEditorField } from '../product-editor/required-fields'
-import type { MarketplaceConnection, Product } from '../shared'
+import { editorWarrantyText, missingRequiredEditorFields, requiredEditorFieldLabels, type RequiredEditorField } from '../product-editor/required-fields'
+import type { MarketplaceConnection, Product, ProductPlatformStatus } from '../shared'
 import { isTrendyolHeld } from '../trendyol-unapproved'
 import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish-status'
 
@@ -15,31 +15,32 @@ type Connection = Pick<MarketplaceConnection, 'id' | 'platformCode' | 'displayNa
 // On the store already: live, partly live or matched there, or on Trendyol's unapproved list (still reviewed or refused
 // there; trendyol-unapproved.ts). In progress, refused elsewhere or not there is not (an update needs the
 // marketplace's listing).
-export function isOnMarketplace(record: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
+export function isOnMarketplace(record: { platformStatuses?: readonly ProductPlatformStatus[] | null }, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
   return isListedOn(record, connection) || isHeldOn(record, connection)
 }
 
-function isListedOn(record: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
+function isListedOn(record: { platformStatuses?: readonly ProductPlatformStatus[] | null }, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
   const bucket = bulkPublishStatusBucket(productConnectionStatus(record, connection))
   return bucket === 'live' || bucket === 'partial' || bucket === 'linked'
 }
 
 // A product Trendyol still reviews or refused takes the product information (its unapproved update), not the price and
 // stock: Trendyol has no offer for it yet.
-function isHeldOn(record: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
+function isHeldOn(record: { platformStatuses?: readonly ProductPlatformStatus[] | null }, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>) {
   return isTrendyolHeld(connection.platformCode, productConnectionStatus(record, connection)?.status)
 }
 
 // The menu item: off with its reason while none of the selected products is on any store that takes an update.
-export function bulkPlatformUpdateMenuState(records: ReadonlyArray<Pick<Product, 'platformStatuses'>>, connections: readonly Connection[]): { disabled: boolean; detail: string } {
+export function bulkPlatformUpdateMenuState(records: ReadonlyArray<{ platformStatuses?: readonly ProductPlatformStatus[] | null }>, connections: readonly Connection[]): { disabled: boolean; detail: string } {
   if (!records.length) return { disabled: true, detail: 'Önce en az bir ürün seçin' }
   if (!connections.length) return { disabled: true, detail: 'Güncellenebilir pazar yeri bağlantısı yok' }
   const anyLive = records.some(record => connections.some(connection => isOnMarketplace(record, connection)))
   return anyLive ? { disabled: false, detail: 'Seçili ürünlerin güncellemesini gönder' } : { disabled: true, detail: 'Seçili ürünlerin hiçbiri pazar yerinde yayında değil' }
 }
 
-// The editor's required fields, read from a saved product as the editor fills its form from it (an empty warranty or
-// delivery time opens as 0 and 1 there, so they are filled); the codes of a card with variants are on its rows.
+// The editor's required fields, read from a saved product as the editor fills its form from it (an empty delivery time
+// opens as 1 there; an empty warranty stays empty, as 0 and empty differ since 15 Nov 2026); the codes of a card with
+// variants are on its rows.
 export function productRequiredGaps(product: Pick<Product, 'title' | 'brandId' | 'categoryId' | 'modelCode' | 'variants' | 'defaultListPrice' | 'defaultSalePrice' | 'warrantyMonths' | 'deliveryDays'>): RequiredEditorField[] {
   const primary = product.variants[0]
   const desi = editorOpenedDesi(product.variants)
@@ -53,7 +54,7 @@ export function productRequiredGaps(product: Pick<Product, 'title' | 'brandId' |
     baseSku: primary?.sku ?? '',
     barcode: primary?.barcode ?? '',
     desi: desi == null ? '' : String(desi),
-    warrantyMonths: String(product.warrantyMonths ?? 0),
+    warrantyMonths: editorWarrantyText(product.warrantyMonths),
     deliveryDays: String(product.deliveryDays ?? 1),
     listPrice: String(listPrice),
     salePrice: String(salePrice)
@@ -64,7 +65,7 @@ export function requiredGapText(gaps: readonly RequiredEditorField[]) {
   return gaps.map(field => requiredEditorFieldLabels[field]).join(', ')
 }
 
-export type BulkUpdateRecord = Pick<Product, 'id' | 'title' | 'status' | 'platformStatuses'> & { gaps: RequiredEditorField[] }
+export type BulkUpdateRecord = Pick<Product, 'id' | 'title' | 'status'> & { platformStatuses?: readonly ProductPlatformStatus[] | null; gaps: RequiredEditorField[] }
 
 export type BulkUpdateRequest =
   | { kind: 'product'; productId: string; connectionId: string; fields: PlatformUpdateField[]; sendGroupId?: string }
@@ -98,6 +99,6 @@ export function bulkPlatformUpdateRequests(records: readonly BulkUpdateRecord[],
 }
 
 // How many of the records are on each store, for the store's card ("4/6 ürün bu mağazada").
-export function onMarketplaceCount(records: ReadonlyArray<Pick<Product, 'platformStatuses'>>, connection: Connection) {
+export function onMarketplaceCount(records: ReadonlyArray<{ platformStatuses?: readonly ProductPlatformStatus[] | null }>, connection: Connection) {
   return records.filter(record => isOnMarketplace(record, connection)).length
 }

@@ -9,8 +9,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvider) : IDashboardReadService
 {
     private static readonly JsonSerializerOptions BreakdownJson = new() { PropertyNameCaseInsensitive = true };
-    private static readonly ReturnClaimStatus[] AcceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-    private static readonly string[] AcceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
 
     public async Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken)
     {
@@ -306,101 +304,33 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var previousEnd = period.PreviousEnd;
         var currentStart = period.CurrentStart;
         var currentEnd = period.CurrentEnd;
-        var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
-        var lines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
-        var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
-        // Every per-order figure is read once, in one grouped subquery per source joined to the order: EF repeats a `let`
-        // that reads a subquery wherever it is used, which made the revenue statement 815 KB with 1,434 package
-        // subqueries (180-270 ms of planning alone).
-        var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId).Select(id => new { Id = (Guid?)id });
-        // The current packages: whether any carries an amount; what the ones not cancelled were paid and listed at; what
-        // the ones sent back were paid.
-        var packageTotals = currentPackages
-            .GroupBy(package => package.OrderId)
-            .Select(group => new
-            {
-                OrderId = group.Key,
-                Priced = group.Count(package => package.NetAmount > 0 || package.GrossAmount > 0),
-                Paid = group.Where(package => package.Status != ShipmentPackageStatus.Cancelled).Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount),
-                Listed = group.Where(package => package.Status != ShipmentPackageStatus.Cancelled).Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount),
-                Back = group.Where(package => package.Status == ShipmentPackageStatus.Returned).Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
-            });
-        // The marketplace's own discount on the lines of the packages sent back.
-        var returnedDiscounts = from package in currentPackages
-                                where package.Status == ShipmentPackageStatus.Returned
-                                join allocation in allocations on package.Id equals allocation.PackageId
-                                join line in lines on allocation.OrderLineId equals line.Id
-                                where line.PlatformDiscount != null
-                                group line.PlatformDiscount!.Value * allocation.AllocatedQuantity by package.OrderId into grouped
-                                select new { OrderId = grouped.Key, Discount = grouped.Sum() };
-        // The lines: the marketplace's own discount on what is not cancelled, their value at the same base as the amount
-        // (the price paid plus that discount), and the value of what went back (returned quantities and accepted return
-        // claims), also as it stands while the order's return does not count (nothing returned or accepted).
-        var lineTotals = from line in lines
-                         join acceptedLine in AcceptedReturnQuantities(db, tenantId) on line.Id equals acceptedLine.OrderLineId into acceptedLines
-                         from acceptedLine in acceptedLines.DefaultIfEmpty()
-                         group new
-                         {
-                             line.PlatformDiscount,
-                             UnitPrice = line.UnitPrice + (line.PlatformDiscount ?? 0m),
-                             Active = line.OrderedQuantity - line.CancelledQuantity,
-                             line.ReturnedQuantity,
-                             Accepted = (decimal?)acceptedLine.Quantity ?? 0m
-                         } by line.OrderId into grouped
-                         select new
-                         {
-                             OrderId = grouped.Key,
-                             PlatformDiscount = grouped.Where(line => line.PlatformDiscount != null).Sum(line => line.PlatformDiscount!.Value * line.Active),
-                             Value = grouped.Sum(line => line.UnitPrice * line.Active),
-                             Back = grouped.Sum(line => line.UnitPrice * Math.Min(line.Active, Math.Max(line.ReturnedQuantity, line.Accepted))),
-                             BackUnbooked = grouped.Sum(line => line.UnitPrice * Math.Min(line.Active, 0m))
-                         };
-        return from order in db.Orders.AsNoTracking()
-               join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
-               // Every store the tenant had counts, also one waiting for new credentials or switched off; only stores
-               // whose data was hidden or deleted are left out.
-               where order.TenantId == tenantId
-                   && !excludedConnections.Contains(connection.Status)
-                   // Test-environment stores (Hepsiburada SIT and the like) are not sales: the reports leave them out too.
-                   && connection.Environment.ToUpper() == "PRODUCTION"
-                   && !cancelled.Contains(order.DerivedStatus)
-                   && (order.NetAmount > 0 || order.GrossAmount > 0)
+        var orders = from order in db.Orders.AsNoTracking()
+                     join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
+                     // Every store the tenant had counts, also one waiting for new credentials or switched off; only stores
+                     // whose data was hidden or deleted are left out.
+                     where order.TenantId == tenantId
+                         && !excludedConnections.Contains(connection.Status)
+                         // Test-environment stores (Hepsiburada SIT and the like) are not sales: the reports leave them out too.
+                         && connection.Environment.ToUpper() == "PRODUCTION"
+                         && !cancelled.Contains(order.DerivedStatus)
+                         && (order.NetAmount > 0 || order.GrossAmount > 0)
+                     let realAt = order.OrderedAt
+                     where (realAt >= previousStart && realAt < previousEnd) || (realAt >= currentStart && realAt < currentEnd)
+                     select order;
+        return from revenue in OrderRevenueQuery.Figures(db, tenantId, orders)
+               let order = revenue.Order
                let realAt = order.OrderedAt
-               where (realAt >= previousStart && realAt < previousEnd) || (realAt >= currentStart && realAt < currentEnd)
-               join unbooked in unbookedReturns on (Guid?)order.Id equals unbooked.Id into unbookedOrders
-               from unbooked in unbookedOrders.DefaultIfEmpty()
-               join packageTotal in packageTotals on order.Id equals packageTotal.OrderId into packageGroups
-               from packageTotal in packageGroups.DefaultIfEmpty()
-               join returnedDiscount in returnedDiscounts on order.Id equals returnedDiscount.OrderId into discountGroups
-               from returnedDiscount in discountGroups.DefaultIfEmpty()
-               join lineTotal in lineTotals on order.Id equals lineTotal.OrderId into lineGroups
-               from lineTotal in lineGroups.DefaultIfEmpty()
-               let priced = ((int?)packageTotal.Priced ?? 0) > 0
-               // DashboardRevenuePolicy.Amount: what the customer paid plus the marketplace's own discount on the lines that
-               // are not cancelled; the price before discounts only when no net is known. Never above the list price.
-               let paid = priced ? (decimal?)packageTotal.Paid ?? 0m : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
-               let listAmount = priced ? (decimal?)packageTotal.Listed ?? 0m : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
-               let platformDiscount = (decimal?)lineTotal.PlatformDiscount ?? 0m
-               let lineValue = (decimal?)lineTotal.Value ?? 0m
-               // Hepsiburada's list is the price paid, so its own discount is bounded by the lines' value at that base.
-               let ceiling = listAmount > paid ? (listAmount > lineValue ? listAmount : lineValue) : (paid > lineValue ? paid : lineValue)
-               let amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount
-               let returnBooked = unbooked.Id == null
-               let packagesBack = priced && returnBooked
-                   ? ((decimal?)packageTotal.Back ?? 0m) + ((decimal?)returnedDiscount.Discount ?? 0m)
-                   : 0m
-               let lineBack = returnBooked ? (decimal?)lineTotal.Back ?? 0m : (decimal?)lineTotal.BackUnbooked ?? 0m
-               let linesBack = lineValue > 0 ? amount * lineBack / lineValue : 0m
+               let linesBack = revenue.LineValue > 0 ? revenue.Amount * revenue.LineBack / revenue.LineValue : 0m
                select new PerformanceOrderRow
                {
                    Id = order.Id,
                    TenantId = order.TenantId,
                    ConnectionId = order.ConnectionId,
                    Currency = order.Currency,
-                   Amount = amount,
-                   ReturnedAmount = packagesBack > linesBack ? packagesBack : linesBack,
-                   Returned = returnBooked && returnedStatuses.Contains(order.DerivedStatus),
-                   ReturnBooked = returnBooked,
+                   Amount = revenue.Amount,
+                   ReturnedAmount = revenue.PackagesBack > linesBack ? revenue.PackagesBack : linesBack,
+                   Returned = revenue.ReturnBooked && returnedStatuses.Contains(order.DerivedStatus),
+                   ReturnBooked = revenue.ReturnBooked,
                    // Day is the local calendar day, or the local hour for an hourly report.
                    Day = hourly
                        ? TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Date.AddHours(TimeZoneInfo.ConvertTimeBySystemTimeZoneId(realAt.UtcDateTime, timezone).Hour)
@@ -408,15 +338,11 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                };
     }
 
-    // Each order line's quantity taken back by an accepted return claim: the line's own word for its state decides over
-    // the claim's status, and an exchange counts only once refunded.
+    // Each order line's quantity taken back by an accepted return claim, by the invoice's rule (AcceptedReturnPolicy):
+    // the overview and the reports count a unit as returned exactly when the sale invoice leaves it out.
     internal static IQueryable<AcceptedReturnQuantity> AcceptedReturnQuantities(AppDbContext db, Guid tenantId) =>
-        db.ReturnLines.AsNoTracking()
-            .Where(returned => returned.TenantId == tenantId
-                && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
-                    && (returned.RawStatus == null || returned.RawStatus == ""
-                        ? AcceptedClaims.Contains(claim.Status)
-                        : AcceptedLines.Contains(returned.RawStatus.ToUpper()))))
+        AcceptedReturnPolicy.ClaimLines(db, tenantId)
+            .Where(AcceptedReturnPolicy.LineCountsInDatabase)
             .GroupBy(returned => returned.OrderLineId)
             .Select(group => new AcceptedReturnQuantity { OrderLineId = group.Key, Quantity = group.Sum(returned => returned.Quantity) });
 
@@ -554,10 +480,7 @@ public static class DashboardRevenuePolicy
     // A store's past sales stay in the report while it waits for new credentials or is switched off; only a
     // store whose data the owner hid, or deleted, leaves it.
     public static readonly string[] ExcludedConnectionStatuses = ["DELETED", "HIDDEN"];
-    // A return claim takes its units off the sale once the return is accepted.
-    public static readonly ReturnClaimStatus[] AcceptedReturnStatuses = [ReturnClaimStatus.Approved, ReturnClaimStatus.Completed];
-    // The marketplace's own per-line words for an accepted return (upper case), which decide over the claim's status.
-    public static readonly string[] AcceptedReturnLineRawStatuses = ["ACCEPTED", "APPROVED", "COMPLETED", "REFUNDED"];
+    // A return claim takes its units off the sale by the invoice's rule: AcceptedReturnPolicy.
 
     public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
     // Trendyol micro-export orders (a storefront other than Turkey's) whose statement records no refund. Their return (claim,
@@ -570,6 +493,153 @@ public static class DashboardRevenuePolicy
                 && !db.MarketplaceFinanceTransactions.Any(entry => entry.TenantId == tenantId && entry.ConnectionId == order.ConnectionId
                     && entry.OrderNumber == order.OrderNumber && entry.Category == MarketplaceFinanceCategories.Return))
             .Select(order => order.Id);
+}
+
+// One order's revenue figures, as the overview (DashboardReadService.PerformanceOrders) and the reports
+// (ReportsService.OrderRows) both read them: one formula for both pages. Every per-order figure is read once, in one
+// grouped subquery per source joined to the order: EF repeats a `let` that reads a subquery wherever it is used, which
+// made the overview's revenue statement 815 KB with 1,434 package subqueries (180-270 ms of planning alone).
+internal static class OrderRevenueQuery
+{
+    // Set through object initializers, not constructors, so the queries composed on them can still be translated.
+    internal sealed class OrderFigures
+    {
+        public Order Order { get; init; } = null!;
+        // DashboardRevenuePolicy.Amount: what the customer paid plus the marketplace's own discount on the lines that are
+        // not cancelled; the price before discounts only when no net is known. Never above the list price.
+        public decimal Amount { get; init; }
+        // The current packages not cancelled at their list price (the order's own when none carries an amount).
+        public decimal ListAmount { get; init; }
+        // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
+        public decimal LineValue { get; init; }
+        // What the packages sent back were paid, with the marketplace's own discount on their lines (0 while the order's
+        // return does not count or its packages carry no amount).
+        public decimal PackagesBack { get; init; }
+        // The value of the lines that went back (returned quantities and accepted return claims), at the base of LineValue.
+        public decimal LineBack { get; init; }
+        // False while the order's return does not count (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
+        public bool ReturnBooked { get; init; }
+        // ShipmentPackage.UnreadableLineCount of the current packages not cancelled.
+        public int UnreadableLines { get; init; }
+    }
+
+    internal sealed class PackageTotals
+    {
+        public Guid OrderId { get; init; }
+        public int Priced { get; init; }
+        public decimal Paid { get; init; }
+        public decimal Listed { get; init; }
+        public decimal Back { get; init; }
+        public int Unreadable { get; init; }
+    }
+
+    internal sealed class ReturnedDiscount
+    {
+        public Guid OrderId { get; init; }
+        public decimal Discount { get; init; }
+    }
+
+    internal sealed class LineTotals
+    {
+        public Guid OrderId { get; init; }
+        public decimal PlatformDiscount { get; init; }
+        public decimal Value { get; init; }
+        public decimal Back { get; init; }
+        public decimal BackUnbooked { get; init; }
+    }
+
+    internal sealed class UnbookedOrder
+    {
+        public Guid? Id { get; init; }
+    }
+
+    // The given orders with their revenue figures.
+    internal static IQueryable<OrderFigures> Figures(AppDbContext db, Guid tenantId, IQueryable<Order> orders) =>
+        from order in orders
+        join unbooked in UnbookedReturns(db, tenantId) on (Guid?)order.Id equals unbooked.Id into unbookedOrders
+        from unbooked in unbookedOrders.DefaultIfEmpty()
+        join packageTotal in Packages(db, tenantId) on order.Id equals packageTotal.OrderId into packageGroups
+        from packageTotal in packageGroups.DefaultIfEmpty()
+        join returnedDiscount in ReturnedDiscounts(db, tenantId) on order.Id equals returnedDiscount.OrderId into discountGroups
+        from returnedDiscount in discountGroups.DefaultIfEmpty()
+        join lineTotal in Lines(db, tenantId) on order.Id equals lineTotal.OrderId into lineGroups
+        from lineTotal in lineGroups.DefaultIfEmpty()
+        let priced = ((int?)packageTotal.Priced ?? 0) > 0
+        let paid = priced ? (decimal?)packageTotal.Paid ?? 0m : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
+        let listAmount = priced ? (decimal?)packageTotal.Listed ?? 0m : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
+        let platformDiscount = (decimal?)lineTotal.PlatformDiscount ?? 0m
+        let lineValue = (decimal?)lineTotal.Value ?? 0m
+        // Hepsiburada's list is the price paid (HepsiburadaJsonMapper.PlatformDiscount), so its own discount is bounded by
+        // the lines' value at that base. An amount that already is the list price (no net known) takes nothing more.
+        let ceiling = listAmount > paid ? (listAmount > lineValue ? listAmount : lineValue) : (paid > lineValue ? paid : lineValue)
+        // A Trendyol micro-export order's return (claim, returned line or package, returned status) counts once Trendyol's
+        // statement records the refund (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
+        let returnBooked = unbooked.Id == null
+        select new OrderFigures
+        {
+            Order = order,
+            Amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount,
+            ListAmount = listAmount,
+            LineValue = lineValue,
+            PackagesBack = priced && returnBooked
+                ? ((decimal?)packageTotal.Back ?? 0m) + ((decimal?)returnedDiscount.Discount ?? 0m)
+                : 0m,
+            LineBack = returnBooked ? (decimal?)lineTotal.Back ?? 0m : (decimal?)lineTotal.BackUnbooked ?? 0m,
+            ReturnBooked = returnBooked,
+            UnreadableLines = (int?)packageTotal.Unreadable ?? 0
+        };
+
+    internal static IQueryable<UnbookedOrder> UnbookedReturns(AppDbContext db, Guid tenantId) =>
+        DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId).Select(id => new UnbookedOrder { Id = id });
+
+    // The current packages: whether any carries an amount; what the ones not cancelled were paid and listed at, and the
+    // product lines they hold that could not be read; what the ones sent back were paid.
+    internal static IQueryable<PackageTotals> Packages(AppDbContext db, Guid tenantId) =>
+        MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId)
+            .GroupBy(package => package.OrderId)
+            .Select(group => new PackageTotals
+            {
+                OrderId = group.Key,
+                Priced = group.Count(package => package.NetAmount > 0 || package.GrossAmount > 0),
+                Paid = group.Where(package => package.Status != ShipmentPackageStatus.Cancelled).Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount),
+                Listed = group.Where(package => package.Status != ShipmentPackageStatus.Cancelled).Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount),
+                Back = group.Where(package => package.Status == ShipmentPackageStatus.Returned).Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount),
+                Unreadable = group.Where(package => package.Status != ShipmentPackageStatus.Cancelled).Sum(package => package.UnreadableLineCount)
+            });
+
+    // The marketplace's own discount on the lines of the packages sent back.
+    internal static IQueryable<ReturnedDiscount> ReturnedDiscounts(AppDbContext db, Guid tenantId) =>
+        from package in MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId)
+        where package.Status == ShipmentPackageStatus.Returned
+        join allocation in db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId) on package.Id equals allocation.PackageId
+        join line in db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId) on allocation.OrderLineId equals line.Id
+        where line.PlatformDiscount != null
+        group line.PlatformDiscount!.Value * allocation.AllocatedQuantity by package.OrderId into grouped
+        select new ReturnedDiscount { OrderId = grouped.Key, Discount = grouped.Sum() };
+
+    // The lines: the marketplace's own discount on what is not cancelled, their value at the same base as the amount
+    // (the price paid plus that discount), and the value of what went back (returned quantities and accepted return
+    // claims), also as it stands while the order's return does not count (nothing returned or accepted).
+    internal static IQueryable<LineTotals> Lines(AppDbContext db, Guid tenantId) =>
+        from line in db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId)
+        join acceptedLine in DashboardReadService.AcceptedReturnQuantities(db, tenantId) on line.Id equals acceptedLine.OrderLineId into acceptedLines
+        from acceptedLine in acceptedLines.DefaultIfEmpty()
+        group new
+        {
+            line.PlatformDiscount,
+            UnitPrice = line.UnitPrice + (line.PlatformDiscount ?? 0m),
+            Active = line.OrderedQuantity - line.CancelledQuantity,
+            line.ReturnedQuantity,
+            Accepted = (decimal?)acceptedLine.Quantity ?? 0m
+        } by line.OrderId into grouped
+        select new LineTotals
+        {
+            OrderId = grouped.Key,
+            PlatformDiscount = grouped.Where(line => line.PlatformDiscount != null).Sum(line => line.PlatformDiscount!.Value * line.Active),
+            Value = grouped.Sum(line => line.UnitPrice * line.Active),
+            Back = grouped.Sum(line => line.UnitPrice * Math.Min(line.Active, Math.Max(line.ReturnedQuantity, line.Accepted))),
+            BackUnbooked = grouped.Sum(line => line.UnitPrice * Math.Min(line.Active, 0m))
+        };
 }
 
 // The chosen calendar days and the previous period of equal length. "Today" alone runs until now and is compared with

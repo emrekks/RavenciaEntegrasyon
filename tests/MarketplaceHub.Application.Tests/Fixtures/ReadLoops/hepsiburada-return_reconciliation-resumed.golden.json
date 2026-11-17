@@ -1,0 +1,35 @@
+{
+  "JobType": "RETURN_RECONCILIATION",
+  "Runs": [
+    {
+      "Run": "failing",
+      "Result": "Blocked",
+      "ErrorCode": "RETURN_RECONCILIATION_NOT_SUPPORTED",
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "resumed",
+      "Result": "Blocked",
+      "ErrorCode": "RETURN_RECONCILIATION_NOT_SUPPORTED",
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURN_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 5
+    }
+  ],
+  "Issues": []
+}

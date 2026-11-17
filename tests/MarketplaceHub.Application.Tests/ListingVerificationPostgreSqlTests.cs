@@ -466,7 +466,7 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
             await db.SaveChangesAsync();
         }
 
-        await using (var db = fixture.CreateContext())
+        await using (var db = fixture.CreateStrictContext())
             await new ScheduledJobProducer(db, new FixedTimeProvider(now), new ConfigurationBuilder().Build()).EnqueueDueAsync(CancellationToken.None);
 
         await using var check = fixture.CreateContext();

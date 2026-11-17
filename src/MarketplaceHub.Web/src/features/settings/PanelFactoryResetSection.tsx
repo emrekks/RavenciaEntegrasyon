@@ -1,13 +1,15 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { formatIstanbul } from '../../shared/format-date'
 import { clearNotificationHistory } from '../../shared/notifications'
 import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '../../shared/reauth'
-import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepLabel, panelResetStepStates, type PanelFactoryResetView, type PanelResetStepState } from './panel-factory-reset'
+import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepLabel, panelResetStepStates, type PanelResetStepState } from './panel-factory-reset'
+import { queryKeys } from '../../shared/api/query-keys'
 
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
-const queryKey = ['panel-factory-reset']
+const queryKey = queryKeys.panelFactoryReset()
 
 function StepGlyph({ state }: { state: PanelResetStepState }) {
   if (state === 'done') return <svg className="ss-st is-done" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -30,7 +32,7 @@ export function PanelFactoryResetSection() {
   const queryClient = useQueryClient()
   const view = useQuery({
     queryKey,
-    queryFn: () => hubPoll<PanelFactoryResetView>('/settings/factory-reset'),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getSettingsFactoryReset'>>('/settings/factory-reset', { signal }),
     staleTime: 0,
     retry: false,
     refetchInterval: query => panelResetRunning(query.state.data?.job?.status) ? 2000 : false
@@ -71,7 +73,7 @@ export function PanelFactoryResetSection() {
     setSending(true)
     setError(null)
     try {
-      const next = await hubApi<PanelFactoryResetView>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: normalizePanelResetConfirmation(confirmation), ...reauthBody(password, factor) }) })
+      const next = await hubApi<ApiAnswer<'postSettingsFactoryReset'>>('/settings/factory-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ confirmation: normalizePanelResetConfirmation(confirmation), ...reauthBody(password, factor) }) })
       queryClient.setQueryData(queryKey, next)
       setConfirmation(''); setPassword(''); setFactor('')
     } catch (failure) {

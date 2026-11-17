@@ -394,6 +394,10 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
         await using var check = fixture.CreateContext();
         Assert.False(await check.ConnectionSyncPolicies.AnyAsync(x => x.TenantId == tenant.Id && x.Enabled));
         Assert.Equal(JobStatus.Cancelled, (await check.IntegrationJobs.SingleAsync(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync)).Status);
+        // K2: the stop tells the job screens once (one event for all the jobs it closed, however many).
+        var stopEvent = Assert.Single(await check.IntegrationOutboxEvents.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ResourceType == "jobs").ToListAsync());
+        Assert.Null(stopEvent.AggregateId);
+        Assert.Equal(1, System.Text.Json.JsonDocument.Parse(stopEvent.PayloadJson).RootElement.GetProperty("count").GetInt32());
         var after = Assert.Single((await new PriceStockMonitorService(check, WritesOn(), fixture.TimeProvider).MonitorAsync(tenant.Id, CancellationToken.None)).Connections);
         Assert.False(after.AutomaticWritesOpen);
         Assert.Equal(0, after.QueuedJobs);

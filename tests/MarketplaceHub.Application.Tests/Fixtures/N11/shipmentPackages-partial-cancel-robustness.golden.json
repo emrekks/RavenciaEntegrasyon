@@ -1,0 +1,334 @@
+{
+  "Items": [
+    {
+      "ExternalOrderId": "205400000001",
+      "OrderNumber": "205400000001",
+      "OrderedAt": "2025-11-05T00:00:00+00:00",
+      "LastModifiedAt": "2025-11-05T02:00:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 480,
+      "DiscountAmount": 40,
+      "NetAmount": 440,
+      "CustomerSnapshotJson": {
+        "orderNumber": "205400000001",
+        "id": "112999000000001",
+        "customerfullName": "Test Musteri",
+        "customerEmail": "customer@example.test",
+        "billingAddress": {
+          "address": "Fake Sokak 3",
+          "city": "Bursa",
+          "district": "Nilüfer",
+          "fullName": "Test Musteri",
+          "gsm": "5550000000",
+          "invoiceType": 1
+        },
+        "shippingAddress": {
+          "address": "Fake Sokak 3",
+          "city": "Bursa",
+          "district": "Nilüfer",
+          "fullName": "Test Musteri",
+          "gsm": "5550000000"
+        },
+        "cargoProviderName": "Yurtiçi Kargo",
+        "lastModifiedDate": 1762308000000,
+        "agreedDeliveryDate": 1762473600000,
+        "totalAmount": 440,
+        "totalDiscountAmount": 40,
+        "packageHistories": [
+          {
+            "createdDate": 1762300800000,
+            "status": "Created"
+          },
+          {
+            "createdDate": 1762304400000,
+            "status": "Picking"
+          }
+        ],
+        "shipmentPackageStatus": "Picking",
+        "customerName": "Test Musteri",
+        "customerFirstName": "Test",
+        "customerLastName": "Musteri",
+        "email": "customer@example.test"
+      },
+      "ShipmentAddressSnapshotJson": {
+        "address": "Fake Sokak 3",
+        "city": "Bursa",
+        "district": "Nilüfer",
+        "fullName": "Test Musteri",
+        "gsm": "5550000000",
+        "fullAddress": "Fake Sokak 3",
+        "address1": "Fake Sokak 3",
+        "firstName": "Test",
+        "lastName": "Musteri",
+        "phone": "5550000000"
+      },
+      "InvoiceAddressSnapshotJson": {
+        "address": "Fake Sokak 3",
+        "city": "Bursa",
+        "district": "Nilüfer",
+        "fullName": "Test Musteri",
+        "gsm": "5550000000",
+        "invoiceType": 1,
+        "fullAddress": "Fake Sokak 3",
+        "address1": "Fake Sokak 3",
+        "firstName": "Test",
+        "lastName": "Musteri",
+        "phone": "5550000000"
+      },
+      "Lines": [
+        {
+          "ExternalLineId": "415000001",
+          "Sku": "SKU-FAKE-N1",
+          "Barcode": "0000000000301",
+          "Title": "Fake N11 Ürün 1",
+          "Quantity": 2,
+          "UnitPrice": 200,
+          "VatRate": 20,
+          "RawStatus": "Picking",
+          "SourceSnapshotJson": "<raw 338 chars sha256:7b0b599d584b>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        },
+        {
+          "ExternalLineId": "415000002",
+          "Sku": "SKU-FAKE-N2",
+          "Barcode": null,
+          "Title": "Fake N11 Ürün 2",
+          "Quantity": 1,
+          "UnitPrice": 80,
+          "VatRate": 10,
+          "RawStatus": "Cancelled",
+          "SourceSnapshotJson": "<raw 259 chars sha256:b15652a94267>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "112999000000001",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Picking",
+          "OccurredAt": "2025-11-05T02:00:00+00:00",
+          "CargoProviderExternalId": "Yurtiçi Kargo",
+          "CargoTrackingNumber": null,
+          "Allocations": [
+            {
+              "ExternalLineId": "415000001",
+              "AllocatedQuantity": 2,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            },
+            {
+              "ExternalLineId": "415000002",
+              "AllocatedQuantity": 1,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 480,
+          "DiscountAmount": 40,
+          "NetAmount": 440,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 1482 chars sha256:f7dd8c18cda2>",
+      "ShipmentDueAt": "2025-11-07T00:00:00+00:00",
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    },
+    {
+      "ExternalOrderId": "205400000002",
+      "OrderNumber": "205400000002",
+      "OrderedAt": "2025-11-05T00:00:00+00:00",
+      "LastModifiedAt": "2025-11-05T02:00:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 59.70,
+      "DiscountAmount": 0.00,
+      "NetAmount": 59.70,
+      "CustomerSnapshotJson": {
+        "orderNumber": "205400000002",
+        "id": "112999000000002",
+        "lastModifiedDate": 1762308000000,
+        "packageHistories": [
+          {
+            "createdDate": 1762300800000,
+            "status": "Created"
+          }
+        ],
+        "shipmentPackageStatus": "SomeFuturePackageStatus"
+      },
+      "ShipmentAddressSnapshotJson": {},
+      "InvoiceAddressSnapshotJson": {},
+      "Lines": [
+        {
+          "ExternalLineId": "415000003",
+          "Sku": "SKU-FAKE-N3",
+          "Barcode": null,
+          "Title": "Fake N11 Ürün 3",
+          "Quantity": 3,
+          "UnitPrice": 19.90,
+          "VatRate": 20,
+          "RawStatus": "SomeFutureLineStatus",
+          "SourceSnapshotJson": "<raw 264 chars sha256:a772712d0122>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "112999000000002",
+          "OriginExternalPackageId": null,
+          "RawStatus": "SomeFuturePackageStatus",
+          "OccurredAt": "2025-11-05T02:00:00+00:00",
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "Allocations": [
+            {
+              "ExternalLineId": "415000003",
+              "AllocatedQuantity": 3,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 59.70,
+          "DiscountAmount": 0.00,
+          "NetAmount": 59.70,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 557 chars sha256:2604ac3914e0>",
+      "ShipmentDueAt": null,
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    },
+    {
+      "ExternalOrderId": "205400000004",
+      "OrderNumber": "205400000004",
+      "OrderedAt": "2025-11-05T00:00:00+00:00",
+      "LastModifiedAt": "2025-11-05T02:00:00+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 25,
+      "DiscountAmount": 0,
+      "NetAmount": 25,
+      "CustomerSnapshotJson": {
+        "orderNumber": "205400000004",
+        "id": "112999000000004",
+        "totalAmount": 25,
+        "lastModifiedDate": 1762308000000,
+        "packageHistories": [
+          {
+            "createdDate": 1762300800000,
+            "status": "Created"
+          }
+        ],
+        "shipmentPackageStatus": "Created"
+      },
+      "ShipmentAddressSnapshotJson": {},
+      "InvoiceAddressSnapshotJson": {},
+      "Lines": [
+        {
+          "ExternalLineId": "415000006",
+          "Sku": "SKU-FAKE-N6",
+          "Barcode": null,
+          "Title": "Fake N11 Ürün 6",
+          "Quantity": 1,
+          "UnitPrice": 15,
+          "VatRate": 20,
+          "RawStatus": "",
+          "SourceSnapshotJson": "<raw 160 chars sha256:eb8f93de4881>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "112999000000004",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Created",
+          "OccurredAt": "2025-11-05T02:00:00+00:00",
+          "CargoProviderExternalId": null,
+          "CargoTrackingNumber": null,
+          "Allocations": [
+            {
+              "ExternalLineId": "415000006",
+              "AllocatedQuantity": 1,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 25,
+          "DiscountAmount": 0,
+          "NetAmount": 25,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 1,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 606 chars sha256:9f4489c78f58>",
+      "ShipmentDueAt": null,
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    }
+  ],
+  "NextCursor": "1",
+  "HasMore": true,
+  "TotalCount": null,
+  "Issues": [
+    {
+      "Code": "ORDER_PACKAGE_INVALID",
+      "Identity": "112999000000003",
+      "Message": "N11 sipariş paketi 205400000003 içeri alınmadı: siparişin tarihi yok (paket geçmişinde oluşturulma tarihi okunamadı); değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.",
+      "RereadOrderId": "205400000003"
+    },
+    {
+      "Code": "ORDER_PACKAGE_LINE_INVALID",
+      "Identity": "112999000000004",
+      "Message": "N11 sipariş paketi 112999000000004 kargo için alındı ancak bir ürün satırı okunamadı: satır kimliği, adet veya fiyat okunamadı. Satır bilinmiyor; bu siparişe fatura kesilmez ve sipariş yeniden okunacak.",
+      "RereadOrderId": null
+    }
+  ],
+  "LastModifiedSeen": null
+}

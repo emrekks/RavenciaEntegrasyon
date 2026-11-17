@@ -18,7 +18,13 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
     // The cursor of the one-off read of older settlement days (BackfillAsync).
     internal const string BackfillResource = "N11_SETTLEMENT_BACKFILL";
     // A guard against a paging answer that never ends.
-    private const int MaximumPages = 100;
+    internal const int MaximumPages = 100;
+    // ISLEYICI-7 (16 Nov 2026): a list or a day that reaches MaximumPages with pages left fails with its own code; before,
+    // the loop ended quietly, the day was stored as read and the backfill cursor moved past the days not listed.
+    internal const string PageCapCode = "N11_SETTLEMENT_PAGE_CAP";
+
+    private static AdapterError PageCap(string what) => new(AdapterErrorClass.ContractViolation, PageCapCode,
+        $"N11 {what} {MaximumPages} sayfayı aştı; kalan kayıtlar okunmadı ve aralık okunmuş sayılmadı.", null, null, null);
 
     public bool Handles(string jobType) => jobType == MarketplaceJobTypes.N11SettlementSync;
 
@@ -148,9 +154,9 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             var listed = await settlements.GetSettlementDaysAsync(context, start, end, page, cancellationToken);
             if (!listed.IsSuccess) return (days, listed.Error!);
             days.AddRange(listed.Value!.Items);
-            if (listed.Value.Items.Count == 0 || page + 1 >= listed.Value.PageCount) break;
+            if (listed.Value.Items.Count == 0 || page + 1 >= listed.Value.PageCount) return (days, null);
         }
-        return (days, null);
+        return (days, PageCap("hakediş günleri"));
     }
 
     private async Task<HashSet<string>> ReadDaysAsync(JobRequest request, CancellationToken cancellationToken) =>
@@ -165,6 +171,7 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
     {
         var lines = new List<RemoteSettlementItem>();
         var skipped = new List<RemoteSkippedFinanceRecord>();
+        var pagesEnded = false;
         for (var page = 0; page < MaximumPages; page++)
         {
             tally.Requests++;
@@ -174,8 +181,10 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             // A line is stored by its id and day; a skipped one is named the same way.
             skipped.AddRange(detail.Value.Skipped.Select(x => x.Key.StartsWith('#') ? x : x with { Key = ExternalId(x.Key, day) }));
             status = detail.Value.Status ?? status;
-            if (detail.Value.Items.Count + detail.Value.Skipped.Count == 0 || page + 1 >= detail.Value.PageCount) break;
+            if (detail.Value.Items.Count + detail.Value.Skipped.Count == 0 || page + 1 >= detail.Value.PageCount) { pagesEnded = true; break; }
         }
+        // The day is not stored (so not taken as read) with lines left unread.
+        if (!pagesEnded) return (0, PageCap("hakediş satırları"));
         tally.Received += lines.Count + skipped.Count;
         var records = Records(lines, day);
         var ids = records.Select(x => x.Id).ToList();
@@ -287,32 +296,17 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
         db.ChangeTracker.Clear();
         var key = FailureKey(request.ConnectionId);
         var summary = Short($"N11 hakediş kayıtları okunamadı ({error.Code}: {error.SafeMessage}); okunan günler kaydedildi, kalanlar sonraki çalışmada yeniden denenecek.", 1000)!;
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == request.TenantId && item.DedupeKey == key, cancellationToken);
-        if (issue is null)
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = request.TenantId, DedupeKey = key, Code = FailureCode, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
-        else
-        {
-            issue.Code = FailureCode;
-            issue.Summary = summary;
-            issue.Status = IssueStatus.Open;
-            issue.LastSeenAt = now;
-            issue.OccurrenceCount++;
-        }
+        // ISLEYICI-12 point 5: the shared IssueRecorder.
+        await new IssueRecorder(db).RecordAsync(request.TenantId, key, FailureCode, summary, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return new(JobExecutionResult.FromAdapterError(error), telemetry);
     }
 
-    private async Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key && item.Status != IssueStatus.Resolved, cancellationToken);
-        if (issue is null) return;
-        issue.Status = IssueStatus.Resolved;
-        issue.LastSeenAt = now;
-        issue.ResolvedAt = now;
-    }
+    private Task ResolveIssueAsync(Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).ResolveAsync(tenantId, key, now, cancellationToken, IssueResolveStamps.ResolvedAt | IssueResolveStamps.LastSeenAt);
 
     private int Setting(string name, int fallback, int minimum, int maximum) =>
         Math.Clamp(configuration.GetValue($"MarketplaceSync:N11Settlement:{name}", fallback), minimum, maximum);
 
-    private static string? Short(string? value, int length) => value is null || value.Length <= length ? value : value[..length];
+    private static string? Short(string? value, int length) => TextValues.Truncate(value, length);
 }

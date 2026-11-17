@@ -23,6 +23,10 @@ services:
       FeatureFlags__ExternalWrites: "${MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED:-true}"
       FeatureFlags__InvoiceMarketplaceDeliveryWrites: "${MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED:-true}"
       Marketplace__PersistOrderSnapshots: "true"
+      # Invoice link sent to the marketplaces (MarketplaceInvoiceLinkPolicy, owner decision 17 Nov 2026): Provider =
+      # E-Faturam's permanent document URL (n11, Pazarama and PTT AVM keep the panel link), Panel = the panel's public link on
+      # every marketplace. MARKETPLACEHUB_INVOICE_LINK_SOURCE=Panel in production.env and a redeploy goes back.
+      Invoicing__MarketplaceInvoiceLink: "${MARKETPLACEHUB_INVOICE_LINK_SOURCE:-Provider}"
       # Owner and administrator accounts without an enabled authenticator may only read and set up MFA
       # (ElevatedRoleMfaMiddleware). Off until the owner has enrolled TOTP; turned on with
       # MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES=true in production.env and a redeploy (docs/CI-CD-DEPLOY.md).
@@ -48,7 +52,15 @@ services:
   worker:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null
-    environment: *production_environment
+    environment:
+      <<: *production_environment
+      # History table retention (docs/SAKLAMA-SURELERI.md): empty uses the table's default in code (HistoryRetentionPolicy),
+      # 0 keeps the table forever, a whole number of days overrides the default (set in production.env, then redeploy).
+      Worker__HistoryRetention__AuditLogDays: "${MARKETPLACEHUB_RETENTION_AUDIT_LOG_DAYS:-}"
+      Worker__HistoryRetention__AiUsageLogDays: "${MARKETPLACEHUB_RETENTION_AI_USAGE_LOG_DAYS:-}"
+      Worker__HistoryRetention__ChannelPriceHistoryDays: "${MARKETPLACEHUB_RETENTION_CHANNEL_PRICE_HISTORY_DAYS:-}"
+      Worker__HistoryRetention__ProductChangeEntryDays: "${MARKETPLACEHUB_RETENTION_PRODUCT_CHANGE_ENTRY_DAYS:-}"
+      Worker__HistoryRetention__OrderStatusHistoryDays: "${MARKETPLACEHUB_RETENTION_ORDER_STATUS_HISTORY_DAYS:-}"
     secrets: *production_secrets
     logging: !override
       driver: journald

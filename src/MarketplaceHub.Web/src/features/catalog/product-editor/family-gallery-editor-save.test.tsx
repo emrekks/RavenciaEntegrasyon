@@ -2,6 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
+import { settleUntilQuiet } from '../../../test/render'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // MZ051BYC (owner, 11.11.2026): "hangi rengi açtığın fark etmemeli". A model with two colour cards whose Siyah card's
@@ -74,8 +75,9 @@ afterEach(() => {
   container.remove()
 })
 
-async function settle(rounds = 10) {
-  for (let index = 0; index < rounds; index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+// W3: until the page and its requests are quiet, not a fixed number of 10 ms rounds of the heavy editor.
+async function settle() {
+  await settleUntilQuiet(() => fixture.calls.length)
 }
 
 // The picture writes Kaydet sends from the given colour row.
@@ -98,7 +100,7 @@ async function saveFrom(opened: string, newTitle?: string) {
   const captions = Array.from(container.querySelectorAll('.media-preview-strip figcaption')).map(caption => caption.firstChild?.textContent ?? '')
   const save = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
   await act(async () => { save.form!.requestSubmit(save) })
-  await settle(30)
+  await settle()
   const writes = fixture.calls.filter(call => call.path.startsWith('/files/') || call.path.endsWith('/size-chart')).map(call => ({ method: call.method, path: call.path, body: call.body }))
   const patch = fixture.calls.find(call => call.method === 'PATCH')?.body as { title: string; familySharedFields: string[]; variantUpdates: Array<{ id: string; barcode: string | null; sku: string; defaultSalePrice: number }> } | undefined
   act(() => root.unmount())

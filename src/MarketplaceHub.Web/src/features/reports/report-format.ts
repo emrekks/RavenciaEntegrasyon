@@ -3,6 +3,7 @@ import { istanbulDateKey } from '../../shared/format-date'
 import { noValue } from '../../shared/metric-value'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
 import { newChangeText } from '../../shared/components/ChangePill'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // The periods one click away above the reports: the panel's shared ranges (dateRangePresets; weeks start on Monday) for
 // today's Istanbul calendar day, the account's time zone, as on Genel Bakış, so a computer set to another time zone does
@@ -34,68 +35,43 @@ export function profitCost(cost: ReportSales['cost']): ProfitCost {
 }
 
 // The sales report's contract (GET /reports/sales, ReportsContracts.cs) and the formatting the page shares.
-export type ReportSummary = {
-  orders: number; cancelledOrders: number; cancelRate: number | null; soldQuantity: number; returnedQuantity: number; keptQuantity: number
-  returnClaims: number; returnRate: number | null; ordersWithAmount: number; grossSales: number; returnedAmount: number; netRevenue: number
-  // The returned units at list price, as Trendyol shows returns (absent in an older server's answer).
-  returnedListAmount?: number
-  averageOrderValue: number | null; ordersWithoutCity: number; ordersWithoutAmount: number; otherCurrencyOrders: number
-  // The same orders at their list price and the marketplace's discount on them (absent in an older server's answer).
-  listAmount?: number; discountAmount?: number
-  // The distinct products (variants) sold and the net revenue of the TRY orders without its VAT (absent in an older answer).
-  soldVariants?: number; vatFreeNetRevenue?: number
+export type ReportSummary = ReportSalesAnswer['summary']
+export type ReportGroup = ReportSalesAnswer['platforms'][number]
+export type ReportTimePoint = ReportSalesAnswer['timeSeries'][number]
+export type ReportProduct = ReportSalesAnswer['topProducts'][number]
+export type ReportReason = ReportSalesAnswer['returnReasons'][number]
+export type ReportCancelGroup = ReportSalesAnswer['cancellations']['platforms'][number]
+export type ReportCargo = ReportSalesAnswer['cargo'][number]
+export type ReportStockRow = ReportSalesAnswer['stock']['bestSellers'][number]
+// GET /reports/sales. CONTRACT: every member agrees with the contract (ReportSalesView) but two codes the API declares as
+// strings: granularity (ReportBuilder.Day / Week / Month) and finance.source (ReportCosts.FinanceSource / EstimateSource).
+// It stays written here because those two sit deep in the answer and the report tests build it whole.
+type ReportSalesAnswer = ApiAnswer<'getReportsSales'>
+// CONTRACT: the API declares the buckets' size as a string; ReportsService writes day, week or month.
+// and the costs' source as a string; ReportsService writes trendyol-finance or estimate.
+export type ReportSales = Omit<ReportSalesAnswer, 'granularity' | 'costs' | 'previousAccount'> & {
+  granularity: 'day' | 'week' | 'month'; costs: ReportCosts
+  previousAccount: (Omit<NonNullable<ReportSalesAnswer['previousAccount']>, 'costs'> & { costs: ReportCosts }) | null
 }
-export type ReportGroup = {
-  key: string; label: string; known: boolean; isTest: boolean; orders: number; soldQuantity: number; returnedQuantity: number; returnClaims: number
-  returnRate: number | null; ordersWithAmount: number; grossSales: number; netRevenue: number; estimatedCommission: number; commissionCoveredRevenue: number
-  children: ReportGroup[]; split: ReportGroup[]
-}
-export type ReportTimePoint = { start: string; orders: number; soldQuantity: number; returnedQuantity: number; netRevenue: number; cancelledOrders: number }
-export type ReportProduct = {
-  variantId: string | null; productId: string | null; title: string; sku: string; brand: string; category: string; soldQuantity: number; returnedQuantity: number
-  returnRate: number | null; salesAmount: number; estimatedCommission: number; commissionCoveredAmount: number
-  modelCode?: string | null; imageUrl?: string | null; options?: Array<{ name: string; value: string }> | null
-  netAmount?: number; previousSoldQuantity?: number | null; available?: number | null
-}
-export type ReportReason = { reason: string; known: boolean; count: number }
-export type ReportCancelGroup = { key: string; label: string; orders: number; cancelledOrders: number; cancelledQuantity: number; cancelRate: number | null }
-export type ReportCargo = {
-  label: string; known: boolean; packages: number; share: number | null; averageHoursToShip: number | null; measuredShip: number
-  averageHoursToDeliver: number | null; measuredDeliver: number; lateShipments: number; measuredLate: number; lateRate: number | null
-}
-export type ReportStockRow = { variantId: string | null; title: string; sku: string; soldQuantity: number; available: number | null; dailyAverage: number | null; daysLeft: number | null }
-export type ReportSales = {
-  from: string; to: string; previousFrom: string; previousTo: string; granularity: 'day' | 'week' | 'month'; includesTest: boolean; generatedAt: string
-  summary: ReportSummary; previousSummary: ReportSummary
-  commission: { coveredRevenue: number; coverage: number | null; estimatedCommission: number; estimatedPayout: number; effectiveRate: number | null }
-  cost: {
-    keptQuantity: number; costedQuantity: number; coverage: number | null; costTotal: number; costedRevenue: number; costedSales?: number; keptRevenue?: number; grossProfit: number; grossMargin: number | null
-    profitQuantity: number; profitCoverage: number | null; profitRevenue: number; profitCost: number; profitCommission: number; netProfit: number; netMargin: number | null; costedVariants: number
+
+const granularities: ReadonlySet<string> = new Set<ReportSales['granularity']>(['day', 'week', 'month'])
+const isGranularity = (value: string): value is ReportSales['granularity'] => granularities.has(value)
+// An unknown cost source is never shown as Trendyol's real finance figures: it reads as an estimate.
+const readCosts = (costs: ReportSalesAnswer['costs']): ReportCosts => ({ ...costs, source: costs.source === 'trendyol-finance' ? 'trendyol-finance' : 'estimate' })
+
+/** The sales report as the page reads it; an unknown bucket size reads as days (the buckets' own dates still come from the server). */
+export function readReportSales(raw: ReportSalesAnswer): ReportSales {
+  return {
+    ...raw,
+    granularity: isGranularity(raw.granularity) ? raw.granularity : 'day',
+    costs: readCosts(raw.costs),
+    previousAccount: raw.previousAccount ? { ...raw.previousAccount, costs: readCosts(raw.previousAccount.costs) } : null
   }
-  platforms: ReportGroup[]; cities: ReportGroup[]; timeSeries: ReportTimePoint[]; previousTimeSeries: ReportTimePoint[]
-  topProducts: ReportProduct[]; topReturned: ReportProduct[]; brands: ReportGroup[]; categories: ReportGroup[]; returnReasons: ReportReason[]
-  cancellations: { cancelledOrders: number; cancelledQuantity: number; cancelRate: number | null; warningRate: number; platforms: ReportCancelGroup[]; reasons: ReportReason[]; cancelledAmount?: number }
-  cargo: ReportCargo[]; heatmap: number[][]; platformHeatmaps?: Array<{ platformCode: string; heatmap: number[][] }> | null
-  rising?: ReportProduct[] | null; falling?: ReportProduct[] | null
-  customers: { identifiedOrders: number; unidentifiedOrders: number; uniqueCustomers: number; repeatCustomers: number; repeatRate: number | null; ordersPerCustomer: number | null }
-  invoices: { buckets: Array<{ key: string; label: string; packages: number; amount: number }>; platforms: Array<{ platformCode: string; invoiced: number; notInvoiced: number; unknown: number; returned: number }> }
-  stock: { periodDays: number; bestSellers: ReportStockRow[]; soldOut: ReportStockRow[] }
-  channels: Array<{ id: string; platformCode: string; displayName: string; isTest: boolean }>
-  costs: ReportCosts
-  geography: ReportGeography
-  dataNotes: string[]
-  // The previous period's commission, cost and statement, read as the period's are (absent in an older server's answer).
-  previousAccount?: { commission: ReportSales['commission']; cost: ReportSales['cost']; costs: ReportCosts } | null
-  // How fast the period's questions were answered, Trendyol and Hepsiburada only (absent in an older answer, null without
-  // such a store): answered (measured), waiting (no answer yet), average and median hours.
-  questionTimes?: { answered: number; waiting: number; averageHours: number | null; medianHours: number | null; platforms: string[] } | null
-  // The chosen stores' first order day (yyyy-MM-dd): a previous period starting before it is not compared with.
-  dataStartsOn?: string | null
 }
 
 // The sales map: countries for every order (a Trendyol cross-border storefront's order in its country), the previous
 // period's cities and countries for the change, and how many orders went abroad (left out of `cities`).
-export type ReportGeography = { countries: ReportGroup[]; previousCities: ReportGroup[]; previousCountries: ReportGroup[]; abroadOrders: number }
+export type ReportGeography = ReportSalesAnswer['geography']
 
 // Of the orders costed from a platform's cargo tariff, how many took their parcel's desi from the marketplace's order,
 // the products' entered desi, the desi measured on billed Trendyol parcels (measuredParcels of them) or a default.
@@ -214,8 +190,8 @@ export function change(current: number | null | undefined, previous: number | nu
 
 // The report request: calendar days (yyyy-MM-dd), platforms and buckets; an empty choice is left out.
 export function reportQuery(filters: { from: string; to: string; platforms: string[] | null; granularity: string; includeTest: boolean }) {
-  const query = new URLSearchParams({ from: filters.from, to: filters.to })
-  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  const query = new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to })
+  if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   if (filters.granularity) query.set('granularity', filters.granularity)
   if (filters.includeTest) query.set('includeTest', 'true')
   return query.toString()
@@ -276,14 +252,14 @@ export type ReportInventory = {
 }
 
 // Stok's Tahmini Kâr: the real profit on cost of each of the last whole months, oldest first (GET /reports/profit-rate).
-export type ReportProfitRate = { months: Array<{ from: string; to: string; rate: number | null }> }
+export type ReportProfitRate = ApiAnswer<'getReportsProfitRate'>
 
 export function profitRateQuery(platforms: string[] | null) {
-  return platforms?.length ? new URLSearchParams({ platformCodes: platforms.join(',') }).toString() : ''
+  return platforms?.length ? new URLSearchParams({ platforms: platforms.join(',') }).toString() : ''
 }
 
 export function stockQuery(filters: { from: string; to: string; platforms: string[] | null }) {
-  const query = new URLSearchParams({ from: filters.from, to: filters.to })
-  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  const query = new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to })
+  if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   return query.toString()
 }

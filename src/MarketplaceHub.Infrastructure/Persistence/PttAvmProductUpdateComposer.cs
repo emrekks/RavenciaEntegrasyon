@@ -17,7 +17,7 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
 {
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, IReadOnlyList<string> fields, CancellationToken cancellationToken)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return ServiceResult<ProductUpdateDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.ChannelListingVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id, cancellationToken))
@@ -47,7 +47,9 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
         int? warranty = null;
         if (Picked(ProductUpdateFields.Warranty))
         {
-            warranty = warrantyMonths ?? 0;
+            // 0 is "no warranty" and is sent; an empty warranty is a missing required field, never sent as 0.
+            if (warrantyMonths is not int cardWarranty) return (null, new(ProductWarranty.RequiredCode, ProductWarranty.RequiredMessage));
+            warranty = cardWarranty;
             if (warranty is < 0 or > PttAvmProductUpdateRules.MaxWarrantyMonths)
                 return (null, new("PTTAVM_WARRANTY_INVALID", $"PttAVM garanti süresini en çok {PttAvmProductUpdateRules.MaxWarrantyMonths} ay alır; ürünün garanti süresi {warranty} ay."));
         }

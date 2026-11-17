@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, type RefObject } from 'react'
 import { UNSAFE_DataRouterContext, useBlocker, type BlockerFunction } from 'react-router'
-import { Button, Modal } from './DesignSystem'
+import { RrModal } from '../ui/rr-components'
 
 // Holds back in-app navigation (menu, links, back button) while a form has unsaved edits and asks first; a reload or
 // closing the tab is the page's own beforeunload warning. Navigation that stays on the same path (a tab or a filter
@@ -33,8 +33,9 @@ function NavigationBlocker({ when, allowNavigationRef, title = 'Kaydedilmemiş D
   // The edits were saved or dropped while the question was open: let the navigation go on.
   useEffect(() => { if (blocker.state === 'blocked' && !when) blocker.proceed() }, [blocker, when])
   if (blocker.state !== 'blocked') return null
-  return <Modal open title={title} onClose={() => blocker.reset()} className="rv-confirm-dialog" footer={<>
-    <Button variant="secondary" onClick={() => blocker.reset()} data-autofocus>Sayfada Kal</Button>
-    <Button variant="danger" onClick={() => blocker.proceed()}>Değişiklikleri Bırak</Button>
-  </>}><div className="rv-confirm-message">{message}</div></Modal>
+  return <RrModal title={title} size="sm" onClose={() => blocker.reset()} foot={<>
+    <span className="rr-note" />
+    <button type="button" className="rr-btn" onClick={() => blocker.reset()} data-autofocus>Sayfada Kal</button>
+    <button type="button" className="rr-btn rr-solid" onClick={() => blocker.proceed()}>Değişiklikleri Bırak</button>
+  </>}><p className="rr-lead">{message}</p></RrModal>
 }

@@ -2,7 +2,8 @@ import { QueryClient } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommissionTariffRow } from './CommissionTariffsPanel'
 import { compactRowPage } from './commission-tariff-rows.test-util'
-import { expandRowPage, prefetchLastTariff, rememberTariff } from './commission-tariff-rows'
+import { expandRowPage, prefetchLastTariff, readCompactRowPage, rememberTariff, tariffRowPaging } from './commission-tariff-rows'
+import { setStorageScope } from '../../../shared/storage-scope'
 
 // A live row (RYP004-07, 9 Nov 2026) as the long form gave it, and one whose bands' costs differ and whose band rate
 // is not its choice's rate.
@@ -40,6 +41,10 @@ describe('commission tariff rows in the short form', () => {
     expect(compact.strings).toEqual([live.productName, live.imageUrl])
     expect(expandRowPage(compact)).toEqual(page)
     expect(JSON.stringify(compact).length).toBeLessThan(JSON.stringify(page).length / 2)
+    // The answer as the wire gives it (rows of any values) is checked row by row before it is expanded.
+    const wire = { ...compact, rows: compact.rows.map(row => [...row] as unknown[]), nextCursor: null, hasMore: false }
+    expect(expandRowPage(readCompactRowPage(wire))).toEqual(page)
+    expect(() => readCompactRowPage({ ...wire, rows: [...wire.rows, ['only', 'two']] })).toThrow('Tarife satırı okunamadı (sayfanın 5. satırı).')
   })
 
   it('asks for the tariff the tab last opened on beside the stores, only for that store', () => {
@@ -53,5 +58,36 @@ describe('commission tariff rows in the short form', () => {
     expect(prefetch).not.toHaveBeenCalled()
     prefetchLastTariff(client, null, rowsQuery)
     expect(prefetch.mock.calls.map(([options]) => options.queryKey)).toEqual([['commission-tariffs', 'store-1'], ['commission-tariff-rows', 'store-1', 't1']])
+  })
+
+  it('keeps the last tariff per person: another account signed in here does not prefetch it (WEB-ALTYAPI-9)', () => {
+    const client = new QueryClient()
+    const prefetch = vi.spyOn(client, 'prefetchQuery').mockResolvedValue(undefined)
+    const rowsQuery = (connectionId: string, tariffId: string) => ({ queryKey: ['commission-tariff-rows', connectionId, tariffId], queryFn: async () => compactRowPage({ items: [] }) as never })
+    try {
+      setStorageScope('tenant-a', 'user-1')
+      rememberTariff({ connectionId: 'store-1', tariffId: 't1' })
+      expect(localStorage.getItem('rv-commission-tariff-last@tenant-a:user-1')).not.toBeNull()
+      setStorageScope('tenant-a', 'user-2')
+      prefetchLastTariff(client, null, rowsQuery)
+      expect(prefetch).not.toHaveBeenCalled()
+      setStorageScope('tenant-a', 'user-1')
+      prefetchLastTariff(client, null, rowsQuery)
+      expect(prefetch).toHaveBeenCalled()
+    } finally {
+      setStorageScope(null, null)
+      localStorage.clear()
+    }
+  })
+})
+
+describe('tariff row paging', () => {
+  // The name order gives a cursor: page 0 asks limit alone, a later page its offset cursor; a sort or a profit filter
+  // orders the models in memory, so those ask NumberedPage (page + pageSize).
+  it('asks the cursor in the name order and page + pageSize under a sort or a profit filter', () => {
+    expect(tariffRowPaging({ name: 'x' }, 0, 50)).toEqual({ name: 'x', limit: '50' })
+    expect(tariffRowPaging({}, 2, 50)).toEqual({ limit: '50', after: btoa('o100').replace(/=+$/, '') })
+    expect(tariffRowPaging({ sort: 'price', dir: 'asc' }, 2, 50)).toEqual({ sort: 'price', dir: 'asc', page: '2', pageSize: '50' })
+    expect(tariffRowPaging({ profitTier: '1', minProfit: '5' }, 0, 50)).toEqual({ profitTier: '1', minProfit: '5', page: '0', pageSize: '50' })
   })
 })

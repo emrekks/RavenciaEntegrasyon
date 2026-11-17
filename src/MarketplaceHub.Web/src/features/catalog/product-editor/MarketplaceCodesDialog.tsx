@@ -1,15 +1,14 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { Busy, DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { platformLogoSource } from '../../../shared/platform-logos'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type MarketplaceCodeConnection = { connectionId: string; platformCode: string; displayName: string }
-export type MarketplaceCodes = {
-  connections: MarketplaceCodeConnection[]
-  variants: Array<{ variantId: string; sku: string; barcode: string | null; codes: MarketplaceCodeLink[] }>
-}
+export type MarketplaceCodes = ApiAnswer<'getProductsByIdMarketplaceCodes'>
 // lastSeenAt: when a product import last read the code at the marketplace; healthStatus NOT_FOUND / REJECTED: it no
 // longer knows the code (healthReason says why).
 export type MarketplaceCodeLink = { connectionId: string; externalId: string; externalBarcode: string | null; externalSku: string | null; lastSeenAt?: string | null; healthStatus?: string | null; healthReason?: string | null }
@@ -79,7 +78,7 @@ function CodeHead({ connection, connections }: { connection: MarketplaceCodeConn
 // the variant, an emptied one removes its link.
 export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId: string; rows: MarketplaceCodeRow[]; onClose: () => void }) {
   const client = useQueryClient()
-  const codes = useQuery({ queryKey: ['product-marketplace-codes', productId], queryFn: () => hubApi<MarketplaceCodes>(`/products/${productId}/marketplace-codes`, { cache: 'no-store' }) })
+  const codes = useQuery({ queryKey: queryKeys.productMarketplaceCodes(productId), queryFn: ({ signal }) => hubApi<MarketplaceCodes>(`/products/${productId}/marketplace-codes`, { cache: 'no-store', signal }) })
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'success' | 'error'; message: string } | null>(null)
@@ -88,13 +87,13 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
   const save = useMutation({
     mutationFn: () => hubApi<MarketplaceCodes>(`/products/${productId}/marketplace-codes`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ codes: changes }) }),
     onSuccess: next => {
-      client.setQueryData(['product-marketplace-codes', productId], next)
+      client.setQueryData(queryKeys.productMarketplaceCodes(productId), next)
       setDrafts({})
       setCellErrors({})
       setStatus({ kind: 'success', message: `${changes.length.toLocaleString('tr-TR')} kod kaydedildi.` })
       // A code links or unlinks a variant: the editor's cards and the products list read the links again.
-      void client.invalidateQueries({ queryKey: ['product', productId] })
-      void client.invalidateQueries({ queryKey: ['products'] })
+      void client.invalidateQueries({ queryKey: queryKeys.product(productId) })
+      void client.invalidateQueries({ queryKey: queryKeys.products() })
     },
     onError: reason => {
       const fields = reason instanceof ApiRequestError ? reason.fieldErrors ?? {} : {}

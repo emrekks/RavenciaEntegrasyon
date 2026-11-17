@@ -161,6 +161,91 @@ public sealed class ReturnDecisionScopePostgreSqlTests(PostgreSqlTenantIsolation
         }
     }
 
+    // SIPARIS-STOK-1: "Teslim Aldım" opened Onayla/Reddet on Trendyol, n11 and Pazarama although their decision needs lines
+    // the marketplace reports as waiting, so every approval failed with 409. The step stays only where the whole claim is sent.
+    [PostgreSqlTheory]
+    [InlineData("TRENDYOL", false)]
+    [InlineData("N11", false)]
+    [InlineData("PAZARAMA", false)]
+    [InlineData("HEPSIBURADA", true)]
+    [InlineData("SHOPIFY", true)]
+    public async Task ReturnReceipt_IsOfferedOnlyWhereTheWholeClaimIsDecided(string platformCode, bool offered)
+    {
+        var seed = await SeedAsync($"rcv-{platformCode.ToLowerInvariant()}", platformCode, [1]);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimIds[0]).ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, ReturnClaimStatus.InTransit).SetProperty(x => x.RawStatus, "Created"));
+            await using (var db = fixture.CreateContext())
+                await db.ReturnLines.Where(x => x.ClaimId == seed.ClaimIds[0]).ExecuteUpdateAsync(set => set.SetProperty(x => x.RawStatus, "Created"));
+            await using var read = fixture.CreateContext();
+            var detail = (await Service(read, new RecordingReturnPort()).ReturnAsync(seed.TenantId, seed.ClaimIds[0], CancellationToken.None)).Value!;
+            Assert.Equal(offered, detail.AllowedActions.Contains("RECEIVE"));
+
+            var received = await Service(read, new RecordingReturnPort()).MarkReturnReceivedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimIds[0], detail.Version, "rcv", "rcv", CancellationToken.None);
+            await using var verify = fixture.CreateContext();
+            var claim = await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimIds[0]);
+            if (offered)
+            {
+                Assert.Null(received.Error);
+                Assert.Equal(ReturnClaimStatus.ActionRequired, claim.Status);
+            }
+            else
+            {
+                Assert.Equal("RETURN_RECEIPT_NOT_ALLOWED", received.Error?.Code);
+                Assert.Equal(ReturnClaimStatus.InTransit, claim.Status);
+                Assert.Equal("Created", claim.RawStatus);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // SIPARIS-STOK-1: after Teslim Aldım the marketplace still reports the return on its way; the reads that follow keep
+    // the claim Aksiyon Bekliyor with its receipt mark and open no RETURN_STATUS_TRANSITION_REFUSED issue.
+    [PostgreSqlFact]
+    public async Task AReceivedReturn_TheMarketplaceStillReportsOnItsWay_IsNoRefusedTransition()
+    {
+        var seed = await SeedAsync("rcv-read", "SHOPIFY", [1]);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimIds[0]).ExecuteUpdateAsync(set => set.SetProperty(x => x.Status, ReturnClaimStatus.InTransit).SetProperty(x => x.RawStatus, "IN_TRANSIT"));
+            await using (var db = fixture.CreateContext())
+            {
+                var detail = (await Service(db, new RecordingReturnPort()).ReturnAsync(seed.TenantId, seed.ClaimIds[0], CancellationToken.None)).Value!;
+                Assert.Null((await Service(db, new RecordingReturnPort()).MarkReturnReceivedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimIds[0], detail.Version, "rcv-read", "rcv-read", CancellationToken.None)).Error);
+            }
+            for (var read = 0; read < 2; read++)
+            {
+                await using var db = fixture.CreateContext();
+                var port = new RecordingReturnPort { Listed = new("rcv-read-claim-0", "rcv-read-order", "IN_TRANSIT", null, null, null, DateTimeOffset.UtcNow, [], "{}") };
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, port, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ReturnSync, "{\"forceFull\":true}", $"rcv-read-{read}", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+            await using var verify = fixture.CreateContext();
+            var claim = await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimIds[0]);
+            Assert.Equal(ReturnClaimStatus.ActionRequired, claim.Status);
+            Assert.Equal("RECEIVED_BY_SELLER", claim.RawStatus);
+            Assert.False(await verify.OperationalIssues.AnyAsync(x => x.TenantId == seed.TenantId && x.Code == "RETURN_STATUS_TRANSITION_REFUSED"));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    [Theory]
+    [InlineData("RECEIVED_BY_SELLER", ReturnClaimStatus.InTransit, true)]
+    [InlineData("RECEIVED_BY_SELLER", ReturnClaimStatus.Requested, true)]
+    [InlineData("RECEIVED_BY_SELLER", ReturnClaimStatus.Approved, false)]
+    [InlineData("WaitingInAction", ReturnClaimStatus.InTransit, false)]
+    public void TheReceiptMark_WaitsOnlyForStatusesFromBeforeTheReceipt(string raw, ReturnClaimStatus target, bool waits) =>
+        Assert.Equal(waits, ReturnIngestionService.AwaitsMarketplaceAfterSellerReceipt(raw, target));
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid[] ClaimIds, Guid[][] LineIds);
 
     private MarketplaceSalesService Service(AppDbContext db, IReturnPort port) =>

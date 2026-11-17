@@ -1,7 +1,10 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import type { ApiAnswer } from '../../shared/api/api-answer'
+import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { scopedStorageKey } from '../../shared/storage-scope'
+import { queryKeys } from '../../shared/api/query-keys'
+import { useServerDraft } from '../../shared/hooks/useServerDraft'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
@@ -28,9 +31,9 @@ export type AppearanceSettings = {
   colorThemes: AppearanceColorThemeProfile[]
 }
 
-export type AppearanceSettingsEnvelope = {
+export type AppearanceSettingsEnvelope = Omit<ApiAnswer<'getSettingsAppearance'>, 'settings'> & {
+  // CONTRACT: the API declares a free JSON object (VersionedSettingsView); what it holds is what this screen saved.
   settings: AppearanceSettings | null
-  version: number
 }
 
 const defaultDarkPalette: AppearancePalette = {
@@ -220,7 +223,7 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
   }
 }
 
-export const appearanceSettingsQueryKey = ['appearance-settings'] as const
+export const appearanceSettingsQueryKey = queryKeys.appearanceSettings()
 
 // The last settings this browser read are shown from the first paint of a new tab, so the panel does not open in the
 // default font and colours and switch a moment later. The server's answer still decides.
@@ -244,35 +247,46 @@ export function useAppearanceSettings() {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: appearanceSettingsQueryKey,
-    queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)),
+    queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)),
     placeholderData: () => readRememberedAppearance(),
     staleTime: 60_000,
     refetchOnWindowFocus: true
   })
-  const settings = normalizeAppearanceSettings(query.data?.settings)
-  const [draft, setDraft] = useState<AppearanceSettings>(settings)
-  const settingsColorsKey = JSON.stringify(settings.colors)
-  const settingsThemesKey = JSON.stringify(settings.colorThemes)
+  const serverSettings = query.data?.settings
+  const serverVersion = query.data?.version
+  const settings = useMemo(() => normalizeAppearanceSettings(serverSettings), [serverSettings])
+  // The draft and the saved appearance it was made from, with its version (WEB-SAYFALAR-4, useServerDraft keep-edits):
+  // newer settings read later replace only a draft equal to it; an edited draft is kept and the newer copy waits as a
+  // conflict (acceptServer, overwrite).
+  const { draft, setDraft, base, conflict, acceptServer, commit } = useServerDraft<AppearanceSettings>({
+    server: { value: settings, version: serverVersion },
+    onServerChange: 'keep-edits',
+    toDraft: value => value,
+    initialDraft: () => settings
+  })
 
-  const resetDraft = useEffectEvent(() => setDraft(settings))
-  useEffect(() => resetDraft(), [settings.fontFamily, settings.fontSize, settings.themeMode, settingsColorsKey, settingsThemesKey])
-
-  async function save(next: AppearanceSettings) {
+  async function save(next: AppearanceSettings, overVersion?: number) {
     const normalized = normalizeAppearanceSettings(next)
-    // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first.
+    // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The version
+    // is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
     const current = client.getQueryData<AppearanceSettingsEnvelope>(appearanceSettingsQueryKey)
-      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)) })
+      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { signal }).then(envelope => rememberAppearance(envelope)) })
     let saved: AppearanceSettingsEnvelope
     try {
-      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(normalized) })
+      saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(overVersion ?? base?.version ?? current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
-      // changed elsewhere meanwhile: read the current settings so the next save is made on them
+      // changed elsewhere meanwhile: read the current settings; the draft stays and the newer copy waits as a conflict
       if (error instanceof ApiRequestError && (error.status === 412 || error.status === 428)) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
       throw error
     }
     client.setQueryData(appearanceSettingsQueryKey, rememberAppearance(saved))
-    setDraft(normalizeAppearanceSettings(saved.settings))
+    commit({ value: normalizeAppearanceSettings(saved.settings), version: saved.version })
   }
 
-  return { ...query, settings, draft, setDraft, save }
+  // The draft is written over the newer settings, knowingly.
+  function overwrite() {
+    return save(draft, serverVersion)
+  }
+
+  return { ...query, settings, draft, setDraft, save, conflict, acceptServer, overwrite }
 }

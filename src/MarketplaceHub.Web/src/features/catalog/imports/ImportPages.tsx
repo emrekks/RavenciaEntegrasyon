@@ -1,4 +1,5 @@
 // İçe aktarımlar (/imports, /imports/:id).
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,6 +12,7 @@ import { statusLabel } from '../../../shared/status-labels'
 import { Page, Tag, Versioned } from '../shared'
 import { importSessionPollInterval } from './import-status'
 import { importTemplateCsv, importTemplateFields, importTemplateHeaders } from './import-template'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 type ImportSession = Versioned & { sourceType: string; status: string; totalRows: number; validRows: number; errorRows: number; reviewRows: number; sourceAssetId: string | null }
 type Candidate = Versioned & { matchRule: string; safeSummary: string; productId: string | null; variantId: string | null }
@@ -35,12 +37,12 @@ function useImportTask() {
 export function ImportsPage() {
   const client = useQueryClient()
   const { error, pending } = useImportTask()
-  const query = useQuery({ queryKey: ['imports'], queryFn: () => loadAllPages<ImportSession>('/imports') })
+  const query = useQuery({ queryKey: queryKeys.imports(), queryFn: ({ signal }) => loadAllPages<ImportSession>('/imports', { signal }) })
   function create(sourceType: string) {
     if (pending.isPending) return
     pending.mutate(async () => {
       await hubApi('/imports', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ sourceType, connectionId: null }) })
-      await client.invalidateQueries({ queryKey: ['imports'] })
+      await client.invalidateQueries({ queryKey: queryKeys.imports() })
     })
   }
   return <Page title="İçe Aktarımlar" eyebrow="Katalog" className="catalog-list-page" action={<div className="actions"><button type="button" disabled={pending.isPending} onClick={() => create('CSV')}>CSV Başlat</button><button type="button" disabled={pending.isPending} onClick={() => create('XLSX')}>XLSX Başlat</button></div>}>
@@ -55,19 +57,19 @@ export function ImportDetailPage() {
   const { error, pending } = useImportTask()
   // Re-read only while the worker moves the import on; a finished import is not polled.
   const session = useQuery({
-    queryKey: ['import', id],
-    queryFn: () => hubPoll<ImportSession>(`/imports/${id}`),
+    queryKey: queryKeys.import(id),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getImportsById'>>(`/imports/${id}`, { signal }),
     enabled: !!id,
     refetchInterval: query => importSessionPollInterval(query.state.data?.status)
   })
-  const candidates = useQuery({ queryKey: ['candidates', id], queryFn: () => loadAllPages<Candidate>(`/imports/${id}/candidates`), enabled: session.data?.status === 'REVIEW_REQUIRED' })
+  const candidates = useQuery({ queryKey: queryKeys.candidates(id), queryFn: ({ signal }) => loadAllPages<Candidate>(`/imports/${id}/candidates`, { signal }), enabled: session.data?.status === 'REVIEW_REQUIRED' })
   function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (pending.isPending) return
     const form = event.currentTarget
     pending.mutate(async () => {
       await hubApi(`/imports/${id}/source-file`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: new FormData(form) })
-      await client.invalidateQueries({ queryKey: ['import', id] })
+      await client.invalidateQueries({ queryKey: queryKeys.import(id) })
     })
   }
   function map(event: FormEvent<HTMLFormElement>) {
@@ -79,7 +81,7 @@ export function ImportDetailPage() {
     const fields = String(data.get('fields')).split(',').map(x => x.trim())
     pending.mutate(async () => {
       await hubApi(`/imports/${id}/column-mapping`, { method: 'PUT', headers: { 'If-Match': `"v${version}"` }, body: JSON.stringify({ profileName: 'Manuel eşleme', variantGroupKey: null, mappings: headers.map((sourceColumn, sortOrder) => ({ sourceColumn, targetField: fields[sortOrder], sortOrder })) }) })
-      await client.invalidateQueries({ queryKey: ['import', id] })
+      await client.invalidateQueries({ queryKey: queryKeys.import(id) })
     })
   }
   function job(kind: 'preview' | 'apply') {
@@ -88,15 +90,15 @@ export function ImportDetailPage() {
     const versionedKey = versionedIdempotencyKey(`import-${kind}`, id ?? '', session.data?.version ?? 0)
     pending.mutate(async () => {
       await sendWithVersionedIdempotencyKey(versionedKey, key => hubApi(`/imports/${id}/${kind}-jobs`, { method: 'POST', headers: { 'Idempotency-Key': key } }))
-      await client.invalidateQueries({ queryKey: ['import', id] })
+      await client.invalidateQueries({ queryKey: queryKeys.import(id) })
     })
   }
   function decide(candidate: Candidate, decision: 'CREATE' | 'LINK' | 'SKIP') {
     if (pending.isPending) return
     pending.mutate(async () => {
       await hubApi(`/imports/${id}/decisions/${candidate.id}`, { method: 'PUT', headers: { 'If-Match': `"v${candidate.version}"` }, body: JSON.stringify({ decision, productId: decision === 'LINK' ? candidate.productId : null, variantId: decision === 'LINK' ? candidate.variantId : null }) })
-      await client.invalidateQueries({ queryKey: ['candidates', id] })
-      await client.invalidateQueries({ queryKey: ['import', id] })
+      await client.invalidateQueries({ queryKey: queryKeys.candidates(id) })
+      await client.invalidateQueries({ queryKey: queryKeys.import(id) })
     })
   }
   if (!session.data) return <Page title="İçe Aktarım" eyebrow="Katalog" className="catalog-list-page"><ErrorToast title="İçe Aktarım Yüklenemedi" error={session.error} /><p>Yükleniyor…</p></Page>

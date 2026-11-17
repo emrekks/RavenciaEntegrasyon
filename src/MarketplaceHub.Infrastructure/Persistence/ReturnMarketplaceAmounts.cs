@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -64,7 +65,7 @@ public static class ReturnMarketplaceAmounts
         var amount = Number(line, "amount");
         var discount = Number(line, "discount") ?? Number(line, "lineTotalDiscount");
         if (amount is null)
-            return price is { } claimPrice ? new(null, null, Money(claimPrice * quantity), null) : null;
+            return price is { } claimPrice ? new(null, null, MoneyRounding.Round(claimPrice * quantity), null) : null;
         // The whole line returned: its units as Trendyol split them (a discount of 83.33 over three units is
         // 27.78 + 27.78 + 27.77), so the total equals Trendyol's own to the kuruş.
         if (line.TryGetProperty("discountDetails", out var details) && details.ValueKind == JsonValueKind.Array
@@ -78,10 +79,10 @@ public static class ReturnMarketplaceAmounts
                 unitPrices += unitPrice;
                 unitDiscounts += unitDiscount;
             }
-            if (complete) return new(Money(unitPrices + unitDiscounts), Money(unitDiscounts), Money(unitPrices), null);
+            if (complete) return new(MoneyRounding.Round(unitPrices + unitDiscounts), MoneyRounding.Round(unitDiscounts), MoneyRounding.Round(unitPrices), null);
         }
-        return new(Money(amount.Value * quantity), discount is { } unitDiscountAmount ? Money(unitDiscountAmount * quantity) : null,
-            price is { } unitPriceAmount ? Money(unitPriceAmount * quantity) : null, null);
+        return new(MoneyRounding.Round(amount.Value * quantity), discount is { } unitDiscountAmount ? MoneyRounding.Round(unitDiscountAmount * quantity) : null,
+            price is { } unitPriceAmount ? MoneyRounding.Round(unitPriceAmount * quantity) : null, null);
     }
 
     private static ReturnAmountsView? Hepsiburada(JsonElement line, string? externalClaimId)
@@ -92,7 +93,7 @@ public static class ReturnMarketplaceAmounts
         var refund = Number(line, "refundAmount");
         if (refund is null && line.TryGetProperty("refundAmount", out var refundObject) && refundObject.ValueKind == JsonValueKind.Object)
             refund = Number(refundObject, "amount");
-        return refund is { } amount ? new(null, null, null, Money(amount)) : null;
+        return refund is { } amount ? new(null, null, null, MoneyRounding.Round(amount)) : null;
     }
 
     private static ReturnAmountsView? N11(JsonElement line, decimal quantity)
@@ -100,13 +101,12 @@ public static class ReturnMarketplaceAmounts
         var price = Number(line, "price");
         // sellerInvoiceAmount and totalSellerDiscountPrice are the line's; read only when one unit was ordered and returned.
         var single = quantity == 1 && Number(line, "quantity") == 1;
-        return new(price is { } unit ? Money(unit * quantity) : null,
-            single ? Number(line, "totalSellerDiscountPrice") is { } discount ? Money(discount) : null : null,
-            single ? Number(line, "sellerInvoiceAmount") is { } invoiced ? Money(invoiced) : null : null,
+        return new(price is { } unit ? MoneyRounding.Round(unit * quantity) : null,
+            single ? Number(line, "totalSellerDiscountPrice") is { } discount ? MoneyRounding.Round(discount) : null : null,
+            single ? Number(line, "sellerInvoiceAmount") is { } invoiced ? MoneyRounding.Round(invoiced) : null : null,
             null);
     }
 
-    private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 
     private static decimal? Number(JsonElement element, string name)
     {

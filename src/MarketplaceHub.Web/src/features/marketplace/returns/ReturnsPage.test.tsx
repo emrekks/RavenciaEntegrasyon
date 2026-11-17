@@ -141,7 +141,7 @@ describe('returns page', () => {
     expect(row.querySelector('.rr-thumb-none')).toBeNull()
   })
 
-  it('labels a Pazarama return cargo code as "İade Kargo Kodu" with a hint and never links it', async () => {
+  it('shows a Pazarama return cargo code bare in the Kargo column (the order cell names it), with a hint, and never links it', async () => {
     const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementationOnce(fn: (path: string) => Promise<unknown>): void }
     const original = hubApi.getMockImplementation()!
     hubApi.mockImplementationOnce(async (path: string) => {
@@ -151,7 +151,9 @@ describe('returns page', () => {
     const { host } = renderPage()
     await waitFor(() => host.textContent!.includes('PZ15649905156'))
     const cargoCell = host.querySelector<HTMLElement>('[data-l="Kargo"]')!
-    expect(cargoCell.textContent).toContain('İade Kargo Kodu: PZ15649905156')
+    expect(cargoCell.textContent).toContain('PZ15649905156')
+    expect(cargoCell.textContent).not.toContain('İade Kargo Kodu')
+    expect(host.querySelector('.rr-ordercell')!.textContent).toContain('İade Kargo Kodu')
     expect(cargoCell.querySelector('[title="Pazarama\'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."]')).not.toBeNull()
     expect(cargoCell.querySelector('a')).toBeNull()
   })
@@ -190,16 +192,26 @@ describe('returns page', () => {
     await waitFor(() => !new URLSearchParams(host.querySelector('[data-testid="address"]')!.textContent!).has('page'))
   })
 
-  it('drops the bulk selection when the page changes, so a hidden return is never decided by mistake', async () => {
+  // Owner, 16 Nov 2026 ("Hepsi korusun", WEB-SAYFALAR-11): a page change keeps the bulk selection; the returns picked on
+  // another page still count and go into the decision with their versions.
+  it('keeps the bulk selection across pages and decides the returns picked on another page too', async () => {
     const { host } = renderPage('/returns?status=ACTION_REQUIRED')
     await waitFor(() => host.textContent?.includes('#2'))
     act(() => { host.querySelector<HTMLInputElement>('input[aria-label="Tüm iadeleri seç"]')!.click() })
     await waitFor(() => host.textContent?.includes('iade seçildi'))
+    const picked = Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).filter(box => box.checked).length
+    expect(picked).toBeGreaterThan(0)
+    const bar = () => host.querySelector('.rr-bulk:not(.is-leaving)')?.textContent ?? ''
     act(() => { byText<HTMLButtonElement>(host, 'button[aria-label="Sonraki"]', '').click() })
     await waitFor(() => host.textContent?.includes('#21'))
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).some(box => box.checked)).toBe(false)
+    expect(bar()).toContain(`${picked} iade seçildi`)
+    act(() => { host.querySelector<HTMLInputElement>('tbody input.rr-cb')!.click() })
+    expect(bar()).toContain(`${picked + 1} iade seçildi`)
     act(() => { byText<HTMLButtonElement>(host, '.rr-pages button', '1').click() })
     await waitFor(() => host.textContent?.includes('#2'))
-    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).some(box => box.checked)).toBe(false)
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).filter(box => box.checked)).toHaveLength(picked)
+    expect(bar()).toContain(`${picked + 1} iade seçildi`)
   })
 
   it('does not apply search text that was typed but not submitted when a tab is chosen', async () => {
@@ -237,5 +249,30 @@ describe('returns page', () => {
     await waitFor(() => api.paths.at(-1) === '/returns?sort=ORDERED_ASC&limit=20')
     expect(trigger().textContent).toBe('En Eski Sipariş')
     await waitFor(() => host.ownerDocument.querySelector('[data-testid="address"]')?.textContent?.includes('sort=ORDERED_ASC'))
+  })
+
+  // GET /returns/{id} sends no request date (ReturnDetailView): the facts strip showed it from the row until the claim was
+  // read, then dropped it.
+  it('keeps the request date of the row in the detail popup once the claim is read', async () => {
+    const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
+    const original = hubApi.getMockImplementation()!
+    hubApi.mockImplementation(async (path: string) => {
+      if (path.startsWith('/returns?')) return { items: [claim('5', { status: 'APPROVED', requestedAt: '2026-10-11T09:00:00Z' })], nextCursor: null, hasMore: false, totalCount: 1 }
+      if (path === '/returns/5') {
+        api.paths.push(path)
+        return claim('5', { status: 'APPROVED', allowedActions: [], stockDispositionAvailable: false, externalWritesEnabled: true, decisionPending: false, wholeClaimDecision: false, rejectNeedsReturnShipment: false, actionDueAtEstimated: false, customerRequest: null, lines: [] })
+      }
+      return original(path)
+    })
+    try {
+      const { host } = renderPage()
+      await waitFor(() => host.textContent?.includes('#5'))
+      act(() => { byText<HTMLButtonElement>(host, 'button.rr-trigger', 'İşlemler').click() })
+      act(() => { byText<HTMLButtonElement>(host.ownerDocument.body, '[role="menuitem"]', 'Detaylı Bilgi').click() })
+      await waitFor(() => api.paths.includes('/returns/5') && host.ownerDocument.body.querySelector('.rr-facts') !== null && !host.ownerDocument.body.textContent?.includes('İade detayları yükleniyor'))
+      expect(host.ownerDocument.body.querySelector('.rr-facts')!.textContent).toContain('Talep Tarihi')
+    } finally {
+      hubApi.mockImplementation(original)
+    }
   })
 })

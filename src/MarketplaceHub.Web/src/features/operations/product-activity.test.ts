@@ -9,7 +9,7 @@ function entry(patch: Partial<ProductActivityEntry>): ProductActivityEntry {
     id: 'a', occurredAt: '2026-11-04T09:02:26Z', kind: 'STOCK', type: 'MANUAL_ADJUSTMENT', productId: 'p', productTitle: 'Bluz', imageUrl: null, variantId: 'v', sku: 'S', barcode: 'B',
     modelCode: null, optionText: null, quantityDelta: null, previousSalePrice: null, newSalePrice: null, previousListPrice: null, newListPrice: null, currency: null,
     previousStatus: null, newStatus: null, source: 'MANUAL', note: null, connectionId: null, platformCode: null, storeName: null, orderId: null, orderNumber: null,
-    returnId: null, returnNumber: null, actorUserId: null, actorName: null, ...patch
+    returnId: null, returnNumber: null, actorUserId: null, actorName: null, stockBefore: null, stockAfter: null, field: null, previousValue: null, newValue: null, ...patch
   }
 }
 
@@ -89,10 +89,10 @@ describe('product activity request', () => {
   it('bounds the time by the chosen Istanbul days, else by the range', () => {
     const now = Date.parse('2026-11-04T12:00:00Z')
     const days = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, from: '2026-11-04', to: '2026-11-04' }, null, 50, now).slice(1))
-    expect(days.get('from')).toBe('2026-11-03T21:00:00.000Z')
-    expect(days.get('to')).toBe('2026-11-04T20:59:59.999Z')
+    expect(days.get('dateFrom')).toBe('2026-11-03T21:00:00.000Z')
+    expect(days.get('dateTo')).toBe('2026-11-04T20:59:59.999Z')
     const range = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, range: '24h' }, null, 50, now).slice(1))
-    expect(range.get('from')).toBe('2026-11-03T12:00:00.000Z')
+    expect(range.get('dateFrom')).toBe('2026-11-03T12:00:00.000Z')
   })
 })
 

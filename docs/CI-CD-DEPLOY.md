@@ -86,8 +86,15 @@ süren bir deploy yarıda kesilebilir.
   değiştiyse (ya da çalışan sürüm bilinmiyorsa) prova yapar; kod-yalnız deploy'lar etkilenmez. Seçim:
   `RAVENCIA_MIGRATION_REHEARSAL` (elle) ya da `production.env` içinde
   `MARKETPLACEHUB_MIGRATION_REHEARSAL=auto|always|never`. Kök disk %80'in üstündeyse (ikinci bir veritabanı
-  kopyası gerekir) prova uyarıyla atlanır. Süre dolması üretimde de uzun sürecek bir migration demektir:
+  kopyası gerekir) ve migration'lar değiştiyse deploy üretime dokunmadan durur (yer açılır ya da migration
+  kontrol edilip elle `RAVENCIA_MIGRATION_REHEARSAL=never` ile deploy edilir); migration değişmemişken
+  (`always`) prova yalnız uyarıyla atlanır. Süre dolması üretimde de uzun sürecek bir migration demektir:
   bir pencere planlanıp elle `RAVENCIA_MIGRATION_REHEARSAL=never` ile deploy edilir.
+- **Prova migration'dan önce düşerse** ("Migration rehearsal failed … production was not migrated"): canlı
+  veritabanı ve çalışan api/worker/caddy değişmez, sürüm `.hold`'a girmez. Neden migration'ın kendisiyse düzeltme
+  commit'i olağan yoldan gelir; neden geçiciyse (disk, ağ, kopma) aynı sha
+  `gh workflow run deploy.yml --ref main` ile yeniden denenir: son başarılı deploy bu sha'yı içermediği için
+  giriş betiği deploy'u yeniden çalıştırır.
 - **Migration süresi**: `fast-deploy.sh` migrate konteynerini `docker wait` ile en çok 30 dakika bekler
   (`RAVENCIA_MIGRATION_TIMEOUT_SECONDS`, varsayılan 1800); süre dolarsa konteyneri durdurur (açık işlem geri
   alınır, eski yığın son tamamlanan migration'ın şemasıyla hizmete devam eder) ve deploy başarısız olur.
@@ -176,6 +183,27 @@ durmamalıdır. Argümansız `install-ci-deploy.sh` yalnız `/usr/local/bin/rave
   (2 sn üstü sorgular loglanır), `shm_size: 1g`; konteyner sınırı 6 GB / 3 CPU. API, Worker ve migrate her biri
   1,5 GB / 2 CPU. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır
   (birkaç saniyelik bağlantı kesintisi; API/Worker yeniden bağlanır).
+
+### Migration kuralları
+
+Deploy önce migration'ı uygular, yeni API/Worker ancak sonra başlar (`fast-deploy.sh`); arada **eski kod yeni şemayla**
+çalışır ve yeni sürüm açılmazsa şema değiştiği için otomatik geri alma yapılmaz. Bu yüzden yeni bir migration'ın `Up()`'ı:
+
+1. **Yalnız eklemeli** olur: yeni tablo, nullable ya da varsayılanlı sütun, index, veri doldurma. Sütun/tablo silme,
+   yeniden adlandırma, sütunu NOT NULL yapma **iki sürümde** yapılır (genişlet-daralt): önce kod sütunu okumayı/yazmayı
+   bırakır ve canlıya çıkar (migration'sız), sonraki sürümdeki migration silmeyi yapar ve dosyasında
+   `// expand-contract: phase 2 of <önceki migration>` yorumunu taşır.
+2. **Uzun kilit tutmaz**: satırı olan bir tabloya index `CREATE [UNIQUE] INDEX CONCURRENTLY` ile eklenir
+   (`AddProductVariantModelCodeIndex` kalıbı: `SET lock_timeout = 0`, `DROP INDEX CONCURRENTLY IF EXISTS`, `CREATE ...
+   CONCURRENTLY`, `RESET lock_timeout`, hepsi `suppressTransaction: true`; modelde `HasIndex` aynı adla kalır). Var olan
+   tabloya FK ya da CHECK `... NOT VALID` ile eklenir, ardından ayrı ifadede `VALIDATE CONSTRAINT` (yazmaları bloke etmez);
+   UNIQUE/PRIMARY KEY önce `CONCURRENTLY` index, sonra `ADD CONSTRAINT ... USING INDEX`. Sütun türü değişikliği
+   (`ALTER COLUMN ... TYPE`) tabloyu ACCESS EXCLUSIVE altında baştan yazar: yeni sütun eklenip doldurulur (genişlet-daralt).
+   Aynı migration'ın yarattığı tabloda düz `CreateIndex`/`AddForeignKey` serbesttir. Bilinçli istisna (birkaç satırlık
+   tablo, yeniden yazmayan varchar genişletmesi): dosyaya `// migration-lock-ok: <neden>`.
+
+`tests/ops/migration-guard.sh` bu kuralları 20261115000000 ve sonrası migration'larda denetler (Validate `ops` işi,
+`tests/ops/test-migration-guard.sh`); önceki migration'lar canlıda uygulanmış olduğundan denetlenmez.
 
 ## Loglar (journald)
 
@@ -379,6 +407,8 @@ silebilir; sunucuyu ele geçiren bu kopyaları da silebilir. Silinemez hedef ger
 | `ravencia-maintenance.timer` | ayın ilk Pazar'ı 01:00 UTC (04:00 TR), kaçan pencere sonradan yapılmaz | `monthly-maintenance.sh` (root'a ait kopyadan, `/usr/local/lib/ravencia`): deploy kilidini bekler ve tutar, `apt-get full-upgrade`; yalnız `/var/run/reboot-required` varsa yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat, bakım) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 | `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
+| `ravencia-secrets-escrow.timer` | 08:40 UTC; yalnız `deploy/secrets/secrets_escrow.enabled` varsa kurulur | `deploy/backup/secrets-escrow.sh`: gizli dosyaların age ile şifreli emaneti, Drive kopyasına eklenir (RUNBOOK-GERI-ALMA.md bölüm 5) |
+| `ravencia-wal-basebackup.timer`, `ravencia-wal-ship.timer` | 02:30 UTC; 08:45 ve 20:45 UTC; yalnız WAL arşivi yaması uygulanınca | `deploy/backup/wal-archive.sh basebackup` / `ship` (RUNBOOK-GERI-ALMA.md bölüm 9a) |
 
 Yedek, tatbikat, healthwatch, bakım ve alarm birimleri 3 Kasım 2026'dan beri `ubuntu` değil **root** olarak
 çalışır (`sudo` kullanmazlar; `NoNewPrivileges`, `ProtectSystem=full`, `ProtectHome=read-only`, çekirdek
@@ -478,6 +508,13 @@ Yanlış ban: `sudo cscli decisions delete --ip <IP>` (gerekirse VNC konsolundan
 gününün en yeni seti + daha eski 4 haftanın her birinin ve 6 ayın her birinin en yeni seti; en yeni set her
 koşulda kalır (`BACKUP_KEEP_RECENT`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`). Bir set ≈0,3–0,5 GB
 (12 Kasım 2026); olağan durumda ~25 set ≈ 10 GB (Hostinger, 193 GB kök disk).
+
+**Yalnız tam setler sayılır** (VERITABANI-DAGITIM-2): set önce `.incomplete-<zaman>` adıyla yazılır, kendi kontrolü
+(sağlama toplamları + `pg_restore --list`) geçip `.verified` işaretini alınca zaman adına taşınır; yarıda kalan
+çalıştırma klasörünü siler, ölmüş çalıştırmanın `.incomplete-*` klasörü 6 saat sonra silinir. `.verified`'sız zaman adlı
+bir set (eski betikten kalma) saklamada yer tutmaz ve bir gün sonra silinir; 16 Kasım 2026 öncesi adlı setler
+`SHA256SUMS` varsa tam sayılır. Saklama, disk koruması, healthwatch'ın "en yeni yedek" yaşı ve aylık tatbikat aynı kuralla
+yalnız tam seti seçer.
 
 **Disk koruması**: yeni set yazılmadan önce, en yeni setin boyutu kadar ekleme sonrası disk doluluğu
 hesaplanır. %85'i (`BACKUP_DISK_LIMIT_PERCENT`) geçecekse önce **en eski haftalık setler** silinir

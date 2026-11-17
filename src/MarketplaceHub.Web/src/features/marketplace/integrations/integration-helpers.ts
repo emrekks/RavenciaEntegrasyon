@@ -1,4 +1,6 @@
 import { noticeSentences } from '../../../shared/notice-copy'
+import { queryKeys } from '../../../shared/api/query-keys'
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 // Small pure pieces of the integrations pages, kept here so they can be tested on their own.
 
 /** Owner decision B: what switching the automatic writes (or the master switch) on means for the changes made while off. */
@@ -9,7 +11,7 @@ export function automaticWritesBaselineMessage(externalWriteTo: string) {
 }
 
 /** The query of GET /price-stock-monitor (API Sağlık); a change to the master switch or a write flow reads it again. */
-export const priceStockMonitorQueryKey = ['price-stock-monitor'] as const
+export const priceStockMonitorQueryKey = queryKeys.priceStockMonitor()
 
 /** One connection of GET /price-stock-monitor (PriceStockConnectionMonitorView). */
 export type PriceStockConnectionMonitor = {
@@ -206,7 +208,7 @@ export function trendyolUserAgentNotice(identity: string, sellerId: string): { k
  * The notice of a connection test in the seller's words: which store was reached and that nothing was changed there (a
  * test only reads). A failure keeps the marketplace's own reason in the sentence and its code for the Ayrıntı rows.
  */
-export function connectionTestFeedback(platformName: string, result: { succeeded?: boolean; errorCode?: string; errorSummary?: string }) {
+export function connectionTestFeedback(platformName: string, result: { succeeded?: boolean; errorCode?: string | null; errorSummary?: string | null }) {
   const context = { operation: 'Bağlantı testi', record: true, code: result.errorCode || undefined }
   if (result.succeeded === true) {
     return { kind: 'success' as const, title: 'Bağlantı Testi Başarılı', message: `${platformName} mağazasına erişim doğrulandı. Mağazada hiçbir ürün, stok, fiyat veya sipariş değiştirilmedi.`, details: [{ label: 'Kontrol', value: 'Bağlantının yapabildiği işlemler yeniden doğrulandı' }], context }
@@ -216,21 +218,8 @@ export function connectionTestFeedback(platformName: string, result: { succeeded
 }
 
 /** The cadence the scheduler keeps for a sync flow (SyncCadenceView): this pass's interval, the bounds and the idle rule. */
-export type SyncCadence = {
-  effectiveIntervalSeconds: number
-  defaultIntervalSeconds: number
-  minimumIntervalSeconds: number
-  maximumIntervalSeconds: number
-  basis: string
-  idleKind: 'WEBHOOK' | 'QUIET' | 'RETURNS' | null
-  idleBackoffEnabled: boolean
-  idleIntervalSeconds: number | null
-  defaultIdleIntervalSeconds: number | null
-  idleActive: boolean
-  stageFloor: boolean
-  /** Why the scheduler does not queue the flow right now; null while it runs. */
-  heldReason?: string | null
-}
+// CONTRACT: the API declares idleKind as a string; SynchronizationPolicies writes IdleWebhook, IdleQuiet or IdleReturns.
+export type SyncCadence = Omit<NonNullable<ApiAnswer<'getConnectionsByIdSyncPolicies'>[number]['cadence']>, 'idleKind'> & { idleKind: 'WEBHOOK' | 'QUIET' | 'RETURNS' | null }
 
 /** A short interval for the flow table: "2 dk", "1 sa", "1 gün". */
 export function cadenceShortText(seconds: number) {

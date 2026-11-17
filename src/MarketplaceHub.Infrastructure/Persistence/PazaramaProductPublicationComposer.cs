@@ -27,7 +27,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
 
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
@@ -92,7 +92,8 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // groupCode comes from the whole card, so the variants a matched card adds join its Pazarama group: the group the
         // card's product link records ("group:<code>", read from Pazarama), else the one the panel derives from the model code.
-        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        // KATALOG-14 phase D5b: the model's code (EffectiveCatalog.CardModelCodesAsync).
+        var modelCodes = await EffectiveCatalog.CardModelCodesAsync(db, tenantId, productId, cardVariants.Select(x => x.ModelCode), cancellationToken);
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Pazarama varyant grubu tek bir ortak model kodu kullanmalıdır.");
         var groupCode = GroupCode(modelCodes[0]!);
         var variants = cardVariants;

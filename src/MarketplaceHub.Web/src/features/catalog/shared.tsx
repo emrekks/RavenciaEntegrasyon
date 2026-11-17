@@ -1,5 +1,7 @@
 // Code the catalog routes share (product list, product editor, catalog lists, imports): types, helpers and windows.
 // Each route lives in its own module so it loads as its own chunk.
+import type { ApiAnswer, Written } from '../../shared/api/api-answer'
+import type { JobAccepted } from '../../shared/api/generated/api-types'
 import { type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { UiIcon } from '../../shared/components'
@@ -10,7 +12,7 @@ import './publish-platform-issues.css'
 import './products-responsive.css'
 import './catalog-polish.css'
 import './products-sade.css'
-import { RrImagePreview } from '../marketplace/returns-ui'
+import { RrImagePreview } from '../../shared/ui/rr-components'
 import { type VariantAttributeAssignment } from './variant-attribute-assignments'
 import { mergeVariantOptionEntries, parseVariantOptionSignature } from './variant-option-matching'
 import { productPublicationChannelMode } from './product-publication-channels'
@@ -21,20 +23,15 @@ export type Category = Versioned & { name: string; path: string; depth: number; 
 export type Brand = Versioned & { name: string; isActive: boolean }
 export type Attribute = Versioned & { code: string; name: string; dataType: string; values: Array<{ id: string; value: string }>; roles?: string[] | null }
 export type ProductAttributeAssignment = VariantAttributeAssignment
-export type Variant = Versioned & {
-  sku: string; barcode: string | null; modelCode: string | null; optionSignature: string; status: string
-  weight: number | null; width: number | null; height: number | null; length: number | null; desi: number | null; costPrice: number | null
-  defaultListPrice?: number | null; defaultSalePrice?: number | null
-  onHand: number; available: number; inventoryVersion: number | null
-  productId?: string | null
-  offerId: string | null; listPrice: number | null; salePrice: number | null; currency: string | null; offerStatus: string | null
-  priceVersion: number | null; offerVersion: number | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null
-  mediaUrls?: string[]; options?: Record<string, string>; platformStatuses?: VariantPlatformStatus[]; attributes?: ProductAttributeAssignment[]
-}
+export type Variant = Product['variants'][number]
 // missingVariantCount: variants the marketplace no longer knows (link NOT_FOUND or REJECTED), not in matchedVariantCount.
 // onSale/offSale…VariantCount: matched variants the marketplace says are on sale / closed to sale (the rest unknown);
 // offSaleStockZeroVariantCount: the closed ones whose only named reason is a stock of 0 (sale-state.ts).
+// A panel row type, not an answer alias: the bulk dialogs also build these rows themselves (a queued send), and the
+// contract's statuses fit into it.
 export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number; onSaleVariantCount?: number; offSaleVariantCount?: number; offSaleStockZeroVariantCount?: number; offSaleReasonCounts?: Record<string, number> | null; rejectionReason?: string | null; rejectedVariantCount?: number; pendingVariantCount?: number; resubmittedVariantCount?: number; updatingVariantCount?: number; reviewVariantCount?: number }
+// A panel row type, not an answer alias: the editor also builds these rows itself (a new card's pricing per store), and
+// the contract's variant statuses fit into it.
 export type VariantPlatformStatus = {
   platform: string; platformCode: string; isLinked: boolean; status?: string
   // Present at the marketplace (a variant link or a LIVE listing); isLinked also counts a variant only queued for
@@ -55,31 +52,10 @@ export type VariantPlatformStatus = {
   // marketplace's reason while it is REJECTED (variant-status.ts).
   listingStatus?: string | null; rejectionReason?: string | null
 }
-export type Product = Versioned & {
-  title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
-  defaultListPrice?: number | null; defaultSalePrice?: number | null; warrantyMonths?: number | null
-  // Teslimat Süresi (gün): sent as each marketplace's delivery/dispatch time; null only on a card older than the field.
-  deliveryDays?: number | null
-  // The card's KDV Oranı and KDV Dahil mi ("INCLUDED"/"EXCLUDED"); null = not set on the card. A new marketplace offer
-  // (bulk publish) takes its VAT from here.
-  vatRate?: number | null; vatInclusion?: string | null
-  // Trendyol Web Color chosen by hand (panel colour value id); null = automatic from each variant's Renk.
-  trendyolWebColorValueId?: string | null
-  familyProductIds?: string[] | null
-  // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened.
-  familyGalleries?: Array<{ productId: string; mediaUrls: string[]; variantMediaUrls: string[]; sizeChartUrl: string | null }> | null
-  // The products list: the model's front picture, the family gallery's first picture as the editor shows it (never the
-  // size chart), the same on every card of the model. A colour card's own front picture stays primaryImageUrl.
-  familyImageUrl?: string | null
-  categoryPath?: string | null; variants: Variant[]; primaryImageUrl: string | null; totalStock: number; startingPrice: number | null; currency: string; modelCode: string | null; activePlatforms: string[] | null; familyMediaUrls?: string[]
-  familyMediaItems?: Array<{ url: string; mediaIds: string[]; sourceProductTitles: string[] }>; familyOrderedMediaUrls?: string[]; hasCustomMediaOrder?: boolean
-  platformStatuses?: ProductPlatformStatus[]
-  attributes?: ProductAttributeAssignment[]
-  options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
-  mediaUrls?: string[]
-  // The picture marked as the card's size chart (Beden Tablosu); the server already lists it last everywhere.
-  sizeChartUrl?: string | null
-}
+// A card as GET /products/{id} and the card writes answer it: every member present, null when unset.
+export type Product = ApiAnswer<'getProductsById'>
+// GET /products answers the same card but leaves its null members out (CatalogEndpoints.ProductListJson); the list
+// pages read its rows through readProductListItem (product-list-item.ts), which gives them back as null.
 export function variantColorKey(variant: Variant) {
   const color = preferredColorOption(variantOptionEntries(variant))
   return color?.value.trim().toLocaleLowerCase('tr-TR') || null
@@ -113,8 +89,8 @@ export function compareVariantOptionSignatures(left: string, right: string) {
   }
   return compareLabelsAlphabetically(left, right)
 }
-export type MarketplaceConnection = { id: string; platformCode: string; displayName: string; externalStoreId: string; status: string; externalWritesEnabled?: boolean }
-export type AcceptedJob = { jobId: string }
+export type MarketplaceConnection = ApiAnswer<'getConnections'>['items'][number]
+export type AcceptedJob = Written<JobAccepted>
 export const productPublicationMode = (item: MarketplaceConnection) => productPublicationChannelMode(item.platformCode, item.status, item.externalWritesEnabled)
 export const isProductPublicationConnection = (item: MarketplaceConnection) => productPublicationMode(item) === 'PUBLISH'
 export type LightboxImage = { url: string; title: string; modelCode?: string | null; color?: string | null; size?: string | null }

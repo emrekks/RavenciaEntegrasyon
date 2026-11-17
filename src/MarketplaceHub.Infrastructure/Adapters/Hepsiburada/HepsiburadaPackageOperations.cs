@@ -17,7 +17,7 @@ public sealed partial class HepsiburadaHttpClient
         if (account is null) return Failure<PackageActionResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
         if (string.IsNullOrWhiteSpace(command.ExternalPackageId) || command.ExternalPackageId.Any(char.IsWhiteSpace))
             return Failure<PackageActionResult>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_ID_INVALID", "Paket numarası geçersiz.", HttpStatusCode.BadRequest);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ShipmentWrite))
             return await Unsupported<PackageActionResult>("Hepsiburada paket işlemleri mevcut dış yazma kapıları ve mağaza/ortam kapsamlı SHIPMENT_WRITE kanıtı gerektirir.");
 
@@ -60,6 +60,7 @@ public sealed partial class HepsiburadaHttpClient
         }
 
         var response = await SendAsync(account, account.OmsBaseAddress, method, endpoint, content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<PackageActionResult>.Failure(response.Error!, response.RateLimit);
         return AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, action, null), response.RateLimit);
     }
@@ -73,6 +74,7 @@ public sealed partial class HepsiburadaHttpClient
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<IReadOnlyList<RemoteCargoCompany>>("Hepsiburada kargo firmaları yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
         if (string.IsNullOrWhiteSpace(externalPackageId) || externalPackageId.Any(char.IsWhiteSpace)) return Failure<IReadOnlyList<RemoteCargoCompany>>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_ID_INVALID", "Paket numarası geçersiz.", HttpStatusCode.BadRequest);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, ChangeableCargoCompanies(account.Connection.ExternalStoreId, externalPackageId), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<IReadOnlyList<RemoteCargoCompany>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<IReadOnlyList<RemoteCargoCompany>>.Success(HepsiburadaJsonMapper.ChangeableCargoCompanies(response.Value!.RootElement), response.RateLimit); }
         catch (JsonException) { return Failure<IReadOnlyList<RemoteCargoCompany>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_CARGO_COMPANY_CONTRACT_INVALID", "Hepsiburada değiştirilebilir kargo firması yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
@@ -87,6 +89,7 @@ public sealed partial class HepsiburadaHttpClient
         if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<IReadOnlyList<RemotePackageableLine>>("Hepsiburada paketlenebilir kalemleri yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
         if (string.IsNullOrWhiteSpace(externalLineItemId) || externalLineItemId.Any(char.IsWhiteSpace)) return Failure<IReadOnlyList<RemotePackageableLine>>(AdapterErrorClass.Validation, "HEPSIBURADA_LINE_ITEM_ID_INVALID", "Sipariş kalemi kimliği geçersiz.", HttpStatusCode.BadRequest);
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Get, PackageableLineItems(account.Connection.ExternalStoreId, externalLineItemId), cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<IReadOnlyList<RemotePackageableLine>>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<IReadOnlyList<RemotePackageableLine>>.Success(HepsiburadaJsonMapper.PackageableLineItems(response.Value!.RootElement), response.RateLimit); }
         catch (JsonException) { return Failure<IReadOnlyList<RemotePackageableLine>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGEABLE_LINES_CONTRACT_INVALID", "Hepsiburada paketlenebilir kalem yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
@@ -98,7 +101,7 @@ public sealed partial class HepsiburadaHttpClient
             return await Unsupported<CreateOrderPackageResult>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar paket oluşturulmadı.");
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return Failure<CreateOrderPackageResult>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+        if (!ExternalWriteGate.AllowsRuntimeWrite(account.Connection, context, GlobalWritesEnabled)
             || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, MarketplaceCapabilities.ShipmentWrite))
             return await Unsupported<CreateOrderPackageResult>("Hepsiburada paket oluşturma mevcut dış yazma kapıları ve mağaza/ortam kapsamlı SHIPMENT_WRITE kanıtı gerektirir.");
         if (!ValidOrderPackageCommand(command)) return Failure<CreateOrderPackageResult>(AdapterErrorClass.Validation, "HEPSIBURADA_PACKAGE_CREATE_INPUT_INVALID", "Hepsiburada paket alanları veya satırları geçersiz.", HttpStatusCode.BadRequest);
@@ -118,6 +121,7 @@ public sealed partial class HepsiburadaHttpClient
         var body = CreatePackagePayload(command);
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
         var response = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Post, CreatePackage(account.Connection.ExternalStoreId), content, cancellationToken);
+        using var responseDocument = response.Value;
         if (!response.IsSuccess) return AdapterResult<CreateOrderPackageResult>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<CreateOrderPackageResult>.Success(new(HepsiburadaJsonMapper.PackageNumber(response.Value!.RootElement)), response.RateLimit); }
         catch (JsonException) { return Failure<CreateOrderPackageResult>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PACKAGE_CREATE_CONTRACT_INVALID", "Hepsiburada paket oluşturma yanıtında packageNumber yok.", HttpStatusCode.BadGateway); }
@@ -321,6 +325,8 @@ public sealed partial class HepsiburadaHttpClient
         // C17: the label service answers JSON ({"format", "data": [...]}) as well as the file itself.
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var timeout = new QuotaAwareTimeout(request, HepsiburadaRateLimitHandler.QuotaAcquiredKey, RequestTimeout, cancellationToken);
+        // KUYRUK-1: a write job's request that has not started when the worker shuts down is not sent.
+        if (timeout.StoppedBeforeStart) return AdapterResult<byte[]>.Failure(Transport.LocalQuotaWait());
         try
         {
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
@@ -328,10 +334,14 @@ public sealed partial class HepsiburadaHttpClient
             var requestId = response.Headers.TryGetValues("X-Request-Id", out var ids) ? ids.FirstOrDefault() : null;
             if (!response.IsSuccessStatusCode)
             {
-                var retryAfter = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
+                var retryAfter = RetryAfter(response);
+                // D14: a 403 HTML page is the gateway's temporary block, as on Hepsiburada's other paths.
                 var error = LocalCircuitResponse.Refusal(response, "HEPSIBURADA", "Hepsiburada")
                     ?? (response.StatusCode == HttpStatusCode.BadRequest
                     ? LabelRejected(await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), requestId)
+                    : response.StatusCode == HttpStatusCode.Forbidden
+                        && MarketplaceErrorRules.GatewayBlocked(response.StatusCode, await ReadBoundedTextAsync(response.Content, 16 * 1024, timeout.Token), "Hepsiburada", "HEPSIBURADA", requestId) is { } gatewayBlock
+                    ? gatewayBlock
                     : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId));
                 return AdapterResult<byte[]>.Failure(error, rate);
             }
@@ -351,13 +361,14 @@ public sealed partial class HepsiburadaHttpClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            if (!timeout.QuotaAcquired) return LocalQuotaWait<byte[]>();
-            return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_TIMEOUT", "Hepsiburada isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<byte[]>.Failure(timeout.QuotaAcquired ? Transport.Timeout() : Transport.LocalQuotaWait());
         }
-        catch (HttpRequestException exception)
+        // ADAPTOR-TY-HB-2: the label body is streamed (ResponseHeadersRead); a connection that breaks mid-body throws an
+        // IOException (HttpIOException), a corrupt compressed body an InvalidDataException: both are network errors.
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
         {
             logger.LogWarning(exception, "Hepsiburada label API isteği başarısız. ConnectionId: {ConnectionId}", context.Connection.Id);
-            return AdapterResult<byte[]>.Failure(new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_NETWORK_ERROR", "Hepsiburada bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+            return AdapterResult<byte[]>.Failure(Transport.NetworkError());
         }
     }
 }

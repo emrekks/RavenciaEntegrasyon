@@ -56,6 +56,29 @@ public sealed class N11SettlementBackfillPostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // ISLEYICI-7 (16 Nov 2026): a day list or a day's lines that reach the page cap with pages left end the run with
+    // N11_SETTLEMENT_PAGE_CAP; the day is not stored, so it is not taken as read.
+    [PostgreSqlTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_settlement_read_cut_at_its_page_cap_stores_nothing_and_names_the_cap(bool endlessList)
+    {
+        var (tenant, connection) = await SeedAsync();
+        try
+        {
+            var port = new Port { EndlessList = endlessList, EndlessItems = !endlessList };
+            port.Days[new DateOnly(2026, 11, 10)] = "479000001";
+            var outcome = await RunAsync(tenant.Id, connection.Id, port);
+            Assert.False(outcome.Result.Succeeded);
+            Assert.Equal(N11SettlementSyncJobHandler.PageCapCode, outcome.Result.ErrorCode);
+            Assert.Empty(await IdsAsync(tenant.Id));
+        }
+        finally
+        {
+            await CleanAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task A_failing_older_read_keeps_the_regular_read_and_is_tried_again()
     {
@@ -139,6 +162,9 @@ public sealed class N11SettlementBackfillPostgreSqlTests(PostgreSqlTenantIsolati
         public Dictionary<DateOnly, string> Days { get; } = [];
         public List<(DateOnly Start, DateOnly End)> Lists { get; } = [];
         public DateOnly? RefuseBefore { get; set; }
+        // Every page says more pages follow (the day list, or a day's lines).
+        public bool EndlessList { get; set; }
+        public bool EndlessItems { get; set; }
 
         public Task<AdapterResult<RemoteSettlementDayPage>> GetSettlementDaysAsync(AdapterContext context, DateOnly start, DateOnly end, int page, CancellationToken cancellationToken)
         {
@@ -146,7 +172,7 @@ public sealed class N11SettlementBackfillPostgreSqlTests(PostgreSqlTenantIsolati
             if (RefuseBefore is { } limit && start < limit)
                 return Task.FromResult(AdapterResult<RemoteSettlementDayPage>.Failure(new AdapterError(AdapterErrorClass.Validation, "N11_REFUSED", "startDate geçersiz", 400, null, null)));
             var days = Days.Keys.Where(day => day >= start && day <= end).Select(day => new RemoteSettlementDay(day, day.AddDays(7), "Success", 799m, 200m, 599m)).ToList();
-            return Task.FromResult(AdapterResult<RemoteSettlementDayPage>.Success(new(days, page, 1)));
+            return Task.FromResult(AdapterResult<RemoteSettlementDayPage>.Success(new(days, page, EndlessList ? int.MaxValue : 1)));
         }
 
         public Task<AdapterResult<RemoteSettlementItemPage>> GetSettlementItemsAsync(AdapterContext context, DateOnly day, int page, CancellationToken cancellationToken)
@@ -154,7 +180,7 @@ public sealed class N11SettlementBackfillPostgreSqlTests(PostgreSqlTenantIsolati
             List<RemoteSettlementItem> items = Days.TryGetValue(day, out var id)
                 ? [new(id, $"o{id}", 20.34m, 0m, 0m, 0m, 0m, 200m, 799m, 599m, null, day, day.AddDays(7), day.AddDays(7), $"{{\"orderItemId\":\"{id}\"}}")]
                 : [];
-            return Task.FromResult(AdapterResult<RemoteSettlementItemPage>.Success(new(items, page, 1, "Success")));
+            return Task.FromResult(AdapterResult<RemoteSettlementItemPage>.Success(new(items, page, EndlessItems ? int.MaxValue : 1, "Success")));
         }
     }
 }

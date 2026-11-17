@@ -1,10 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { queryKeys } from '../shared/api/query-keys'
 import { RealtimeInvalidationThrottle, realtimeDataThrottleMs, realtimeInvalidationsFor, realtimeJobThrottleMs, realtimeQueryKeysByResource, realtimeQueryKeysFor, realtimeReconnectQueryKeys, skipsRealtimeRefetch } from './realtime-query-keys'
 
 // Every source file of the app, as text: a mapped root without a query that uses it refreshes nothing.
-const sources = import.meta.glob<string>(['../**/*.ts', '../**/*.tsx', '!../**/*.test.ts', '!../**/*.test.tsx', '!./realtime-query-keys.ts'], { query: '?raw', import: 'default', eager: true })
+const sources = import.meta.glob<string>(['../**/*.ts', '../**/*.tsx', '!../**/*.test.ts', '!../**/*.test.tsx', '!./realtime-query-keys.ts', '!../shared/api/query-keys.ts'], { query: '?raw', import: 'default', eager: true })
+// Only a query's own key counts: a refresh, lookup or cache write naming a key ({ queryKey: queryKeys.x() } handed to
+// invalidateQueries and the like) is not a query, or a refresh of a root no screen reads would pass (WEB-ALTYAPI-7).
+// Keys are built by the factory (shared/api/query-keys.ts); a key held in a constant or returned by a helper counts
+// where it is built, the query that uses it names the constant.
+const keyFilterCall = /(?:invalidateQueries|refetchQueries|removeQueries|cancelQueries|resetQueries|setQueriesData|getQueriesData|setQueryData|getQueryData|getQueryState|isFetching|findAll|find)\(\s*\{\s*queryKey:\s*$/
+// A query's key ({ queryKey: queryKeys.x(…) }), or a key kept for queries in a constant or a helper (statusKey = …,
+// function …QueryKey() { return … }). A list of roots handed to a refresh loop is neither.
+const keyDefinition = /(?:queryKey:\s*|\b\w*[Kk]ey\w*\s*=\s*(?:\([^)]*\)\s*=>\s*)?|\breturn\s+)$/
+const rootByName = new Map<string, string>(Object.entries(queryKeys).map(([name, root]) => [name, root.root]))
 const producers = new Set<string>()
-for (const text of Object.values(sources)) for (const match of text.matchAll(/queryKey:\s*\[\s*'([^']+)'/g)) producers.add(match[1])
+for (const text of Object.values(sources)) {
+  for (const match of text.matchAll(/queryKeys\.(\w+)\(/g)) {
+    const before = text.slice(Math.max(0, match.index - 80), match.index)
+    if (keyDefinition.test(before) && !keyFilterCall.test(before)) producers.add(rootByName.get(match[1]) ?? match[1])
+  }
+}
 
 describe('realtime refresh map', () => {
   it('reads the app sources', () => {
@@ -15,6 +30,21 @@ describe('realtime refresh map', () => {
   it.each(Object.entries(realtimeQueryKeysByResource))('every key of “%s” has a query that uses it', (_resource, keys) => {
     const missing = keys.map(key => key[0]).filter(root => !producers.has(root))
     expect(missing).toEqual([])
+  })
+
+  it('refreshes the same roots for each resource as the map written by hand before the factory', () => {
+    const roots = (resource: string) => (realtimeQueryKeysByResource[resource] ?? []).map(key => key.join('/')).sort()
+    const sorted = (list: string[]) => [...list].sort()
+    expect(roots('orders')).toEqual(sorted(['orders', 'shipment', 'invoice-workspace-page', 'invoice-workspace-summary', 'dashboard-bootstrap']))
+    expect(roots('returns')).toEqual(sorted(['returns', 'return', 'dashboard-bootstrap']))
+    expect(roots('products')).toEqual(sorted(['products', 'product', 'publication-status', 'dashboard-bootstrap']))
+    expect(roots('inventory')).toEqual(sorted(['products', 'product', 'dashboard-bootstrap']))
+    expect(roots('invoices')).toEqual(sorted(['invoice', 'invoice-viewer', 'invoice-workspace-page', 'invoice-workspace-summary', 'orders', 'dashboard-bootstrap']))
+    expect(roots('connections')).toEqual(sorted(['connections', 'connection', 'invoice-workspace-page', 'invoice-workspace-summary', 'dashboard-bootstrap', 'dashboard']))
+    expect(roots('questions')).toEqual(['questions'])
+    expect(roots('dashboard')).toEqual(['dashboard-bootstrap'])
+    expect(roots('jobs')).toEqual(sorted(['jobs', 'job']))
+    expect(Object.keys(realtimeQueryKeysByResource).sort()).toEqual(sorted(['orders', 'returns', 'products', 'inventory', 'invoices', 'connections', 'questions', 'dashboard', 'jobs']))
   })
 
   it('covers every resource the server announces', () => {

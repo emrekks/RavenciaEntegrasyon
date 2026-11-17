@@ -106,14 +106,14 @@ describe('notification center helpers', () => {
   it('keeps the whole bell card and reads it back', () => {
     const input = centerInput({ id: 'n1', message: 'Mesaj', kind: 'info', createdAt: '2026-11-13T08:00:00.000Z', read: false, details: [{ label: 'Kod', value: 'X' }] })
     expect(input).toMatchObject({ clientKey: 'n1', severity: 'INFO', category: 'OTHER', createdAt: '2026-11-13T08:00:00.000Z' })
-    const card = centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: 'Mesaj', message: 'Mesaj', count: 1, shared: false, createdAt: '', updatedAt: '', payload: JSON.stringify(input.payload) })
+    const card = centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: 'Mesaj', message: 'Mesaj', href: null, actionLabel: null, platformCode: null, storeName: null, count: 1, shared: false, createdAt: '', updatedAt: '', payload: JSON.stringify(input.payload), readAt: null, dismissedAt: null })
     expect(card?.details).toEqual([{ label: 'Kod', value: 'X' }])
-    expect(centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: '', message: '', count: 1, shared: false, createdAt: '', updatedAt: '', payload: '{' })).toBeNull()
+    expect(centerNotificationCard({ id: 'r', clientKey: 'n1', severity: 'INFO', category: 'OTHER', title: '', message: '', href: null, actionLabel: null, platformCode: null, storeName: null, count: 1, shared: false, createdAt: '', updatedAt: '', payload: '{', readAt: null, dismissedAt: null })).toBeNull()
   })
 
   it('sends the filters with Istanbul day bounds', () => {
     const query = new URLSearchParams(centerQueryString({ ...emptyCenterFilters, categories: ['ORDER', 'INVOICE'], severities: ['ERROR'], state: 'UNREAD', from: '2026-11-10', to: '2026-11-12', search: ' fatura ' }, 'abc').slice(1))
-    expect(Object.fromEntries(query)).toEqual({ limit: '50', after: 'abc', categories: 'ORDER,INVOICE', severities: 'ERROR', state: 'UNREAD', from: '2026-11-10T00:00:00.000+03:00', to: '2026-11-12T23:59:59.999+03:00', search: 'fatura' })
+    expect(Object.fromEntries(query)).toEqual({ limit: '50', after: 'abc', categories: 'ORDER,INVOICE', severities: 'ERROR', state: 'UNREAD', dateFrom: '2026-11-10T00:00:00.000+03:00', dateTo: '2026-11-12T23:59:59.999+03:00', search: 'fatura' })
   })
 
   it('leads the bell to İşlem Takibi › Bildirimler', () => {

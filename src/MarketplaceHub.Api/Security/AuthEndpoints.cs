@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
@@ -21,23 +22,23 @@ public static class AuthEndpoints
 
     public static RouteGroupBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/auth");
-        group.MapGet("/csrf", (HttpResponse response) => Results.Ok(new { token = RequestSecurityMiddleware.IssueCsrf(response) }));
-        group.MapPost("/login", LoginAsync).RequireRateLimiting(SignInRateLimit);
-        group.MapPost("/logout", LogoutAsync);
-        group.MapPost("/change-password", ChangePasswordAsync).RequireRateLimiting(StepRateLimit);
-        group.MapGet("/me", MeAsync);
-        group.MapGet("/security-status", SecurityStatusAsync);
-        group.MapGet("/sessions", SessionsAsync);
-        group.MapPost("/mfa/setup", MfaSetupAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/mfa/confirm", MfaConfirmAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/mfa/challenge", MfaChallengeAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/mfa/disable", MfaDisableAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/recovery-codes/regenerate", RecoveryRegenerateAsync).RequireRateLimiting(StepRateLimit);
-        group.MapPost("/sessions/{id:guid}/revoke", RevokeSessionAsync);
-        group.MapPost("/sessions/revoke-others", RevokeOthersAsync);
-        group.MapDelete("/sessions/{id:guid}", DeleteClosedSessionAsync);
-        group.MapDelete("/sessions/closed", DeleteClosedSessionsAsync);
+        var group = endpoints.MapGroup("/api/v1/auth").WithGates(ApiGate.Open, ApiGate.Open);
+        group.MapGet("/csrf", (HttpResponse response) => Results.Ok(new { token = RequestSecurityMiddleware.IssueCsrf(response) })).Produces<CsrfTokenView>();
+        group.MapPost("/login", LoginAsync).RequireRateLimiting(SignInRateLimit).NotIdempotent("each sign-in opens a new session and is audited as its own attempt").Produces<SessionStateView>();
+        group.MapPost("/logout", LogoutAsync).Idempotent("ends the current session; a repeat finds none").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/change-password", ChangePasswordAsync).RequireRateLimiting(StepRateLimit).NotIdempotent("checks the current password, which the first call changed").Produces<SessionStateView>();
+        group.MapGet("/me", MeAsync).Produces<CurrentUserView>();
+        group.MapGet("/security-status", SecurityStatusAsync).Produces<SecurityStatusView>();
+        group.MapGet("/sessions", SessionsAsync).Produces<IReadOnlyList<SignInSessionView>>();
+        group.MapPost("/mfa/setup", MfaSetupAsync).RequireRateLimiting(StepRateLimit).NotIdempotent("each call issues a new authenticator secret").Produces<MfaSetupView>();
+        group.MapPost("/mfa/confirm", MfaConfirmAsync).RequireRateLimiting(StepRateLimit).NotIdempotent("issues new one-time recovery codes; a one-time code is accepted once").Produces<RecoveryCodesView>();
+        group.MapPost("/mfa/challenge", MfaChallengeAsync).RequireRateLimiting(StepRateLimit).NotIdempotent("a one-time code is accepted once; each attempt counts toward the lockout").Produces<SessionStateView>();
+        group.MapPost("/mfa/disable", MfaDisableAsync).RequireRateLimiting(StepRateLimit).Idempotent("turns the second factor off; a repeat finds it off").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/recovery-codes/regenerate", RecoveryRegenerateAsync).RequireRateLimiting(StepRateLimit).NotIdempotent("each call replaces the recovery codes with new ones").Produces<RecoveryCodesView>();
+        group.MapPost("/sessions/{id:guid}/revoke", RevokeSessionAsync).Idempotent("ends the named session; a repeat finds it ended").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/sessions/revoke-others", RevokeOthersAsync).Idempotent("ends the other sessions; a repeat ends none").Produces(StatusCodes.Status204NoContent);
+        group.MapDelete("/sessions/{id:guid}", DeleteClosedSessionAsync).Idempotent("removes a closed session from the list").Produces(StatusCodes.Status204NoContent);
+        group.MapDelete("/sessions/closed", DeleteClosedSessionsAsync).Idempotent("removes the closed sessions from the list").Produces(StatusCodes.Status204NoContent);
         return group;
     }
 

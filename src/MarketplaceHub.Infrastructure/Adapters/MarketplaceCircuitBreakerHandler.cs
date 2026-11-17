@@ -3,12 +3,13 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 
 namespace MarketplaceHub.Infrastructure.Adapters;
 
 // Circuit breaker for marketplace hosts without their own resilience handler (Hepsiburada, n11,
 // Pazarama, Shopify), one circuit per API family and account. Five consecutive failures (5xx, 408,
-// network errors, request timeouts) open the circuit for 30 s; a 429 with Retry-After opens it for
+// network errors, request timeouts, a 429 naming no wait) open the circuit for 30 s; a 429 with Retry-After opens it for
 // that long (at most 15 min). While open, calls are answered locally: 429 for a quota stop, so the job is deferred without losing an attempt, otherwise 503. After the
 // break one probe request is let through; its result closes or reopens the circuit. It sits outside the
 // marketplace's rate-limit handler, so a call refused by an open circuit never takes a quota token.
@@ -28,11 +29,8 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
     internal static HttpResponseMessage? PassProbeGate(HttpRequestMessage request) =>
         request.Options.TryGetValue(ProbeGateKey, out var gate) ? gate() : null;
 
-    private static bool WaitsForQuota(HttpRequestMessage request) =>
-        request.Options.TryGetValue(Hepsiburada.HepsiburadaRateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(N11.N11RateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.QuotaAcquiredKey, out _)
-        || request.Options.TryGetValue(PttAvm.PttAvmRateLimitHandler.QuotaAcquiredKey, out _);
+    // Every quota-paced marketplace (Hepsiburada, n11, Pazarama, PTT AVM) names the shared quota option on its requests.
+    private static bool WaitsForQuota(HttpRequestMessage request) => request.Options.TryGetValue(Http.MarketplaceQuota.AcquiredKey, out _);
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -66,7 +64,11 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
                 return response;
             }
             var status = (int)response.StatusCode;
-            if (status == 429)
+            // ADAPTOR-TY-HB-7 (owner decision, 16 Nov 2026): a 429 naming no wait counts as a failure, as in Trendyol's
+            // circuit; one with a wait breaks the circuit for that wait.
+            if (status == 429 && RetryAfter(response.Headers.RetryAfter) is null)
+                circuit.Record(timeProvider.GetUtcNow(), succeeded: false);
+            else if (status == 429)
                 circuit.RecordQuota(timeProvider.GetUtcNow(), RetryAfter(response.Headers.RetryAfter));
             else
                 circuit.Record(timeProvider.GetUtcNow(), succeeded: status < 500 && status != 408);
@@ -101,19 +103,16 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
         return AccountKeyFor(request) is { } account ? $"{family}#{account}" : family;
     }
 
-    // The account the request is sent for, as its rate-limit handler names it, hashed so no credential is kept
-    // in a key: Pazarama's seller key, PTT AVM's store key, n11's app key (the SOAP option or the REST header), or a Basic
-    // Authorization header (Hepsiburada, the Pazarama token call). A Bearer token is never used: it rotates, and
-    // each new token would start a new circuit. Shopify needs none, as its host names the shop.
+    // The account the request is sent for, hashed so no credential is kept in a key: the shared quota account option its
+    // rate-limit handler buckets by (MarketplaceQuota.AccountKey: Pazarama's seller key, PTT AVM's store key, n11's SOAP
+    // app key), n11's REST appkey header, or a Basic Authorization header (Hepsiburada, the Pazarama token call). A
+    // Bearer token is never used: it rotates, and each new token would start a new circuit. Shopify needs none, as its
+    // host names the shop. The circuit key already starts with the host, so the account needs no marketplace name.
     internal static string? AccountKeyFor(HttpRequestMessage request)
     {
         string? identity = null;
-        if (request.Options.TryGetValue(Pazarama.PazaramaRateLimitHandler.AccountKeyOption, out var seller) && !string.IsNullOrWhiteSpace(seller))
-            identity = "pazarama:" + seller;
-        else if (request.Options.TryGetValue(PttAvm.PttAvmRateLimitHandler.AccountKeyOption, out var pttAvmStore) && !string.IsNullOrWhiteSpace(pttAvmStore))
-            identity = "pttavm:" + pttAvmStore;
-        else if (request.Options.TryGetValue(N11.N11RateLimitHandler.AccountKeyOption, out var soapAccount) && !string.IsNullOrWhiteSpace(soapAccount))
-            identity = "n11:" + soapAccount;
+        if (request.Options.TryGetValue(MarketplaceQuota.AccountKey, out var account) && !string.IsNullOrWhiteSpace(account))
+            identity = "account:" + account;
         else if (request.Headers.TryGetValues("appkey", out var appKeys) && appKeys.FirstOrDefault() is { } appKey && !string.IsNullOrWhiteSpace(appKey))
             identity = "n11:" + appKey;
         else if (request.Headers.Authorization is { } authorization
@@ -132,12 +131,7 @@ public sealed class MarketplaceCircuitBreakerHandler(MarketplaceCircuitBreakerSt
         return segments.Length == 0 ? uri.Host : $"{uri.Host}/{string.Join('/', segments.Take(2))}";
     }
 
-    private TimeSpan? RetryAfter(RetryConditionHeaderValue? header)
-    {
-        if (header?.Delta is { } delta && delta > TimeSpan.Zero) return delta;
-        if (header?.Date is { } date && date - timeProvider.GetUtcNow() is var wait && wait > TimeSpan.Zero) return wait;
-        return null;
-    }
+    private TimeSpan? RetryAfter(RetryConditionHeaderValue? header) => RetryAfterHeader.Delay(header, timeProvider.GetUtcNow());
 }
 
 public sealed class MarketplaceCircuitBreakerState

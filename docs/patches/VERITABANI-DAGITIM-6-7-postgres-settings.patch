@@ -1,0 +1,61 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index e7c19e4c8..2174e81f4 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -174,6 +174,14 @@ jobs:
+           # API and worker finish running requests and hand jobs back before SIGKILL (VERITABANI-DAGITIM-4, API-GUVENLIK-1).
+           "${compose[@]}" config --format json | jq -e '.services.api.stop_grace_period and .services.worker.stop_grace_period' >/dev/null \
+             || { echo "api and worker need a stop_grace_period (Docker's 10 s default cuts running requests and jobs)." >&2; exit 1; }
++          # PostgreSQL safety settings and a clean shutdown (VERITABANI-DAGITIM-6 and -7, docs/RUNBOOK-GERI-ALMA.md section 8).
++          "${compose[@]}" config --format json | jq -e '
++            .services.postgres as $p
++            | $p.stop_grace_period
++            and (["idle_in_transaction_session_timeout=10min", "log_lock_waits=on", "track_io_timing=on",
++                  "shared_preload_libraries=pg_stat_statements", "max_wal_size=4GB"]
++                 | all(. as $setting | $p.command | index($setting) != null))
++          ' >/dev/null || { echo "postgres lost its stop_grace_period or a safety setting (idle transaction timeout, lock log, pg_stat_statements)." >&2; exit 1; }
+ 
+       # RFC 9116: an expired security.txt is treated as absent. Fail 30 days ahead so it gets renewed in time.
+       - name: security.txt is not about to expire
+diff --git a/deploy/compose/compose.yaml b/deploy/compose/compose.yaml
+index 54b4b179f..f9f442604 100644
+--- a/deploy/compose/compose.yaml
++++ b/deploy/compose/compose.yaml
+@@ -55,6 +55,9 @@ services:
+     image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+     restart: unless-stopped
+     init: true
++    # PostgreSQL writes its 1.5 GiB of shared buffers out before it stops; Docker's 10 s default kills it mid-way and
++    # the next start runs crash recovery (VERITABANI-DAGITIM-7).
++    stop_grace_period: 120s
+     networks: [backend]
+     environment:
+       POSTGRES_DB: marketplacehub
+@@ -89,6 +92,27 @@ services:
+       - maintenance_work_mem=512MB
+       - -c
+       - log_min_duration_statement=2000
++      # Safety net (VERITABANI-DAGITIM-6): an open transaction left idle for 10 minutes is ended (it holds locks and
++      # stops vacuum); lock waits over 1 s, autovacuum runs over 10 s and temp files over 64 MB are logged; statement
++      # statistics for `ravencia-ro top-queries`; fewer checkpoints during large data migrations.
++      - -c
++      - idle_in_transaction_session_timeout=10min
++      - -c
++      - log_lock_waits=on
++      - -c
++      - deadlock_timeout=1s
++      - -c
++      - log_autovacuum_min_duration=10s
++      - -c
++      - log_temp_files=65536
++      - -c
++      - track_io_timing=on
++      - -c
++      - shared_preload_libraries=pg_stat_statements
++      - -c
++      - pg_stat_statements.track=top
++      - -c
++      - max_wal_size=4GB
+     # Docker's 64 MB /dev/shm breaks parallel hash/sort ("could not resize shared memory").
+     shm_size: 1g
+     healthcheck:

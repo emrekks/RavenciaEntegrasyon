@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 namespace MarketplaceHub.Domain;
 
 public enum ProductStatus { Draft = 0, Archived = 1, Active = 2 }
@@ -13,8 +15,10 @@ public sealed class Product
     public Guid? CategoryId { get; set; }
     public decimal? DefaultListPrice { get; set; }
     public decimal? DefaultSalePrice { get; set; }
-    // Warranty in months, sent to the marketplaces that take one (Hepsiburada GarantiSuresi); null when none is given.
-    public int? WarrantyMonths { get; set; }
+    // Garanti Süresi in months, sent to the marketplaces that take one (Hepsiburada GarantiSuresi, PttAVM). 0 = no warranty
+    // (a value: a new card starts with it, as the editor's new form does); null = not filled, which only a draft may keep
+    // (owner, 15 Nov 2026: "0 ile boş farklı").
+    public int? WarrantyMonths { get; set; } = 0;
     // Teslimat Süresi (gün): the days to hand an order to the carrier, sent as each marketplace's delivery/dispatch time
     // (Trendyol deliveryOption.deliveryDuration, n11 preparingDay). A new card starts at 1; null only on a card that
     // predates the column and was not backfilled.
@@ -32,6 +36,12 @@ public sealed class Product
     // The model (ProductModel) this colour card belongs to; null while it is not linked (a model code shared by several
     // brands, a card without a model code). Kept by ProductModelLinks only: never set by hand, never part of Version.
     public Guid? FamilyId { get; set; }
+    // KATALOG-14 phase D: this colour's own name / description where it really differs from its model's ("Bu renge
+    // özel"); null = the colour takes the model's. Only the name and the description may differ per colour: brand,
+    // category, VAT, warranty and delivery days are one value per model (owner, 14 Nov 2026: "her varyantında eşit
+    // olmalı"), and prices, stock, codes and desi stay on the variant rows. Read only through EffectiveCatalog.
+    public string? TitleOverride { get; set; }
+    public string? DescriptionOverride { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
@@ -59,9 +69,28 @@ public sealed class ProductModel
     // When the editor last wrote the model's category attributes (product_model_attributes); null: they are the cards'
     // majority set (ProductModelLinks.RecomputeUnsavedAttributesAsync), not yet saved from the editor.
     public DateTimeOffset? AttributesSavedAt { get; set; }
+    // KATALOG-14 (expand): the model's desi (owner, 11 Nov 2026: "desi marka ortak"), the value most of its variants hold
+    // (on a tie the oldest card's, KATALOG-14 phase D5b); null while no variant holds one. Written through by ProductModelValues
+    // after every save that changes a variant's desi; the variants keep their own (every reader still reads them).
+    public decimal? Desi { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+// KATALOG-13 (expand): the model's size-chart measurements, the set most of its colour cards hold (on a tie the oldest
+// card's). A colour card without measurements of its own reads these in the editor; the per-card charts
+// (product_size_charts) stay as they are and remain what the marketplaces' chart pictures come from.
+public sealed class ProductModelSizeChart
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ModelId { get; set; }
+    public string? MeasurementsJson { get; set; }
+    // KATALOG-13 / KATALOG-14 phase D4: the model's size-chart picture, the one every colour without a chart of its own
+    // sends (SizeChartPlacement.ModelAssetIdAsync); null until the deploy backfill or a chart write sets it.
+    public Guid? FileAssetId { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 // The model's shared category attributes (Model Kaydı Faz 2): the card-level set every colour card holds, less the colour
@@ -500,7 +529,10 @@ public static class ListingSaleState
 
     // Closed for a reason other than zero stock (or for a reason the marketplace does not name): what the products
     // list's "Satışa Kapalı" filter finds. A listing closed only because its stock is 0 is found by the stock filter.
-    public static bool ClosedBeyondStock(string? state, string? reason) => state == OffSale && reason != StockZero;
+    // KATALOG-10: written once as an expression; the products filter runs it in the database, the views compile it.
+    public static readonly Expression<Func<string?, string?, bool>> ClosedBeyondStockRule = (state, reason) => state == OffSale && reason != StockZero;
+    private static readonly Func<string?, string?, bool> ClosedBeyondStockCompiled = ClosedBeyondStockRule.Compile();
+    public static bool ClosedBeyondStock(string? state, string? reason) => ClosedBeyondStockCompiled(state, reason);
 
     // The closures beyond a stock of 0 by their named reason (owner, 6 Nov 2026: a variant closed only for a stock of 0
     // reads as on sale on every screen). A closure without a named reason is left out; callers count it as the rest.
@@ -521,7 +553,10 @@ public static class MarketplaceVariantLinkHealth
     public const string Unverified = "UNVERIFIED";
     public const string NotFoundReason = "Art arda iki tam ürün taramasında pazaryerinde bulunamadı.";
 
-    public static bool IsBroken(string? healthStatus) => healthStatus is NotFound or Rejected;
+    // KATALOG-10: written once as an expression; the products filter runs it in the database, the views compile it.
+    public static readonly Expression<Func<string?, bool>> IsBrokenRule = healthStatus => healthStatus == NotFound || healthStatus == Rejected;
+    private static readonly Func<string?, bool> IsBrokenCompiled = IsBrokenRule.Compile();
+    public static bool IsBroken(string? healthStatus) => IsBrokenCompiled(healthStatus);
 
     public const string NotFoundByLookupReason = "Pazaryeri tekil sorguda bu kodu bulamadı.";
     public const string MissedByScanReason = "Son tam ürün taramasında görülmedi.";

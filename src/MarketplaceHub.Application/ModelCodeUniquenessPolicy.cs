@@ -16,6 +16,13 @@ public static class ModelCodeUniquenessPolicy
 
     public const string ChangeConflictCode = "MODEL_CODE_CHANGE_IN_USE";
 
+    // A model is its brand and its code (owner, 17 Nov 2026): giving a model (all its colours) another brand moves it to
+    // that brand's key, refused when that brand already has a model of the code; nothing is merged.
+    public const string BrandCodeTakenCode = "MODEL_CODE_TAKEN_IN_BRAND";
+
+    public static string BrandCodeTakenMessage(string modelCode, string brandName) =>
+        $"Bu Markada Aynı Model Kodu Zaten Var ({brandName} · {modelCode}); modelin markası değiştirilmedi, hiçbir şey birleştirilmedi.";
+
     public static string ChangeMessage(string productTitle) =>
         $"Yeni model kodu '{productTitle}' ürününde kullanılıyor; değiştirilirse iki ürün tek ürünün renkleri gibi birleşir. Başka bir model kodu girin.";
 

@@ -131,6 +131,32 @@ public sealed class TrendyolUpdateGroupsPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal("MANUAL_REVIEW", (await db.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == seed.ProfileIds[0])).ActualStatus);
     }
 
+    // J2 (15 Nov 2026): a quota answer to the shared request is sent again by the job's retry, so no card of it, the
+    // sender's included, shows UPDATE_BLOCKED meanwhile.
+    [PostgreSqlFact]
+    public async Task AQuotaAnswerToTheSharedRequest_LeavesEveryCardInProgress()
+    {
+        var seed = await SeedAsync("group-quota", 2);
+        var port = new GroupPort { SubmitError = new AdapterError(AdapterErrorClass.RateLimit, "TRENDYOL_RATE_LIMITED", "Trendyol istek sınırı aşıldı.", 429, TimeSpan.FromSeconds(20), "req-429") };
+        await using var before = fixture.CreateContext();
+        var statuses = await before.ChannelListingProfiles.AsNoTracking().Where(x => seed.ProfileIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.ActualStatus);
+
+        Assert.Equal("PRODUCT_UPDATE_GROUP_PENDING", (await RunAsync(seed, 0, port)).ErrorCode);
+        var sender = await RunAsync(seed, 1, port);
+
+        Assert.Equal(JobCompletionKind.Retry, sender.Kind);
+        Assert.Equal("TRENDYOL_RATE_LIMITED", sender.ErrorCode);
+        Assert.Single(port.Sent);
+        await using var db = fixture.CreateContext();
+        foreach (var profileId in seed.ProfileIds)
+        {
+            var profile = await db.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == profileId);
+            Assert.NotEqual("UPDATE_BLOCKED", profile.ActualStatus);
+            Assert.Equal(statuses[profileId], profile.ActualStatus);
+        }
+        Assert.False(await db.ExternalEffectRecords.AnyAsync(x => x.TenantId == seed.TenantId));
+    }
+
     [PostgreSqlFact]
     public async Task WhenTheSenderStopsBeforeItsPoll_AnotherCardPollsInItsPlace()
     {

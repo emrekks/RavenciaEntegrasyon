@@ -19,7 +19,7 @@ describe('product update notices', () => {
   })
 
   it('records nothing when the server raised no notice', () => {
-    expect(recordProductUpdateNotices({ jobId: 'job-2' }, { productId: 'p-1', productName: 'Kazak', connectionId: 'c-1' })).toBe(0)
+    expect(recordProductUpdateNotices(null, { productId: 'p-1', productName: 'Kazak', connectionId: 'c-1' })).toBe(0)
     expect(recordProductUpdateNotices({ jobId: 'job-3', notices: [] }, { productId: 'p-1', productName: 'Kazak', connectionId: 'c-1' })).toBe(0)
     expect(readNotificationHistory()).toHaveLength(0)
   })

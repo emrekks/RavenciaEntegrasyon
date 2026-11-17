@@ -1,0 +1,271 @@
+{
+  "Runs": [
+    {
+      "Run": "single",
+      "JobType": "HEPSIBURADA_ORDER_SYNC",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.Get key=hepsiburada-order-get:4000000001 \"4000000001\"",
+        "packages.Tracking key=hepsiburada-package-status:PKG-1 \"PKG-1\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "OperationalIssue",
+      "Rows": [
+        {
+          "Code": "ORDER_LINE_VARIANT_UNMATCHED",
+          "DedupeKey": "order-line-variant-unmatched:connection:SKU-FAKE-HB1",
+          "FirstSeenAt": "T+00:00:11",
+          "Id": "id1",
+          "LastSeenAt": "T+00:00:11",
+          "OccurrenceCount": 1,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "Eşleşmeyen sipariş satırı: Hepsiburada siparişi 4000000001 içindeki SKU-FAKE-HB1 kodlu ürün (Fake HB Ürün 1) paneldeki hiçbir varyanta eşlenemedi; satır stoğu etkilemiyor. Bu kodla bir varyant oluşturun ya da pazaryeri ürününü bir varyanta eşleyin.",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:05",
+          "Currency": "TRY",
+          "CustomerSearchName": "Test Musteri",
+          "CustomerSearchStamp": "id2",
+          "CustomerSnapshotJson": {
+            "name": "Test Musteri",
+            "email": null,
+            "phoneNumber": null
+          },
+          "DerivedStatus": "DELIVERED",
+          "DiscountAmount": 30.0000,
+          "ExternalOrderId": "4000000001",
+          "GrossAmount": 300.0000,
+          "Id": "id3",
+          "InvoiceAddressSnapshotJson": {
+            "addressId": "addr-fake-2",
+            "address": "Fake Sokak 1",
+            "name": "Test Musteri",
+            "email": "customer@example.test",
+            "countryCode": "TR",
+            "phoneNumber": "5550000000",
+            "district": "Fake Mahalle",
+            "city": "İstanbul",
+            "town": "Kadıköy",
+            "turkishIdentityNumber": "00000000000",
+            "taxNumber": "",
+            "taxOffice": ""
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-1152.21:24:50",
+          "NetAmount": 270.0000,
+          "OrderNumber": "4000000001",
+          "OrderedAt": "T-1152.21:30:00",
+          "ShipmentAddressSnapshotJson": {
+            "addressId": "addr-fake-1",
+            "address": "Fake Sokak 1",
+            "name": "Test Musteri",
+            "email": "customer@example.test",
+            "countryCode": "TR",
+            "phoneNumber": "5550000000",
+            "district": "Fake Mahalle",
+            "city": "İstanbul",
+            "town": "Kadıköy"
+          },
+          "ShipmentDueAt": "T-1150.12:01:00",
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:05",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": null,
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "id4",
+          "Id": "id5",
+          "OrderId": "id3",
+          "OrderedQuantity": 3.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Open",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-FAKE-HB1",
+          "SourceSnapshotJson": "<raw 1204 chars sha256:7ac96b66eab8>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Fake HB Ürün 1",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 100.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "DELIVERED",
+          "Id": "id8",
+          "OccurredAt": "T+00:00:04",
+          "OrderId": "id3",
+          "PackageId": "id9",
+          "RawStatus": "Delivered",
+          "RecordedAt": "T+00:00:05",
+          "SourceEventId": "PKG-1:1893488404000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "HepsiJet",
+          "CargoTrackingNumber": "TRK1",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:05",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "PKG-1",
+          "GrossAmount": 0.0000,
+          "Id": "id9",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 0.0000,
+          "OrderId": "id3",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "RemoteVersion": null,
+          "Status": "Delivered",
+          "StatusOccurredAt": "T+00:00:04",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T+00:00:05",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id10",
+          "LastAttemptAt": "T+00:00:01",
+          "LastChangedCount": 2,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 3,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 2,
+          "LastRequestCount": 2,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:00:13",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "ORDERS_HOT",
+          "TenantId": "tenant",
+          "Version": 3
+        },
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id11",
+          "LastAttemptAt": "T+00:00:10",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": null,
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "ORDER_LINE_REMATCH",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}

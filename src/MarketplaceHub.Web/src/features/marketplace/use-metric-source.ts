@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { loadAllPages } from '../../shared/api'
 import { isActiveMarketplaceConnection, normalizeMarketplacePlatformCode } from './marketplace-platform-support'
 import { activeReturnSyncConnections } from './return-sync'
+import { connectionQueries } from '../../shared/api/query-keys'
 
 // The data source of a summary card's main value (shared rule, shared/metric-value.ts): an active connection that feeds
 // it. Without one the card's big number is a dash; with one a real zero reads "0".
@@ -24,6 +24,6 @@ export function hasMetricSource(connections: readonly SourceConnection[], { kind
 
 /** One shared read of the connections for every card; undefined while it is not read (a card then waits, never blocks). */
 export function useMetricSource(options: MetricSourceOptions = {}): boolean | undefined {
-  const connections = useQuery({ queryKey: ['connections', 'metric-source'], queryFn: () => loadAllPages<SourceConnection>('/connections'), staleTime: 60_000 })
+  const connections = useQuery({ ...connectionQueries.list<SourceConnection>(), staleTime: 60_000 })
   return connections.data ? hasMetricSource(connections.data.items, options) : undefined
 }

@@ -1,0 +1,108 @@
+// Source: hand-built after Ravencia-API-Docs/trendyol-api-son.md "Sipariş Paketlerini Akış ile Çekme
+// (getShipmentPackagesStream)" (cursor page: hasMore/nextCursor) and the getShipmentPackages field list (~3940-4130:
+// createdBy "cancel", originPackageIds, packageHistories, discountDetails per item). One order whose second line was
+// cancelled: the original package 3330200001 ends Cancelled holding the cancelled line, the remaining multi-quantity,
+// discounted line moved to package 3330200002 (createdBy "cancel", originPackageIds = [3330200001]).
+{
+  "hasMore": true,
+  "nextCursor": "cursor-fake-0002",
+  "content": [
+    {
+      "shipmentPackageId": 3330200001,
+      "orderNumber": "10700000001",
+      "orderDate": 1762300800000,
+      "lastModifiedDate": 1762315200000,
+      "currencyCode": "TRY",
+      "status": "Cancelled",
+      "shipmentPackageStatus": "Cancelled",
+      "createdBy": "order-creation",
+      "originPackageIds": null,
+      "packageGrossAmount": 150.00,
+      "packageSellerDiscount": 0.00,
+      "packageTyDiscount": 0.00,
+      "packageTotalDiscount": 0.00,
+      "packageTotalPrice": 150.00,
+      "agreedDeliveryDate": 1762473600000,
+      "cargoProviderName": "Trendyol Express",
+      "commercial": false,
+      "micro": false,
+      "shipmentAddress": { "firstName": "Test", "lastName": "Musteri", "city": "Ankara", "countryCode": "TR", "phone": "5550000000" },
+      "invoiceAddress": { "firstName": "Test", "lastName": "Musteri", "city": "Ankara", "countryCode": "TR" },
+      "customerFirstName": "Test",
+      "customerLastName": "Musteri",
+      "packageHistories": [
+        { "createdDate": 1762290000000, "status": "Created" },
+        { "createdDate": 1762311600000, "status": "Cancelled" }
+      ],
+      "lines": [
+        {
+          "lineId": 4765200002,
+          "quantity": 1,
+          "stockCode": "SKU-FAKE-B",
+          "barcode": "0000000000012",
+          "productName": "Fake Ürün B",
+          "lineGrossAmount": 150.00,
+          "lineSellerDiscount": 0.00,
+          "lineTyDiscount": 0.00,
+          "lineTotalDiscount": 0.00,
+          "lineUnitPrice": 150.00,
+          "vatRate": 10,
+          "currencyCode": "TRY",
+          "orderLineItemStatusName": "Cancelled",
+          "cancelledBy": "seller",
+          "cancelReason": "Tedarik edilemedi",
+          "cancelReasonCode": 500
+        }
+      ]
+    },
+    {
+      "shipmentPackageId": 3330200002,
+      "orderNumber": "10700000001",
+      "orderDate": 1762300800000,
+      "lastModifiedDate": 1762311700000,
+      "currencyCode": "TRY",
+      "status": "Created",
+      "shipmentPackageStatus": "ReadyToShip",
+      "createdBy": "cancel",
+      "originPackageIds": [ 3330200001 ],
+      "packageGrossAmount": 600.00,
+      "packageSellerDiscount": 60.00,
+      "packageTyDiscount": 30.00,
+      "packageTotalDiscount": 90.00,
+      "packageTotalPrice": 510.00,
+      "agreedDeliveryDate": 1762473600000,
+      "cargoProviderName": "Trendyol Express",
+      "cargoTrackingNumber": 7280000000000002,
+      "commercial": false,
+      "micro": false,
+      "invoiceStatus": "NotInvoiced",
+      "shipmentAddress": { "firstName": "Test", "lastName": "Musteri", "city": "Ankara", "countryCode": "TR", "phone": "5550000000" },
+      "invoiceAddress": { "firstName": "Test", "lastName": "Musteri", "city": "Ankara", "countryCode": "TR" },
+      "customerFirstName": "Test",
+      "customerLastName": "Musteri",
+      "packageHistories": [ { "createdDate": 1762311700000, "status": "Created" } ],
+      "lines": [
+        {
+          "lineId": 4765200001,
+          "quantity": 3,
+          "stockCode": "SKU-FAKE-A",
+          "barcode": "0000000000011",
+          "productName": "Fake Ürün A",
+          "lineGrossAmount": 200.00,
+          "lineSellerDiscount": 20.00,
+          "lineTyDiscount": 10.00,
+          "lineTotalDiscount": 30.00,
+          "lineUnitPrice": 170.00,
+          "discountDetails": [
+            { "lineItemId": "90000001", "lineItemPrice": 170.00, "lineItemSellerDiscount": 20.00, "lineItemTyDiscount": 10.00 },
+            { "lineItemId": "90000002", "lineItemPrice": 170.00, "lineItemSellerDiscount": 20.00, "lineItemTyDiscount": 10.00 },
+            { "lineItemId": "90000003", "lineItemPrice": 170.00, "lineItemSellerDiscount": 20.00, "lineItemTyDiscount": 10.00 }
+          ],
+          "vatRate": 20,
+          "currencyCode": "TRY",
+          "orderLineItemStatusName": "Created"
+        }
+      ]
+    }
+  ]
+}

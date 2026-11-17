@@ -1,7 +1,7 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
-import { loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox, Tabs } from '../../shared/components'
 import { platformLogoSource } from '../../shared/platform-logos'
 import { TabSlidePanel } from '../../shared/tab-slide'
@@ -12,8 +12,9 @@ import { bySalesChannel, platformName } from '../reports/report-format'
 import '../reports/reports.css'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { connectionQueries } from '../../shared/api/query-keys'
 
-type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string }
+type Connection = ApiAnswer<'getConnections'>['items'][number]
 
 // The promotion pages: the weekly commission tariff first, then Trendyol's offers; the open one is kept in the address
 // (?tab=…) so a refresh or a shared link lands on it.
@@ -34,7 +35,7 @@ export const promotionStores = (connections: Connection[]) => connections
 export function PromotionsPage() {
   const [params, setParams] = useSearchParams()
   const section = sectionOf(params.get('tab'))
-  const connections = useQuery({ queryKey: ['connections', 'promotions'], queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   // The tariff tab's list and first page of rows are asked for beside the stores, not after them (prefetchLastTariff).
   const client = useQueryClient()
   const opensOnTariff = section === 'TARIFF'

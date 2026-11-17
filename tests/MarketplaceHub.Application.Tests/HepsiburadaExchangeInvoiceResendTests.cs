@@ -132,6 +132,50 @@ public sealed class HepsiburadaExchangeInvoiceResendPostgreSqlTests(PostgreSqlTe
         }
     }
 
+    // MarketplaceInvoiceLinkPolicy (17 Nov 2026): the SAME link is the one the package's delivery carried, whichever kind it
+    // was and whatever the setting chooses today: the link the delivery recorded, else (a delivery recorded before) the
+    // invoice's latest document link, here the panel link made for it.
+    [PostgreSqlTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TheExchangeResendSendsTheLinkTheDeliveryCarriedNotTheOneTheSettingWouldChoose(bool recordedOnTheDelivery)
+    {
+        var seed = NewSeed(recordedOnTheDelivery ? "exch-own" : "exch-old", ReturnClaimStatus.Approved, "Accepted", ReturnCustomerRequestPolicy.Change);
+        const string panelLink = "https://hub.example.test/api/v1/public/invoice-documents/earlier-token/content";
+        await SeedAsync(seed, extra: db =>
+        {
+            if (recordedOnTheDelivery)
+                db.ChangeTracker.Entries<MarketplaceDeliveryState>().Single().Entity.InvoiceLink = panelLink;
+            else
+                db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, InvoiceId = seed.Invoice.Id, DocumentType = InvoiceDeliveredLinks.MarketplaceDeliveryDocumentType, FileAssetId = seed.Asset.Id, Sha256 = seed.Asset.Sha256, PermanentUrl = panelLink, CreatedAt = fixture.Now.AddMinutes(1) });
+        });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var claim = await db.ReturnClaims.SingleAsync(x => x.Id == seed.Claim.Id);
+                Assert.True(await HepsiburadaExchangeInvoiceResend.QueueAsync(db, seed.Tenant.Id, claim, true, true, fixture.Now, CancellationToken.None));
+                await db.SaveChangesAsync();
+            }
+            IntegrationJob job;
+            await using (var db = fixture.CreateContext())
+                job = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
+
+            var marketplace = new FakeMarketplace();
+            await using (var db = fixture.CreateContext())
+                Assert.Equal(JobCompletionKind.Succeeded, (await NewProcessor(db, marketplace, writes: true).ProcessAsync(seed.Tenant.Id, job.ConnectionId, job.JobType, job.PayloadJson, "exch-link", CancellationToken.None)).Kind);
+
+            var (_, command) = Assert.Single(marketplace.Deliveries);
+            using var payload = JsonDocument.Parse(command.PayloadJson);
+            Assert.Equal(panelLink, payload.RootElement.GetProperty("invoiceLink").GetString());
+            Assert.NotEqual(DocumentUrl, payload.RootElement.GetProperty("invoiceLink").GetString());
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlTheory]
     // An exchange request closed with a refund.
     [InlineData(ReturnClaimStatus.Completed, "Refunded", ReturnCustomerRequestPolicy.Refund)]

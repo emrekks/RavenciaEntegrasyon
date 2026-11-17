@@ -9,7 +9,38 @@ namespace MarketplaceHub.Infrastructure.Adapters;
 // adapter never mixes "assume UTC" and "assume Turkey" for the same kind of text.
 internal static partial class TurkeyTime
 {
-    internal static readonly TimeSpan Offset = TimeSpan.FromHours(3);
+    internal static readonly TimeSpan Offset = MarketplaceHub.Application.TurkeyClock.Offset;
+
+    // The one Turkey clock of every adapter: a wall-clock time read from a marketplace, the Turkey view of an instant,
+    // its calendar day and its text in a marketplace's format all go through these.
+    internal static DateTimeOffset FromLocal(DateTime local) =>
+        new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Offset).ToUniversalTime();
+
+    internal static DateTimeOffset ToLocal(DateTimeOffset instant) => instant.ToOffset(Offset);
+
+    internal static DateTime LocalDate(DateTimeOffset instant) => instant.ToOffset(Offset).Date;
+
+    internal static DateOnly Day(DateTimeOffset instant) => DateOnly.FromDateTime(instant.ToOffset(Offset).DateTime);
+
+    internal static string Format(DateTimeOffset instant, string format) =>
+        instant.ToOffset(Offset).ToString(format, CultureInfo.InvariantCulture);
+
+    // n11's SOAP return list has always converted through the system's Europe/Istanbul time-zone rules (fallback: a
+    // fixed UTC+3 zone) instead of the fixed offset. Both agree for every date since September 2016 (no daylight saving
+    // since); before that the zone rules apply Turkey's former summer time. Kept as it was for that one caller.
+    internal static readonly TimeZoneInfo Zone = FindZone();
+
+    internal static string FormatWithZoneRules(DateTimeOffset instant, string format) =>
+        TimeZoneInfo.ConvertTime(instant, Zone).ToString(format, CultureInfo.InvariantCulture);
+
+    private static TimeZoneInfo FindZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"); }
+        catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.CreateCustomTimeZone("Turkey", Offset, "Turkey", "Turkey");
+        }
+    }
 
     internal static DateTimeOffset? Parse(string? value)
     {
@@ -18,7 +49,7 @@ internal static partial class TurkeyTime
         if (HasOffset(text))
             return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var withOffset) ? withOffset.ToUniversalTime() : null;
         return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), Offset).ToUniversalTime()
+            ? FromLocal(local)
             : null;
     }
 

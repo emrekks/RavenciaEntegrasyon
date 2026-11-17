@@ -103,7 +103,14 @@ public sealed record CommissionTariffSelectionView(string? Bulk, int? Tier, deci
     IReadOnlyList<CommissionTariffChoice> Choices, DateTimeOffset? UpdatedAt);
 
 // A page of models: Items are every variant of the page's models; TotalCount and PageSize count models.
-public sealed record CommissionTariffRowPage(IReadOnlyList<CommissionTariffRowView> Items, int TotalCount, int Page, int PageSize);
+public sealed record CommissionTariffRowPage(IReadOnlyList<CommissionTariffRowView> Items, int TotalCount, int Page, int PageSize)
+{
+    /// <summary>Unified paging (API-GUVENLIK-8): the cursor of the next page, null on the last page or where the order is not total.</summary>
+    public string? NextCursor { get; init; }
+
+    /// <summary>Unified paging: whether a page follows this one.</summary>
+    public bool HasMore { get; init; }
+}
 
 // The days a tariff is valid for, picked by the seller: whole Istanbul calendar days, From and To both included.
 public sealed record CommissionTariffValidDays(DateOnly From, DateOnly To);

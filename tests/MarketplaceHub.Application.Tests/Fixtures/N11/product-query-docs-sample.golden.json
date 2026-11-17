@@ -1,0 +1,94 @@
+{
+  "Items": [
+    {
+      "ExternalProductId": "main:GrupKoduModellemeİçin",
+      "ProductMainId": "GrupKoduModellemeİçin",
+      "Title": "Test Ürünü Kontrol Amaçlı Gri",
+      "Description": "Açıklama bilgisi uzun açıklama",
+      "BrandExternalId": null,
+      "BrandName": "Diğer",
+      "CategoryExternalId": "1231231",
+      "CategoryName": null,
+      "ImageUrls": [
+        "https://n11scdn3.akamaized.net/a1/org/07/76/32/73/IMG-4395477787604309691.jpg"
+      ],
+      "Variants": [
+        {
+          "ExternalVariantId": "TestSKU123",
+          "Sku": "TestSKU123",
+          "Barcode": null,
+          "ModelCode": "GrupKoduModellemeİçin",
+          "Options": {
+            "Renk": "Gri",
+            "Ölçüler": "0.5 CMx 1 M"
+          },
+          "Archived": false,
+          "SalePrice": 10000.0,
+          "ListPrice": 10000,
+          "VatRate": 10,
+          "StockQuantity": 2,
+          "Currency": "TRY",
+          "RawJson": "<raw 915 chars sha256:711f3345c1d1>",
+          "ImageUrls": [
+            "https://n11scdn3.akamaized.net/a1/org/07/76/32/73/IMG-4395477787604309691.jpg"
+          ],
+          "InventoryLevels": null,
+          "Desi": null,
+          "FulfilledByMarketplace": null,
+          "SaleState": "ON_SALE",
+          "SaleStateReason": null
+        }
+      ],
+      "RawJson": "<raw 915 chars sha256:711f3345c1d1>",
+      "IsDraft": false,
+      "IsPendingApproval": false,
+      "ApprovalStatus": null,
+      "RejectionReason": null
+    },
+    {
+      "ExternalProductId": "main:GrupKoduModellemeİçin",
+      "ProductMainId": "GrupKoduModellemeİçin",
+      "Title": "Satış Durumu Gelmeyen Ürün",
+      "Description": "",
+      "BrandExternalId": null,
+      "BrandName": null,
+      "CategoryExternalId": "1231231",
+      "CategoryName": null,
+      "ImageUrls": [],
+      "Variants": [
+        {
+          "ExternalVariantId": "TestSKU124",
+          "Sku": "TestSKU124",
+          "Barcode": null,
+          "ModelCode": "GrupKoduModellemeİçin",
+          "Options": {
+            "Renk": "Siyah"
+          },
+          "Archived": false,
+          "SalePrice": 149.90,
+          "ListPrice": 199.90,
+          "VatRate": 10,
+          "StockQuantity": 5,
+          "Currency": "TRY",
+          "RawJson": "<raw 446 chars sha256:4bd5b8b71b38>",
+          "ImageUrls": [],
+          "InventoryLevels": null,
+          "Desi": null,
+          "FulfilledByMarketplace": null,
+          "SaleState": null,
+          "SaleStateReason": null
+        }
+      ],
+      "RawJson": "<raw 446 chars sha256:4bd5b8b71b38>",
+      "IsDraft": false,
+      "IsPendingApproval": false,
+      "ApprovalStatus": null,
+      "RejectionReason": null
+    }
+  ],
+  "NextCursor": null,
+  "HasMore": false,
+  "TotalCount": 2,
+  "Issues": [],
+  "LastModifiedSeen": null
+}

@@ -1,0 +1,29 @@
+// Source: PttAVM GetProductsTrackingResult answer (Ravencia-API-Docs/pttavm-api-son.md "Fiyat Stok Güncelleme
+// Kontrolü" ~1344-1430: Status, Progress, ProductBasedInfos with Barcode/Status/Message/FailureReasons), the shape
+// PttAvmAdapterTests.TrackingAnswer uses: a completed tracking with per-barcode partial success.
+<GetProductsTrackingResultResult xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService.Model.Responses" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <a:CreatedAt>2024-10-24T09:46:41.595Z</a:CreatedAt>
+  <a:Progress>100</a:Progress>
+  <a:Status>COMPLETED</a:Status>
+  <a:TrackingId>671a178183f9c51388bbb169</a:TrackingId>
+  <a:ProductsSubTrackingResult>
+    <a:ProductBasedInfos>
+      <a:ProductBasedInfo>
+        <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><b:string>Ürünün KDV tanımı 0, 1, 10, 20 değerleri olabilir.</b:string></a:FailureReasons>
+        <a:Message>Ürün güncellemesi başarısız.</a:Message><a:Status>CANCELLED</a:Status><a:Barcode>tshirt-1071</a:Barcode><a:ProductId>744445042</a:ProductId>
+      </a:ProductBasedInfo>
+      <a:ProductBasedInfo>
+        <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"/>
+        <a:Message>Ürün bilgilerinde herhangi bir değişiklik tespit edilemedi.</a:Message><a:Status>CANCELLED</a:Status><a:Barcode>tshirt-1073</a:Barcode><a:ProductId>744445044</a:ProductId>
+      </a:ProductBasedInfo>
+      <a:ProductBasedInfo>
+        <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"><b:string>Fiyat kilidinden dolayı ürünün fiyatı güncellenemedi.</b:string></a:FailureReasons>
+        <a:Message>Ürün güncellendi.</a:Message><a:Status>COMPLETED</a:Status><a:Barcode>tshirt-1075</a:Barcode>
+      </a:ProductBasedInfo>
+      <a:ProductBasedInfo>
+        <a:FailureReasons xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays"/>
+        <a:Message>Ürün güncellendi.</a:Message><a:Status>COMPLETED</a:Status><a:Barcode>tshirt-1076</a:Barcode>
+      </a:ProductBasedInfo>
+    </a:ProductBasedInfos>
+  </a:ProductsSubTrackingResult>
+</GetProductsTrackingResultResult>

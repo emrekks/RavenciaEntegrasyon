@@ -122,6 +122,9 @@ public sealed class ExternalEffectRecord
     public required string EffectType { get; set; }
     public required string IdempotencyKey { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    // KUYRUK-2: when the marketplace answered the request (it was sent by then). Null while the request has not gone out
+    // (a quota wait) or when it was cut off; the sweep then measures the record's age from CreatedAt as before.
+    public DateTimeOffset? SentAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     // What the effect changes, so an unclear outcome can be checked by reading the marketplace:
     // the connection, the local package, order or claim, the action and the value it should leave.

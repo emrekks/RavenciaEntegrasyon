@@ -366,6 +366,8 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
 
         var revived = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == blockedJob.Id);
         Assert.Equal(JobStatus.Pending, revived.Status);
+        // K2: the job screens hear that the verification runs again.
+        Assert.Equal(1, await db.IntegrationOutboxEvents.AsNoTracking().CountAsync(x => x.ResourceType == "jobs" && x.AggregateId == blockedJob.Id));
         Assert.Equal(1, await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id && x.JobDedupKey.StartsWith(ExternalEffectReconcilePolicy.JobDedupKey(blockedEffect.Id))));
         Assert.Null((await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == blockedEffect.Id)).CompletedAt);
         var closed = await db.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.Id == returnEffect.Id);
@@ -374,6 +376,104 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal("FAILED", settled.Status);
         Assert.Equal("EXTERNAL_EFFECT_UNRESOLVED", settled.ErrorCode);
         Assert.NotNull(settled.CompletedAt);
+        await transaction.RollbackAsync();
+    }
+
+    // KUYRUK-2: a shipment action that wrote its record and still waits (for its quota) is not verified behind its back;
+    // once the job has ended, the record gets its verification job.
+    [PostgreSqlFact]
+    public async Task TheSweepLeavesARecordAloneWhileItsOwnJobIsStillRunning()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = NewTenant("bg-owner");
+        var connection = NewConnection(tenant);
+        var key = $"bg-{Guid.NewGuid():N}";
+        var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = key, CreatedAt = now.AddMinutes(-5), ConnectionId = connection.Id, Action = "PICKING", TargetId = Guid.CreateVersion7() };
+        var owner = NewJob(tenant.Id, MarketplaceJobTypes.ShipmentAction);
+        owner.ConnectionId = connection.Id;
+        owner.EffectIdempotencyKey = key;
+        owner.Status = JobStatus.Leased;
+        owner.AttemptCount = 1;
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.ExternalEffectRecords.Add(effect);
+        db.IntegrationJobs.Add(owner);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None);
+        var verificationKey = ExternalEffectReconcilePolicy.JobDedupKey(effect.Id);
+        Assert.False(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobDedupKey.StartsWith(verificationKey)));
+
+        await db.IntegrationJobs.Where(x => x.Id == owner.Id).ExecuteUpdateAsync(setters => setters
+            .SetProperty(x => x.Status, JobStatus.ManualReview).SetProperty(x => x.CompletedAt, now));
+        await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None);
+        Assert.True(await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobDedupKey == verificationKey));
+        await transaction.RollbackAsync();
+    }
+
+    // KUYRUK-2: an open record is verified two minutes after its request was answered (SentAt), not after it was created
+    // (before a quota wait); a record without SentAt keeps the old measure.
+    [PostgreSqlFact]
+    public async Task TheSweepWaitsFromTheSendNotFromTheRecordsCreation()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = NewTenant("bg-sent-at");
+        var connection = NewConnection(tenant);
+        ExternalEffectRecord Record(DateTimeOffset? sentAt) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = MarketplaceJobTypes.ShipmentAction, IdempotencyKey = $"bg-{Guid.NewGuid():N}", CreatedAt = now.AddMinutes(-10), SentAt = sentAt, ConnectionId = connection.Id, Action = "PICKING", TargetId = Guid.CreateVersion7() };
+        var justSent = Record(now.AddSeconds(-30));
+        var sentLongAgo = Record(now.AddMinutes(-5));
+        var neverMarked = Record(null);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.ExternalEffectRecords.AddRange(justSent, sentLongAgo, neverMarked);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        await new ExternalEffectSweep(db, fixture.TimeProvider).SweepAsync(CancellationToken.None);
+        async Task<bool> Verified(ExternalEffectRecord effect)
+        {
+            var key = ExternalEffectReconcilePolicy.JobDedupKey(effect.Id);
+            return await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.JobDedupKey == key);
+        }
+        Assert.False(await Verified(justSent));
+        Assert.True(await Verified(sentLongAgo));
+        Assert.True(await Verified(neverMarked));
+        await transaction.RollbackAsync();
+    }
+
+    // KUYRUK-2: an unclear answer leaves the record open with the moment of the answer stored, even when the caller does
+    // not save afterwards; an accepted one completes it with the same moment.
+    [PostgreSqlFact]
+    public async Task TheEffectGuardStoresWhenAWriteWasAnswered()
+    {
+        var tenant = NewTenant("bg-guard-sent");
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+        var guard = new ExternalEffectGuard(db, fixture.TimeProvider);
+        var unclear = guard.New(tenant.Id, MarketplaceJobTypes.ShipmentAction, $"bg-{Guid.NewGuid():N}");
+        var accepted = guard.New(tenant.Id, MarketplaceJobTypes.ShipmentAction, $"bg-{Guid.NewGuid():N}");
+
+        var timedOut = await guard.SendAsync(unclear, () => Task.FromResult(AdapterResult<string>.Failure(new AdapterError(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "x", null, null, null))), CancellationToken.None);
+        var ok = await guard.SendAsync(accepted, () => Task.FromResult(AdapterResult<string>.Success("ok")), CancellationToken.None);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(ExternalEffectSendOutcome.Uncertain, timedOut.Outcome);
+        Assert.True(ok.Accepted);
+        var stored = await db.ExternalEffectRecords.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.NotNull(stored[unclear.Id].SentAt);
+        Assert.Null(stored[unclear.Id].CompletedAt);
+        Assert.NotNull(stored[accepted.Id].SentAt);
+        Assert.Equal(stored[accepted.Id].SentAt, stored[accepted.Id].CompletedAt);
         await transaction.RollbackAsync();
     }
 

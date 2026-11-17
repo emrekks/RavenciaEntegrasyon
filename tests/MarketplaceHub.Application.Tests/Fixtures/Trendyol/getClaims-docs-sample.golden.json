@@ -1,0 +1,113 @@
+{
+  "Items": [
+    {
+      "ExternalClaimId": "f9da2317-876b-4b86-b8f7-0535c3b65731",
+      "ExternalOrderId": "65745805",
+      "RawStatus": "Created",
+      "ReasonCode": "UNFIT",
+      "ReasonText": "Customer note",
+      "ActionDueAt": "2018-05-16T05:36:02.827+00:00",
+      "LastModifiedAt": "2024-08-10T07:42:47.111+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "b71461e3-d1a0-4c1d-9a6d-18ecbcb5158c",
+          "ExternalOrderLineId": "28717254",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": [
+            "29815493"
+          ],
+          "RawStatus": "Created",
+          "AcceptDetail": "SUPPLIER",
+          "Note": null,
+          "Resolved": false,
+          "AcceptedBySeller": true,
+          "ProductCode": null,
+          "StockCode": null
+        },
+        {
+          "ExternalLineId": "b71461e3-d1a0-4c1d-9a6d-18ecbcb5432d",
+          "ExternalOrderLineId": "28717255",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": [
+            "29815494"
+          ],
+          "RawStatus": "Created",
+          "AcceptDetail": "SUPPLIER",
+          "Note": null,
+          "Resolved": false,
+          "AcceptedBySeller": true,
+          "ProductCode": null,
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 3829 chars sha256:3dd8938b4dc8>",
+      "CargoProviderName": "Aras Kargo Marketplace",
+      "CargoTrackingNumber": "72602420957047276000",
+      "CargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",
+      "OrderCreatedAt": null,
+      "ActionDueAtEstimated": true,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2018-05-09T05:36:02.827+00:00"
+    },
+    {
+      "ExternalClaimId": "00000000-0000-4000-8000-000000000002",
+      "ExternalOrderId": "10900000101",
+      "RawStatus": "WaitingInAction",
+      "ReasonCode": "UNDELIVERED",
+      "ReasonText": "Teslim edilemeyen gönderi",
+      "ActionDueAt": "2025-11-14T01:00:00+00:00",
+      "LastModifiedAt": "2025-11-12T01:00:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-0000000000a1",
+          "ExternalOrderLineId": "4765900101",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": [
+            "99000101"
+          ],
+          "RawStatus": "WaitingInAction",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": false,
+          "AcceptedBySeller": false,
+          "ProductCode": null,
+          "StockCode": null
+        },
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-0000000000a2",
+          "ExternalOrderLineId": "4765900101",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": [
+            "99000102"
+          ],
+          "RawStatus": "WaitingInAction",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": false,
+          "AcceptedBySeller": false,
+          "ProductCode": null,
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 1943 chars sha256:2db7c0973bd1>",
+      "CargoProviderName": "Trendyol Express",
+      "CargoTrackingNumber": null,
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": null,
+      "ActionDueAtEstimated": true,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2025-11-12T00:00:00+00:00"
+    }
+  ],
+  "NextCursor": null,
+  "HasMore": false,
+  "TotalCount": null,
+  "Issues": null,
+  "LastModifiedSeen": null
+}

@@ -1,0 +1,49 @@
+{
+  "JobType": "ORDER_RECONCILIATION",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "Retry",
+      "ErrorCode": "SLICE_CONTINUES",
+      "Calls": {
+        "Count": 15,
+        "Head": [
+          "orders.Poll key=order-reconcile:TR:0:0 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=- limit=200",
+          "orders.Poll key=order-reconcile:TR:0:1 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=1 limit=200",
+          "orders.Poll key=order-reconcile:TR:0:2 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=2 limit=200",
+          "orders.Poll key=order-reconcile:TR:0:3 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=3 limit=200",
+          "orders.Poll key=order-reconcile:TR:0:4 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=4 limit=200"
+        ],
+        "Tail": [
+          "orders.Poll key=order-reconcile:TR:0:12 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=12 limit=200",
+          "orders.Poll key=order-reconcile:TR:0:13 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=13 limit=200",
+          "orders.Poll key=order-reconcile:TR:0:14 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=14 limit=200"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDER_RECONCILE_1D",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"AnchorEnd\":\"2026-11-16T09:00:02+00:00\",\"WindowIndex\":0,\"StoreFrontIndex\":0,\"NextCursor\":\"15\",\"StoreFronts\":[\"TR\"]}",
+      "Version": 16
+    },
+    {
+      "ResourceType": "ORDER_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 3
+    },
+    {
+      "ResourceType": "TRENDYOL_STOREFRONTS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    }
+  ],
+  "Issues": []
+}

@@ -38,8 +38,10 @@ public static class ClaudePricing
 // The shared service every AI feature calls: it loads the key and model from the settings, calls Claude through
 // IClaudeClient and writes one usage row per call (feature, who, subject, tokens, cost, outcome). The size chart is
 // its first consumer; later features reuse it with their own feature name.
-public sealed class ClaudeService(AiSettingsService settings, IClaudeClient client, AppDbContext db, TimeProvider timeProvider)
+public sealed class ClaudeService(AiSettingsService settings, IClaudeClient client, AppDbContext db, TimeProvider timeProvider, AiSpendLimit? spendLimit = null)
 {
+    private readonly AiSpendLimit limit = spendLimit ?? new AiSpendLimit(AiSpendLimit.DefaultDailyUsd);
+
     public static readonly IReadOnlyDictionary<string, string> FeatureLabels = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["CONNECTION_TEST"] = "Bağlantı Sınaması",
@@ -81,11 +83,26 @@ public sealed class ClaudeService(AiSettingsService settings, IClaudeClient clie
     {
         if (!credentials.Skills.TryGetValue(skillKey, out var skill))
             throw new ClaudeException("AI_SKILL_MISSING", "Beceri henüz yüklenmedi. Ayarlar › Yapay Zekâ bölümünde \"Beceriyi Yükle\" düğmesine basın.", 409);
+        await EnsureWithinSpendLimitAsync(context.TenantId, cancellationToken);
         var model = credentials.DefaultModel;
         var run = await Logged(context, model,
             () => client.RunSkillAsync(new ClaudeSkillRequest(credentials.ApiKey, model, skill.SkillId, skill.Version, system, prompt, effort, maxTokens, timeout, images), cancellationToken),
             result => result.Usage, cancellationToken);
         return new(run.Value, run.LogId, model);
+    }
+
+    // API-GUVENLIK-3: a skill run is refused before it reaches Claude once the tenant's runs of the last 24 hours have
+    // cost the daily ceiling (AiSpendLimit).
+    private async Task EnsureWithinSpendLimitAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        if (!limit.Enabled) return;
+        var since = timeProvider.GetUtcNow().Subtract(AiSpendLimit.Window).ToUniversalTime();
+        var spent = await db.AiUsageLogs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.CreatedAt >= since && x.CostUsd != null)
+            .SumAsync(x => x.CostUsd ?? 0m, cancellationToken);
+        if (spent >= limit.DailyUsd)
+            throw new ClaudeException("AI_BUDGET_EXCEEDED",
+                $"Yapay zekâ için günlük harcama sınırına ulaşıldı (son 24 saatte {spent:0.00} USD / {limit.DailyUsd:0.00} USD). Sınır dolduğu için yeni çizim başlatılmadı; daha sonra tekrar deneyin.", 429);
     }
 
     public Task<byte[]> DownloadFileAsync(AiCredentials credentials, string fileId, long maxBytes, CancellationToken cancellationToken) =>

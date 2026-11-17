@@ -28,24 +28,29 @@ const filled = (value: string) => value.trim() !== ''
 const positiveDesi = (value: string) => parseProductDesi(value) > 0
 const positivePrice = (value: string) => priceInputNumber(value) > 0
 
+// The eleven required fields in the order the page shows them, the same order as the server's list
+// (ProductRequiredFields.Fields, src/MarketplaceHub.Application/ProductRequiredFields.cs; a test holds them equal).
+export const REQUIRED_EDITOR_FIELDS: readonly RequiredEditorField[] = ['title', 'brandId', 'categoryId', 'modelCode', 'baseSku', 'barcode', 'desi', 'warrantyMonths', 'deliveryDays', 'listPrice', 'salePrice']
+
 // The required fields that are empty, in the order the page shows them.
 export function missingRequiredEditorFields(form: RequiredFieldsForm, options: { automaticBarcodes: boolean; hasVariants?: boolean }): RequiredEditorField[] {
   // On a card with variants each row holds its own codes (owner, 11 Nov 2026: the card's fields are read-only there).
   const codesElsewhere = options.automaticBarcodes || Boolean(options.hasVariants)
-  const checks: Array<[RequiredEditorField, boolean]> = [
-    ['title', filled(form.title)],
-    ['brandId', filled(form.brandId)],
-    ['categoryId', filled(form.categoryId)],
-    ['modelCode', filled(form.modelCode)],
-    ['baseSku', codesElsewhere || filled(form.baseSku)],
-    ['barcode', codesElsewhere || filled(form.barcode)],
-    ['desi', positiveDesi(form.desi)],
-    ['warrantyMonths', filled(form.warrantyMonths)],
-    ['deliveryDays', filled(form.deliveryDays)],
-    ['listPrice', positivePrice(form.listPrice)],
-    ['salePrice', positivePrice(form.salePrice)]
-  ]
-  return checks.filter(([, ok]) => !ok).map(([field]) => field)
+  const given: Record<RequiredEditorField, boolean> = {
+    title: filled(form.title),
+    brandId: filled(form.brandId),
+    categoryId: filled(form.categoryId),
+    modelCode: filled(form.modelCode),
+    baseSku: codesElsewhere || filled(form.baseSku),
+    barcode: codesElsewhere || filled(form.barcode),
+    desi: positiveDesi(form.desi),
+    warrantyMonths: filled(form.warrantyMonths),
+    deliveryDays: filled(form.deliveryDays),
+    // Prices must be above 0, not only filled.
+    listPrice: positivePrice(form.listPrice),
+    salePrice: positivePrice(form.salePrice)
+  }
+  return REQUIRED_EDITOR_FIELDS.filter(field => !given[field])
 }
 
 // The message under one field: a price typed as 0 must be above 0 (owner, 10 Nov 2026: "0 olmayacak onlarda").
@@ -59,6 +64,20 @@ export function requiredFieldMessage(field: RequiredEditorField, form: RequiredF
 // without one (refused unless it is a draft) from one created with no warranty.
 export function editorWarrantyMonths(value: string): number | null {
   return value.trim() === '' ? null : Number(value)
+}
+
+// Garanti Süresi as the form shows a saved card's (owner, 15 Nov 2026: "0 ile boş farklı"): 0 is "0" (no warranty), an
+// empty warranty stays empty so the editor asks for it (a required field); a new form starts at "0".
+export function editorWarrantyText(months: number | null | undefined) {
+  return months == null ? '' : String(months)
+}
+
+// Garanti Süresi as an edit save sends it: the months (0 included), or for an emptied field an explicit clear. Leaving
+// warrantyMonths out (or null) keeps the card's value on the server, so an emptied field must say so; only a draft can
+// be saved that way (a card on sale with it empty is refused as a missing required field).
+export function editorWarrantyUpdate(value: string): { warrantyMonths: number } | { warrantyMonths: null; clearWarrantyMonths: true } {
+  const months = editorWarrantyMonths(value)
+  return months === null ? { warrantyMonths: null, clearWarrantyMonths: true } : { warrantyMonths: months }
 }
 
 export function requiredFieldsMessage(missing: readonly RequiredEditorField[]) {

@@ -1,0 +1,54 @@
+{
+  "JobType": "HEPSIBURADA_RETURN_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 9,
+        "Head": [
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:0 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:1 window=-..- storefront=- status=NewRequest statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=1 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:AwaitingAction:0 window=-..- storefront=- status=AwaitingAction statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:InDispute:0 window=-..- storefront=- status=InDispute statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Accepted:0 window=-..- storefront=- status=Accepted statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Rejected:0 window=-..- storefront=- status=Rejected statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Refunded:0 window=-..- storefront=- status=Refunded statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Cancelled:0 window=-..- storefront=- status=Cancelled statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:AwaitingPreApproval:0 window=-..- storefront=- status=AwaitingPreApproval statusWindow=2026-10-17T09:00:02.000Z..2026-11-16T09:00:02.000Z cursor=0 limit=100"
+        ],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 8,
+        "Head": [
+          "returns.Poll key=hepsiburada-return-sync:NewRequest:0 window=-..- storefront=- status=NewRequest statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:AwaitingAction:0 window=-..- storefront=- status=AwaitingAction statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:InDispute:0 window=-..- storefront=- status=InDispute statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Accepted:0 window=-..- storefront=- status=Accepted statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Rejected:0 window=-..- storefront=- status=Rejected statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Refunded:0 window=-..- storefront=- status=Refunded statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:Cancelled:0 window=-..- storefront=- status=Cancelled statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100",
+          "returns.Poll key=hepsiburada-return-sync:AwaitingPreApproval:0 window=-..- storefront=- status=AwaitingPreApproval statusWindow=2026-11-14T09:10:15.000Z..2026-11-16T09:10:15.000Z cursor=0 limit=100"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURNS",
+      "Watermark": "2026-11-16T09:10:15.000Z",
+      "LastSuccess": "2026-11-16T09:10:25.000Z",
+      "OpaqueCursor": null,
+      "Version": 24
+    }
+  ],
+  "Issues": []
+}

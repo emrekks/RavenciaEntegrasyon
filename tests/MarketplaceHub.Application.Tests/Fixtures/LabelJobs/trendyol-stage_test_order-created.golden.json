@@ -1,0 +1,101 @@
+{
+  "Runs": [
+    {
+      "Run": "create",
+      "JobType": "TRENDYOL_STAGE_TEST_ORDER",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.CreateStageTestOrder key=stage-test-order:job stageProbe \"8690000000001\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "AuditLog",
+      "Rows": [
+        {
+          "Action": "STAGE_TEST_ORDER_CREATED",
+          "ActorUserId": "actor",
+          "CorrelationId": "rjg-create",
+          "CreatedAt": "T+00:00:03",
+          "Id": "<sequence>",
+          "Reason": "fresh-label-write-fixture:TRENDYOL",
+          "TargetId": "7202",
+          "TargetType": "StageTestOrder",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "STAGE",
+          "ExternalStoreId": "2738",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {},
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id1",
+          "LastAttemptAt": "T+00:00:01",
+          "LastChangedCount": 1,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 1,
+          "LastRequestCount": 1,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": "T+00:00:04",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "STAGE_TEST_ORDER",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1"
+      ]
+    }
+  ]
+}

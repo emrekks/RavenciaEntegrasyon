@@ -1,0 +1,55 @@
+{
+  "JobType": "HEPSIBURADA_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Retry",
+      "ErrorCode": "SLICE_CONTINUES",
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=hepsiburada-orders:0:0 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=0 limit=100",
+          "orders.Poll key=hepsiburada-orders:0:1 window=2026-11-15T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=- cursor=1 limit=100"
+        ],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Retry",
+      "ErrorCode": "SLICE_CONTINUES",
+      "Calls": {
+        "Count": 2,
+        "Head": [
+          "orders.Poll key=hepsiburada-orders:1:0 window=2026-11-15T08:58:02.000Z..2026-11-15T09:00:02.000Z storefront=- cursor=0 limit=100",
+          "packages.Poll key=hepsiburada-packages:0:0 window=2026-11-15T09:10:10.000Z..2026-11-16T09:10:10.000Z statusLists=True cursor=0 limit=10"
+        ],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "HEPSIBURADA_PACKAGE_STATUS_LISTS",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:10:10.000Z",
+      "OpaqueCursor": null,
+      "Version": 2
+    },
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": "2026-11-16T09:00:02.000Z",
+      "LastSuccess": "2026-11-16T09:10:09.000Z",
+      "OpaqueCursor": null,
+      "Version": 9
+    },
+    {
+      "ResourceType": "PACKAGES",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"hepsiburada-packages-v2\",\"AnchorEnd\":\"2026-11-16T09:10:10+00:00\",\"StartAt\":\"2026-10-16T09:10:10+00:00\",\"WindowIndex\":1,\"Offset\":0,\"LastPageKey\":null}",
+      "Version": 2
+    }
+  ],
+  "Issues": []
+}

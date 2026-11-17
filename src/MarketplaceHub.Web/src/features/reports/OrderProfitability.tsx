@@ -1,7 +1,9 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, Pager, TitleHint, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Pager, TitleHint, UiIcon } from '../../shared/components'
+import { RrModal } from '../../shared/ui/rr-components'
 import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -9,22 +11,22 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { platformName } from './report-format'
 import { KpiStrip, type Kpi } from './ReportsPage'
 import { EmptyState } from '../../shared/components/EmptyState'
+import { queryKeys } from '../../shared/api/query-keys'
+import { cursorPageParams } from '../../shared/api/paging'
 
 // Sipariş Kârlılık Analizi (ReportsContracts.cs, ReportOrderProfitView): each order of the period with what it leaves
 // after product cost, commission, cargo, the platform's fees, withholding tax and net VAT, and its items one by one.
 // amount null: unknown (a Trendyol cargo with no invoice and no tariff to estimate it at, a commission with no rate on
 // the order nor of its store), and so the order's profit.
-export type OrderProfitCost = { key: string; label: string; amount: number | null; estimated: boolean; source: string | null }
-export type OrderProfitLine = { variantId: string | null; title: string; barcode: string | null; sku: string; quantity: number; returnedQuantity: number; amount: number
-  commissionRate: number | null; commission: number | null; costPrice: number | null; vatRate: number; imageUrl: string | null; options: string | null }
-export type OrderProfit = { orderId: string; orderNumber: string; platformCode: string; storeName: string; storeFront: string | null; microExport: boolean; orderedAt: string
-  state: 'SOLD' | 'PARTLY_RETURNED' | 'RETURNED'; amount: number; cost: number | null; profit: number | null; profitOnCost: number | null; margin: number | null
-  // Product lines the panel could not read: the order is marked and its cost and profit are unknown.
-  costs: OrderProfitCost[]; lines: OrderProfitLine[]; unreadableLines?: number }
+type OrderProfitAnswer = ApiAnswer<'getReportsOrderProfitability'>
+// unreadableLines: product lines the panel could not read; the order is marked and its cost and profit are unknown.
+// CONTRACT: the API declares the state as a string; ReportOrderProfit writes SOLD, PARTLY_RETURNED or RETURNED.
+export type OrderProfit = Omit<OrderProfitAnswer['items'][number], 'state'> & { state: 'SOLD' | 'PARTLY_RETURNED' | 'RETURNED' }
+export type OrderProfitCost = OrderProfit['costs'][number]
+export type OrderProfitLine = OrderProfit['lines'][number]
 // The totals of every order the filter keeps: amount over all of them; profit, profitAmount (their amount) and margin
 // only over the profitOrders whose profit is known (profit null when none is).
-export type OrderProfitPage = { items: OrderProfit[]; totalCount: number; page: number; pageSize: number; amount: number; profit: number | null; missingCost: number
-  profitAmount: number; profitOrders: number; margin: number | null; missingCargo: number; missingCommission?: number }
+export type OrderProfitPage = Omit<OrderProfitAnswer, 'items'> & { items: OrderProfit[] }
 type Sort = 'date' | 'amount' | 'profit' | 'profitOnCost' | 'margin'
 
 const money = (value: number) => `${value < 0 ? '−' : ''}₺${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -63,8 +65,9 @@ export const unknownProfit = (order: OrderProfit) => (order.unreadableLines ?? 0
 
 // The query of a page: the period and platforms of the report, the search, the order and the page.
 export function orderProfitQuery(filters: { from: string; to: string; platforms: string[] | null; search: string; sort: Sort; descending: boolean; page: number }) {
-  const query = new URLSearchParams({ from: filters.from, to: filters.to, sort: filters.sort, dir: filters.descending ? 'desc' : 'asc', page: String(filters.page), limit: '50' })
-  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  // The cursor form (API-GUVENLIK-8): fifty orders, after the offset cursor of the page asked for.
+  const query = cursorPageParams(new URLSearchParams({ dateFrom: filters.from, dateTo: filters.to, sort: filters.sort, dir: filters.descending ? 'desc' : 'asc' }), filters.page, 50)
+  if (filters.platforms?.length) query.set('platforms', filters.platforms.join(','))
   if (filters.search.trim()) query.set('search', filters.search.trim())
   return query.toString()
 }
@@ -93,7 +96,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
   const [pageScope, setPageScope] = useState(scope)
   if (pageScope !== scope) { setPageScope(scope); setPage(0) }
   const query = orderProfitQuery({ from, to, platforms, search: applied, sort, descending, page: pageScope === scope ? page : 0 })
-  const result = useQuery({ queryKey: ['report-order-profit', query], queryFn: () => hubApi<OrderProfitPage>(`/reports/order-profitability?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const result = useQuery({ queryKey: queryKeys.reportOrderProfit(query), queryFn: ({ signal }) => hubApi<OrderProfitPage>(`/reports/order-profitability?${query}`, { signal }), staleTime: 60_000, placeholderData: previous => previous })
   const data = result.data
   const pageCount = data ? Math.max(1, Math.ceil(data.totalCount / data.pageSize)) : 1
   // A page past the end (the list shrank since it was opened) moves to the last page there is.
@@ -147,8 +150,8 @@ function CopyNumber({ value }: { value: string }) {
 
 // Sipariş Analizi: the order's items and every charge with where it comes from, and what is left.
 function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () => void }) {
-  return <Modal open onClose={onClose} className="reports-order-modal" title={`Sipariş Analizi · #${order.orderNumber}`}
-    description={`${formatIstanbul(order.orderedAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${order.storeName}${order.microExport ? ` · Mikro ihracat (${order.storeFront})` : ''}`}>
+  return <RrModal onClose={onClose} size="xl" modalClass="reports-order-modal" title={`Sipariş Analizi · #${order.orderNumber}`}
+    desc={`${formatIstanbul(order.orderedAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${order.storeName}${order.microExport ? ` · Mikro ihracat (${order.storeFront})` : ''}`}>
     <div className="reports-order-columns">
       <section>
         <h3>Siparişteki Ürünler <em>{order.lines.length} kalem</em></h3>
@@ -181,5 +184,5 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
       <span>Bu siparişteki net kârınız<small>Tüm giderler çıkarıldıktan sonra</small></span>
       <strong>{order.profit === null ? unknownProfit(order) : money(order.profit)}</strong>
     </div>
-  </Modal>
+  </RrModal>
 }

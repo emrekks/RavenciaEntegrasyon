@@ -1,13 +1,8 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 // Shopify's categories are the store's own product types (free text). On Eşleştirmeler › Kategori Eşleme › Shopify a
 // panel category is mapped to one of them, or to a type typed here that the first publication creates in the store.
 
-export type ShopifyExactMatchView = {
-  matchCount: number
-  withoutTypeCount: number
-  ambiguousCount: number
-  applied: boolean
-  matches: Array<{ categoryId: string; categoryName: string; productType: string }>
-}
+export type ShopifyExactMatchView = ApiAnswer<'postMappingsCategoriesExactMatch'>
 
 export const shopifyProductTypeMaxLength = 255
 

@@ -44,6 +44,21 @@ public sealed class PazaramaPriceInventoryTests
         Assert.NotEqual(hash, PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 2));
     }
 
+    // The mark is the same on every machine: a Turkish culture (decimal comma) gives the invariant culture's hash.
+    [Fact]
+    public void The_price_hash_does_not_depend_on_the_machine_culture()
+    {
+        var before = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            var invariant = PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 1);
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("tr-TR");
+            Assert.Equal(invariant, PazaramaPriceInventoryRules.PriceHash(120m, 99.99m, 1));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = before; }
+    }
+
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     // ---- payload ----
@@ -170,12 +185,28 @@ public sealed class PazaramaPriceInventoryTests
         Assert.Equal(expected, page.Items.Single().State);
     }
 
+    // D9: Pazarama's documented answer gives a price sent to approval status 0 with the text "Onaya gönderildi" and the
+    // detail "Ürün fiyat onayına gönderildi": it waits for approval, it is not done.
+    [Theory]
+    [InlineData("Onaya gönderildi", "Ürün fiyat onayına gönderildi")]
+    [InlineData("Başarılı", "Ürün fiyat onayına gönderildi")]
+    [InlineData("Onaya gönderildi", "Başarılı")]
+    public void A_part_done_but_sent_to_approval_waits_for_approval(string text, string detail)
+    {
+        var page = PazaramaBatchMapper.Page(Parse(Result(Row("B1", Status(0, detail), text: text))));
+
+        Assert.Equal(PazaramaBatchMapper.BatchState.PendingApproval, page.Items.Single().State);
+    }
+
     [Theory]
     [InlineData("Başarılı", PazaramaBatchMapper.BatchState.Succeeded)]
     [InlineData("Onaya gönderildi", PazaramaBatchMapper.BatchState.PendingApproval)]
     [InlineData("İşleniyor", PazaramaBatchMapper.BatchState.Processing)]
     [InlineData("Hata oluştu", PazaramaBatchMapper.BatchState.Failed)]
     [InlineData("Tamamlanamadı", PazaramaBatchMapper.BatchState.Failed)]
+    // D10: no result and no text, or a text Pazarama does not document, is no outcome yet: read again, never Failed.
+    [InlineData("", PazaramaBatchMapper.BatchState.Processing)]
+    [InlineData("Yeni bir durum", PazaramaBatchMapper.BatchState.Processing)]
     public void Without_part_status_the_overall_text_decides(string text, PazaramaBatchMapper.BatchState expected)
     {
         var page = PazaramaBatchMapper.Page(Parse(Result(Row("B1", text: text))));
@@ -311,6 +342,40 @@ public sealed class PazaramaPriceInventoryTests
         Assert.Equal("COMPLETED", status.Status);
         var outcome = PazaramaBatchMapper.LineOutcomes(operationId, payload);
         return (code, _) => outcome(code, status.Lines.SingleOrDefault(line => line.ExternalKey == code));
+    }
+
+    // ADAPTOR-DIGER-3: a part answered "success" without a tracking id after another part was accepted keeps the accepted
+    // part's id; only that part is reported as not sent.
+    [Fact]
+    public async Task A_part_accepted_without_a_tracking_id_does_not_drop_the_parts_accepted_before_it()
+    {
+        var payload = PazaramaPriceInventoryRules.Payload([(Line("B0"), false, true), (Line("B1"), false, true)]);
+        var calls = 0;
+        Task<AdapterResult<JsonDocument>> Send(string path, string body, CancellationToken token) => Task.FromResult(++calls switch
+        {
+            1 => AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", HeldMessage, null, null, null)),
+            2 => AdapterResult<JsonDocument>.Success(JsonDocument.Parse("""{"success":true,"data":"abc"}""")),
+            _ => AdapterResult<JsonDocument>.Success(JsonDocument.Parse("""{"success":true,"data":null}"""))
+        });
+
+        var result = await PazaramaHttpClient.PushAsync(PazaramaPriceInventoryRules.Split(payload)!, Send, () => DateTimeOffset.UnixEpoch, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("s:abc:1:0|s!:PAZARAMA_BATCH_ID_MISSING:1:1", result.Value!.ExternalOperationId);
+        var outcome = PazaramaBatchMapper.LineOutcomes(result.Value.ExternalOperationId, payload);
+        Assert.Equal("PAZARAMA_BATCH_ID_MISSING", outcome("B1", null).NotSentCode);
+    }
+
+    [Fact]
+    public async Task A_send_whose_only_part_has_no_tracking_id_still_fails_whole()
+    {
+        var payload = PazaramaPriceInventoryRules.Payload([(Line("B0"), false, true)]);
+        Task<AdapterResult<JsonDocument>> Send(string path, string body, CancellationToken token) =>
+            Task.FromResult(AdapterResult<JsonDocument>.Success(JsonDocument.Parse("""{"success":true,"data":null}""")));
+
+        var result = await PazaramaHttpClient.PushAsync(PazaramaPriceInventoryRules.Split(payload)!, Send, () => DateTimeOffset.UnixEpoch, CancellationToken.None);
+
+        Assert.Equal("PAZARAMA_BATCH_ID_MISSING", result.Error!.Code);
     }
 
     [Fact]

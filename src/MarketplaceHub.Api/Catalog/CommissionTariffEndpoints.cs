@@ -1,6 +1,8 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Catalog;
 
@@ -10,24 +12,26 @@ internal static class CommissionTariffEndpoints
 {
     public static RouteGroupBuilder MapCommissionTariffEndpoints(this RouteGroupBuilder api)
     {
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs", ListAsync);
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery();
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync);
-        api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync);
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs", ListAsync).Produces<IReadOnlyList<CommissionTariffView>>();
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<CommissionTariffUploadResult>();
+        // The long form, or with shape=compact the short one (CommissionTariffCompactRows).
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync)
+            .ProducesOneOf(StatusCodes.Status200OK, typeof(CommissionTariffRowPage), typeof(CommissionTariffCompactRowPage));
+        api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync).Produces<bool>().Idempotent(WriteReasons.Removes);
         // The days a tariff is valid for, picked by the seller (operational roles, as the upload and delete).
-        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync);
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync);
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync).Produces<IReadOnlyList<CommissionTariffView>>().Idempotent(WriteReasons.Replaces);
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync).Produces<CommissionTariffFacets>();
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync);
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync).ProducesFile(ProductTransferEndpoints.XlsxMediaType).Idempotent("builds the tariff's export file; it changes nothing");
         // The seller's saved picks: read by every role, replaced (PUT, the operational roles) after each change on the page.
-        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync);
-        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync);
+        api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync).Produces<CommissionTariffSelectionView>();
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync).Produces<CommissionTariffSelectionView>().Idempotent(WriteReasons.Replaces);
         // Promotion offers (Plus, advantage label, flash): the latest file of each kind, the kind told by its columns.
-        api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync);
-        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery();
-        api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync);
-        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync);
+        api.MapGet("/connections/{connectionId:guid}/promotion-offers", ListOffersAsync).Produces<IReadOnlyList<PromotionOfferSummary>>();
+        api.MapPost("/connections/{connectionId:guid}/promotion-offers", UploadOfferAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<PromotionOfferUploadResult>();
+        api.MapGet("/connections/{connectionId:guid}/promotion-offers/{kind}", OfferAsync).Produces<PromotionOfferDetail>();
+        api.MapDelete("/connections/{connectionId:guid}/promotion-offers/{kind}", DeleteOfferAsync).Produces<bool>().Idempotent(WriteReasons.Removes);
         return api;
     }
 
@@ -54,7 +58,7 @@ internal static class CommissionTariffEndpoints
     private static async Task<IResult> UploadOfferAsync(Guid connectionId, HttpContext http, IPromotionOfferService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])) return Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400));
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = PromotionOfferService.MaximumFileBytes + 128 * 1024;
         if (http.Request.ContentLength is > PromotionOfferService.MaximumFileBytes + 128 * 1024)
@@ -108,7 +112,7 @@ internal static class CommissionTariffEndpoints
     private static async Task<IResult> UploadAsync(Guid connectionId, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        if (string.IsNullOrWhiteSpace(http.Request.Headers["Idempotency-Key"])) return Problem(http, new("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400));
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
         if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = CommissionTariffService.MaximumFileBytes + 128 * 1024;
         if (http.Request.ContentLength is > CommissionTariffService.MaximumFileBytes + 128 * 1024)
@@ -152,7 +156,7 @@ internal static class CommissionTariffEndpoints
     }
 
     private static async Task<IResult> RowsAsync(Guid connectionId, Guid tariffId, string? search, int? page, int? limit, int? tier, string? cost, string? name, string? barcode, string? model,
-        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, HttpContext http, ICommissionTariffService service)
+        decimal? minStock, decimal? maxStock, string? category, string? brand, string? sort, string? dir, int? profitTier, decimal? minProfit, decimal? maxProfit, decimal? minShare, decimal? maxShare, string? barcodes, string? shape, string? after, int? pageSize, HttpContext http, ICommissionTariffService service)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         // A comma-separated list of exact barcodes, at most a page's worth.
@@ -160,6 +164,9 @@ internal static class CommissionTariffEndpoints
         if (exact is { Length: > 200 } || exact?.Any(code => code.Length > 120) == true) return Problem(http, new("BARCODES_INVALID", "En fazla 200 barkod, her biri en fazla 120 karakter olabilir.", 400));
         if (page is < 0 or > 100_000) return Problem(http, new("PAGE_INVALID", "page 0 ile 100000 arasında olmalıdır.", 400));
         if (limit is not null and (< 1 or > 200)) return Problem(http, new("LIMIT_INVALID", "limit 1 ile 200 arasında olmalıdır.", 400));
+        if (pageSize is not null and (< 1 or > 200)) return Problem(http, new("LIMIT_INVALID", "pageSize 1 ile 200 arasında olmalıdır.", 400));
+        // NumberedPage: page with pageSize (limit, its older name, still read); the cursor pages by limit.
+        var size = string.IsNullOrWhiteSpace(after) ? pageSize ?? limit ?? 50 : limit ?? 50;
         if (tier is not null and (< 1 or > 4)) return Problem(http, new("TIER_INVALID", "tier 1 ile 4 arasında olmalıdır.", 400));
         if (cost is not (null or "" or "with" or "without")) return Problem(http, new("COST_FILTER_INVALID", "cost with ya da without olmalıdır.", 400));
         if (minStock is < 0 or > 10_000_000 || maxStock is < 0 or > 10_000_000) return Problem(http, new("STOCK_FILTER_INVALID", "Stok 0 ile 10000000 arasında olmalıdır.", 400));
@@ -170,7 +177,24 @@ internal static class CommissionTariffEndpoints
         var filter = new CommissionTariffRowFilter(tier, cost switch { "with" => true, "without" => false, _ => null }, name, barcode, model, minStock, maxStock, category, brand,
             string.IsNullOrEmpty(sort) ? null : sort, dir == "desc", profitTier, minProfit, maxProfit, minShare, maxShare, exact);
         if (shape is not (null or "" or "compact")) return Problem(http, new("SHAPE_INVALID", "shape compact olmalıdır.", 400));
-        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, page ?? 0, limit ?? 50, filter, http.RequestAborted);
+        // Unified paging (PagingContract): after, the nextCursor of the previous page, wins over page. A page of models in
+        // name order (ties by the model key) is total; under a sort or a profit filter the models are ordered in memory
+        // with ties left in the read order, so there is no cursor.
+        var orderIsTotal = filter.Sort is null && !filter.FiltersProfit;
+        if (!orderIsTotal && !string.IsNullOrWhiteSpace(after)) return Problem(http, new("INVALID_REQUEST", "after bu sıralamada kullanılamaz: sıralama eşit değerleri sabit bir sıraya koymuyor; page kullanın.", 400));
+        int? cursorPage;
+        try { cursorPage = OffsetCursor.PageIndex(after, size); }
+        catch (ArgumentException exception) { return Problem(http, new("INVALID_REQUEST", exception.Message, 400)); }
+        var rows = await service.RowsAsync(tenant.TenantId, connectionId, tariffId, search, cursorPage ?? page ?? 0, size, filter, http.RequestAborted);
+        if (rows.Succeeded)
+        {
+            var value = rows.Value!;
+            rows = ServiceResult<CommissionTariffRowPage>.Ok(value with
+            {
+                HasMore = (long)(value.Page + 1) * value.PageSize < value.TotalCount,
+                NextCursor = orderIsTotal ? OffsetCursor.Next(value.Page, value.PageSize, value.TotalCount) : null
+            });
+        }
         // The panel asks for the short form (CommissionTariffCompactRows); without shape the rows come as they always did.
         return shape == "compact" && rows.Succeeded ? Results.Ok(CommissionTariffCompactRows.Of(rows.Value!)) : Result(rows);
     }
@@ -181,8 +205,4 @@ internal static class CommissionTariffEndpoints
         return Result(await service.DeleteAsync(tenant.TenantId, tenant.UserId, connectionId, tariffId, http.TraceIdentifier, http.RequestAborted));
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Result<T>(ServiceResult<T> result) => result.Succeeded ? Results.Ok(result.Value) : ApiProblems.Of(null, result.Error!);
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }

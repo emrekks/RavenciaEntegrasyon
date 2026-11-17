@@ -32,6 +32,8 @@ x-app: &app
     FeatureFlags__ExternalWrites: "false"
     TrendyolEFaturam__DocumentAllowedHosts__0: ${MARKETPLACEHUB_EFATURAM_DOCUMENT_HOST:-}
     TrendyolEFaturam__OutgoingInvoiceStatusPath: ${MARKETPLACEHUB_EFATURAM_EINVOICE_STATUS_PATH:-}
+    # Invoice link sent to the marketplaces (MarketplaceInvoiceLinkPolicy): Provider = E-Faturam's permanent URL (default), Panel = the panel's public link.
+    Invoicing__MarketplaceInvoiceLink: ${MARKETPLACEHUB_INVOICE_LINK_SOURCE:-Provider}
     Worker__HealthFile: /tmp/marketplacehub-worker-heartbeat
     Worker__HealthStaleAfterSeconds: "120"
     Storage__Root: /var/lib/marketplacehub/files
@@ -113,6 +115,9 @@ services:
   api:
     <<: *app
     command: ["api/MarketplaceHub.Api.dll"]
+    # Requests still running at a deploy get time to finish before SIGKILL (Docker's default is 10 s; the host's
+    # own shutdown timeout is ASP.NET Core's 30 s). A write cut off mid-way leaves its idempotency key in progress.
+    stop_grace_period: 45s
     networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }

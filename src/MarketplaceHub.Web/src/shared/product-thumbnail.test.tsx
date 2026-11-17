@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { previewSrcSet, thumbnailSources, thumbnailSrcSet, thumbnailUrl } from './product-thumbnail'
-import { RrImagePreview, RrThumb } from '../features/marketplace/returns-ui'
+import { RrImagePreview, RrThumb } from './ui/rr-components'
 
 const own = '/api/v1/files/product-media/019a1b2c-3d4e-7f00-8a9b-0c1d2e3f4a5b/content'
 

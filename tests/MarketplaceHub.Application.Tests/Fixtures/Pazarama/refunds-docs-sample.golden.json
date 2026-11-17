@@ -1,0 +1,79 @@
+{
+  "Items": [
+    {
+      "ExternalClaimId": "ef2affaf-fdfc-4128-b5bc-3a4c1129e662",
+      "ExternalOrderId": "818589784",
+      "RawStatus": "WaitingInAction",
+      "ReasonCode": "Ürünün parçası eksik",
+      "ReasonText": "test",
+      "ActionDueAt": null,
+      "LastModifiedAt": "2021-10-06T16:46:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "ef2affaf-fdfc-4128-b5bc-3a4c1129e662",
+          "ExternalOrderLineId": "",
+          "Quantity": 0,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": "WaitingInAction",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": "201040500",
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 1122 chars sha256:49218b352361>",
+      "CargoProviderName": "MNG",
+      "CargoTrackingNumber": "54895647251356",
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": "2021-10-06T11:53:00+00:00",
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2021-10-06T16:46:00+00:00"
+    },
+    {
+      "ExternalClaimId": "00000000-0000-4000-8000-000000000501",
+      "ExternalOrderId": "300000001",
+      "RawStatus": "Unknown_77",
+      "ReasonCode": "Beden uymadı",
+      "ReasonText": null,
+      "ActionDueAt": null,
+      "LastModifiedAt": null,
+      "Lines": [
+        {
+          "ExternalLineId": "00000000-0000-4000-8000-000000000501",
+          "ExternalOrderLineId": "",
+          "Quantity": 0,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": "Unknown_77",
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": "0000000000401",
+          "StockCode": "SKU-FAKE-PZ1"
+        }
+      ],
+      "RawJson": "<raw 515 chars sha256:853564f3dc5a>",
+      "CargoProviderName": null,
+      "CargoTrackingNumber": null,
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": null,
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": null
+    }
+  ],
+  "NextCursor": null,
+  "HasMore": false,
+  "TotalCount": 2,
+  "Issues": [],
+  "LastModifiedSeen": null
+}

@@ -70,49 +70,6 @@
 
 /* Health cards: two columns whenever there is room (phones included) instead of a single stack. */
 
-/* Mobile filter shell: on phones every filter bar collapses to its search field plus one filter
-   button; the button opens all fields as a full-screen "Filtrele" sheet with Temizle / Filtrele.
-   Desktop renders the original bar untouched (the shell's parts are hidden by default in design-system.css). */
-@media (max-width: 760px) {
-
-  /* Closed: [search][filter button], optional kept action (bulk menu) on its own row. */
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > :not([data-mfs-search]):not(.mfs-open):not([data-mfs-keep]) { display: none !important; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-search] { grid-column: 1; order: 1; min-width: 0; margin: 0; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-search] > span:first-child:not(.order-search-control):not(.invoice-reference-search-control) { display: none; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > [data-mfs-keep] { grid-column: 1 / -1; order: 3; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .mfs-open {
-    position: relative; display: inline-grid; grid-column: 2; order: 2; width: 36px; height: 36px; min-height: 36px; place-items: center; padding: 0;
-    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
-  }
-  html body .app-shell.stitch-shell main .mfs > .mfs-open > b {
-    position: absolute; top: -6px; right: -6px; display: grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px;
-    color: #fff; background: var(--rv-color-primary-fill); border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1;
-  }
-
-  /* Open: full-screen sheet, one field per row. */
-  html body .app-shell.stitch-shell main .mfs.is-open {
-    position: fixed; inset: 0; z-index: calc(var(--rv-z-modal) + 5); display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 14px;
-    margin: 0; padding: 0 16px 96px; overflow-y: auto; background: var(--rv-color-surface); border: 0; border-radius: 0; box-shadow: none;
-  }
-  html body .app-shell.stitch-shell main .mfs.is-open > * { grid-column: 1 / -1; min-width: 0; }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header {
-    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; margin: 0 -16px; padding: 12px 16px;
-    background: var(--rv-color-surface); border-bottom: 1px solid var(--rv-color-border);
-  }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header > strong { font-size: 16px; font-weight: 600; }
-  html body .app-shell.stitch-shell main .mfs.is-open .mfs-back { display: inline-grid; width: 40px; height: 40px; min-height: 40px; place-items: center; padding: 0; color: var(--rv-color-ink); background: transparent; border: 0; }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-open { display: none; }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-footer {
-    position: fixed; right: 0; bottom: 0; left: 0; z-index: 3; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border);
-  }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-footer > button { min-height: 46px; font-weight: 600; }
-
-  /* The footer replaces each page's own reset / apply buttons while on a phone. */
-  html body .app-shell.stitch-shell main .mfs :is(.orders-filter-reset, .invoice-reference-filter-reset, .return-filter-actions) { display: none !important; }
-}
-
 /* Invoices: the column filter chips in the table header move into the phone filter sheet too. */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .invoice-reference-head :is(.order-column-filter, .platform-multi-select-field) { display: none !important; }
@@ -125,43 +82,12 @@
   html body .rv-notification-history-heading .rv-notification-history-actions > button { min-height: 32px; padding: 0 8px; font-size: 13px; white-space: nowrap; }
 }
 
-/* Sheet: the search field stays in the bar, so it is not repeated inside the open filter sheet. */
-@media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .mfs.is-open > [data-mfs-search] { display: none; }
-
-  /* Optional sort button between the search and the filter button. */
-  html body .app-shell.stitch-shell main .mfs:not(.is-open):has(> .mfs-sort) { grid-template-columns: minmax(0, 1fr) auto auto; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open):has(> .mfs-sort) > .mfs-open { grid-column: 3; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) > .mfs-sort {
-    display: inline-grid; grid-column: 2; order: 2; width: 36px; height: 36px; min-height: 36px; place-items: center; padding: 0;
-    color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
-  }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-sort { display: none; }
-}
-
-/* Sort action sheet (bottom sheet, like the marketplace app). */
-html body .mfs-sort-backdrop { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal, 1000) + 8); display: flex; align-items: flex-end; background: var(--rv-color-backdrop); }
-html body .mfs-sort-sheet { width: 100%; max-height: 80dvh; overflow: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border-radius: 14px 14px 0 0; padding-bottom: env(safe-area-inset-bottom); }
-html body .mfs-sort-sheet > header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--rv-color-border); }
-html body .mfs-sort-sheet > header > button { justify-self: start; min-height: 44px; padding: 0 12px; color: var(--rv-color-danger); background: transparent; border: 0; font-weight: 600; }
-html body .mfs-sort-sheet > header > strong { font-size: 15px; }
-html body .mfs-sort-sheet [role="listbox"] > button { display: block; width: 100%; min-height: 52px; padding: 0 16px; color: var(--rv-color-ink); background: transparent; border: 0; border-bottom: 1px solid var(--rv-color-border); border-radius: 0; font-size: 15px; font-weight: 500; text-align: center; }
-html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--rv-color-primary); font-weight: 650; }
-
 /* Phones: no copy icon next to order numbers — tapping the number copies it (the "Kopyalandı"
    tooltip still appears). */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number-copy { width: 0; min-width: 0; margin: 0; padding: 0; overflow: visible; }
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number-copy > .ui-icon { display: none; }
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number > strong { cursor: pointer; }
-}
-
-/* Product image window on phones: centred, with the same 16px gap on all four sides. */
-@media (max-width: 760px) {
-  html body .workspace-modal-backdrop:has(> .product-image-modal) { align-items: center; justify-items: center; padding: 16px; }
-  html body .product-image-modal { width: 100%; max-width: none; max-height: calc(100dvh - 32px); margin: 0; border-width: 1px; border-radius: var(--rv-radius-lg); overflow: hidden; }
-  html body .product-image-modal-body { overflow-y: auto; }
-  html body .product-image-modal-frame { max-height: calc(100dvh - 32px - 120px); }
 }
 
 /* Phones: the hidden copy button is removed from layout entirely so the number sits flush right. */
@@ -242,7 +168,6 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .app-shell.stitch-shell main .page-heading { margin: 0; padding-bottom: 8px; gap: 8px; }
   html body .app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) { margin: 0; gap: 8px; }
   html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .rv-questions-tabs) { margin: 0; }
-  html body .app-shell.stitch-shell main .mfs:not(.is-open) { margin: 0; padding: 8px; gap: 8px; }
 }
 
 /* Selected cards repaint immediately (some touch browsers hold the paint until the next scroll). */
@@ -419,22 +344,6 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 @media (max-width: 760px) {
   html body .rv-drawer-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
-/* Filters on phones open the same way everywhere (owner, 5 Nov 2026: "her yerde filtreler böyle açılacak"): a sheet that
-   slides up from the bottom over a darkened page, with a grab handle and its title, like Siparişler's Filtre. */
-@media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .mfs-scrim { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal) + 4); background: rgb(0 0 0 / 55%); animation: rv-fade-in var(--rv-motion-modal) ease-out; }
-  html body .app-shell.stitch-shell main .mfs.is-open {
-    inset: auto 0 0; max-height: 86dvh; padding: 0 16px; border-top: 1px solid var(--rv-color-border); border-radius: 14px 14px 0 0;
-    box-shadow: 0 -12px 32px rgb(0 0 0 / 30%); animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet);
-  }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header { padding: 22px 16px 12px; border-bottom: 0; }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header::before { content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--rv-color-border-strong); }
-  html body .app-shell.stitch-shell main .mfs.is-open .mfs-back { display: none; }
-  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-footer { position: sticky; inset: auto 0 0; margin: 0 -16px; }
-}
-@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
-  html body .app-shell.stitch-shell main :is(.mfs-scrim, .mfs.is-open) { animation: none; }
-}
 /* The date picker on a phone scrolls inside itself, with a visible bar, and the page behind it does not scroll along. */
 @media (max-width: 760px) {
   html body .date-range-picker-popover { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--rv-color-border-strong) transparent; }
@@ -470,11 +379,11 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 
 /* iOS Safari sends no click to a plain element whose handler React attaches at the root, so a tap on a scrim (the dimmed
    area behind a phone dropdown, menu or filter sheet) did nothing. A pointer cursor makes iOS deliver the click. */
-html body :is(.rr-anchor-scrim, .rr-fscrim, .mfs-scrim, .mfs-sort-backdrop) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+html body :is(.rr-anchor-scrim, .rr-fscrim) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 /* The same for every window backdrop that closes on a press outside the window (they listen for mousedown, which iOS
    also withholds from plain elements); the window inside keeps its normal cursor. */
-html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop, .mfs-sort-backdrop) > * { cursor: auto; }
+html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop) { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+html body :is(.rr-overlay, .workspace-modal-backdrop, .invoice-detail-backdrop, .missing-value-mapping-backdrop, .integration-modal-backdrop, .integration-settings-modal-backdrop, .job-detail-backdrop, .value-mapping-quick-value-backdrop) > * { cursor: auto; }
 
 /* Phones: text links set as buttons ("Fatura İşlemleri", "Kargo Takip"…) are 18–20px tall; an invisible 8px band
    above and below makes them a 34px tap target without moving anything (checked: it covers no other control). */

@@ -33,7 +33,7 @@ vi.mock('../../shared/api', () => {
   ], nextCursor: null, hasMore: false })),
   hubApi: vi.fn(async (path: string) => {
     apiState.calls.push(path)
-    if (path.startsWith('/jobs/counts') && path.includes('platform=TRENDYOL_EFATURAM')) return [{ status: 'DEAD', jobType: 'INVOICE_SUBMIT', count: 4 }]
+    if (path.startsWith('/jobs/counts') && path.includes('platforms=TRENDYOL_EFATURAM')) return [{ status: 'DEAD', jobType: 'INVOICE_SUBMIT', count: 4 }]
     if (path.startsWith('/jobs/counts')) return [
       { status: 'SUCCEEDED', jobType: 'TRENDYOL_ORDER_SYNC', count: 2 },
       { status: 'DEAD', jobType: 'TRENDYOL_ORDER_SYNC', count: 1 },
@@ -265,7 +265,7 @@ describe('JobsPage address state (W16)', () => {
 
     const request = pageRequests().at(-1)!
     expect(request.get('status')).toBe('BLOCKED,MANUAL_REVIEW,DEAD')
-    expect(request.get('since')).not.toBeNull()
+    expect(request.get('dateFrom')).not.toBeNull()
     // The filter card shows the range and the phone Filtre count; Sayfa Başına sits beside Yenile.
     expect(trigger('Zaman Aralığı').textContent).toBe('Son 7 Gün')
     expect(container.querySelector('.ops-filters .rr-ftoggle .rr-fcount')!.textContent).toBe('1')
@@ -314,7 +314,7 @@ describe('JobsPage address state (W16)', () => {
     await settle()
     expect(currentSearch).toBe('?ara=corr-job-1')
     expect(rowCount()).toBe(1)
-    expect(pageRequests().some(request => request.get('search') === 'corr-job-1' && !request.has('since'))).toBe(true)
+    expect(pageRequests().some(request => request.get('search') === 'corr-job-1' && !request.has('dateFrom'))).toBe(true)
   })
 
   it('finds a job by its id however old it is and opens its detail (notification links)', async () => {
@@ -356,20 +356,20 @@ describe('JobsPage platform filter', () => {
     expect(Array.from(pop.querySelectorAll('.rr-opt .rr-grow')).map(option => option.textContent)).toEqual(['Trendyol', 'N11', 'Trendyol E-Faturam'])
     expect(pop.querySelectorAll('.rr-opt .rr-logo')).toHaveLength(3)
     expect(trigger('Platform').textContent).toBe('Tüm Platformlar')
-    expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
+    expect(pageRequests().every(params => params.get('platforms') === null)).toBe(true)
 
     // Every platform starts ticked (the shared PlatformFilter): Tümünü Kaldır clears the ticks inside the menu only.
     expect(Array.from(pop.querySelectorAll<HTMLInputElement>('.rr-opt input')).every(input => input.checked)).toBe(true)
     await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Kaldır')!.click() })
     await settle()
-    expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
+    expect(pageRequests().every(params => params.get('platforms') === null)).toBe(true)
     await act(async () => { checkboxNamed(pop, 'Trendyol E-Faturam').click() })
     await settle()
     await settle()
 
     expect(currentSearch).toBe('?platform=trendyol_efaturam')
-    expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
-    expect(countRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
+    expect(pageRequests().at(-1)!.get('platforms')).toBe('TRENDYOL_EFATURAM')
+    expect(countRequests().at(-1)!.get('platforms')).toBe('TRENDYOL_EFATURAM')
     expect(trigger('Platform').textContent).toBe('Trendyol E-Faturam')
     // The status row and the tab counts come from the platform's counts.
     const summary = container.querySelector('.jobs-reference-status-summary')!.textContent
@@ -382,27 +382,27 @@ describe('JobsPage platform filter', () => {
     await act(async () => { checkboxNamed(container.querySelector('.rr-pop[aria-label="Platform"]')!, 'N11').click() })
     await settle()
     expect(currentSearch).toBe('?platform=n11%2Ctrendyol_efaturam')
-    expect(pageRequests().at(-1)!.get('platform')).toBe('N11,TRENDYOL_EFATURAM')
+    expect(pageRequests().at(-1)!.get('platforms')).toBe('N11,TRENDYOL_EFATURAM')
     expect(trigger('Platform').textContent).toBe('2 Platform Seçili')
   })
 
   it('keeps the platform from the URL on load and through the next page', async () => {
     await renderPage('/jobs?platform=n11')
 
-    expect(pageRequests().at(-1)!.get('platform')).toBe('N11')
-    expect(countRequests().at(-1)!.get('platform')).toBe('N11')
+    expect(pageRequests().at(-1)!.get('platforms')).toBe('N11')
+    expect(countRequests().at(-1)!.get('platforms')).toBe('N11')
     expect(trigger('Platform').textContent).toBe('N11')
 
     await act(async () => { button('Daha Fazla Yükle')!.click() })
     await settle()
     const next = pageRequests().find(params => params.get('after') === 'cursor-1')!
-    expect(next.get('platform')).toBe('N11')
+    expect(next.get('platforms')).toBe('N11')
 
     const pop = await openField('Platform')
     await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Seç')!.click() })
     await settle()
     expect(currentSearch).toBe('')
-    expect(pageRequests().at(-1)!.get('platform')).toBeNull()
+    expect(pageRequests().at(-1)!.get('platforms')).toBeNull()
   })
 })
 
@@ -511,17 +511,17 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
 
     // The log opens on its whole history whatever range the job list holds.
     expect(trigger('Zaman Aralığı').textContent).toBe('Tüm Zamanlar')
-    expect(logRequests().at(-1)!.get('from')).toBeNull()
+    expect(logRequests().at(-1)!.get('dateFrom')).toBeNull()
     const summary = container.querySelector('[aria-label="Gönderim sonuç özeti"]')!
     expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Başarılı 4', 'Sorunlu 2', 'Bekleyen 1', 'Yeni Sürüm 0'])
 
     const range = await openField('Zaman Aralığı')
     await act(async () => { optionNamed(range, 'Son 24 Saat').click() })
     await settle()
-    const since = Date.parse(logRequests().at(-1)!.get('from')!)
+    const since = Date.parse(logRequests().at(-1)!.get('dateFrom')!)
     expect(Math.abs(Date.now() - 24 * 60 * 60 * 1000 - since)).toBeLessThan(60_000)
     // The counts and the list each work out the range start when they are built; a millisecond apart is the same range.
-    expect(Math.abs(Date.parse(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('from')!) - since)).toBeLessThan(1_000)
+    expect(Math.abs(Date.parse(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('dateFrom')!) - since)).toBeLessThan(1_000)
     expect(trigger('Zaman Aralığı').textContent).toBe('Son 24 Saat')
     // The job list's range in the address is untouched.
     expect(currentSearch).toContain('aralik=7g')

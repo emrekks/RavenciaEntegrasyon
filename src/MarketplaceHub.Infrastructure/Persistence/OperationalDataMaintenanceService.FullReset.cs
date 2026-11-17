@@ -210,14 +210,9 @@ public sealed partial class OperationalDataMaintenanceService
     }
 
     private Task<int> CancelWaitingJobsAsync(Guid tenantId, Guid connectionId, Guid? keep, DateTimeOffset now, CancellationToken cancellationToken) =>
-        db.IntegrationJobs
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && WaitingJobStatuses.Contains(x.Status) && x.JobType != MarketplaceJobTypes.ConnectionFullReset && x.Id != keep)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.Status, JobStatus.Cancelled)
-                .SetProperty(x => x.CompletedAt, now)
-                .SetProperty(x => x.LastErrorCode, "CONNECTION_FULL_RESET")
-                .SetProperty(x => x.LastErrorSummary, "Bağlantının verileri tam sıfırlandığı için iptal edildi.")
-                .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        Jobs.JobStateMachine.CancelWhereAsync(
+            db.IntegrationJobs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && WaitingJobStatuses.Contains(x.Status) && x.JobType != MarketplaceJobTypes.ConnectionFullReset && x.Id != keep),
+            now, "CONNECTION_FULL_RESET", "Bağlantının verileri tam sıfırlandığı için iptal edildi.", keepEarlierCompletedAt: false, cancellationToken);
 
     private Task ReportFullResetProgressAsync(Guid tenantId, Guid? jobId, int step, string label, CancellationToken cancellationToken) => jobId is not { } id
         ? Task.CompletedTask

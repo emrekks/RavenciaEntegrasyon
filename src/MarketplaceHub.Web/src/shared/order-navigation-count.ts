@@ -1,4 +1,6 @@
+import type { ApiAnswer } from './api/api-answer'
 import { hubPoll } from './api'
+import { queryKeys } from './api/query-keys'
 
 export type OrderNavigationSummary = {
   new: number
@@ -15,11 +17,14 @@ export type OrderNavigationSummary = {
 // the ['orders'] root). The card read the worker's dashboard snapshot before, which is rebuilt a minute or more after an
 // order arrives, so the two disagreed (owner, 6 Nov 2026: badge 13, card 12). It polls only while the tab is on screen
 // and says it is automatic, so an open tab still reaches the idle sign-out.
+// A screen that mounts it reads it again, unless another screen read it a moment ago (W2, scan 2026-11-15: the shell's
+// badge read it and the lazily loaded overview, mounting a moment later, read the same answer again).
+const pendingOrdersFreshMs = 5_000
 export const pendingOrdersQuery = {
-  queryKey: ['orders', 'summary', 'pending'] as const,
-  queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING'),
+  queryKey: queryKeys.orders('summary', 'pending'),
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>('/orders/summary?tabs=PENDING', { signal }),
   staleTime: 30_000,
-  refetchOnMount: 'always' as const,
+  refetchOnMount: (query: { state: { dataUpdatedAt: number } }) => Date.now() - query.state.dataUpdatedAt < pendingOrdersFreshMs ? false : 'always' as const,
   refetchOnWindowFocus: true,
   refetchInterval: 15_000,
   refetchIntervalInBackground: false,

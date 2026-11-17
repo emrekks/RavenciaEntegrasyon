@@ -27,7 +27,7 @@ public sealed partial class N11HttpClient : IQuestionPort
             if (id is null) continue;
             var detail = await SendSoapAsync(account, ProductService, "GetProductQuestionDetail", SoapElement("productQuestionId", id), cancellationToken, requireResult: false);
             if (!detail.IsSuccess) return AdapterResult<MarketplaceQuestionPage>.Failure(detail.Error!, detail.RateLimit);
-            var question = N11QuestionMapper.Question(id, summary, detail.Value!.Descendants().FirstOrDefault(x => x.Name.LocalName == "productQuestion"));
+            var question = N11QuestionMapper.Question(id, summary, detail.Value!.Descendants().FirstOrDefault(x => x.Name.LocalName == "productQuestion"), N11QuestionMapper.N11Status(request.Status));
             if (question is not null) items.Add(question);
         }
         var paging = listed.Value.Elements().FirstOrDefault(x => x.Name.LocalName == "pagingData");
@@ -99,7 +99,9 @@ public static class N11QuestionMapper
         _ => null
     };
 
-    public static RemoteMarketplaceQuestion? Question(string id, XElement? summary, XElement? detail)
+    // listedStatus is the n11 state the list was asked for (OPEN or CLOSED): a question that list returned is in that
+    // state by n11's own answer. D5: without it and without a status or an answer, the question stays unknown.
+    public static RemoteMarketplaceQuestion? Question(string id, XElement? summary, XElement? detail, string? listedStatus = null)
     {
         string? Value(string name) => N11HttpClient.Child(detail, name) ?? N11HttpClient.Child(summary, name);
         var text = Value("question");
@@ -108,8 +110,10 @@ public static class N11QuestionMapper
         var answer = Value("answer");
         var asked = N11ReturnMapper.Date(N11HttpClient.Child(detail, "questionDate"));
         var answered = N11ReturnMapper.Date(N11HttpClient.Child(detail, "answeredDate"));
-        var status = N11HttpClient.Child(detail, "status")?.ToUpperInvariant();
-        var isAnswered = answer is not null || status is "CLOSED" or "ANSWERED";
+        var status = (Value("status") ?? listedStatus)?.Trim().ToUpperInvariant();
+        var panelStatus = answer is not null || status is "CLOSED" or "ANSWERED" ? "ANSWERED"
+            : status is "OPEN" ? "WAITING_FOR_ANSWER"
+            : string.IsNullOrEmpty(status) ? "UNKNOWN" : status;
         var image = (detail ?? summary)?.Descendants().FirstOrDefault(x => x.Name.LocalName == "image")?.Value.Trim();
         IReadOnlyList<RemoteQuestionConversation> conversations = answer is null
             ? []
@@ -117,7 +121,7 @@ public static class N11QuestionMapper
         return new RemoteMarketplaceQuestion(
             id,
             "PRODUCT",
-            isAnswered ? "ANSWERED" : "WAITING_FOR_ANSWER",
+            panelStatus,
             text,
             Value("productTitle"),
             string.IsNullOrWhiteSpace(image) ? null : image,

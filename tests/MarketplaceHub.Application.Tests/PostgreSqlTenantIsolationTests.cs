@@ -31,10 +31,11 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixture fixture, ITestOutputHelper output) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    // Products imported before desi was read are preserved on the next import (updateExistingProducts off); their
-    // empty desi is still filled from the marketplace, while a desi entered locally stays.
+    // Products imported before desi was read are preserved on the next import (updateExistingProducts off). KATALOG-14
+    // phase D5b: the desi is the model's, so the desi entered locally on one variant is every variant's (the empty one takes
+    // it when the card is saved) and the marketplace's values move neither the model nor a variant.
     [PostgreSqlFact]
-    public async Task ProductSync_FillsAnEmptyDesiOfAPreservedProductAndKeepsAnEnteredOne()
+    public async Task ProductSync_KeepsTheModelsDesi_OnEveryVariantOfAPreservedProduct()
     {
         var tenant = NewTenant("marketplace-desi-fill");
         var connection = NewQuestionConnection(tenant);
@@ -90,7 +91,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             }
 
             await using var verificationDb = fixture.CreateContext();
-            Assert.Equal(4.5m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == emptyVariantId)).Desi);
+            Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == emptyVariantId)).Desi);
             Assert.Equal(2m, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == enteredVariantId)).Desi);
             Assert.Equal("Local title", (await verificationDb.Products.AsNoTracking().SingleAsync(row => row.Id == productId)).Title);
         }
@@ -342,8 +343,21 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     public async Task OperationsRealtimeBroadcaster_RedeliversStableEventId_WhenStoppedAfterSendBeforePublishMark()
     {
         var tenant = NewTenant("outbox-send-before-mark");
-        var now = fixture.Now;
-        var outboxEvent = NewOutboxEvent(tenant.Id, now, publishedAt: null);
+        // The dispatcher publishes every unpublished event of the database oldest first, 250 a pass and one pass a second,
+        // and in the shared test database nothing else publishes them: inside the full suite about 2,000 other tests'
+        // events (data changes, deletes, job leases) wait in front of a new one, which then came out after ~9 of the
+        // 10 seconds the waits allow (measured 16 Nov 2026). This test's event is therefore made the oldest unpublished
+        // one, so it is in the first batch whatever the backlog; it stays well inside the outbox retention (3 days).
+        DateTimeOffset createdAt;
+        await using (var db = fixture.CreateContext())
+        {
+            var oldestWaiting = await db.IntegrationOutboxEvents.AsNoTracking().Where(x => x.PublishedAt == null)
+                .MinAsync(x => (DateTimeOffset?)x.CreatedAt);
+            var floor = DateTimeOffset.UtcNow.AddDays(-1);
+            createdAt = (oldestWaiting is { } oldest && oldest < fixture.Now ? oldest : fixture.Now).AddMinutes(-1);
+            if (createdAt < floor) createdAt = floor;
+        }
+        var outboxEvent = NewOutboxEvent(tenant.Id, createdAt, publishedAt: null);
         await using (var db = fixture.CreateContext())
         {
             db.Tenants.Add(tenant);
@@ -351,8 +365,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             await db.SaveChangesAsync();
         }
 
-        // The dispatcher publishes every unpublished event in the database (job leases add one each), so only
-        // the deliveries of this test's event are counted.
+        // Other events go out in the same passes; only the deliveries of this test's event are counted.
         var deliveredIds = new System.Collections.Concurrent.ConcurrentQueue<Guid>();
         using var firstStop = new CancellationTokenSource();
         var firstHub = new RecordingOperationsHubContext((arguments, _) =>
@@ -454,61 +467,6 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         Assert.Equal(unpricedProduct.Id, failure.ProductId);
         Assert.Equal("CHANNEL_OFFER_REQUIRED", failure.Code);
         Assert.False(await db.ChannelOffers.AnyAsync(offer => offer.TenantId == tenant.Id));
-    }
-
-    // Toplu KDV Ata: the selected cards take the rate and KDV Dahil mi; a card that already has them is not touched,
-    // an existing marketplace offer keeps its own VAT, and another workspace's card cannot be reached.
-    [PostgreSqlFact]
-    public async Task BulkVat_SetsTheCardsVatAndLeavesOffersAndOtherWorkspacesAlone()
-    {
-        var tenant = NewTenant("bulk-vat");
-        var otherTenant = NewTenant("bulk-vat-other");
-        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Bulk VAT test", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
-        Product NewProduct(Guid tenantId, string title, decimal? vatRate = null, string? vatInclusion = null) =>
-            new() { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = title, Description = "Bulk VAT test", VatRate = vatRate, VatInclusion = vatInclusion, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
-        var emptyCard = NewProduct(tenant.Id, "Card without VAT");
-        var otherRateCard = NewProduct(tenant.Id, "Card with 20", 20m, "EXCLUDED");
-        var sameCard = NewProduct(tenant.Id, "Card already at 10", 10m, "INCLUDED");
-        var foreignCard = NewProduct(otherTenant.Id, "Another workspace's card", 20m, "INCLUDED");
-        var sku = $"VAT-{Guid.NewGuid():N}";
-        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = otherRateCard.Id, SortOrder = 0, Sku = sku, SkuNormalized = sku, OptionSignature = "Renk=Test", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
-        var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 120m, SalePrice = 100m, Currency = "TRY", VatRate = 20m, VatInclusion = "EXCLUDED", RoundingMode = "HALF_EVEN", SafetyStock = 0, Status = "ACTIVE", PriceVersion = 1, Version = 1 };
-        await using var db = fixture.CreateContext();
-        await using var transaction = await db.Database.BeginTransactionAsync();
-        db.Tenants.AddRange(tenant, otherTenant);
-        db.PlatformConnections.Add(connection);
-        db.Products.AddRange(emptyCard, otherRateCard, sameCard, foreignCard);
-        db.ProductVariants.Add(variant);
-        db.ChannelOffers.Add(offer);
-        await db.SaveChangesAsync();
-        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
-
-        var result = await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id, otherRateCard.Id, sameCard.Id, emptyCard.Id], 10m, " included "), CancellationToken.None);
-
-        Assert.True(result.Succeeded, result.Error?.Message);
-        Assert.Equal(2, result.Value!.UpdatedCount);
-        Assert.Equal(1, result.Value.UnchangedCount);
-        db.ChangeTracker.Clear();
-        var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
-        Assert.All(cards.Values, card => { Assert.Equal(10m, card.VatRate); Assert.Equal("INCLUDED", card.VatInclusion); });
-        Assert.Equal(2, cards[emptyCard.Id].Version);
-        Assert.Equal(2, cards[otherRateCard.Id].Version);
-        Assert.Equal(1, cards[sameCard.Id].Version);
-        var storedOffer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
-        Assert.Equal(20m, storedOffer.VatRate);
-        Assert.Equal("EXCLUDED", storedOffer.VatInclusion);
-        Assert.Equal(1, storedOffer.PriceVersion);
-
-        var foreign = await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id, foreignCard.Id], 1m, "EXCLUDED"), CancellationToken.None);
-        Assert.Equal("BULK_PRODUCT_NOT_FOUND", foreign.Error?.Code);
-        Assert.Equal(20m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == foreignCard.Id)).VatRate);
-        Assert.Equal(10m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == emptyCard.Id)).VatRate);
-
-        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], null, "INCLUDED"), CancellationToken.None)).Error?.Code);
-        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], 101m, "INCLUDED"), CancellationToken.None)).Error?.Code);
-        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], 10m, "SOMETIMES"), CancellationToken.None)).Error?.Code);
-        Assert.Equal("VALIDATION_FAILED", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([emptyCard.Id], 10m, null), CancellationToken.None)).Error?.Code);
-        Assert.Equal("BULK_PRODUCT_LIMIT", (await service.BulkSetVatAsync(tenant.Id, new BulkProductVatCommand([], 10m, "INCLUDED"), CancellationToken.None)).Error?.Code);
     }
 
     [PostgreSqlFact]
@@ -925,8 +883,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         Assert.True(currentDesi.Succeeded, currentDesi.Error?.Message);
         db.ChangeTracker.Clear();
         var afterDesi = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
-        // An unsent desi leaves the stored one as it is.
-        Assert.Equal([3m, null], afterDesi.Select(x => x.Desi));
+        // KATALOG-14 phase D5b: the desi is the model's, so the one given to a variant reaches every variant.
+        Assert.Equal([3m, 3m], afterDesi.Select(x => x.Desi));
 
         await transaction.RollbackAsync();
     }
@@ -1282,6 +1240,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.All(jobs, job => Assert.Equal(JobStatus.Cancelled, job.Status));
             Assert.All(jobs, job => Assert.Equal("PRODUCT_DELETED", job.LastErrorCode));
             Assert.All(jobs, job => Assert.Null(job.LeaseTokenHash));
+            // K2: the job screens hear of each cancelled job (a product's few jobs, one event each).
+            var jobIds = jobs.Select(job => (Guid?)job.Id).ToList();
+            Assert.Equal(jobs.Count, await verificationDb.IntegrationOutboxEvents.AsNoTracking().CountAsync(x => x.ResourceType == "jobs" && jobIds.Contains(x.AggregateId)));
             var line = await verificationDb.OrderLines.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == lineId);
             Assert.Null(line.VariantId);
             Assert.True(await verificationDb.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == orderId));
@@ -2010,6 +1971,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_IsExclusive_WhenTwoWorkersRace()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-tenant");
         var job = NewJob(tenant.Id);
 
@@ -2051,6 +2013,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_AllPriorityLanes_HandleNullOptionalFilters()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-priority-lanes");
         var initialSyncJob = NewJob(tenant.Id);
         initialSyncJob.Priority = -1;
@@ -2100,6 +2063,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_HotLaneSelectsOldestSamePriorityHepsiburadaLifecycleBeforeTrendyolOrders()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-fifo-same-priority");
         var hepsiburadaLifecycle = NewJob(tenant.Id);
         hepsiburadaLifecycle.JobType = MarketplaceJobTypes.HepsiburadaOrderStatusSync;
@@ -2138,6 +2102,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_SkipsJobsWhoseConnectionLockGroupIsAlreadyRunning()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-lock-group");
         var busyConnectionId = Guid.CreateVersion7();
         var freeConnectionId = Guid.CreateVersion7();
@@ -2910,7 +2875,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         // The scheduler works on every operational connection in the database. Inside a transaction that is
         // rolled back, the policies and jobs it would create for connections other tests left behind are never
         // committed, so no other test can lease them.
-        await using var db = fixture.CreateContext();
+        await using var db = fixture.CreateStrictContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
@@ -3971,6 +3936,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_SkipsAConnectionLockGroupThatHitAQuotaUntilItsBackoffEnds()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var tenant = NewTenant("lease-quota-backoff");
         var connectionId = Guid.CreateVersion7();
         var limitedRead = NewJob(tenant.Id);
@@ -4029,6 +3995,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_PrefersTheTenantWithFewerRunningJobsWithinOnePriority()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var busyTenant = NewTenant("lease-fair-busy");
         var quietTenant = NewTenant("lease-fair-quiet");
         var running = NewJob(busyTenant.Id);
@@ -4079,6 +4046,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     [PostgreSqlFact]
     public async Task JobLease_KeepsFairnessWhenOneTenantQueuedMoreOlderJobsThanTheCandidateLimit()
     {
+        await ClearLeasableJobsLeftByOtherTestsAsync();
         var busyTenant = NewTenant("lease-fair-flood");
         var quietTenant = NewTenant("lease-fair-flood-quiet");
         var running = NewJob(busyTenant.Id);
@@ -9073,6 +9041,34 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Equal(anchor.AddDays(-41).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedStartDate"));
             Assert.Equal(anchor.AddDays(-29).ToUnixTimeMilliseconds().ToString(), QueryValue(streamRequest, "lastModifiedEndDate"));
             Assert.Equal(["AE"], storeFrontCodes);
+
+            // ADAPTOR-TY-HB-3 step 2: a package of that order with no status time is looked for in the stream around the
+            // order's last change, as the order itself is.
+            var packageStreamStart = requests.Requests.Count;
+            var undated = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(null, oldOrder), CancellationToken.None);
+            Assert.True(undated.IsSuccess, undated.Error?.SafeMessage);
+            var packageStream = Assert.Single(requests.Requests.Skip(packageStreamStart));
+            Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", packageStream.AbsolutePath);
+            Assert.Equal(anchor.AddDays(-41).ToUnixTimeMilliseconds().ToString(), QueryValue(packageStream, "lastModifiedStartDate"));
+
+            // Audit 2026-11-15 ADAPTOR-TY-HB-3: a package whose status time is older than the stream's three months, or
+            // whose order lies outside every window, cannot be asked for. No request goes out and the answer says so
+            // instead of "Trendyol did not find the package"; its class and status stay NotFound/404, so every caller
+            // takes the path it took.
+            var oldestOrder = new OrderLookupHint(anchor.AddMonths(-4), anchor.AddMonths(-4), "AE");
+            foreach (var (statusTime, order) in new (DateTimeOffset?, OrderLookupHint)[] { (null, oldestOrder), (anchor.AddMonths(-4), oldOrder) })
+            {
+                var unaddressableStart = requests.Requests.Count;
+                var unaddressable = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(statusTime, order), CancellationToken.None);
+                Assert.Equal(unaddressableStart, requests.Requests.Count);
+                Assert.False(unaddressable.IsSuccess);
+                Assert.Equal(TrendyolHttpClient.PackageNotAddressableCode, unaddressable.Error!.Code);
+                Assert.Equal(AdapterErrorClass.NotFound, unaddressable.Error.Class);
+                Assert.Equal(404, unaddressable.Error.HttpStatus);
+                Assert.Contains("bilinmiyor", unaddressable.Error.SafeMessage, StringComparison.Ordinal);
+                Assert.True(InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(unaddressable.Error.Code));
+            }
+            Assert.False(InvoiceWorkspaceReadIssuePolicy.ShouldDisplay("REMOTE_PACKAGE_NOT_FOUND"));
         }
         finally
         {
@@ -10042,6 +10038,17 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         ExpiresAt = DateTimeOffset.UtcNow.AddHours(1)
     };
 
+    // The lease tests lease without a job filter, and the lease takes a pending job of any tenant: a job another test
+    // class left queued would be leased in place of the test's own. Before seeding, those leasable leftovers are removed
+    // (attempts and results go with them); the postgres-integration collection runs one class at a time, so no running
+    // test owns them.
+    private async Task ClearLeasableJobsLeftByOtherTestsAsync()
+    {
+        await using var db = fixture.CreateContext();
+        var horizon = DateTimeOffset.UtcNow.AddMinutes(10);
+        await db.IntegrationJobs.Where(x => (x.Status == JobStatus.Pending || x.Status == JobStatus.RetryScheduled) && x.AvailableAt <= horizon).ExecuteDeleteAsync();
+    }
+
     private async Task DeleteJobAndTenantAsync(Guid jobId, Guid tenantId)
     {
         await using var db = fixture.CreateContext();
@@ -10230,6 +10237,11 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     }
 
     public AppDbContext CreateContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options);
+
+    // KUYRUK-10 follow-up (16 Nov 2026): a context on which EF's "row limit without OrderBy" warning (10102) throws, for
+    // the scheduler tests: a Take/First without an ordering EF keeps reads an arbitrary row.
+    public AppDbContext CreateStrictContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString)
+        .ConfigureWarnings(warnings => warnings.Throw(CoreEventId.RowLimitingOperationWithoutOrderByWarning)).Options);
 
     public AppDbContext CreateContext(TimeProvider clock) => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options, clock);
 

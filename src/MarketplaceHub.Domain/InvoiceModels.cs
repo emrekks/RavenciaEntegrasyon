@@ -96,7 +96,9 @@ public sealed class Invoice
     public Guid InvoicePolicyId { get; set; }
     public required string InvoiceType { get; set; }
     public required string SequencePurpose { get; set; }
-    public long? SequenceNumber { get; set; }
+    // VERITABANI-DAGITIM-11: "SequenceNumber" was never written or read (the official number is InvoiceNumber, from the
+    // provider). Expand-contract: the model stopped mapping it (20261116090000_StopMappingInvoiceSequenceNumber); the column
+    // is dropped in the next release (20261116180000_DropInvoiceSequenceNumber, expand-contract phase 2).
     public InvoiceStatus Status { get; set; } = InvoiceStatus.Draft;
     public required string Currency { get; set; }
     public decimal TaxExclusiveTotal { get; set; }
@@ -259,6 +261,9 @@ public sealed class MarketplaceDeliveryState
     public required string Status { get; set; }
     public string? ExternalReference { get; set; }
     public string? ErrorCode { get; set; }
+    // The link this delivery sent (E-Faturam's permanent URL or the panel's public link, stored form). Null on deliveries
+    // recorded before 17 Nov 2026: their link is read the old way (InvoiceDeliveredLinks).
+    public string? InvoiceLink { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

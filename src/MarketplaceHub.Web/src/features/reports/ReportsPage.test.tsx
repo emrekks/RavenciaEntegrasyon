@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -13,13 +14,13 @@ const group = (key: string, label: string, values: Partial<ReportGroup> = {}): R
 const summary = (values: Partial<ReportSummary> = {}): ReportSummary => ({
   orders: 4, cancelledOrders: 1, cancelRate: 0.2, soldQuantity: 5, returnedQuantity: 1, keptQuantity: 4, returnClaims: 1, returnRate: 0.2, ordersWithAmount: 3,
   grossSales: 350, returnedAmount: 100, netRevenue: 250, averageOrderValue: 116.67, ordersWithoutCity: 1, ordersWithoutAmount: 1, otherCurrencyOrders: 0,
-  listAmount: 380, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, ...values
+  listAmount: 380, returnedListAmount: 0, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, ...values
 })
 const report: ReportSales = {
-  from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z',
+  from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z', questionTimes: null, dataStartsOn: '2026-01-01',
   summary: summary(), previousSummary: summary({ orders: 2, netRevenue: 200, cancelRate: 0.1 }),
   commission: { coveredRevenue: 200, coverage: 0.8, estimatedCommission: 43, estimatedPayout: 157, effectiveRate: 0.215 },
-  cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 80, costedRevenue: 200, costedSales: 240, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
+  cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 80, costedRevenue: 200, costedSales: 240, keptRevenue: 200, grossProfit: 120, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 200, profitCost: 80, profitCommission: 43, netProfit: 77, netMargin: 0.385, costedVariants: 1 },
   platforms: [
     group('TRENDYOL', 'TRENDYOL', { orders: 3, soldQuantity: 4, netRevenue: 250, grossSales: 350, ordersWithAmount: 3, estimatedCommission: 43, commissionCoveredRevenue: 200, children: [group('c1', 'Ravencia Trendyol')] }),
     group('SHOPIFY', 'SHOPIFY', { ordersWithAmount: 0, grossSales: 0, netRevenue: 0 })
@@ -32,8 +33,8 @@ const report: ReportSales = {
   previousTimeSeries: [{ start: '2026-09-09', orders: 1, soldQuantity: 1, returnedQuantity: 0, netRevenue: 100, cancelledOrders: 0 }],
   topProducts: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', imageUrl: '/api/v1/files/product-media/a1/content', options: [{ name: 'Kumaş Tipi', value: 'Viskon' }, { name: 'Beden', value: 'M' }, { name: 'Renk', value: 'Siyah' }], netAmount: 200, previousSoldQuantity: 1, available: 7 }],
   topReturned: [],
-  rising: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', netAmount: 200, previousSoldQuantity: 1 }],
-  falling: [{ variantId: 'v2', productId: 'p2', title: 'Masa Örtüsü', sku: 'MSA-1', brand: 'Ravencia', category: 'Örtü', soldQuantity: 0, returnedQuantity: 0, returnRate: null, salesAmount: 0, estimatedCommission: 0, commissionCoveredAmount: 0, netAmount: 0, previousSoldQuantity: 3 }],
+  rising: [{ variantId: 'v1', productId: 'p1', title: 'Koltuk Kılıfı', imageUrl: null, options: null, available: null, sku: 'KLF-1', brand: 'Ravencia', category: 'Kılıf', soldQuantity: 2, returnedQuantity: 0, returnRate: 0, salesAmount: 200, estimatedCommission: 43, commissionCoveredAmount: 200, modelCode: 'KLF', netAmount: 200, previousSoldQuantity: 1 }],
+  falling: [{ variantId: 'v2', productId: 'p2', title: 'Masa Örtüsü', imageUrl: null, options: null, available: null, modelCode: null, sku: 'MSA-1', brand: 'Ravencia', category: 'Örtü', soldQuantity: 0, returnedQuantity: 0, returnRate: null, salesAmount: 0, estimatedCommission: 0, commissionCoveredAmount: 0, netAmount: 0, previousSoldQuantity: 3 }],
   brands: [group('Ravencia', 'Ravencia'), group('Bilinmiyor', 'Bilinmiyor')],
   categories: [group('Kılıf', 'Kılıf')],
   returnReasons: [{ reason: 'Beden uymadı', known: true, count: 1 }],
@@ -57,7 +58,7 @@ const report: ReportSales = {
   // The previous period: 350 of sales, 100 back, 30 of commission and 60 of cost leave 160 of profit.
   previousAccount: {
     commission: { coveredRevenue: 150, coverage: 0.75, estimatedCommission: 30, estimatedPayout: 120, effectiveRate: 0.2 },
-    cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 60, costedRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
+    cost: { keptQuantity: 4, costedQuantity: 4, coverage: 1, costTotal: 60, costedRevenue: 150, costedSales: 150, keptRevenue: 150, grossProfit: 90, grossMargin: 0.6, profitQuantity: 2, profitCoverage: 0.5, profitRevenue: 150, profitCost: 60, profitCommission: 30, netProfit: 60, netMargin: 0.4, costedVariants: 1 },
     costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 2, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] }
   }
 }
@@ -96,23 +97,24 @@ const connectionsFixture = vi.hoisted(() => ({ items: undefined as Array<{ id: s
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 // Trendyol's ad report: none uploaded unless a test sets one.
 const adReports = vi.hoisted(() => ({ current: { reports: [] as unknown[], stores: [{ connectionId: 'c1', storeName: 'Ravencia Trendyol' }] } }))
-const payouts = {
+const payouts: ApiAnswer<'getReportsPayouts'> = {
+  paidUnread: 0, paidUnreadRecords: 0, otherCurrencies: null,
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0, pendingDelivery: 1450.5, pendingDeliveryOrders: 3,
-  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED' },
-  lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
+  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED', estimates: null, carried: null },
+  lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null },
   platforms: [{ platformCode: 'TRENDYOL', expected: 1080, records: 3, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1450.5, pendingDeliveryOrders: 3 }, { platformCode: 'PAZARAMA', expected: 100, records: 1, nextDay: '2026-11-05', nextAmount: 100, unknown: 0, pendingDelivery: 0, pendingDeliveryOrders: 0 }],
   regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1050.5, pendingDeliveryOrders: 2 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: -50, pendingDelivery: 400, pendingDeliveryOrders: 1 }],
   upcoming: [
-    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
-    { key: 'due:store-3:2026-11-05:NONE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-3', platformCode: 'PAZARAMA', storeName: 'Pazarama', region: 'NONE', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED' },
-    { key: 'due:store-1:2026-11-12:EUROPE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' },
-    { key: 'due:store-1:2026-11-04:EUROPE:OVERDUE', kind: 'OVERDUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-04', amount: 240, linesAmount: null, records: 1, status: 'EXPECTED' }
+    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED', estimates: null, carried: null },
+    { key: 'due:store-3:2026-11-05:NONE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-3', platformCode: 'PAZARAMA', storeName: 'Pazarama', region: 'NONE', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null },
+    { key: 'due:store-1:2026-11-12:EUROPE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null },
+    { key: 'due:store-1:2026-11-04:EUROPE:OVERDUE', kind: 'OVERDUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-04', amount: 240, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null }
   ],
-  past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' }],
+  past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null }],
   coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
 }
-const payoutLines = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
-  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null, barcode: 'MZ042DSS14' }], totalCount: 1, page: 0, pageSize: 100, net: 800 }
+const payoutLines: ApiAnswer<'getReportsPayoutsLines'> = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
+  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null, barcode: 'MZ042DSS14', currency: 'TRY' }], totalCount: 1, page: 0, pageSize: 100, net: 800, nextCursor: null, hasMore: false }
 
 vi.mock('../../shared/api', () => ({
   loadAllPages: vi.fn(async () => { if (!connectionsFixture.items) throw new Error('connections not read'); return { items: connectionsFixture.items, nextCursor: null, hasMore: false } }),
@@ -166,7 +168,7 @@ afterEach(() => { act(() => root?.unmount()); client?.clear(); container?.remove
 describe('ReportsPage', () => {
   it('asks for the last 30 days and shows the overview: the six figures, the costs, the bridge, the days and the metric cards', async () => {
     const page = await open()
-    expect(requests[0]).toMatch(/^\/reports\/sales\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/)
+    expect(requests[0]).toMatch(/^\/reports\/sales\?dateFrom=\d{4}-\d{2}-\d{2}&dateTo=\d{4}-\d{2}-\d{2}$/)
     // One account: 350 of sales, 100 back and an estimated commission of 43 taken off, the product cost of 80, 127 of
     // estimated profit (green); its margin over Net Ciro and over the cost; 4 orders against 2, 4 of 5 units kept.
     const figures = texts(page, '.reports-kpis > div')
@@ -483,7 +485,7 @@ describe('ReportsPage', () => {
       const label = row.querySelector('.reports-bridge-label')!.textContent!.replace(/^[−+] /u, '')
       const figure = Math.abs(tl(row.querySelector('b')?.textContent))
       await act(async () => { row.querySelector<HTMLButtonElement>('.reports-tip-trigger')!.click() })
-      const modal = page.querySelector('.reports-bridge-modal')!
+      const modal = document.querySelector('.reports-bridge-modal')!
       expect(modal.querySelector('h2')?.textContent, label).toBe(label)
       // The short help is in the window's header.
       expect(modal.querySelector('header p')?.textContent?.length, label).toBeGreaterThan(10)
@@ -493,8 +495,9 @@ describe('ReportsPage', () => {
         expect(tl(list.querySelector('li.is-total > b')?.textContent), label).toBe(figure)
       }
       opened.set(label, modal.cloneNode(true) as Element)
-      await act(async () => { modal.querySelector<HTMLButtonElement>('header button[aria-label="Kapat"]')!.click() })
-      expect(page.querySelector('.reports-bridge-modal')).toBeNull()
+      // RrModal plays its closing motion (180 ms) before it goes.
+      await act(async () => { modal.querySelector<HTMLButtonElement>('header button[aria-label="Pencereyi Kapat"]')!.click(); await new Promise(resolve => setTimeout(resolve, 200)) })
+      expect(document.querySelector('.reports-bridge-modal')).toBeNull()
     }
     const lines = (label: string) => [...opened.get(label)!.querySelectorAll('.reports-bridge-detail li')].map(line => `${line.querySelector('.reports-bridge-detail-name')?.firstChild?.textContent} ${line.querySelector('b')?.textContent}`)
     // Pazaryeri Masrafları: the real and estimated commission and the service fee by kind; by platform Trendyol's own
@@ -510,9 +513,9 @@ describe('ReportsPage', () => {
     expect(opened.get('Ürün Maliyeti')!.textContent).toContain('4 / 4 (%100,0)')
     // The result opens the whole account.
     await act(async () => { page.querySelector<HTMLButtonElement>('.reports-bridge > li.is-end .reports-tip-trigger')!.click() })
-    expect(page.querySelector('.reports-bridge-modal .reports-ledger')).not.toBeNull()
-    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
-    expect(page.querySelector('.reports-bridge-modal')).toBeNull()
+    expect(document.querySelector('.reports-bridge-modal .reports-ledger')).not.toBeNull()
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(resolve => setTimeout(resolve, 200)) })
+    expect(document.querySelector('.reports-bridge-modal')).toBeNull()
   })
 
   it('writes a carried-forward VAT\'s window total as the bridge writes it, added to the profit', async () => {
@@ -520,9 +523,9 @@ describe('ReportsPage', () => {
     const row = [...page.querySelectorAll('.reports-bridge > li')].find(item => item.textContent?.includes('Net KDV'))!
     expect(row.querySelector('b')?.textContent).toBe('+ ₺53,17')
     await act(async () => { row.querySelector<HTMLButtonElement>('.reports-tip-trigger')!.click() })
-    const total = page.querySelector('.reports-bridge-modal li.is-total')!
+    const total = document.querySelector('.reports-bridge-modal li.is-total')!
     expect(total.textContent).toBe('Toplam · Kâra Eklenir+ ₺53,17')
-    expect([...page.querySelectorAll('.reports-bridge-modal li:not(.is-total) > b')].map(cell => cell.textContent)).toEqual(['₺22,73', '− ₺7,27', '− ₺68,63'])
+    expect([...document.querySelectorAll('.reports-bridge-modal li:not(.is-total) > b')].map(cell => cell.textContent)).toEqual(['₺22,73', '− ₺7,27', '− ₺68,63'])
   })
 
   it('tells a fee invoice of a payout not read yet as covered by the estimate and takes it off nowhere', async () => {
@@ -878,7 +881,7 @@ describe('ReportsPage', () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     const now = new Date()
     const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    expect(requests.at(-1)).toContain(`from=${first}`)
+    expect(requests.at(-1)).toContain(`dateFrom=${first}`)
     expect(preset('Bu Ay').getAttribute('aria-pressed')).toBe('true')
     expect(preset('Son 30 Gün').getAttribute('aria-pressed')).toBe('false')
   })
@@ -895,7 +898,7 @@ describe('ReportsPage', () => {
     await act(async () => { day('2').click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     // The first and second day of the month the picker opened on.
-    const [, from, to] = /from=([\d-]+)&to=([\d-]+)/.exec(requests.at(-1) ?? '') ?? []
+    const [, from, to] = /dateFrom=([\d-]+)&dateTo=([\d-]+)/.exec(requests.at(-1) ?? '') ?? []
     expect(from?.slice(8)).toBe('01')
     expect(to).toBe(`${from?.slice(0, 8)}02`)
   })
@@ -975,7 +978,7 @@ describe('ReportsPage', () => {
     // A marketplace card sets the platform filter: the server is asked for it, the other cards stay in view.
     await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts?platformCodes=PAZARAMA')
+    expect(requests).toContain('/reports/payouts?platforms=PAZARAMA')
     expect(page.querySelectorAll('.is-platforms .reports-payout-region')).toHaveLength(2)
     // The picked card again clears the platform filter (there is no Tümü button).
     await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
@@ -983,7 +986,7 @@ describe('ReportsPage', () => {
     // A payment opens its records.
     await act(async () => { (page.querySelector('.reports-payout-row') as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF&kind=PAYOUT_DAY')
+    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF&kind=PAYOUT_DAY&limit=100')
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('10234')
     // A record names its product: an order of two products has a sale for each.
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('MZ042DSS14')
@@ -1038,7 +1041,7 @@ describe('ReportsPage', () => {
     const trendyol = [...document.querySelectorAll<HTMLLabelElement>('.pf-pop .rr-opt')].find(option => option.textContent?.startsWith('Trendyol'))!
     await act(async () => { trendyol.querySelector('input')!.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts?platformCodes=TRENDYOL')
+    expect(requests).toContain('/reports/payouts?platforms=TRENDYOL')
   })
 
   it('narrows the payments by the filters kept in the address and says so when none is left', async () => {
@@ -1070,7 +1073,7 @@ describe('ReportsPage', () => {
     // The stock report is asked for once the tabs are shown.
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(selectedTab(page)).toContain('Stok')
-    expect(requests.some(path => /^\/reports\/stock\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true)
+    expect(requests.some(path => /^\/reports\/stock\?dateFrom=\d{4}-\d{2}-\d{2}&dateTo=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true)
     const figures = texts(page, '.reports-kpis > div')
     expect(figures[0]).toContain('Stoktaki Sermaye₺1.200')
     expect(figures[0]).toContain('KDV hariç ₺1.091')
@@ -1083,7 +1086,7 @@ describe('ReportsPage', () => {
     expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Stok, .*Ağustos – Ekim: ortalama %158,8$/u)
     // One small request for the rate instead of three whole monthly reports.
     expect(requests).toContain('/reports/profit-rate')
-    expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/.test(path))).toHaveLength(0)
+    expect(requests.filter(path => /^\/reports\/sales\?dateFrom=\d{4}-\d{2}-01&dateTo=\d{4}-\d{2}-\d{2}$/.test(path))).toHaveLength(0)
     expect(figures[4]).toContain('60 gün')
     // Ölü Stok is a table of the tab only, no box of the strip (owner, 7 Nov 2026): five boxes, as the second row.
     expect(page.querySelector('.reports-kpis')?.children).toHaveLength(5)

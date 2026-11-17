@@ -102,6 +102,6 @@ public sealed class InstantNotificationPolicyTests
     [InlineData("not json", null)]
     public void WebhookPackageStorefrontComesFromTheOrderCountry(string raw, string? expected)
     {
-        Assert.Equal(expected, MarketplaceJobProcessor.TrendyolWebhookStorefront(raw));
+        Assert.Equal(expected, OrderReadService.TrendyolWebhookStorefront(raw));
     }
 }

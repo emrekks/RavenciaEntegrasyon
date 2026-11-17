@@ -120,7 +120,7 @@ public sealed class SyncWindowAuditTests
     [InlineData("0", null, "1")]
     [InlineData("4", "", "5")]
     public void Return_reconciliation_follows_the_adapters_bucket_cursor(string current, string? next, string expected) =>
-        Assert.Equal(expected, MarketplaceJobProcessor.NextReconcilePage(current, next));
+        Assert.Equal(expected, ReturnReadService.NextReconcilePage(current, next));
 
     [Fact]
     public void A_rejected_quiet_storefront_is_read_from_its_last_good_read_but_not_tried_again_at_once()
@@ -183,31 +183,31 @@ public sealed class SyncWindowAuditTests
     [Fact]
     public void Hepsiburada_paid_order_window_is_read_again_when_its_list_moves_between_pages()
     {
-        var start = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("v", DateTimeOffset.UnixEpoch.AddDays(2), DateTimeOffset.UnixEpoch, 0, 0);
+        var start = new OrderReadService.HepsiburadaOrderSyncState("v", DateTimeOffset.UnixEpoch.AddDays(2), DateTimeOffset.UnixEpoch, 0, 0);
 
         // 101 lines: page one, then one line is packaged and page two (offset 100) counts 100.
-        var second = MarketplaceJobProcessor.NextHepsiburadaOrderPage(start, PaidPage(101, "100"));
+        var second = OrderReadService.NextHepsiburadaOrderPage(start, PaidPage(101, "100"));
         Assert.Equal((100, 101), (second.Offset, second.PageTotal));
-        var reread = MarketplaceJobProcessor.NextHepsiburadaOrderPage(second, PaidPage(100, null));
+        var reread = OrderReadService.NextHepsiburadaOrderPage(second, PaidPage(100, null));
         Assert.Equal((0, 0, 1, false), (reread.WindowIndex, reread.Offset, reread.Rereads, reread.Moved));
 
         // A steady list closes the window at once.
-        var steady = MarketplaceJobProcessor.NextHepsiburadaOrderPage(MarketplaceJobProcessor.NextHepsiburadaOrderPage(start, PaidPage(101, "100")), PaidPage(101, null));
+        var steady = OrderReadService.NextHepsiburadaOrderPage(OrderReadService.NextHepsiburadaOrderPage(start, PaidPage(101, "100")), PaidPage(101, null));
         Assert.Equal((1, 0, 0), (steady.WindowIndex, steady.Offset, steady.Rereads));
 
         // After two re-reads the window closes even if the list keeps moving.
-        var tired = start with { Offset = 100, PageTotal = 101, Rereads = MarketplaceJobProcessor.HepsiburadaOrderWindowRereads };
-        Assert.Equal(1, MarketplaceJobProcessor.NextHepsiburadaOrderPage(tired, PaidPage(99, null)).WindowIndex);
+        var tired = start with { Offset = 100, PageTotal = 101, Rereads = OrderReadService.HepsiburadaOrderWindowRereads };
+        Assert.Equal(1, OrderReadService.NextHepsiburadaOrderPage(tired, PaidPage(99, null)).WindowIndex);
     }
 
     [Fact]
     public void Hepsiburada_open_package_list_that_ignores_the_offset_is_told_apart()
     {
-        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(0, null, "P1,P2"));
-        Assert.True(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P1,P2"));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P3,P4"));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", null));
-        Assert.Null(MarketplaceJobProcessor.HepsiburadaPackagePageKey([]));
+        Assert.False(OrderReadService.HepsiburadaPackageOffsetIgnored(0, null, "P1,P2"));
+        Assert.True(OrderReadService.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P1,P2"));
+        Assert.False(OrderReadService.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P3,P4"));
+        Assert.False(OrderReadService.HepsiburadaPackageOffsetIgnored(10, "P1,P2", null));
+        Assert.Null(OrderReadService.HepsiburadaPackagePageKey([]));
     }
 
     private static RemoteCatalogProduct PttModel(bool active, params string[] names)
@@ -236,11 +236,11 @@ public sealed class SyncWindowAuditTests
             (otherModel, "FK9999", "Renk: Bordo | Beden: S")
         };
 
-        Assert.Equal([listed], MarketplaceJobProcessor.PttAvmModelVariantsSeen(product, panel));
-        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OnSale, MarketplaceJobProcessor.PttAvmModelSaleState(product).State);
-        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OffSale, MarketplaceJobProcessor.PttAvmModelSaleState(PttModel(false, "Bordo", "S")).State);
+        Assert.Equal([listed], ListingVerificationService.PttAvmModelVariantsSeen(product, panel));
+        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OnSale, ListingVerificationService.PttAvmModelSaleState(product).State);
+        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OffSale, ListingVerificationService.PttAvmModelSaleState(PttModel(false, "Bordo", "S")).State);
         // A model that lists no values says nothing about its variants.
-        Assert.Empty(MarketplaceJobProcessor.PttAvmModelVariantsSeen(product with { Variants = [] }, panel));
+        Assert.Empty(ListingVerificationService.PttAvmModelVariantsSeen(product with { Variants = [] }, panel));
     }
 
     [Fact]

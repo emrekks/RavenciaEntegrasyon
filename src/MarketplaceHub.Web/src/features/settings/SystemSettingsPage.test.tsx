@@ -118,8 +118,9 @@ async function settle() {
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
 }
 
-async function renderPage(path = '/settings') {
+async function renderPage(path = '/settings', role?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  if (role) client.setQueryData(['me'], { id: 'u1', email: 'a@example.test', displayName: 'A', role, state: 'ACTIVE', tenantId: 't1' })
   root = createRoot(container)
   await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><SystemSettingsPage /></MemoryRouter></QueryClientProvider>) })
   await settle()
@@ -339,6 +340,22 @@ describe('SystemSettingsPage', () => {
     expect(container.querySelector('.ss-callout[role="alert"]')?.textContent).toContain('yalnız hesap sahibi ve yöneticiler')
     expect(container.querySelector('section[aria-label="Pazaryerleri"]')).toBeNull()
     expect(apiState.calls.some(call => call.path === '/connections' || call.path.endsWith('/full-reset'))).toBe(false)
+  })
+
+  // PUT settings/shipping-label and settings/appearance answer 403 to every role but the owner and administrators.
+  it('offers no label or appearance save to a role the server refuses, and says why', async () => {
+    await renderPage('/settings?tab=sender', 'OPERATIONS')
+    expect(container.querySelector('.ss-callout[role="alert"]')?.textContent).toContain('yalnız hesap sahibi ve yöneticiler')
+    expect(Array.from(container.querySelectorAll('button')).some(item => item.textContent?.includes('Ayarları Kaydet'))).toBe(false)
+    act(() => root.unmount())
+    container.replaceChildren()
+    await renderPage('/settings?tab=palette', 'OPERATIONS')
+    expect(container.querySelector('.ss-callout[role="alert"]')?.textContent).toContain('yalnız hesap sahibi ve yöneticiler')
+    expect(container.querySelector('.ss-bar')).toBeNull()
+    act(() => root.unmount())
+    container.replaceChildren()
+    await renderPage('/settings?tab=sender', 'ADMINISTRATOR')
+    expect(button('Ayarları Kaydet')).toBeTruthy()
   })
 
   it('enables saving the label settings once a switch changes', async () => {

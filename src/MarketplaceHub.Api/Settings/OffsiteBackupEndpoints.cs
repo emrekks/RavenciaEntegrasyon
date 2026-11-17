@@ -1,3 +1,4 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Backups;
@@ -7,6 +8,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -32,14 +34,14 @@ public static class OffsiteBackupEndpoints
 
     public static IEndpointRouteBuilder MapOffsiteBackupEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/settings/offsite-backup");
-        group.MapGet("", GetAsync);
-        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        var group = endpoints.MapGroup("/api/v1/settings/offsite-backup").WithGates(ApiGate.Elevated, ApiGate.Owner);
+        group.MapGet("", GetAsync).Produces<OffsiteBackupSettingsView>();
+        group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("replaces the stored backup settings; If-Match refuses a stale repeat").IfMatch(required: false).Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("each call issues a new one-time consent state").Produces<OffsiteBackupAuthorizationView>();
+        group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("redeems Google's one-time authorization code, which works once").Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("forgets the Google connection; a repeat finds none").Produces<OffsiteBackupSettingsView>();
+        group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Idempotent("reads a fresh token and the Drive folder; a repeat finds the same folder").Produces<OffsiteBackupTestView>();
+        group.MapPost("/run", RunAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Idempotent("sets the run-requested mark the host timer reads; a repeat sets it again").Produces<OffsiteBackupRunRequestedView>(StatusCodes.Status202Accepted);
         return endpoints;
     }
 
@@ -128,17 +130,6 @@ public static class OffsiteBackupEndpoints
     private static Task<IResult?> Reauth(string? password, string? code, string? recoveryCode, HttpContext http, UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time) =>
         AuthEndpoints.ReauthenticateAsync(new AuthEndpoints.ReauthenticateRequest(password ?? string.Empty, code, recoveryCode), http, users, db, protection, totp, hasher, time);
 
-    private static IResult? IfMatchVersion(HttpContext http, out long? expected)
-    {
-        expected = null;
-        var value = http.Request.Headers.IfMatch.ToString();
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        if (value.Length < 4 || !value.StartsWith("\"v", StringComparison.Ordinal) || !value.EndsWith('"') || !long.TryParse(value[2..^1], out var version) || version <= 0)
-            return Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400));
-        expected = version;
-        return null;
-    }
-
     private static IResult Versioned(HttpContext http, OffsiteBackupView view, IConfiguration configuration)
     {
         if (view.Version > 0) http.Response.Headers.ETag = $"\"v{view.Version}\"";
@@ -177,7 +168,4 @@ public static class OffsiteBackupEndpoints
         });
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }

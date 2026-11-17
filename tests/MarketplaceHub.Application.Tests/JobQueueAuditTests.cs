@@ -37,6 +37,48 @@ public sealed class JobQueueAuditTests
         Assert.Contains(sqlState, result.ErrorSummary);
     }
 
+    // KUYRUK-4: a foreign key, NOT NULL, range or format fault is not "transient"; it goes to review at once.
+    [Theory]
+    [InlineData(PostgresErrorCodes.ForeignKeyViolation)]
+    [InlineData(PostgresErrorCodes.NotNullViolation)]
+    [InlineData(PostgresErrorCodes.NumericValueOutOfRange)]
+    [InlineData(PostgresErrorCodes.InvalidTextRepresentation)]
+    [InlineData(PostgresErrorCodes.DatetimeFieldOverflow)]
+    public void APermanentDataFaultGoesToManualReview(string sqlState)
+    {
+        var violation = new PostgresException("data fault", "ERROR", "ERROR", sqlState);
+        var result = MarketplaceHub.Worker.Worker.ExceptionResult(new DbUpdateException("An error occurred while saving the entity changes.", violation));
+
+        Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+        Assert.Equal("DATABASE_CONSTRAINT_VIOLATION", result.ErrorCode);
+        Assert.Contains(sqlState, result.ErrorSummary);
+    }
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.SerializationFailure)]
+    [InlineData(PostgresErrorCodes.DeadlockDetected)]
+    [InlineData(PostgresErrorCodes.QueryCanceled)]
+    [InlineData(PostgresErrorCodes.TooManyConnections)]
+    public void ATransientDatabaseErrorIsRetriedAsTransient(string sqlState)
+    {
+        var error = new PostgresException("transient", "ERROR", "ERROR", sqlState);
+        var result = MarketplaceHub.Worker.Worker.ExceptionResult(new DbUpdateException("save failed", error));
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.Equal("TRANSIENT_EXECUTION_FAILURE", result.ErrorCode);
+    }
+
+    [Fact]
+    public void AnyOtherDatabaseErrorIsRetriedButNotCalledTransient()
+    {
+        var error = new PostgresException("relation does not exist", "ERROR", "ERROR", PostgresErrorCodes.UndefinedTable);
+        var result = MarketplaceHub.Worker.Worker.ExceptionResult(error);
+
+        Assert.Equal(JobCompletionKind.Retry, result.Kind);
+        Assert.Equal("UNHANDLED_EXECUTION_FAILURE", result.ErrorCode);
+        Assert.Contains(PostgresErrorCodes.UndefinedTable, result.ErrorSummary);
+    }
+
     [Fact]
     public void FailureSummariesNameTheExceptionType()
     {
@@ -123,37 +165,37 @@ public sealed class JobQueueAuditTests
     [Fact]
     public void AHepsiburadaRunResumesItsSavedWindowsAfterAFailure()
     {
-        var incremental = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now.AddMinutes(-5), Now.AddHours(-30), 1, 0);
+        var incremental = new OrderReadService.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now.AddMinutes(-5), Now.AddHours(-30), 1, 0);
         var baseline = incremental with { AnchorEnd = Now.AddHours(-3), StartAt = HepsiburadaOrderHistoryPolicy.InitialWindowStart(Now.AddHours(-3)), WindowIndex = 12 };
         var staleBaseline = baseline with { AnchorEnd = Now.AddDays(-2), StartAt = HepsiburadaOrderHistoryPolicy.InitialWindowStart(Now.AddDays(-2)) };
 
-        Assert.Equal(incremental, MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: false));
+        Assert.Equal(incremental, OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: false));
         // A baseline asked for again continues the one under way instead of reading its first windows forever.
-        Assert.Equal(baseline, MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(baseline), Now, forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(staleBaseline), Now, forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaOrderSyncState("{bozuk", Now, forceBaseline: false));
+        Assert.Equal(baseline, OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(baseline), Now, forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(incremental), Now, forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaOrderSyncState(JsonSerializer.Serialize(staleBaseline), Now, forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaOrderSyncState("{bozuk", Now, forceBaseline: false));
     }
 
     [Fact]
     public void AHepsiburadaWindowRemainsUntilTheReadReachesItsStart()
     {
-        var state = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now, Now.AddDays(-2).AddHours(-1), 0, 0);
+        var state = new OrderReadService.HepsiburadaOrderSyncState("hepsiburada-orders-v2", Now, Now.AddDays(-2).AddHours(-1), 0, 0);
 
-        Assert.True(MarketplaceJobProcessor.HepsiburadaWindowRemains(state with { WindowIndex = 1 }));
-        Assert.True(MarketplaceJobProcessor.HepsiburadaWindowRemains(state with { WindowIndex = 2 }));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaWindowRemains(state with { WindowIndex = 3 }));
+        Assert.True(OrderReadService.HepsiburadaWindowRemains(state with { WindowIndex = 1 }));
+        Assert.True(OrderReadService.HepsiburadaWindowRemains(state with { WindowIndex = 2 }));
+        Assert.False(OrderReadService.HepsiburadaWindowRemains(state with { WindowIndex = 3 }));
     }
 
     [Fact]
     public void TheHepsiburadaLifecycleScanPagesByTheLastOrderReadNotByOffset()
     {
-        var cursor = MarketplaceJobProcessor.HepsiburadaLifecycleCursor("4736002251");
+        var cursor = OrderReadService.HepsiburadaLifecycleCursor("4736002251");
 
-        Assert.Equal("4736002251", MarketplaceJobProcessor.HepsiburadaLifecycleLastSeen(cursor));
+        Assert.Equal("4736002251", OrderReadService.HepsiburadaLifecycleLastSeen(cursor));
         // An offset saved by the previous version starts the scan from the first order.
-        Assert.Null(MarketplaceJobProcessor.HepsiburadaLifecycleLastSeen("25"));
-        Assert.Null(MarketplaceJobProcessor.HepsiburadaLifecycleLastSeen(null));
+        Assert.Null(OrderReadService.HepsiburadaLifecycleLastSeen("25"));
+        Assert.Null(OrderReadService.HepsiburadaLifecycleLastSeen(null));
     }
 
     [Fact]
@@ -185,5 +227,45 @@ public sealed class JobQueueAuditTests
         Assert.DoesNotContain(MarketplaceJobTypes.WebhookIngest, JobRetentionService.EffectGuardJobTypes);
         Assert.DoesNotContain(MarketplaceJobTypes.OrderSync, JobRetentionService.EffectGuardJobTypes);
         Assert.DoesNotContain(MarketplaceJobTypes.ExternalEffectReconcile, JobRetentionService.EffectGuardJobTypes);
+    }
+
+    // KUYRUK-5: a pass that fails with a cancellation not caused by the shutdown is logged and the loop keeps running.
+    [Fact]
+    public async Task AMaintenanceLoopSurvivesACancellationThatIsNotTheShutdown()
+    {
+        using var shutdown = new CancellationTokenSource();
+        var failures = new List<Exception>();
+        var secondPass = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var passes = 0;
+        var loop = MarketplaceHub.Worker.Worker.RunPeriodicAsync(TimeSpan.Zero, TimeSpan.FromMilliseconds(20), _ =>
+        {
+            if (Interlocked.Increment(ref passes) == 1) throw new TaskCanceledException("a library timeout");
+            secondPass.TrySetResult();
+            return Task.CompletedTask;
+        }, failures.Add, shutdown.Token);
+
+        await secondPass.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        shutdown.Cancel();
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.IsType<TaskCanceledException>(Assert.Single(failures));
+        Assert.True(loop.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task AMaintenanceLoopEndsQuietlyOnShutdown()
+    {
+        using var shutdown = new CancellationTokenSource();
+        var failures = new List<Exception>();
+        var loop = MarketplaceHub.Worker.Worker.RunPeriodicAsync(TimeSpan.Zero, TimeSpan.FromMilliseconds(20), async token =>
+        {
+            shutdown.Cancel();
+            await Task.Delay(Timeout.Infinite, token);
+        }, failures.Add, shutdown.Token);
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Empty(failures);
+        Assert.True(loop.IsCompletedSuccessfully);
     }
 }

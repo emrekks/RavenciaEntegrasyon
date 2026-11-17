@@ -1,6 +1,6 @@
-using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Jobs;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 
@@ -108,7 +108,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var token = TokenHasher.NewToken();
         var firstLease = job.StartedAt is null;
         var queueWait = QueueWait(job, now);
-        job.Status = JobStatus.Leased;
+        JobStateMachine.MoveTo(job, JobStatus.Leased);
         job.LeaseTokenHash = hasher.Hash(token);
         job.LeaseExpiresAt = now.Add(leaseDuration);
         job.HeartbeatAt = now;
@@ -163,7 +163,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var attempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
         if (attempt is not null) db.JobAttempts.Remove(attempt);
         job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
-        job.Status = JobStatus.RetryScheduled;
+        JobStateMachine.MoveTo(job, JobStatus.RetryScheduled);
         job.AvailableAt = now;
         job.LastErrorCode = "WORKER_SHUTDOWN";
         job.LastErrorSummary = "Sunucu yeniden başlatıldı; işlem sıraya geri alındı ve kendiliğinden devam edecek.";
@@ -197,7 +197,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             var deferredAttempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == jobId && x.AttemptNumber == job.AttemptCount, cancellationToken);
             if (deferredAttempt is not null) db.JobAttempts.Remove(deferredAttempt);
             job.AttemptCount = Math.Max(0, job.AttemptCount - 1);
-            job.Status = JobStatus.RetryScheduled;
+            JobStateMachine.MoveTo(job, JobStatus.RetryScheduled);
             var requested = result.RetryAfter is { } delay && delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(30);
             job.AvailableAt = now.Add(result.Continues ? requested : DeferralDelay(requested, job.Id, job.Version));
             job.LastErrorCode = result.ErrorCode;
@@ -222,14 +222,14 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             job.WaitingChecks++;
         }
         if (kind == JobCompletionKind.Retry && job.AttemptCount >= job.MaxAttempts) kind = JobCompletionKind.Dead;
-        job.Status = kind switch
+        JobStateMachine.MoveTo(job, kind switch
         {
             JobCompletionKind.Succeeded => JobStatus.Succeeded,
             JobCompletionKind.Retry => JobStatus.RetryScheduled,
             JobCompletionKind.Blocked => JobStatus.Blocked,
             JobCompletionKind.ManualReview => JobStatus.ManualReview,
             _ => JobStatus.Dead
-        };
+        });
         job.CompletedAt = kind == JobCompletionKind.Retry ? null : now;
         job.AvailableAt = kind == JobCompletionKind.Retry
             ? now.Add(waiting ? WaitingRetryDelay(job, result) : EffectiveRetryDelay(job, result))
@@ -361,7 +361,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var changes = new List<(IntegrationJob Job, IntegrationOutboxEvent Event, JobAttempt? Attempt)>();
         foreach (var job in exhausted)
         {
-            job.Status = JobStatus.Dead;
+            JobStateMachine.MoveTo(job, JobStatus.Dead);
             job.CompletedAt = now;
             job.LastErrorCode ??= "MAX_ATTEMPTS_EXHAUSTED";
             job.Version++;
@@ -378,8 +378,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
             var attempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == job.Id && x.AttemptNumber == job.AttemptCount, cancellationToken);
             if (attempt is not null && attempt.CompletedAt is null) { attempt.CompletedAt = now; attempt.Succeeded = false; attempt.ErrorCode = "LEASE_EXPIRED"; }
             job.LastErrorCode = "LEASE_EXPIRED"; job.LeaseTokenHash = null; job.LeaseExpiresAt = null; job.HeartbeatAt = null; job.Version++;
-            if (job.AttemptCount >= job.MaxAttempts) { job.Status = JobStatus.Dead; job.CompletedAt = now; }
-            else { job.Status = JobStatus.RetryScheduled; job.AvailableAt = now.Add(JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id)); }
+            if (job.AttemptCount >= job.MaxAttempts) { JobStateMachine.MoveTo(job, JobStatus.Dead); job.CompletedAt = now; }
+            else { JobStateMachine.MoveTo(job, JobStatus.RetryScheduled); job.AvailableAt = now.Add(JobRetryPolicy.DelayAfterAttempt(job.AttemptCount, job.Id)); }
             changes.Add((job, AddOutboxEvent(job, now), attempt));
         }
         reaped += await SaveReapedAsync(changes, cancellationToken);
@@ -414,35 +414,10 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         return 0;
     }
 
-    // A job's state change is published as a "jobs" event, so only the job screens refetch; the domain the job
-    // works on (orders, returns, ...) travels in the payload. The data a job changes raises its own events.
-    internal const string JobEventResource = "jobs";
+    internal const string JobEventResource = JobStateMachine.JobEventResource;
 
-    private IntegrationOutboxEvent AddOutboxEvent(IntegrationJob job, DateTimeOffset now)
-    {
-        var outboxEvent = NewJobEvent(job, now);
-        db.IntegrationOutboxEvents.Add(outboxEvent);
-        return outboxEvent;
-    }
+    private IntegrationOutboxEvent AddOutboxEvent(IntegrationJob job, DateTimeOffset now) => JobStateMachine.Publish(db, job, now);
 
-    // The "jobs" event for a job's state change, for every writer that changes a job outside this service too.
-    internal static IntegrationOutboxEvent NewJobEvent(IntegrationJob job, DateTimeOffset now)
-    {
-        var metadata = IntegrationJobMetadataPolicy.Apply(job);
-        return new IntegrationOutboxEvent
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = job.TenantId,
-            ResourceType = JobEventResource,
-            OperationType = metadata.OperationType,
-            AggregateType = "IntegrationJob",
-            AggregateId = job.Id,
-            AggregateVersion = job.Version,
-            PayloadJson = JsonSerializer.Serialize(new { jobId = job.Id, jobType = job.JobType, resource = metadata.ResourceType, status = JobStatusText(job.Status), version = job.Version }),
-            CreatedAt = now,
-            NextAttemptAt = now
-        };
-    }
-
-    private static string JobStatusText(JobStatus status) => status == JobStatus.RetryScheduled ? "RETRY_SCHEDULED" : status == JobStatus.ManualReview ? "MANUAL_REVIEW" : status.ToString().ToUpperInvariant();
+    // The "jobs" event for a job's state change (JobStateMachine.NewJobEvent), kept here for the writers that name it.
+    internal static IntegrationOutboxEvent NewJobEvent(IntegrationJob job, DateTimeOffset now) => JobStateMachine.NewJobEvent(job, now);
 }

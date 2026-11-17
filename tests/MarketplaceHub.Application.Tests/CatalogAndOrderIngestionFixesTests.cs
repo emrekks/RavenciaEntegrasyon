@@ -15,7 +15,7 @@ public sealed class CatalogAndOrderIngestionFixesTests
     private static RemoteCatalogVariant Remote(string id, string? modelCode, Dictionary<string, string> options) =>
         new(id, $"SKU-{id}", null, modelCode, options, false, 100m, null, 20m, 1m, "TRY", "{}");
 
-    private static MarketplaceJobProcessor.ModelCodeVariant Panel(Guid productId, string signature, string modelCode = "MZ100") => new(productId, modelCode, signature);
+    private static CatalogImportService.ModelCodeVariant Panel(Guid productId, string signature, string modelCode = "MZ100") => new(productId, modelCode, signature);
 
     // Y5: Trendyol and Hepsiburada bound a remote variant to the only panel variant holding its model code, whatever its
     // colour; the candidate is now taken only when its colour and size are the remote variant's.
@@ -25,8 +25,8 @@ public sealed class CatalogAndOrderIngestionFixesTests
         var blueL = Panel(Guid.NewGuid(), "Renk: Mavi | Beden: L");
         var remoteRedL = new Dictionary<string, string> { ["Renk"] = "Kırmızı", ["Beden"] = "L" };
 
-        Assert.Empty(MarketplaceJobProcessor.NarrowModelCodeCandidates([blueL], x => x.OptionSignature, remoteRedL, "Kırmızı Elbise"));
-        Assert.Equal([blueL], MarketplaceJobProcessor.NarrowModelCodeCandidates([blueL], x => x.OptionSignature, new Dictionary<string, string> { ["Renk"] = "mavi", ["Beden"] = "l" }, null));
+        Assert.Empty(CatalogImportService.NarrowModelCodeCandidates([blueL], x => x.OptionSignature, remoteRedL, "Kırmızı Elbise"));
+        Assert.Equal([blueL], CatalogImportService.NarrowModelCodeCandidates([blueL], x => x.OptionSignature, new Dictionary<string, string> { ["Renk"] = "mavi", ["Beden"] = "l" }, null));
     }
 
     [Fact]
@@ -38,9 +38,9 @@ public sealed class CatalogAndOrderIngestionFixesTests
         var greenL = Panel(product, "Renk: Yeşil | Beden: L");
 
         // Turkish letters and case do not matter; a marketplace "Color"/"Size" finds the panel's Renk/Beden.
-        Assert.Equal([greenL], MarketplaceJobProcessor.NarrowModelCodeCandidates([blueM, blueL, greenL], x => x.OptionSignature, new Dictionary<string, string> { ["Color"] = "YEŞİL", ["Size"] = "L" }, null));
+        Assert.Equal([greenL], CatalogImportService.NarrowModelCodeCandidates([blueM, blueL, greenL], x => x.OptionSignature, new Dictionary<string, string> { ["Color"] = "YEŞİL", ["Size"] = "L" }, null));
         // A colour without a size leaves both blue sizes: undecided, never the first of them.
-        Assert.Equal(2, MarketplaceJobProcessor.NarrowModelCodeCandidates([blueM, blueL, greenL], x => x.OptionSignature, new Dictionary<string, string> { ["Renk"] = "Mavi" }, null).Count);
+        Assert.Equal(2, CatalogImportService.NarrowModelCodeCandidates([blueM, blueL, greenL], x => x.OptionSignature, new Dictionary<string, string> { ["Renk"] = "Mavi" }, null).Count);
     }
 
     [Fact]
@@ -50,10 +50,10 @@ public sealed class CatalogAndOrderIngestionFixesTests
         var coloured = Panel(Guid.NewGuid(), "Renk: Siyah | Beden: STD");
         var material = new Dictionary<string, string> { ["Materyal"] = "Pamuk" };
 
-        Assert.Equal([plain], MarketplaceJobProcessor.NarrowModelCodeCandidates([plain], x => x.OptionSignature, material, null));
-        Assert.Equal([coloured], MarketplaceJobProcessor.NarrowModelCodeCandidates([coloured], x => x.OptionSignature, new Dictionary<string, string>(), null));
+        Assert.Equal([plain], CatalogImportService.NarrowModelCodeCandidates([plain], x => x.OptionSignature, material, null));
+        Assert.Equal([coloured], CatalogImportService.NarrowModelCodeCandidates([coloured], x => x.OptionSignature, new Dictionary<string, string>(), null));
         // The remote names an option, the panel variant a colour: nothing proves they are the same variant.
-        Assert.Empty(MarketplaceJobProcessor.NarrowModelCodeCandidates([coloured], x => x.OptionSignature, material, null));
+        Assert.Empty(CatalogImportService.NarrowModelCodeCandidates([coloured], x => x.OptionSignature, material, null));
     }
 
     // Y5, Hepsiburada import: a model kept as one card per colour gives the product of the listing's colour; a listing
@@ -63,17 +63,17 @@ public sealed class CatalogAndOrderIngestionFixesTests
     {
         var navyCard = Guid.NewGuid();
         var blackCard = Guid.NewGuid();
-        IReadOnlyList<MarketplaceJobProcessor.ModelCodeVariant> model =
+        IReadOnlyList<CatalogImportService.ModelCodeVariant> model =
         [
             Panel(navyCard, "Renk: Lacivert | Beden: S"), Panel(navyCard, "Renk: Lacivert | Beden: M"),
             Panel(blackCard, "Renk: Siyah | Beden: S"), Panel(blackCard, "Renk: Siyah | Beden: M")
         ];
 
-        var black = MarketplaceJobProcessor.ModelCodeProducts(model, [Remote("1", "MZ100", new() { ["Renk"] = "Siyah", ["Beden"] = "S" }), Remote("2", "MZ100", new() { ["Renk"] = "Siyah", ["Beden"] = "M" })], null);
+        var black = CatalogImportService.ModelCodeProducts(model, [Remote("1", "MZ100", new() { ["Renk"] = "Siyah", ["Beden"] = "S" }), Remote("2", "MZ100", new() { ["Renk"] = "Siyah", ["Beden"] = "M" })], null);
         Assert.Equal([blackCard], black);
-        Assert.Empty(MarketplaceJobProcessor.ModelCodeProducts([model[0], model[1]], [Remote("3", "MZ100", new() { ["Renk"] = "Bordo", ["Beden"] = "S" })], null));
+        Assert.Empty(CatalogImportService.ModelCodeProducts([model[0], model[1]], [Remote("3", "MZ100", new() { ["Renk"] = "Bordo", ["Beden"] = "S" })], null));
         // Variants of two colours in one listing name two cards: the caller links neither.
-        Assert.Equal(2, MarketplaceJobProcessor.ModelCodeProducts(model, [Remote("4", "MZ100", new() { ["Renk"] = "Siyah", ["Beden"] = "S" }), Remote("5", "MZ100", new() { ["Renk"] = "Lacivert", ["Beden"] = "S" })], null).Count);
+        Assert.Equal(2, CatalogImportService.ModelCodeProducts(model, [Remote("4", "MZ100", new() { ["Renk"] = "Siyah", ["Beden"] = "S" }), Remote("5", "MZ100", new() { ["Renk"] = "Lacivert", ["Beden"] = "S" })], null).Count);
     }
 
     // T2-DO1: the one allocation of a package line is the package's latest event's where older rows remain.
@@ -85,13 +85,13 @@ public sealed class CatalogAndOrderIngestionFixesTests
         var other = Guid.NewGuid();
         PackageLineAllocation Row(Guid packageId, string eventId, decimal shipped) => new() { Id = Guid.CreateVersion7(), PackageId = packageId, OrderLineId = line, SourceEventId = eventId, AllocatedQuantity = 1, ShippedQuantity = shipped };
 
-        var byLine = MarketplaceJobProcessor.AllocationsByLine([Row(package, "4302382330:1793743762226", 0), Row(package, "4302382330:1793876113007", 1), Row(package, "4302382330:1793791774541", 1), Row(package, "seed", 0), Row(other, "9:1793743762226", 0)]);
+        var byLine = OrderIngestionService.AllocationsByLine([Row(package, "4302382330:1793743762226", 0), Row(package, "4302382330:1793876113007", 1), Row(package, "4302382330:1793791774541", 1), Row(package, "seed", 0), Row(other, "9:1793743762226", 0)]);
 
         Assert.Equal(2, byLine.Count);
         Assert.Equal("4302382330:1793876113007", byLine.Values.Single(x => x.PackageId == package).SourceEventId);
-        Assert.Equal(1793876113007, MarketplaceJobProcessor.PackageEventInstant("4302382330:1793876113007"));
-        Assert.Equal(1789229541000, MarketplaceJobProcessor.PackageEventInstant("order:PTT-1C2OSLF2R-120926:1789229541000"));
-        Assert.Equal(long.MinValue, MarketplaceJobProcessor.PackageEventInstant("seed"));
+        Assert.Equal(1793876113007, OrderIngestionService.PackageEventInstant("4302382330:1793876113007"));
+        Assert.Equal(1789229541000, OrderIngestionService.PackageEventInstant("order:PTT-1C2OSLF2R-120926:1789229541000"));
+        Assert.Equal(long.MinValue, OrderIngestionService.PackageEventInstant("seed"));
     }
 
     // The Hepsiburada open-return scan (RETURN_LIFECYCLE) is not queued while no claim is open: live since 1 Nov 2026
@@ -104,16 +104,16 @@ public sealed class CatalogAndOrderIngestionFixesTests
         ReturnClaim Claim(ReturnClaimStatus status, string raw) => new() { Id = Guid.NewGuid(), TenantId = tenantId, ConnectionId = connectionId, OrderId = Guid.NewGuid(), ExternalClaimId = Guid.NewGuid().ToString("N"), Status = status, RawStatus = raw };
         var settled = Enumerable.Range(0, 6).Select(_ => Claim(ReturnClaimStatus.Completed, "Refunded")).ToList();
 
-        Assert.Empty(MarketplaceJobProcessor.ReturnLifecycleCandidates(settled.AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
-        foreach (var open in MarketplaceJobProcessor.HepsiburadaOpenClaimStatuses)
-            Assert.Single(MarketplaceJobProcessor.ReturnLifecycleCandidates(settled.Append(Claim(ReturnClaimStatus.ActionRequired, open)).AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
+        Assert.Empty(ReturnReadService.ReturnLifecycleCandidates(settled.AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
+        foreach (var open in ReturnReadService.HepsiburadaOpenClaimStatuses)
+            Assert.Single(ReturnReadService.ReturnLifecycleCandidates(settled.Append(Claim(ReturnClaimStatus.ActionRequired, open)).AsQueryable(), tenantId, connectionId, "HEPSIBURADA"));
     }
 
     // O8: the packages a split child names as its origin, from the read and from the order's stored packages.
     [Fact]
     public void SplitParentsAreThePackagesAChildNamesAsItsOrigin()
     {
-        var parents = MarketplaceJobProcessor.SplitParentIds([("4085035430", "4084999185"), ("4084999185", null), ("P-1", "P-1"), ("4111016887", " "), ("C-2", "4110933059")]);
+        var parents = OrderIngestionService.SplitParentIds([("4085035430", "4084999185"), ("4084999185", null), ("P-1", "P-1"), ("4111016887", " "), ("C-2", "4110933059")]);
 
         Assert.Equal(["4084999185", "4110933059"], parents.Order(StringComparer.Ordinal));
     }

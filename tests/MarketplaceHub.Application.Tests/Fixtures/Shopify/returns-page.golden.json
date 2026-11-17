@@ -1,0 +1,92 @@
+{
+  "Items": [
+    {
+      "ExternalClaimId": "7001",
+      "ExternalOrderId": "9001",
+      "RawStatus": "REQUESTED",
+      "ReasonCode": "size-too-small",
+      "ReasonText": "Beden küçük geldi",
+      "ActionDueAt": null,
+      "LastModifiedAt": "2026-11-09T12:00:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "71",
+          "ExternalOrderLineId": "7111",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": null,
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": null,
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 832 chars sha256:03f21ca0fbdb>",
+      "CargoProviderName": null,
+      "CargoTrackingNumber": null,
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": "2026-11-05T09:30:00+00:00",
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2026-11-09T12:00:00+00:00"
+    },
+    {
+      "ExternalClaimId": "7002",
+      "ExternalOrderId": "9001",
+      "RawStatus": "CLOSED",
+      "ReasonCode": "defective",
+      "ReasonText": "",
+      "ActionDueAt": null,
+      "LastModifiedAt": "2026-11-07T10:15:00+00:00",
+      "Lines": [
+        {
+          "ExternalLineId": "72",
+          "ExternalOrderLineId": "7211",
+          "Quantity": 2,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": null,
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": null,
+          "StockCode": null
+        },
+        {
+          "ExternalLineId": "73",
+          "ExternalOrderLineId": "",
+          "Quantity": 1,
+          "AlternateExternalOrderLineIds": null,
+          "RawStatus": null,
+          "AcceptDetail": null,
+          "Note": null,
+          "Resolved": null,
+          "AcceptedBySeller": null,
+          "ProductCode": null,
+          "StockCode": null
+        }
+      ],
+      "RawJson": "<raw 1060 chars sha256:cd6e85c69005>",
+      "CargoProviderName": null,
+      "CargoTrackingNumber": null,
+      "CargoTrackingLink": null,
+      "OrderCreatedAt": "2026-11-05T09:30:00+00:00",
+      "ActionDueAtEstimated": false,
+      "RejectedPackageState": null,
+      "DecidedAt": null,
+      "CustomerRequest": null,
+      "ResolvedWith": null,
+      "RequestedAt": "2026-11-07T10:15:00+00:00"
+    }
+  ],
+  "NextCursor": "cursor-page-2",
+  "HasMore": true,
+  "TotalCount": 2,
+  "Issues": null,
+  "LastModifiedSeen": "2026-11-11T16:45:00+00:00"
+}

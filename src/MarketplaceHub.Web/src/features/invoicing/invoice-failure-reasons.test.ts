@@ -13,12 +13,21 @@ describe('invoice failure reasons', () => {
     expect(invoiceFailureReason('EINVOICE_TAXPAYER_CONFLICT')).toContain('kesilmedi')
     expect(invoiceFailureReason('EINVOICE_TAXPAYER_STATUS_CHANGED')).toContain('gönderilmedi')
     expect(invoiceFailureGuidance('EINVOICE_RECIPIENT_REVIEW_REQUIRED')).toContain('manuel fatura')
+    // 16 Nov 2026: an unclear Hepsiburada buyer, and a company VKN sent to 11111111111, stop the invoice.
+    expect(invoiceFailureReason('EFATURAM_RECIPIENT_KIND_UNKNOWN')).toContain('fatura kesilmedi')
+    expect(invoiceFailureReason('EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE')).toContain('11111111111')
+    expect(invoiceFailureGuidance('EFATURAM_RECIPIENT_KIND_UNKNOWN')).toContain('manuel belge')
+    expect(invoiceFailureGuidance('EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE')).toContain('manuel belge')
   })
 
   it('explains provider refusals that left nothing at the provider', () => {
     expect(invoiceFailureReason('EFATURAM_SIGNIN_UNAVAILABLE')).toContain('fatura gönderilmedi')
     expect(invoiceFailureReason('EFATURAM_OPERATION_FORBIDDEN')).toContain('yetkili değil')
     expect(invoiceFailureReason('CAPABILITY_NOT_VERIFIED')).toContain('izni kapalı')
+  })
+
+  it('says an invoice number or ETTN another invoice holds stopped the invoice without sending it again (VERITABANI-DAGITIM-11)', () => {
+    expect(invoiceFailureReason('INVOICE_PROVIDER_IDENTITY_TAKEN')).toContain('yeniden gönderilmedi')
   })
 
   it('says why an issued invoice was not sent to the marketplace by itself', () => {

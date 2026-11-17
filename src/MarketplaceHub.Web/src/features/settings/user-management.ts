@@ -1,25 +1,39 @@
 // Ayarlar › Kullanıcılar: the workspace's users, managed by the owner and administrators (the server answers others 403).
 // Rules the server enforces too (UserManagementEndpoints): nobody changes their own account here, an administrator
 // cannot touch an owner or make one, every change asks for the caller's password (and authenticator code) again.
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 export type UserRole = 'OWNER' | 'ADMINISTRATOR' | 'OPERATIONS' | 'ACCOUNTING' | 'READONLY'
 
-export type ManagedUser = {
-  id: string
-  displayName: string
-  email: string | null
+type ManagedUserAnswer = ApiAnswer<'getSettingsUsers'>
+
+export type ManagedUser = Omit<ManagedUserAnswer['items'][number], 'role'> & {
+  // CONTRACT: the API declares a string; a membership role is one of the five above (EndpointRules, UserManagementEndpoints).
   role: UserRole
-  active: boolean
-  lockedOut: boolean
-  mfaEnabled: boolean
-  passwordChangePending: boolean
-  lastLoginAt: string | null
-  createdAt: string
-  openSessions: number
-  self: boolean
 }
 
-export type ManagedUserList = { currentUserId: string; currentRole: string; items: ManagedUser[] }
+// An existing account invited to the workspace, not yet answered (API-GUVENLIK-6): the name and e-mail the inviter typed.
+export type PendingInvitation = Omit<ManagedUserAnswer['invitations'][number], 'role'> & {
+  // CONTRACT: the API declares a string; the offered role is one of the five membership roles.
+  role: UserRole
+}
+
+export type ManagedUserList = Omit<ManagedUserAnswer, 'items' | 'invitations'> & { items: ManagedUser[]; invitations: PendingInvitation[] }
+
+// Only an owner withdraws an invitation to the owner role (the server refuses an administrator, OWNER_PROTECTED).
+export function canWithdrawInvitation(invitation: PendingInvitation, actorRole: string) {
+  return invitation.role !== 'OWNER' || actorRole.toUpperCase() === 'OWNER'
+}
+
+// What the inviter is told after Kullanıcı Ekle: a new account comes with its one-time password (the one-time window);
+// without one, the e-mail belongs to an existing account that was invited and joins only when it accepts.
+export function invitationSentMessage(email: string, role: string) {
+  return `${email} adresine ${userRoleLabel(role)} rolüyle davet gönderildi. Kişi kendi hesabıyla giriş yaptığında daveti görür; kabul edene kadar bu çalışma alanına erişemez.`
+}
+
+// A repeat of an add that most likely went through already (the same Idempotency-Key answered as withheld, or as reused
+// after a resend with a new authenticator code): the list is read again; a one-time password is shown only once.
+export const addAlreadyDoneMessage = 'Bu ekleme büyük olasılıkla daha önce tamamlandı; liste yenilendi. Tek kullanımlık parola yalnız ilk yanıtta gösterilir; gerekirse kullanıcıyı listeden açıp Şifre Sıfırla ile yeni parola üretin.'
 
 export type UserAction = 'role' | 'password-reset' | 'mfa-reset' | 'sessions' | 'disable' | 'enable'
 

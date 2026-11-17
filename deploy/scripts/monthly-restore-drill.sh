@@ -24,8 +24,12 @@ api_container="$("${sudo_cmd[@]}" docker ps -q \
 [[ -n "$api_container" ]] || { echo "The API container is not running; its image is the drill's application image." >&2; exit 1; }
 app_image_id="$("${sudo_cmd[@]}" docker inspect --format '{{.Image}}' "$api_container")"
 
+# The quoted script runs in the container, where its variables expand.
+# shellcheck disable=SC2016
 backup_set="$("${sudo_cmd[@]}" docker run --rm --network none -v "$backup_volume:/backup:ro" "$postgres_image" \
-  sh -c 'cd /backup && ls -1d ????????T??????Z 2>/dev/null | sort | tail -n 1')"
+  sh -c 'cd /backup && for d in $(ls -1d ????????T??????Z 2>/dev/null | sort -r); do
+    if test -f "$d/.verified" || { test "$(printf "%s" "$d" | tr -d TZ)" -lt 20261116000000 && test -f "$d/SHA256SUMS"; }; then echo "$d"; break; fi
+  done')"
 [[ "$backup_set" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || { echo "No backup set was found in $backup_volume." >&2; exit 1; }
 
 echo "Restore drill: backup set $backup_set, application image $app_image_id."

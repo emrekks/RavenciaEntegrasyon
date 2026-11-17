@@ -1,0 +1,42 @@
+{
+  "JobType": "TRENDYOL_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "ManualReview",
+      "ErrorCode": "TRENDYOL_ORDER_STREAM_PAGE_CAP",
+      "Calls": {
+        "Count": 5000,
+        "Head": [
+          "orders.Poll key=order-sync:TR:0 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=- limit=200",
+          "orders.Poll key=order-sync:TR:1 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=1 limit=200",
+          "orders.Poll key=order-sync:TR:2 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=2 limit=200",
+          "orders.Poll key=order-sync:TR:3 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=3 limit=200",
+          "orders.Poll key=order-sync:TR:4 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=4 limit=200"
+        ],
+        "Tail": [
+          "orders.Poll key=order-sync:TR:4997 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=4997 limit=200",
+          "orders.Poll key=order-sync:TR:4998 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=4998 limit=200",
+          "orders.Poll key=order-sync:TR:4999 window=2026-11-02T09:00:02.000Z..2026-11-16T09:00:02.000Z storefront=TR cursor=4999 limit=200"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"Version\":\"orders-v4\",\"Mode\":0,\"AnchorEnd\":\"2026-11-16T09:00:02+00:00\",\"StartAt\":\"2026-11-02T08:58:02+00:00\",\"WindowIndex\":0,\"NextCursor\":\"4999\",\"StoreFrontIndex\":0,\"StoreFronts\":[\"TR\",\"AE\",\"SA\",\"GR\",\"DE\",\"BG\",\"KW\",\"AZ\",\"SK\",\"RO\",\"CZ\"]}",
+      "Version": 5002
+    },
+    {
+      "ResourceType": "TRENDYOL_STOREFRONTS",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": "{\"TR\":{\"LastOrderAt\":null,\"LastProbedAt\":\"2026-11-16T09:00:02+00:00\",\"PausedUntil\":null,\"LastRejectedAt\":null,\"LastTriedAt\":\"2026-11-16T09:00:02+00:00\"}}",
+      "Version": 5000
+    }
+  ],
+  "Issues": []
+}

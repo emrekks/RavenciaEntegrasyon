@@ -158,6 +158,9 @@ public sealed record ProductView(
     public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
     // Every product card of the family (same brand and model code: one per colour), the opened one first.
     public IReadOnlyList<Guid>? FamilyProductIds { get; init; }
+    // The Version of every card of FamilyProductIds as read (WEB-SAYFALAR-2): the editor sends them back with a save
+    // (UpdateProductCommand.LoadedFamilyVersions), so a colour card changed meanwhile is not overwritten.
+    public IReadOnlyDictionary<Guid, long>? FamilyVersions { get; init; }
     // Every colour card's own pictures (gallery, variant pictures, size chart), oldest card first whichever was opened:
     // the editor writes each colour's pictures to its own card from these.
     public IReadOnlyList<ProductFamilyGalleryView>? FamilyGalleries { get; init; }
@@ -217,8 +220,9 @@ public static class ImportedProfileCardFallbacks
         if (platform is "TRENDYOL" or "HEPSIBURADA" or "PTTAVM" && Picked(ProductUpdateFields.Delivery) && profileDeliveryDays is not > 0 && cardDeliveryDays is > 0)
             notices.Add($"{prefix} Teslimat Süresi yok; ürün kartındaki {cardDeliveryDays} gün gönderildi.");
         var hepsiburadaPackage = picked is null || new[] { ProductUpdateFields.Title, ProductUpdateFields.Description, ProductUpdateFields.Images, ProductUpdateFields.Attributes, ProductUpdateFields.Warranty, ProductUpdateFields.Desi, ProductUpdateFields.VatRate }.Any(picked.Contains);
-        if (platform == "HEPSIBURADA" && hepsiburadaPackage && string.IsNullOrWhiteSpace(profileWarranty))
-            notices.Add($"{prefix} Garanti Süresi yok; ürün kartındaki {cardWarrantyMonths ?? 0} ay gönderildi.");
+        // An empty card warranty is never sent (the composer refuses it as a missing Garanti Süresi): nothing to name.
+        if (platform == "HEPSIBURADA" && hepsiburadaPackage && string.IsNullOrWhiteSpace(profileWarranty) && cardWarrantyMonths is int cardWarranty)
+            notices.Add($"{prefix} Garanti Süresi yok; ürün kartındaki {cardWarranty} ay gönderildi.");
         return notices;
     }
 }
@@ -259,16 +263,14 @@ public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // them (nothing was sent for those yet). PendingJobCount is the same count before the delete, for its confirmation.
 public sealed record ProductDeleteResult(int DeletedCount, int CancelledJobCount);
 public sealed record ProductDeletePreview(int PendingJobCount);
-// Toplu KDV Ata: the product cards' own VAT only; existing marketplace offers keep theirs.
-public sealed record BulkProductVatCommand(IReadOnlyList<Guid> ProductIds, decimal? VatRate, string? VatInclusion);
-public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
 // Toplu Değer Ata: one field (BulkProductFields) set to one value on every colour card and variant of the selected
 // models. Only that field is written; nothing is sent to a marketplace.
 public sealed record BulkProductFieldCommand(IReadOnlyList<Guid>? ProductIds, string? Field, string? Value);
 // Model: the model code (or the card's name when it has none) the line is about.
 public sealed record BulkProductFieldFailure(string Model, string Message);
 // Skipped: the closed cards Satış Durumu = Satışa Açık left for a missing required field (also named in Failures).
-public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures, IReadOnlyList<RequiredFieldsSkippedProduct>? Skipped = null);
+// ModelColours (KATALOG-14 phase D5b): the colour cards of the models a model field reached ("Model İçindeki N Renge Uygulandı").
+public sealed record BulkProductFieldResult(int UpdatedCount, int UnchangedCount, int VariantCount, IReadOnlyList<BulkProductFieldFailure> Failures, IReadOnlyList<RequiredFieldsSkippedProduct>? Skipped = null, int ModelColours = 0);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
 // Product list "Platformlara Yayınla": every selected card to every selected marketplace. A new offer takes its VAT
 // from the product card (Product.VatRate/VatInclusion), then a sibling offer of the same variant, then the connection's
@@ -281,7 +283,7 @@ public sealed record BulkPublicationJob(Guid ProductId, Guid ConnectionId, Guid 
 public sealed record PublicationSkippedVariant(string Sku, string Code, string Message);
 public sealed record PublicationEnqueued(Guid JobId, IReadOnlyList<PublicationSkippedVariant> SkippedVariants);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed, IReadOnlyList<BulkPublicationJob>? Jobs = null);
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null, IReadOnlyList<string>? FamilySharedFields = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null, IReadOnlyList<string>? FamilySharedFields = null, IReadOnlyDictionary<Guid, long>? LoadedFamilyVersions = null, bool ClearWarrantyMonths = false);
 // Teslimat Süresi on the product card: whole days, 1-30 (n11 takes at most 30); a new card starts at 1.
 public static class ProductDeliveryDays
 {
@@ -337,7 +339,6 @@ public interface ICatalogService
     Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<BulkProductFieldResult>> BulkSetFieldAsync(Guid tenantId, BulkProductFieldCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);

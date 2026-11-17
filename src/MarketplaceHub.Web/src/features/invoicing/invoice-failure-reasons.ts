@@ -12,7 +12,8 @@ export function invoiceFailureReason(code: string | null) {
     INVOICE_DELIVERY_RECOVERY_EXHAUSTED: 'Fatura kesildi; pazaryerine iletimi otomatik denemelerle doğrulanamadı ve denemeler durdu.',
     INVOICE_DELIVERY_ENVIRONMENT_MISMATCH: 'Fatura sağlayıcısı ve pazaryeri farklı ortamlarda. Platform iletimi engellendi.',
     REMOTE_INVOICE_REJECTED: 'Pazaryeri faturayı reddetti.',
-    INVOICE_SUBMISSION_OUTCOME_UNKNOWN: 'Sağlayıcıya gönderim sonucu alınamadı. Faturanın kimliği bilinmiyor: E-Faturam portalından kontrol edin; oluşmadıysa yeniden gönderebilirsiniz.',
+    INVOICE_PROVIDER_IDENTITY_TAKEN: 'E-Faturam bu faturaya panelde başka bir faturada kayıtlı olan bir fatura numarası veya ETTN verdi; fatura yeniden gönderilmedi. İki faturayı E-Faturam portalında karşılaştırın.',
+    INVOICE_SUBMISSION_OUTCOME_UNKNOWN:'Sağlayıcıya gönderim sonucu alınamadı. Faturanın kimliği bilinmiyor: E-Faturam portalından kontrol edin; oluşmadıysa yeniden gönderebilirsiniz.',
     EFATURAM_UUID_NOT_HONOURED: 'E-Faturam bu bağlantıda faturaları kendi kimliğiyle kaydediyor; panelin kimliğiyle bulunamaması faturanın kesilmediğini göstermez. Yeniden göndermeden önce E-Faturam portalında sipariş numarasıyla arayın; aksi halde müşteriye ikinci fatura gider.',
     EFATURAM_INVOICE_NOT_FOUND_BY_UUID: 'E-Faturam bu faturanın kimliğiyle kayıt bulamadı; fatura kesilmemiş görünüyor. Yeniden göndermeden önce E-Faturam portalından kontrol edin; yeniden gönderim onayınızla yapılır.',
     PTTAVM_INVOICE_LINK_REPLACE_IN_SELLER_PANEL: 'PttAVM’de sipariş önceki (iptal edilen) faturayla işaretli; yeni fatura linki API ile gönderilmedi. Linki PttAVM satıcı panelinde eskisinin yerine yükleyip “Pazaryerinde Gördüm, Tamamla”yı seçin.',
@@ -21,6 +22,9 @@ export function invoiceFailureReason(code: string | null) {
     INVOICE_SUBMISSION_TRANSPORT_UNKNOWN: 'Sağlayıcıdan yanıt alınamadı. Sonuç E-Faturam’dan faturanın kimliğiyle okunuyor; kimliği olmayan eski bir gönderimse E-Faturam portalından kontrol edin.',
     REMOTE_INVOICE_NOT_PRESENT: 'Pazaryeri iletilen faturayı göstermedi; iletim yeniden denenecek.',
     INVOICE_DOCUMENT_MISSING_NOT_DELIVERED: 'Belge alınamadı; fatura pazaryerine iletilmedi.',
+    // MarketplaceInvoiceLinkPolicy: the delivery stops instead of sending the panel link in place of E-Faturam's link.
+    INVOICE_PROVIDER_LINK_MISSING: 'E-Faturam’ın doğrulanmış kalıcı belge linki yok; fatura linki pazaryerine gönderilmedi. Tekrar Gönder ile yeniden deneyebilirsiniz.',
+    INVOICE_PROVIDER_LINK_INVALID: 'E-Faturam’ın kalıcı belge linki pazaryerinin link kuralına uymuyor; fatura linki gönderilmedi ve panel linkine geçilmedi.',
     // Whether and when it is tried again is shown beside it (invoiceDeliveryRetryText), never promised here.
     DOCUMENT_CONTENT_TYPE_INVALID: 'Belge alınamadı: E-Faturam PDF yerine başka bir yanıt verdi.',
     DOCUMENT_PDF_SIGNATURE_INVALID: 'Belge alınamadı: E-Faturam yanıtı geçerli bir PDF değil.',
@@ -47,6 +51,8 @@ export function invoiceFailureReason(code: string | null) {
     HEPSIBURADA_INVOICE_INFO_MISSING: 'Hepsiburada siparişin bazı kalemlerinde fatura bilgisi vermedi; fatura linki gönderilmedi.',
     INVOICE_RETURN_DOCUMENT_REQUIRED: 'Faturadaki ürünlerin bir kısmı iade edildi; iade edilen ürünler için iade belgesi gerekli.',
     EFATURAM_RECIPIENT_TAX_ID_INVALID: 'Alıcının vergi numarası veya T.C. kimlik numarası geçersiz (kontrol hanesi tutmuyor).',
+    EFATURAM_RECIPIENT_KIND_UNKNOWN: 'Hepsiburada alıcının bireysel mi kurumsal mı olduğunu açıkça bildirmedi; alıcı türü belirsiz olduğu için fatura kesilmedi.',
+    EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE: 'Siparişte geçerli bir şirket vergi numarası var ama fatura 11111111111 ile kesilecekti; yanlış alıcıya fatura kesilmedi.',
     EFATURAM_SIGNIN_UNAVAILABLE: 'E-Faturam oturumu açılamadı; fatura gönderilmedi. Otomatik olarak yeniden denenecek.',
     EFATURAM_OPERATION_FORBIDDEN: 'E-Faturam hesabı bu işlem için yetkili değil; fatura oluşturulmadı.',
     CAPABILITY_NOT_VERIFIED: 'E-Faturam dış gönderim izni kapalı; fatura oluşturulmadı.',
@@ -90,6 +96,8 @@ export function invoiceFailureGuidance(code: string | null) {
     INVOICE_RETURN_DOCUMENT_REQUIRED: 'Fatura iptal edilmez ve pazaryerine iletilir; iade edilen ürünler için iade belgesini (gider pusulası veya iade faturası) düzenleyin.',
     INVOICE_EXPORT_FLOW_REQUIRED: 'İhracat faturasını E-Faturam portalında düzenleyip belgeyi siparişe manuel olarak ekleyin.',
     EFATURAM_RECIPIENT_TAX_ID_INVALID: 'Alıcının vergi/T.C. kimlik numarasını pazaryerinde düzeltip siparişi yeniden eşitleyin.',
+    EFATURAM_RECIPIENT_KIND_UNKNOWN: 'Hepsiburada satıcı panelinde siparişin fatura bilgilerini kontrol edin; faturayı E-Faturam portalında doğru alıcıya düzenleyip siparişe manuel belge olarak ekleyin.',
+    EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE: 'Alıcı türünü pazaryeri panelinde kontrol edin; gerekirse faturayı E-Faturam portalında şirket adına düzenleyip siparişe manuel belge olarak ekleyin.',
     EFATURAM_SIGNIN_UNAVAILABLE: 'Bekleyin; geçmezse Entegrasyonlar ekranından E-Faturam bağlantısını test edin.',
     EFATURAM_OPERATION_FORBIDDEN: 'E-Faturam hesabında fatura oluşturma yetkisini açtırıp Tekrar dene seçeneğini kullanın.',
     INVOICE_ADJUSTMENT_REQUIRED: 'E-Arşiv iptal isteği gönderin veya iade faturasını E-Faturam portalında düzenleyin.'

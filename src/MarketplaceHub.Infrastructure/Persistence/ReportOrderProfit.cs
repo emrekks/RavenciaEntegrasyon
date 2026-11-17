@@ -80,7 +80,7 @@ internal static class ReportOrderProfit
             // panel could not read (UnreadableOrderLines): that line's cost is unknown, so the order's profit is too.
             var keptLines = order.Lines.Where(line => line.KeptUnits > 0).ToList();
             var unreadableLines = order.Order.UnreadableLines;
-            decimal? productCost = unreadableLines == 0 && keptLines.All(line => line.Row.CostPrice is > 0) ? Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
+            decimal? productCost = unreadableLines == 0 && keptLines.All(line => line.Row.CostPrice is > 0) ? MoneyRounding.Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
 
             var lineCommissions = order.Lines.Select(line => ReportCosts.LineCommission(line, order.PlatformCode, storeRates.GetValueOrDefault(store))).ToList();
             decimal? lineCommission = lineCommissions.Any(value => value is null) ? null : lineCommissions.Sum(value => value!.Value);
@@ -90,7 +90,7 @@ internal static class ReportOrderProfit
             // (Komisyon Eksik), never 0.
             var settledCommission = settled.Contains(id) && commission.ContainsKey(id);
             var realCommission = settledCommission || order.RealCommission;
-            decimal? orderCommission = settledCommission ? Round(commission[id]) : lineCommission is { } estimatedCommission ? Round(estimatedCommission) : null;
+            decimal? orderCommission = settledCommission ? MoneyRounding.Round(commission[id]) : lineCommission is { } estimatedCommission ? MoneyRounding.Round(estimatedCommission) : null;
             costs.Add(new("commission", orderCommission is null ? "Komisyon Eksik" : realCommission ? "Gerçek Komisyon" : "Tahmini Komisyon", orderCommission, !realCommission,
                 orderCommission is null ? "Siparişte komisyon oranı yok ve mağazanın bu dönemde oranı bilinen satışı yok; komisyon ve kâr hesaplanamadı"
                 : settledCommission ? "Trendyol cari hesabından"
@@ -110,7 +110,7 @@ internal static class ReportOrderProfit
                 var estimated = unbilled * (perOrder ?? 0m);
                 // A cargo neither billed nor estimable (no store tariff: no cargo billed in the 60 days before the period's
                 // end) is unknown, and so the profit, as the report's cargo is (ReportCosts.Notes); never 0 "from the invoice".
-                orderCargo = unbilled > 0 && perOrder is null ? null : Round(billed + estimated);
+                orderCargo = unbilled > 0 && perOrder is null ? null : MoneyRounding.Round(billed + estimated);
                 costs.Add(new("cargo", order.Back > 0 ? "Kargo (Gönderi ve İade)" : "Kargo", orderCargo, estimated > 0,
                     orderCargo is null ? "Kargo faturası henüz yok ve son 60 günde faturalanmış kargo olmadığı için tahmin edilemedi"
                     : estimated > 0 ? "Mağazanın güncel kargo tarifesinden; fatura kesilince kesin tutar yansır" : "Kargo faturasından"));
@@ -120,8 +120,8 @@ internal static class ReportOrderProfit
                 var realTax = fees.ContainsKey((id, MarketplaceFinanceCategories.Stoppage));
                 // The withholding tax on every storefront but Azerbaijan's, micro-export ones included (ReportCosts).
                 var azerbaijan = order.Country == ReportCosts.Azerbaijan;
-                serviceFee = Round(realFee ? fees[(id, MarketplaceFinanceCategories.ServiceFee)] : ReportCosts.TrendyolServiceFee(order));
-                stoppage = Round(realTax ? fees[(id, MarketplaceFinanceCategories.Stoppage)] : ReportCosts.TrendyolStoppageBase(order) * ReportCosts.StoppageRate);
+                serviceFee = MoneyRounding.Round(realFee ? fees[(id, MarketplaceFinanceCategories.ServiceFee)] : ReportCosts.TrendyolServiceFee(order));
+                stoppage = MoneyRounding.Round(realTax ? fees[(id, MarketplaceFinanceCategories.Stoppage)] : ReportCosts.TrendyolStoppageBase(order) * ReportCosts.StoppageRate);
                 vatFees = realFee ? domesticFee.GetValueOrDefault(id) : ReportCosts.TrendyolVatFee(order);
                 costs.Add(new("serviceFee", abroad ? "Hizmet Bedeli (Uluslararası Dahil)" : "Hizmet Bedeli", serviceFee, !realFee,
                     realFee ? "Trendyol cari hesabından" : azerbaijan ? "10,99 ₺ (KDV'siz) ve satışın %6'sı" : abroad ? "10,99 ₺ + KDV ve satışın %6'sı" : "Sipariş başına 10,99 ₺ + KDV"));
@@ -136,10 +136,10 @@ internal static class ReportOrderProfit
                 var estimate = ReportPlatformCosts.Covers(order.PlatformCode)
                     ? ReportPlatformCosts.For(order.PlatformCode, order.Amount, keptVatFree, order.Back > 0 && order.Kept == 0m, desi, carriers.GetValueOrDefault(id))
                     : new ReportPlatformCosts.Estimate(0m, 0m, 0m, 0m);
-                orderCargo = Round(estimate.Cargo);
-                serviceFee = Round(estimate.ServiceFee);
-                stoppage = Round(estimate.Stoppage);
-                paymentFee = Round(estimate.PaymentFee);
+                orderCargo = MoneyRounding.Round(estimate.Cargo);
+                serviceFee = MoneyRounding.Round(estimate.ServiceFee);
+                stoppage = MoneyRounding.Round(estimate.Stoppage);
+                paymentFee = MoneyRounding.Round(estimate.PaymentFee);
                 vatFees = order.PlatformCode == "SHOPIFY" ? 0m : estimate.ServiceFee;
                 costs.Add(new("cargo", "Kargo", orderCargo, true, "Platformun 2026 kargo tarifesinden"));
                 costs.Add(new("serviceFee", "Hizmet Bedeli", serviceFee, true, "Platformun 2026 tarifesinden"));
@@ -147,7 +147,7 @@ internal static class ReportOrderProfit
                 if (paymentFee != 0m) costs.Add(new("paymentFee", "Ödeme Komisyonu", paymentFee, true, "Ödeme kuruluşunun oranından"));
             }
             // Other charges Trendyol tied to the order (a penalty, an early payment fee…).
-            var other = Round(fees.Where(fee => fee.Key.Order == id && fee.Key.Category is not (MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage)).Sum(fee => fee.Value));
+            var other = MoneyRounding.Round(fees.Where(fee => fee.Key.Order == id && fee.Key.Category is not (MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage)).Sum(fee => fee.Value));
             if (other != 0m) costs.Add(new("other", "Diğer Kesinti", other, false, "Trendyol cari hesabından"));
 
             // Net VAT: the VAT in the kept domestic sale, less the VAT in the product cost and in the platform's charges.
@@ -156,23 +156,23 @@ internal static class ReportOrderProfit
             // Each VAT rounded to kuruş on its own, as the invoices carry it (25 Oct 2026: 42.36 − 14.55 − 16.00 − 16.39 − 2.20).
             // An unknown cargo or commission leaves its VAT, and so the net VAT, unknown.
             decimal? netVat = orderCargo is { } knownCargo && orderCommission is { } knownCommission
-                ? Round(salesVat) - Round(costVat) - Round(ReportCosts.Vat(knownCommission, ReportCosts.ExpenseVatRate))
-                    - Round(ReportCosts.Vat(knownCargo, ReportCosts.ExpenseVatRate)) - Round(ReportCosts.Vat(vatFees, ReportCosts.ExpenseVatRate))
+                ? MoneyRounding.Round(salesVat) - MoneyRounding.Round(costVat) - MoneyRounding.Round(ReportCosts.Vat(knownCommission, ReportCosts.ExpenseVatRate))
+                    - MoneyRounding.Round(ReportCosts.Vat(knownCargo, ReportCosts.ExpenseVatRate)) - MoneyRounding.Round(ReportCosts.Vat(vatFees, ReportCosts.ExpenseVatRate))
                 : null;
             costs.Add(new("netVat", "Net KDV", netVat, false, netVat is not null ? "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si"
                 : orderCargo is null ? "Kargo bilinmediği için hesaplanamadı" : "Komisyon bilinmediği için hesaplanamadı"));
 
-            var amount = Round(order.Kept);
+            var amount = MoneyRounding.Round(order.Kept);
             decimal? profit = productCost is { } knownCost && orderCargo is { } cargoCost && orderCommission is { } commissionCost && netVat is { } vat
-                ? Round(amount - knownCost - commissionCost - cargoCost - serviceFee - stoppage - paymentFee - other - vat) : null;
+                ? MoneyRounding.Round(amount - knownCost - commissionCost - cargoCost - serviceFee - stoppage - paymentFee - other - vat) : null;
             var state = order.Back > 0 && order.Kept == 0m ? "RETURNED" : order.Back > 0 ? "PARTLY_RETURNED" : "SOLD";
             views.Add(new ReportOrderProfitView(id, order.Order.OrderNumber, order.PlatformCode, input.Channels.TryGetValue(store, out var channel) ? channel.DisplayName : "",
                 order.Order.StoreFrontCode, abroad, order.Order.RealAt, state, amount, productCost, profit,
-                profit is { } p && productCost is > 0 ? Math.Round(p / productCost.Value * 100m, 2) : null,
-                profit is { } q && amount > 0 ? Math.Round(q / amount * 100m, 2) : null,
+                profit is { } p && productCost is > 0 ? PercentRounding.Percent(p / productCost.Value * 100m) : null,
+                profit is { } q && amount > 0 ? PercentRounding.Percent(q / amount * 100m) : null,
                 costs,
                 order.Lines.Select(line => new ReportOrderProfitLineView(line.Row.VariantId, line.Row.ProductId, line.Row.Title, line.Row.Barcode, line.Row.Sku, line.KeptUnits, line.Back,
-                    Round(line.KeptAmount), line.Commission is { } lc && line.KeptAmount > 0 ? Math.Round(lc / line.KeptAmount * 100m, 2) : null, line.Commission is { } c ? Round(c) : null,
+                    MoneyRounding.Round(line.KeptAmount), line.Commission is { } lc && line.KeptAmount > 0 ? PercentRounding.Percent(lc / line.KeptAmount * 100m) : null, line.Commission is { } c ? MoneyRounding.Round(c) : null,
                     line.Row.CostPrice, line.Row.VatRate)).ToList(), unreadableLines));
         }
         return views;
@@ -186,7 +186,7 @@ internal static class ReportOrderProfit
         var profit = known.Count == 0 ? (decimal?)null : known.Sum(order => order.Profit!.Value);
         var profitAmount = known.Sum(order => order.Amount);
         return new(orders.Sum(order => order.Amount), profit, profitAmount, known.Count,
-            profit is { } p && profitAmount > 0 ? Math.Round(p / profitAmount * 100m, 2) : null,
+            profit is { } p && profitAmount > 0 ? PercentRounding.Percent(p / profitAmount * 100m) : null,
             orders.Count(order => order.Cost is null),
             orders.Count(order => order.Costs.Any(cost => cost.Key == "cargo" && cost.Amount is null)),
             orders.Count(order => order.Costs.Any(cost => cost.Key == "commission" && cost.Amount is null)));
@@ -194,5 +194,4 @@ internal static class ReportOrderProfit
 
     internal sealed record OrderTotals(decimal Amount, decimal? Profit, decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCost, int MissingCargo, int MissingCommission);
 
-    private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 }

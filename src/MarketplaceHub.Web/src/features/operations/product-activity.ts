@@ -1,6 +1,7 @@
 import { formatMoney } from '../../shared/format-money'
 import { istanbulDayToIso } from './price-stock-send-log'
 import { timeRangeStart, type JobListTimeRange } from './job-list-query'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // İşlem Takibi › Loglar › Ürün Hareketleri: what changed on a product (stock, price, sale status, returns), the panel's
 // own changes and the marketplaces' alike, read from GET /product-activity. These helpers turn a row into the text the
@@ -8,48 +9,8 @@ import { timeRangeStart, type JobListTimeRange } from './job-list-query'
 
 export type ProductActivityKind = 'STOCK' | 'PRICE' | 'STATUS' | 'RETURN' | 'INFO'
 
-export type ProductActivityEntry = {
-  id: string
-  occurredAt: string
-  kind: ProductActivityKind | string
-  type: string
-  productId: string | null
-  productTitle: string | null
-  imageUrl: string | null
-  variantId: string | null
-  sku: string | null
-  barcode: string | null
-  modelCode: string | null
-  optionText: string | null
-  quantityDelta: number | null
-  /** On-hand stock before and after a stock-changing row; null on other rows, a null before is unknown. */
-  stockBefore?: number | null
-  stockAfter?: number | null
-  previousSalePrice: number | null
-  newSalePrice: number | null
-  previousListPrice: number | null
-  newListPrice: number | null
-  currency: string | null
-  previousStatus: string | null
-  newStatus: string | null
-  source: string
-  note: string | null
-  connectionId: string | null
-  platformCode: string | null
-  storeName: string | null
-  orderId: string | null
-  orderNumber: string | null
-  returnId: string | null
-  returnNumber: string | null
-  actorUserId: string | null
-  actorName: string | null
-  /** An information field'''s change (type FIELD): the field code and its text before → after; null was empty. */
-  field?: string | null
-  previousValue?: string | null
-  newValue?: string | null
-}
-
-export type ProductActivityPage = { items: ProductActivityEntry[]; nextCursor: string | null; hasMore: boolean }
+export type ProductActivityPage = ApiAnswer<'getProductActivity'>
+export type ProductActivityEntry = ProductActivityPage['items'][number]
 
 export const activityPageSize = 50
 
@@ -326,15 +287,15 @@ function commonParams(params: URLSearchParams, filters: ActivityFilters, now: nu
   if (hasDays(filters)) {
     const from = istanbulDayToIso(filters.from)
     const to = istanbulDayToIso(filters.to, true)
-    if (from) params.set('from', from)
-    if (to) params.set('to', to)
+    if (from) params.set('dateFrom', from)
+    if (to) params.set('dateTo', to)
     return
   }
   const start = timeRangeStart(filters.range, now)
-  if (start) params.set('from', start)
+  if (start) params.set('dateFrom', start)
 }
 
-/** The request for one page: ?limit=50&kinds=…&search=…&platforms=…&from=…&to=…&after=… */
+/** The request for one page: ?limit=50&kinds=…&search=…&platforms=…&dateFrom=…&dateTo=…&after=… */
 export function activityQueryString(filters: ActivityFilters, after: string | null = null, limit = activityPageSize, now = Date.now()) {
   const params = new URLSearchParams()
   params.set('limit', String(Math.min(Math.max(1, limit), 100)))

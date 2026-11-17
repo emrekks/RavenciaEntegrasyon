@@ -41,7 +41,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     private static string VariantId(int colour, int size) => (900_000 + colour * 100 + size).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private static string Title(string colour) => $"Kadın {colour} Triko Bluz";
 
-    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null);
+    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null, string? MainId = null, string? BrandExternal = null, string? BrandName = null, bool NoVat = false);
 
     private static ContentSpec Spec(string colour) => new(colour, Sizes);
 
@@ -61,10 +61,10 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         return new
         {
             contentId = long.Parse(ContentId(colour), System.Globalization.CultureInfo.InvariantCulture),
-            productMainId = ModelCode,
+            productMainId = spec.MainId ?? ModelCode,
             title = spec.Title ?? Title(colour),
             description = spec.Description ?? "Yumuşak dokulu triko bluz.",
-            brand = new { id = long.Parse(BrandExternalId, System.Globalization.CultureInfo.InvariantCulture), name = "Ravencia" },
+            brand = new { id = long.Parse(spec.BrandExternal ?? BrandExternalId, System.Globalization.CultureInfo.InvariantCulture), name = spec.BrandName ?? "Ravencia" },
             category = new { id = long.Parse(CategoryExternalId, System.Globalization.CultureInfo.InvariantCulture), name = "Bluz" },
             images = (spec.Pictures ?? ContentPictures(key, count)).Select(url => new { url }).ToList(),
             attributes = new[] { new { attributeName = "Renk", attributeValue = colour } },
@@ -80,7 +80,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
                     salePrice = spec.SalePrice,
                     listPrice = spec.ListPrice,
                     quantity = spec.Stock,
-                    vatRate = 10,
+                    vatRate = spec.NoVat ? (int?)null : 10,
                     dimensionalWeight = desi,
                     onSale = true,
                     archived = spec.ArchivedSizes?.Contains(size) == true
@@ -105,7 +105,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using var db = fixture.CreateContext();
         var cards = await CardsAsync(db, seed);
         Assert.Equal(Colours.Length, cards.Count);
-        foreach (var (colour, key, count, desi) in Colours)
+        foreach (var (colour, key, count, _) in Colours)
         {
             var card = cards[ContentId(colour)];
             var colourIndex = ColourIndex(colour);
@@ -114,6 +114,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal(seed.BrandId, card.Product.BrandId);
             Assert.Equal(seed.CategoryId, card.Product.CategoryId);
             Assert.Equal(10m, card.Product.VatRate);
+            // A listing carries no panel warranty: the new card starts at 0 (no warranty), as a new editor form does.
+            Assert.Equal(0, card.Product.WarrantyMonths);
             Assert.Equal(Sizes.Length, card.Variants.Count);
             foreach (var (size, sizeIndex) in Sizes.Select((size, index) => (size, index)))
             {
@@ -122,7 +124,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
                 Assert.Equal(ModelCode, variant.ModelCode);
                 Assert.Contains($"Renk: {colour}", variant.OptionSignature, StringComparison.Ordinal);
                 Assert.Contains($"Beden: {size}", variant.OptionSignature, StringComparison.Ordinal);
-                Assert.Equal(desi, variant.Desi);
+                // KATALOG-14 phase D5b: the desi is the model's, what most sizes brought (the Lacivert sizes' 2 is told).
+                Assert.Equal(1.5m, variant.Desi);
                 var link = Assert.Single(seed.VariantLinks(db), row => row.VariantId == variant.Id);
                 Assert.Equal((VariantId(colourIndex, sizeIndex), Barcode(colourIndex, sizeIndex), StockCode(colourIndex, sizeIndex)), (link.ExternalId, link.ExternalBarcode, link.ExternalSku));
             }
@@ -196,18 +199,27 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using (var db = fixture.CreateContext())
         {
             // The owner's edit holds: the full import preserves an edited card (LOCAL_CHANGES_PENDING), title included.
-            Assert.Equal("Sahibin Siyah Başlığı", (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).Title);
+            Assert.Equal(Title("Siyah"), (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).Title);
             var link = await db.MarketplaceProductLinks.AsNoTracking().SingleAsync(row => row.ProductId == siyah.ProductId);
             Assert.Equal("LOCAL_CHANGES_PENDING", link.SyncStatus);
         }
 
-        // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" takes Trendyol's title over the owner's edit
-        // (ProductImportMergePolicy.OverwriteLocalChanges, owner decision 7 Nov), and still keeps the owner's pictures.
+        // "Tekil ürün çekimi" with "Mevcut Ürün Bilgilerini Güncelle" overwrites the owner's edit (ProductImportMergePolicy.
+        // OverwriteLocalChanges, owner decision 7 Nov) and still keeps the owner's pictures. KATALOG-14 phase D5b (owner,
+        // 17 Nov 2026): the name is the model's and an import never moves a model, so Trendyol's other name for this one
+        // colour is not taken, unwarned. The card's warranty (24 here) is never touched: a listing carries none.
+        await using (var db = fixture.CreateContext())
+            await db.Products.Where(row => row.Id == siyah.ProductId).ExecuteUpdateAsync(s => s.SetProperty(row => row.WarrantyMonths, 24));
         await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), $"{{\"productLookup\":\"{ModelCode}\",\"updateExistingProducts\":true}}");
         Assert.Equal(placementBefore, await PlacementAsync(seed));
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
         await using (var db = fixture.CreateContext())
-            Assert.Equal("Trendyol Siyah Başlık", (await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId)).Title);
+        {
+            var card = await db.Products.AsNoTracking().SingleAsync(row => row.Id == siyah.ProductId);
+            Assert.Equal((Title("Siyah"), (int?)24), (card.Title, card.WarrantyMonths));
+            // A name difference is not warned about (owner, 17 Nov 2026: only a VAT difference is).
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open));
+        }
 
         // The lookup cleared the card's marks; a later changed full import still keeps the pictures, because the card
         // gallery holds the editor's ORDERED_ rows (MediaIsUserManagedAsync).
@@ -324,9 +336,11 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
     }
 
-    // 4. Model fields: Trendyol brings another title and description for one colour only.
+    // 4. Model fields: Trendyol brings another title and description for one colour only. KATALOG-14 phase D5b (owner,
+    // 17 Nov 2026): the name and description are the model's and an import never moves a model, so that colour keeps the
+    // model's, unwarned (only a VAT difference is warned about).
     [PostgreSqlFact]
-    public async Task ChangedTitleOfOneColour_ChangesOnlyThatColoursCard_AndAnOwnersFamilyEditHoldsOnEveryCard()
+    public async Task ChangedTitleOfOneColour_MovesNoColour_AndAnOwnersFamilyEditHoldsOnEveryCard()
     {
         var seed = await SeedAsync();
         await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
@@ -338,11 +352,10 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         await using (var db = fixture.CreateContext())
         {
             var cards = await CardsAsync(db, seed);
-            // Each colour card follows its own Trendyol content: the cards are left differing (Trendyol itself keeps
-            // one title per content); the import never copies one content's title to the other colours.
-            Assert.Equal(("Kadın Bordo Triko Bluz Yeni", "Yeni açıklama."), (cards[ContentId("Bordo")].Product.Title, cards[ContentId("Bordo")].Product.Description));
-            foreach (var (colour, _, _, _) in Colours.Where(entry => entry.Colour != "Bordo"))
+            foreach (var (colour, _, _, _) in Colours)
                 Assert.Equal((Title(colour), "Yumuşak dokulu triko bluz."), (cards[ContentId(colour)].Product.Title, cards[ContentId(colour)].Product.Description));
+            // A name or description difference is not warned about (owner, 17 Nov 2026: only a VAT difference is).
+            Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelValues.DifferCode && row.Status == IssueStatus.Open));
         }
 
         // The owner writes the description to the whole family (the editor's model field marks every colour card's
@@ -363,7 +376,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         {
             var products = await db.Products.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
             Assert.All(products, row => Assert.Equal("Sahibin model açıklaması.", row.Description));
-            Assert.Equal("Kadın Bordo Triko Bluz Yeni", products.Single(row => row.Title.StartsWith("Kadın Bordo", StringComparison.Ordinal)).Title);
+            Assert.Equal(Title("Bordo"), products.Single(row => row.Title.StartsWith("Kadın Bordo", StringComparison.Ordinal)).Title);
         }
     }
 
@@ -444,7 +457,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         var xs = Assert.Single(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
         Assert.Contains("Renk: Siyah", xs.OptionSignature, StringComparison.Ordinal);
         Assert.Single(seed.VariantLinks(db), row => row.VariantId == xs.Id);
-        Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
+        Assert.Equal(Title("Siyah"), card.Product.Title);
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
         Assert.Equal(Colours.Length * Sizes.Length + 1, await db.ProductVariants.CountAsync(row => row.TenantId == seed.TenantId));
     }
@@ -462,7 +475,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         {
             var card = (await CardsAsync(db, seed))[ContentId("Siyah")];
             Assert.DoesNotContain(card.Variants, row => row.Barcode == Barcode(ColourIndex("Siyah"), 5));
-            Assert.Equal("Sahibin Siyah Başlığı", card.Product.Title);
+            Assert.Equal(Title("Siyah"), card.Product.Title);
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED");
             Assert.Equal(IssueStatus.Open, issue.Status);
             Assert.Contains("1 yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
@@ -854,6 +867,124 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         if (job is not null) Assert.Equal(0, job.ProgressFailed);
     }
 
+    // Review (17 Nov 2026): a new colour of a model whose listing carries no VAT got a %0 offer and an OFFER_VAT_UNKNOWN
+    // warning saying the card had none, though the model held one (the card's copy is filled from the model only at the
+    // save). The offer now takes the model's VAT and nothing is warned.
+    [PostgreSqlFact]
+    public async Task ANewColourWithoutAListingVat_GetsItsModelsVatOnTheOffer_AndNoWarning()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo")])), "{\"full\":true}");
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { NoVat = true }])), "{\"full\":true}");
+
+        await using var db = fixture.CreateContext();
+        var haki = (await CardsAsync(db, seed))[ContentId("Haki")];
+        var variantIds = haki.Variants.Select(row => row.Id).ToList();
+        var offers = await db.ChannelOffers.AsNoTracking().Where(row => variantIds.Contains(row.VariantId)).ToListAsync();
+        Assert.NotEmpty(offers);
+        Assert.All(offers, offer => Assert.Equal(10m, offer.VatRate));
+        Assert.Equal(10m, (await EffectiveCatalog.Products(db).SingleAsync(row => row.Id == haki.Product.Id)).VatRate);
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "OFFER_VAT_UNKNOWN"));
+    }
+
+    // Owner (17 Nov 2026, "ilk çekilen"): a new model takes its values from the first listing the marketplace sent (page and
+    // row order), not from a clock tie or a random id; pulling the same catalog into two empty tenants gives the same model.
+    [PostgreSqlFact]
+    public async Task TheSameCatalogPulledTwiceFromScratch_GivesTheSameModel_FromTheFirstListing()
+    {
+        var specs = Colours.Select(entry => entry.Colour == "Bordo" ? Spec("Bordo") with { Title = "Kadın Bordo Triko Bluz Özel", Description = "İlk ilanın açıklaması." } : Spec(entry.Colour)).ToList();
+        async Task<(string Title, string Description, decimal? Vat, string HakiTitle)> PullAsync()
+        {
+            var seed = await SeedAsync();
+            await RunAsync(seed, new TrendyolCatalogPort(Read(specs)), "{\"full\":true}");
+            await using var db = fixture.CreateContext();
+            var model = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
+            var haki = (await CardsAsync(db, seed))[ContentId("Haki")].Product;
+            return (model.Title, model.Description, model.VatRate, haki.Title);
+        }
+        var first = await PullAsync();
+        var second = await PullAsync();
+        Assert.Equal(("Kadın Bordo Triko Bluz Özel", "İlk ilanın açıklaması.", (decimal?)10m, "Kadın Haki Triko Bluz Özel"), first);
+        Assert.Equal(first, second);
+    }
+
+    [PostgreSqlFact]
+    public async Task ADeadlockOnAModelsSave_IsRetried_AndEveryCardOpensOnce()
+    {
+        var seed = await SeedAsync();
+        var deadlock = new DeadlockOnProductSave(times: 2);
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}", saveInterceptor: deadlock);
+
+        Assert.Equal(2, deadlock.Thrown);
+        await using var db = fixture.CreateContext();
+        Assert.Equal(Colours.Length, (await CardsAsync(db, seed)).Count);
+        Assert.False(await db.ProductImportStagingRecords.AnyAsync(row => row.TenantId == seed.TenantId && row.State != "COMPLETED"));
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED"));
+    }
+
+    // A second panel brand, Lavian, mapped to Trendyol brand 789.
+    private async Task<Guid> AddLavianAsync(Seed seed)
+    {
+        await using var setup = fixture.CreateContext();
+        var now = DateTimeOffset.UtcNow;
+        var lavian = Guid.CreateVersion7();
+        setup.Brands.Add(new Brand { Id = lavian, TenantId = seed.TenantId, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+        var brands = await setup.ReferenceSnapshots.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == "BRANDS");
+        setup.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, ResourceType = "BRANDS", ExternalId = "789", Name = "Lavian", NormalizedName = "LAVIAN", Path = "Lavian", Depth = 0, IsLeaf = true, IsActive = true, PayloadHash = "payload-BRANDS-789" });
+        setup.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, LocalId = lavian, ExternalId = "789", Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+        await setup.SaveChangesAsync();
+        return lavian;
+    }
+
+    // The live case (17 Nov 2026, KENE01): the panel holds Ravencia's model of a code; a later pull brings a Lavian listing
+    // under the same code. It comes in and opens Lavian's own model; Ravencia's model and cards are not touched.
+    [PostgreSqlFact]
+    public async Task ALaterListingOfAnotherBrandUnderAHeldCode_OpensItsOwnModel_AndLeavesTheHeldModelAlone()
+    {
+        var seed = await SeedAsync();
+        var lavian = await AddLavianAsync(seed);
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki")])), "{\"full\":true}");
+        ProductModel held;
+        await using (var db = fixture.CreateContext()) held = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
+
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki"), Spec("Gri") with { BrandExternal = "789", BrandName = "Lavian" }])), "{\"full\":true}");
+
+        await using var check = fixture.CreateContext();
+        var cards = await CardsAsync(check, seed);
+        Assert.Equal(lavian, cards[ContentId("Gri")].Product.BrandId);
+        var models = await check.ProductModels.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        Assert.Equal(2, models.Count);
+        var after = models.Single(model => model.Id == held.Id);
+        Assert.Equal((held.BrandId, held.Title, held.Version), (after.BrandId, after.Title, after.Version));
+        Assert.Equal([held.Id, held.Id], [cards[ContentId("Bordo")].Product.FamilyId!.Value, cards[ContentId("Haki")].Product.FamilyId!.Value]);
+        var lavianModel = models.Single(model => model.Id != held.Id);
+        Assert.Equal((lavian, ModelCode, lavianModel.Id), (lavianModel.BrandId!.Value, lavianModel.ModelCodeKey, cards[ContentId("Gri")].Product.FamilyId!.Value));
+        Assert.False(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelLinks.AmbiguousCode && row.Status == IssueStatus.Open));
+    }
+
+    // Owner (17 Nov 2026, "farklı markalar aynı model kodunu kullanabiliyor"): one import group bringing the same model code
+    // under two brands opens two models, one per brand; every listing comes in and nothing is warned about.
+    [PostgreSqlFact]
+    public async Task TwoBrandsUnderOneCodeInOneGroup_OpenTwoModels_AndEveryListingComesIn()
+    {
+        var seed = await SeedAsync();
+        var lavian = await AddLavianAsync(seed);
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki"), Spec("Gri") with { BrandExternal = "789", BrandName = "Lavian" }]));
+        await RunAsync(seed, port, "{\"full\":true}");
+
+        await using var db = fixture.CreateContext();
+        var cards = await CardsAsync(db, seed);
+        Assert.Equal([ContentId("Bordo"), ContentId("Haki"), ContentId("Gri")], cards.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(lavian, cards[ContentId("Gri")].Product.BrandId);
+        var models = await db.ProductModels.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        Assert.Equal(2, models.Count);
+        Assert.All(models, model => Assert.Equal(ModelCode, model.ModelCodeKey));
+        Assert.Equal(new Guid?[] { seed.BrandId, lavian }.Order(), models.Select(model => model.BrandId).Order());
+        Assert.Equal(models.Single(model => model.BrandId == lavian).Id, cards[ContentId("Gri")].Product.FamilyId);
+        Assert.Equal(cards[ContentId("Bordo")].Product.FamilyId, cards[ContentId("Haki")].Product.FamilyId);
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && (row.Code == "PRODUCT_IMPORT_FAILED" || row.Code == ProductModelLinks.AmbiguousCode)));
+    }
+
     // A conflict that comes back on the retry fails the model as before, and the issue names the conflicting rows.
     [PostgreSqlFact]
     public async Task VersionConflictAgainOnTheRetry_FailsTheModel_AndNamesTheConflictingRows()
@@ -875,7 +1006,132 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Contains("Çakışan kayıtlar: catalog.products", staging.ErrorSummary, StringComparison.Ordinal);
     }
 
+    // ISLEYICI-1 (15 Nov 2026): one failed model no longer moves the PRODUCTS watermark past it; the run still succeeds
+    // and the other model opens its cards.
+    [PostgreSqlFact]
+    public async Task AFailedModel_KeepsTheProductsWatermark_AndTheRunSucceeds()
+    {
+        var seed = await SeedAsync();
+        // timestamptz keeps microseconds; the clock's 100 ns ticks would not come back.
+        var threeHoursAgo = fixture.Now.AddHours(-3).ToUniversalTime();
+        var watermark = new DateTimeOffset(threeHoursAgo.UtcTicks - threeHoursAgo.UtcTicks % 10, TimeSpan.Zero);
+        await SeedProductsCursorAsync(seed, watermark);
+        var failing = new ConflictOnCardTitled("Haki");
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider);
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK" }]));
+        var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.ErrorSummary);
+        Assert.True(failing.Thrown > 0);
+        await using var check = fixture.CreateContext();
+        Assert.Single(await CardsAsync(check, seed));
+        var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ConnectionId == seed.ConnectionId && row.ResourceType == "PRODUCTS");
+        Assert.Equal(watermark, cursor.LastModifiedWatermark);
+    }
+
+    // ISLEYICI-1 retry (16 Nov 2026): the failed model is listed for a retry and gets a single-product import job of its
+    // own half an hour later; that job, once the model stores, takes it off the list and resolves its issue.
+    [PostgreSqlFact]
+    public async Task AFailedModel_IsReadAgainByItsOwnJob_AndItsIssueResolvesWhenItStores()
+    {
+        var seed = await SeedAsync();
+        var failing = new ConflictOnCardTitled("Haki");
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK" }]));
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider))
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        IntegrationJob retryJob;
+        await using (var check = fixture.CreateContext())
+        {
+            var retries = await check.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == ProductImportRetryPolicy.CursorResource);
+            var entry = Assert.Single(ProductImportRetryPolicy.Parse(retries.OpaqueCursor));
+            Assert.Equal("MZ999HK", entry.LookupKey);
+            retryJob = await check.IntegrationJobs.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.JobDedupKey == ProductImportRetryPolicy.JobDedupKey(seed.ConnectionId, "MZ999HK", 0));
+            Assert.Equal(MarketplaceJobTypes.ProductSync, retryJob.JobType);
+            Assert.Contains("\"productLookup\":\"MZ999HK\"", retryJob.PayloadJson, StringComparison.Ordinal);
+            Assert.Contains("\"importRetry\":true", retryJob.PayloadJson, StringComparison.Ordinal);
+            Assert.True(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED" && row.Status == IssueStatus.Open));
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, retryJob.PayloadJson, $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None, retryJob.Id);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using (var check = fixture.CreateContext())
+        {
+            var retries = await check.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == ProductImportRetryPolicy.CursorResource);
+            Assert.Null(retries.OpaqueCursor);
+            Assert.False(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED" && row.Status == IssueStatus.Open));
+            Assert.Equal(2, (await CardsAsync(check, seed)).Count);
+        }
+    }
+
+    // ISLEYICI-1: the products a run filters out (here a content whose every size is archived) no longer count towards
+    // "not all failed": a run whose only processed model failed is not a success.
+    [PostgreSqlFact]
+    public async Task ARunWhoseOnlyProcessedModelFailed_IsNotASuccess_EvenWithFilteredProducts()
+    {
+        var seed = await SeedAsync();
+        var failing = new ConflictOnCardTitled("Bordo");
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!).AddInterceptors(failing).Options, fixture.TimeProvider);
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK", ArchivedSizes = Sizes }]));
+        var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, "{\"full\":true}", $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("PRODUCT_IMPORT_ALL_FAILED", result.ErrorCode);
+    }
+
+    private async Task SeedProductsCursorAsync(Seed seed, DateTimeOffset watermark)
+    {
+        await using var db = fixture.CreateContext();
+        db.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, ResourceType = "PRODUCTS", LastModifiedWatermark = watermark, LastSuccessAt = watermark, Version = 1 });
+        await db.SaveChangesAsync();
+    }
+
+    // Throws a version conflict on every save that adds a card whose title holds `fragment`.
+    private sealed class ConflictOnCardTitled(string fragment) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public int Thrown { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            var added = eventData.Context!.ChangeTracker.Entries<Product>().FirstOrDefault(entry => entry.State == EntityState.Added && entry.Entity.Title.Contains(fragment, StringComparison.Ordinal));
+            if (added is not null)
+            {
+                Thrown++;
+                throw new DbUpdateConcurrencyException("simulated version conflict", [((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<Microsoft.EntityFrameworkCore.ChangeTracking.Internal.InternalEntityEntry>)added).Instance]);
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     // Throws a version conflict, naming the card being added, on the first `times` saves that add a card.
+    // KATALOG-14 phase D5b review 3: a deadlock with another save of the same model (Excel, Toplu Değer Ata) fails a
+    // model save that wrote nothing; the import reads and writes the model again instead of counting its cards failed.
+    private sealed class DeadlockOnProductSave(int times) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public int Thrown { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<Product>().Any(entry => entry.State == EntityState.Added) && Thrown < times)
+            {
+                Thrown++;
+                throw new InvalidOperationException("transient", new Npgsql.PostgresException("deadlock detected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.DeadlockDetected));
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
     private sealed class ConflictOnProductSave(int times) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
     {
         public int Thrown { get; private set; }
@@ -1158,8 +1414,9 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             var sizeM = card.Variants.Single(row => row.Barcode == Barcode(ColourIndex("Siyah"), 1));
             foreach (var (row, index) in gallery.Take(2).Select((row, index) => (row, index)))
                 db.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ProductId = productId, VariantId = sizeM.Id, FileAssetId = row.FileAssetId, MediaRole = index == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY", SortOrder = index * 10, Status = "ACTIVE" });
+            // KATALOG-14 phase D5b: the owner's edit of this colour alone is its pictures (a name is the model's and would
+            // reach every colour).
             var product = await db.Products.SingleAsync(row => row.Id == productId);
-            product.Title = "Sahibin Siyah Başlığı";
             product.Version++;
             await db.SaveChangesAsync();
             await CatalogLocalEdits.MarkLinksDirtyAsync(db, seed.TenantId, [productId], CatalogLocalEdits.ProductField, CancellationToken.None);

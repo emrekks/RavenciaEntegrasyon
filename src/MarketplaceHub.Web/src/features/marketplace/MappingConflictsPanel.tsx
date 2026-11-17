@@ -1,18 +1,20 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { TitleHint, useConfirmDialog } from '../../shared/components'
 import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
-import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
+import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
 import './mapping-conflicts-panel.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Value mappings worth a look: a panel value mapped to several marketplace values in one category
 // (only one can be sent, so the user keeps one) and a panel value mapped differently across
 // categories (the user can pick one and use it in every category, which also makes it the template).
 export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void; expanded?: boolean }) {
   const client = useQueryClient()
-  const conflictsKey = ['mapping-conflicts', connectionId] as const
-  const loadConflicts = () => hubApi<Conflicts>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`)
+  const conflictsKey = queryKeys.mappingConflicts(connectionId)
+  const loadConflicts = () => hubApi<ApiAnswer<'getMappingsConflicts'>>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`)
   // Always read fresh: any mapping save elsewhere on the page can add or clear a conflict.
   const conflicts = useQuery({ queryKey: conflictsKey, queryFn: loadConflicts, retry: false, staleTime: 0, refetchOnWindowFocus: true })
   const [busyKey, setBusyKey] = useState('')
@@ -25,8 +27,8 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
 
   async function refreshAfterSave(scopes: Iterable<string>) {
     await client.invalidateQueries({ queryKey: conflictsKey })
-    await Promise.all([...new Set(scopes)].map(scope => client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId, scope] })))
-    await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+    await Promise.all([...new Set(scopes)].map(scope => client.invalidateQueries({ queryKey: queryKeys.attributeValueMappings(connectionId, scope) })))
+    await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
   }
 
   // Removing the other mappings is not undoable, so it is confirmed first and then done against the versions the
@@ -62,12 +64,12 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
   }
 
   const valueList = (scope: string) => client.fetchQuery({
-    queryKey: ['reference-attribute-values', connectionId, scope],
-    queryFn: () => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(scopeCategory(scope))}/attributes/${encodeURIComponent(scopeAttribute(scope))}/values?connectionId=${encodeURIComponent(connectionId)}`),
+    queryKey: queryKeys.referenceAttributeValues(connectionId, scope),
+    queryFn: ({ signal }) => hubApi<ValueList>(`/reference-data/categories/${encodeURIComponent(scopeCategory(scope))}/attributes/${encodeURIComponent(scopeAttribute(scope))}/values?connectionId=${encodeURIComponent(connectionId)}`, { signal }),
     staleTime: 0
   })
   const putValue = (localValueId: string, scope: string, snapshotId: string, externalId: string, version: number | null) =>
-    hubApi<{ version: number }>(`/mappings/attribute-values/${localValueId}`, { method: 'PUT', headers: version !== null ? { 'If-Match': `"v${version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: scope, externalId, status: 'VERIFIED', updateTemplate: true }) })
+    hubApi<ApiAnswer<'putMappingsAttributeValuesByLocalId'>>(`/mappings/attribute-values/${localValueId}`, { method: 'PUT', headers: version !== null ? { 'If-Match': `"v${version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: scope, externalId, status: 'VERIFIED', updateTemplate: true }) })
 
   // Sets the chosen marketplace value in every category where this panel value maps to another one, through the same
   // versioned save as mapping it in each category, and makes it the template for new categories. A category whose

@@ -29,6 +29,9 @@ public static class ApiProblems
     public static Task WriteAsync(HttpContext http, string code, string message, int status, IReadOnlyDictionary<string, object?>? extensions = null) =>
         WriteAsync(http, new ServiceError(code, message, status), extensions);
 
+    /// <summary>Whether the panel may retry an answer of this status: rate limited (429) or a server-side failure (5xx).</summary>
+    public static bool IsRetryable(int status) => status is 429 or >= 500;
+
     public static Dictionary<string, object?> Body(ServiceError error, string? correlationId, IReadOnlyDictionary<string, object?>? extensions = null)
     {
         var body = new Dictionary<string, object?>
@@ -38,7 +41,7 @@ public static class ApiProblems
             ["status"] = error.Status,
             ["code"] = error.Code,
             ["correlationId"] = correlationId,
-            ["retryable"] = error.Status is 429 or >= 500,
+            ["retryable"] = IsRetryable(error.Status),
             ["fieldErrors"] = error.FieldErrors
         };
         if (extensions is not null)

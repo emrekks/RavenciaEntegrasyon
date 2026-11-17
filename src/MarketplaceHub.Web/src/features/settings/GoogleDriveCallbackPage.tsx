@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { LoadingState } from '../../shared/components'
 import { clearFirstRun, firstRunPending, readGoogleCallback, type OffsiteBackupView } from './offsite-backup'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Google sends the person back here (the redirect URI registered in the owner's OAuth client) after "Google ile Bağlan".
 // The code and state go to the server with this session and its CSRF token, which checks that the state is the one this
@@ -20,7 +21,7 @@ export function GoogleDriveCallbackPage() {
     const done = (kind: 'success' | 'error', message: string) => navigate('/settings?tab=offsite', { replace: true, state: { offsiteNotice: { kind, message } } })
     hubApi<OffsiteBackupView>('/settings/offsite-backup/google/complete', { method: 'POST', body: JSON.stringify({ code, state, error }) })
       .then(view => {
-        client.setQueryData(['offsite-backup'], view)
+        client.setQueryData(queryKeys.offsiteBackup(), view)
         const account = view.account ? `: ${view.account}` : ''
         // The one-button setup asked for the first copy before leaving; it starts now, the same way as "Şimdi Gönder".
         if (!firstRunPending()) return done('success', `Google Drive bağlandı${account}. “Bağlantıyı Test Et” ile deneyebilirsiniz.`)

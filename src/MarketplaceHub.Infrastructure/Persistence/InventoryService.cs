@@ -28,12 +28,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     {
         if (command.QuantityDelta == 0) return Invalid<InventoryItemView>("quantityDelta", "Stok düzeltme miktarı sıfır olamaz.");
         if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.SourceEventId)) return Invalid<InventoryItemView>("reason", "Reason ve sourceEventId zorunludur.");
-        var existing = await db.StockLedgerEntries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
-        if (existing is not null)
-        {
-            var prior = await FindItemAsync(tenantId, existing.InventoryItemId, cancellationToken);
-            return prior is null ? NotFound<InventoryItemView>() : ServiceResult<InventoryItemView>.Ok(prior);
-        }
+        if (await ReplayAsync(tenantId, idempotencyKey, cancellationToken) is { } replay) return replay;
         return await SerializableWriteRetry.RunAsync(db, token => AdjustOnceAsync(tenantId, userId, variantId, command, idempotencyKey, correlationId, token), StockWriteCollided, cancellationToken);
     }
 
@@ -46,39 +41,36 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
         if (item is null) return NotFound<InventoryItemView>();
-        var newOnHand = decimal.Round(item.OnHand + command.QuantityDelta, 4, MidpointRounding.ToEven);
-        if (newOnHand < 0) return Conflict<InventoryItemView>("NEGATIVE_STOCK_REJECTED", "MAIN stok miktarı negatif olamaz.");
-        var reserved = await db.StockReservations.Where(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.Status == ReservationStatus.Active).SumAsync(x => (decimal?)x.Quantity, cancellationToken) ?? 0;
-        item.OnHand = newOnHand;
-        item.Reserved = reserved;
-        item.Available = InventoryProjection.Available(newOnHand, reserved);
-        item.ProjectionVersion++;
-        item.Version++;
+        if (StockMovementWriter.NextOnHand(item.OnHand, command.QuantityDelta, StockMovementRounding.OnHandAndLedger) < 0) return Conflict<InventoryItemView>("NEGATIVE_STOCK_REJECTED", "MAIN stok miktarı negatif olamaz.");
+        item.Reserved = await db.StockReservations.Where(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.Status == ReservationStatus.Active).SumAsync(x => (decimal?)x.Quantity, cancellationToken) ?? 0;
         var now = timeProvider.GetUtcNow();
-        db.StockLedgerEntries.Add(new StockLedgerEntry
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            InventoryItemId = item.Id,
-            MovementType = "MANUAL_ADJUSTMENT",
-            QuantityDelta = decimal.Round(command.QuantityDelta, 4, MidpointRounding.ToEven),
-            SourceType = "MANUAL",
-            SourceId = command.Reason.Trim(),
-            SourceEventId = command.SourceEventId.Trim(),
-            IdempotencyKey = idempotencyKey,
-            OccurredAt = now,
-            RecordedAt = now,
-            ActorUserId = userId,
-            CorrelationId = correlationId
-        });
-        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, [item.Id], now, cancellationToken);
+        var change = StockMovementWriter.Move(db, item, command.QuantityDelta, StockMovementRounding.OnHandAndLedger, ManualSource(userId, command.Reason, command.SourceEventId, idempotencyKey, correlationId, now), $"manual:{command.SourceEventId.Trim()}");
+        await StockMovementWriter.CloseShortfallNoticesAsync(db, tenantId, [item.Id], now, cancellationToken);
         // The new stock goes to every connection selling the variant, committed with the adjustment.
-        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [change], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         var sku = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.Id == item.VariantId).Select(x => x.Sku).SingleAsync(cancellationToken);
         return ServiceResult<InventoryItemView>.Ok(Map(item, sku));
     }
+
+    // A manual stock write sent again under its key answers with the item as it is now. A key another movement (a return
+    // restock, an order row) already holds is refused: before, it was answered as done and the stock never changed
+    // (SIPARIS-STOK-8).
+    private async Task<ServiceResult<InventoryItemView>?> ReplayAsync(Guid tenantId, string idempotencyKey, CancellationToken cancellationToken)
+    {
+        var existing = await db.StockLedgerEntries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
+        if (existing is null) return null;
+        if (existing.MovementType != ManualMovementType)
+            return ServiceResult<InventoryItemView>.Fail("IDEMPOTENCY_KEY_REUSED", "Bu istek anahtarı başka bir stok hareketinde kullanılmış; stok değiştirilmedi. Sayfayı yenileyip tekrar deneyin.", 409);
+        var prior = await FindItemAsync(tenantId, existing.InventoryItemId, cancellationToken);
+        return prior is null ? NotFound<InventoryItemView>() : ServiceResult<InventoryItemView>.Ok(prior);
+    }
+
+    private const string ManualMovementType = "MANUAL_ADJUSTMENT";
+
+    private static StockLedgerSource ManualSource(Guid userId, string reason, string sourceEventId, string idempotencyKey, string correlationId, DateTimeOffset now) =>
+        new(ManualMovementType, "MANUAL", reason.Trim(), sourceEventId.Trim(), idempotencyKey, now, now, correlationId, userId);
 
     // W2/W3/W18: the panel sends the stock the user typed together with the stock the user saw. The change is
     // applied only while MAIN on-hand still equals that value, so a sale, return or another tab in between is
@@ -90,12 +82,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         // Stock is a count of pieces: a fraction (a "1.250" read as 1.25, a typo) is refused, never rounded or stored.
         if (command.OnHand != decimal.Truncate(command.OnHand)) return Invalid<InventoryItemView>("onHand", "Stok tam sayı olmalıdır; kesirli bir stok girilemez.");
         if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.SourceEventId)) return Invalid<InventoryItemView>("reason", "Reason ve sourceEventId zorunludur.");
-        var existing = await db.StockLedgerEntries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
-        if (existing is not null)
-        {
-            var prior = await FindItemAsync(tenantId, existing.InventoryItemId, cancellationToken);
-            return prior is null ? NotFound<InventoryItemView>() : ServiceResult<InventoryItemView>.Ok(prior);
-        }
+        if (await ReplayAsync(tenantId, idempotencyKey, cancellationToken) is { } replay) return replay;
         return await SerializableWriteRetry.RunAsync(db, token => SetOnHandOnceAsync(tenantId, userId, variantId, command, idempotencyKey, correlationId, token), StockWriteCollided, cancellationToken);
     }
 
@@ -115,32 +102,11 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         }
         if (item.OnHand != decimal.Round(command.ExpectedOnHand, 4, MidpointRounding.ToEven))
             return ServiceResult<InventoryItemView>.Fail("STOCK_CHANGED", $"Stok başka bir işlemle değişti; güncel stok {item.OnHand.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}. Sayfayı yenileyip tekrar deneyin.", 409);
-        var delta = target - item.OnHand;
-        var reserved = await db.StockReservations.Where(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.Status == ReservationStatus.Active).SumAsync(x => (decimal?)x.Quantity, cancellationToken) ?? 0;
-        item.OnHand = target;
-        item.Reserved = reserved;
-        item.Available = InventoryProjection.Available(target, reserved);
-        item.ProjectionVersion++;
-        item.Version++;
+        item.Reserved = await db.StockReservations.Where(x => x.TenantId == tenantId && x.InventoryItemId == item.Id && x.Status == ReservationStatus.Active).SumAsync(x => (decimal?)x.Quantity, cancellationToken) ?? 0;
         var now = timeProvider.GetUtcNow();
-        db.StockLedgerEntries.Add(new StockLedgerEntry
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            InventoryItemId = item.Id,
-            MovementType = "MANUAL_ADJUSTMENT",
-            QuantityDelta = delta,
-            SourceType = "MANUAL",
-            SourceId = command.Reason.Trim(),
-            SourceEventId = command.SourceEventId.Trim(),
-            IdempotencyKey = idempotencyKey,
-            OccurredAt = now,
-            RecordedAt = now,
-            ActorUserId = userId,
-            CorrelationId = correlationId
-        });
-        await StockShortfallNotices.ResolveForInventoryItemsAsync(db, tenantId, [item.Id], now, cancellationToken);
-        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [new StockProjectionChange(item.VariantId, item.ProjectionVersion, $"manual:{command.SourceEventId.Trim()}")], now, cancellationToken);
+        var change = StockMovementWriter.SetOnHand(db, item, target, ManualSource(userId, command.Reason, command.SourceEventId, idempotencyKey, correlationId, now), $"manual:{command.SourceEventId.Trim()}");
+        await StockMovementWriter.CloseShortfallNoticesAsync(db, tenantId, [item.Id], now, cancellationToken);
+        await StockProjectionOutbox.EnqueueAsync(db, tenantId, [change], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<InventoryItemView>.Ok(Map(item, sku));
@@ -343,12 +309,11 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         var build = await new PriceInventoryComposer(db).BuildAsync(tenantId, connectionId, cancellationToken, variantId);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!; var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
-        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, null, manual, Trigger: PriceStockSendTriggers.PanelSend));
         var writeDelay = pricePolicy is null || manual ? 0 : Math.Clamp(pricePolicy.IntervalSeconds, 0, 86_400);
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now.AddSeconds(writeDelay), MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now.AddSeconds(writeDelay)) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseHeldElseRetire, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(id);
     }
 
@@ -393,11 +358,11 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         var draft = build.Value!;
         var key = idempotencyKey.Trim();
         var dedup = $"{PriceInventoryOutboxPolicy.DedupKey(connection.Id, draft.Lines)}:sit:{Hash(key)[..32]}";
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connection.Id, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, variantId, null, Manual: true, Trigger: PriceStockSendTriggers.PanelSend));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connection.Id, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(key)}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        // Each click is its own upload (the key carries the Idempotency-Key): the same click again is that job, whatever its state.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connection.Id, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(key)}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
     }
@@ -408,7 +373,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     {
         if (!price && !stock) return ServiceResult<Guid>.Fail("PRICE_INVENTORY_FIELDS_REQUIRED", "Fiyat veya stoktan en az biri seçilmelidir.", 422);
         // A draft is never sent to a marketplace (ProductDraftPolicy).
-        if (await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId && x.Status == ProductStatus.Draft, cancellationToken))
+        if (await EffectiveCatalog.Products(db).AnyAsync(x => x.TenantId == tenantId && x.Id == productId && x.Status == ProductStatus.Draft, cancellationToken))
             return ServiceResult<Guid>.Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage, 422);
         if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken)) return await EnqueuePttAvmProductPriceInventoryAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, price, stock, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && ((x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11") && x.Status == "ACTIVE" || x.PlatformCode == "PAZARAMA" && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
@@ -424,26 +389,13 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         // A send of one part is a job of its own: a standing full send of the same values must not answer for it, nor
         // the other way round.
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines) + (price && stock ? "" : price ? ":price" : ":stock");
-        var existing = await StandingPriceInventoryJobAsync(tenantId, dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var id = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PriceInventoryJobPayload(id, connectionId, "SUBMIT", draft.PayloadHash, draft.PayloadJson, draft.Lines, null, null, null, productId, Manual: true, Trigger: PriceStockSendTriggers.PanelSend, HoldPrice: !price, HoldStock: !stock));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = id, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 10, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connectionId, MarketplaceJobTypes.PriceInventorySync, payload, dedup, correlationId, now) { Id = id, EffectIdempotencyKey = $"{dedup}:{Hash(idempotencyKey.Trim())}", Priority = JobPriorityPolicy.ForUser(MarketplaceJobTypes.PriceInventorySync), TriggerType = "user", MaxAttempts = 10, CreatedAt = now }, JobDedupPolicy.ReuseHeldElseRetire, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(id);
-    }
-
-    // Q-1/K-1: a queued, running or succeeded job of the same values is the answer to a send from the panel. A
-    // failed one (blocked, dead, cancelled, manual review) gives up its key, saved with the new job, so the
-    // values are sent again instead of the failed job being returned as if it had been queued.
-    private async Task<IntegrationJob?> StandingPriceInventoryJobAsync(Guid tenantId, string dedup, CancellationToken cancellationToken)
-    {
-        var existing = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.PriceInventorySync && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is null || PriceInventoryOutboxPolicy.HoldsDedupKey(existing.Status)) return existing;
-        existing.JobDedupKey = PriceInventoryOutboxPolicy.RetiredDedupKey(dedup, existing.Id);
-        existing.Version++;
-        return null;
     }
 
     // A missing policy row means the flow was never switched off, the same rule the worker applies.

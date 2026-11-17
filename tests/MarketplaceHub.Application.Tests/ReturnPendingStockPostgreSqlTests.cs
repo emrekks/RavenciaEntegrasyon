@@ -118,6 +118,7 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
                     new("APPROVE", null, null, [], seed.LineIds, StockLineIds: [seed.LineIds[1]]), "ps-now:approve", "ps-now", CancellationToken.None);
                 Assert.Null(result.Error);
                 Assert.All(result.Value!.Lines!, line => Assert.False(line.StockPending));
+                Assert.False(result.Value.StockPendingNextSync);
             }
             await using var verify = fixture.CreateContext();
             Assert.Equal(ReturnPendingStockPolicy.Applied, (await verify.ReturnDecisions.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId)).StockStatus);
@@ -125,6 +126,86 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
         }
         finally
         {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // SIPARIS-STOK-5: while the marketplace takes the approval, a sale changes the same stock row and a claim read saves
+    // the claim. The accepted decision is not turned into a server error: it is recorded, and the stock goes back once.
+    [PostgreSqlFact]
+    public async Task AnAcceptedApproval_SurvivesAStockAndClaimChangeDuringTheCall()
+    {
+        var seed = await SeedAsync("ps-race");
+        var port = new UnclearReturnPort("PS-CLAIM", "ps-race-order", seed.ExternalLineIds, answers: true, duringCall: async () =>
+        {
+            await using var other = fixture.CreateContext();
+            var item = await other.InventoryItems.SingleAsync(x => x.Id == seed.InventoryItemIds[0]);
+            item.OnHand += 5m; item.Available += 5m; item.Version++;
+            var claim = await other.ReturnClaims.SingleAsync(x => x.Id == seed.ClaimId);
+            claim.UpdatedAt = DateTimeOffset.UtcNow; claim.Version++;
+            await other.SaveChangesAsync();
+        });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await Service(db, port).ProcessReturnActionInstantAsync(seed.TenantId, seed.UserId, seed.ClaimId, await VersionAsync(seed.ClaimId),
+                    new("APPROVE", null, null, [], seed.LineIds, StockLineIds: [seed.LineIds[0]]), "ps-race:approve", "ps-race", CancellationToken.None);
+                Assert.Null(result.Error);
+            }
+            await using var verify = fixture.CreateContext();
+            var decision = await verify.ReturnDecisions.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId);
+            Assert.Contains(decision.Status, new[] { "SUBMITTED", "SUCCEEDED" });
+            Assert.Equal(ReturnPendingStockPolicy.Applied, decision.StockStatus);
+            Assert.NotNull((await verify.ExternalEffectRecords.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId)).CompletedAt);
+            Assert.Equal([7m, 0m], await OnHandAsync(verify, seed));
+            Assert.Equal(1, await verify.StockLedgerEntries.CountAsync(x => x.TenantId == seed.TenantId && x.MovementType == "RETURN_PASS"));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // SIPARIS-STOK-5: the marketplace takes the approval, but the stock row keeps refusing the write (every attempt a
+    // serialization failure): the answer is the claim, marked StockPendingNextSync, the decision stays SUBMITTED with its
+    // stock choice and no stock has moved yet; an approval whose stock goes in at once is not marked.
+    [PostgreSqlFact]
+    public async Task AnAcceptedApproval_WhoseStockKeepsColliding_SaysTheNextReadAddsIt()
+    {
+        var seed = await SeedAsync("ps-pend");
+        var port = new UnclearReturnPort("PS-CLAIM", "ps-pend-order", seed.ExternalLineIds, answers: true);
+        var function = $"test_refuse_stock_{seed.TenantId:N}";
+        // Test-only DDL built from the test's own tenant id (no outside input).
+        var install = $$"""
+                CREATE FUNCTION inventory.{{function}}() RETURNS trigger LANGUAGE plpgsql AS $f$
+                BEGIN
+                    IF NEW."TenantId" = '{{seed.TenantId}}' THEN RAISE EXCEPTION 'busy' USING ERRCODE = '40001'; END IF;
+                    RETURN NEW;
+                END $f$;
+                CREATE TRIGGER {{function}} BEFORE UPDATE ON inventory.inventory_items FOR EACH ROW EXECUTE FUNCTION inventory.{{function}}();
+                """;
+        var uninstall = $"DROP TRIGGER IF EXISTS {function} ON inventory.inventory_items; DROP FUNCTION IF EXISTS inventory.{function}();";
+        await using (var setup = fixture.CreateContext())
+            await setup.Database.ExecuteSqlRawAsync(install);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await Service(db, port).ProcessReturnActionInstantAsync(seed.TenantId, seed.UserId, seed.ClaimId, await VersionAsync(seed.ClaimId),
+                    new("APPROVE", null, null, [], seed.LineIds, StockLineIds: [seed.LineIds[0]]), "ps-pend:approve", "ps-pend", CancellationToken.None);
+                Assert.Null(result.Error);
+                Assert.True(result.Value!.StockPendingNextSync);
+            }
+            await using var verify = fixture.CreateContext();
+            var decision = await verify.ReturnDecisions.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId);
+            Assert.Equal(("SUBMITTED", ReturnPendingStockPolicy.Pending), (decision.Status, decision.StockStatus));
+            Assert.Equal([0m, 0m], await OnHandAsync(verify, seed));
+        }
+        finally
+        {
+            await using (var teardown = fixture.CreateContext())
+                await teardown.Database.ExecuteSqlRawAsync(uninstall);
             await CleanupAsync(seed.TenantId);
         }
     }
@@ -219,19 +300,20 @@ public sealed class ReturnPendingStockPostgreSqlTests(PostgreSqlTenantIsolationF
 
     // Trendyol whose approve call times out. With answers, the call goes through at once. Each claim item has its own
     // status, and the claim's status is its first item's.
-    private sealed class UnclearReturnPort(string claimId, string orderId, IReadOnlyList<string> externalLineIds, bool answers = false) : IReturnPort
+    private sealed class UnclearReturnPort(string claimId, string orderId, IReadOnlyList<string> externalLineIds, bool answers = false, Func<Task>? duringCall = null) : IReturnPort
     {
         private readonly Dictionary<string, string> statuses = externalLineIds.ToDictionary(id => id, _ => "WaitingInAction", StringComparer.Ordinal);
 
         public void Accept() { foreach (var id in externalLineIds) statuses[id] = "Accepted"; }
         public void Reject() { foreach (var id in externalLineIds) statuses[id] = "Rejected"; }
 
-        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
+        public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
         {
+            if (duringCall is not null) await duringCall();
             if (!answers)
-                return Task.FromResult(AdapterResult<ReturnActionResult>.Failure(new AdapterError(AdapterErrorClass.TransientNetwork, "TRENDYOL_TIMEOUT", "Zaman aşımı", null, null, null)));
+                return AdapterResult<ReturnActionResult>.Failure(new AdapterError(AdapterErrorClass.TransientNetwork, "TRENDYOL_TIMEOUT", "Zaman aşımı", null, null, null));
             foreach (var lineId in command.ExternalLineItemIds) statuses[lineId] = command.Action == "APPROVE" ? "Accepted" : "Rejected";
-            return Task.FromResult(AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, statuses[command.ExternalLineItemIds[0]], "op-1")));
+            return AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, statuses[command.ExternalLineItemIds[0]], "op-1"));
         }
 
         public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>

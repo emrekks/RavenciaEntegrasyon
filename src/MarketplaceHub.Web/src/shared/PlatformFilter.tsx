@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { RrAnchor, RrIcon, RrLogo } from '../features/marketplace/returns-ui'
+import { RrAnchor, RrIcon, RrLogo } from './ui/rr-components'
 import { comparePlatformCodes, knownPlatformName } from './platform-names'
 
 // The one platform filter of the panel (the İadeler "İade Platformu" menu): a 36px rr-trigger that opens an rr-pop

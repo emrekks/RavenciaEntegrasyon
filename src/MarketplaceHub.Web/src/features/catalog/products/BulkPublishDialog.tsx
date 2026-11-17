@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
@@ -19,6 +20,7 @@ import type { PublicationValueMappingFix } from '../publication-attribute-readin
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info' | 'warning'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
 
@@ -100,7 +102,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     try {
       for (; index < plan.chunks.length; index++) {
         const chunk = plan.chunks[index]
-        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
+        const part = await hubApi<ApiAnswer<'postProductsBulkPublicationJobs'>>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
         total = addBulkPublicationResult(total, part); sent = addBulkPublicationResult(sent, part)
         setResult(total)
         setProgress(plan.chunks.slice(0, index + 1).reduce((count, item) => count + item.productIds.length, 0))
@@ -115,7 +117,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     }
     if (index === first) return
     const interrupted = index < plan.chunks.length
-    await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['publication-status'] })])
+    await Promise.all([client.invalidateQueries({ queryKey: queryKeys.products() }), client.invalidateQueries({ queryKey: queryKeys.publicationStatus() })])
     const refused = sent.failed.length > 0
     onDone({
       title: interrupted ? 'Toplu Yayın Yarıda Kesildi' : !refused ? 'Toplu Aktarım Başladı' : sent.queued ? 'Toplu Aktarım Kısmen Başladı' : 'Toplu Yayın Gönderilemedi',

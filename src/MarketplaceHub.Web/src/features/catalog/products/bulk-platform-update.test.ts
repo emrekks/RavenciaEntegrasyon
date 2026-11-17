@@ -7,7 +7,7 @@ const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Raven
 const live = (platform: string, platformCode: string) => ({ platform, platformCode, status: 'ACTIVE', matchedVariantCount: 3, variantCount: 3 })
 const unlinked = (platform: string, platformCode: string) => ({ platform, platformCode, status: 'UNLINKED' })
 
-function record(id: string, statuses: Product['platformStatuses'], extra: Partial<BulkUpdateRecord> = {}): BulkUpdateRecord {
+function record(id: string, statuses: BulkUpdateRecord['platformStatuses'], extra: Partial<BulkUpdateRecord> = {}): BulkUpdateRecord {
   return { id, title: `Ürün ${id}`, status: 'ACTIVE', platformStatuses: statuses, gaps: [], ...extra }
 }
 
@@ -85,6 +85,8 @@ describe('productRequiredGaps', () => {
     expect(productRequiredGaps(product())).toEqual([])
     expect(productRequiredGaps(product({ brandId: null, variants: [variant({ desi: null })] }))).toEqual(['brandId', 'desi'])
     expect(productRequiredGaps(product({ defaultSalePrice: 0 }))).toEqual(['salePrice'])
+    // 15 Nov 2026: Garanti Süresi 0 is "no warranty" (given); an empty one is missing and held back.
+    expect(productRequiredGaps(product({ warrantyMonths: null }))).toEqual(['warrantyMonths'])
   })
   it('asks no card codes of a product with variants (each row holds its own)', () => {
     expect(productRequiredGaps(product({ variants: [variant({ sku: '', barcode: null }), variant({ sku: 'RYP-2' })] }))).toEqual([])

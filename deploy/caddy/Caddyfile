@@ -54,8 +54,11 @@ http://127.0.0.1:8081 {
   }
 
   # Only a 401 from the authentication endpoints clears the browser cache.
+  # Kept in step with Caddyfile.production: both reverse_proxy blocks wait up to 45 s for a restarting API.
   handle /api/v1/auth/* {
     reverse_proxy api:8080 {
+      lb_try_duration 45s
+      lb_try_interval 500ms
       @unauthenticated status 401
       handle_response @unauthenticated {
         header Clear-Site-Data "\"cache\""
@@ -67,12 +70,25 @@ http://127.0.0.1:8081 {
   # SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
   @backend path /api/* /health/* /hubs/* /internal/*
   handle @backend {
-    reverse_proxy api:8080
+    reverse_proxy api:8080 {
+      lb_try_duration 45s
+      lb_try_interval 500ms
+    }
+  }
+  # Kept in step with Caddyfile.production: a missing /assets file is a plain 404 with no-store, never the SPA shell;
+  # only a file that exists gets the immutable header; the build's .br/.zst copies of scripts and stylesheets.
+  handle /assets/* {
+    root * /srv
+    @asset_found file
+    header @asset_found Cache-Control "public, max-age=31536000, immutable"
+    @asset_missing not file
+    header @asset_missing Cache-Control "no-store"
+    file_server {
+      precompressed br zstd
+    }
   }
   handle {
     root * /srv
-    @static_assets path /assets/*
-    header @static_assets Cache-Control "public, max-age=31536000, immutable"
     # Logos, brand artwork and fonts keep their names across releases: cached for a day and
     # refreshed in the background, instead of being downloaded again on every page.
     @public_media path /platforms/* /pack/* /fonts/*
@@ -80,10 +96,6 @@ http://127.0.0.1:8081 {
     @application_shell not path /assets/* /platforms/* /pack/* /fonts/*
     header @application_shell Cache-Control "no-store, no-cache, must-revalidate"
     try_files {path} /index.html
-    # Kept in step with Caddyfile.production: the build's .br/.zst copies of scripts and stylesheets.
-    file_server @static_assets {
-      precompressed br zstd
-    }
     file_server
   }
   # Kept in step with Caddyfile.production: no CSRF token, idempotency keys or query strings in the log.

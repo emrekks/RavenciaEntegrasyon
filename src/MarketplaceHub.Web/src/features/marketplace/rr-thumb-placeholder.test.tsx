@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '../../test/render'
-import { RrThumb } from './returns-ui'
+import { RrThumb } from '../../shared/ui/rr-components'
 
 // An order line with no known photo (or none that loads) shows a deliberate no-photo frame, not an empty grey box,
 // and keeps its quantity badge.

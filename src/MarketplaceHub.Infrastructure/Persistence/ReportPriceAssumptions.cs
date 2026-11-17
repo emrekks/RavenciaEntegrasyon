@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -70,34 +71,34 @@ internal static class ReportPriceAssumptions
             var commission = sample.Sum(view => view.Costs.First(cost => cost.Key == "commission").Amount!.Value);
             var takesCommission = !ReportCosts.TakesNoCommission(channel.PlatformCode);
             decimal? rate = !takesCommission ? 0m
-                : sample.Count >= MinimumOrders && sales > 0 ? Math.Round(commission / sales * 100m, 2, MidpointRounding.AwayFromZero) : null;
+                : sample.Count >= MinimumOrders && sales > 0 ? PercentRounding.Percent(commission / sales * 100m) : null;
             // Hepsiburada's rate is without VAT; it charges 20 % VAT on top (ReportBuckets.EstimatedCommission).
             decimal? beforeVat = channel.PlatformCode == "HEPSIBURADA" && rate is { } charged
-                ? Math.Round(charged / ReportBuckets.HepsiburadaCommissionVat, 2, MidpointRounding.AwayFromZero) : null;
+                ? PercentRounding.Percent(charged / ReportBuckets.HepsiburadaCommissionVat) : null;
             var real = sample.Count(view => !view.Costs.First(cost => cost.Key == "commission").Estimated);
 
             var (cargo, cargoSource) = channel.PlatformCode switch
             {
                 // Trendyol's current tariff from its cargo invoices (ReportCargoSample.Tariff: 98.34 TL in Oct 2026).
-                "TRENDYOL" => (input.Finance?.CargoSamples.GetValueOrDefault(channel.Id)?.PerOrder is { } perOrder ? Round(perOrder) : (decimal?)null, "invoice"),
+                "TRENDYOL" => (input.Finance?.CargoSamples.GetValueOrDefault(channel.Id)?.PerOrder is { } perOrder ? MoneyRounding.Round(perOrder) : (decimal?)null, "invoice"),
                 "SHOPIFY" => (ReportPlatformCosts.ShopifyCargo, "assumption"),
-                _ => (Mode(own.Where(order => order.Amount > 0).Select(order => Round(OneWayCargo(order, carriers, desiInput)))), "tariff")
+                _ => (Mode(own.Where(order => order.Amount > 0).Select(order => MoneyRounding.Round(OneWayCargo(order, carriers, desiInput)))), "tariff")
             };
 
             var fee = ReportPlatformCosts.ServiceFee(channel.PlatformCode);
             var trendyol = channel.PlatformCode == "TRENDYOL";
             var shopify = channel.PlatformCode == "SHOPIFY";
-            var (serviceFee, serviceFeeRate, feeSource, feeOrders) = (trendyol ? ReportCosts.PlatformServiceFeePerOrder : Round(fee.PerOrder),
-                Math.Round(fee.OfSale * 100m, 2, MidpointRounding.AwayFromZero), "tariff", 0);
+            var (serviceFee, serviceFeeRate, feeSource, feeOrders) = (trendyol ? ReportCosts.PlatformServiceFeePerOrder : MoneyRounding.Round(fee.PerOrder),
+                PercentRounding.Percent(fee.OfSale * 100m), "tariff", 0);
             // Hepsiburada: the mean of what its records charged the clothing orders it has billed (a commission record of
             // their own), once there are enough of them.
             if (channel.PlatformCode == "HEPSIBURADA")
             {
                 var billed = sample.Where(view => !view.Costs.First(cost => cost.Key == "commission").Estimated).ToList();
                 if (billed.Count >= MinimumOrders)
-                    (serviceFee, serviceFeeRate, feeSource, feeOrders) = (Round(billed.Sum(view => fees.GetValueOrDefault((channel.Id, view.OrderNumber))) / billed.Count), 0m, "records", billed.Count);
+                    (serviceFee, serviceFeeRate, feeSource, feeOrders) = (MoneyRounding.Round(billed.Sum(view => fees.GetValueOrDefault((channel.Id, view.OrderNumber))) / billed.Count), 0m, "records", billed.Count);
             }
-            stores.Add(new PriceAssumptionStoreView(channel.Id, channel.PlatformCode, channel.DisplayName, sample.Count, Round(sales), rate, beforeVat, takesCommission, real,
+            stores.Add(new PriceAssumptionStoreView(channel.Id, channel.PlatformCode, channel.DisplayName, sample.Count, MoneyRounding.Round(sales), rate, beforeVat, takesCommission, real,
                 cargo, cargo is null ? null : cargoSource, serviceFee, serviceFeeRate, feeSource, feeOrders,
                 trendyol ? ReportCosts.AzerbaijanServiceFeePerOrder : null, trendyol ? ReportCosts.InternationalServiceFeeRate * 100m : null,
                 shopify ? (ReportPlatformCosts.IyzicoRate + ReportPlatformCosts.ShopifyFeeRate) * 100m : null, shopify ? ReportPlatformCosts.IyzicoFixed : null));
@@ -133,5 +134,4 @@ internal static class ReportPriceAssumptions
         _ => int.MaxValue
     };
 
-    private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 }

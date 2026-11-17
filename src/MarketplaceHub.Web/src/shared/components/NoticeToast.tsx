@@ -2,6 +2,8 @@ import { useContext, useEffect, useRef, useState, type CSSProperties } from 'rea
 import { createPortal } from 'react-dom'
 import { appendNotification, normalizeNotificationKind, notificationError, type NotificationContext } from '../notifications'
 import { composeNotice } from '../notice-copy'
+import { isStillRunning, stillRunningTitle } from '../idempotency'
+import { isAbortedRequest } from '../api/abort'
 import { ToneIcon } from './ToneIcon'
 import { ToastViewportContext } from './toast-stack-context'
 import { UiIcon } from './UiIcon'
@@ -67,18 +69,22 @@ export function MessageToast({ message, onClose, kind: explicitKind }: { message
 
 /** An action's error as a toast that also goes to the notification history; it hides itself after eight seconds. */
 export function ErrorToast({ error, title, onDismiss, context }: { error: unknown; title?: string; onDismiss?: () => void; context?: NotificationContext }) {
-  const message = error ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
+  // A request the panel stopped itself (the query left the screen, sign-out) did not fail: no toast, no history entry.
+  const message = error && !isAbortedRequest(error) ? (error instanceof Error ? error.message : 'İşlem tamamlanamadı.') : ''
   const [hiddenMessage, setHiddenMessage] = useState('')
   const contextRef = useRef(context)
   const errorRef = useRef(error)
   useEffect(() => { contextRef.current = context; errorRef.current = error })
+  // "Still running" (409 IDEMPOTENCY_IN_PROGRESS) is not a failure: the first attempt is being handled, so it is told
+  // in an information tone under its own title.
+  const running = isStillRunning(error)
   useEffect(() => {
     if (!message) return
     // The title says what failed ("Kategoriler Yüklenemedi"); the server's code goes to the Ayrıntı rows.
-    appendNotification({ ...contextRef.current, title: title ?? contextRef.current?.title, message, kind: 'error', code: contextRef.current?.code ?? notificationError(errorRef.current, message).code })
+    appendNotification({ ...contextRef.current, title: running ? stillRunningTitle : title ?? contextRef.current?.title, message, kind: running ? 'info' : 'error', code: contextRef.current?.code ?? notificationError(errorRef.current, message).code })
     const timeout = window.setTimeout(() => setHiddenMessage(message), 8000)
     return () => window.clearTimeout(timeout)
-  }, [message, title])
+  }, [message, title, running])
   if (!message || hiddenMessage === message) return null
-  return <NoticeToast kind="error" title={title} message={message} durationMs={8000} onClose={() => { setHiddenMessage(message); onDismiss?.() }} />
+  return <NoticeToast kind={running ? 'info' : 'error'} title={running ? stillRunningTitle : title} message={message} durationMs={8000} onClose={() => { setHiddenMessage(message); onDismiss?.() }} />
 }

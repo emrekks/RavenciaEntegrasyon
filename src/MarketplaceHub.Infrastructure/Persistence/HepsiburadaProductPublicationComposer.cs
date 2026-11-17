@@ -19,7 +19,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
 
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
@@ -81,7 +81,8 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // VaryantGroupID is the whole card's model code, so the variants a matched card adds join its Hepsiburada group.
-        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        // KATALOG-14 phase D5b: the model's code (EffectiveCatalog.CardModelCodesAsync).
+        var modelCodes = await EffectiveCatalog.CardModelCodesAsync(db, tenantId, productId, cardVariants.Select(x => x.ModelCode), cancellationToken);
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak VaryantGroupID kullanmalıdır.");
         var variants = cardVariants;
         if (onlyUnsentVariants)
@@ -174,9 +175,10 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
                     return Fail("WARRANTY_INVALID", "Garanti süresi ay cinsinden tam sayı olmalıdır.");
                 importAttributes["GarantiSuresi"] = warrantyMonths;
             }
-            // The product's own warranty (editor "Garanti Süresi") when the connection gives none of its own; the editor
-            // stores its 0 default as empty, and that 0 is what the seller chose, so it is sent as 0.
-            else importAttributes["GarantiSuresi"] = product.WarrantyMonths ?? 0;
+            // The product's own warranty (editor "Garanti Süresi") when the connection gives none of its own; 0 (no
+            // warranty) is sent as 0. An empty one is a missing required field, never sent as 0 (owner, 15 Nov 2026).
+            else if (product.WarrantyMonths is int cardWarranty) importAttributes["GarantiSuresi"] = cardWarranty;
+            else return Fail(ProductWarranty.RequiredCode, ProductWarranty.RequiredMessage);
             if (variant.Desi is > 0)
             {
                 if (variant.Desi.Value != decimal.Round(variant.Desi.Value, 2)) return Fail("DESI_PRECISION_INVALID", $"'{variant.Sku}' desi değeri en fazla iki ondalık basamak içermelidir.");

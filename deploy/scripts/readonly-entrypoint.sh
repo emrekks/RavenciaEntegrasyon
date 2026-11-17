@@ -14,6 +14,8 @@ set -Eeuo pipefail
 #   logs <service> <since> [<tail>|-] [<b64>]  docker logs, optionally filtered by a base64 extended regex
 #   errors <since>                             Error/Fatal lines of api and worker
 #   journal <service> <since> [<b64>]          journalctl CONTAINER_NAME=marketplacehub-<service>-1 -o cat
+#   top-queries [<limit>]                      the slowest statements by total time from pg_stat_statements
+#                                              (says so when the extension is not installed; RUNBOOK §8)
 # <service> is api, worker, caddy or postgres; <since> is like 30m, 2h or 2026-11-03T09:00:00.
 # A leading "ravencia-ro" word is ignored, so the same request also works through a full shell
 # (ssh ubuntu@host 'ravencia-ro status').
@@ -151,7 +153,30 @@ case "$verb" in
       cscli metrics show acquisition 2>/dev/null || true
     fi
     ;;
+  top-queries)
+    (( ${#words[@]} == 1 || ${#words[@]} == 2 )) || fail "usage: top-queries [<limit>]"
+    limit="${words[1]:-20}"
+    [[ "$limit" =~ ^[0-9]{1,3}$ ]] || fail "limit must be 1-100"
+    limit=$(( 10#$limit ))
+    if (( limit < 1 || limit > 100 )); then fail "limit must be 1-100"; fi
+    db="$(docker exec marketplacehub-postgres-1 printenv POSTGRES_DB)"
+    psql_ro=(docker exec -i -e PGOPTIONS="-c default_transaction_read_only=on -c statement_timeout=60000"
+      marketplacehub-postgres-1 psql -U ravencia_ro -d "$db" -X -v ON_ERROR_STOP=1 -P pager=off)
+    installed="$(printf "SELECT count(*) FROM pg_extension WHERE extname = 'pg_stat_statements';\n" | "${psql_ro[@]}" -At)"
+    if [[ "$installed" != 1 ]]; then
+      echo "pg_stat_statements is not installed (docs/RUNBOOK-GERI-ALMA.md section 8: shared_preload_libraries, then CREATE EXTENSION as the superuser)."
+      exit 0
+    fi
+    # Query texts of other roles need pg_read_all_stats; without it they read "<insufficient privilege>".
+    "${psql_ro[@]}" <<SQL
+BEGIN READ ONLY;
+SELECT calls, round(total_exec_time) AS total_ms, round(mean_exec_time::numeric, 1) AS mean_ms, rows,
+       left(regexp_replace(query, '[[:space:]]+', ' ', 'g'), 300) AS query
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT $limit;
+ROLLBACK;
+SQL
+    ;;
   *)
-    fail "allowed requests: sql | status | images | host [<since>] | logs <service> <since> [<tail>|-] [<base64 regex>] | errors <since> | journal <service> <since> [<base64 regex>]"
+    fail "allowed requests: sql | status | images | host [<since>] | logs <service> <since> [<tail>|-] [<base64 regex>] | errors <since> | journal <service> <since> [<base64 regex>] | top-queries [<limit>]"
     ;;
 esac

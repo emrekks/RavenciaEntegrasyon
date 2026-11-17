@@ -155,12 +155,12 @@ public sealed partial class InvoicingBillingService(
             var hasConfirmedHistoricalAttempt = invoice is not null
                 && deliveryAttempts.Any(attempt => attempt.InvoiceId == invoice.Id && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED");
             var deliveryConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.HasConfirmedDelivery(currentDeliveryState?.Status, hasConfirmedHistoricalAttempt);
-            var invoiceStatus = MarketplaceSalesService.PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode, deliveryConfirmed);
+            var invoiceStatus = InvoiceLabelPolicy.PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, [package.RawStatus], connection?.PlatformCode, deliveryConfirmed);
             if (!DashboardMetricPolicy.IsInvoiceEligiblePackage(package.Status)
                 || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
-            var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
+            var dueSoon = InvoiceLabelPolicy.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
             var image = orderLines.Select(line => WorkspaceLineImage(catalog, line)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, WorkspaceLineImage(catalog, line))).ToList();
@@ -172,7 +172,7 @@ public sealed partial class InvoicingBillingService(
                 ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
             if (invoiceReadIssue is not null && !InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(invoiceReadIssue.Code))
                 invoiceReadIssue = null;
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus), order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl, ManualInvoiceStatus: MarketplaceSalesService.HandSetInvoiceStatus(package.ManualInvoiceStatus));
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), InvoiceLabelPolicy.IsAwaitingInvoiceLabel(invoiceStatus), order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl, ManualInvoiceStatus: InvoiceLabelPolicy.HandSetInvoiceStatus(package.ManualInvoiceStatus));
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
@@ -267,7 +267,7 @@ public sealed partial class InvoicingBillingService(
                     && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) uninvoicedCount++;
                 if (!hiddenPackageIds.Contains(candidate.Package.Id)
                     && candidate.Package.Status == ShipmentPackageStatus.Delivered
-                    && MarketplaceSalesService.IsAwaitingInvoiceLabel(candidate.InvoiceStatus)) awaitingDeliveredAt.Add(candidate.Package.StatusOccurredAt);
+                    && InvoiceLabelPolicy.IsAwaitingInvoiceLabel(candidate.InvoiceStatus)) awaitingDeliveredAt.Add(candidate.Package.StatusOccurredAt);
             }
             var last = candidates[^1];
             cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
@@ -305,31 +305,17 @@ public sealed partial class InvoicingBillingService(
             return ServiceResult<Guid>.Fail("IDEMPOTENCY_KEY_INVALID", "İstek anahtarı geçersiz; sayfayı yenileyip yeniden deneyin.", 400);
         var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.OrderInvoiceReconciliation);
         var dedup = $"workspace-invoice-check:{connection.Id:N}:{order.Id:N}:{Hash(normalizedKey)}";
-        var existing = await db.IntegrationJobs.AsNoTracking()
-            .SingleOrDefaultAsync(job => job.TenantId == tenantId && job.JobType == jobType && job.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-
         var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, targetOrderId = order.Id, batchSize = 1 });
-        var job = new IntegrationJob
+        // J4 (KUYRUK-8): a check with this key in any state is the check.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(tenantId, connection.Id, jobType, payload, dedup, correlationId, now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ConnectionId = connection.Id,
-            JobType = jobType,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Hash(payload),
-            JobDedupKey = dedup,
-            EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
-            AvailableAt = now,
-            CorrelationId = correlationId,
-            CreatedAt = now,
-            Version = 1
-        };
-        db.IntegrationJobs.Add(job);
+            CreatedAt = now
+        }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
+        var job = enqueued.Job!;
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -338,7 +324,7 @@ public sealed partial class InvoicingBillingService(
         catch (DbUpdateException)
         {
             db.Entry(job).State = EntityState.Detached;
-            existing = await db.IntegrationJobs.AsNoTracking()
+            var existing = await db.IntegrationJobs.AsNoTracking()
                 .SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.JobType == jobType && candidate.JobDedupKey == dedup, cancellationToken);
             return existing is not null
                 ? ServiceResult<Guid>.Ok(existing.Id)
@@ -616,7 +602,7 @@ public sealed partial class InvoicingBillingService(
             var returnState = returnStates.GetValueOrDefault(order.Id);
             var invoiceStatus = WorkspaceInvoiceStatus(package, order, invoice, connection, returnState?.Scope == InvoiceSaleReturnScope.Full);
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
-            var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null
+            var dueSoon = InvoiceLabelPolicy.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null
                 && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
             return new WorkspaceCandidate(
                 package,
@@ -624,7 +610,7 @@ public sealed partial class InvoicingBillingService(
                 connection,
                 invoice,
                 invoiceStatus,
-                MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus),
+                InvoiceLabelPolicy.IsAwaitingInvoiceLabel(invoiceStatus),
                 dueSoon,
                 deliveredAt,
                 deliveredAt?.AddDays(DashboardMetricPolicy.InvoiceDueDays),
@@ -703,13 +689,13 @@ public sealed partial class InvoicingBillingService(
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
             || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI"
-                or MarketplaceSalesService.UnverifiedInvoiceLabel or MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel
-                or MarketplaceSalesService.InvoiceNeedsReviewLabel);
+                or InvoiceLabelPolicy.UnverifiedInvoiceLabel or InvoiceLabelPolicy.ShopifyUnconfirmedInvoiceLabel
+                or InvoiceLabelPolicy.InvoiceNeedsReviewLabel);
 
     // Evidence that the package holds an invoice outside a panel invoice record. A status the seller set by hand
     // (Shopify "Faturası yüklendi" / "Fatura bekliyor") decides; otherwise the marketplace's own observation does.
     private static bool HasMarketplaceInvoiceObservation(WorkspaceCandidate candidate) =>
-        MarketplaceSalesService.ManualInvoiceLabel(candidate.Package.ManualInvoiceStatus) is { } manual
+        InvoiceLabelPolicy.ManualInvoiceLabel(candidate.Package.ManualInvoiceStatus) is { } manual
             ? manual == "FATURA_KONTROLDE"
             : candidate.Package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received;
 
@@ -788,7 +774,7 @@ public sealed partial class InvoicingBillingService(
             ? []
             : await db.MarketplaceDeliveryStates.AsNoTracking()
                 .Where(state => state.TenantId == tenantId && invoiceIds.Contains(state.InvoiceId))
-                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt, state.ExternalIdempotencyKey })
+                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt, state.ExternalIdempotencyKey, state.InvoiceLink })
                 .ToListAsync(cancellationToken);
         var deliveryAttempts = invoiceIds.Length == 0
             ? []
@@ -861,9 +847,10 @@ public sealed partial class InvoicingBillingService(
                 ?? (candidate.Package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced ? "REMOTE_PRESENT_UNMATCHED" : "NOT_SENT");
             var currentPlatformInvoiceUrl = packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl;
             // Hepsiburada does not return the invoice link, but once our own delivery is confirmed the platform holds exactly the link we sent.
-            if (string.IsNullOrWhiteSpace(currentPlatformInvoiceUrl) && candidate.Invoice is not null && deliveryState?.Status == "CONFIRMED"
-                && deliveredLinks.TryGetValue(candidate.Invoice.Id, out var deliveredLink))
-                currentPlatformInvoiceUrl = deliveredLink;
+            // A delivery since 17 Nov 2026 recorded its own link; an older one sent the invoice's latest document link.
+            if (string.IsNullOrWhiteSpace(currentPlatformInvoiceUrl) && candidate.Invoice is not null && deliveryState?.Status == "CONFIRMED")
+                currentPlatformInvoiceUrl = deliveryState.InvoiceLink
+                    ?? (deliveredLinks.TryGetValue(candidate.Invoice.Id, out var deliveredLink) ? deliveredLink : null);
             var allowedActions = InvoiceWorkspaceActionPolicy.Resolve(
                 candidate.Connection.PlatformCode,
                 candidate.Package.MarketplaceInvoiceStatus,
@@ -929,7 +916,7 @@ public sealed partial class InvoicingBillingService(
                 packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId,
                 candidate.Invoice is null ? null : deliveryRetries.GetValueOrDefault(candidate.Invoice.Id)?.View,
                 candidate.Invoice is null ? null : returnDocumentNotes.GetValueOrDefault(candidate.Invoice.Id),
-                MarketplaceSalesService.HandSetInvoiceStatus(candidate.Package.ManualInvoiceStatus),
+                InvoiceLabelPolicy.HandSetInvoiceStatus(candidate.Package.ManualInvoiceStatus),
                 saleReturnScope,
                 saleReturnNote);
         }).ToList();
@@ -964,7 +951,7 @@ public sealed partial class InvoicingBillingService(
     }
 
     internal static decimal KeptAmount(decimal amount, decimal? keptShare) =>
-        keptShare is { } share and >= 0 and < 1 ? decimal.Round(amount * share, 2, MidpointRounding.AwayFromZero) : amount;
+        keptShare is { } share and >= 0 and < 1 ? MoneyRounding.Round(amount * share) : amount;
 
     // What the returns mean for an order no invoice was issued for yet (owner's rule of 6 Nov 2026): every unit back,
     // no sale invoice; some back, the invoice leaves them out. An issued invoice, or one the marketplace already holds,
@@ -993,7 +980,7 @@ public sealed partial class InvoicingBillingService(
         if (!candidate.CanCreateInvoice && candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_PLATFORMA_AKTARILMADI" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED")
             return candidate.InvoiceStatus;
         if (HasMarketplaceInvoiceObservation(candidate)) return "FATURA_KONTROLDE";
-        if (candidate.InvoiceStatus == MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel) return candidate.InvoiceStatus;
+        if (candidate.InvoiceStatus == InvoiceLabelPolicy.ShopifyUnconfirmedInvoiceLabel) return candidate.InvoiceStatus;
         if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
         if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
         if (candidate.InvoiceStatus is "FATURA_YUKLENDI" or "FATURA_KESILDI" or "COMPLETED") return "FATURA_KONTROLDE";
@@ -1008,7 +995,7 @@ public sealed partial class InvoicingBillingService(
         WorkspaceConnectionProjection connection,
         bool fullyReturned = false)
     {
-        if (MarketplaceSalesService.ManualInvoiceLabel(package.ManualInvoiceStatus) is { } manual) return manual;
+        if (InvoiceLabelPolicy.ManualInvoiceLabel(package.ManualInvoiceStatus) is { } manual) return manual;
 
         if (invoice is null)
         {
@@ -1023,10 +1010,10 @@ public sealed partial class InvoicingBillingService(
                 case MarketplaceInvoiceStatus.Rejected: return "FATURA_REDDEDILDI";
                 case MarketplaceInvoiceStatus.NotInvoiced:
                     return string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                        ? MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel
+                        ? InvoiceLabelPolicy.ShopifyUnconfirmedInvoiceLabel
                         : "FATURA_BEKLIYOR";
             }
-            return MarketplaceSalesService.InvoiceLabelForPlatform(
+            return InvoiceLabelPolicy.InvoiceLabelForPlatform(
                 null,
                 null,
                 package.MarketplaceInvoiceStatus,
@@ -1053,7 +1040,7 @@ public sealed partial class InvoicingBillingService(
         if (invoice.Status == InvoiceStatus.Completed)
             return "FATURA_KONTROLDE";
 
-        return MarketplaceSalesService.InvoiceLabelForPlatform(
+        return InvoiceLabelPolicy.InvoiceLabelForPlatform(
             invoice?.Status,
             invoice?.InvoiceNumber,
             package.MarketplaceInvoiceStatus,
@@ -1124,7 +1111,7 @@ public sealed partial class InvoicingBillingService(
     // The order line's photo, found as on the order screens (OrderLineCatalog): the panel's own photo first, it does not
     // expire; else the address the marketplace sent with the line.
     private static string? WorkspaceLineImage(OrderLineCatalog catalog, OrderLine line) =>
-        catalog.CatalogImageUrl(catalog.Variant(line)) ?? MarketplaceSalesService.SourceLineImageUrl(line.SourceSnapshotJson);
+        catalog.CatalogImageUrl(catalog.Variant(line)) ?? OrderSnapshotReader.SourceLineImageUrl(line.SourceSnapshotJson);
 
     internal static string? ResolveInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
         !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : null;
@@ -1517,7 +1504,11 @@ public sealed partial class InvoicingBillingService(
                 using var snapshot = JsonDocument.Parse(_partyProtector.Unprotect(receiverSnapshot.ProtectedContent));
                 deliveryPackage = ReadFiscalDeliveryPackage(snapshot.RootElement);
                 // The identifier checked here is the one the provider payload will carry.
-                if (!RecipientTaxIdentityIsValid(invoice.InvoiceType, SnapshotString(snapshot.RootElement, "CustomerSnapshotJson"), SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson")))
+                var receiverCustomer = SnapshotString(snapshot.RootElement, "CustomerSnapshotJson");
+                var receiverAddress = SnapshotString(snapshot.RootElement, "InvoiceAddressSnapshotJson");
+                if (RecipientIdentityRefusal(invoice.InvoiceType, receiverCustomer, receiverAddress) is { } recipientRefusal)
+                    failures.Add(recipientRefusal.Code);
+                else if (!RecipientTaxIdentityIsValid(invoice.InvoiceType, receiverCustomer, receiverAddress))
                     failures.Add(InvoiceIssuePolicy.RecipientTaxIdInvalidCode);
             }
             catch (Exception exception) when (exception is System.Security.Cryptography.CryptographicException or JsonException)
@@ -1809,9 +1800,12 @@ public sealed partial class InvoicingBillingService(
 
     private async Task<ServiceResult<Guid>> AddJob(Invoice invoice, string jobType, string idempotencyKey, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, bool manualDeliveryRetry = false, bool bulk = false)
     {
-        var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}"; var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == invoice.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken); if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
-        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry }); var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, ConnectionId = connectionId ?? invoice.ProviderConnectionId, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk), AvailableAt = timeProvider.GetUtcNow(), CorrelationId = correlationId, Version = 1 };
-        db.IntegrationJobs.Add(job); await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(job.Id);
+        var dedup = $"{jobType}:{invoice.Id}:{idempotencyKey}";
+        var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, manualDeliveryRetry });
+        // J4 (KUYRUK-8): a job with this key in any state is the job.
+        var enqueued = await Jobs.JobEnqueuer.EnqueueAsync(db, new IntegrationJobRequest(invoice.TenantId, connectionId ?? invoice.ProviderConnectionId, jobType, payload, dedup, correlationId, timeProvider.GetUtcNow()) { EffectIdempotencyKey = $"{jobType}:{invoice.Id}:{idempotencyKey}", Priority = InvoiceJobPriority(jobType, bulk) }, JobDedupPolicy.ReuseAnyWithKey, cancellationToken);
+        if (!enqueued.Created) return ServiceResult<Guid>.Ok(enqueued.JobId);
+        await db.SaveChangesAsync(cancellationToken); return ServiceResult<Guid>.Ok(enqueued.JobId);
     }
 
     // Submission and delivery run in the user lane: a single request ahead of everything, a bulk or automatic one
@@ -1896,6 +1890,13 @@ public sealed partial class InvoicingBillingService(
 
     // A consumer e-Archive carries the fixed 11111111111 identifier; every other recipient must hold a
     // TCKN or VKN whose check digits are right, otherwise the provider or the tax authority rejects it later.
+    // 16 Nov 2026: a buyer of unknown kind (Hepsiburada), or a company's VKN on the snapshot while the invoice would carry
+    // 11111111111 (any marketplace), stops the invoice with its own code before the identifier check.
+    internal static InvoiceIssueRefusal? RecipientIdentityRefusal(string invoiceType, string customerSnapshotJson, string invoiceAddressSnapshotJson) =>
+        TrendyolEFaturamCanonicalPayload.IsRecipientKindAmbiguous(customerSnapshotJson, invoiceAddressSnapshotJson) ? InvoiceIssuePolicy.RecipientKindUnknown
+        : TrendyolEFaturamCanonicalPayload.SendsPlaceholderToCorporateTaxNumber(customerSnapshotJson, invoiceAddressSnapshotJson, invoiceType) ? InvoiceIssuePolicy.RecipientPlaceholderForCorporate
+        : null;
+
     internal static bool RecipientTaxIdentityIsValid(string invoiceType, string customerSnapshotJson, string invoiceAddressSnapshotJson)
     {
         var (taxId, isCorporate) = TrendyolEFaturamCanonicalPayload.ResolveRecipientTaxIdentity(customerSnapshotJson, invoiceAddressSnapshotJson, invoiceType);
@@ -1965,6 +1966,8 @@ public sealed partial class InvoicingBillingService(
         "EFATURAM_OPERATION_FORBIDDEN",
         "EFATURAM_CONFIGURATION_UNAVAILABLE",
         "EFATURAM_RATE_LIMITED",
+        // D11: the gateway turned the request away (403 HTML page): it never reached E-Faturam.
+        "EFATURAM_GATEWAY_BLOCKED",
         "CAPABILITY_NOT_VERIFIED",
         MarketplaceInvoiceCreationPolicy.DisabledErrorCode
     };
@@ -2050,11 +2053,7 @@ public sealed partial class InvoicingBillingService(
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         return connection is not null && IntegrationRuntimePolicy.AllowsManualRead(connection);
     }
-    private static bool ConnectionWritesEnabled(string settings)
-    {
-        try { return JsonDocument.Parse(settings).RootElement.TryGetProperty("ExternalWritesEnabled", out var value) && value.ValueKind == JsonValueKind.True; }
-        catch (JsonException) { return false; }
-    }
+    private static bool ConnectionWritesEnabled(string settings) => ConnectionSettings.ExternalWritesEnabled(settings);
     private InvoicePartySnapshot Snapshot(Invoice invoice, string role, string content, DateTimeOffset now) => new() { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, InvoiceId = invoice.Id, Role = role, ProtectedContent = _partyProtector.Protect(content), ContentHash = Hash(content), CreatedAt = now };
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private static bool Unapproved(string value) => value is "UNKNOWN" or "UNAPPROVED";

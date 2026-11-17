@@ -1,10 +1,12 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import './questions-design-system.css'
 import { useRememberedHeight } from '../../shared/remembered-height'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
+import { hubApi, hubPoll } from '../../shared/api'
+import { cursorPageParams } from '../../shared/api/paging'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
@@ -17,6 +19,7 @@ import { visibleQuestionConversation, type QuestionConversation } from './questi
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { Modal } from '../../shared/components'
 import { MessageToast } from '../../shared/components/NoticeToast'
+import { RrImagePreview, RrModal } from '../../shared/ui/rr-components'
 import './questions-inbox.css'
 import { viewTabLabel } from '../../shared/view-tabs'
 import { formatIstanbul, istanbulDateKey, istanbulDayBoundary, toDateTimeLocal } from '../../shared/format-date'
@@ -24,15 +27,10 @@ import { scopedStorageKey } from '../../shared/storage-scope'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../shared/PanelSelect'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 
-type MarketplaceQuestion = {
-  id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
-  questionText: string; subject?: string | null; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
-  productModelCode?: string | null; productUrl?: string | null; customerName?: string | null; externalOrderNumber?: string | null; conversations: QuestionConversation[]
-  createdAt: string | null; expiresAt?: string | null; lastRemoteModifiedAt: string | null; lastSyncedAt: string; version: number
-  // NOT_DELIVERED: an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
-  answerSubmissionStatus?: string | null; pendingAnswerText?: string | null
-}
+// NOT_DELIVERED (answerSubmissionStatus): an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
+type MarketplaceQuestion = ApiAnswer<'getQuestionsById'>
 type Notice = { message: string; kind: 'success' | 'error' | 'info' | 'warning' }
 // A question the seller still has to answer: a new one, or one whose answer the marketplace rejected.
 // Hepsiburada's "rejected" is the question closed after the seller reported it; elsewhere a rejected answer may be
@@ -48,10 +46,12 @@ const autoSyncAfterMs = 15 * 60_000
 export function questionSyncIsStale(states: Array<{ lastSuccessAt?: string | null; progressStatus: string }>, now: number) {
   return states.some(state => state.progressStatus !== 'INITIAL' && (!state.lastSuccessAt || now - new Date(state.lastSuccessAt).getTime() > autoSyncAfterMs))
 }
-type Template = { id: string; title: string; text: string; version: number; updatedAt: string }
-type Connection = { id: string; platformCode: string; displayName: string; status: string }
-type SyncState = { connectionId: string; platformCode: string; storeName: string; historyImported: boolean; historyStartedAt?: string | null; progressStatus: string; importedCount: number; productQuestionCount?: number; orderQuestionCount?: number; lastRunStartedAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null }
-type QuestionListPage = { items: MarketplaceQuestion[]; page: number; limit: number; totalCount: number }
+type Template = ApiAnswer<'getQuestionTemplates'>[number]
+type Connection = ApiAnswer<'getConnections'>['items'][number]
+// The connections whose customer questions the panel reads: active Trendyol, Hepsiburada, N11 and Pazarama stores.
+const questionConnections = (page: { items: Connection[] }) => page.items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase()))
+type SyncState = ApiAnswer<'getQuestionsSyncState'>[number]
+type QuestionListPage = ApiAnswer<'getQuestions'>
 type QuestionStatus = 'WAITING' | 'ANSWERED' | 'EXPIRED' | 'OTHER' | 'ALL'
 // Hepsiburada has its own order questions; Pazarama marks a question that names an order. Trendyol and N11 only ask about products.
 const ORDER_QUESTION_PLATFORMS = ['HEPSIBURADA', 'PAZARAMA']
@@ -90,6 +90,8 @@ function questionStatus(status: string) {
   if (normalized === 'EXPIRED' || normalized === 'UNANSWERED' || normalized === 'AUTOCLOSED') return { label: 'Süresi Doldu', glyph: 'none' as Glyph }
   if (normalized === 'REJECTED') return { label: 'Reddedildi', glyph: 'bad' as Glyph }
   if (normalized === 'REPORTED') return { label: 'İnceleniyor', glyph: 'partial' as Glyph }
+  // The marketplace sent no status: unknown, never "waiting for an answer".
+  if (normalized === 'UNKNOWN') return { label: 'Bilinmiyor', glyph: 'none' as Glyph }
   return { label: status, glyph: 'none' as Glyph }
 }
 
@@ -131,7 +133,7 @@ function QuestionProductImage({ src, connectionId, sku, barcode, modelCode, prod
   return imageUrl
     ? <>
       <button type="button" className="qi-product-zoom" onClick={() => setZoomed(true)} aria-label={`${productName} görselini büyüt`} title="Görseli büyüt"><img src={imageUrl} alt={`${productName} görseli`} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setSourceIndex(current => current === sourceIndex ? current + 1 : current)} /></button>
-      <Modal open={zoomed} title={productName} className="qi-image-modal" onClose={() => setZoomed(false)}><img className="qi-image-large" src={largeUrl} alt={`${productName} büyük görseli`} referrerPolicy="no-referrer" /></Modal>
+      {zoomed && <RrImagePreview title={productName} sources={[largeUrl]} onClose={() => setZoomed(false)} />}
     </>
     : <span className="rv-question-product-placeholder" aria-label="Ürün görseli bulunamadı"><UiIcon name="image" size={20} /></span>
 }
@@ -190,28 +192,32 @@ export function QuestionsPage() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const fail = (error: unknown, fallback: string) => setNotice({ message: error instanceof Error ? error.message : fallback, kind: 'error' })
   const [templateTitle, setTemplateTitle] = useState('')
+  // One key per new template: a double click or a resend after a lost answer creates it once; a saved template renews it.
+  const [templateCreateKey, setTemplateCreateKey] = useState(() => newIdempotencyKey('question-template'))
   const [templateText, setTemplateText] = useState('')
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
   const requestedSync = useRef(false)
   const kind = tab === 'ORDER' ? 'ORDER' : 'PRODUCT'
-  const connections = useQuery({ queryKey: ['questions', 'connections'], queryFn: async () => (await loadAllPages<Connection>('/connections', 100)).items.filter(item => ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].includes(item.platformCode) && ['ACTIVE', 'VERIFIED'].includes(item.status.toUpperCase())), staleTime: 60_000 })
+  const connections = useQuery({ ...connectionQueries.list<Connection>(), select: questionConnections, staleTime: 60_000 })
   const filters = new URLSearchParams({ kind, status })
-  if (platform !== 'ALL') filters.set('platform', platform)
+  if (platform !== 'ALL') filters.set('platforms', platform)
   if (connectionId !== 'ALL') filters.set('connectionId', connectionId)
   if (dateFrom) filters.set('dateFrom', istanbulDayBoundary(dateFrom))
   if (dateTo) filters.set('dateTo', istanbulDayBoundary(dateTo, true))
   if (search.trim()) filters.set('search', search.trim())
   filters.set('sort', sort)
-  filters.set('page', String(page)); filters.set('limit', '50')
+  // Paging (PagingContract): the cursor where the order gives one (a page jump sends that page's cursor), NumberedPage
+  // (page + pageSize) under Son Güncellenen, whose ties give no cursor. The same rows either way.
+  if (sort === 'UPDATED') { filters.set('page', String(page)); filters.set('pageSize', '50') } else cursorPageParams(filters, page - 1, 50)
   // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
   // minutes (sync states every minute) instead of keeping the server busy.
-  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
+  const questions = useQuery({ queryKey: queryKeys.questions(kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page), queryFn: ({ signal }) => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`, { signal }), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
   // A count is keyed by the exact request it makes, so the tab's waiting count and the unfiltered status count (the same
   // request when no filter is set) share one cache entry and one request instead of two.
   const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
-    const params = new URLSearchParams({ kind: countKind, status: countStatus, page: '1', limit: '1', sort })
+    const params = new URLSearchParams({ kind: countKind, status: countStatus, limit: '1', sort })
     if (scoped) {
-      if (platform !== 'ALL') params.set('platform', platform)
+      if (platform !== 'ALL') params.set('platforms', platform)
       if (connectionId !== 'ALL') params.set('connectionId', connectionId)
       if (dateFrom) params.set('dateFrom', istanbulDayBoundary(dateFrom))
       if (dateTo) params.set('dateTo', istanbulDayBoundary(dateTo, true))
@@ -219,7 +225,7 @@ export function QuestionsPage() {
     }
     return `/questions?${params.toString()}`
   }
-  const countQuery = (path: string) => ({ queryKey: ['questions', 'count', path], queryFn: () => hubPoll<QuestionListPage>(path).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
+  const countQuery = (path: string) => ({ queryKey: queryKeys.questions('count', path), queryFn: ({ signal }: { signal: AbortSignal }) => hubPoll<QuestionListPage>(path, { signal }).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
   const statusCounts = useQueries({ queries: statusFilters.map(item => ({ ...countQuery(countPath(kind, item.value, true)), enabled: tab !== 'TEMPLATES' })) })
   const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => countQuery(countPath(countKind, 'WAITING', false))) })
   // The list and the chosen status's count ask the same question but were polled two minutes apart, so a question that
@@ -230,31 +236,35 @@ export function QuestionsPage() {
   const shownCountIndex = statusFilters.findIndex(item => item.value === status)
   const listTotal = questions.isSuccess && !questions.isPlaceholderData ? questions.data.totalCount : undefined
   const listUpdatedAt = questions.dataUpdatedAt
-  useEffect(() => { if (listTotal !== undefined) client.setQueryData(['questions', 'count', shownCountPath], listTotal) }, [client, shownCountPath, listTotal, listUpdatedAt])
+  useEffect(() => { if (listTotal !== undefined) client.setQueryData(queryKeys.questions('count', shownCountPath), listTotal) }, [client, shownCountPath, listTotal, listUpdatedAt])
   const shownCount = shownCountIndex >= 0 ? statusCounts[shownCountIndex]?.data : undefined
   const refetchList = questions.refetch
   useEffect(() => { if (shownCount !== undefined && listTotal !== undefined && shownCount !== listTotal) void refetchList() }, [shownCount]) // eslint-disable-line react-hooks/exhaustive-deps -- only a changed count reads the list again
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
-  const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
-  const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubPoll<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })
+  const templates = useQuery({ queryKey: queryKeys.questionTemplates(), queryFn: ({ signal }) => hubApi<Template[]>('/question-templates', { signal }), staleTime: 30_000 })
+  const syncStates = useQuery({ queryKey: queryKeys.questions('sync-state'), queryFn: ({ signal }) => hubPoll<SyncState[]>('/questions/sync-state', { signal }), refetchInterval: 60_000 })
   useEffect(() => { if (syncStates.data) rememberSyncCount(syncStates.data.length) }, [syncStates.data])
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
   const sync = useMutation({
-    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<{ jobs: string[]; queuedConnections: number }>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
-    onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: ['questions'] }), client.invalidateQueries({ queryKey: ['questions', 'sync-state'] })]) },
+    mutationFn: (request: { kind: string; platformCode?: string }) => hubApi<ApiAnswer<'postQuestionsSync'>>('/questions/sync', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('question-sync') }, body: JSON.stringify(request) }),
+    onSuccess: async () => { setNotice(null); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.questions() }), client.invalidateQueries({ queryKey: queryKeys.questions('sync-state') })]) },
     onError: error => fail(error, 'Senkronizasyon kuyruğa alınamadı.'),
   })
   const startSync = sync.mutate
   const saveTemplate = useMutation({
-    mutationFn: () => hubApi<Template>(editingTemplate ? `/question-templates/${editingTemplate.id}` : '/question-templates', { method: editingTemplate ? 'PUT' : 'POST', headers: editingTemplate ? { 'If-Match': `"v${editingTemplate.version}"` } : undefined, body: JSON.stringify({ title: templateTitle, text: templateText }) }),
-    onSuccess: async () => { setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) },
+    mutationFn: () => {
+      const body = JSON.stringify({ title: templateTitle, text: templateText })
+      if (editingTemplate) return hubApi<Template>(`/question-templates/${editingTemplate.id}`, { method: 'PUT', headers: { 'If-Match': `"v${editingTemplate.version}"` }, body })
+      return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-template', templateCreateKey, 0, body), key => hubApi<Template>('/question-templates', { method: 'POST', headers: { 'Idempotency-Key': key }, body }))
+    },
+    onSuccess: async () => { if (!editingTemplate) setTemplateCreateKey(newIdempotencyKey('question-template')); setTemplateTitle(''); setTemplateText(''); setEditingTemplate(null); setNotice(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) },
     onError: error => fail(error, 'Hazır cevap kaydedilemedi.'),
   })
-  const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: ['question-templates'] }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
+  const deleteTemplate = useMutation({ mutationFn: (item: Template) => hubApi<void>(`/question-templates/${item.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${item.version}"` } }), onSuccess: async () => { setNotice(null); setDeletingTemplate(null); await client.invalidateQueries({ queryKey: queryKeys.questionTemplates() }) }, onError: error => { setDeletingTemplate(null); fail(error, 'Hazır cevap silinemedi.') } })
   const sendAnswer = useMutation({
     mutationFn: async ({ id, version, text }: { id: string; version: number; text: string }) => {
-      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-answer', id, current, body), key => hubApi<MarketplaceQuestion>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) }
+      const post = (current: number) => { const body = JSON.stringify({ text, version: current }); return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('question-answer', id, current, body), key => hubApi<ApiAnswer<'postQuestionsByIdAnswer'>>(`/questions/${id}/answer`, { method: 'POST', headers: { 'Idempotency-Key': key }, body })) }
       try { return await post(version) }
       catch (error) {
         // The question was refreshed in the background since it was opened: it is read again and, while it
@@ -266,9 +276,9 @@ export function QuestionsPage() {
         return post(fresh.version)
       }
     },
-    onSuccess: async (_data, variables) => { setNotice(null); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onSuccess: async (_data, variables) => { setNotice(null); setAnswerDrafts(current => ({ ...current, [variables.id]: '' })); await client.invalidateQueries({ queryKey: queryKeys.questions() }) },
     // The draft stays; the list is read again so the screen shows the question as it is now.
-    onError: async error => { fail(error, 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: ['questions'] }) },
+    onError: async error => { fail(error, 'Cevap gönderilemedi.'); await client.invalidateQueries({ queryKey: queryKeys.questions() }) },
   })
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
@@ -300,10 +310,10 @@ export function QuestionsPage() {
   // place to another question.
   if (selectedId === null && rows[0] && !questions.isPlaceholderData) setSelectedId(rows[0].id)
   const listedSelection = rows.find(item => item.id === selectedId)
-  const pinned = useQuery({ queryKey: ['questions', 'detail', selectedId], queryFn: () => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
+  const pinned = useQuery({ queryKey: queryKeys.questions('detail', selectedId), queryFn: ({ signal }) => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`, { signal }), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
   const selected = listedSelection ?? (selectedId && pinned.data?.id === selectedId ? pinned.data : undefined) ?? (selectedId ? undefined : rows[0])
   // What the same customer asked this marketplace before (newest first), shown above the open question.
-  const customerHistory = useQuery({ queryKey: ['questions', 'customer-history', selected?.id], queryFn: () => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`), enabled: Boolean(selected), staleTime: 60_000 })
+  const customerHistory = useQuery({ queryKey: queryKeys.questions('customer-history', selected?.id), queryFn: ({ signal }) => hubApi<MarketplaceQuestion[]>(`/questions/${selected!.id}/customer-history`, { signal }), enabled: Boolean(selected), staleTime: 60_000 })
   const totalCount = questions.data?.totalCount ?? 0
   const pageCount = Math.max(1, Math.ceil(totalCount / 50))
   const currentStatus = statusFilters.find(item => item.value === status) ?? statusFilters[0]
@@ -415,12 +425,12 @@ export function QuestionsPage() {
     <Modal open={confirmAnswer !== null} title={confirmAnswer?.title ?? ''} description={confirmAnswer?.message} className="qi-confirm-modal" onClose={() => setConfirmAnswer(null)} footer={<><Button variant="secondary" onClick={() => setConfirmAnswer(null)}>Vazgeç</Button><Button onClick={() => { if (confirmAnswer) sendAnswer.mutate({ id: confirmAnswer.id, version: confirmAnswer.version, text: confirmAnswer.text }); setConfirmAnswer(null) }}>Cevabı Gönder</Button></>}>
       <p className="qi-confirm-text">{confirmAnswer?.text}</p>
     </Modal>
-    <Modal open={templatesOpen} title="Hazır Cevaplar" description={`${templates.data?.length ?? 0} kayıtlı cevap`} hint="Hazır cevaplar tüm pazaryerlerinde ortak kullanılır." className="qi-templates-modal" onClose={() => { setTemplatesOpen(false); setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }}>
+    {templatesOpen && <RrModal title="Hazır Cevaplar" desc={`${templates.data?.length ?? 0} kayıtlı cevap`} hint="Hazır cevaplar tüm pazaryerlerinde ortak kullanılır." size="xl" modalClass="qi-templates-modal" onClose={() => { setTemplatesOpen(false); setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }}>
       <section className="rv-question-templates">
-        <div className="rv-question-template-editor"><h3>{editingTemplate ? 'Hazır Cevabı Düzenle' : 'Yeni Hazır Cevap'}</h3><label>Başlık<input value={templateTitle} maxLength={120} onChange={event => setTemplateTitle(event.target.value)} placeholder="Örn. Ürün ölçü tablosu" /></label><label>Cevap Metni<textarea rows={4} maxLength={2000} value={templateText} onChange={event => setTemplateText(event.target.value)} placeholder="Müşteriye gönderilecek cevabı yazın" /><small>{templateText.length}/2000</small></label><div className="rv-question-template-actions"><Button variant="secondary" onClick={() => { setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }} disabled={!editingTemplate && !templateTitle && !templateText}>Temizle</Button><Button onClick={() => saveTemplate.mutate()} disabled={!templateTitle.trim() || !templateText.trim()} loading={saveTemplate.isPending}>{editingTemplate ? 'Değişiklikleri Kaydet' : 'Hazır Cevabı Oluştur'}</Button></div></div>
-        <div className="rv-question-template-list"><header><h3>Kayıtlı Cevaplar</h3><span className="qi-count">{templates.data?.length ?? 0}</span></header>{templates.isLoading ? <LoadingState>Hazır cevaplar yükleniyor…</LoadingState> : templates.data?.length ? templates.data.map(item => <article className="rv-question-template-card" key={item.id}><div><strong>{item.title}</strong><p>{item.text}</p><small>Güncellendi: {formatDate(item.updatedAt)}</small></div><div><Button size="sm" variant="secondary" onClick={() => { setEditingTemplate(item); setTemplateTitle(item.title); setTemplateText(item.text) }}>Düzenle</Button><Button size="sm" variant="secondary" className="is-danger-outline" onClick={() => setDeletingTemplate(item)} loading={deleteTemplate.isPending && deleteTemplate.variables?.id === item.id}>Sil</Button></div></article>) : <EmptyState>Henüz hazır cevap oluşturulmadı.</EmptyState>}</div>
+        <div className="rv-question-template-editor"><h3>{editingTemplate ? 'Hazır Cevabı Düzenle' : 'Yeni Hazır Cevap'}</h3><label>Başlık<input value={templateTitle} maxLength={120} onChange={event => setTemplateTitle(event.target.value)} placeholder="Örn. Ürün ölçü tablosu" /></label><label>Cevap Metni<textarea rows={4} maxLength={2000} value={templateText} onChange={event => setTemplateText(event.target.value)} placeholder="Müşteriye gönderilecek cevabı yazın" /><small>{templateText.length}/2000</small></label><div className="rv-question-template-actions"><button type="button" className="rr-btn" onClick={() => { setEditingTemplate(null); setTemplateTitle(''); setTemplateText('') }} disabled={!editingTemplate && !templateTitle && !templateText}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => saveTemplate.mutate()} disabled={!templateTitle.trim() || !templateText.trim() || saveTemplate.isPending} aria-busy={saveTemplate.isPending || undefined}>{editingTemplate ? 'Değişiklikleri Kaydet' : 'Hazır Cevabı Oluştur'}</button></div></div>
+        <div className="rv-question-template-list"><header><h3>Kayıtlı Cevaplar</h3><span className="qi-count">{templates.data?.length ?? 0}</span></header>{templates.isLoading ? <LoadingState>Hazır cevaplar yükleniyor…</LoadingState> : templates.data?.length ? templates.data.map(item => <article className="rv-question-template-card" key={item.id}><div><strong>{item.title}</strong><p>{item.text}</p><small>Güncellendi: {formatDate(item.updatedAt)}</small></div><div><button type="button" className="rr-btn" onClick={() => { setEditingTemplate(item); setTemplateTitle(item.title); setTemplateText(item.text) }}>Düzenle</button><button type="button" className="rr-btn rr-danger" onClick={() => setDeletingTemplate(item)} disabled={deleteTemplate.isPending && deleteTemplate.variables?.id === item.id} aria-busy={(deleteTemplate.isPending && deleteTemplate.variables?.id === item.id) || undefined}>Sil</button></div></article>) : <EmptyState>Henüz hazır cevap oluşturulmadı.</EmptyState>}</div>
       </section>
-    </Modal>
+    </RrModal>}
     {/* A quick reply is shared by everyone in the store, so it is removed only after a second click. */}
     <Modal open={deletingTemplate !== null} title="Hazır Cevap Silinsin mi?" description={deletingTemplate ? `“${deletingTemplate.title}” tüm pazaryerlerinde kullanılan hazır cevaplardan kaldırılacak.` : undefined} className="qi-confirm-modal qi-template-delete-modal" onClose={() => setDeletingTemplate(null)} footer={<><Button variant="secondary" onClick={() => setDeletingTemplate(null)}>Vazgeç</Button><Button variant="danger" loading={deleteTemplate.isPending} onClick={() => { if (deletingTemplate) deleteTemplate.mutate(deletingTemplate) }}>Hazır Cevabı Sil</Button></>}>
       <p className="qi-confirm-text">{deletingTemplate?.text}</p>

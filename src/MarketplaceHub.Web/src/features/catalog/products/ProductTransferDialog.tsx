@@ -4,18 +4,20 @@
 // found or opened by name like the other imports do and goes to every colour card of the model. Rows are matched by stock code
 // (then barcode); the stock code itself is never written. Stock is saved like the product editor saves it, so it
 // reaches the stores with stock sends on; every other field is a panel write that sends nothing by itself.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { formatMoney } from '../../../shared/format-money'
 import { TitleHint } from '../../../shared/components'
-import { RrIcon, RrModal } from '../../marketplace/returns-ui'
+import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import './product-transfer.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
-export type ProductTransferField = 'TITLE' | 'BRAND' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
+export type ProductTransferField = 'TITLE' | 'DESCRIPTION' | 'BRAND' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
 export type ProductTransferOutcome = 'UPDATE' | 'UNCHANGED' | 'SKIPPED' | 'UNMATCHED' | 'AMBIGUOUS' | 'ERROR'
 export type ProductTransferFieldChange = 'SET' | 'CLEAR' | null
 export type ProductTransferPrice = { connectionId: string; storeName: string; oldSalePrice: number; newSalePrice: number; oldListPrice: number; newListPrice: number }
@@ -32,41 +34,69 @@ export type ProductTransferRow = {
   oldPanelSalePrice?: number | null; newPanelSalePrice?: number | null; oldPanelListPrice?: number | null; newPanelListPrice?: number | null; panelPriceChange?: ProductTransferFieldChange
   oldVatRate?: number | null; newVatRate?: number | null; vatChange?: ProductTransferFieldChange
   oldBrand?: string | null; newBrand?: string | null; brandChange?: ProductTransferFieldChange
+  // The description is shown by its length only, never as HTML in the table.
+  descriptionChange?: ProductTransferFieldChange; newDescriptionLength?: number | null
 }
-export type ProductTransferChange = {
-  variantId: string; version: number; setCost: boolean; cost: number | null; setDesi: boolean; desi: number | null
-  stock?: { expectedOnHand: number; onHand: number } | null
-  prices?: Array<{ offerId: string; version: number; salePrice: number; listPrice: number }> | null
-  barcode?: string | null; setModelCode?: boolean; modelCode?: string | null
-  panelPrice?: { salePrice: number; listPrice: number } | null
-}
-export type ProductTransferProductChange = { productId: string; version: number; title: string | null; vatRate: number | null; brand?: string | null }
-export type ProductTransferPreview = {
-  fileName: string; availableFields: ProductTransferField[]; fields: ProductTransferField[]; stores: Array<{ connectionId: string; name: string }>
-  totalRows: number; updates: number; costUpdates: number; costClears: number; desiUpdates: number; desiClears: number; stockUpdates: number; priceUpdates: number
-  unchanged: number; skipped: number; unmatched: number; ambiguous: number; errors: number
-  rows: ProductTransferRow[]; rowsTruncated: boolean; changes: ProductTransferChange[]
-  productChanges?: ProductTransferProductChange[] | null
-  titleUpdates?: number; barcodeUpdates?: number; modelCodeUpdates?: number; modelCodeClears?: number; panelPriceUpdates?: number; vatUpdates?: number; brandUpdates?: number
+type TransferPreviewAnswer = ApiAnswer<'postProductsTransferImport'>
+// The changes go back as the apply body as the answer gave them (the apply request reads numbers or strings).
+export type ProductTransferChange = TransferPreviewAnswer['changes'][number]
+export type ProductTransferProductChange = NonNullable<TransferPreviewAnswer['productChanges']>[number]
+// POST /products/transfer/import, sent back as the apply body. CONTRACT: the API declares its numbers (versions, cost,
+// desi, stock, VAT, prices) as "number or string" because the schema is the apply request's too, which reads either; an
+// answer writes numbers. It declares the fields as strings; ProductTransferFields holds only ProductTransferField's codes.
+export type ProductTransferPreview = Omit<TransferPreviewAnswer, 'availableFields' | 'fields' | 'rows'> & { availableFields: ProductTransferField[]; fields: ProductTransferField[]; rows: ProductTransferRow[] }
+
+const transferFields: ReadonlySet<string> = new Set<ProductTransferField>(['TITLE', 'DESCRIPTION', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES'])
+const transferOutcomes: ReadonlySet<string> = new Set<ProductTransferOutcome>(['UPDATE', 'UNCHANGED', 'SKIPPED', 'UNMATCHED', 'AMBIGUOUS', 'ERROR'])
+const isTransferField = (code: string): code is ProductTransferField => transferFields.has(code)
+const isTransferOutcome = (code: string): code is ProductTransferOutcome => transferOutcomes.has(code)
+// A change kind the panel does not know still changes something: it is shown as a set value, never as no change.
+const fieldChange = (kind: string | null): ProductTransferFieldChange => kind === null ? null : kind === 'CLEAR' ? 'CLEAR' : 'SET'
+
+/**
+ * The preview as the dialog reads it. A field code the panel has no name for is left out of the picks (it cannot be
+ * offered); a row outcome it does not know is shown as an error with the code in its message, so it is never counted
+ * as an update or as unchanged.
+ */
+export function readTransferPreview(raw: TransferPreviewAnswer): ProductTransferPreview {
+  return {
+    ...raw,
+    availableFields: raw.availableFields.filter(isTransferField),
+    fields: raw.fields.filter(isTransferField),
+    rows: raw.rows.map(row => {
+      return {
+        ...row,
+        outcome: isTransferOutcome(row.outcome) ? row.outcome : 'ERROR',
+        message: isTransferOutcome(row.outcome) ? row.message : [`Bilinmeyen sonuç: ${row.outcome}`, row.message].filter(Boolean).join(' · '),
+        costChange: fieldChange(row.costChange), desiChange: fieldChange(row.desiChange), stockChange: fieldChange(row.stockChange),
+        titleChange: fieldChange(row.titleChange), barcodeChange: fieldChange(row.barcodeChange), modelCodeChange: fieldChange(row.modelCodeChange),
+        panelPriceChange: fieldChange(row.panelPriceChange), vatChange: fieldChange(row.vatChange), brandChange: fieldChange(row.brandChange),
+        descriptionChange: fieldChange(row.descriptionChange ?? null)
+      }
+    })
+  }
 }
 export type ProductTransferApplyResult = {
   variants: number; costsUpdated: number; costsCleared: number; desiUpdated: number; desiCleared: number; stocksUpdated: number; pricesUpdated: number; products: number
   titlesUpdated?: number; barcodesUpdated?: number; modelCodesUpdated?: number; modelCodesCleared?: number; panelPricesUpdated?: number; vatUpdated?: number; brandsUpdated?: number; brandsCreated?: number
+  // KATALOG-14 phase D5b: the colour cards of the models a model field (name, VAT, brand, desi) reached.
+  modelColours?: number
+  descriptionsUpdated?: number
 }
 export type ProductTransferExportFilter = 'all' | 'cost' | 'desi'
 
-export const productTransferSummaryKey = ['products', 'transfer-summary'] as const
+export const productTransferSummaryKey = queryKeys.products('transfer-summary')
 // The exported columns an upload can write, grouped as the seller thinks of them. A group of one field is that field.
 export const productTransferFieldGroups: ReadonlyArray<{ label: string; fields: ProductTransferField[] }> = [
-  { label: 'Ürün Bilgileri', fields: ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE'] },
+  { label: 'Ürün Bilgileri', fields: ['TITLE', 'DESCRIPTION', 'BRAND', 'BARCODE', 'MODEL_CODE'] },
   { label: 'Fiyat ve Vergi', fields: ['PANEL_PRICES', 'VAT'] },
   { label: 'Stok ve Lojistik', fields: ['STOCK', 'DESI'] },
   { label: 'Maliyet', fields: ['COST'] },
   { label: 'Mağaza Fiyatları', fields: ['PRICES'] }
 ]
 // The order the server lists the fields in (ProductTransferFields.All); a pick is sent in it.
-const allFields: ProductTransferField[] = ['TITLE', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
-const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', BRAND: 'Marka', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
+const allFields: ProductTransferField[] = ['TITLE', 'DESCRIPTION', 'BRAND', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
+const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', DESCRIPTION: 'Açıklama', BRAND: 'Marka', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
 const defaultFields: ProductTransferField[] = ['COST', 'DESI']
 
 export function productTransferExportHref(filter: ProductTransferExportFilter) {
@@ -96,7 +126,7 @@ const formatText = (value: string | null) => value ?? '—'
 
 export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
   const client = useQueryClient()
-  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: () => hubApi<ProductTransferSummary>('/products/transfer/summary') })
+  const summary = useQuery({ queryKey: productTransferSummaryKey, queryFn: ({ signal }) => hubApi<ApiAnswer<'getProductsTransferSummary'>>('/products/transfer/summary', { signal }) })
   const [filter, setFilter] = useState<ProductTransferExportFilter>('all')
   const [fields, setFields] = useState<ProductTransferField[]>(defaultFields)
   const [file, setFile] = useState<File | null>(null)
@@ -112,7 +142,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
       const body = new FormData()
       body.append('file', upload)
       body.append('fields', picked.join(','))
-      return hubApi<ProductTransferPreview>('/products/transfer/import', { method: 'POST', body })
+      return hubApi<TransferPreviewAnswer>('/products/transfer/import', { method: 'POST', body }).then(readTransferPreview)
     },
     onMutate: () => { previewId.current = null },
     onSuccess: () => { previewId.current = newIdempotencyKey() }
@@ -121,12 +151,12 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
     mutationFn: ({ changes, productChanges }: { changes: ProductTransferChange[]; productChanges: ProductTransferProductChange[] }) => {
       const body = JSON.stringify(productChanges.length ? { changes, productChanges } : { changes })
       const key = versionedIdempotencyKey('product-transfer', previewId.current ?? newIdempotencyKey(), 1, body)
-      return sendWithVersionedIdempotencyKey(key, idempotencyKey => hubApi<ProductTransferApplyResult>('/products/transfer/apply', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body }))
+      return sendWithVersionedIdempotencyKey(key, idempotencyKey => hubApi<ApiAnswer<'postProductsTransferApply'>>('/products/transfer/apply', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body }))
     },
     onSuccess: async () => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: ['products'] }),
-        client.invalidateQueries({ queryKey: ['product'] }),
+        client.invalidateQueries({ queryKey: queryKeys.products() }),
+        client.invalidateQueries({ queryKey: queryKeys.product() }),
         client.invalidateQueries({ queryKey: productTransferSummaryKey })
       ])
     }
@@ -226,7 +256,7 @@ function FieldCheck({ field, label, fields, available, disabled, onToggle }: { f
 
 function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void; onToggleGroup: (group: readonly ProductTransferField[]) => void }) {
   return <fieldset className="pci-fields">
-    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Marka</b> modele aittir: modelin tüm renklerine yazılır; panelde aynı adlı marka yoksa açılır, kapatılmış marka yeniden açılmaz. Satışa açık ya da kapalı üründe desi ve model kodu silinemez. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
+    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; barkod aktarılırken yalnız stok kodu ile eşleştirilir. Stok kodu değiştirilemez, barkod bir varyanta aittir ve silinemez. Varyant, kategori ve durum sütunları yalnız bilgi içindir; <b>ürün adı</b> ürüne aittir, aynı ürünün tüm satırlarına aynı adı yazın. <b>Açıklama</b> modele aittir: değişen açıklama modelin tüm renklerine yazılır; boş hücre açıklamayı değiştirmez, silmez. <b>Marka</b> modele aittir: modelin tüm renklerine yazılır; panelde aynı adlı marka yoksa açılır, kapatılmış marka yeniden açılmaz. Satışa açık ya da kapalı üründe desi ve model kodu silinemez. <b>Panel fiyatı ve KDV</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez.</TitleHint></legend>
     <div className="pci-groups">{productTransferFieldGroups.map(group => {
       if (group.fields.length === 1) return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
         <FieldCheck field={group.fields[0]} label={group.label} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />
@@ -247,12 +277,13 @@ function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: {
 }
 
 function appliedTotal(done: ProductTransferApplyResult) {
-  return done.variants + (done.titlesUpdated ?? 0) + (done.vatUpdated ?? 0) + (done.brandsUpdated ?? 0)
+  return done.variants + (done.titlesUpdated ?? 0) + (done.descriptionsUpdated ?? 0) + (done.vatUpdated ?? 0) + (done.brandsUpdated ?? 0)
 }
 
 function appliedText(done: ProductTransferApplyResult) {
   const parts = [
     done.titlesUpdated ? `${count(done.titlesUpdated)} ürün adı güncellendi` : '',
+    done.descriptionsUpdated ? `${count(done.descriptionsUpdated)} açıklama güncellendi` : '',
     done.brandsUpdated ? `${count(done.brandsUpdated)} ürün kartının markası güncellendi${done.brandsCreated ? ` (${count(done.brandsCreated)} yeni marka açıldı)` : ''}` : '',
     done.barcodesUpdated ? `${count(done.barcodesUpdated)} barkod güncellendi` : '',
     done.modelCodesUpdated ? `${count(done.modelCodesUpdated)} model kodu güncellendi` : '',
@@ -266,13 +297,24 @@ function appliedText(done: ProductTransferApplyResult) {
     done.stocksUpdated ? `${count(done.stocksUpdated)} stok güncellendi` : '',
     done.pricesUpdated ? `${count(done.pricesUpdated)} mağaza fiyatı güncellendi` : ''
   ].filter(Boolean)
-  return `${count(done.variants)} varyant kaydedildi (${count(done.products)} ürün): ${parts.join(', ')}.`
+  const model = done.modelColours ? ` Model İçindeki ${count(done.modelColours)} Renge Uygulandı.` : ''
+  return `${count(done.variants)} varyant kaydedildi (${count(done.products)} ürün): ${parts.join(', ')}.${model}`
 }
 
 function FieldCell<T>({ change, oldValue, newValue, format }: { change: ProductTransferFieldChange | undefined; oldValue: T | null | undefined; newValue: T | null | undefined; format: (value: T | null) => string }) {
   if (change === 'SET') return <><span className="pci-old">{format(oldValue ?? null)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b>{format(newValue ?? null)}</b></>
   if (change === 'CLEAR') return <><span className="pci-old">{format(oldValue ?? null)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b className="pci-clear">Silinecek</b></>
   return <span className="pci-same">{oldValue == null ? '—' : format(oldValue)}</span>
+}
+
+// A changed description by its length ("Açıklama Değişti (N Karakter)"): the HTML itself never goes into the table.
+export function descriptionChangeText(row: Pick<ProductTransferRow, 'descriptionChange' | 'newDescriptionLength'>) {
+  return row.descriptionChange === 'SET' ? `Açıklama Değişti (${count(row.newDescriptionLength ?? 0)} Karakter)` : null
+}
+
+function DescriptionCell({ row }: { row: ProductTransferRow }) {
+  const text = descriptionChangeText(row)
+  return text ? <b>{text}</b> : <span className="pci-same">Değişmiyor</span>
 }
 
 function PanelPriceCell({ row }: { row: ProductTransferRow }) {
@@ -300,6 +342,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
   const stats: Array<[string, number, string]> = [
     ['Güncellenecek Varyant', preview.updates, 'ok'],
     ...stat('TITLE', 'Ürün Adı Değişen', preview.titleUpdates ?? 0),
+    ...stat('DESCRIPTION', 'Açıklama Değişen', preview.descriptionUpdates ?? 0),
     ...stat('BRAND', 'Marka Değişen', preview.brandUpdates ?? 0),
     ...stat('BARCODE', 'Barkod Değişen', preview.barcodeUpdates ?? 0),
     ...stat('MODEL_CODE', 'Model Kodu Değişen', modelCodeChanges),
@@ -331,6 +374,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
       <thead><tr>
         <th scope="col">Satır</th><th scope="col">Ürün</th>
         {picked.has('TITLE') && <th scope="col">Ürün Adı</th>}
+        {picked.has('DESCRIPTION') && <th scope="col">Açıklama</th>}
         {picked.has('BRAND') && <th scope="col">Marka</th>}
         {picked.has('BARCODE') && <th scope="col">Barkod</th>}
         {picked.has('MODEL_CODE') && <th scope="col">Model Kodu</th>}
@@ -349,6 +393,7 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
           <td className="pci-num">{row.rowNumber}</td>
           <td><span className="pci-title">{row.productTitle ?? row.sku ?? row.barcode ?? '—'}</span><small>{[row.variantLabel, row.sku, row.barcode].filter(Boolean).join(' · ') || '—'}</small></td>
           {picked.has('TITLE') && <td className="pci-text">{matched ? <FieldCell change={row.titleChange} oldValue={row.productTitle} newValue={row.newTitle} format={formatText} /> : formatText(row.newTitle ?? null)}</td>}
+          {picked.has('DESCRIPTION') && <td className="pci-desc">{matched ? <DescriptionCell row={row} /> : '—'}</td>}
           {picked.has('BRAND') && <td className="pci-text">{matched ? <FieldCell change={row.brandChange} oldValue={row.oldBrand} newValue={row.newBrand} format={formatText} /> : formatText(row.newBrand ?? null)}</td>}
           {picked.has('BARCODE') && <td className="pci-money">{matched ? <FieldCell change={row.barcodeChange} oldValue={row.oldBarcode} newValue={row.newBarcode} format={formatText} /> : formatText(row.newBarcode ?? null)}</td>}
           {picked.has('MODEL_CODE') && <td className="pci-money">{matched ? <FieldCell change={row.modelCodeChange} oldValue={row.oldModelCode} newValue={row.newModelCode} format={formatText} /> : formatText(row.newModelCode ?? null)}</td>}

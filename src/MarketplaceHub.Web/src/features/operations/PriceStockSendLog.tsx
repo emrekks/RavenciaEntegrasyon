@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
@@ -6,7 +7,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
-import { RrIcon, RrLogo } from '../marketplace/returns-ui'
+import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { jobTimeRangeOptions } from './job-list-query'
 import { JobStateGlyph } from './job-state-glyph'
@@ -20,6 +21,7 @@ import {
 } from './price-stock-send-log'
 import { ProductThumb } from './ProductThumb'
 import './price-stock-send-log.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // İşlem Takibi › Loglar: every price/stock line sent to a marketplace, newest first, like an API log. The first page is
 // polled every 30 seconds while it is the only one loaded; older pages are read on demand.
@@ -94,15 +96,15 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
   // The summary counts every result under the other filters, so a picked group keeps the rest of the counts in view.
   const countFilters = useMemo(() => ({ ...filters, results: [] }), [filters])
   const counts = useQuery({
-    queryKey: ['price-stock-send-log', 'counts', countFilters],
-    queryFn: () => hubPoll<Array<{ result: string; count: number }>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`),
+    queryKey: queryKeys.priceStockSendLog('counts', countFilters),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getPriceStockSendLogCounts'>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`, { signal }),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
   })
   const summary = useMemo(() => counts.data ? sendLogSummaryCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
-    queryKey: ['price-stock-send-log', filters, oldestFirst],
+    queryKey: queryKeys.priceStockSendLog(filters, oldestFirst),
     queryFn: context => hubPoll<PriceStockSendLogPage>(`/price-stock-send-log${sendLogQueryString(filters, context.pageParam, undefined, oldestFirst)}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,

@@ -1,20 +1,22 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import type { ReactNode } from 'react'
 import { platformDisplayOrder } from '../../shared/platform-names'
 import { Link } from 'react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
-import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
-import { RrLogo } from '../marketplace/returns-ui'
+import { backgroundPollHeaders, hubApi } from '../../shared/api'
+import { InvoiceGlyph } from '../../shared/ui/invoice-state-glyph'
+import { RrLogo } from '../../shared/ui/rr-components'
 import type { Connection } from '../marketplace/shared'
 import { connectionAuthSummary } from '../marketplace/integrations/connection-auth-alert'
 import { instantNotificationsQueryKey, type InstantNotificationStatus } from '../marketplace/instant-notification-status'
 import { webhookCell } from './integration-health'
 import './dashboard-sade.css'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 
 // Entegrasyon Durumu: one row per marketplace store with the last 7 days of each data flow, the webhook and the
 // 24-hour job counts. Genel Bakış and İşlem Takibi › API Sağlık draw the same panel from the same queries.
 
-export type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
+export type DashboardMetrics = ApiAnswer<'getDashboardBootstrap'>['metrics']
 /** What API Sağlık adds to a store's row: the automatic price/stock write state, a problem count and the order-source note (all as tooltips). */
 export type StatusExtras = {
   write: { label: string; tone: 'on' | 'partial' | 'off'; title: string }
@@ -22,8 +24,18 @@ export type StatusExtras = {
   sourceHint: string
   attention: boolean
 }
-export type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
-export type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
+type MatrixRowAnswer = ApiAnswer<'getDashboardIntegrationMatrix'>[number]
+// CONTRACT: the API declares a cell's state as a string; DashboardReadService writes ok, warn, bad or off.
+export type MatrixCell = Omit<MatrixRowAnswer['cells'][string], 'state'> & { state: 'ok' | 'warn' | 'bad' | 'off' }
+export type MatrixRow = Omit<MatrixRowAnswer, 'cells'> & { cells: Record<string, MatrixCell> }
+const cellStates: ReadonlySet<string> = new Set<MatrixCell['state']>(['ok', 'warn', 'bad', 'off'])
+const isMatrixCell = (cell: MatrixRowAnswer['cells'][string]): cell is MatrixCell => cellStates.has(cell.state)
+
+// The matrix as the panel reads it: a cell in a state the panel does not know is left out (shown as no data), never
+// shown as another state.
+export function readIntegrationMatrix(rows: ApiAnswer<'getDashboardIntegrationMatrix'>): MatrixRow[] {
+  return rows.map(row => ({ ...row, cells: Object.fromEntries(Object.entries(row.cells).filter((entry): entry is [string, MatrixCell] => isMatrixCell(entry[1]))) }))
+}
 
 // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
 const MARKETPLACES: readonly string[] = platformDisplayOrder
@@ -33,7 +45,7 @@ const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Hata var', off: 'So
 const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
 const poll = { headers: backgroundPollHeaders }
 
-export const dashboardBootstrapQuery = { queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<{ metrics: DashboardMetrics; channels?: unknown[] }>('/dashboard/bootstrap', poll), ...refresh }
+export const dashboardBootstrapQuery = { queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { ...poll, signal }), ...refresh }
 
 export function age(timestamp: string | null) {
   if (!timestamp) return null
@@ -70,11 +82,11 @@ export const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) 
 
 /** The matrix rows with each store's credentials and webhook as the integration page shows them, and whether it needs a look. */
 export function useIntegrationHealth() {
-  const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
+  const matrix = useQuery({ queryKey: queryKeys.dashboard('integration-matrix'), queryFn: async ({ signal }) => readIntegrationMatrix(await hubApi<ApiAnswer<'getDashboardIntegrationMatrix'>>('/dashboard/integration-matrix', { ...poll, signal })), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
   const rows = (matrix.data ?? []).filter(row => MARKETPLACES.includes(row.platformCode.toUpperCase()))
   // The webhook status of a Trendyol or Shopify store asks the marketplace, so it is read again only every five minutes.
-  const connections = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections'), staleTime: 120_000 })
-  const webhooks = useQueries({ queries: rows.map(row => ({ queryKey: instantNotificationsQueryKey(row.connectionId), queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${row.connectionId}/instant-notifications`, poll), staleTime: 300_000, refetchInterval: 300_000, refetchIntervalInBackground: false })) })
+  const connections = useQuery({ ...connectionQueries.list<Connection>(), staleTime: 120_000 })
+  const webhooks = useQueries({ queries: rows.map(row => ({ queryKey: instantNotificationsQueryKey(row.connectionId), queryFn: ({ signal }) => hubApi<InstantNotificationStatus>(`/connections/${row.connectionId}/instant-notifications`, { ...poll, signal }), staleTime: 300_000, refetchInterval: 300_000, refetchIntervalInBackground: false })) })
   const health = rows.map((row, index) => {
     const connection = connections.data?.items.find(item => item.id === row.connectionId)
     const auth = connection ? connectionAuthSummary(connection) : null

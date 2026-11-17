@@ -118,10 +118,10 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
     // The card's variants whose listing on this connection Trendyol still reviews or refused (ImportedApprovalStates).
     internal static async Task<Guid[]> HeldVariantIdsAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, CancellationToken cancellationToken) =>
-        await (from listing in db.ChannelListingVariants.AsNoTracking()
+        await (from listing in db.ChannelListingVariants.AsNoTracking().Where(PolicyExpressions.On<ChannelListingVariant, string?>(ImportedApprovalStates.IsHeldListingRule, listing => listing.ActualStatus))
                join profile in db.ChannelListingProfiles.AsNoTracking() on listing.ProfileId equals profile.Id
                where listing.TenantId == tenantId && profile.TenantId == tenantId && profile.ConnectionId == connectionId
-                   && variantIds.Contains(listing.VariantId) && ImportedApprovalStates.HeldListingStatuses.Contains(listing.ActualStatus)
+                   && variantIds.Contains(listing.VariantId)
                select listing.VariantId).Distinct().ToArrayAsync(cancellationToken);
 
     // The fields "Ürün Güncelleme - Onaysız Ürün v2" does not take: it updates the product information only (offline
@@ -274,7 +274,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     internal async Task<Guid[]?> ProductFamilyScopeAsync(Guid tenantId, Guid? productId, CancellationToken cancellationToken)
     {
         if (productId is not { } opened) return null;
-        var card = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == opened).Select(x => new { x.BrandId, x.FamilyId }).SingleOrDefaultAsync(cancellationToken);
+        var card = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == opened).Select(x => new { x.BrandId, x.FamilyId }).SingleOrDefaultAsync(cancellationToken);
         var brandId = card?.BrandId;
         var modelCode = await db.ProductVariants.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == opened && x.ModelCode != null && x.ModelCode.Trim() != "")
@@ -283,7 +283,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             .FirstOrDefaultAsync(cancellationToken);
         var family = await ProductFamilyScope.ProductIdsAsync(db, tenantId, brandId, modelCode, db.ProductVariants.AsNoTracking(), cancellationToken, card?.FamilyId);
         var siblings = family.Where(id => id != opened).ToList();
-        List<Guid> drafts = siblings.Count == 0 ? [] : await db.Products.AsNoTracking()
+        List<Guid> drafts = siblings.Count == 0 ? [] : await EffectiveCatalog.Products(db)
             .Where(x => x.TenantId == tenantId && siblings.Contains(x.Id) && x.Status == ProductStatus.Draft)
             .Select(x => x.Id)
             .ToListAsync(cancellationToken);
@@ -723,7 +723,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             .ToHashSet(StringComparer.Ordinal);
         // Model Kaydı Faz 2: a product without a link of its own reaches its model's PTT AVM product through the model link
         // an import recorded from that product's own variants (MarketplaceModelLinks.ForCardAsync), before the model-code rule.
-        var familyOf = (await db.Products.AsNoTracking()
+        var familyOf = (await EffectiveCatalog.Products(db)
                 .Where(x => x.TenantId == tenantId && productIds.Contains(x.Id) && x.FamilyId != null)
                 .Select(x => new { x.Id, x.FamilyId })
                 .ToListAsync(cancellationToken))
@@ -875,7 +875,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     internal static string N11PriceHash(ChannelOffer offer)
     {
         var (listPrice, salePrice) = N11Prices(offer);
-        return Hash($"{listPrice:0.00}|{salePrice:0.00}|TRY|{offer.PriceVersion}");
+        // Invariant culture: the mark must not depend on the machine's decimal separator (the live server runs invariant).
+        return Hash(string.Create(CultureInfo.InvariantCulture, $"{listPrice:0.00}|{salePrice:0.00}|TRY|{offer.PriceVersion}"));
     }
 
     internal static (decimal ListPrice, decimal SalePrice) PazaramaPrices(ChannelOffer offer)

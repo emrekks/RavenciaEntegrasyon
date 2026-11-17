@@ -62,7 +62,7 @@ public sealed class JobVariantResultPolicyTests
     {
         var status = TrendyolJsonMapper.Batch("""{"batchRequestId":"b-1","status":"COMPLETED","items":[{"requestItem":{"barcode":"MZ-22"},"status":"FAILED","failureReasons":["Web Color alanı zorunludur."]},{"requestItem":{"barcode":"MZ-01"},"status":"SUCCESS","failureReasons":[]}]}""", "b-1");
 
-        Assert.Equal(" Reddedilen: MZ-22 (Web Color alanı zorunludur.)", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.RejectionReasons(status.Lines));
+        Assert.Equal(" Reddedilen: MZ-22 (Web Color alanı zorunludur.)", MarketplaceHub.Infrastructure.Persistence.ProductJobService.RejectionReasons(status.Lines));
     }
 
     [Fact]

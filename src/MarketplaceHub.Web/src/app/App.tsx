@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../shared/api/api-answer'
 import { Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { BrandSymbol } from '../shared/components/BrandSymbol'
 import { BrandWordmark } from '../shared/components/BrandWordmark'
@@ -6,30 +7,31 @@ import { closeAllDismissables, useDismissable } from '../shared/hooks/useDismiss
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
-import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
-import { Drawer, ErrorBoundary, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
+import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, setWriteTimeoutHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
+import { Drawer, ErrorBoundary, ErrorBox, UiIcon, type UiIconName } from '../shared/components'
+import { RrModal } from '../shared/ui/rr-components'
 import { ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, PromotionsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, InvoiceDetailPage, InvoicesPage, JobsPage, ReportsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { usePageEntryReveal } from './hooks/usePageEntryReveal'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
-import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification, type AttentionNotice } from '../shared/notifications'
+import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { startNotificationCenterSink } from '../shared/notification-center'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
-import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
+import { clearPersonalStorage, scopedStorageKey, setStorageScope } from '../shared/storage-scope'
 import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
-import { readStoredItem, removeStoredItem, writeStoredItem } from '../shared/local-storage'
+import { readSessionItem, readStoredItem, removeStoredItem, writeSessionItem, writeStoredItem } from '../shared/local-storage'
 import { focusOnMount } from '../shared/focus'
 import { PanelSelect } from '../shared/PanelSelect'
 import { closeTouchTip, installTouchTips } from '../shared/touch-tips'
 import { installOverlayScrollLock } from '../shared/overlay-scroll-lock'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
-import type { DashboardMetrics } from '../features/dashboard/IntegrationStatusPanel'
+import { queryKeys } from '../shared/api/query-keys'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -37,6 +39,8 @@ import type { DashboardMetrics } from '../features/dashboard/IntegrationStatusPa
 let loadedNotificationPanel: typeof import('./NotificationPanel').NotificationPanel | null = null
 const loadNotificationPanel = () => import('./NotificationPanel').then(module => { loadedNotificationPanel = module.NotificationPanel; return module })
 const NotificationPanel = lazyPage(() => loadNotificationPanel().then(module => ({ default: module.NotificationPanel })))
+// API-GUVENLIK-6: the invitations of other workspaces, loaded only when the signed-in account has one.
+const WorkspaceInvitationsPrompt = lazyPage(() => import('./WorkspaceInvitationsPrompt').then(module => ({ default: module.WorkspaceInvitationsPrompt })))
 const Dashboard = lazyPage(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
 const GoogleDriveCallbackPage = lazyPage(() => import('../features/settings/GoogleDriveCallbackPage').then(module => ({ default: module.GoogleDriveCallbackPage })))
@@ -61,6 +65,12 @@ function Shell({ me }: { me: Me }) {
   // Every notification the bell shows is kept a week in the notification center (İşlem Takibi › Bildirimler); a
   // read-only role only reads, so its bell stays in this browser.
   useEffect(() => me.role?.toUpperCase() === 'READONLY' ? undefined : startNotificationCenterSink(), [me.tenantId, me.id, me.role])
+  // Invitations of other workspaces (API-GUVENLIK-6), read when the workspace opens. "Sonra Karar Ver" hides the window in
+  // this tab until sign-out (sessionStorage, cleared by clearPersonalStorage); a new tab or a new sign-in asks again.
+  const invitations = useQuery({ queryKey: queryKeys.myInvitations(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getAuthInvitations'>>('/auth/invitations', { signal }), staleTime: Infinity, refetchOnWindowFocus: false, retry: false })
+  const invitationsLaterKey = scopedStorageKey('rv-invitations-later')
+  const [invitationsClosed, setInvitationsClosed] = useState(() => readSessionItem(invitationsLaterKey) === '1')
+  const closeInvitations = () => { writeSessionItem(invitationsLaterKey, '1'); setInvitationsClosed(true) }
   const [topbarHidden, setTopbarHidden] = useState(false)
   useEffect(() => {
     let last = window.scrollY
@@ -100,15 +110,15 @@ function Shell({ me }: { me: Me }) {
     window.addEventListener('pageshow', onReturn)
     return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('pageshow', onReturn) }
   }, [])
-  const navigationSummary = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000, refetchOnWindowFocus: true })
-  const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
+  const navigationSummary = useQuery({ queryKey: queryKeys.dashboardBootstrap(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getDashboardBootstrap'>>('/dashboard/bootstrap', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
+  const invoiceWorkspaceSummary = useQuery({ queryKey: queryKeys.invoiceWorkspaceSummary(), queryFn: ({ signal }) => hubApi<ApiAnswer<'getInvoiceWorkspaceSummary'>>('/invoice-workspace/summary', { signal }), staleTime: 30_000, refetchOnWindowFocus: true })
   // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
   // The same query as the overview's Bekleyen Siparişler card: the badge and the card always say the same number.
   const orderSummary = useQuery(pendingOrdersQuery)
-  const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  const questionWaitingSummary = useQuery({ queryKey: queryKeys.questions('navigation-waiting'), queryFn: ({ signal }) => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath, { signal }), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   // Background states for the notification center (reads failing again and again, approvals that ran out of time).
-  const attentionNotices = useQuery({ queryKey: ['jobs', 'attention'], queryFn: () => hubPoll<AttentionNotice[]>('/jobs/attention'), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
+  const attentionNotices = useQuery({ queryKey: queryKeys.jobs('attention'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getJobsAttention'>>('/jobs/attention', { signal }), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
   useEffect(() => { if (Array.isArray(attentionNotices.data)) syncAttentionNotices(attentionNotices.data) }, [attentionNotices.data])
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -223,7 +233,8 @@ function Shell({ me }: { me: Me }) {
     <main ref={mainRef}>
       <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi">{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { setNotificationsOpen(false); navigate(href) }} onCleared={() => setNotifications([])} /></Suspense> })()}</div>, document.body)}
-      <Modal open={quickSearchOpen} title="Hızlı Arama" onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
+      {invitations.data?.length && !invitationsClosed ? <Suspense fallback={null}><WorkspaceInvitationsPrompt invitations={invitations.data} onClose={closeInvitations} onSignOut={() => void logout()} /></Suspense> : null}
+      {quickSearchOpen && <RrModal title="Hızlı Arama" size="lg" onClose={() => setQuickSearchOpen(false)}><nav className="rv-command-list" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</nav></RrModal>}
       <Drawer open={mobileMenuOpen} className="rv-mobile-drawer" title={<BrandWordmark className="rv-drawer-logo" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
       <ToastStackProvider><ErrorBoundary resetKey={location.pathname}><Suspense fallback={<DelayedStatus title="Ekran Hazırlanıyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<Navigate to="/mappings/categories" replace />} /><Route path="/catalog/brands" element={<Navigate to="/mappings/categories?view=brands" replace />} /><Route path="/catalog/attributes" element={<Navigate to="/mappings/categories" replace />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<Navigate to={{ pathname: '/mappings/categories', search: location.search }} replace />} /><Route path="/mappings/product-matches" element={<Navigate to="/mappings/categories" replace />} /><Route path="/questions" element={<QuestionsPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<Navigate to="/orders?status=SHIPPED" replace />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/reports" element={<ReportsPage />} /><Route path="/promotions" element={<PromotionsPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=auth" replace />} /><Route path="/settings/appearance" element={<Navigate to="/settings?tab=read" replace />} /><Route path="/settings" element={<SystemSettingsPage />} /><Route path="/settings/google-drive-callback" element={<GoogleDriveCallbackPage />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense></ErrorBoundary></ToastStackProvider>
     </main>
@@ -237,21 +248,24 @@ export function App() {
   const client = useQueryClient()
   // The session is never restored from the reload snapshot (another tab may have signed into another tenant since), so
   // the workspace waits for this answer; restored answers of another tenant or user are dropped before it lands.
-  const me = useQuery({ queryKey: ['me'], queryFn: async () => {
-    const current = await api<Me>('/me')
+  const me = useQuery({ queryKey: queryKeys.me(), queryFn: async ({ signal }) => {
+    const current = await api<Me>('/me', { signal })
     confirmQuerySnapshotScope(client, current.tenantId, current.id)
     return current
   }, retry: false })
   // A request heard 401: the session ended while the panel was open. The workspace gives way to the sign-in screen at
   // once (no reload, no screens retrying forever); signing in again brings the person back to the same page.
   useEffect(() => setUnauthorizedHandler(() => {
-    const current = client.getQueryData<Me>(['me'])
+    const current = client.getQueryData<Me>(queryKeys.me())
     if (!current || current.state === 'REVOKED') return
     // Nothing of the ended session stays in, or is written again to, this tab's reload snapshot until the next sign-in.
     clearQuerySnapshot()
     void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
-    client.setQueryData<Me>(['me'], { ...current, state: 'REVOKED' })
+    client.setQueryData<Me>(queryKeys.me(), { ...current, state: 'REVOKED' })
   }), [client])
+  // A write that got no answer in 90 s may still have gone through (WEB-ALTYAPI-11): the screens read what the server
+  // holds again; the write itself is never sent again by the panel.
+  useEffect(() => setWriteTimeoutHandler(() => { void client.invalidateQueries({ refetchType: 'active' }) }), [client])
   useOperationsRealtime(me.data?.state === 'ACTIVE')
   // Key presses, clicks and scrolling mark the person as present; polls made while nobody is (see hubPoll) leave the
   // session's idle clock alone.
@@ -414,7 +428,7 @@ function Login({ notice }: { notice?: string }) {
       // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
       forgetPreviousSession(client)
       confirmQuerySnapshotScope(client, currentUser.tenantId, currentUser.id)
-      client.setQueryData(['me'], currentUser)
+      client.setQueryData(queryKeys.me(), currentUser)
       if (location.pathname === '/' || location.pathname === '') navigate('/dashboard', { replace: true })
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError('Bir çalışma alanı seçip girişe devam edin.') }
@@ -456,7 +470,7 @@ function ChangePassword() {
     }
     try {
       await api('/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: data.get('current'), newPassword: data.get('next') }) })
-      await client.invalidateQueries({ queryKey: ['me'] })
+      await client.invalidateQueries({ queryKey: queryKeys.me() })
     } catch (reason) {
       setError(passwordChangeErrorMessage(reason))
     } finally {
@@ -517,7 +531,7 @@ function MfaChallenge() {
         ? { code: null, recoveryCode: null, tenantId: tenantId || null }
         : { code: mode === 'code' ? data.get('code') : null, recoveryCode: mode === 'recovery' ? data.get('recovery') : null }
       await api('/mfa/challenge', { method: 'POST', body: JSON.stringify(body) })
-      await client.invalidateQueries({ queryKey: ['me'] })
+      await client.invalidateQueries({ queryKey: queryKeys.me() })
     } catch (reason) {
       if (reason instanceof ApiRequestError && reason.code === 'TENANT_SELECTION_REQUIRED') { setTenantOptions(reason.tenants ?? []); setError(choosingTenant ? 'Listeden bir çalışma alanı seçin.' : '') }
       else setError(mfaChallengeErrorMessage(reason, mode))
@@ -534,8 +548,6 @@ function MfaChallenge() {
     </form>
   </AuthPageFrame>
 }
-// The side menu reads only the bootstrap's metrics (the overview's own type; the server sends no other figure).
-type DashboardBootstrap = { metrics: DashboardMetrics }
 
 // The session is neither active nor waiting for a sign-in step: the way out is a fresh sign-in.
 function LockedSession() {

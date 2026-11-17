@@ -1,8 +1,10 @@
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Ai;
 using MarketplaceHub.Infrastructure.SizeCharts;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -24,17 +26,19 @@ public static class AiEndpoints
 
     public static IEndpointRouteBuilder MapAiEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var settings = endpoints.MapGroup("/api/v1/settings/ai");
-        settings.MapGet("", GetAsync);
-        settings.MapPut("", SaveAsync);
-        settings.MapPost("/test", TestAsync);
-        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery();
-        settings.MapGet("/usage", UsageAsync);
+        var settings = endpoints.MapGroup("/api/v1/settings/ai").WithGates(ApiGate.Elevated, ApiGate.Elevated);
+        settings.MapGet("", GetAsync).Produces<AiSettingsView>();
+        settings.MapPut("", SaveAsync).Idempotent("replaces the stored AI settings; If-Match refuses a stale repeat").Produces<AiSettingsView>().IfMatch(required: false);
+        settings.MapPost("/test", TestAsync).NotIdempotent("each call makes a small paid request to Claude and records its usage").Produces<AiConnectionTestView>();
+        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery().NotIdempotent("uploads the skill file to Anthropic as a new skill version each time").Produces<AiSettingsView>();
+        settings.MapGet("/usage", UsageAsync).Produces<AiUsageView>();
 
-        var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart");
-        products.MapGet("", GetSizeChartAsync);
-        products.MapPost("/generate", GenerateSizeChartAsync);
-        products.MapPut("", MarkSizeChartAsync);
+        var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart").WithGates(ApiGate.SignedIn, ApiGate.Operations);
+        products.MapGet("", GetSizeChartAsync).Produces<SizeChartView>();
+        // Each call is a paid Claude generation that stores a new picture, so a repeat must not run again: the key makes a
+        // repeat replay the first answer (IdempotencyMiddleware), and one still running answers IDEMPOTENCY_IN_PROGRESS.
+        products.MapPost("/generate", GenerateSizeChartAsync).RequireIdempotencyKey().Produces<SizeChartGenerated>();
+        products.MapPut("", MarkSizeChartAsync).Idempotent("sets the card's size chart to the address the body names").Produces<SizeChartMarkedView>();
         return endpoints;
     }
 
@@ -123,9 +127,17 @@ public static class AiEndpoints
         return view is null ? Problem(http, new("RESOURCE_NOT_FOUND", "Ürün bulunamadı.", 404)) : Results.Ok(view);
     }
 
-    private static async Task<IResult> GenerateSizeChartAsync(Guid id, SizeChartInput request, HttpContext http, SizeChartService service)
+    private static async Task<IResult> GenerateSizeChartAsync(Guid id, SizeChartInput request, HttpContext http, SizeChartService service, AiRunGate gate)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
+        // API-GUVENLIK-3: a second press, tab or user does not start another billed run for the same card, and a tenant
+        // runs at most AiRunGate.PerTenant charts at once.
+        using var lease = gate.TryEnter(tenant.TenantId, $"size-chart:{id:N}", out var refusal);
+        if (lease is null)
+            return refusal == AiRunGate.Refusal.SubjectBusy
+                ? Problem(http, new("SIZE_CHART_BUSY", "Bu ürün için beden tablosu zaten hazırlanıyor; bitmesini bekleyin.", 409))
+                : Problem(http, new("AI_BUSY", $"Aynı anda en fazla {AiRunGate.PerTenant} beden tablosu hazırlanabilir; biri bitince tekrar deneyin.", 429));
         try { return Results.Ok(await service.GenerateAsync(tenant.TenantId, tenant.UserId, id, request, http.RequestAborted)); }
         catch (SizeChartException exception) { return Problem(http, new(exception.Code, exception.Message, exception.Status)); }
     }
@@ -137,24 +149,10 @@ public static class AiEndpoints
         catch (SizeChartException exception) { return Problem(http, new(exception.Code, exception.Message, exception.Status)); }
     }
 
-    private static IResult? IfMatchVersion(HttpContext http, out long? expected)
-    {
-        expected = null;
-        var value = http.Request.Headers.IfMatch.ToString();
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        if (value.Length < 4 || !value.StartsWith("\"v", StringComparison.Ordinal) || !value.EndsWith('"') || !long.TryParse(value[2..^1], out var version) || version <= 0)
-            return Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400));
-        expected = version;
-        return null;
-    }
-
     private static IResult Versioned(HttpContext http, AiSettingsView view)
     {
         if (view.Version > 0) http.Response.Headers.ETag = $"\"v{view.Version}\"";
         return Results.Ok(view);
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => ApiProblems.Of(http, error);
 }

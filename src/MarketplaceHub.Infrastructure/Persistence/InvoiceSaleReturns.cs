@@ -106,16 +106,13 @@ internal static class InvoiceSaleReturns
     public static async Task<IReadOnlyDictionary<Guid, decimal>> ApprovedClaimQuantitiesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> orderIds, CancellationToken cancellationToken)
     {
         var ids = orderIds.ToArray();
-        var rows = await (from line in db.ReturnLines.AsNoTracking()
-                          join claim in db.ReturnClaims.AsNoTracking() on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
-                          where claim.TenantId == tenantId && ids.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
-                              // An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov
-                              // 2026). Only the stored request says so; a claim that does not say is a return as before. An
-                              // exchange claim the marketplace closed with a refund (raw status Refunded) is a return.
-                              && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
-                          select new { line.OrderLineId, line.Quantity, line.RawStatus, ClaimStatus = claim.Status })
+        // The claims that can take units back (no cancelled claim, no exchange without a refund) and the line rule are
+        // AcceptedReturnPolicy's, which the overview and the reports read as well.
+        var rows = await AcceptedReturnPolicy.ClaimLines(db, tenantId)
+            .Where(row => ids.Contains(row.OrderId))
+            .Select(row => new { row.OrderLineId, row.Quantity, row.RawStatus, row.ClaimStatus })
             .ToListAsync(cancellationToken);
-        return rows.Where(row => ReturnDecisionLinePolicy.StockDispositionAllowed(row.ClaimStatus, row.RawStatus))
+        return rows.Where(row => AcceptedReturnPolicy.LineCounts(row.ClaimStatus, row.RawStatus))
             .GroupBy(row => row.OrderLineId)
             .ToDictionary(group => group.Key, group => group.Sum(row => row.Quantity));
     }

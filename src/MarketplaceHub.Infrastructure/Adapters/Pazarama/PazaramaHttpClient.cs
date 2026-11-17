@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Infrastructure.Adapters.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,7 +31,6 @@ public sealed partial class PazaramaHttpClient(
     internal const string Brands = "brand/getBrands";
     internal const string Orders = "order/getOrdersForApi";
     // Pazarama works in Turkey time; order dates are sent as plain dates.
-    internal static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
     private readonly PazaramaOptions settings = options.Value;
 
     // Every Pazarama write goes through this gate: the server-wide switch, the connection switch,
@@ -39,24 +39,13 @@ public sealed partial class PazaramaHttpClient(
     internal AdapterResult<T>? WriteBlocked<T>(PazaramaRequestContext account, string what)
     {
         var connection = account.Connection;
-        var allowed = configuration.GetValue<bool>("FeatureFlags:ExternalWrites")
-            && ConnectionWritesEnabled(connection.SettingsJson)
-            && string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)
-            && (string.Equals(connection.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) || string.Equals(connection.Status, "VERIFIED", StringComparison.OrdinalIgnoreCase));
+        var allowed = ExternalWriteGate.AllowsProductionWrite(connection, ExternalWriteGate.GlobalWritesEnabled(configuration));
         return allowed
             ? null
             : Failure<T>(AdapterErrorClass.Validation, "PAZARAMA_EXTERNAL_WRITES_DISABLED", $"Pazarama bağlantısında dış yazma kapalı; {what} gönderilmedi.", HttpStatusCode.Forbidden);
     }
 
-    internal static bool ConnectionWritesEnabled(string settingsJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool ConnectionWritesEnabled(string settingsJson) => ExternalWriteGate.ConnectionWritesEnabled(settingsJson);
 
     public async Task<AdapterResult<ConnectionIdentity>> TestAsync(AdapterContext context, CancellationToken cancellationToken)
     {
@@ -128,13 +117,11 @@ public sealed partial class PazaramaHttpClient(
     // yesterday through tomorrow in Turkey time.
     internal static object OrderProbeBody(DateTimeOffset now)
     {
-        var today = now.ToOffset(TurkeyOffset).Date;
+        var today = now.ToOffset(TurkeyTime.Offset).Date;
         return new { pageSize = 1, pageNumber = 1, startDate = Day(today.AddDays(-1)), endDate = Day(today.AddDays(1)) };
     }
 
     internal static string Day(DateTime value) => value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(5);
 
     private async Task<AdapterResult<JsonDocument>> SendAsync(PazaramaRequestContext account, HttpMethod method, string path, CancellationToken cancellationToken, HttpContent? content = null, TimeSpan? timeoutOverride = null)
     {
@@ -152,62 +139,51 @@ public sealed partial class PazaramaHttpClient(
             request.Options.Set(PazaramaRateLimitHandler.AccountKeyOption, PazaramaRateLimitHandler.SellerKey(account.ClientId));
             // The request timeout starts when the quota token is taken; the wait for it has its own, longer cap.
             var requestTimeout = timeoutOverride ?? (settings.Timeout > TimeSpan.Zero && settings.Timeout < TimeSpan.FromMinutes(2) ? settings.Timeout : TimeSpan.FromSeconds(30));
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(requestTimeout + MaximumQuotaWait);
-            var quotaAcquired = false;
-            request.Options.Set(PazaramaRateLimitHandler.QuotaAcquiredKey, () => { quotaAcquired = true; timeout.CancelAfter(requestTimeout); });
-            CallerCancellation.Mark(request, cancellationToken);
-            try
+            using var exchange = await Transport.SendAsync(clients, request, requestTimeout, cancellationToken);
+            if (exchange.Error is { } transportError)
             {
-                using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
-                var text = await response.Content.ReadAsStringAsync(timeout.Token);
-                var retryAfter = response.Headers.RetryAfter?.Delta
-                    ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
-                var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
-                // A token revoked by "Yeni API Key Üret" in the seller panel is answered with 401; one
-                // fresh token is tried before the credentials count as rejected.
-                if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
-                {
-                    tokens.Forget(account.CredentialId);
-                    continue;
-                }
-                if (!response.IsSuccessStatusCode)
-                {
-                    var error = LocalCircuitResponse.Refusal(response, "PAZARAMA", "Pazarama") ?? Error(response.StatusCode, text, retryAfter);
-                    // The answer's outline (field names or "JSON değil", its type and size, never its values) tells a gateway
-                    // or address block (an HTML page) from an API refusal when Pazarama sends no readable message.
-                    logger.LogWarning("Pazarama API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)", account.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code, error.SafeMessage, ShapeOf(text), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", text.Length);
-                    return AdapterResult<JsonDocument>.Failure(error, rate);
-                }
-                JsonDocument document;
-                try { document = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text); }
-                catch (JsonException)
-                {
-                    return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "PAZARAMA_JSON_INVALID", "Pazarama geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, null), rate);
-                }
-                if (EnvelopeError(document.RootElement) is { } refused)
-                {
-                    document.Dispose();
-                    // "Listelenecek veri bulunamadı" is Pazarama's empty list (the brand list's end page): not a warning.
-                    logger.Log(RefusalLogLevel(refused), "Pazarama isteği reddetti. ConnectionId: {ConnectionId}, Path: {Path}, Code: {Code}, Message: {Message}", account.Connection.Id, request.RequestUri!.AbsolutePath, refused.Code, refused.SafeMessage);
-                    return AdapterResult<JsonDocument>.Failure(refused, rate);
-                }
-                return AdapterResult<JsonDocument>.Success(document, rate);
+                if (exchange.Exception is { } exception) logger.LogWarning(exception, "Pazarama API isteği başarısız. ConnectionId: {ConnectionId}", account.Connection.Id);
+                return AdapterResult<JsonDocument>.Failure(transportError);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            var response = exchange.Response!;
+            var text = exchange.Body;
+            var retryAfter = RetryAfterHeader.Delay(response.Headers.RetryAfter, timeProvider.GetUtcNow());
+            var rate = retryAfter is null ? null : new RateLimitMetadata(null, null, retryAfter);
+            // A token revoked by "Yeni API Key Üret" in the seller panel is answered with 401; one
+            // fresh token is tried before the credentials count as rejected.
+            if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
             {
-                // Never sent: the quota stayed full. This is not an "outcome unknown" write.
-                if (!quotaAcquired)
-                    return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.RateLimit, "PAZARAMA_LOCAL_QUOTA_WAIT", "Pazarama istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
-                return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "PAZARAMA_TIMEOUT", "Pazarama isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
+                tokens.Forget(account.CredentialId);
+                continue;
             }
-            catch (HttpRequestException exception)
+            if (!response.IsSuccessStatusCode)
             {
-                logger.LogWarning(exception, "Pazarama API isteği başarısız. ConnectionId: {ConnectionId}", account.Connection.Id);
-                return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "PAZARAMA_NETWORK_ERROR", "Pazarama bağlantısı geçici olarak kurulamadı.", null, TimeSpan.FromSeconds(15), null));
+                var error = LocalCircuitResponse.Refusal(response, "PAZARAMA", "Pazarama") ?? Error(response.StatusCode, text, retryAfter);
+                // The answer's outline (field names or "JSON değil", its type and size, never its values) tells a gateway
+                // or address block (an HTML page) from an API refusal when Pazarama sends no readable message.
+                logger.LogWarning("Pazarama API isteği reddedildi. ConnectionId: {ConnectionId}, Path: {Path}, Status: {Status}, Code: {Code}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)", account.Connection.Id, request.RequestUri!.AbsolutePath, (int)response.StatusCode, error.Code, error.SafeMessage, ShapeOf(text), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", text.Length);
+                return AdapterResult<JsonDocument>.Failure(error, rate);
             }
+            JsonDocument document;
+            try { document = JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text); }
+            catch (JsonException)
+            {
+                return AdapterResult<JsonDocument>.Failure(new(AdapterErrorClass.ContractViolation, "PAZARAMA_JSON_INVALID", "Pazarama geçerli JSON yanıtı vermedi.", (int)response.StatusCode, null, null), rate);
+            }
+            if (EnvelopeError(document.RootElement) is { } refused)
+            {
+                document.Dispose();
+                // "Listelenecek veri bulunamadı" is Pazarama's empty list (the brand list's end page): not a warning.
+                logger.Log(RefusalLogLevel(refused), "Pazarama isteği reddetti. ConnectionId: {ConnectionId}, Path: {Path}, Code: {Code}, Message: {Message}", account.Connection.Id, request.RequestUri!.AbsolutePath, refused.Code, refused.SafeMessage);
+                return AdapterResult<JsonDocument>.Failure(refused, rate);
+            }
+            return AdapterResult<JsonDocument>.Success(document, rate);
         }
     }
+
+    // The Pazarama send step (MarketplaceTransport: quota-aware timeout with the same five-minute quota cap the inline
+    // copy had, transport errors PAZARAMA_*).
+    internal static readonly MarketplaceTransport Transport = new(ClientName, "PAZARAMA", "Pazarama", PazaramaRateLimitHandler.QuotaAcquiredKey);
 
     // OAuth2 client credentials: Basic clientId:clientSecret, form grant_type and scope.
     private async Task<PazaramaToken> IssueTokenAsync(PazaramaRequestContext account, CancellationToken cancellationToken)
@@ -333,28 +309,33 @@ public sealed partial class PazaramaHttpClient(
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
     {
         var remote = RemoteMessage(body);
-        return status switch
-        {
-            HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED", "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.", (int)status, null, null),
-            // A 403 that is an HTML page (seen live: 15 KB of text/html, no JSON) never reached Pazarama's API; its
-            // security gateway blocked the call, which comes and goes (one call passes, the next is blocked). The job
-            // keeps its attempt and the connection waits a quarter hour, as it does for a quota refusal.
-            HttpStatusCode.Forbidden when remote is null && LooksLikeHtml(body) => new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED",
-                "Pazarama'nın güvenlik geçidi isteği engelledi (API yerine HTML sayfa döndü). Geçici olabilir; okumalar 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null),
+        // The shared status table (MarketplaceErrorRules.FromStatus), Pazarama's words; its 403 is its own (below).
+        return MarketplaceErrorRules.FromStatus("PAZARAMA", "Pazarama", status, body, retryAfter, new(
+            CredentialsRejected: "Pazarama erişimi reddetti. Pazarama satıcı panelinde Hesabım → Entegrasyon Bilgileri'ndeki güncel Client Id ve Client Secret değerlerini girin.",
+            RateLimited: "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.",
+            NotFound: remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}",
+            RemoteTimeout: "Pazarama isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.",
+            Conflict: remote is null ? "Pazarama isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}",
+            RemoteError: "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.",
+            RequestRejected: remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}"),
+            overrides: forbidden => forbidden == HttpStatusCode.Forbidden ? Forbidden(forbidden, body, remote) : null);
+    }
+
+    // Pazarama's own 403, which differs from the shared table (MarketplaceErrorTableTests lists it).
+    private static AdapterError Forbidden(HttpStatusCode status, string body, string? remote) =>
+        // A 403 that is an HTML page (seen live: 15 KB of text/html, no JSON) never reached Pazarama's API; its
+        // security gateway blocked the call, which comes and goes (one call passes, the next is blocked). The job
+        // keeps its attempt and the connection waits a quarter hour, as it does for a quota refusal. Pazarama's own
+        // wording, and only when the page names no API message.
+        remote is null && LooksLikeHtml(body)
+            ? new(AdapterErrorClass.RateLimit, "PAZARAMA_GATEWAY_BLOCKED",
+                "Pazarama'nın güvenlik geçidi isteği engelledi (API yerine HTML sayfa döndü). Geçici olabilir; okumalar 15 dakika sonra yeniden denenir. Sürerse Pazarama destekten sunucu adresinin izinli listeye alınmasını isteyin.", (int)status, TimeSpan.FromMinutes(15), null)
             // 403 comes with a token Pazarama has just issued: the credentials are valid, Pazarama itself is refusing
             // the account's API access (permission withdrawn or a fault on its side). Its own words are kept, and the
             // connection waits instead of asking again every minute.
-            HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "PAZARAMA_ACCESS_DENIED", remote is null
+            : new(AdapterErrorClass.Authentication, "PAZARAMA_ACCESS_DENIED", remote is null
                 ? "Pazarama bu hesabın API erişimini reddetti (403). Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir."
-                : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null),
-            HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(60), null),
-            HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "PAZARAMA_NOT_FOUND", remote is null ? "Pazarama istenen kaydı bulamadı." : $"Pazarama kaydı bulamadı: {remote}", (int)status, null, null),
-            HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "PAZARAMA_REMOTE_TIMEOUT", "Pazarama isteği kendi tarafında zaman aşımına uğrattı; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(15), null),
-            HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "PAZARAMA_CONFLICT", remote is null ? "Pazarama isteği kaydın mevcut durumuyla çakıştığı için reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null),
-            >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, retryAfter ?? TimeSpan.FromSeconds(30), null),
-            _ => new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED", remote is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(remote)}", (int)status, null, null)
-        };
-    }
+                : $"Pazarama bu hesabın API erişimini reddetti (403): {remote}. Client Id ve Client Secret geçerli; erişimi Pazarama destek açar. Okumalar 15 dakika sonra yeniden denenir.", (int)status, TimeSpan.FromMinutes(15), null);
 
     // "İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz." in a success=false envelope is
     // Pazarama saying it is busy, not refusing the request: seen live on order/getOrdersForApi on 28 Oct 23:25 and on

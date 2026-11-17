@@ -10,8 +10,8 @@ namespace MarketplaceHub.Application.Tests;
 // rewrite (DashboardReadService.PerformanceOrders) gives the same figures on the same data.
 internal static class LegacyDashboardPerformanceQueries
 {
-    private static readonly ReturnClaimStatus[] AcceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-    private static readonly string[] AcceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
+    private static readonly ReturnClaimStatus[] AcceptedClaims = LegacyAcceptedReturnRule.ClaimStatuses;
+    private static readonly string[] AcceptedLines = LegacyAcceptedReturnRule.LineRawStatuses;
 
     internal static async Task<(List<RevenueGroup> Revenue, List<UnitGroup> Units, List<PackageGroup> Packages)> GroupsAsync(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone, bool hourly)
     {
@@ -48,8 +48,8 @@ internal static class LegacyDashboardPerformanceQueries
         var cancelled = DashboardRevenuePolicy.CancelledStatuses;
         var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
         var excludedConnections = DashboardRevenuePolicy.ExcludedConnectionStatuses;
-        var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
-        var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
+        var acceptedClaims = LegacyAcceptedReturnRule.ClaimStatuses;
+        var acceptedLines = LegacyAcceptedReturnRule.LineRawStatuses;
         var previousStart = period.PreviousStart;
         var previousEnd = period.PreviousEnd;
         var currentStart = period.CurrentStart;

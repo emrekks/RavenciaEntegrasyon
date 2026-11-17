@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { cardCountText } from '../../shared/metric-value'
 import { useMetricSource } from '../marketplace/use-metric-source'
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
@@ -7,8 +8,10 @@ import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
+import { hubApi, hubPoll } from '../../shared/api'
+import { cursorPageParams } from '../../shared/api/paging'
 import { readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../shared/list-url-state'
+import { useListSelection } from '../../shared/list/useListSelection'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { ValueBadge } from '../../shared/components/ValueBadge'
@@ -34,14 +37,14 @@ import './invoice-filter-card.css'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
 import { invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable, safeInvoiceReferenceUrl } from './invoice-reference-document-link'
 import { marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
-import { RrAnchor, RrColumnPop, RrFilterCard, RrIcon, RrPageSize } from '../marketplace/returns-ui'
+import { RrAnchor, RrColumnPop, RrFilterCard, RrIcon, RrImagePreview, RrPageSize } from '../../shared/ui/rr-components'
 import { waitForReferenceSyncJobs } from '../marketplace/reference-value-sync'
 import { ReturnPlatformPop } from '../marketplace/shared'
 import './invoice-detail-ui.css'
 import './manual-invoice-document.css'
 import './invoices-responsive.css'
 import './invoices-sade.css'
-import { InvoiceGlyph, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
+import { InvoiceGlyph, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from '../../shared/ui/invoice-state-glyph'
 import { invoiceFailureGuidance, invoiceFailureReason } from './invoice-failure-reasons'
 import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
 import { useTabSlide } from '../../shared/tab-slide'
@@ -49,23 +52,23 @@ import { formatDate, formatDateTime, formatIstanbul, fromDateTimeLocal, istanbul
 import { formatMoney } from '../../shared/format-money'
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
 import { invoiceWorkspaceStatus, isInvoiceFailureStatus } from './invoice-workspace-status'
-import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, type InvoiceDeliveryRetry, invoiceErrorText, invoiceReopenNote, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
-import { isLinkRevocationStatus, linkRevocationStatusLabel, type InvoiceLinkRevocation } from './invoice-link-revocation'
+import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, invoiceErrorText, invoiceReopenNote, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { isLinkRevocationStatus, linkRevocationStatusLabel } from './invoice-link-revocation'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
 import { personName } from '../../shared/person-name'
 import { ListEmptyState } from '../../shared/components/EmptyState'
+import { connectionQueries, invoiceCopies, queryKeys } from '../../shared/api/query-keys'
 // Platforms whose invoice state is kept by hand (the API server's ManualInvoiceStatusPlatforms): Shopify has no invoice
 // of its own; N11, PttAVM and Pazarama report only invoices sent through their API, not ones uploaded in their panel.
 const manualInvoiceStatusPlatforms = new Set(['SHOPIFY', 'N11', 'PTTAVM', 'PAZARAMA'])
 
-type Invoice = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; invoiceNumber: string | null; dueAt: string | null; createdAt: string; version: number }
-// returnedQuantity: the line's units that came back; a sale invoice not issued yet leaves them out (6 Nov 2026).
-type InvoiceWorkspaceLine = { sku: string; barcode: string | null; description: string; quantity: number; unitPrice: number; vatRate: number; imageUrl: string | null; returnedQuantity?: number }
-type InvoiceWorkspace = { orderId: string; packageId: string; orderNumber: string; customerName: string; orderedAt: string; shipmentStatus: string; deliveredAt: string | null; invoiceDueAt: string | null; isDueSoon: boolean; currency: string; amount: number; productCount: number; primaryImageUrl: string | null; cargoProviderName: string | null; cargoTrackingNumber: string | null; invoiceId: string | null; invoiceStatus: string; invoiceNumber: string | null; canCreateInvoice: boolean; shipmentAddressJson: string | null; invoiceAddressJson: string | null; lines: InvoiceWorkspaceLine[] | null; invoiceErrorCode: string | null; invoiceDeliveryStatus: string | null; invoiceDeliveryReference: string | null; invoiceDocumentAvailable: boolean; marketplaceInvoiceUrl: string | null; platformCode: string; platformDisplayName: string; invoiceCreationEnabled: boolean; marketplaceInvoiceReadErrorCode?: string | null; marketplaceInvoiceReadErrorSummary?: string | null; environment: string; manualInvoiceDocumentId: string | null; manualInvoiceDocumentType: string | null; manualInvoiceDocumentUrl: string | null; manualInvoiceNumber: string | null; manualInvoiceIssuedAt: string | null; manualInvoiceDeliveryStatus: string | null; manualInvoiceDeliveryErrorCode: string | null; fiscalStatus: string; platformInvoiceStatus: string; deliveryStatus: string; currentPlatformInvoiceUrl: string | null; lastSuccessfulCheckAt: string | null; allowedActions: string[]; previousPlatformInvoiceReferences?: Array<{ invoiceNumber: string | null; invoiceUrl: string | null; changeReason: string; changedAt: string }>; marketplaceConnectionId?: string | null; externalOrderId?: string | null; externalPackageNumber?: string | null; deliveryRetry?: InvoiceDeliveryRetry | null; returnDocumentNote?: string | null; manualInvoiceStatus?: string | null; saleReturnScope?: SaleReturnScope | null; saleReturnNote?: string | null }
-type InvoiceWorkspacePage = { items: InvoiceWorkspace[]; totalCount: number; pageNumber: number; pageSize: number; totalPages: number; uninvoicedCount: number; invoicedCount: number; dueSoonCount: number; hiddenCount: number; totalPackageCount: number; hasPendingMarketplaceInvoices: boolean; shipmentStatuses: string[]; cargoProviders: string[]; invoiceStatuses: string[]; platformCounts?: Record<string, number> | null }
-type InvoiceDetail = Invoice & { orderId: string; packageId: string | null; providerConnectionId: string; sequencePurpose: string; ettnUuid: string | null; taxExclusiveTotal: number; discountTotal: number; taxTotal: number; note: string; issuedAt: string | null; lastErrorCode: string | null; lines: Array<{ id: string; lineSequence: number; description: string; sku: string | null; unit: string; quantity: number; unitPrice: number; discountAmount: number; vatRate: number; vatAmount: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string; createdAt: string }>; attempts: Array<{ attemptNumber: number; outcome: string; errorCode: string | null; startedAt: string; completedAt: string | null }>; deliveries: Array<{ id: string; deliveryType: string; status: string; externalReference: string | null; errorCode: string | null; createdAt: string }>; allowedActions: string[]; requiresSensitiveConfirmation: boolean; linkRevocations?: InvoiceLinkRevocation[] | null; deliveryRetry?: InvoiceDeliveryRetry | null; returnDocumentNote?: string | null }
-type Connection = { id: string; platformCode: string; displayName: string; status: string; environment: string; hasCredential: boolean }
+type InvoiceWorkspaceAnswer = ApiAnswer<'getInvoiceWorkspacePage'>
+// CONTRACT: the API declares saleReturnScope as a string; InvoicingBillingService.WorkspaceSaleReturn writes FULL or PARTIAL.
+type InvoiceWorkspace = Omit<InvoiceWorkspaceAnswer['items'][number], 'saleReturnScope'> & { saleReturnScope: SaleReturnScope | null }
+type InvoiceWorkspacePage = Omit<InvoiceWorkspaceAnswer, 'items'> & { items: InvoiceWorkspace[] }
+type InvoiceDetail = ApiAnswer<'getInvoicesById'>
+type Connection = ApiAnswer<'getConnections'>['items'][number]
 type InvoiceNoticeKind = 'success' | 'error' | 'info' | 'warning' | 'pending'
 // The order an invoice notice is about, with its marketplace and store; a failure keeps the server's code.
 function invoiceOrderContext(item: Pick<InvoiceWorkspace, 'orderNumber' | 'platformCode' | 'marketplaceConnectionId'>, title: string, operation: string, reason?: unknown): NotificationContext {
@@ -233,22 +236,13 @@ function addressLines(value: string | null | undefined) {
   } catch { return [] }
 }
 
-function InvoiceDetailImagePreview({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
-  return createPortal(<div className="workspace-modal-backdrop image-lightbox-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <DialogSurface as="section" onClose={() => { onClose() }} className="workspace-modal product-image-modal" aria-labelledby="invoice-detail-image-modal-title" onMouseDown={event => event.stopPropagation()}>
-      <header className="product-image-modal-header"><div><h2 id="invoice-detail-image-modal-title">{title}</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button></header>
-      <div className="product-image-modal-body"><div className="product-image-modal-frame"><img src={url} alt={`${title} büyük ürün görseli`} loading="eager" decoding="async" /></div></div>
-    </DialogSurface>
-  </div>, document.body)
-}
-
 function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   return <>
     <button type="button" className="invoice-detail-line-media invoice-detail-line-image-button" onClick={() => setPreviewOpen(true)} aria-label={`${title} görselini büyüt`} title="Büyütmek için tıklayın">
       <img src={url} alt="" loading="lazy" decoding="async" />
     </button>
-    {previewOpen && <InvoiceDetailImagePreview url={url} title={title} onClose={() => setPreviewOpen(false)} />}
+    {previewOpen && <RrImagePreview title={title} sources={[url]} onClose={() => setPreviewOpen(false)} />}
   </>
 }
 
@@ -352,7 +346,13 @@ export function InvoicesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const initialTab = resolveInvoiceTab(requestedTab)
-  const client = useQueryClient(); const [search, setSearch] = useState(() => readUrlText(searchParams, 'q')); const [searchFilter, setSearchFilter] = useState(() => readUrlText(searchParams, 'q')); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(() => readUrlList(searchParams, 'platforms').length ? readUrlList(searchParams, 'platforms') : null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState(() => readUrlText(searchParams, 'shipment', 'ALL')); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(() => readUrlText(searchParams, 'from')); const [dateTo, setDateTo] = useState(() => readUrlText(searchParams, 'to')); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(() => readUrlNumber(searchParams, 'size', 20, [20, 50, 100, 200])); const [pageNumber, setPageNumber] = useState(() => readUrlNumber(searchParams, 'page', 1)); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null); const [selectedPackages, setSelectedPackages] = useState<Set<string>>(() => new Set())
+  const client = useQueryClient(); const [search, setSearch] = useState(() => readUrlText(searchParams, 'q')); const [searchFilter, setSearchFilter] = useState(() => readUrlText(searchParams, 'q')); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(() => readUrlList(searchParams, 'platforms').length ? readUrlList(searchParams, 'platforms') : null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState(() => readUrlText(searchParams, 'shipment', 'ALL')); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(() => readUrlText(searchParams, 'from')); const [dateTo, setDateTo] = useState(() => readUrlText(searchParams, 'to')); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(() => readUrlNumber(searchParams, 'size', 20, [20, 50, 100, 200])); const [pageNumber, setPageNumber] = useState(() => readUrlNumber(searchParams, 'page', 1)); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null)
+  // Every list change drops the selection, a new sort too (as on Siparişler; owner, 15 Nov 2026); a page change keeps it
+  // (owner, 16 Nov 2026, WEB-SAYFALAR-11): the packages picked on other pages count and take part in every bulk action,
+  // from the copy taken when they were picked; an invoice is created only through the server's preview, which reads
+  // every picked package again and refuses one whose state no longer allows it (useListSelection).
+  const selection = useListSelection<InvoiceWorkspace>({ filterKey: JSON.stringify([searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize]), rowOf: packageId => query.data?.items.find(item => item.packageId === packageId) })
+  const selectedCount = selection.selectedIds.length
   // The filter card's fields wait for Filtrele (or Enter in the search), as on Siparişler; a table head's filter and
   // the phone sheet's extra fields apply at once. The address keeps the applied values.
   const [platformDraft, setPlatformDraft] = useState<string[] | null>(() => selectedPlatforms)
@@ -368,23 +368,24 @@ export function InvoicesPage() {
     const timeout = window.setTimeout(() => setMessageState(''), messageKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [message, messageKind])
-  const connections = useQuery({ queryKey: ['connections', 'billing-workspace'], queryFn: () => loadAllPages<Connection>('/connections') })
+  const connections = useQuery(connectionQueries.list<Connection>())
   const providerConnections = connections.data?.items ?? []
   const provider = providerConnections.find(x => x.platformCode === 'TRENDYOL_EFATURAM' && x.hasCredential && (x.status === 'ACTIVE' || x.status === 'VERIFIED'))
   const providerForItem = (item: InvoiceWorkspace) => invoiceProviderForEnvironment(providerConnections, item.environment)
-  const pageQuery = new URLSearchParams({ pageNumber: String(pageNumber), pageSize: String(pageSize), tab, providerHasCredential: String(Boolean(provider?.hasCredential)) })
+  // The cursor form (PagingContract): limit, and from the second page on the offset cursor of the page the pager names.
+  const pageQuery = cursorPageParams(new URLSearchParams({ tab, providerHasCredential: String(Boolean(provider?.hasCredential)) }), pageNumber - 1, pageSize)
   if (searchFilter) pageQuery.set('search', searchFilter)
-  if (selectedPlatforms?.length) pageQuery.set('platformCodes', selectedPlatforms.join(','))
+  if (selectedPlatforms?.length) pageQuery.set('platforms', selectedPlatforms.join(','))
   if (shipmentStatusFilter !== 'ALL') pageQuery.set('shipmentStatus', shipmentStatusFilter)
   if (cargoFilter !== 'ALL') pageQuery.set('cargoProviderName', cargoFilter)
   if (invoiceStatusFilter !== 'ALL') pageQuery.set('invoiceStatus', invoiceStatusFilter)
   if (sortOrder !== 'DELIVERY_DESC') pageQuery.set('sort', sortOrder)
   if (invoiceActionFilter !== 'ALL') pageQuery.set('invoiceAction', invoiceActionFilter)
-  if (dateFrom) pageQuery.set('from', istanbulDayBoundary(dateFrom))
-  if (dateTo) pageQuery.set('to', istanbulDayBoundary(dateTo, true))
+  if (dateFrom) pageQuery.set('dateFrom', istanbulDayBoundary(dateFrom))
+  if (dateTo) pageQuery.set('dateTo', istanbulDayBoundary(dateTo, true))
   const query = useQuery({
-    queryKey: ['invoice-workspace-page', pageNumber, pageSize, tab, searchFilter, sortOrder, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)],
-    queryFn: () => hubPoll<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`),
+    queryKey: queryKeys.invoiceWorkspacePage(pageNumber, pageSize, tab, searchFilter, sortOrder, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, Boolean(provider?.hasCredential)),
+    queryFn: ({ signal }) => hubPoll<InvoiceWorkspacePage>(`/invoice-workspace/page?${pageQuery.toString()}`, { signal }),
     // The key carries whether the e-invoice provider has a credential, which is known only once the connections have
     // loaded: waiting for them keeps the page from being read twice (once with false, again with the real value).
     enabled: !connections.isPending,
@@ -393,28 +394,28 @@ export function InvoicesPage() {
     refetchInterval: 30_000
   })
   const confirmDelivered = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdConfirmMarketplaceDelivered'>>(`/invoice-workspace/orders/${item.orderId}/confirm-marketplace-delivered`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası pazaryerinde doğrulandı ve tamamlandı olarak işaretlendi.`, 'success', invoiceOrderContext(item, 'Fatura Tamamlandı Olarak İşaretlendi', 'Fatura doğrulama'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Fatura tamamlandı olarak işaretlenemedi.', 'error', invoiceOrderContext(item, 'Fatura Tamamlandı Olarak İşaretlenemedi', 'Fatura doğrulama', error))
   })
   const replaceInvoice = useMutation({
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ replaced: boolean }>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdReplaceCancelledInvoice'>>(`/invoice-workspace/orders/${item.orderId}/replace-cancelled-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin eski faturası iptal olarak kapatıldı. Yeni fatura kesebilirsiniz.`, 'success', invoiceOrderContext(item, 'Eski Fatura Kapatıldı', 'İptal edilen faturayı değiştirme'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Eski fatura kapatılamadı.', 'error', invoiceOrderContext(item, 'Eski Fatura Kapatılamadı', 'İptal edilen faturayı değiştirme', error))
   })
   const noRemoteInvoice = useMutation({
     // D-2: where E-Faturam keeps its own reference, the confirmation also states the portal was searched by the order
     // number (the dialog asks for it); the server refuses the resend without that statement.
-    mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ searchedByOrderNumber: needsOrderNumberSearch(item) }) }),
+    mutationFn: async (item: InvoiceWorkspace) => hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdConfirmNoRemoteInvoice'>>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ searchedByOrderNumber: needsOrderNumberSearch(item) }) }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success', invoiceOrderContext(item, 'Fatura Yeniden Gönderime Açıldı', 'Fatura yeniden gönderimi'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error', invoiceOrderContext(item, 'Yeniden Gönderim Açılamadı', 'Fatura yeniden gönderimi', error))
   })
@@ -423,22 +424,22 @@ export function InvoicesPage() {
   const deliveryRetry = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.invoiceId) throw new Error('Siparişte kesilmiş fatura bulunamadı.')
-      return hubApi<{ jobId: string }>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
+      return hubApi<ApiAnswer<'postInvoicesByIdDeliveryRetryJobs'>>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
     },
     onSuccess: async (result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
       if (result?.jobId) followJobs([{ jobId: result.jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} faturası` }], invoiceOrderContext(item, '', 'Fatura iletimini yeniden deneme'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey })), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
   })
   const visibility = useMutation({
-    mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<{ updatedCount: number }>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ packageIds, hidden }) }),
+    mutationFn: async ({ packageIds, hidden }: { packageIds: string[]; hidden: boolean }) => hubApi<ApiAnswer<'putInvoiceWorkspaceHidden'>>('/invoice-workspace/hidden', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ packageIds, hidden }) }),
     onSuccess: async (_result, variables) => {
-      setSelectedPackages(new Set())
+      selection.clear()
       setSelectedItem(null)
       setMessage(variables.hidden ? 'Seçilen siparişler gizlendi.' : 'Seçilen siparişler yeniden görünür yapıldı.', 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş görünürlüğü güncellenemedi.', 'error')
   })
@@ -448,16 +449,17 @@ export function InvoicesPage() {
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.manualInvoiceDocumentId) throw new Error('Siparişte güncel manuel fatura belgesi bulunamadı.')
       // A fresh key per attempt: a retry after a failed delivery must queue a new job, not replay the old answer.
-      return hubApi<{ jobIds: string[]; queuedPackageCount: number; inspectionOnlyPackageCount: number }>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item.manualInvoiceDocumentId) } })
+      return hubApi<ApiAnswer<'postInvoiceWorkspaceManualDocumentsByIdDeliveryJobs'>>(`/invoice-workspace/manual-documents/${item.manualInvoiceDocumentId}/delivery-jobs`, { method: 'POST', headers: { 'Idempotency-Key': manualDeliveryIdempotencyKey(item.manualInvoiceDocumentId) } })
     },
     onSuccess: async (result, item) => {
       const documentId = item.manualInvoiceDocumentId
       if (documentId) setQueuedManualDocuments(current => new Set(current).add(documentId))
-      setMessage(result.inspectionOnlyPackageCount > 0
+      // 200: every package had already confirmed the document, nothing was queued (the answer says so).
+      setMessage(!('queuedPackageCount' in result) ? result.message : result.inspectionOnlyPackageCount > 0
         ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
         : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi başladı; henüz iletilmedi, sonuç gelince bildirilecek.`, 'info', invoiceOrderContext(item, 'Manuel Fatura İletimi Başladı', 'Manuel fatura iletimi'))
       followJobs((result.jobIds ?? []).map(jobId => ({ jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} manuel faturası` })), invoiceOrderContext(item, '', 'Manuel fatura iletimi'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Manuel Fatura İletilemedi', 'Manuel fatura iletimi', error))
   })
@@ -469,7 +471,7 @@ export function InvoicesPage() {
       if (!connection || !['ACTIVE', 'VERIFIED'].includes(connection.status)) throw new Error('Sipariş için etkin pazaryeri bağlantısı bulunamadı.')
       if (!item.externalOrderId?.trim()) throw new Error('Pazaryeri sipariş numarası bulunamadı.')
       const supportsPackageLookup = ['TRENDYOL', 'HEPSIBURADA'].includes(item.platformCode)
-      return hubApi<{ jobId: string }>(`/connections/${connection.id}/order-sync-jobs`, {
+      return hubApi<ApiAnswer<'postConnectionsByConnectionIdOrderSyncJobs'>>(`/connections/${connection.id}/order-sync-jobs`, {
         method: 'POST',
         headers: { 'Idempotency-Key': `invoice-order-refresh:${item.packageId}:${newIdempotencyKey()}` },
         body: JSON.stringify({ externalOrderId: item.externalOrderId, full: false, packageNumber: supportsPackageLookup ? item.externalPackageNumber : null })
@@ -477,7 +479,7 @@ export function InvoicesPage() {
     },
     onSuccess: async (_result, item) => {
       setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'info', invoiceOrderContext(item, 'Sipariş Durumu Yenileniyor', 'Sipariş durumu yenileme'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error', invoiceOrderContext(item, 'Sipariş Durumu Yenilenemedi', 'Sipariş durumu yenileme', error))
   })
@@ -485,15 +487,15 @@ export function InvoicesPage() {
   const invoiceReconcile = useMutation({
     // Waits for the read-only check to end, so the row is reloaded with what the job read rather than right after queueing it.
     mutationFn: async (item: InvoiceWorkspace) => {
-      const { jobId } = await hubApi<{ jobId: string }>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } })
-      const ended = await waitForReferenceSyncJobs([jobId], async id => (await hubApi<{ job: { status: string } }>(`/jobs/${id}`, { cache: 'no-store' })).job.status, { intervalMs: 1_500, timeoutMs: 90_000 })
+      const { jobId } = await hubApi<ApiAnswer<'postInvoiceWorkspaceOrdersByOrderIdReconcileJobs'>>(`/invoice-workspace/orders/${item.orderId}/reconcile-jobs`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-workspace-check:${item.orderId}:${newIdempotencyKey()}` } })
+      const ended = await waitForReferenceSyncJobs([jobId], async id => (await hubApi<ApiAnswer<'getJobsById'>>(`/jobs/${id}`, { cache: 'no-store' })).job.status, { intervalMs: 1_500, timeoutMs: 90_000 })
       return ended.get(jobId)
     },
     onSuccess: async (status, item) => {
       if (status === 'SUCCEEDED') setMessage('Fatura durumu pazaryerinden yeniden okundu.', 'success', invoiceOrderContext(item, 'Fatura Durumu Okundu', 'Fatura durumu kontrolü'))
       else if (status) setMessage('Fatura durumu pazaryerinden okunamadı; ayrıntı İşlem Takibi’nde.', 'error', { ...invoiceOrderContext(item, 'Fatura Durumu Okunamadı', 'Fatura durumu kontrolü'), details: [{ label: 'İş Durumu', value: status }] })
       else setMessage('Fatura durumu kontrolü sürüyor; sayfayı biraz sonra yenileyin.', 'info')
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.jobs() })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Pazaryeri fatura kontrolü kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Fatura Durumu Kontrol Edilemedi', 'Fatura durumu kontrolü', error))
   })
@@ -564,14 +566,14 @@ export function InvoicesPage() {
   const headFilter = (label: string, ariaLabel: string, current: string, options: Array<{ value: string; label: string }>, pick: (value: string) => void) => <span className="rr-layer invoice-column-pop"><RrAnchor trigger={(open, toggle) => <button type="button" className={`order-column-filter-trigger${current !== 'ALL' ? ' is-active' : ''}`} aria-label={ariaLabel} aria-expanded={open} onClick={toggle}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>}>{close => <RrColumnPop label={label} options={options} value={current} onPick={value => { pick(value); close() }} />}</RrAnchor></span>
   const totalPages = pageData?.totalPages ?? 1
   const currentPage = pageData?.pageNumber ?? pageNumber
-  const selectedItems = pageItems.filter(item => selectedPackages.has(item.packageId))
+  const selectedItems = selection.selectedRows(pageItems, item => item.packageId)
   // Orders whose invoice state is kept by hand: the marketplace does not report an invoice uploaded in its own panel.
   const selectedShopifyItems = selectedItems.filter(item => manualInvoiceStatusPlatforms.has(item.platformCode))
   const selectedCreatableItems = selectedItems.filter(item => !item.manualInvoiceDocumentId && requiresInvoiceAction(item) && isInvoiceCreationAvailable(item, Boolean(providerForItem(item)?.hasCredential)))
-  const allVisibleSelected = pageItems.length > 0 && pageItems.every(item => selectedPackages.has(item.packageId))
+  const allVisibleSelected = pageItems.length > 0 && pageItems.every(item => selection.has(item.packageId))
   const [selectionMode, setSelectionMode] = useState(false)
-  function exitSelectionMode() { setSelectionMode(false); setSelectedPackages(new Set()) }
-  function togglePackage(packageId: string) { setSelectedPackages(current => { const next = new Set(current); if (next.has(packageId)) next.delete(packageId); else next.add(packageId); return next }) }
+  function exitSelectionMode() { setSelectionMode(false); selection.clear() }
+  function togglePackage(packageId: string) { selection.toggle(packageId) }
   // Phones pick a card with the round dot at its left (owner, 5 Nov 2026), not by holding the card: the first dot opens
   // selection mode, then a tap on a card picks or drops it, and the mode closes with the last card dropped.
   function tapRow(event: ReactMouseEvent, item: InvoiceWorkspace) {
@@ -580,11 +582,10 @@ export function InvoicesPage() {
     // A tap on a card selects it only in selection mode; the details open from the card's Detayları Aç button.
     if (selectionMode) togglePackage(item.packageId)
   }
-  useEffect(() => { if (selectionMode && selectedPackages.size === 0) setSelectionMode(false) }, [selectionMode, selectedPackages])
+  useEffect(() => { if (selectionMode && selectedCount === 0) setSelectionMode(false) }, [selectionMode, selectedCount])
   // Not for the values the page opened with: a page restored from the address stays.
   useChangeEffect(JSON.stringify([searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize]), () => setPageNumber(1))
   useListUrlSync({ q: searchFilter, platforms: selectedPlatforms, shipment: shipmentStatusFilter, from: dateFrom, to: dateTo, size: pageSize, page: pageNumber }, { shipment: 'ALL', size: 20, page: 1 })
-  useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
   // Another tab or filter shows other rows: the phone selection mode closes with the emptied selection.
   useEffect(() => { setSelectionMode(false) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo])
   const metricSource = useMetricSource()
@@ -625,10 +626,10 @@ export function InvoicesPage() {
     </div>
     <section key={tabSlide.key} className={`invoice-reference-workspace${tabSlide.className ? ` ${tabSlide.className}` : ''}`}>
       <header><div><h2>{activeTabLabel}</h2><p>Filtreleme sonuçları: {pageData ? pageData.totalCount.toLocaleString('tr-TR') : '—'} paket</p></div><span className="rr invoice-page-size"><RrPageSize value={pageSize} sizes={[20, 50, 100, 200]} onChange={setPageSize} /></span></header>
-      {selectionMode && <div className="orders-selection-bar invoice-selection-bar" role="region" aria-label="Seçim modu"><button type="button" className="orders-selection-cancel" onClick={exitSelectionMode}>İptal</button><strong>{selectedItems.length} sipariş seçildi</strong><button type="button" className="orders-selection-all" onClick={() => setSelectedPackages(allVisibleSelected ? new Set() : new Set(pageItems.map(item => item.packageId)))} disabled={!pageItems.length}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
+      {selectionMode && <div className="orders-selection-bar invoice-selection-bar" role="region" aria-label="Seçim modu"><button type="button" className="orders-selection-cancel" onClick={exitSelectionMode}>İptal</button><strong>{selectedItems.length} sipariş seçildi</strong><button type="button" className="orders-selection-all" onClick={() => selection.toggleMany(pageItems.map(item => item.packageId), !allVisibleSelected)} disabled={!pageItems.length}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
       {query.isPending ? <div className="invoice-reference-state"><Busy /></div> : query.isError ? <div className="invoice-reference-state"><ErrorBox error={query.error} onRetry={() => void query.refetch()} /></div> : <><div className={`invoice-reference-table${query.isPlaceholderData ? ' is-stale-data' : ''}`} role="table" aria-busy={query.isPlaceholderData || undefined}>
         <div className="invoice-reference-head" role="row">
-          <div className="invoice-reference-platform-heading"><label className="invoice-reference-select-all"><input type="checkbox" aria-label="Bu sayfadaki tüm siparişleri seç" checked={allVisibleSelected} disabled={!pageItems.length} onChange={() => setSelectedPackages(allVisibleSelected ? new Set() : new Set(pageItems.map(item => item.packageId)))} /><span className="sr-only">Tüm Siparişleri Seç</span></label><strong>Sipariş Bilgileri</strong>{/* The orders page's platform popover; rr-layer gives it that page's look. */}<span className="rr-layer invoice-platform-pop"><RrAnchor trigger={(open, toggle) => <button type="button" className={`order-column-filter-trigger${selectedPlatforms?.length ? ' is-active' : ''}`} aria-label="Platform filtresini aç" aria-expanded={open} onClick={toggle}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>}>{() => <ReturnPlatformPop title="Platform" options={platformOptions} counts={pageData ? pageData.platformCounts ?? undefined : null} selected={selectedPlatforms ?? []} onChange={pickPlatformsNow} />}</RrAnchor></span></div>
+          <div className="invoice-reference-platform-heading"><label className="invoice-reference-select-all"><input type="checkbox" aria-label="Bu sayfadaki tüm siparişleri seç" checked={allVisibleSelected} disabled={!pageItems.length} onChange={() => selection.toggleMany(pageItems.map(item => item.packageId), !allVisibleSelected)} /><span className="sr-only">Tüm Siparişleri Seç</span></label><strong>Sipariş Bilgileri</strong>{/* The orders page's platform popover; rr-layer gives it that page's look. */}<span className="rr-layer invoice-platform-pop"><RrAnchor trigger={(open, toggle) => <button type="button" className={`order-column-filter-trigger${selectedPlatforms?.length ? ' is-active' : ''}`} aria-label="Platform filtresini aç" aria-expanded={open} onClick={toggle}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>}>{() => <ReturnPlatformPop title="Platform" options={platformOptions} counts={pageData ? pageData.platformCounts ?? undefined : null} selected={selectedPlatforms ?? []} onChange={pickPlatformsNow} />}</RrAnchor></span></div>
           <strong>Alıcı</strong>
           <div className={`order-column-filter${cargoFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">Kargo</span>{headFilter('Kargo Firması', 'Kargo filtresini aç', cargoFilter, cargoPopOptions, setCargoFilter)}</div>
           <div className={`order-column-filter${shipmentStatusFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">Sipariş Durumu</span>{headFilter('Sipariş Durumu', 'Sipariş durumu filtresini aç', shipmentStatusFilter, shipmentPopOptions, setShipmentStatusFilter)}</div>
@@ -637,8 +638,8 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span>{headFilter('Oluşturma Durumu', 'Fatura oluşturma filtresini aç', invoiceActionFilter, invoiceActionPopOptions, value => setInvoiceActionFilter(value as typeof invoiceActionFilter))}</div>
         </div>
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-to-interactive-role -- phone tap target that selects the row; its checkbox and buttons are the keyboard controls */}
-        {!pageItems.length && <div className="invoice-reference-state" role="row"><ListEmptyState icon="invoice" noun="Paket" hasActiveFilters={hasInvoiceFilters} onClear={clearFilters} filteredHint="Seçili fatura sekmesi ve filtrelerle eşleşen paket yok." emptyHint="Siparişlerden oluşan fatura paketleri burada listelenir." /></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
-          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => { togglePackage(item.packageId); if (isPhoneViewport()) setSelectionMode(true) }} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
+        {!pageItems.length && <div className="invoice-reference-state" role="row"><ListEmptyState icon="invoice" noun="Paket" hasActiveFilters={hasInvoiceFilters} onClear={clearFilters} filteredHint="Seçili fatura sekmesi ve filtrelerle eşleşen paket yok." emptyHint="Siparişlerden oluşan fatura paketleri burada listelenir." /></div>}{pageItems.map(item => { const isPicked = selection.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
+          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selection.has(item.packageId)} onChange={() => { togglePackage(item.packageId); if (isPhoneViewport()) setSelectionMode(true) }} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment">{(() => { const kind = badgeGlyphKind(item.shipmentStatus, 'neutral'); return <StatusRing kind={kind} progress={orderStatusProgress(kind)} label={statusLabel(item.shipmentStatus)} detail={orderRingDetail(item, kind)} /> })()}</div>
@@ -672,7 +673,7 @@ export function InvoicesPage() {
         </article> })}
       </div>{pageItems.length > 0 && <div className="order-pagination"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><Pager page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} ariaLabel="Fatura sayfaları" /></div>}</>}
     </section>
-      <StickyActionBar open={selectedItems.length > 0} label="Toplu fatura işlemleri" className="invoice-reference-bulk-toolbar"><span>{selectedItems.length} sipariş seçildi</span>{selectedCreatableItems.length > 0 && <button type="button" onClick={() => openInvoicePreview(selectedCreatableItems)}><UiIcon name="download" size={16} />Toplu Fatura Oluştur ({selectedCreatableItems.length})</button>}{selectedShopifyItems.length > 0 && <button type="button" className={selectedCreatableItems.length ? 'secondary' : undefined} onClick={() => { setManualStatusBatch(selectedShopifyItems); setSelectedPackages(current => new Set([...current].filter(id => !selectedShopifyItems.some(item => item.packageId === id)))) }}><UiIcon name="edit" size={16} /> Fatura Durumunu Güncelle ({selectedShopifyItems.length})</button>}<button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: selectedItems.map(item => item.packageId), hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}><UiIcon name={tab === 'HIDDEN' ? 'eye' : 'eyeOff'} size={16} />{tab === 'HIDDEN' ? 'Görünür Yap' : 'Siparişleri Gizle'}</button><button type="button" className="secondary" onClick={() => setSelectedPackages(new Set())}>Seçimi Temizle</button></StickyActionBar>
+      <StickyActionBar open={selectedItems.length > 0} label="Toplu fatura işlemleri" className="invoice-reference-bulk-toolbar"><span>{selectedItems.length} sipariş seçildi</span>{selectedCreatableItems.length > 0 && <button type="button" onClick={() => openInvoicePreview(selectedCreatableItems)}><UiIcon name="download" size={16} />Toplu Fatura Oluştur ({selectedCreatableItems.length})</button>}{selectedShopifyItems.length > 0 && <button type="button" className={selectedCreatableItems.length ? 'secondary' : undefined} onClick={() => { setManualStatusBatch(selectedShopifyItems); selection.remove(selectedShopifyItems.map(item => item.packageId)) }}><UiIcon name="edit" size={16} /> Fatura Durumunu Güncelle ({selectedShopifyItems.length})</button>}<button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: selectedItems.map(item => item.packageId), hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}><UiIcon name={tab === 'HIDDEN' ? 'eye' : 'eyeOff'} size={16} />{tab === 'HIDDEN' ? 'Görünür Yap' : 'Siparişleri Gizle'}</button><button type="button" className="secondary" onClick={() => selection.clear()}>Seçimi Temizle</button></StickyActionBar>
     {selectedItem && <div className="invoice-detail-backdrop" role="presentation" onMouseDown={() => setSelectedItem(null)}><DialogSurface as="section" onClose={() => setSelectedItem(null)} className="workspace-modal invoice-detail-modal" aria-labelledby="invoice-detail-title" onMouseDown={event => event.stopPropagation()}>
       <header className="invoice-detail-header"><div className="invoice-detail-identity">{platformLogoSource(selectedItem.platformCode) && <img className="invoice-detail-title-logo" src={platformLogoSource(selectedItem.platformCode)!} alt="" aria-hidden="true" />}<div><h2 id="invoice-detail-title"><InvoiceOrderNumber item={selectedItem} /></h2><p className="invoice-detail-meta"><span><UiIcon name="users" size={14} />{invoiceCustomerDisplayName(selectedItem)}</span><span><UiIcon name="calendar" size={14} />{formatIstanbul(selectedItem.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span></p></div></div><div className="invoice-detail-header-actions"><button type="button" className="modal-close" onClick={() => setSelectedItem(null)} aria-label="Detay panelini kapat"><UiIcon name="close" /></button></div></header>
       <div className="invoice-detail-body"><section className="invoice-detail-summary"><div><small>Sipariş Durumu</small><Badge value={selectedItem.shipmentStatus} /></div><div className="invoice-detail-invoice-status"><small>Fatura Durumu</small><InvoiceStatusBadge icon={<InvoiceGlyph kind={invoiceGlyphKind(invoiceWorkspaceStatus(selectedItem).value)} />} status={invoiceWorkspaceStatus(selectedItem).value} />{handSetInvoiceStatus(selectedItem.manualInvoiceStatus) && <small className="invoice-hand-set-note">{handSetInvoiceStatusNote}</small>}{selectedItem.marketplaceInvoiceReadErrorSummary && <small className="invoice-detail-error-reason">Pazaryeri fatura durumu güncellenemedi: {selectedItem.marketplaceInvoiceReadErrorSummary}</small>}{selectedItem.marketplaceInvoiceReadErrorCode && <code className="invoice-detail-error-code">Pazaryeri kontrol hatası: {selectedItem.marketplaceInvoiceReadErrorCode}</code>}{selectedItem.invoiceErrorCode && <code className="invoice-detail-error-code">Hata kodu: {selectedItem.invoiceErrorCode}</code>}</div><div><small>Toplam</small><strong title={formatMoney(selectedItem.amount, selectedItem.currency)}>{formatMoney(selectedItem.amount, selectedItem.currency)}</strong></div><div><small>Kargo / Takip</small><div className="cargo-provider-display invoice-detail-cargo"><CargoProviderIcon value={selectedItem.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><strong>{selectedItem.cargoTrackingNumber ?? 'Takip no yok'}</strong></div></section>
@@ -687,7 +688,7 @@ export function InvoicesPage() {
     {manualUploadItem && <InvoiceWorkspaceUploadModal item={manualUploadItem} onClose={() => setManualUploadItem(null)} onFeedback={setMessage} />}
     {manualStatusBatch && <InvoiceWorkspaceBulkStatusModal items={manualStatusBatch} onClose={() => setManualStatusBatch(null)} onFeedback={setMessage} />}
     {manualConfirmation && <InvoiceManualConfirmationModal kind={manualConfirmation.kind} item={manualConfirmation.item} onCancel={() => setManualConfirmation(null)} onConfirm={runManualConfirmation} />}
-    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
+    {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { selection.remove(previewTargets.map(target => target.packageId)); void Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey }))]) }} />}
   </section>
 }
 
@@ -734,7 +735,7 @@ function InvoiceWorkspaceBulkStatusModal({ items, onClose, onFeedback }: { items
   const update = useMutation({
     mutationFn: () => setManualInvoiceStatus(items.map(item => item.packageId), status),
     onSuccess: async result => {
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey }))])
       const label = status === 'UPLOADED' ? 'Faturası yüklendi' : 'Fatura bekliyor'
       const reopened = result.reopenedCount ? ` ${result.reopenedCount} siparişte iptal edilen faturanın linki geçersiz sayıldı; yeni fatura kesilebilir.` : ''
       const platforms = [...new Set(items.map(item => item.platformCode))]
@@ -772,7 +773,7 @@ function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: Invo
     },
     onSuccess: async () => {
       onFeedback('Manuel fatura belgesi siparişe kaydedildi. Platforma iletim başlamadı; iletimi ayrı düğmeden başlatabilirsiniz.', 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.orders() }), ...invoiceCopies().map(queryKey => client.invalidateQueries({ queryKey }))])
       onClose()
     },
     onError: error => { const errorMessage = error instanceof Error ? error.message : 'Manuel fatura belgesi kaydedilemedi.'; setMessage(errorMessage); onFeedback(errorMessage, 'error') }
@@ -810,7 +811,7 @@ export function InvoiceDetailPage() {
     const timeout = window.setTimeout(() => setNoticeState(''), noticeKind === 'info' ? 7000 : 5500)
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
-  const query = useQuery({ queryKey: ['invoice', id], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${id}`) })
+  const query = useQuery({ queryKey: queryKeys.invoice(id), queryFn: ({ signal }) => hubApi<InvoiceDetail>(`/invoices/${id}`, { signal }) })
   const canSend = useCanSendInvoices()
   const followJobs = useJobOutcomeNotice()
   const operation = useMutation({
@@ -822,7 +823,7 @@ export function InvoiceDetailPage() {
       return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...(!versionless ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ confirmed }) }) })
     },
     onSuccess: (value, variables) => {
-      setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] })
+      setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey })))
       // A send is followed to its result (gönderildi / gönderilemedi with the reason); the page's own status follows too.
       const jobId = (value as { jobId?: string } | null)?.jobId
       const what = variables.action === 'SUBMIT' ? 'fatura kesimi' : variables.action === 'CANCEL' ? 'fatura iptali' : 'fatura iletimi'
@@ -831,8 +832,8 @@ export function InvoiceDetailPage() {
     onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })
   const upload = useMutation({
-    mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<{ duplicate: boolean }>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
-    onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz pazaryerine veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await client.invalidateQueries({ queryKey: ['invoice', id] }) },
+    mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<ApiAnswer<'postInvoicesByIdDocumentsManual'>>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
+    onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz pazaryerine veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey }))) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Fatura belgesi yüklenemedi.', 'error')
   })
   if (query.isLoading) return <section className="content"><Busy /></section>; if (query.isError || !query.data) return <section className="content"><ErrorBox error={query.error} onRetry={() => void query.refetch()} /></section>; const invoice = query.data

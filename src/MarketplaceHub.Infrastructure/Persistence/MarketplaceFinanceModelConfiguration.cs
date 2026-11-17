@@ -7,6 +7,9 @@ internal static class MarketplaceFinanceModelConfiguration
 {
     public static void ConfigureMarketplaceFinanceModels(this ModelBuilder builder)
     {
+        // Finance history (transactions, payouts, cargo invoice lines) is never removed with its connection row
+        // (VERITABANI-DAGITIM-16): its FK is RESTRICT, so a connection delete that skipped them fails instead of erasing
+        // payouts; the resets delete these rows on purpose first (OperationalDataMaintenanceService.FullReset).
         builder.Entity<MarketplaceFinanceTransaction>(entity =>
         {
             entity.ToTable("marketplace_finance_transactions", "sales"); entity.HasKey(x => x.Id);
@@ -29,7 +32,7 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PaymentDate });
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PaymentOrderId });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MarketplacePayoutOrder>(entity =>
         {
@@ -41,7 +44,7 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PayoutDate });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MarketplaceCargoInvoiceItem>(entity =>
         {
@@ -52,7 +55,7 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.InvoiceSerialNumber, x.LineNo }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.OrderNumber });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MarketplaceFinanceSyncState>(entity =>
         {
@@ -60,7 +63,7 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.Property(x => x.RejectedTypes).HasMaxLength(1000); entity.Property(x => x.LastError).HasMaxLength(1024);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
-            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

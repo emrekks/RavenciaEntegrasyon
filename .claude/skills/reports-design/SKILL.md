@@ -5,7 +5,7 @@ description: Design rules, a local preview with a realistic report and a layout 
 
 # Raporlar design
 
-The page is `src/MarketplaceHub.Web/src/features/reports/` (`ReportsPage.tsx`, `reports.css`, `report-visuals.tsx`,
+The page is `src/MarketplaceHub.Web/src/features/reports/` (`ReportsPage.tsx`, `reports-page/*.tsx`, `reports.css`, `report-visuals.tsx`,
 `report-format.ts`); its data comes from `GET /reports/sales` (`ReportsContracts.cs`, `ReportBuilder.cs`,
 `ReportsService.cs`). The owner reviews every change by eye and says plainly what is wrong; these rules are what they
 asked for, in their words where it matters.
@@ -33,7 +33,7 @@ asked for, in their words where it matters.
 
 ## Workflow
 
-1. Read the parts of `ReportsPage.tsx` and `reports.css` you change. CSS selectors are scoped
+1. Read the parts of `ReportsPage.tsx`, `reports-page/*.tsx` and `reports.css` you change. CSS selectors are scoped
    `.app-shell.stitch-shell main .reports-page …`; grep the class name first, an old rule of the same name may exist
    (a new `.reports-split` once picked up an older two-column rule).
 2. Change, then run from `src/MarketplaceHub.Web`: `npm run typecheck`, `npx eslint src/features/reports --max-warnings=0`,

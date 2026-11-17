@@ -188,13 +188,7 @@ internal static class InvoiceAdjustmentTracking
                 && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in jobs)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = InvoiceDeliveryGuardPolicy.CancelledJobCode;
-            job.LastErrorSummary = "Fatura iptal sürecine girdiği için pazaryeri teslimi durduruldu.";
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, InvoiceDeliveryGuardPolicy.CancelledJobCode, "Fatura iptal sürecine girdiği için pazaryeri teslimi durduruldu.", Jobs.JobEvent.Publish);
         return jobs.Count;
     }
 
@@ -237,27 +231,10 @@ internal static class InvoiceAdjustmentTracking
         return entry;
     }
 
-    private static async Task UpsertIssueAsync(AppDbContext db, Guid tenantId, string key, string code, string summary, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = db.OperationalIssues.Local.FirstOrDefault(item => item.TenantId == tenantId && item.DedupeKey == key)
-            ?? await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key, cancellationToken);
-        if (issue is null)
-        {
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenantId, DedupeKey = key, Code = code, Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
-            return;
-        }
-        issue.Code = code;
-        issue.Summary = summary;
-        issue.Status = IssueStatus.Open;
-        issue.LastSeenAt = now;
-        issue.OccurrenceCount++;
-    }
+    // ISLEYICI-12 point 5: the shared IssueRecorder. A resolve here stamps LastSeenAt only, as it always did.
+    private static Task UpsertIssueAsync(AppDbContext db, Guid tenantId, string key, string code, string summary, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).RecordAsync(tenantId, key, code, summary, now, cancellationToken);
 
-    private static async Task ResolveIssueAsync(AppDbContext db, Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var issue = await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key && item.Status != IssueStatus.Resolved, cancellationToken);
-        if (issue is null) return;
-        issue.Status = IssueStatus.Resolved;
-        issue.LastSeenAt = now;
-    }
+    private static Task ResolveIssueAsync(AppDbContext db, Guid tenantId, string key, DateTimeOffset now, CancellationToken cancellationToken) =>
+        new IssueRecorder(db).ResolveAsync(tenantId, key, now, cancellationToken, IssueResolveStamps.LastSeenAt);
 }

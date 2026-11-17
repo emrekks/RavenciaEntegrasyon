@@ -145,10 +145,11 @@ public static class PazaramaOrderMapper
         var modified = lastItemChange ?? ordered;
         // Pazarama writes its money in "TL" (pazarama-api-son.md:2405): read as TRY. A currency the panel does not know
         // skips the order with an issue instead of being stored as lira; a Pazarama order without the field is lira, the
-        // only currency Pazarama sells in.
+        // only currency Pazarama sells in. D8: any other code (also a well-formed one such as "XYZ" or "USD") is such an
+        // unknown currency, so the order is refused rather than imported in it.
         var rawCurrency = Text(order, "currency");
-        var currency = rawCurrency is null ? "TRY" : RefusedOrders.Currency(rawCurrency)
-            ?? throw new JsonException($"para birimi tanınmadı ({rawCurrency}); sipariş yeniden okunacak.");
+        var currency = rawCurrency is null ? "TRY" : RefusedOrders.Currency(rawCurrency) is "TRY" ? "TRY"
+            : throw new JsonException($"para birimi tanınmadı ({rawCurrency}); Pazarama yalnız TL ile satar, sipariş yeniden okunacak.");
         var packageStatus = PackageStatus(itemStatuses);
         // Contracted cargo: the shipment code (PZ...) is what the label and the cargo process use.
         var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, modified, carrierName, shipmentCode ?? trackingNumber, allocations, gross, gross - net, net, UnreadableLineCount: unreadable);
@@ -265,7 +266,7 @@ public static class PazaramaOrderMapper
         if (text is null) return null;
         string[] formats = ["yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF", "yyyy-MM-dd"];
         return DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)
-            ? new DateTimeOffset(local, PazaramaOrderHistoryPolicy.TurkeyOffset).ToUniversalTime()
+            ? TurkeyTime.FromLocal(local)
             : TurkeyTime.Parse(text);
     }
 
@@ -314,15 +315,5 @@ public static class PazaramaOrderMapper
         return RemoteJson.Decimal(value);
     }
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) || text.Trim() == "null" ? null : text.Trim();
-    }
+    private static string? Text(JsonElement element, string property) => RemoteFields.TextOrNullWord(element, property);
 }

@@ -10,7 +10,7 @@ const performance = (current: PerformanceRow[], previous: PerformanceRow[] = [],
   currentStart: '2026-10-18T21:00:00Z', currentEnd: '2026-10-20T07:30:00Z', previousStart: '2026-10-16T21:00:00Z', previousEnd: '2026-10-18T07:30:00Z',
   partialDay,
   channels: [{ connectionId: 'ty-1', platformCode: 'TRENDYOL', displayName: 'Trendyol Ana', status: 'ACTIVE' }, { connectionId: 'ty-2', platformCode: 'TRENDYOL', displayName: 'Trendyol İkinci', status: 'ACTIVE' }],
-  current, previous,
+  current, previous, currentHours: null, previousHours: null, unreadableLineOrders: 0, firstOrderDays: null,
 })
 
 describe('dashboard periods', () => {

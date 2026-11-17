@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -69,37 +67,14 @@ internal static class StockProjectionOutbox
         {
             if (existing.Contains(target.DedupKey) || db.IntegrationJobs.Local.Any(job => job.TenantId == tenantId && job.JobDedupKey == target.DedupKey)) continue;
             var payload = JsonSerializer.Serialize(new { variantId = target.VariantId, sourceEventId = target.SourceEventId });
-            db.IntegrationJobs.Add(new IntegrationJob
+            Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, target.ConnectionId, MarketplaceJobTypes.StockProjectionDispatch, payload, target.DedupKey, $"stock:{target.VariantId:N}", now)
             {
-                Id = Guid.CreateVersion7(),
-                TenantId = tenantId,
-                ConnectionId = target.ConnectionId,
-                JobType = MarketplaceJobTypes.StockProjectionDispatch,
-                PayloadJson = payload,
-                PayloadVersion = 1,
-                PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-                JobDedupKey = target.DedupKey,
-                EffectIdempotencyKey = target.DedupKey,
                 Priority = JobPriorityPolicy.For(MarketplaceJobTypes.StockProjectionDispatch, userInitiated: true),
-                Status = JobStatus.Pending,
-                AvailableAt = now,
                 MaxAttempts = 10,
-                CorrelationId = $"stock:{target.VariantId:N}",
-                CreatedAt = now,
-                Version = 1
+                CreatedAt = now
             });
         }
     }
 
-    internal static bool StoredExternalWritesEnabled(string? settingsJson)
-    {
-        if (string.IsNullOrWhiteSpace(settingsJson)) return false;
-        try
-        {
-            using var document = JsonDocument.Parse(settingsJson);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("ExternalWritesEnabled", out var enabled) && enabled.ValueKind == JsonValueKind.True;
-        }
-        catch (JsonException) { return false; }
-    }
+    internal static bool StoredExternalWritesEnabled(string? settingsJson) => ConnectionSettings.ExternalWritesEnabled(settingsJson);
 }

@@ -2,6 +2,7 @@
 // that field's control with the product editor's checks, in the footer one line naming what will be written. Model
 // fields go to every colour card of the selected models, desi to every variant, güvenlik stoğu to every marketplace
 // record of every variant. Only that field is written; nothing is sent to a marketplace.
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
@@ -9,7 +10,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { TitleHint } from '../../../shared/components'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
-import { RrModal } from '../../marketplace/returns-ui'
+import { RrModal } from '../../../shared/ui/rr-components'
 import type { ChunkRunResult } from '../bulk-status-run'
 import { TURKISH_VAT_RATES } from '../product-editor-state'
 import type { Brand, Category } from '../shared'
@@ -18,6 +19,7 @@ import {
   bulkFieldValueLabel, bulkStatusOptions, bulkVatInclusionOptions, runBulkFieldChunks, type BulkFieldKey, type BulkFieldResponse
 } from '../bulk-field-run'
 import './bulk-field-dialog.css'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 const FIELD_HINTS: Partial<Record<BulkFieldKey, string>> = {
   vatRate: 'Ürün kartlarının KDV oranı; pazar yerlerindeki ilanların KDV’si ve fiyatı değişmez.',
@@ -43,8 +45,8 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const running = useRef(false)
   const value = values[field]
-  const brands = useQuery({ queryKey: ['brands', 'new-product'], queryFn: () => loadAllPages<Brand>('/catalog/brands'), enabled: field === 'brandId' })
-  const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories'), enabled: field === 'categoryId' })
+  const brands = useQuery({ queryKey: queryKeys.brands('new-product'), queryFn: ({ signal }) => loadAllPages<Brand>('/catalog/brands', { signal }), enabled: field === 'brandId' })
+  const categories = useQuery({ queryKey: queryKeys.categories('new-product'), queryFn: ({ signal }) => loadAllPages<Category>('/catalog/categories', { signal }), enabled: field === 'categoryId' })
   const activeBrands = useMemo(() => (brands.data?.items ?? []).filter(item => item.isActive), [brands.data])
   const leafCategories = useMemo(() => (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive), [categories.data])
   const summary = bulkFieldSummary(cardCount, variantCount, field, bulkFieldValueLabel(field, value, { brands: activeBrands, categories: leafCategories }))
@@ -67,10 +69,11 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
     const payloadValue = bulkFieldPayloadValue(field, value)
     try {
       const result = await runBulkFieldChunks(chunks, async productIds => {
-        const response = await hubApi<BulkFieldResponse>('/products/bulk-field', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, field, value: payloadValue }) })
+        const response = await hubApi<ApiAnswer<'postProductsBulkField'>>('/products/bulk-field', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds, field, value: payloadValue }) })
         counts.updatedCount += response?.updatedCount ?? 0
         counts.unchangedCount += response?.unchangedCount ?? 0
         counts.variantCount += response?.variantCount ?? 0
+        counts.modelColours = (counts.modelColours ?? 0) + (response?.modelColours ?? 0)
         counts.failures.push(...(response?.failures ?? []))
         skipped.push(...(response?.skipped ?? []))
       }, (done, all) => setProgress({ done, total: all }))

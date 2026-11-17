@@ -1,14 +1,14 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { formatDateTime } from '../../../shared/format-date'
 import { statusLabel } from '../../../shared/status-labels'
-import { RrError, RrIcon, RrLoading } from '../returns-ui'
+import { RrError, RrIcon, RrLoading } from '../../../shared/ui/rr-components'
 import { TitleHint } from '../../../shared/components'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 type SettledLine = { id: string; title: string; acceptDetail?: string | null; marketplaceNote?: string | null; resolved?: boolean | null; acceptedBySeller?: boolean | null }
-type AuditEntry = { previousStatus: string | null; newStatus: string; executorApp: string | null; executorUser: string | null; at: string }
-type LineAudit = { returnLineId: string; title: string; entries: AuditEntry[]; error: string | null }
 
 // Trendyol's claim item statuses as the seller panel names them; anything else falls back to the shared labels.
 const claimStatusNames: Record<string, string> = {
@@ -44,7 +44,7 @@ const yesNo = (value: boolean | null | undefined) => value == null ? null : valu
 // showSettlement: false where the lines' own table already shows the settlement (the Detaylı Bilgi window).
 export function ReturnMarketplaceHistory({ returnId, lines, showSettlement = true }: { returnId: string; lines: SettledLine[]; showSettlement?: boolean }) {
   const [historyOpen, setHistoryOpen] = useState(false)
-  const audits = useQuery({ queryKey: ['return-audits', returnId], queryFn: () => hubApi<LineAudit[]>(`/returns/${returnId}/audits`), enabled: historyOpen, staleTime: 5 * 60_000 })
+  const audits = useQuery({ queryKey: queryKeys.returnAudits(returnId), queryFn: ({ signal }) => hubApi<ApiAnswer<'getReturnsByIdAudits'>>(`/returns/${returnId}/audits`, { signal }), enabled: historyOpen, staleTime: 5 * 60_000 })
   const settled = lines.map(line => ({ line, facts: [
     ['Kabul Şekli', acceptDetailText(line.acceptDetail)],
     ['İhtilaf Çözüldü', yesNo(line.resolved)],

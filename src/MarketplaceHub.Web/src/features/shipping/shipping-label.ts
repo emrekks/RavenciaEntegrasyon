@@ -1,4 +1,6 @@
-export type ShippingLabelBlockKind = 'trackingBarcode' | 'address' | 'orderInfo' | 'packageBarcode' | 'sender' | 'custom'
+import { readRecentKeys, rememberRecentKey } from '../../shared/recent-keys-storage'
+
+export type ShippingLabelBlockKind ='trackingBarcode' | 'address' | 'orderInfo' | 'packageBarcode' | 'sender' | 'custom'
 export type ShippingLabelField = 'trackingNumber' | 'packageNumber' | 'orderNumber' | 'customerName' | 'address' | 'cargoProvider' | 'senderName' | 'senderAddress' | 'customerEmail'
 export type ShippingLabelAlignment = 'left' | 'center' | 'right'
 export type ShippingLabelBlockPosition = { x: number; y: number; width: number; height: number }
@@ -318,24 +320,16 @@ export function printedShippingLabelKey(orderId: string, format: ShippingLabelFo
   return `${orderId}:${format}`
 }
 
+// The labels printed in this browser, kept as a bounded recent list (WEB-ALTYAPI-5): old and surplus keys drop out so
+// the list cannot fill the site's storage.
 export function loadPrintedShippingLabels(): string[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(printedLabelsStorageKey) ?? '[]')
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-  } catch {
-    return []
-  }
+  return readRecentKeys(printedLabelsStorageKey)
 }
 
 export function markShippingLabelPrinted(orderId: string, format: ShippingLabelFormat) {
-  try {
-    const key = printedShippingLabelKey(orderId, format)
-    const next = Array.from(new Set([...loadPrintedShippingLabels(), key]))
-    localStorage.setItem(printedLabelsStorageKey, JSON.stringify(next))
-    return key
-  } catch {
-    return printedShippingLabelKey(orderId, format)
-  }
+  const key = printedShippingLabelKey(orderId, format)
+  rememberRecentKey(printedLabelsStorageKey, key)
+  return key
 }
 
 // The fields an address block prints, the recipient's name first; a block saved without fields

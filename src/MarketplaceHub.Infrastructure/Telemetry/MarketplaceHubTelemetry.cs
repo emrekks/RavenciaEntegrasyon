@@ -23,6 +23,14 @@ public static class MarketplaceHubTelemetry
         "marketplacehub.jobs.queue_wait", unit: "s", description: "How long a runnable job waited before its lease, by job type.");
     public static readonly Counter<long> JobLockContention = Meter.CreateCounter<long>(
         "marketplacehub.jobs.lock_contention", unit: "{job}", description: "Leased jobs that found their connection lock group busy, by job type, group and result.");
+    // KUYRUK-10: sync policies a scheduler pass skipped because scheduling them threw (the others were still scheduled).
+    public static readonly Counter<long> ScheduledPolicyFailures = Meter.CreateCounter<long>(
+        "marketplacehub.scheduler.policy_failures", unit: "{policy}", description: "Sync policies skipped by a scheduler pass because scheduling them failed.");
+    // KUYRUK-5: the worker's periodic maintenance loops (retention, sweep, webhook upkeep, ...), by loop and outcome.
+    public static readonly Histogram<double> MaintenancePassDuration = Meter.CreateHistogram<double>(
+        "marketplacehub.maintenance.pass.duration", unit: "s", description: "How long a worker maintenance pass ran, by loop and outcome.");
+    public static readonly Counter<long> MaintenancePassFailures = Meter.CreateCounter<long>(
+        "marketplacehub.maintenance.pass.failures", unit: "{pass}", description: "Worker maintenance passes that failed, by loop.");
     public static readonly Counter<long> MarketplaceRequests = Meter.CreateCounter<long>(
         "marketplacehub.marketplace.requests", unit: "{request}", description: "Requests sent to a marketplace, by client and status.");
     public static readonly Histogram<double> MarketplaceRequestDuration = Meter.CreateHistogram<double>(

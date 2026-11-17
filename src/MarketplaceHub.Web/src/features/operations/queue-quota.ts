@@ -1,13 +1,14 @@
 import { jobStatusLabel } from '../../shared/job-status-labels'
 import { platformDisplayName, platformDisplayOrder } from '../../shared/platform-names'
+import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // İşlem Takibi › Kuyruk ve Kota: what GET /jobs/metrics, /jobs/metrics/lanes, /jobs/metrics/quota and /jobs/counts
 // answer, and the words the tab shows for them.
 
-export type LaneMetric = { lane: string; attempts: number; averageWaitSeconds: number | null; p95WaitSeconds: number | null; queued: number; running: number; slots: number }
-export type JobTypeMetric = { jobType: string; attempts: number; failed: number; averageWaitSeconds: number | null; p95WaitSeconds: number | null; averageDurationSeconds: number | null; p95DurationSeconds: number | null; queued: number; running: number }
-export type QuotaUsage = { platformCode: string; storeName: string; lane: string; limitPerMinute: number; lastHourRequests: number; peakMinuteRequests: number; averagePerMinute: number }
-export type JobCount = { status: string; jobType: string; count: number }
+export type LaneMetric = ApiAnswer<'getJobsMetricsLanes'>[number]
+export type JobTypeMetric = ApiAnswer<'getJobsMetrics'>[number]
+export type QuotaUsage = ApiAnswer<'getJobsMetricsQuota'>[number]
+export type JobCount = ApiAnswer<'getJobsCounts'>[number]
 
 export type QueueWindow = '1' | '24' | '168'
 export const queueWindowOptions: Array<{ value: QueueWindow; label: string }> = [

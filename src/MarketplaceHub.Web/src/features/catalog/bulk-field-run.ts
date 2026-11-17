@@ -106,7 +106,8 @@ export function bulkFieldSummary(cardCount: number, variantCount: number, field:
 
 export type BulkFieldFailure = { model: string; message: string }
 // skipped: closed cards Satış Durumu = Satışa Açık left for a missing required field (required-fields-skip.ts).
-export type BulkFieldResponse = { updatedCount: number; unchangedCount: number; variantCount: number; failures: BulkFieldFailure[]; skipped?: RequiredFieldsSkipped[] }
+// modelColours (KATALOG-14 phase D5b): the colour cards of the models the value reached.
+export type BulkFieldResponse = { updatedCount: number; unchangedCount: number; variantCount: number; failures: BulkFieldFailure[]; skipped?: RequiredFieldsSkipped[]; modelColours?: number }
 
 // The selected records in chunks of whole models: a model larger than the limit goes alone.
 export function bulkFieldChunks(groups: ReadonlyArray<ReadonlyArray<string>>, size = 500): string[][] {
@@ -140,7 +141,7 @@ export async function runBulkFieldChunks(chunks: ReadonlyArray<ReadonlyArray<str
 export function bulkFieldResultMessage(result: ChunkRunResult, counts: BulkFieldResponse, field: BulkFieldKey): { title: string; message: string; kind: 'success' | 'error'; skipped?: ReturnType<typeof requiredFieldsSkipNotice> } {
   const label = bulkFieldLabel(field)
   const reason = result.error instanceof Error ? result.error.message : 'Toplu değer ataması başarısız.'
-  const done = `${counts.updatedCount.toLocaleString('tr-TR')} ürün kartı güncellendi (${counts.variantCount.toLocaleString('tr-TR')} varyant)${counts.unchangedCount ? `, ${counts.unchangedCount.toLocaleString('tr-TR')} kart zaten bu değerdeydi` : ''}`
+  const done = `${counts.updatedCount.toLocaleString('tr-TR')} ürün kartı güncellendi (${counts.variantCount.toLocaleString('tr-TR')} varyant)${counts.unchangedCount ? `, ${counts.unchangedCount.toLocaleString('tr-TR')} kart zaten bu değerdeydi` : ''}${counts.modelColours ? `; Model İçindeki ${counts.modelColours.toLocaleString('tr-TR')} Renge Uygulandı` : ''}`
   const failed = counts.failures.length ? ` Yazılamayanlar: ${counts.failures.map(failure => `${failure.model}: ${failure.message}`).join('; ')}` : ''
   const notice = requiredFieldsSkipNotice(counts.skipped ?? [])
   const skipped = notice ? ` ${notice.message}` : ''

@@ -1,0 +1,20 @@
+// Source: n11 ProductQuestion detail (developer.n11.com "Ürün Soru" SOAP service, no offline copy), the shape
+// N11QuestionTests uses, buyer fields fake. Three details under one root: open, closed with an answer, and one without
+// any status or date.
+<details>
+  <productQuestion>
+    <productId>4455667788</productId><productTitle>Kadın Bluz</productTitle><questionSubject>Beden</questionSubject>
+    <question>M beden kaç cm?</question><answer></answer><fullName>T*** M***</fullName><email>buyer@example.test</email>
+    <status>OPEN</status><questionDate>2026-10-12</questionDate><answeredDate></answeredDate>
+    <images><image>https://img.example.test/1.jpg</image></images>
+  </productQuestion>
+  <productQuestion>
+    <productId>4455667788</productId><productTitle>Kadın Bluz</productTitle><questionSubject>Beden</questionSubject>
+    <question>L beden kaç cm?</question><answer>Göğüs 100 cm.</answer><fullName>T*** M***</fullName>
+    <status>CLOSED</status><questionDate>12/10/2026</questionDate><answeredDate>13/10/2026</answeredDate>
+  </productQuestion>
+  <productQuestion>
+    <productId>4455667788</productId><productTitle>Kadın Bluz</productTitle>
+    <question>Durumu ve tarihi gelmeyen soru</question>
+  </productQuestion>
+</details>

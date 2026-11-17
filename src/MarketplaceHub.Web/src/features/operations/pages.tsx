@@ -1,10 +1,11 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { jobStatusLabel } from '../../shared/job-status-labels'
 import { platformDisplayNames } from '../../shared/platform-names'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
-import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
-import { RrLogo, RrPageSize } from '../marketplace/returns-ui'
+import { hubApi, hubPoll, type Me } from '../../shared/api'
+import { RrLogo, RrPageSize } from '../../shared/ui/rr-components'
 import { ChoiceField, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { PlatformFilter } from '../../shared/PlatformFilter'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
@@ -15,13 +16,12 @@ import { ListEmptyState } from '../../shared/components/EmptyState'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
-import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change'
-import { isProductLevelJob, type JobWriteSummary } from './job-write-summary'
+import { fallbackJobChange, jobRelatedLinks } from './job-change'
+import { isProductLevelJob } from './job-write-summary'
 import { JobWriteDetail } from './JobWriteDetail'
 import { JobSentDetail } from './JobSentDetail'
 import { JobReadRecords } from './JobReadRecords'
 import { jobProgressPercent, keepsReadRecords, readProgressCounts, type JobReadSummary } from './job-read-summary'
-import type { JobVariantResults } from '../catalog/product-editor/PublicationJobVariants'
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
@@ -51,57 +51,26 @@ import { jobAttemptDuration } from './job-duration'
 import { isContinuingJob, isWaitingJob, queuedWait, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
+import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 
 const jobsMainTabOrder = ['jobs', 'logs', 'health', 'queue', 'notifications']
 // CONTINUING is the server's own name, in counts and filters, for a job that continues in windows (isContinuingJob).
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'CONTINUING' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
-type JobSummary = {
-  id: string
-  connectionId: string | null
-  jobType: string
-  status: JobStatus
-  attemptCount: number
-  maxAttempts: number
-  availableAt: string
-  lastErrorCode: string | null
-  lastErrorSummary: string | null
-  correlationId: string
-  createdAt: string
-  startedAt: string | null
-  completedAt: string | null
-  marketplace: string
-  externalId: string | null
-  firstFailedAt: string | null
-  lastFailedAt: string | null
-  nextRetryAt: string | null
-  batchCount: number
-  progressCurrent: number
-  progressTotal: number | null
-  progressPercent: number | null
-  progressLabel: string | null
-  progressReceived: number
-  progressProcessed: number
-  progressSkipped: number
-  progressFailed: number
-  lastAttemptStartedAt: string | null
-  heartbeatAt: string | null
-  waitingChecks?: number
-  attemptBudget?: number
-  waiting?: boolean
-  // The payload's resourceType: which list a reference sync reads (CATEGORIES, BRANDS ...).
-  resource?: string | null
-}
-type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
-type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
-type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
-type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null; variantResults?: JobVariantResults | null; write?: JobWriteSummary | null; read?: JobReadSummary | null }
+// CONTRACT: the API declares a job's status as a string; JobOperationsService.JobStatusText writes one of JobStatus.
+type JobSummary = Omit<ApiAnswer<'getJobsPage'>['items'][number], 'status'> & { status: JobStatus }
+type JobScan = NonNullable<JobDetailAnswer['scan']>
+type JobFailureReason = NonNullable<JobDetailAnswer['failureReasons']>[number]
+type JobDetailAnswer = ApiAnswer<'getJobsById'>
+// CONTRACT: relatedOrders is declared nullable (the record's default); JobOperationsService.GetAsync always sends a list.
+type JobDetail = Omit<JobDetailAnswer, 'job' | 'relatedOrders'> & { job: JobSummary; relatedOrders: NonNullable<JobDetailAnswer['relatedOrders']> }
 // The job a notice is about: its title ("Pazarama Ürün İşlemi"), number, marketplace and store.
 function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'jobType' | 'marketplace' | 'resource'>): NotificationContext {
   const title = jobTitle(job.jobType, job.marketplace, job.resource)
   return { operation: title, platformCode: platformCodeFromName(job.marketplace), connectionId: job.connectionId ?? undefined, jobId: job.id, subject: { kind: 'job', id: job.id, label: title, href: notificationLinks.job(job.id) } }
 }
-type JobPage = { items: JobSummary[]; nextCursor: string | null; hasMore: boolean }
+// CONTRACT: as JobSummary, a count's status is one of JobStatus (CONTINUING included).
+type JobCount = Omit<ApiAnswer<'getJobsCounts'>[number], 'status'> & { status: JobStatus }
+type JobPage = Omit<ApiAnswer<'getJobsPage'>, 'items'> & { items: JobSummary[] }
 
 // The Durum filter and the row badge name a status the same way (shared/job-status-labels).
 const statuses: Array<{ value: '' | JobStatus; label: string }> = [
@@ -407,7 +376,7 @@ export function JobsPage({ me }: { me: Me }) {
   const setPlatforms = (codes: string[]) => setSearchParams(current => withPlatforms(current, codes), { replace: true })
   // Temizle: the card's fields back to their defaults (the status counts above the list stay as they are).
   const clearFilters = () => setSearchParams(current => withPlatforms(writeJobsViewState(current, { direction: '', status: '', search: '', timeRange: '24h' }), []), { replace: true })
-  const connections = useQuery({ queryKey: ['connections', 'job-platforms'], queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
+  const connections = useQuery({ ...connectionQueries.list<{ platformCode: string }>(), staleTime: 60_000 })
   const connectionPlatforms = connections.data?.items
   const platformOptions = useMemo(() => jobPlatformOptions((connectionPlatforms ?? []).map(connection => connection.platformCode), platform ? platform.split(',') : []), [connectionPlatforms, platform])
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
@@ -425,10 +394,10 @@ export function JobsPage({ me }: { me: Me }) {
   // The list holds only the jobs loaded so far, so the counts come from the server's real totals; until they arrive
   // the loaded list is counted instead.
   const serverCounts = useQuery({
-    queryKey: ['jobs', 'counts', timeRange, platform],
+    queryKey: queryKeys.jobs('counts', timeRange, platform),
     // Not read while the Loglar or API Sağlık tab is shown (the list itself is off then too).
     enabled: !listHidden,
-    queryFn: () => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
+    queryFn: ({ signal }) => hubPoll<JobCount[]>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`, { signal }),
     refetchInterval: jobListPollMs
   })
   // The tab's job types come from its fixed definition, never from the live counts, so a count refresh that brings a
@@ -445,8 +414,8 @@ export function JobsPage({ me }: { me: Me }) {
   // 50 jobs per server page, or one screen page when a bigger one is chosen (job-list-query.ts).
   const serverPageSize = jobListServerPageSize(pageSize)
   const list = useInfiniteQuery({
-    queryKey: ['jobs', 'page', serverStatus, timeRange, category, direction, platform, serverPageSize],
-    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`),
+    queryKey: queryKeys.jobs('page', serverStatus, timeRange, category, direction, platform, serverPageSize),
+    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -457,17 +426,17 @@ export function JobsPage({ me }: { me: Me }) {
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
-    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, direction, platform, serverPageSize],
-    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`),
+    queryKey: queryKeys.jobs('page-head', serverStatus, timeRange, category, direction, platform, serverPageSize),
+    queryFn: ({ signal }) => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`, { signal }),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
-    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, direction, platform, serverPageSize], current => withFreshFirstPage(current, listHead.data))
+    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(queryKeys.jobs('page', serverStatus, timeRange, category, direction, platform, serverPageSize), current => withFreshFirstPage(current, listHead.data))
   }, [listHead.data, client, serverStatus, timeRange, category, direction, platform, serverPageSize])
   const detail = useQuery({
-    queryKey: ['job', selectedId],
-    queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),
+    queryKey: queryKeys.job(selectedId),
+    queryFn: ({ signal }) => hubPoll<JobDetail>(`/jobs/${selectedId}`, { signal }),
     enabled: Boolean(selectedId),
     refetchInterval: query => selectedId ? jobDetailPollInterval(query.state.data?.job.status) : false
   })
@@ -479,7 +448,7 @@ export function JobsPage({ me }: { me: Me }) {
       setSelectedId(current => current === variables.id ? data.job.id : current)
       const title = jobTitle(data.job.jobType, data.job.marketplace, data.job.resource)
       setFeedback({ message: variables.verb === 'retry' ? `${title} yeniden kuyruğa alındı.` : `${title} iptal edildi.`, tone: variables.verb === 'retry' ? 'info' : 'success', context: { ...jobNotificationContext(data.job), title: variables.verb === 'retry' ? 'İşlem Yeniden Denenecek' : 'İşlem İptal Edildi' } })
-      await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.jobs() }), client.invalidateQueries({ queryKey: queryKeys.job(data.job.id) })])
     },
     onError: (error, variables) => {
       const failure = notificationError(error, 'İşlem güncellenemedi.')
@@ -488,7 +457,7 @@ export function JobsPage({ me }: { me: Me }) {
     }
   })
   const oneTimeInvoiceDelivery = useMutation({
-    mutationFn: ({ id, confirmed, orderNumber }: { id: string; confirmed: boolean; orderNumber: string }) => hubApi<JobDetail>(`/jobs/${id}/invoice-delivery-once`, {
+    mutationFn: ({ id, confirmed, orderNumber }: { id: string; confirmed: boolean; orderNumber: string }) => hubApi<ApiAnswer<'postJobsByIdInvoiceDeliveryOnce'>>(`/jobs/${id}/invoice-delivery-once`, {
       method: 'POST',
       headers: { 'Idempotency-Key': oneTimeInvoiceDeliveryIdempotencyKey(id) },
       body: JSON.stringify({ confirmed, orderNumber })
@@ -496,7 +465,7 @@ export function JobsPage({ me }: { me: Me }) {
     onSuccess: async data => {
       setSelectedId(data.job.id)
       setFeedback({ message: 'Seçilen sipariş için tek seferlik fatura iletimi kuyruğa alındı. Genel dış yazma kapıları kapalı kaldı.', tone: 'info' })
-      await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['job', data.job.id] })])
+      await Promise.all([client.invalidateQueries({ queryKey: queryKeys.jobs() }), client.invalidateQueries({ queryKey: queryKeys.job(data.job.id) })])
     },
     onError: error => setFeedback({ message: error instanceof Error ? error.message : 'Tek seferlik fatura işlemi başlatılamadı.', tone: 'danger' })
   })
@@ -504,8 +473,8 @@ export function JobsPage({ me }: { me: Me }) {
   // marketplace id even when it is older than the loaded pages or the selected range (notification links: ?ara=<job id>).
   const lookupTerm = listHidden ? null : jobLookupTerm(search)
   const lookup = useQuery({
-    queryKey: ['jobs', 'lookup', lookupTerm],
-    queryFn: () => hubPoll<JobPage>(`/jobs/page${jobLookupQueryString(lookupTerm ?? '')}`),
+    queryKey: queryKeys.jobs('lookup', lookupTerm),
+    queryFn: ({ signal }) => hubPoll<JobPage>(`/jobs/page${jobLookupQueryString(lookupTerm ?? '')}`, { signal }),
     enabled: Boolean(lookupTerm)
   })
   const lookupItems = useMemo(() => lookupTerm ? lookup.data?.items ?? [] : [], [lookupTerm, lookup.data])
@@ -586,8 +555,8 @@ export function JobsPage({ me }: { me: Me }) {
   const categoryCounts = useMemo(() => new Map(jobCategoryTabs.map(tab => [tab.key, countRows.reduce((total, row) => total + (tab.match(row.jobType) ? row.count : 0), 0)])), [countRows])
   const refreshJobs = () => {
     void Promise.all([
-      client.invalidateQueries({ queryKey: ['jobs'] }),
-      selectedId ? client.invalidateQueries({ queryKey: ['job', selectedId] }) : Promise.resolve()
+      client.invalidateQueries({ queryKey: queryKeys.jobs() }),
+      selectedId ? client.invalidateQueries({ queryKey: queryKeys.job(selectedId) }) : Promise.resolve()
     ])
   }
   // A main tab slides its view in from its side and starts the page from its top (shared/tab-slide.tsx).

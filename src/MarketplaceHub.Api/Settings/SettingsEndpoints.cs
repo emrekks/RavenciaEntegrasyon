@@ -1,8 +1,10 @@
 using System.Text.Json;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
@@ -84,15 +86,16 @@ public static class SettingsEndpoints
 
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.MapGroup("/api/v1/settings");
-        api.MapGet("/shipping-label", GetShippingLabelSettingsAsync);
-        api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync);
-        api.MapGet("/appearance", GetAppearanceSettingsAsync);
-        api.MapPut("/appearance", SaveAppearanceSettingsAsync);
-        api.MapGet("/resend-reminder", GetResendReminderAsync);
-        api.MapPut("/resend-reminder", SaveResendReminderAsync);
-        api.MapGet("/platform-update", GetPlatformUpdateChoiceAsync);
-        api.MapPut("/platform-update", SavePlatformUpdateChoiceAsync);
+        var api = endpoints.MapGroup("/api/v1/settings").WithGates(ApiGate.SignedIn, ApiGate.Elevated)
+            .WithWriteIdempotency(WriteRepeat.Repeatable, "replaces the stored settings document; If-Match refuses a stale repeat");
+        api.MapGet("/shipping-label", GetShippingLabelSettingsAsync).Produces<VersionedSettingsView>();
+        api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync).Produces<VersionedSettingsView>().IfMatch(required: false);
+        api.MapGet("/appearance", GetAppearanceSettingsAsync).Produces<VersionedSettingsView>();
+        api.MapPut("/appearance", SaveAppearanceSettingsAsync).Produces<VersionedSettingsView>().IfMatch(required: false);
+        api.MapGet("/resend-reminder", GetResendReminderAsync).Produces<ResendReminderView>();
+        api.MapPut("/resend-reminder", SaveResendReminderAsync).Produces<ResendReminderView>().IfMatch(required: false);
+        api.MapGet("/platform-update", GetPlatformUpdateChoiceAsync).Produces<VersionedSettingsView>();
+        api.MapPut("/platform-update", SavePlatformUpdateChoiceAsync).RequireGate(ApiGate.Operations).Produces<VersionedSettingsView>().IfMatch(required: false);
         return endpoints;
     }
 
@@ -391,9 +394,6 @@ public static class SettingsEndpoints
         }
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
-    private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
-    private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 
     // Settings answer with the strong ETag "v{version}". A save that sends If-Match is refused with 412
     // when the setting changed meanwhile (or does not exist yet). D9: a save without it writes only the first

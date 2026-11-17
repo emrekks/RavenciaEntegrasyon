@@ -135,6 +135,45 @@ public sealed class PostgreSqlWebhookInboxConcurrencyTests(PostgreSqlTenantIsola
         }
     }
 
+    // A paused connection (Pasife Al) keeps its address: the gate admits it, an authenticated delivery is answered 2xx
+    // (Ok(false)), recorded once and not queued. Hepsiburada mailed the owner about 404s for orders during the 12-14 Nov pause.
+    [PostgreSqlFact]
+    public async Task APausedConnectionsDeliveryIsAcknowledgedRecordedAndNotQueued()
+    {
+        var (tenant, connection, subscription) = await SeedAsync("webhook-paused", "HEPSIBURADA", "merchant-paused");
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.PlatformConnections.Where(row => row.Id == connection.Id).ExecuteUpdateAsync(setters => setters.SetProperty(row => row.Status, "DISABLED"));
+
+            await using (var db = fixture.CreateContext())
+            {
+                using var cache = new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions { SizeLimit = 100 });
+                var gate = new MarketplaceHub.Api.Marketplace.WebhookRouteGate(db, cache, fixture.TokenHasher);
+                Assert.True(await gate.IsKnownAsync(connection.PublicId, RouteToken, CancellationToken.None));
+                Assert.False(await gate.IsKnownAsync(connection.PublicId, "a-wrong-route-token", CancellationToken.None));
+            }
+
+            var errors = new ConcurrentQueue<string>();
+            var result = await ReceiveAsync(connection.PublicId, "order:4990000001:paused", errors);
+            Assert.True(result.Succeeded, result.Error?.Code);
+            Assert.False(result.Value);
+
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(0, await verification.InboxMessages.CountAsync(row => row.TenantId == tenant.Id));
+            Assert.Equal(0, await verification.IntegrationJobs.CountAsync(row => row.TenantId == tenant.Id));
+            var issue = await verification.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+            Assert.Equal(MarketplaceWebhookService.RejectedPrefix(connection.Id) + MarketplaceWebhookService.PausedConnectionCode, issue.DedupeKey);
+            Assert.Equal(MarketplaceWebhookService.PausedConnectionCode, issue.Code);
+            Assert.Null((await verification.WebhookSubscriptions.AsNoTracking().SingleAsync(row => row.Id == subscription.Id)).LastReceivedAt);
+            Assert.Empty(errors);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id, connection.Id, subscription.Id);
+        }
+    }
+
     private async Task<ServiceResult<bool>> ReceiveStaleAsync(Guid connectionPublicId, string topic)
     {
         await using var db = fixture.CreateContext();

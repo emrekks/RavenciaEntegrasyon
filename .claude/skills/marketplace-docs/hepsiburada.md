@@ -3,8 +3,8 @@
 Docs: https://developers.hepsiburada.com/tr/companies/hepsiburada (older: `/hepsiburada/reference/...`,
 changelog `/hepsiburada/changelog/...`). Both return 403 to WebFetch; use WebSearch snippets or the browser.
 
-Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackageOperations.cs`,
-`HepsiburadaQuestions.cs`, `HepsiburadaJsonMapper.cs`, `HepsiburadaAuthenticationHandler.cs`,
+Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs` (+ the `HepsiburadaHttpClient.*.cs` partials: Catalog, Connection, Invoices, Orders, PriceInventory, ProductWrites, Returns, Transport), `HepsiburadaPackageOperations.cs`,
+`HepsiburadaQuestions.cs`, `HepsiburadaJsonMapper.cs` (+ `.Catalog.cs`, `.Invoices.cs`, `.Orders.cs`, `.Packages.cs`, `.ProductImports.cs`, `.Returns.cs`), `HepsiburadaAuthenticationHandler.cs`,
 `HepsiburadaRateLimitHandler.cs`, `HepsiburadaWebhookVerifier.cs`, `HepsiburadaInvoiceDeliveryPolicy.cs`.
 
 ## Connection
@@ -34,7 +34,7 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackag
 - Reads `X-RateLimit-Limit/Remaining/Reset` and `Retry-After`; retry waits Retry-After, else the reset time.
   Request id header `X-Request-Id`. Timeout 30 s.
 - Seller cancellations max 100 per day. Inventory upload: adapter caps 1000 items ("4000 was never confirmed");
-  the price-inventory result check in `MarketplaceJobProcessor.cs` uses the same constant (`MaxInventoryUploadItems`).
+  the price-inventory result check in `MarketplaceJobProcessor.PriceInventory.cs` uses the same constant (`MaxInventoryUploadItems`).
 
 ## Windows and paging (offset + limit, always both)
 - Paid orders `GET orders/merchantid/{m}`: `begindate`/`enddate` max 24 h (else `HEPSIBURADA_ORDER_WINDOW_TOO_LARGE`),
@@ -159,6 +159,10 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   sum (`HepsiburadaHttpClient.PollAsync`, `HepsiburadaJsonMapper.PaidOrderLine`, `MarketplaceJobProcessor`).
 - Webhooks: Basic auth only; answer within 5 s — more than 20 slow answers in an hour blacklists the feed. Changes
   made through the API are not echoed back as webhooks.
+- A non-2xx answer makes Hepsiburada retry and mail the seller ("404 Not Found" with the RequestUri and body; the mail
+  shows the merchant's other integrator's Base Url). A paused connection (Pasife Al, 12-14 Nov 2026) answered 404 from
+  the route gate; its authenticated deliveries are now acknowledged, recorded (WEBHOOK_CONNECTION_PAUSED) and not
+  processed. 8 deliveries came within one second at 14 Nov 00:23:50Z, ~6 min after reactivation (likely the retries).
 - A 403 HTML page is a gateway block (HEPSIBURADA_GATEWAY_BLOCKED, RateLimit, 15 min); a 403 that is not a page stays
   HEPSIBURADA_ACCESS_FORBIDDEN (`MarketplaceErrorRules`, report item 16, 5 Nov 2026).
 - Price/stock results list only the refused SKUs, so a SKU left out was applied: the one marketplace where an unnamed
@@ -188,9 +192,25 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
 HEPSIBURADA_CONNECTION_TEST, _REFERENCE_SYNC, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC (also reads packages,
 cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_INVOICE_RECONCILIATION.
 
-## Buyer kind (stage 5, 5 Nov 2026)
-- No corporate flag; an individual buyer comes with `identityNo: "11111111111"` and may still carry a `companyName`
-  (the sample has "Test User"): that placeholder is the "individual" flag (`hepsiburada-api-son.md:13394`).
+## Buyer kind (corrected 16 Nov 2026)
+- No corporate/individual field anywhere in the order or package payloads. The docs only describe the fields: package
+  `taxNumber` "Kurumsal müşterinin vergi numarası", `identityNo` "Müşterinin TCKN bilgisi" (`hepsiburada-api-son.md`
+  schema ~17411-17478); order detail `items.invoice.turkishIdentityNumber` / `taxNumber` / `taxOffice` (~8640-8664).
+- `11111111111` in `identityNo` / `turkishIdentityNumber` is NOT an individual flag (the 5 Nov note said so from the one
+  sample at :13394, where `taxNumber` is empty). Live, 16 Nov 2026: order 4476971250 (seller panel: "Kurumsal Müşteri",
+  company name, VKN, tax office) came with `turkishIdentityNumber` 11111111111 next to a valid 10-digit `taxNumber` and a
+  `taxOffice`, and was wrongly issued an e-Arşiv to 11111111111.
+- Shapes of all 37 live Hepsiburada orders (read-only SQL, 16 Nov 2026): 34 placeholder + `taxNumber` "" + `taxOffice`
+  null; 1 placeholder alone (no tax fields); 2 placeholder + valid VKN + tax office. No real personal TCKN seen.
+- Rule (`TrendyolEFaturamCanonicalPayload.HepsiburadaBuyerEvidence`): beside the identity field, placeholder with no tax
+  number and no tax office = individual; valid VKN + tax office = corporate (lookup decides e-Fatura/e-Arşiv, recipient =
+  VKN); anything else (VKN without office, office alone, invalid or 11-digit tax number, real TCKN + tax number) =
+  unclear, the invoice stops with EFATURAM_RECIPIENT_KIND_UNKNOWN for the owner.
+- Guard on every marketplace (16 Nov 2026, `TrendyolEFaturamCanonicalPayload.SendsPlaceholderToCorporateTaxNumber`):
+  an invoice whose recipient would be 11111111111 while the order's snapshots hold a company's valid VKN stops with
+  EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE (`InvoiceIssuePolicy`).
+- Invoice link (17 Nov 2026): Hepsiburada gets E-Faturam's permanent document URL, not the panel link
+  (`MarketplaceInvoiceLinkPolicy`, efaturam.md "Permanent document URL").
 
 ## Report data gaps (7 Nov 2026)
 - Advertising in the accounting records: the documented ad types are `AdSharingExpense`, `MarketingExpense` (and their
@@ -214,3 +234,11 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
 
 ## Model link (Model Kaydı Faz 2, 14 Nov 2026)
 - Hepsiburada has no model-level listing: no `marketplace_model_links` row is ever written (unknown stays unknown).
+
+## Claim-built orders (15 Nov 2026, ADAPTOR-TY-HB-1)
+- A claim carries `orderDate` and `line.price` / `line.totalPrice` as `{currency, amount}` (hepsiburada-api-son.md,
+  awaitingaction sample around :26160). An order built from a claim (`HepsiburadaJsonMapper.OrderFromReturnClaim`)
+  needs the order's own date and every line's price, takes lira when no currency is named (the order read's rule) and
+  refuses an unknown one; it is stored with change time UnixEpoch, so the later order read always replaces it. A claim
+  inside a replacement-package notification (`ClaimPackageOrder`) keeps the older lenient reading. Live 15 Nov 2026:
+  2 Hepsiburada orders hold ClaimCreated lines, both with packages and amounts (none left half-built).

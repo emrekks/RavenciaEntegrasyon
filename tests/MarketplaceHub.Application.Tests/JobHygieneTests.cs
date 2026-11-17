@@ -206,6 +206,10 @@ public sealed class ProductWriteSupersessionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(JobStatus.Blocked, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == otherBlocked.Id)).Status);
         Assert.Equal(JobStatus.Dead, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == archiveDead.Id)).Status);
         Assert.Equal(JobStatus.Succeeded, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == later.Id)).Status);
+        // K2: one "jobs" event for the tenant's closed jobs, naming none of them.
+        var bulk = Assert.Single(await verify.IntegrationOutboxEvents.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ResourceType == "jobs").ToListAsync());
+        Assert.Equal((Guid?)null, bulk.AggregateId);
+        Assert.Equal(MarketplaceHub.Infrastructure.Jobs.JobStateMachine.BulkOperation, bulk.OperationType);
     }
 
     private static IntegrationJob Job(Tenant tenant, PlatformConnection connection, string jobType, Guid productId, JobStatus status, string? errorCode, DateTimeOffset createdAt)

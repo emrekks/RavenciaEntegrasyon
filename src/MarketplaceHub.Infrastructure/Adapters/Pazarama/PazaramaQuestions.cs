@@ -106,7 +106,9 @@ public static class PazaramaQuestionMapper
     // Pazarama adds later stays visible as itself instead of passing for an open question.
     public static string PanelStatus(int? status) => status switch
     {
-        null or 0 => "WAITING_FOR_ANSWER",
+        // D7: a row without questionStatus stays unknown, never "waiting for an answer" (CLAUDE.md).
+        null => "UNKNOWN",
+        0 => "WAITING_FOR_ANSWER",
         1 => "ANSWERED",
         2 => "WAITING_FOR_APPROVE",
         3 => "REJECTED",
@@ -126,7 +128,7 @@ public static class PazaramaQuestionMapper
 
     // Turkey time, as Pazarama shows it.
     private static string Iso(DateTimeOffset value) =>
-        value.ToOffset(PazaramaHttpClient.TurkeyOffset).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+        value.ToOffset(TurkeyTime.Offset).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
 
     public static MarketplaceQuestionPage Page(JsonElement root, int pageNumber)
     {
@@ -193,17 +195,7 @@ public static class PazaramaQuestionMapper
     // "2023-12-28T09:12:16.333": Turkey time without an offset, stored as UTC.
     public static DateTimeOffset? Instant(string? value) => TurkeyTime.Parse(value);
 
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) || text.Trim() == "null" ? null : text.Trim();
-    }
+    private static string? Text(JsonElement element, string property) => RemoteFields.TextOrNullWord(element, property);
 
     private static long? Number(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number) ? number : null;

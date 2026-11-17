@@ -153,15 +153,85 @@ async function fetchThroughRestart(url: string, init?: RequestInit): Promise<Res
   }
 }
 
-export async function hubApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(init))
-  if (!response.ok) {
-    const problem = await response.json().catch(() => ({})) as ApiProblem
-    if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
-    throw new ApiRequestError(problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`, response.status, problem.code, problem.fieldErrors, problem.tenants)
+// 409 IDEMPOTENCY_IN_PROGRESS: the first attempt with the same key is still being handled. Not a failure; the person is
+// told calmly that the result will show up, and the key is kept (shared/idempotency.ts isStillRunning).
+export const stillRunningMessage = 'Bu işlem hâlâ sürüyor; birkaç saniye sonra sonucu listede göreceksiniz.'
+
+/** hubApi's options: fetch's own, and how long the request may wait for its answer. */
+export type HubRequestInit = RequestInit & {
+  /** Give up after this many ms (default defaultReadTimeoutMs for a read, defaultWriteTimeoutMs for a write; 0: no limit). */
+  timeoutMs?: number
+}
+
+// A request that gets no answer at all (a stuck proxy, a half-open connection) used to wait forever with the screen on
+// "yükleniyor" or "Kaydediliyor…". Reads and writes give up after a generous limit, well above the slowest report read
+// and the slowest inline write (WEB-ALTYAPI-11). A write that runs out of time is never sent again by the panel:
+// stopping the wait does not stop the server, so the person is told the result is unknown and the lists are read again
+// (setWriteTimeoutHandler); the idempotency rules in shared/idempotency.ts decide what a resend does (a timeout is not an
+// HTTP answer, so a resend may reuse the key and replays the first answer).
+export const defaultReadTimeoutMs = 90_000
+export const defaultWriteTimeoutMs = 90_000
+export const clientTimeoutCode = 'CLIENT_TIMEOUT'
+export const clientTimeoutMessage = 'Sunucu zamanında yanıt vermedi. Bağlantınızı kontrol edip yeniden deneyin.'
+export const clientWriteTimeoutMessage = 'Sunucu 90 saniye içinde yanıt vermedi; işlemin sonucu bilinmiyor. Liste yenileniyor; yeniden göndermeden önce sonucu kontrol edin.'
+
+// The app registers what a timed-out write triggers: reading the lists again, so the screen shows what the server holds.
+type WriteTimeoutHandler = () => void
+let writeTimeoutHandler: WriteTimeoutHandler | null = null
+export function setWriteTimeoutHandler(handler: WriteTimeoutHandler | null) {
+  writeTimeoutHandler = handler
+  return () => { if (writeTimeoutHandler === handler) writeTimeoutHandler = null }
+}
+
+// The signal a request goes out with: the caller's (TanStack Query's, so a query that left the screen is aborted) joined
+// with the request's time limit. Built by hand rather than with AbortSignal.any/timeout, which older Safari lacks.
+function requestDeadline(init: HubRequestInit | undefined) {
+  const method = init?.method?.toUpperCase() ?? 'GET'
+  const write = method !== 'GET' && method !== 'HEAD'
+  const limit = init?.timeoutMs ?? (write ? defaultWriteTimeoutMs : defaultReadTimeoutMs)
+  if (!(limit > 0)) return null
+  const controller = new AbortController()
+  const outer = init?.signal ?? null
+  let timedOut = false
+  const forward = () => controller.abort(outer?.reason)
+  if (outer?.aborted) forward()
+  else outer?.addEventListener('abort', forward, { once: true })
+  const timer = setTimeout(() => { timedOut = true; controller.abort(new DOMException('İstek süresi doldu.', 'TimeoutError')) }, limit)
+  return {
+    signal: controller.signal,
+    write,
+    timedOut: () => timedOut,
+    dispose: () => { clearTimeout(timer); outer?.removeEventListener('abort', forward) },
   }
-  if (response.status === 204) return undefined as T
-  return readSuccessJson<T>(response)
+}
+
+export async function hubApi<T>(path: string, init?: HubRequestInit): Promise<T> {
+  const deadline = requestDeadline(init)
+  let requestInit: RequestInit | undefined = init
+  if (init && 'timeoutMs' in init) { const { timeoutMs: _timeoutMs, ...rest } = init; requestInit = rest }
+  if (deadline) requestInit = { ...requestInit, signal: deadline.signal }
+  try {
+    const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(requestInit))
+    if (!response.ok) {
+      const problem = await response.json().catch(() => ({})) as ApiProblem
+      if (isSignedOutProblem(response.status, problem.code)) onUnauthorized()
+      const message = response.status === 409 && problem.code === 'IDEMPOTENCY_IN_PROGRESS' ? stillRunningMessage : problem.title ?? problem.code ?? `İşlem tamamlanamadı (${response.status}).`
+      throw new ApiRequestError(message, response.status, problem.code, problem.fieldErrors, problem.tenants)
+    }
+    if (response.status === 204) return undefined as T
+    return await readSuccessJson<T>(response)
+  } catch (error) {
+    // Status 0: no HTTP answer came (failedWithHttpAnswer is false), so a resend may reuse the request's key.
+    if (deadline?.timedOut()) {
+      if (!deadline.write) throw new ApiRequestError(clientTimeoutMessage, 0, clientTimeoutCode)
+      // A write's result is unknown: the lists are read again, nothing is sent again.
+      writeTimeoutHandler?.()
+      throw new ApiRequestError(clientWriteTimeoutMessage, 0, clientTimeoutCode)
+    }
+    throw error
+  } finally {
+    deadline?.dispose()
+  }
 }
 
 // A file the server writes (an Excel export), refused the way hubApi refuses: its bytes and the name it gives.
@@ -185,8 +255,12 @@ export function settingsIfMatch(version: number | null | undefined): Record<stri
 
 export type CursorPage<T> = { items: T[]; nextCursor: string | null; hasMore: boolean; totalCount?: number | null }
 
-/** Reads every cursor page. The server still keeps each individual request bounded. */
-export async function loadAllPages<T>(path: string, limit = 200): Promise<CursorPage<T>> {
+/**
+ * Reads every cursor page. The server still keeps each individual request bounded. The second argument is the page size,
+ * or the page size and the query's signal (a query that leaves the screen stops reading further pages).
+ */
+export async function loadAllPages<T>(path: string, options: number | { limit?: number; signal?: AbortSignal } = {}): Promise<CursorPage<T>> {
+  const { limit = 200, signal = undefined } = typeof options === 'number' ? { limit: options, signal: undefined } : options
   const items: T[] = []
   const seenCursors = new Set<string>()
   let after: string | null = null
@@ -198,7 +272,7 @@ export async function loadAllPages<T>(path: string, limit = 200): Promise<Cursor
     if (after) params.set('after', after)
     else params.delete('after')
 
-    const page = await hubApi<CursorPage<T>>(`${basePath}?${params.toString()}`)
+    const page = await hubApi<CursorPage<T>>(`${basePath}?${params.toString()}`, signal ? { signal } : undefined)
     items.push(...page.items)
     if (!page.hasMore) return { items, nextCursor: null, hasMore: false }
     if (!page.nextCursor || seenCursors.has(page.nextCursor)) throw new Error('Listenin devam sayfası güvenli biçimde alınamadı.')

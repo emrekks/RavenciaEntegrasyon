@@ -90,7 +90,8 @@ internal static class TrendyolQuestionMapper
     {
         var id = Text(item, "id"); if (string.IsNullOrWhiteSpace(id)) return null;
         var created = Date(item, "creationDate");
-        var status = (Text(item, "status") ?? "WAITING_FOR_ANSWER").Trim().ToUpperInvariant();
+        // D1: a question without a status stays unknown (never "waiting for an answer"): CLAUDE.md, unknown stays unknown.
+        var status = Text(item, "status")?.Trim().ToUpperInvariant() is { Length: > 0 } sent ? sent : "UNKNOWN";
         var history = new List<RemoteQuestionConversation> { new("Customer", Text(item, "text") ?? "", created) };
         AppendAnswer(history, Property(item, "answer"), "Merchant", created);
         AppendAnswer(history, Property(item, "rejectedAnswer"), "Merchant", created, Text(Property(item, "rejectedAnswer"), "reason"));

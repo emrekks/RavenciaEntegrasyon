@@ -62,7 +62,7 @@ vi.mock('../../shared/api', () => ({
       const row = kind === 'ORDER' ? { ...apiState.detail, id: 'q-order', kind: 'ORDER', platformCode: 'HEPSIBURADA', storeName: 'Hepsiburada Mağazası', externalOrderNumber: 'HB-12345' } : { ...apiState.detail, id: 'q-product', kind: 'PRODUCT' }
       const rowStatus = status === 'WAITING' && ['ANSWER_SUBMITTED', 'REJECTED'].includes(row.status) ? row.status : statusByFilter[status ?? 'WAITING']
       if (apiState.emptyList && params.get('limit') === '50') return { items: [], page: 1, limit: 50, totalCount: 0 }
-      return { items: [{ ...row, status: rowStatus }], page: Number(params.get('page') ?? 1), limit: Number(params.get('limit') ?? 50), totalCount: apiState.totalCount }
+      return { items: [{ ...row, status: rowStatus }], page: requestedPage(params), limit: Number(params.get('limit') ?? params.get('pageSize') ?? 50), totalCount: apiState.totalCount }
     }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }),
@@ -87,6 +87,13 @@ function button(label: string) {
   return found
 }
 
+// Windows (RrModal) are drawn in the body, outside the page's container.
+function windowButton(label: string) {
+  const found = Array.from(document.querySelectorAll<HTMLButtonElement>('.rr-modal button')).find(item => item.textContent?.includes(label))
+  if (!found) throw new Error(`Could not find window button containing “${label}”`)
+  return found
+}
+
 function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   act(() => {
     const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set
@@ -100,8 +107,15 @@ async function settle(ms = 15) {
   await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
 }
 
+// The 1-based page a request names: by its offset cursor (after = base64url "o" + offset) or by page.
+function requestedPage(params: URLSearchParams) {
+  const after = params.get('after')
+  if (!after) return Number(params.get('page') ?? 1)
+  return Number(atob(after.replace(/-/g, '+').replace(/_/g, '/')).slice(1)) / Number(params.get('limit') ?? 50) + 1
+}
+
 function lastQuestionRequest() {
-  const request = [...apiState.calls].reverse().find(item => item.path.startsWith('/questions?') && item.path.includes('limit=50'))
+  const request = [...apiState.calls].reverse().find(item => item.path.startsWith('/questions?') && (item.path.includes('limit=50') || item.path.includes('pageSize=50')))
   if (!request) throw new Error('No question list request was made')
   return new URLSearchParams(request.path.slice(request.path.indexOf('?') + 1))
 }
@@ -169,6 +183,18 @@ describe('QuestionsPage workspace flows', () => {
     expect(items[1]).toContain('Boyu 120 cm.')
     // The new question follows them.
     expect(history?.nextElementSibling?.textContent).toContain('Ürün boyu kaç santimetredir?')
+  })
+
+  it('shows a question whose status the marketplace did not send as unknown', async () => {
+    apiState.customerHistory = [
+      { ...createQuestion(), id: 'q-unknown', status: 'UNKNOWN', productName: 'Örme hırka', questionText: 'Hırka kaç beden?', createdAt: '2026-10-03T09:00:00Z', conversations: [] },
+    ]
+    await renderPage()
+
+    const items = Array.from(container.querySelectorAll('.qi-customer-history .qi-history-item')).map(item => item.textContent ?? '')
+    expect(items).toHaveLength(1)
+    expect(items[0]).toContain('Bilinmiyor')
+    expect(items[0]).not.toContain('UNKNOWN')
   })
 
   it('shows no earlier block when the customer asked nothing before', async () => {
@@ -262,33 +288,33 @@ describe('QuestionsPage workspace flows', () => {
     expect(lastQuestionRequest().get('platform')).toBeNull()
     act(() => button('Hazır Cevaplar').click())
     await settle()
-    expect(container.querySelector('.rv-question-template-editor')).not.toBeNull()
-    expect(container.querySelector('.qi-templates-modal')?.textContent).toContain('Ölçü bilgisi')
+    expect(document.querySelector('.rv-question-template-editor')).not.toBeNull()
+    expect(document.querySelector('.qi-templates-modal')?.textContent).toContain('Ölçü bilgisi')
   })
 
   it('creates, edits, and deletes shared quick replies using mocked API calls', async () => {
     await renderPage()
     act(() => button('Hazır Cevaplar').click())
     await settle()
-    const fields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
+    const fields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(fields[0] as HTMLInputElement, 'Kargo bilgisi')
     input(fields[1] as HTMLTextAreaElement, 'Kargonuz yola çıktığında takip bağlantısı paylaşılır.')
-    act(() => button('Hazır Cevabı Oluştur').click())
+    act(() => windowButton('Hazır Cevabı Oluştur').click())
     await settle()
     expect(apiState.calls.some(call => call.path === '/question-templates' && call.method === 'POST')).toBe(true)
-    expect(container.textContent).toContain('Kargo bilgisi')
+    expect(document.body.textContent).toContain('Kargo bilgisi')
 
-    act(() => container.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[2].click())
+    act(() => document.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[2].click())
     await settle()
-    const editFields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
+    const editFields = document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('.rv-question-template-editor input, .rv-question-template-editor textarea')
     input(editFields[0] as HTMLInputElement, 'Kargo güncellemesi')
     input(editFields[1] as HTMLTextAreaElement, 'Yeni takip bağlantısını siparişlerimden görebilirsiniz.')
-    act(() => button('Değişiklikleri Kaydet').click())
+    act(() => windowButton('Değişiklikleri Kaydet').click())
     await settle()
     expect(apiState.calls.some(call => call.path.startsWith('/question-templates/template-') && call.method === 'PUT')).toBe(true)
-    expect(container.textContent).toContain('Kargo güncellemesi')
+    expect(document.body.textContent).toContain('Kargo güncellemesi')
 
-    act(() => container.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[3].click())
+    act(() => document.querySelectorAll<HTMLButtonElement>('.rv-question-template-card button')[3].click())
     await settle()
     // One click only asks; nothing is deleted until the dialog is confirmed.
     expect(apiState.calls.some(call => call.method === 'DELETE')).toBe(false)
@@ -296,7 +322,7 @@ describe('QuestionsPage workspace flows', () => {
     act(() => Array.from(document.querySelectorAll<HTMLButtonElement>('.qi-template-delete-modal button')).find(item => item.textContent?.includes('Hazır Cevabı Sil'))!.click())
     await settle()
     expect(apiState.calls.some(call => call.path.startsWith('/question-templates/template-') && call.method === 'DELETE')).toBe(true)
-    expect(container.textContent).not.toContain('Kargo güncellemesi')
+    expect(document.body.textContent).not.toContain('Kargo güncellemesi')
   })
 
   it('shows conversation history and rejection reasons, inserts a quick reply, and submits the edited answer', async () => {
@@ -458,7 +484,7 @@ describe('QuestionsPage workspace flows', () => {
   })
 
   it('says a failing store sync failed even after its history was imported', () => {
-    const failed = { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol', historyImported: true, importedCount: 3, progressStatus: 'FAILED' }
+    const failed = { connectionId: 'ty-store', platformCode: 'TRENDYOL', storeName: 'Trendyol', historyImported: true, historyStartedAt: null, importedCount: 3, progressStatus: 'FAILED', lastRunStartedAt: null, lastSuccessAt: null, lastError: null, productQuestionCount: 0, orderQuestionCount: 0 }
     expect(syncSummary(failed, 'PRODUCT').state).toBe('Son aktarım başarısız')
     expect(syncSummary({ ...failed, progressStatus: 'IDLE' }, 'PRODUCT').state).toBe('Geçmiş tamamlandı')
     expect(questionSyncIsStale([{ progressStatus: 'IDLE', lastSuccessAt: new Date(Date.now() - 20 * 60_000).toISOString() }], Date.now())).toBe(true)
@@ -515,11 +541,11 @@ describe('QuestionsPage workspace flows', () => {
     expect(container.querySelector('.rv-questions-pagination')?.textContent).toContain('Sayfa 1 / 3')
     act(() => button('Sonraki').click())
     await settle()
-    expect(lastQuestionRequest().get('page')).toBe('2')
+    expect(requestedPage(lastQuestionRequest())).toBe(2)
     expect(container.querySelector('.rv-questions-pagination')?.textContent).toContain('Sayfa 2 / 3')
     act(() => button('Sonraki').click())
     await settle()
-    expect(lastQuestionRequest().get('page')).toBe('3')
+    expect(requestedPage(lastQuestionRequest())).toBe(3)
     expect(button('Sonraki').disabled).toBe(true)
     act(() => button('Önceki').click())
     await settle()

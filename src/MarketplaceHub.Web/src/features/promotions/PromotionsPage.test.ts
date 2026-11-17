@@ -1,3 +1,4 @@
+import { testConnection } from '../../test/connection'
 import { describe, expect, it } from 'vitest'
 import { promotionStores, sectionOf } from './PromotionsPage'
 
@@ -10,7 +11,7 @@ describe('promotions page', () => {
   })
 
   it('lists the live stores of a platform whose files it reads', () => {
-    const store = (id: string, platformCode: string, status = 'ACTIVE', environment = 'PRODUCTION') => ({ id, platformCode, displayName: id, status, environment })
+    const store = (id: string, platformCode: string, status = 'ACTIVE', environment = 'PRODUCTION') => testConnection({ id, platformCode, displayName: id, status, environment })
     expect(promotionStores([store('a', 'TRENDYOL'), store('b', 'HEPSIBURADA'), store('c', 'TRENDYOL', 'DELETED'), store('d', 'TRENDYOL', 'ACTIVE', 'SANDBOX')]).map(item => item.id)).toEqual(['a'])
   })
 })

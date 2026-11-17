@@ -23,7 +23,7 @@ public static class N11OrderHistoryPolicy
     // n11 allows 15 days per query and silently trims a longer one; windows stay a day short of that.
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(14);
     public const int MinimumOverlapSeconds = 600;
-    public static readonly DateTimeOffset EarliestAvailable = new(2024, 11, 1, 0, 0, 0, TimeSpan.FromHours(3));
+    public static readonly DateTimeOffset EarliestAvailable = new(2024, 11, 1, 0, 0, 0, TurkeyClock.Offset);
 
     public static DateTimeOffset Start(bool full, DateTimeOffset? watermark, TimeSpan overlap, DateTimeOffset now)
     {
@@ -55,7 +55,7 @@ public static class PazaramaOrderHistoryPolicy
     public const int PageSize = 100;
     // Pazarama refuses ranges above one month; 28 days keeps a safe margin.
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(28);
-    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan TurkeyOffset = TurkeyClock.Offset;
 
     // First day (Turkey time) the run reads.
     public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now, int lookbackDays = IncrementalLookbackDays)
@@ -91,7 +91,7 @@ public static class PttAvmOrderHistoryPolicy
     public const int InitialLookbackMonths = 3;
     public const int IncrementalLookbackDays = 2;
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(35);
-    public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan TurkeyOffset = TurkeyClock.Offset;
 
     // First day (Turkey time) the run reads.
     public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now)
@@ -537,8 +537,43 @@ public static class ProductImportScanPolicy
     // scan (11 minutes live, 31 Oct) were never read. A scoped read (new only, existing only, mapping, options) skips
     // part of the catalog and leaves the watermark where it was; before, it moved it, and the next incremental read
     // missed the products it had skipped.
-    public static DateTimeOffset? CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped) =>
-        scoped ? current : scanStartedAt.ToUniversalTime().AddSeconds(-60);
+    // A run with a failed model (a FAILED staging row) also leaves it where it was (ISLEYICI-1, 15 Nov 2026): before, the
+    // watermark moved past the failed products and the next incremental read never asked for them again unless they
+    // changed at the marketplace once more. The import is idempotent, so the next run reads the same window again.
+    public static DateTimeOffset? CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped, int failedModels = 0) =>
+        scoped || failedModels > 0 ? current : scanStartedAt.ToUniversalTime().AddSeconds(-60);
+
+    // The resource of the count of runs in a row that held the watermark for a failed model. Kept in OpaqueCursor
+    // ("held:n"), not in ConsecutiveFailureCount: the runs succeeded, and that column raises the failing-read notice.
+    public const string WatermarkHoldResource = "PRODUCTS_WATERMARK_HOLD";
+    // ISLEYICI-1 follow-up (16 Nov 2026): a model that fails on every run held the watermark for good, so every
+    // incremental read re-read a growing range. The watermark is held for at most this many runs in a row; then it moves
+    // on, and the failed model stays in its open PRODUCT_IMPORT_FAILED issue (a full scan or a single lookup reads it again).
+    public const int MaxHeldRuns = 3;
+
+    public static int HeldRuns(string? opaqueCursor) =>
+        opaqueCursor is { Length: > 5 } value && value.StartsWith("held:", StringComparison.Ordinal)
+            && int.TryParse(value.AsSpan(5), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var held)
+            ? held : 0;
+
+    public static string? HeldRunsCursor(int heldRuns) =>
+        heldRuns > 0 ? "held:" + heldRuns.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+
+    // The watermark a completed unscoped run leaves, the runs in a row it has now held the watermark for a failed model
+    // (0 when it moved), and whether it moved only because the hold ran out. A scoped run neither moves nor counts.
+    public static (DateTimeOffset? Watermark, int HeldRuns, bool Released) CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped, int failedModels, int heldRunsBefore)
+    {
+        if (scoped) return (current, heldRunsBefore, false);
+        var moved = scanStartedAt.ToUniversalTime().AddSeconds(-60);
+        if (failedModels == 0) return (moved, 0, false);
+        var held = heldRunsBefore + 1;
+        return held >= MaxHeldRuns ? (moved, 0, true) : (current, held, false);
+    }
+
+    // A catalog run failed as a whole when products failed and no model reached the end of its processing (no COMPLETED
+    // staging row). Before, it compared the failed count with every product received, drafts and archived ones the run
+    // filters out included, so a run whose every processed product failed could still count as a success.
+    public static bool AllFailed(int failedProducts, int completedModels) => failedProducts > 0 && completedModels == 0;
 }
 
 public static class ProductImportConcurrencyPolicy
@@ -1230,25 +1265,13 @@ public static class ExternalEffectReconcilePolicy
     public static IntegrationJob NewJob(ExternalEffectRecord effect, DateTimeOffset now, DateTimeOffset availableAt)
     {
         var payload = System.Text.Json.JsonSerializer.Serialize(new { effectId = effect.Id });
-        return new IntegrationJob
+        return IntegrationJobFactory.New(new IntegrationJobRequest(effect.TenantId, effect.ConnectionId, MarketplaceJobTypes.ExternalEffectReconcile, payload, JobDedupKey(effect.Id), $"effect-reconcile:{effect.Id:N}", availableAt)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = effect.TenantId,
-            ConnectionId = effect.ConnectionId,
-            JobType = MarketplaceJobTypes.ExternalEffectReconcile,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = JobDedupKey(effect.Id),
-            EffectIdempotencyKey = JobDedupKey(effect.Id),
             Priority = JobPriorityPolicy.UserAction,
             TriggerType = "user",
             LockGroup = LockGroup(effect.Action),
-            AvailableAt = availableAt,
-            CorrelationId = $"effect-reconcile:{effect.Id:N}",
-            CreatedAt = now,
-            Version = 1
-        };
+            CreatedAt = now
+        });
     }
 }
 
@@ -1258,7 +1281,7 @@ public static class ExternalEffectReconcilePolicy
 public static class DailyScheduleWindowPolicy
 {
     public const int DailyIntervalSeconds = 86_400;
-    public static readonly TimeSpan IstanbulOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan IstanbulOffset = TurkeyClock.Offset;
     public static readonly TimeSpan WindowStart = TimeSpan.FromHours(14);
     public static readonly TimeSpan WindowEnd = TimeSpan.FromHours(17);
 

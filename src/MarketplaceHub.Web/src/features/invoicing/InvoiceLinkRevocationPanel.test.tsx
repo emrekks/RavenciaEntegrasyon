@@ -20,6 +20,7 @@ const n11: InvoiceLinkRevocation = { ...trendyol, deliveryStateId: 'state-n11', 
 
 let container: HTMLDivElement
 let root: Root
+let lastClient: QueryClient
 const notices: Array<{ message: string; kind: string }> = []
 
 function buttons() { return Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')) }
@@ -32,6 +33,7 @@ async function settle() { await act(async () => { await new Promise(resolve => s
 
 async function render(items: InvoiceLinkRevocation[], role = 'ADMINISTRATOR') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  lastClient = client
   client.setQueryData(['me'], { id: 'user-1', email: 'u@example.invalid', displayName: 'U', role, state: 'ACTIVE', tenantId: 'tenant-1' })
   await act(async () => {
     root.render(<QueryClientProvider client={client}><InvoiceLinkRevocationPanel invoiceId="invoice-1" invoiceNumber="GIB2026000000001" items={items} onNotice={(message, kind) => notices.push({ message, kind })} /></QueryClientProvider>)
@@ -74,6 +76,20 @@ describe('InvoiceLinkRevocationPanel', () => {
     expect(JSON.parse(String(request.init?.body))).toEqual({ confirmed: true })
     expect((request.init?.headers as Record<string, string>)['Idempotency-Key']).toBeTruthy()
     expect(notices.at(-1)?.kind).toBe('success')
+  })
+
+  // W1: the order screen's invoice viewer keeps its own copy of the invoice; a removed link refreshes it too.
+  it('refreshes the invoice and the invoice viewer’s copy after a removal', async () => {
+    await render([trendyol])
+    lastClient.setQueryData(['invoice', 'invoice-1'], { id: 'invoice-1' })
+    lastClient.setQueryData(['invoice-viewer', 'invoice-1'], { id: 'invoice-1' })
+
+    await act(async () => { button('Fatura Linkini Kaldır').click() })
+    await act(async () => { button('Linki Kaldır').click() })
+    await settle()
+
+    expect(lastClient.getQueryState(['invoice', 'invoice-1'])?.isInvalidated).toBe(true)
+    expect(lastClient.getQueryState(['invoice-viewer', 'invoice-1'])?.isInvalidated).toBe(true)
   })
 
   it('sends nothing when the operator cancels', async () => {

@@ -319,6 +319,10 @@ public sealed partial class InvoicingBillingService
                 marketplace.PlatformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken)
             : EInvoiceRecipientDecision.WithoutLookup(existing.InvoiceType);
         var invoiceType = recipient.InvoiceType;
+        // A new invoice for a Hepsiburada buyer of unknown kind waits for the owner (16 Nov 2026); an invoice already on the
+        // order is still shown as it is.
+        if (TrendyolEFaturamCanonicalPayload.IsRecipientKindAmbiguous(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson) && existing is null)
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail(InvoiceIssuePolicy.RecipientKindUnknownCode, InvoiceIssuePolicy.RecipientKindUnknown.Message, 422);
         var taxIdentity = ReadTaxIdentity(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
         var corporate = TrendyolEFaturamCanonicalPayload.IsCorporateRecipient(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, taxIdentity);
         var customerType = corporate ? "Kurumsal" : "Bireysel";
@@ -546,13 +550,7 @@ public sealed partial class InvoicingBillingService
                 && job.PayloadJson.Contains(needle) && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
             .ToListAsync(cancellationToken);
         foreach (var job in waiting)
-        {
-            job.Status = JobStatus.Cancelled;
-            job.CompletedAt = now;
-            job.LastErrorCode = RedraftedFromOrderCode;
-            job.LastErrorSummary = "Fatura güncel siparişten yeniden kurulduğu için eski taslağın gönderimi durduruldu.";
-            job.Version++;
-        }
+            Jobs.JobStateMachine.Cancel(db, job, now, RedraftedFromOrderCode, "Fatura güncel siparişten yeniden kurulduğu için eski taslağın gönderimi durduruldu.", Jobs.JobEvent.Publish);
         db.AuditLogs.Add(new AuditLog
         {
             TenantId = tenantId,

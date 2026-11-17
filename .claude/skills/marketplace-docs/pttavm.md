@@ -88,6 +88,10 @@ PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORD
 ## Invoices, buyer (stage 5, 5 Nov 2026)
 - SaveInvoince answering Success=false with "işlem gerçekleştirilmiştir" is an uncertain delivery (BusinessConflict),
   settled by reading the order's per-line `IsInvoice` (true: confirmed; false: sent again on the automatic schedule).
+- Invoice link (17 Nov 2026): the docs ask for "url: Faturanın .pdf, html ve htm formatında url bilgisi"
+  (`pttavm-api-son.md:1924`). Whether a link without an extension (E-Faturam's `.../documents/download/<number>`) is
+  accepted: unknown, never tried. PTT AVM therefore keeps the panel link (`.../invoice.pdf`) whatever
+  `Invoicing:MarketplaceInvoiceLink` says (`MarketplaceInvoiceLinkPolicy`, efaturam.md).
 - Buyer kind: `FaturaTip`/`faturaTip` ("Bireysel", "Kurumsal"; `pttavm-api-son.md:1644,1859`), kept as invoiceType.
   The sample sends it null: then the TCKN/VKN decides.
 - E-Arşiv internet sale: purchaseUrl `https://www.pttavm.com`, paymentMeans MEDIATOR; the carrier (needed for the

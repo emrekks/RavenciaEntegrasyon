@@ -2,6 +2,7 @@
 // (at the version the list loaded), or a new offer on that channel. The channel is always the person's choice; the
 // screen never prices a channel it picked by itself.
 import { parseTrCount, parseTrNumber, trNumberInput } from '../../shared/tr-number'
+import { queryKeys } from '../../shared/api/query-keys'
 
 export type QuickPriceOffer = {
   offerId: string; offerVersion: number | null
@@ -16,7 +17,7 @@ export type QuickPriceTarget =
   | { kind: 'blocked'; reason: string }
 
 type QuickPriceVariant = {
-  platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null; platformCode?: string | null }>
+  platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null; platformCode?: string | null }> | null
 }
 
 // Marketplaces that take a sale price only (Hepsiburada's inventory upload and PttAVM's price send carry no list
@@ -258,7 +259,7 @@ export function priceFieldText(value: number | null | undefined): string {
 // Every query that shows a variant's panel price, channel prices or stock: the products list with its summary, counts
 // and low-stock details (['products', …]) and the product editor (['product', id]). A quick edit save invalidates all
 // of them so an open editor shows the same values.
-export const QUICK_EDIT_SYNC_KEYS: ReadonlyArray<readonly string[]> = [['products'], ['product']]
+export const QUICK_EDIT_SYNC_KEYS: ReadonlyArray<readonly string[]> = [queryKeys.products(), queryKeys.product()]
 
 // The list and sale price the per-variant fields show for the choice: the panel's, the chosen channel's offer, or none.
 export function quickInlinePrices(choice: string, variant: QuickPriceVariant & VariantOfferPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {

@@ -123,6 +123,5 @@ public static class PttAvmInvoiceMapper
         catch (JsonException) { return null; }
     }
 
-    private static string? Text(JsonElement element, string property) =>
-        element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString()!.Trim() : null;
+    private static string? Text(JsonElement element, string property) => RemoteFields.StringText(element, property);
 }

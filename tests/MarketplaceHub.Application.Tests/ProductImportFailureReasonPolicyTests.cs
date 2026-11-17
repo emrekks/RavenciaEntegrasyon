@@ -19,8 +19,8 @@ public sealed class ProductImportFailureReasonPolicyTests
         entry.State = Microsoft.EntityFrameworkCore.EntityState.Modified;
         var conflict = new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("conflict", [((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<Microsoft.EntityFrameworkCore.ChangeTracking.Internal.InternalEntityEntry>)entry).Instance]);
 
-        Assert.Equal($"catalog.products Id={id} Modified Version=3", MarketplaceJobProcessor.ConcurrencyConflictRows(conflict));
-        Assert.Equal("kayıt bilgisi yok", MarketplaceJobProcessor.ConcurrencyConflictRows(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("conflict", Array.Empty<Microsoft.EntityFrameworkCore.Update.IUpdateEntry>())));
+        Assert.Equal($"catalog.products Id={id} Modified Version=3", CatalogImportService.ConcurrencyConflictRows(conflict));
+        Assert.Equal("kayıt bilgisi yok", CatalogImportService.ConcurrencyConflictRows(new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("conflict", Array.Empty<Microsoft.EntityFrameworkCore.Update.IUpdateEntry>())));
     }
 
     [Fact]

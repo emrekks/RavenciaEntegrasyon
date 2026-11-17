@@ -14,3 +14,5 @@
 *.html text eol=lf
 *.props text eol=lf
 *.csproj text eol=lf
+*.patch text eol=lf
+*.snap text eol=lf

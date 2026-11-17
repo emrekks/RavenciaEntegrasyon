@@ -7,7 +7,8 @@ if (( EUID == 0 )); then
 fi
 
 usage() {
-  echo "usage: restore-drill.sh [--migration-only] BACKUP_SET APP_IMAGE [SECRETS_ROOT] [BACKUP_VOLUME]" >&2
+  echo "usage: restore-drill.sh [--escrow ESCROW.tar.age AGE_IDENTITY_FILE] [--migration-only] BACKUP_SET APP_IMAGE [SECRETS_ROOT] [BACKUP_VOLUME]" >&2
+  echo "       restore-drill.sh --pitr '<time with offset>'" >&2
   exit 2
 }
 
@@ -16,6 +17,24 @@ usage() {
 # volumes, API or Worker. Its resources use their own name prefix, so it never
 # collides with a monthly drill of the same backup set.
 migration_only=false
+# --pitr <time>: point-in-time drill from the WAL archive (restore-drill-pitr.sh, VERITABANI-DAGITIM-8).
+if [[ "${1:-}" == --pitr ]]; then
+  exec bash "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/restore-drill-pitr.sh" "${@:2}"
+fi
+# --escrow <file> <identity>: boot from the secrets escrow instead of the live secret files (VERITABANI-DAGITIM-9), the
+# way a new server would after the old one is lost. The escrow (ravencia-secrets.tar.age, from a Drive copy's
+# <set>/extra/escrow/) is decrypted with the owner's age PRIVATE key inside the app image; the key belongs on this machine
+# only for the drill (tmpfs, or the owner's computer). A fresh database password is made, as on a new server.
+escrow_file=""
+escrow_identity=""
+escrow_root=""
+if [[ "${1:-}" == --escrow ]]; then
+  [[ $# -ge 3 ]] || usage
+  escrow_file="$2"
+  escrow_identity="$3"
+  shift 3
+  [[ -s "$escrow_file" && -s "$escrow_identity" ]] || { echo "Escrow file or age identity file is missing." >&2; exit 1; }
+fi
 if [[ "${1:-}" == --migration-only ]]; then
   migration_only=true
   shift
@@ -32,6 +51,25 @@ postgres_image="postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810e
 # name@sha256:<digest> for registry images, or the local image ID sha256:<id>
 # (what the monthly drill passes for the locally built manual-* release).
 [[ "$app_image" =~ ^[A-Za-z0-9._:/-]+@sha256:[0-9a-f]{64}$ || "$app_image" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Application image must be immutable: name@sha256:<digest> or sha256:<image id>." >&2; exit 1; }
+if [[ -n "$escrow_file" ]]; then
+  escrow_root="$(mktemp -d)"
+  trap 'rm -rf -- "$escrow_root"' EXIT
+  chmod 0700 "$escrow_root"
+  escrow_file="$(cd -- "$(dirname -- "$escrow_file")" && pwd -P)/${escrow_file##*/}"
+  escrow_identity="$(cd -- "$(dirname -- "$escrow_identity")" && pwd -P)/${escrow_identity##*/}"
+  # The escrow file is read by the calling user on purpose; only docker needs sudo.
+  # shellcheck disable=SC2024
+  sudo docker run --rm -i --network none --entrypoint age -v "$escrow_identity:/run/age-identity:ro" "$app_image" \
+    --decrypt --identity /run/age-identity < "$escrow_file" \
+    | tar -x -C "$escrow_root" -- credential_key.txt dp_certificate.pfx dp_certificate_password.txt
+  escrow_password="$(openssl rand -hex 24)"
+  printf '%s' "$escrow_password" > "$escrow_root/postgres_password.txt"
+  printf 'Host=postgres;Port=5432;Database=marketplacehub;Username=marketplacehub;Password=%s;Maximum Pool Size=25;Timeout=15;Command Timeout=120' \
+    "$escrow_password" > "$escrow_root/app_db_connection.txt"
+  unset escrow_password
+  secrets_root="$escrow_root"
+  echo "Restore drill: secrets come from the escrow $escrow_file, not from the live files."
+fi
 [[ -d "$secrets_root" ]] || { echo "Secrets root does not exist: $secrets_root" >&2; exit 1; }
 secrets_root="$(cd -- "$secrets_root" && pwd -P)"
 for secret in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt; do
@@ -64,6 +102,7 @@ cleanup() {
   sudo docker volume rm "$private_volume" "$db_volume" >/dev/null 2>&1 || true
   sudo docker network rm "$network" >/dev/null 2>&1 || true
   rm -rf -- "$temporary_root"
+  if [[ -n "$escrow_root" ]]; then rm -rf -- "$escrow_root"; fi
 }
 trap cleanup EXIT
 # A caller's timeout (fast-deploy.sh) sends TERM: exit through the EXIT trap so
@@ -109,6 +148,15 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 sudo docker exec "$db_container" pg_isready -U marketplacehub -d marketplacehub >/dev/null
+# Once the owner has set up the app database roles (docs/RUNBOOK-GERI-ALMA.md section 7) the dump carries GRANTs and
+# default privileges for marketplacehub_owner and marketplacehub_app. Roles live in the cluster, not in the dump: without
+# them the restore below stops at the first GRANT and every deploy's migration rehearsal fails. NOLOGIN here; the
+# drill itself logs in as marketplacehub.
+sudo docker exec "$db_container" psql -X -q -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub -c "
+  DO \$\$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'marketplacehub_owner') THEN CREATE ROLE marketplacehub_owner NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'marketplacehub_app') THEN CREATE ROLE marketplacehub_app NOLOGIN; END IF;
+  END \$\$;" >/dev/null
 echo "Restore drill: isolated PostgreSQL is ready."
 
 sudo docker run --rm \

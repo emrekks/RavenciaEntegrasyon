@@ -5,9 +5,9 @@ import { optionText, orderProfitQuery, stateText, unknownProfit, type OrderProfi
 describe('order profitability', () => {
   it('asks for the report\'s period and platforms, the search, the order and the page', () => {
     expect(orderProfitQuery({ from: '2026-09-25', to: '2026-10-25', platforms: ['TRENDYOL'], search: ' 1175 ', sort: 'profit', descending: false, page: 2 }))
-      .toBe('from=2026-09-25&to=2026-10-25&sort=profit&dir=asc&page=2&limit=50&platformCodes=TRENDYOL&search=1175')
+      .toBe('dateFrom=2026-09-25&dateTo=2026-10-25&sort=profit&dir=asc&limit=50&after=bzEwMA&platforms=TRENDYOL&search=1175')
     expect(orderProfitQuery({ from: '2026-10-01', to: '2026-10-25', platforms: null, search: '', sort: 'date', descending: true, page: 0 }))
-      .toBe('from=2026-10-01&to=2026-10-25&sort=date&dir=desc&page=0&limit=50')
+      .toBe('dateFrom=2026-10-01&dateTo=2026-10-25&sort=date&dir=desc&limit=50')
   })
 
   it('writes a variant\'s options and a returned order\'s state', () => {

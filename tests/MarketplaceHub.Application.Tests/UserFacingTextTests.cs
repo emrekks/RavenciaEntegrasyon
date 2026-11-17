@@ -18,9 +18,12 @@ public sealed class UserFacingTextTests
         @"ServiceResult(?:<[^>]*>)?\.Fail\(\s*""(?<code>[A-Z0-9_]+)""\s*,\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)""",
         RegexOptions.CultureInvariant);
 
-    // A note set on a job by hand: job.LastErrorSummary = "…", SetProperty(x => x.LastErrorSummary, "…").
+    // A note set on a job by hand: job.LastErrorSummary = "…", SetProperty(x => x.LastErrorSummary, "…"), or the summary
+    // passed after the code to a JobStateMachine stop (Cancel, CancelWhereAsync) or to the running attempt it closes
+    // (CloseRunningAttemptAsync, K3: the attempt list shows it as written).
     private static readonly Regex SummaryWrite = new(
-        @"LastErrorSummary\s*(?:\?\?=|=|,)\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)""",
+        @"LastErrorSummary\s*(?:\?\?=|=|,)\s*\$?@?""(?<text>(?:[^""\\]|\\.)*)"""
+        + @"|JobStateMachine\.(?:Cancel|CancelWhereAsync|CloseRunningAttemptAsync)\([^;]*?,\s*(?:""[A-Z0-9_]+""|[\w.]+)\s*,\s*\$?@?""(?<text>(?:[^""\\]|\\.)*\s(?:[^""\\]|\\.)*)""",
         RegexOptions.CultureInvariant);
 
     private static readonly Regex Hole = new(@"\{[^{}]*\}", RegexOptions.CultureInvariant);
@@ -52,6 +55,9 @@ public sealed class UserFacingTextTests
     {
         var notes = new List<string>
         {
+            // K3: the operator's stop of a waiting or a running job.
+            JobOperationsService.RunningStoppedNote,
+            JobOperationsService.CancelledNote,
             ProductWriteSupersession.Summary(DateTimeOffset.Parse("2026-11-07T00:48:00Z")),
             PublicationJobSupersession.Summary,
             ScheduledReadSupersession.Summary
@@ -66,6 +72,30 @@ public sealed class UserFacingTextTests
             Assert.DoesNotMatch(RawCode, note);
             Assert.DoesNotMatch(Jargon, note);
             Assert.Matches(Turkish, note);
+        }
+    }
+
+    // KATALOG-14 (F7): the model values warning says field by field what a save in the editor makes alike: not the size
+    // chart, which each colour keeps, and the desi only when its field is changed.
+    [Fact]
+    public void The_model_values_warning_is_plain_turkish_and_promises_only_what_a_save_does()
+    {
+        var cases = new (IReadOnlyList<string> Fields, string[] Says, string[] DoesNotSay)[]
+        {
+            ([ProductModelValues.Description, ProductModelValues.Attributes], ["açıklama ve özellikler bütün renklerde aynı olur"], ["Beden tablosu", "Desi,"]),
+            ([ProductModelValues.SizeChart], ["kaydetmek onu eşitlemez"], ["kaydedince"]),
+            ([ProductModelValues.Desi], ["desi alanını değiştirip kaydedince"], ["Beden tablosu", "açıp kaydedince"]),
+            ([ProductModelValues.Title, ProductModelValues.Desi, ProductModelValues.SizeChart], ["kaydedince ad bütün renklerde", "desi alanını", "kaydetmek onu eşitlemez"], []),
+        };
+        foreach (var (fields, says, doesNotSay) in cases)
+        {
+            var summary = ProductModelValues.DifferSummary([("MZ100", fields)]);
+            Assert.DoesNotMatch(Guid36, summary);
+            Assert.DoesNotMatch(RawCode, summary);
+            Assert.DoesNotMatch(Jargon, summary);
+            Assert.Matches(Turkish, summary);
+            foreach (var text in says) Assert.Contains(text, summary);
+            foreach (var text in doesNotSay) Assert.DoesNotContain(text, summary);
         }
     }
 

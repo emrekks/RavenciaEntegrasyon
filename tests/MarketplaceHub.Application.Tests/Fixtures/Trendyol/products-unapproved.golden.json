@@ -1,0 +1,152 @@
+{
+  "catalog": {
+    "Items": [
+      {
+        "ExternalProductId": "PRODUCT-ANON-002",
+        "ProductMainId": "PRODUCT-ANON-002",
+        "Title": "Fake Reddedilen Ürün",
+        "Description": "",
+        "BrandExternalId": null,
+        "BrandName": null,
+        "CategoryExternalId": null,
+        "CategoryName": null,
+        "ImageUrls": [],
+        "Variants": [
+          {
+            "ExternalVariantId": "BARCODE-ANON-002",
+            "Sku": "SKU-ANON-002",
+            "Barcode": "BARCODE-ANON-002",
+            "ModelCode": "PRODUCT-ANON-002",
+            "Options": {},
+            "Archived": false,
+            "SalePrice": null,
+            "ListPrice": null,
+            "VatRate": null,
+            "StockQuantity": null,
+            "Currency": null,
+            "RawJson": "<raw 457 chars sha256:f54859b8da26>",
+            "ImageUrls": null,
+            "InventoryLevels": null,
+            "Desi": null,
+            "FulfilledByMarketplace": null,
+            "SaleState": null,
+            "SaleStateReason": null
+          }
+        ],
+        "RawJson": "<raw 457 chars sha256:f54859b8da26>",
+        "IsDraft": false,
+        "IsPendingApproval": true,
+        "ApprovalStatus": "REJECTED",
+        "RejectionReason": "ANONYMIZED_CONTENT_REJECTION · Görsel kalitesi yetersiz."
+      },
+      {
+        "ExternalProductId": "PRODUCT-ANON-003",
+        "ProductMainId": "PRODUCT-ANON-003",
+        "Title": "Fake Onay Bekleyen Ürün",
+        "Description": "",
+        "BrandExternalId": null,
+        "BrandName": null,
+        "CategoryExternalId": null,
+        "CategoryName": null,
+        "ImageUrls": [],
+        "Variants": [
+          {
+            "ExternalVariantId": "BARCODE-ANON-003",
+            "Sku": "SKU-ANON-003",
+            "Barcode": "BARCODE-ANON-003",
+            "ModelCode": "PRODUCT-ANON-003",
+            "Options": {},
+            "Archived": false,
+            "SalePrice": null,
+            "ListPrice": null,
+            "VatRate": null,
+            "StockQuantity": null,
+            "Currency": null,
+            "RawJson": "<raw 224 chars sha256:3965573e655a>",
+            "ImageUrls": null,
+            "InventoryLevels": null,
+            "Desi": null,
+            "FulfilledByMarketplace": null,
+            "SaleState": null,
+            "SaleStateReason": null
+          }
+        ],
+        "RawJson": "<raw 224 chars sha256:3965573e655a>",
+        "IsDraft": false,
+        "IsPendingApproval": true,
+        "ApprovalStatus": "PENDING_APPROVAL",
+        "RejectionReason": null
+      },
+      {
+        "ExternalProductId": "PRODUCT-ANON-004",
+        "ProductMainId": "PRODUCT-ANON-004",
+        "Title": "Fake Durumsuz Ürün",
+        "Description": "",
+        "BrandExternalId": null,
+        "BrandName": null,
+        "CategoryExternalId": null,
+        "CategoryName": null,
+        "ImageUrls": [],
+        "Variants": [
+          {
+            "ExternalVariantId": "BARCODE-ANON-004",
+            "Sku": "SKU-ANON-004",
+            "Barcode": "BARCODE-ANON-004",
+            "ModelCode": "PRODUCT-ANON-004",
+            "Options": {},
+            "Archived": false,
+            "SalePrice": null,
+            "ListPrice": null,
+            "VatRate": null,
+            "StockQuantity": null,
+            "Currency": null,
+            "RawJson": "<raw 184 chars sha256:8f51bf6508cc>",
+            "ImageUrls": null,
+            "InventoryLevels": null,
+            "Desi": null,
+            "FulfilledByMarketplace": null,
+            "SaleState": null,
+            "SaleStateReason": null
+          }
+        ],
+        "RawJson": "<raw 184 chars sha256:8f51bf6508cc>",
+        "IsDraft": false,
+        "IsPendingApproval": true,
+        "ApprovalStatus": null,
+        "RejectionReason": null
+      }
+    ],
+    "NextCursor": null,
+    "HasMore": false,
+    "TotalCount": 3,
+    "Issues": null,
+    "LastModifiedSeen": null
+  },
+  "states": [
+    {
+      "Barcode": "BARCODE-ANON-002",
+      "Status": "REJECTED",
+      "ExternalProductId": null,
+      "ExternalVariantId": null,
+      "RejectionCode": "ANONYMIZED_CONTENT_REJECTION",
+      "RawJson": "<raw 457 chars sha256:f54859b8da26>"
+    },
+    {
+      "Barcode": "BARCODE-ANON-003",
+      "Status": "PENDING_APPROVAL",
+      "ExternalProductId": null,
+      "ExternalVariantId": null,
+      "RejectionCode": null,
+      "RawJson": "<raw 224 chars sha256:3965573e655a>"
+    },
+    {
+      "Barcode": "BARCODE-ANON-004",
+      "Status": "UNKNOWN",
+      "ExternalProductId": null,
+      "ExternalVariantId": null,
+      "RejectionCode": null,
+      "RawJson": "<raw 184 chars sha256:8f51bf6508cc>"
+    }
+  ],
+  "counts": "(none)=1, pendingApproval=1, rejected=1"
+}

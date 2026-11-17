@@ -1,0 +1,60 @@
+// Source: hand-built on the GetShipmentPackages shape (developer.n11.com siparis-listeleme-servisi; see
+// shipmentPackages-docs-sample.json) with the line discount fields n11.md names (totalSellerDiscountPrice, mallDiscount,
+// totalMallDiscountPrice). 112999000000001: a package with a cancelled line beside a discounted two-unit line.
+// 112999000000002: numbers as text, an unknown package status, no invoice fields. 112999000000003: no packageHistories
+// (no order date: refused, never dated by lastModifiedDate). 112999000000004: a line without orderLineId.
+{
+  "page": 0,
+  "totalPages": 3,
+  "size": 4,
+  "content": [
+    {
+      "orderNumber": "205400000001",
+      "id": "112999000000001",
+      "customerfullName": "Test Musteri",
+      "customerEmail": "customer@example.test",
+      "billingAddress": { "address": "Fake Sokak 3", "city": "Bursa", "district": "Nilüfer", "fullName": "Test Musteri", "gsm": "5550000000", "invoiceType": 1 },
+      "shippingAddress": { "address": "Fake Sokak 3", "city": "Bursa", "district": "Nilüfer", "fullName": "Test Musteri", "gsm": "5550000000" },
+      "cargoProviderName": "Yurtiçi Kargo",
+      "lines": [
+        { "orderLineId": 415000001, "productId": 900000001, "productName": "Fake N11 Ürün 1", "stockCode": "SKU-FAKE-N1", "quantity": 2, "price": 200, "sellerInvoiceAmount": 360, "totalSellerDiscountPrice": 40, "mallDiscount": 15, "totalMallDiscountPrice": 30, "orderItemLineItemStatusName": "Picking", "vatRate": 20, "barcode": "0000000000301" },
+        { "orderLineId": 415000002, "productId": 900000002, "productName": "Fake N11 Ürün 2", "stockCode": "SKU-FAKE-N2", "quantity": 1, "price": 80, "sellerInvoiceAmount": 80, "totalSellerDiscountPrice": 0, "orderItemLineItemStatusName": "Cancelled", "vatRate": 10 }
+      ],
+      "lastModifiedDate": 1762308000000,
+      "agreedDeliveryDate": 1762473600000,
+      "totalAmount": 440,
+      "totalDiscountAmount": 40,
+      "packageHistories": [ { "createdDate": 1762300800000, "status": "Created" }, { "createdDate": 1762304400000, "status": "Picking" } ],
+      "shipmentPackageStatus": "Picking"
+    },
+    {
+      "orderNumber": "205400000002",
+      "id": "112999000000002",
+      "lines": [
+        { "orderLineId": "415000003", "productName": "Fake N11 Ürün 3", "stockCode": "SKU-FAKE-N3", "quantity": "3", "price": "19.90", "sellerInvoiceAmount": "59.70", "totalSellerDiscountPrice": "0", "orderItemLineItemStatusName": "SomeFutureLineStatus", "vatRate": "20" }
+      ],
+      "lastModifiedDate": 1762308000000,
+      "packageHistories": [ { "createdDate": 1762300800000, "status": "Created" } ],
+      "shipmentPackageStatus": "SomeFuturePackageStatus"
+    },
+    {
+      "orderNumber": "205400000003",
+      "id": "112999000000003",
+      "lines": [ { "orderLineId": 415000004, "productName": "Fake N11 Ürün 4", "stockCode": "SKU-FAKE-N4", "quantity": 1, "price": 10, "sellerInvoiceAmount": 10, "vatRate": 20 } ],
+      "lastModifiedDate": 1762308000000,
+      "shipmentPackageStatus": "Created"
+    },
+    {
+      "orderNumber": "205400000004",
+      "id": "112999000000004",
+      "lines": [
+        { "productName": "Fake N11 Ürün 5", "stockCode": "SKU-FAKE-N5", "quantity": 1, "price": 10, "sellerInvoiceAmount": 10, "vatRate": 20 },
+        { "orderLineId": 415000006, "productName": "Fake N11 Ürün 6", "stockCode": "SKU-FAKE-N6", "quantity": 1, "price": 15, "sellerInvoiceAmount": 15, "vatRate": 20 }
+      ],
+      "totalAmount": 25,
+      "lastModifiedDate": 1762308000000,
+      "packageHistories": [ { "createdDate": 1762300800000, "status": "Created" } ],
+      "shipmentPackageStatus": "Created"
+    }
+  ]
+}

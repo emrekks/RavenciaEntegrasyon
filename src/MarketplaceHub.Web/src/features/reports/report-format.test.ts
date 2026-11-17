@@ -9,7 +9,7 @@ describe('report formatting', () => {
   // The same rule as the server's ReportProfitCost (owner, 13 Nov 2026): a profit from 95 % of the kept units with a cost,
   // the rest priced by their share of the sales.
   const cost = (costed: number, extra: Partial<ReportSales['cost']> = {}): ReportSales['cost'] => ({
-    keptQuantity: 1000, costedQuantity: costed, coverage: costed / 1000, costTotal: costed * 40, costedRevenue: costed * 100, keptRevenue: 100_000,
+    keptQuantity: 1000, costedQuantity: costed, coverage: costed / 1000, costTotal: costed * 40, costedRevenue: costed * 100, costedSales: costed * 100, keptRevenue: 100_000,
     grossProfit: 0, grossMargin: null, profitQuantity: 0, profitCoverage: null, profitRevenue: 0, profitCost: 0, profitCommission: 0, netProfit: 0, netMargin: null, costedVariants: 1, ...extra
   })
   it('works the profit out from 95 % of the kept units with a cost, the missing cost by its sales share', () => {
@@ -49,9 +49,9 @@ describe('report formatting', () => {
   })
 
   it('asks for the chosen days, platforms and buckets only', () => {
-    expect(reportQuery({ from: '2026-10-01', to: '2026-10-22', platforms: null, granularity: '', includeTest: false })).toBe('from=2026-10-01&to=2026-10-22')
+    expect(reportQuery({ from: '2026-10-01', to: '2026-10-22', platforms: null, granularity: '', includeTest: false })).toBe('dateFrom=2026-10-01&dateTo=2026-10-22')
     expect(reportQuery({ from: '2026-10-01', to: '2026-10-22', platforms: ['TRENDYOL', 'N11'], granularity: 'week', includeTest: true }))
-      .toBe('from=2026-10-01&to=2026-10-22&platformCodes=TRENDYOL%2CN11&granularity=week&includeTest=true')
+      .toBe('dateFrom=2026-10-01&dateTo=2026-10-22&platforms=TRENDYOL%2CN11&granularity=week&includeTest=true')
   })
 
   it('writes an Excel-safe CSV: formulas are quoted out and numbers keep the Turkish decimal comma', () => {

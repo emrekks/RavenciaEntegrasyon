@@ -61,7 +61,7 @@ const normalizeName = (name: string) => name.trim().toLocaleLowerCase('tr-TR')
 
 // The list's product statuses carry the connection's display name and platform code, not its id. One entry with both
 // matching is this connection; none or several (two stores with the same name) leave the record unknown.
-export function productConnectionStatus(product: Pick<Product, 'platformStatuses'>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>): ProductPlatformStatus | null {
+export function productConnectionStatus(product: { platformStatuses?: readonly ProductPlatformStatus[] | null }, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>): ProductPlatformStatus | null {
   const entries = product.platformStatuses
   if (!entries?.length) return null
   const code = normalizeCode(connection.platformCode)
@@ -91,7 +91,7 @@ export function bulkPublishStatusBucket(entry: ProductPlatformStatus | null): Bu
 
 // The "Yayın Durumu" of one platform card in the bulk publish popup: the selected records' standing on that connection.
 // A null record (selected, but not loaded in the list) counts as unknown.
-export function summarizeBulkPublishStatus(products: ReadonlyArray<Pick<Product, 'platformStatuses'> | null>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>): BulkPublishStatusSummary {
+export function summarizeBulkPublishStatus(products: ReadonlyArray<{ platformStatuses?: readonly ProductPlatformStatus[] | null } | null>, connection: Pick<MarketplaceConnection, 'platformCode' | 'displayName'>): BulkPublishStatusSummary {
   const counts = Object.fromEntries(bucketOrder.map(bucket => [bucket, 0])) as Record<BulkPublishStatusBucket, number>
   for (const product of products) counts[bulkPublishStatusBucket(product ? productConnectionStatus(product, connection) : null)] += 1
   const total = products.length
@@ -115,7 +115,7 @@ export function summarizeBulkPublishStatus(products: ReadonlyArray<Pick<Product,
 export type BulkPublishModelRow = { modelCode: string; live: number; total: number; missing: number; unknown: number }
 export type BulkPublishModelTooltip = { rows: Array<BulkPublishModelRow & { text: string; complete: boolean }>; moreCount: number }
 
-type ModelRecord = Pick<Product, 'platformStatuses' | 'modelCode' | 'title'> & { variants?: ReadonlyArray<{ modelCode?: string | null }> }
+type ModelRecord = Pick<Product, 'modelCode' | 'title'> & { platformStatuses?: readonly ProductPlatformStatus[] | null; variants?: ReadonlyArray<{ modelCode?: string | null }> }
 
 function recordModelCode(product: ModelRecord | null) {
   if (!product) return 'Yüklenmemiş kayıt'

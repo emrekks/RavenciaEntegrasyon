@@ -47,8 +47,8 @@ public sealed class ShopifyReturnSyncTests
     [Fact]
     public void TheFirstOrAFullReadGoesBack180Days()
     {
-        Assert.Equal(Now.AddDays(-180), MarketplaceJobProcessor.ShopifyReturnReadStart(false, null, null, Now));
-        Assert.Equal(Now.AddDays(-180), MarketplaceJobProcessor.ShopifyReturnReadStart(true, Now.AddHours(-1), Now.AddHours(-1), Now));
+        Assert.Equal(Now.AddDays(-180), ReturnReadService.ShopifyReturnReadStart(false, null, null, Now));
+        Assert.Equal(Now.AddDays(-180), ReturnReadService.ShopifyReturnReadStart(true, Now.AddHours(-1), Now.AddHours(-1), Now));
     }
 
     [Fact]
@@ -56,9 +56,9 @@ public sealed class ShopifyReturnSyncTests
     {
         var watermark = Now.AddMinutes(-10);
 
-        Assert.Equal(watermark.AddMinutes(-15), MarketplaceJobProcessor.ShopifyReturnReadStart(false, Now.AddMinutes(-9), watermark, Now));
+        Assert.Equal(watermark.AddMinutes(-15), ReturnReadService.ShopifyReturnReadStart(false, Now.AddMinutes(-9), watermark, Now));
         // Without a watermark the last success stands in for it.
-        Assert.Equal(Now.AddMinutes(-24), MarketplaceJobProcessor.ShopifyReturnReadStart(false, Now.AddMinutes(-9), null, Now));
+        Assert.Equal(Now.AddMinutes(-24), ReturnReadService.ShopifyReturnReadStart(false, Now.AddMinutes(-9), null, Now));
     }
 
     [Fact]
@@ -68,15 +68,15 @@ public sealed class ShopifyReturnSyncTests
         // next run reads from there instead of the whole 180 days.
         var watermark = Now.AddDays(-2);
 
-        Assert.Equal(watermark.AddMinutes(-15), MarketplaceJobProcessor.ShopifyReturnReadStart(false, Now.AddDays(-2), watermark, Now));
+        Assert.Equal(watermark.AddMinutes(-15), ReturnReadService.ShopifyReturnReadStart(false, Now.AddDays(-2), watermark, Now));
     }
 
     [Fact]
     public void TheReadFollowsThePageCursorBelowTheRestartPoint()
     {
-        var state = new MarketplaceJobProcessor.ShopifyReturnSyncState("shopify-returns-v1", "C1", Now.AddDays(-180), Now, 10);
+        var state = new ReturnReadService.ShopifyReturnSyncState("shopify-returns-v1", "C1", Now.AddDays(-180), Now, 10);
 
-        var next = MarketplaceJobProcessor.NextShopifyReturnPage(state, "C2", Now.AddDays(-100));
+        var next = ReturnReadService.NextShopifyReturnPage(state, "C2", Now.AddDays(-100));
 
         Assert.Equal("C2", next.Cursor);
         Assert.Equal(11, next.Pages);
@@ -88,9 +88,9 @@ public sealed class ShopifyReturnSyncTests
     public void NearShopifys25000ResultCapTheReadStartsANewQueryFromTheLatestOrderChange()
     {
         var seen = Now.AddDays(-40);
-        var state = new MarketplaceJobProcessor.ShopifyReturnSyncState("shopify-returns-v1", "C199", Now.AddDays(-180), Now, ShopifyOrderHistoryPolicy.PagesBeforeRestart - 1);
+        var state = new ReturnReadService.ShopifyReturnSyncState("shopify-returns-v1", "C199", Now.AddDays(-180), Now, ShopifyOrderHistoryPolicy.PagesBeforeRestart - 1);
 
-        var next = MarketplaceJobProcessor.NextShopifyReturnPage(state, "C200", seen);
+        var next = ReturnReadService.NextShopifyReturnPage(state, "C200", seen);
 
         Assert.Null(next.Cursor);
         Assert.Equal(0, next.Pages);
@@ -105,9 +105,9 @@ public sealed class ShopifyReturnSyncTests
     public void WithoutALaterOrderChangeTheReadKeepsPaging(bool sameAsStart)
     {
         var from = Now.AddDays(-180);
-        var state = new MarketplaceJobProcessor.ShopifyReturnSyncState("shopify-returns-v1", "C199", from, Now, ShopifyOrderHistoryPolicy.PagesBeforeRestart - 1);
+        var state = new ReturnReadService.ShopifyReturnSyncState("shopify-returns-v1", "C199", from, Now, ShopifyOrderHistoryPolicy.PagesBeforeRestart - 1);
 
-        var next = MarketplaceJobProcessor.NextShopifyReturnPage(state, "C200", sameAsStart ? from : null);
+        var next = ReturnReadService.NextShopifyReturnPage(state, "C200", sameAsStart ? from : null);
 
         Assert.Equal("C200", next.Cursor);
         Assert.Equal(from, next.ModifiedAfter);
@@ -118,7 +118,7 @@ public sealed class ShopifyReturnSyncTests
     {
         var saved = JsonSerializer.Serialize(new { Version = "shopify-returns-v1", Cursor = "C5", ModifiedAfter = Now.AddDays(-1), Anchor = Now });
 
-        var state = JsonSerializer.Deserialize<MarketplaceJobProcessor.ShopifyReturnSyncState>(saved);
+        var state = JsonSerializer.Deserialize<ReturnReadService.ShopifyReturnSyncState>(saved);
 
         Assert.NotNull(state);
         Assert.Equal("C5", state.Cursor);

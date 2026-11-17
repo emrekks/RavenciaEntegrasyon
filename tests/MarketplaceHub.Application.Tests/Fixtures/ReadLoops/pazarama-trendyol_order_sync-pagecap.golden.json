@@ -1,0 +1,37 @@
+{
+  "JobType": "PAZARAMA_ORDER_SYNC",
+  "Runs": [
+    {
+      "Run": "endless",
+      "Result": "ManualReview",
+      "ErrorCode": "PAZARAMA_ORDER_PAGE_CAP",
+      "Calls": {
+        "Count": 500,
+        "Head": [
+          "orders.Poll key=pazarama-order-sync:20261113:1 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=- limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:1 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=1 limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:2 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=2 limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:3 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=3 limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:4 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=4 limit=100"
+        ],
+        "Tail": [
+          "orders.Poll key=pazarama-order-sync:20261113:497 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=497 limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:498 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=498 limit=100",
+          "orders.Poll key=pazarama-order-sync:20261113:499 window=2026-11-12T21:00:00.000Z..2026-11-16T21:00:00.000Z storefront=- cursor=499 limit=100"
+        ]
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDERS_HOT",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 3
+    }
+  ],
+  "Issues": [
+    "PAZARAMA_ORDER_PAGE_CAP"
+  ]
+}

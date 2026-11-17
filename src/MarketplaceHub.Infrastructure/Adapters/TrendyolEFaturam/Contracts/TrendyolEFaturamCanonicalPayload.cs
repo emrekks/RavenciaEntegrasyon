@@ -103,7 +103,7 @@ public static class TrendyolEFaturamCanonicalPayload
             taxId = FindTaxId(customer);
         var isCorporate = IsCorporateRecipient(customer, addressRoot, taxId);
         // Apply the consumer e-Archive identifier uniformly to orders from every supported marketplace.
-        if (invoiceType == "EARSIVFATURA" && !isCorporate) taxId = "11111111111";
+        if (invoiceType == "EARSIVFATURA" && !isCorporate) taxId = ConsumerPlaceholderIdentity;
         return (taxId, isCorporate);
     }
 
@@ -124,6 +124,13 @@ public static class TrendyolEFaturamCanonicalPayload
             var address = UnwrapAddress(addressRoot);
             var invoiceType = RequiredText(root, "InvoiceType");
             var (taxId, isCorporate) = RecipientTaxIdentity(customer.RootElement, addressRoot, invoiceType);
+            // The last line of defence (16 Nov 2026): a buyer of unknown kind, or a company's VKN on the order while the
+            // recipient would be the consumer placeholder, never reaches the provider.
+            if (StatedBuyerKind(customer.RootElement, addressRoot).Ambiguous)
+                throw new JsonException(RecipientKindUnknownCode);
+            if (taxId == ConsumerPlaceholderIdentity
+                && (HoldsCorporateTaxNumber(addressRoot, 0) || HoldsCorporateTaxNumber(customer.RootElement, 0)))
+                throw new JsonException(PlaceholderForCorporateCode);
             if (!ValidTaxId(taxId))
                 throw new JsonException("EFATURAM_RECIPIENT_TAX_ID_REQUIRED");
 
@@ -292,20 +299,34 @@ public static class TrendyolEFaturamCanonicalPayload
     // A null or text amount is a missing amount (a validation error), not an InvalidOperationException from TryGetDecimal.
     private static decimal Decimal(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : throw new JsonException($"{name} missing");
     private static bool ValidTaxId(string value) => value.Length is 10 or 11 && value.All(char.IsAsciiDigit);
+
+    /// <summary>The fixed identifier of a consumer e-Archive recipient (and Hepsiburada's identity for a buyer without one).</summary>
+    public const string ConsumerPlaceholderIdentity = "11111111111";
+
+    private const string RecipientKindUnknownCode = InvoiceIssuePolicy.RecipientKindUnknownCode;
+    private const string PlaceholderForCorporateCode = InvoiceIssuePolicy.RecipientPlaceholderForCorporateCode;
+
     // Report item 12, one rule for every marketplace: the buyer kind the marketplace states decides (Trendyol commercial,
-    // n11 and Pazarama invoiceType, PTT AVM FaturaTip, Hepsiburada's 11111111111 identity for an individual buyer). Without
-    // such a flag the tax identity decides: a 10-digit VKN is a company, an 11-digit TCKN a person. Without either, a
-    // company name (Shopify sends one with no tax number) makes the buyer corporate, and the invoice then stops for the
-    // owner because a corporate invoice needs the tax number; with no company name the buyer is a person.
+    // n11 and Pazarama invoiceType, PTT AVM FaturaTip). Hepsiburada states no kind; its 11111111111 identity only means that
+    // no personal identity number was given, and it comes for corporate buyers too (live, 16 Nov 2026: order 4476971250
+    // carried it next to a valid VKN and a tax office). So beside that identity its tax number and tax office decide
+    // (HepsiburadaBuyerEvidence). Without any statement the tax identity decides: a 10-digit VKN is a company, an 11-digit
+    // TCKN a person. Without either, a company name (Shopify sends one with no tax number) makes the buyer corporate, and
+    // the invoice then stops for the owner because a corporate invoice needs the tax number; with no company name the
+    // buyer is a person.
     private static bool IsCorporateRecipient(JsonElement customer, JsonElement address, string taxId) =>
         RecipientKind(customer, address, taxId).IsCorporate;
 
-    private enum BuyerKindSource { MarketplaceFlag, TaxNumber, IdentityNumber, CompanyName, NoInformation }
+    private enum BuyerKindSource { MarketplaceFlag, TaxNumber, IdentityNumber, CompanyName, NoInformation, Ambiguous }
 
-    // The one buyer-kind rule (see above), with what decided it; the invoice and the order's label both read it.
+    // The one buyer-kind rule (see above), with what decided it; the invoice and the order's label both read it. An
+    // ambiguous Hepsiburada buyer counts as corporate (never the consumer e-Archive placeholder) and is refused before
+    // anything is issued (IsRecipientKindAmbiguous).
     private static (bool IsCorporate, BuyerKindSource Source) RecipientKind(JsonElement customer, JsonElement address, string taxId)
     {
-        if ((ExplicitBuyerKind(customer) ?? ExplicitBuyerKind(address)) is { } stated) return (stated, BuyerKindSource.MarketplaceFlag);
+        var statement = StatedBuyerKind(customer, address);
+        if (statement.Ambiguous) return (true, BuyerKindSource.Ambiguous);
+        if (statement.Kind is { } stated) return (stated, statement.FromTaxEvidence ? BuyerKindSource.TaxNumber : BuyerKindSource.MarketplaceFlag);
         if (HasCorporateMarker(customer) || HasCorporateMarker(address)) return (true, BuyerKindSource.MarketplaceFlag);
         if (HasIndividualMarker(customer) || HasIndividualMarker(address)) return (false, BuyerKindSource.MarketplaceFlag);
         if (ValidTaxId(taxId)) return taxId.Length == 10 ? (true, BuyerKindSource.TaxNumber) : (false, BuyerKindSource.IdentityNumber);
@@ -339,6 +360,8 @@ public static class TrendyolEFaturamCanonicalPayload
             return new(OrderBuyerTypeView.Individual, "Bilgi yok, bireysel sayıldı");
         }
 
+        if (source == BuyerKindSource.Ambiguous)
+            return new(OrderBuyerTypeView.CorporateTaxIdMissing, "Hepsiburada alıcı türünü açıkça bildirmedi (vergi bilgileri eksik ya da çelişkili) — fatura kesilmez, siz kontrol edersiniz");
         if (!isCorporate)
             return new(OrderBuyerTypeView.Individual, source switch
             {
@@ -366,19 +389,91 @@ public static class TrendyolEFaturamCanonicalPayload
         {
             using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
             using var address = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressSnapshotJson) ? "{}" : invoiceAddressSnapshotJson);
-            return ExplicitBuyerKind(customer.RootElement) ?? ExplicitBuyerKind(address.RootElement);
+            return StatedBuyerKind(customer.RootElement, address.RootElement).Kind;
         }
         catch (JsonException) { return null; }
     }
 
-    // Trendyol commercial (true/false); n11 and Pazarama invoiceType (1 individual, 2 corporate); PTT AVM FaturaTip, kept
-    // as invoiceType ("Bireysel", "Kurumsal"); Hepsiburada's identityNo 11111111111, which it sends only for an individual
-    // buyer (hepsiburada-api-son.md:13394). Searched a few levels deep: n11 keeps the billing address inside the order.
-    private static bool? ExplicitBuyerKind(JsonElement source)
+    /// <summary>
+    /// True when a Hepsiburada buyer's kind cannot be told from what the marketplace sent: next to its identity field
+    /// (identityNo / turkishIdentityNumber) a tax number without a tax office, a tax office without a tax number, a tax
+    /// number that is not a valid VKN, or a tax number beside a real personal identity number. The owner's rule
+    /// ("unknown waits"): such an invoice stops for his review and never goes out as an individual e-Archive.
+    /// </summary>
+    public static bool IsRecipientKindAmbiguous(string? customerSnapshotJson, string? invoiceAddressSnapshotJson)
     {
-        bool? commercial = null, invoiceType = null, placeholderIdentity = null;
+        try
+        {
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
+            using var addressSnapshot = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressSnapshotJson) ? "{}" : invoiceAddressSnapshotJson);
+            return StatedBuyerKind(customer.RootElement, addressSnapshot.RootElement).Ambiguous;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    /// <summary>
+    /// The guard of 16 Nov 2026, for every marketplace: true when the recipient identity the invoice of this type would
+    /// carry is the consumer placeholder 11111111111 while the order's snapshots hold a company's valid VKN.
+    /// </summary>
+    public static bool SendsPlaceholderToCorporateTaxNumber(string? customerSnapshotJson, string? invoiceAddressSnapshotJson, string invoiceType)
+    {
+        try
+        {
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
+            using var addressSnapshot = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressSnapshotJson) ? "{}" : invoiceAddressSnapshotJson);
+            using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+            var (taxId, _) = RecipientTaxIdentity(customer.RootElement, normalizedAddress.RootElement, invoiceType);
+            return taxId == ConsumerPlaceholderIdentity
+                && (HoldsCorporateTaxNumber(normalizedAddress.RootElement, 0) || HoldsCorporateTaxNumber(customer.RootElement, 0));
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static readonly string[] CorporateTaxNumberFields = ["taxNumber", "customerTaxNumber", "invoiceTaxNumber", "taxId", "taxIdentityNumber", "taxIdentifier", "vkn"];
+
+    private static bool HoldsCorporateTaxNumber(JsonElement node, int depth)
+    {
+        if (depth > 5) return false;
+        if (node.ValueKind == JsonValueKind.Array)
+            return node.EnumerateArray().Any(item => HoldsCorporateTaxNumber(item, depth + 1));
+        if (node.ValueKind != JsonValueKind.Object) return false;
+        foreach (var property in node.EnumerateObject())
+        {
+            if (CorporateTaxNumberFields.Contains(property.Name, StringComparer.OrdinalIgnoreCase)
+                && property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+                && TurkishTaxIdentity.IsValidVkn(property.Value.ToString().Trim())) return true;
+            if (HoldsCorporateTaxNumber(property.Value, depth + 1)) return true;
+        }
+        return false;
+    }
+
+    // What the marketplace says about the buyer's kind. Kind: true corporate, false individual, null nothing said.
+    // FromTaxEvidence: Hepsiburada's tax number and tax office said it. Ambiguous: a Hepsiburada buyer that must wait.
+    private readonly record struct BuyerStatement(bool? Kind, bool FromTaxEvidence, bool Ambiguous);
+
+    // The customer snapshot first, then the invoice address, as before.
+    private static BuyerStatement StatedBuyerKind(JsonElement customer, JsonElement address)
+    {
+        var fromCustomer = StatedBuyerKind(customer);
+        return fromCustomer.Kind is not null ? fromCustomer : StatedBuyerKind(address);
+    }
+
+    // Trendyol commercial (true/false); n11 and Pazarama invoiceType (1 individual, 2 corporate); PTT AVM FaturaTip, kept
+    // as invoiceType ("Bireysel", "Kurumsal"); last, Hepsiburada's buyer evidence around its identity field
+    // (HepsiburadaBuyerEvidence). Searched a few levels deep: n11 keeps the billing address inside the order.
+    private static BuyerStatement StatedBuyerKind(JsonElement source)
+    {
+        bool? commercial = null, invoiceType = null;
+        HepsiburadaBuyer? hepsiburada = null;
         Visit(source, 0);
-        return commercial ?? invoiceType ?? placeholderIdentity;
+        if ((commercial ?? invoiceType) is { } stated) return new(stated, false, false);
+        return hepsiburada switch
+        {
+            HepsiburadaBuyer.Individual => new(false, false, false),
+            HepsiburadaBuyer.Corporate => new(true, true, false),
+            HepsiburadaBuyer.Ambiguous => new(true, false, true),
+            _ => new(null, false, false)
+        };
 
         void Visit(JsonElement node, int depth)
         {
@@ -389,6 +484,7 @@ public static class TrendyolEFaturamCanonicalPayload
                 return;
             }
             if (node.ValueKind != JsonValueKind.Object) return;
+            hepsiburada ??= HepsiburadaBuyerEvidence(node);
             foreach (var property in node.EnumerateObject())
             {
                 var name = property.Name;
@@ -396,13 +492,46 @@ public static class TrendyolEFaturamCanonicalPayload
                     commercial ??= BooleanValue(property.Value);
                 else if (name.Equals("invoiceType", StringComparison.OrdinalIgnoreCase) || name.Equals("faturaTip", StringComparison.OrdinalIgnoreCase) || name.Equals("faturaType", StringComparison.OrdinalIgnoreCase))
                     invoiceType ??= BuyerKindWord(property.Value);
-                else if ((name.Equals("identityNo", StringComparison.OrdinalIgnoreCase) || name.Equals("turkishIdentityNumber", StringComparison.OrdinalIgnoreCase))
-                    && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString()?.Trim() == "11111111111")
-                    placeholderIdentity ??= false;
                 else if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
                     Visit(property.Value, depth + 1);
             }
         }
+    }
+
+    private enum HepsiburadaBuyer { Individual, Corporate, Ambiguous }
+
+    // Hepsiburada names no buyer kind (offline docs: taxNumber "Kurumsal müşterinin vergi numarası", identityNo /
+    // turkishIdentityNumber "Müşterinin TCKN bilgisi"). Its invoice object carries the identity field always, so one
+    // object holding it is judged on its own fields:
+    // - the placeholder 11111111111 with neither a tax number nor a tax office: an individual (34 of 37 live orders, 16 Nov
+    //   2026, and the documented sample);
+    // - a valid 10-digit VKN together with a tax office: a company, whatever the identity field says (2 live orders);
+    // - any other tax number or tax office beside the identity field (no tax office, an invalid or 11-digit number, a tax
+    //   office alone, or a real personal identity number next to a tax number): ambiguous, the owner decides;
+    // - a real personal identity number without tax details: no statement, so the identity decides (an individual).
+    // Null when the object has no Hepsiburada identity field.
+    private static HepsiburadaBuyer? HepsiburadaBuyerEvidence(JsonElement node)
+    {
+        string? identity = null;
+        foreach (var property in node.EnumerateObject())
+        {
+            if ((property.Name.Equals("identityNo", StringComparison.OrdinalIgnoreCase) || property.Name.Equals("turkishIdentityNumber", StringComparison.OrdinalIgnoreCase))
+                && property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            {
+                identity = property.Value.ToString().Trim();
+                if (identity.Length > 0) break;
+            }
+        }
+        if (string.IsNullOrEmpty(identity)) return null;
+        var taxNumber = Text(node, "taxNumber");
+        if (taxNumber == ConsumerPlaceholderIdentity) taxNumber = "";
+        var taxOffice = Text(node, "taxOffice");
+        if (identity == ConsumerPlaceholderIdentity)
+        {
+            if (taxNumber.Length == 0) return taxOffice.Length == 0 ? HepsiburadaBuyer.Individual : HepsiburadaBuyer.Ambiguous;
+            return TurkishTaxIdentity.IsValidVkn(taxNumber) && taxOffice.Length > 0 ? HepsiburadaBuyer.Corporate : HepsiburadaBuyer.Ambiguous;
+        }
+        return taxNumber.Length == 0 ? null : HepsiburadaBuyer.Ambiguous;
     }
 
     private static bool? BuyerKindWord(JsonElement value)

@@ -1,0 +1,179 @@
+{
+  "Items": [
+    {
+      "ExternalOrderId": "203872347637",
+      "OrderNumber": "203872347637",
+      "OrderedAt": "2024-08-21T21:00:54.46+00:00",
+      "LastModifiedAt": "2024-08-22T10:43:06.203+00:00",
+      "Currency": "TRY",
+      "GrossAmount": 1335.6,
+      "DiscountAmount": 5.8,
+      "NetAmount": 1329.8,
+      "CustomerSnapshotJson": {
+        "billingAddress": {
+          "address": "Reşitpaşa Mah Arı 3 D:8-9",
+          "city": "İstanbul",
+          "district": "Sarıyer",
+          "neighborhood": "Reşitpaşa",
+          "fullName": "N11 müşteri",
+          "gsm": "5xxxxxxxxx",
+          "postalCode": "34000",
+          "invoiceType": 1
+        },
+        "shippingAddress": {
+          "address": "Reşitpaşa Mah Arı 3 D:8-9",
+          "city": "İstanbul",
+          "district": "Sarıyer",
+          "neighborhood": "Reşitpaşa",
+          "fullName": "N11 müşteri",
+          "gsm": "5xxxxxxxxx",
+          "postalCode": "34000"
+        },
+        "orderNumber": "203872347637",
+        "id": "112999455244259",
+        "customerEmail": "customer@example.test",
+        "customerfullName": "N11 müşteri",
+        "customerId": 12345678,
+        "cargoSenderNumber": null,
+        "cargoTrackingNumber": "112999455244259",
+        "shipmentCompanyId": 342,
+        "cargoProviderName": "MNG Kargo",
+        "shipmentMethod": 1,
+        "lastModifiedDate": 1724323386203,
+        "agreedDeliveryDate": 1725310828346,
+        "totalAmount": 1479.79,
+        "packageHistories": [
+          {
+            "createdDate": 1724274054460,
+            "status": "Created"
+          },
+          {
+            "createdDate": 1724274255751,
+            "status": "Picking"
+          },
+          {
+            "createdDate": 1724396400000,
+            "status": " Delivered"
+          }
+        ],
+        "shipmentPackageStatus": " Delivered",
+        "sellerId": 9876543,
+        "customerName": "N11 müşteri",
+        "customerFirstName": "N11",
+        "customerLastName": "müşteri",
+        "email": "customer@example.test"
+      },
+      "ShipmentAddressSnapshotJson": {
+        "address": "Reşitpaşa Mah Arı 3 D:8-9",
+        "city": "İstanbul",
+        "district": "Sarıyer",
+        "neighborhood": "Reşitpaşa",
+        "fullName": "N11 müşteri",
+        "gsm": "5xxxxxxxxx",
+        "postalCode": "34000",
+        "fullAddress": "Reşitpaşa Mah Arı 3 D:8-9",
+        "address1": "Reşitpaşa Mah Arı 3 D:8-9",
+        "firstName": "N11",
+        "lastName": "müşteri",
+        "phone": "5xxxxxxxxx"
+      },
+      "InvoiceAddressSnapshotJson": {
+        "address": "Reşitpaşa Mah Arı 3 D:8-9",
+        "city": "İstanbul",
+        "district": "Sarıyer",
+        "neighborhood": "Reşitpaşa",
+        "fullName": "N11 müşteri",
+        "gsm": "5xxxxxxxxx",
+        "postalCode": "34000",
+        "invoiceType": 1,
+        "fullAddress": "Reşitpaşa Mah Arı 3 D:8-9",
+        "address1": "Reşitpaşa Mah Arı 3 D:8-9",
+        "firstName": "N11",
+        "lastName": "müşteri",
+        "phone": "5xxxxxxxxx"
+      },
+      "Lines": [
+        {
+          "ExternalLineId": "415490391",
+          "Sku": "20242024",
+          "Barcode": "8690000000001",
+          "Title": "Erkek Spor Ayakkabı Bordo 45",
+          "Quantity": 2,
+          "UnitPrice": 292.8,
+          "VatRate": 10,
+          "RawStatus": "Picking",
+          "SourceSnapshotJson": "<raw 303 chars sha256:c3ae7ee4e3f5>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        },
+        {
+          "ExternalLineId": "415490390",
+          "Sku": "202420241",
+          "Barcode": null,
+          "Title": "Erkek Klasik Ayakkabı Kahverengi 42",
+          "Quantity": 3,
+          "UnitPrice": 250,
+          "VatRate": 10,
+          "RawStatus": "Picking",
+          "SourceSnapshotJson": "<raw 278 chars sha256:b9079979423e>",
+          "CancelledQuantity": 0,
+          "CancelledAt": null,
+          "PlatformDiscount": null
+        }
+      ],
+      "Packages": [
+        {
+          "ExternalPackageId": "112999455244259",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Delivered",
+          "OccurredAt": "2024-08-22T10:43:06.203+00:00",
+          "CargoProviderExternalId": "MNG Kargo",
+          "CargoTrackingNumber": "112999455244259",
+          "Allocations": [
+            {
+              "ExternalLineId": "415490391",
+              "AllocatedQuantity": 2,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            },
+            {
+              "ExternalLineId": "415490390",
+              "AllocatedQuantity": 3,
+              "CancelledQuantity": 0,
+              "ShippedQuantity": 0,
+              "DeliveredQuantity": 0,
+              "ReturnedQuantity": 0
+            }
+          ],
+          "GrossAmount": 1335.6,
+          "DiscountAmount": 5.8,
+          "NetAmount": 1329.8,
+          "Invoice": null,
+          "CreatedBy": null,
+          "IsStatusObservation": false,
+          "StatusTimeUnknown": false,
+          "CancelledAt": null,
+          "UnreadableLineCount": 0,
+          "CargoBarcode": null
+        }
+      ],
+      "RawJson": "<raw 1854 chars sha256:3fd73dfc81fa>",
+      "ShipmentDueAt": "2024-09-02T21:00:28.346+00:00",
+      "PaymentStatus": "UNKNOWN",
+      "CancellationStatus": "UNKNOWN",
+      "RefundStatus": "UNKNOWN",
+      "RefundedAmount": 0,
+      "Refunds": null,
+      "LifecycleStatus": null,
+      "StoreFrontCode": null
+    }
+  ],
+  "NextCursor": null,
+  "HasMore": false,
+  "TotalCount": null,
+  "Issues": [],
+  "LastModifiedSeen": null
+}

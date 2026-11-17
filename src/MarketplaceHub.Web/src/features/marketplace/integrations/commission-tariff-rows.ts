@@ -1,6 +1,11 @@
+import type { ApiAnswer, Written } from '../../../shared/api/api-answer'
+import type { CommissionTariffCompactRowPage } from '../../../shared/api/generated/api-types'
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
-import type { CommissionBand, CommissionChoice, CommissionTariff, CommissionTariffRow } from './CommissionTariffsPanel'
+import { cursorPageParams } from '../../../shared/api/paging'
+import { scopedStorageKey } from '../../../shared/storage-scope'
+import type { CommissionBand, CommissionChoice, CommissionTariffRow } from './CommissionTariffsPanel'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 export type RowPage = { items: CommissionTariffRow[]; totalCount: number; page: number; pageSize: number }
 
@@ -16,7 +21,33 @@ type CompactRow = [
   bands: CompactBand[], nextLowerBand: CompactBand | null, matchesPanel: boolean, costPrice: number | null, choices: CompactChoice[] | null,
   recommendedTier: number | null, imageUrl: number | null, color: string | null, stock: number | null, shared: [number, number, number, number] | null
 ]
-export type CompactRowPage = { strings: string[]; rows: CompactRow[]; totalCount: number; page: number; pageSize: number }
+type CompactRowAnswer = Written<CommissionTariffCompactRowPage>
+// CONTRACT: the API declares the compact rows as arrays of any value; readCompactRowPage checks each against CompactRow.
+export type CompactRowPage = Omit<CompactRowAnswer, 'rows' | 'nextCursor' | 'hasMore'> & { rows: CompactRow[] }
+
+const isNum = (value: unknown): value is number => typeof value === 'number'
+const isNumOrNull = (value: unknown): value is number | null => value === null || typeof value === 'number'
+const isStrOrNull = (value: unknown): value is string | null => value === null || typeof value === 'string'
+const isBand = (value: unknown): value is CompactBand => Array.isArray(value) && value.length === 4 && isNum(value[0]) && isNumOrNull(value[1]) && isNumOrNull(value[2]) && isNum(value[3])
+const isCosts = (value: unknown): value is CompactCosts => value === null || (Array.isArray(value) && (value.length === 2 || value.length === 6) && value.every(isNum))
+const isChoice = (value: unknown): value is CompactChoice => Array.isArray(value) && (value.length === 5 || value.length === 6)
+  && isNum(value[0]) && isNum(value[1]) && isNum(value[2]) && isNumOrNull(value[3]) && isCosts(value[4]) && (value.length === 5 || isNum(value[5]))
+function isCompactRow(row: unknown[]): row is CompactRow {
+  return row.length === 21 && typeof row[0] === 'string' && typeof row[1] === 'string' && isStrOrNull(row[2]) && isStrOrNull(row[3]) && isNumOrNull(row[4])
+    && isStrOrNull(row[5]) && [6, 7, 8, 9, 10].every(index => isNumOrNull(row[index])) && Array.isArray(row[11]) && row[11].every(isBand)
+    && (row[12] === null || isBand(row[12])) && typeof row[13] === 'boolean' && isNumOrNull(row[14]) && (row[15] === null || (Array.isArray(row[15]) && row[15].every(isChoice)))
+    && isNumOrNull(row[16]) && isNumOrNull(row[17]) && isStrOrNull(row[18]) && isNumOrNull(row[19])
+    && (row[20] === null || (Array.isArray(row[20]) && row[20].length === 4 && row[20].every(isNum)))
+}
+
+/** The compact page as the panel reads it: a row that is not the CompactRow shape stops the read with an error (shown as one), never half-read. */
+export function readCompactRowPage(raw: CompactRowAnswer): CompactRowPage {
+  const rows = raw.rows.map((row, index) => {
+    if (!isCompactRow(row)) throw new Error(`Tarife satırı okunamadı (sayfanın ${index + 1}. satırı).`)
+    return row
+  })
+  return { strings: raw.strings, rows, totalCount: raw.totalCount, page: raw.page, pageSize: raw.pageSize }
+}
 
 const band = ([tier, min, max, rate]: CompactBand): CommissionBand => ({ tier, min, max, rate })
 
@@ -43,34 +74,43 @@ export function expandRowPage(raw: CompactRowPage): RowPage {
   }
 }
 
+// The paging of a page of rows (PagingContract): the cursor in the name order, NumberedPage (page + pageSize) under a
+// sort or a profit filter, whose in-memory order gives no cursor. `page` is 0-based, as the list's page is.
+export function tariffRowPaging(query: Record<string, string>, page: number, size: number): Record<string, string> {
+  const numbered = 'sort' in query || 'profitTier' in query
+  if (numbered) return { ...query, page: String(page), pageSize: String(size) }
+  return { ...query, ...Object.fromEntries(cursorPageParams(new URLSearchParams(), page, size)) }
+}
+
 // A page of a tariff's rows, asked for in the short form and given back in the long one.
-export async function loadRowPage(connectionId: string, tariffId: string, query: Record<string, string>): Promise<RowPage> {
+export async function loadRowPage(connectionId: string, tariffId: string, query: Record<string, string>, signal?: AbortSignal): Promise<RowPage> {
   const params = new URLSearchParams({ ...query, shape: 'compact' })
-  return expandRowPage(await hubApi<CompactRowPage>(`/connections/${connectionId}/commission-tariffs/${tariffId}/rows?${params}`))
+  return expandRowPage(readCompactRowPage(await hubApi<CompactRowAnswer>(`/connections/${connectionId}/commission-tariffs/${tariffId}/rows?${params}`, { signal })))
 }
 
 // The tariffs a store's tab lists, and the tab's first page of rows; the panel and the prefetch below share them.
 export const tariffsQuery = (connectionId: string) => ({
-  queryKey: ['commission-tariffs', connectionId],
-  queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`)
+  queryKey: queryKeys.commissionTariffs(connectionId),
+  queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getConnectionsByConnectionIdCommissionTariffs'>>(`/connections/${connectionId}/commission-tariffs`, { signal })
 })
 
-// The store and tariff the tab last opened on by itself (no period picked), kept in this browser only.
+// The store and tariff the tab last opened on by itself (no period picked), kept in this browser only and per person
+// (WEB-ALTYAPI-9: another account signed in here neither reads nor prefetches it).
 const lastTariffKey = 'rv-commission-tariff-last'
 type LastTariff = { connectionId: string; tariffId: string }
 
 export function rememberTariff(last: LastTariff) {
-  try { localStorage.setItem(lastTariffKey, JSON.stringify(last)) } catch { /* storage off: nothing is prefetched next time */ }
+  try { localStorage.setItem(scopedStorageKey(lastTariffKey), JSON.stringify(last)) } catch { /* storage off: nothing is prefetched next time */ }
 }
 
 // A remembered tariff the server no longer has (deleted, store reset) is dropped, so the next visit opens on the list's own first tariff.
 export function forgetTariff() {
-  try { localStorage.removeItem(lastTariffKey) } catch { /* storage off */ }
+  try { localStorage.removeItem(scopedStorageKey(lastTariffKey)) } catch { /* storage off */ }
 }
 
 function lastTariff(): LastTariff | null {
   try {
-    const value = JSON.parse(localStorage.getItem(lastTariffKey) ?? 'null') as Partial<LastTariff> | null
+    const value = JSON.parse(localStorage.getItem(scopedStorageKey(lastTariffKey)) ?? 'null') as Partial<LastTariff> | null
     return typeof value?.connectionId === 'string' && typeof value.tariffId === 'string' ? { connectionId: value.connectionId, tariffId: value.tariffId } : null
   } catch {
     return null
@@ -80,10 +120,10 @@ function lastTariff(): LastTariff | null {
 // Opening Promosyon, the tariff list and the first page of rows the tab last opened on are asked for at once, beside
 // the stores, instead of one after the other (stores, then tariffs, then rows). The panel's own queries take them over
 // when they are the ones it opens on; otherwise they are only not used.
-export function prefetchLastTariff(client: QueryClient, store: string | null, rowsQuery: (connectionId: string, tariffId: string) => { queryKey: unknown[]; queryFn: () => Promise<RowPage> }) {
+export function prefetchLastTariff(client: QueryClient, store: string | null, rowsQuery: (connectionId: string, tariffId: string) => { queryKey: readonly unknown[]; queryFn: (context: { signal: AbortSignal }) => Promise<RowPage> }) {
   const last = lastTariff()
   if (!last || (store && store !== last.connectionId)) return
   void client.prefetchQuery(tariffsQuery(last.connectionId))
   const rows = rowsQuery(last.connectionId, last.tariffId)
-  void client.prefetchQuery({ ...rows, retry: false, queryFn: () => rows.queryFn().catch(error => { forgetTariff(); throw error }) })
+  void client.prefetchQuery({ ...rows, retry: false, queryFn: context => rows.queryFn(context).catch(error => { forgetTariff(); throw error }) })
 }

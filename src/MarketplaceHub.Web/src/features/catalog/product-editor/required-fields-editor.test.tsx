@@ -7,12 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Owner, 10-11 Nov 2026: on a card with variants Liste/Satış Fiyatı are open ("Kilidi kaldır") and Stok Kodu/Barkod read-only; the
 // editor's required fields are marked and stop a save of a card on sale, and a new card with one empty is kept as a draft.
 const fixture = vi.hoisted(() => {
-  const state = { calls: [] as Array<{ method: string; path: string; body: unknown }>, brandId: 'b1' as string | null, gate: null as Promise<void> | null }
+  const state = { calls: [] as Array<{ method: string; path: string; body: unknown }>, brandId: 'b1' as string | null, gate: null as Promise<void> | null, warrantyMonths: 0 as number | null, status: 'ACTIVE' }
   const variant = (id: string, sku: string, colour: string) => ({ id, productId: 'p1', version: 1, sku, barcode: `${sku}-B`, modelCode: 'M-1', optionSignature: `Renk: ${colour}`, status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 0, available: 0, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, defaultListPrice: 100, defaultSalePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [], options: { Renk: colour }, attributes: [] })
   const product = () => ({
-    id: 'p1', version: 3, title: 'Ürün', description: 'Açıklama', brandId: state.brandId, categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-10T15:00:00Z',
+    id: 'p1', version: 3, title: 'Ürün', description: 'Açıklama', brandId: state.brandId, categoryId: 'c1', status: state.status, updatedAt: '2026-11-10T15:00:00Z',
     variants: [variant('v1', 'SKU-1', 'Bej'), variant('v2', 'SKU-2', 'Mor')], primaryImageUrl: null, totalStock: 0, startingPrice: 90, currency: 'TRY', modelCode: 'M-1', activePlatforms: [],
-    defaultListPrice: 120, defaultSalePrice: 99.9, warrantyMonths: 0, deliveryDays: 1, vatRate: 20, vatInclusion: 'INCLUDED',
+    defaultListPrice: 120, defaultSalePrice: 99.9, warrantyMonths: state.warrantyMonths, deliveryDays: 1, vatRate: 20, vatInclusion: 'INCLUDED',
     mediaUrls: [], familyMediaUrls: [], familyMediaItems: [], attributes: [], familyProductIds: ['p1']
   })
   return { state, product }
@@ -43,6 +43,8 @@ beforeEach(() => {
   fixture.state.calls.length = 0
   fixture.state.brandId = 'b1'
   fixture.state.gate = null
+  fixture.state.warrantyMonths = 0
+  fixture.state.status = 'ACTIVE'
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)
@@ -117,7 +119,8 @@ describe('a card with variants in the editor', () => {
     await act(async () => { save.form!.requestSubmit(save) })
     await settle(20)
     const patch = writes().find(call => call.method === 'PATCH')!.body as { defaultSalePrice: number; defaultListPrice: number; status: string; variantUpdates: Array<{ defaultSalePrice: number }> }
-    expect(patch).toMatchObject({ defaultSalePrice: 89.9, defaultListPrice: 120, status: 'ACTIVE' })
+    expect(patch).toMatchObject({ defaultSalePrice: 89.9, defaultListPrice: 120, status: 'ACTIVE', warrantyMonths: 0 })
+    expect(patch).not.toHaveProperty('clearWarrantyMonths')
     expect(patch.variantUpdates.map(row => row.defaultSalePrice)).toEqual([90, 90])
     expect(writes().filter(call => call.path.includes('offer') || call.path.includes('publication'))).toEqual([])
   })
@@ -141,9 +144,48 @@ describe('a card with variants in the editor', () => {
   })
 })
 
+// Owner, 15 Nov 2026: "0 ile boş farklı; boşsa doldurmasını istesin ama default 0 zaten".
+describe('Garanti Süresi: 0 is no warranty, empty is not filled', () => {
+  it('opens a saved 0 as 0 and an empty warranty empty, and stops Kaydet of a card on sale until it is given', async () => {
+    await renderAt('/products/p1')
+    expect(inputOf('Garanti Süresi').value).toBe('0')
+    act(() => root.unmount())
+    root = createRoot(container)
+
+    fixture.state.warrantyMonths = null
+    await renderAt('/products/p1')
+    expect(inputOf('Garanti Süresi').value).toBe('')
+    expect(inputOf('Garanti Süresi').placeholder).toBe('0 = garanti yok')
+    const save = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
+    await act(async () => { save.form!.requestSubmit(save) })
+    await settle(5)
+    expect(writes()).toEqual([])
+    expect(labelled('Garanti Süresi').querySelector('.product-field-error')?.textContent).toBe('Garanti Süresi zorunludur.')
+
+    setValue(inputOf('Garanti Süresi'), '0')
+    await act(async () => { save.form!.requestSubmit(save) })
+    await settle(20)
+    expect(writes().find(call => call.method === 'PATCH')!.body).toMatchObject({ status: 'ACTIVE', warrantyMonths: 0 })
+  })
+
+  it('saves a draft with the field emptied as empty, saying so explicitly', async () => {
+    fixture.state.status = 'DRAFT'
+    fixture.state.warrantyMonths = 12
+    await renderAt('/products/p1')
+    expect(inputOf('Garanti Süresi').value).toBe('12')
+    setValue(inputOf('Garanti Süresi'), '')
+    const draft = container.querySelector<HTMLButtonElement>('button[data-submit-intent="draft"]')!
+    await act(async () => { draft.form!.requestSubmit(draft) })
+    await settle(20)
+    expect(writes().find(call => call.method === 'PATCH')!.body).toMatchObject({ status: 'DRAFT', warrantyMonths: null, clearWarrantyMonths: true })
+  })
+})
+
 describe('a new card with required fields empty', () => {
   it('is created as a draft by Ürünü Oluştur and never sent', async () => {
     await renderAt('/products/new')
+    // A new form starts with 0 (no warranty), which is a value: Garanti Süresi is not among what it misses.
+    expect(inputOf('Garanti Süresi').value).toBe('0')
     setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Yeni Ürün')
     setValue(inputOf('Stok Kodu'), 'NEW-1')
     const create = container.querySelector<HTMLButtonElement>('button[data-submit-intent="create"]')!
@@ -151,7 +193,7 @@ describe('a new card with required fields empty', () => {
     await act(async () => { create.form!.requestSubmit(create) })
     await settle(20)
     const post = writes().find(call => call.method === 'POST' && call.path === '/products')!
-    expect((post.body as { status: string }).status).toBe('DRAFT')
+    expect(post.body).toMatchObject({ status: 'DRAFT', warrantyMonths: 0 })
     expect(writes().filter(call => call.path.includes('publication'))).toEqual([])
   })
 })

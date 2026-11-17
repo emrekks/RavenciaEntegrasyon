@@ -16,14 +16,14 @@ public sealed class AdapterScanFollowUpTests
     {
         var mapped = new Category { Id = Guid.CreateVersion7(), Name = "Bluz", NormalizedName = "BLUZ", Path = "Bluz" };
 
-        Assert.Same(mapped, MarketplaceJobProcessor.ObservedProductCategory(observeOnly: true, addOnly: false, isNewProduct: true, mapped));
-        Assert.Null(MarketplaceJobProcessor.ObservedProductCategory(observeOnly: true, addOnly: false, isNewProduct: false, mapped));
-        Assert.Null(MarketplaceJobProcessor.ObservedProductCategory(observeOnly: false, addOnly: false, isNewProduct: true, mapped));
-        Assert.Null(MarketplaceJobProcessor.ObservedProductCategory(observeOnly: true, addOnly: false, isNewProduct: true, null));
+        Assert.Same(mapped, CatalogImportService.ObservedProductCategory(observeOnly: true, addOnly: false, isNewProduct: true, mapped));
+        Assert.Null(CatalogImportService.ObservedProductCategory(observeOnly: true, addOnly: false, isNewProduct: false, mapped));
+        Assert.Null(CatalogImportService.ObservedProductCategory(observeOnly: false, addOnly: false, isNewProduct: true, mapped));
+        Assert.Null(CatalogImportService.ObservedProductCategory(observeOnly: true, addOnly: false, isNewProduct: true, null));
     }
 
     private static string PackageState(DateTimeOffset anchor, DateTimeOffset start, int window, int offset = 0) =>
-        JsonSerializer.Serialize(new MarketplaceJobProcessor.HepsiburadaPackageSyncState(MarketplaceJobProcessor.HepsiburadaPackageSyncStateVersion, anchor, start, window, offset));
+        JsonSerializer.Serialize(new OrderReadService.HepsiburadaPackageSyncState(OrderReadService.HepsiburadaPackageSyncStateVersion, anchor, start, window, offset));
 
     [Fact]
     public void A_full_Hepsiburada_read_resumes_its_unfinished_month_of_packages()
@@ -33,38 +33,38 @@ public sealed class AdapterScanFollowUpTests
         var baseline = PackageState(anchor, OpenOrderLifecyclePolicy.HepsiburadaPackageStatusHistoryCutoff(anchor), 7);
 
         // Resumed on a full read while younger than a day; an ordinary saved state is not taken for a full read.
-        Assert.Equal(7, MarketplaceJobProcessor.ReadHepsiburadaPackageSyncState(baseline, now, forceBaseline: true)!.WindowIndex);
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaPackageSyncState(baseline, now.AddDays(2), forceBaseline: true));
-        Assert.Null(MarketplaceJobProcessor.ReadHepsiburadaPackageSyncState(PackageState(anchor, anchor.AddDays(-1), 1), now, forceBaseline: true));
-        Assert.NotNull(MarketplaceJobProcessor.ReadHepsiburadaPackageSyncState(PackageState(anchor, anchor.AddDays(-1), 1), now, forceBaseline: false));
+        Assert.Equal(7, OrderReadService.ReadHepsiburadaPackageSyncState(baseline, now, forceBaseline: true)!.WindowIndex);
+        Assert.Null(OrderReadService.ReadHepsiburadaPackageSyncState(baseline, now.AddDays(2), forceBaseline: true));
+        Assert.Null(OrderReadService.ReadHepsiburadaPackageSyncState(PackageState(anchor, anchor.AddDays(-1), 1), now, forceBaseline: true));
+        Assert.NotNull(OrderReadService.ReadHepsiburadaPackageSyncState(PackageState(anchor, anchor.AddDays(-1), 1), now, forceBaseline: false));
 
         // The orders of that full read finished before the package month began: they are not read again.
-        Assert.True(MarketplaceJobProcessor.HepsiburadaOrdersDoneForPackageBaseline(null, anchor.AddMinutes(-5), baseline, now));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaOrdersDoneForPackageBaseline("{}", anchor.AddMinutes(-5), baseline, now));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaOrdersDoneForPackageBaseline(null, anchor.AddMinutes(5), baseline, now));
-        Assert.False(MarketplaceJobProcessor.HepsiburadaOrdersDoneForPackageBaseline(null, anchor.AddMinutes(-5), null, now));
+        Assert.True(OrderReadService.HepsiburadaOrdersDoneForPackageBaseline(null, anchor.AddMinutes(-5), baseline, now));
+        Assert.False(OrderReadService.HepsiburadaOrdersDoneForPackageBaseline("{}", anchor.AddMinutes(-5), baseline, now));
+        Assert.False(OrderReadService.HepsiburadaOrdersDoneForPackageBaseline(null, anchor.AddMinutes(5), baseline, now));
+        Assert.False(OrderReadService.HepsiburadaOrdersDoneForPackageBaseline(null, anchor.AddMinutes(-5), null, now));
     }
 
     [Fact]
     public void A_Pazarama_order_page_that_repeats_the_one_before_ends_the_window()
     {
-        Assert.True(MarketplaceJobProcessor.PazaramaOrderPageRepeated("A,B", "A,B"));
-        Assert.False(MarketplaceJobProcessor.PazaramaOrderPageRepeated(null, "A,B"));
-        Assert.False(MarketplaceJobProcessor.PazaramaOrderPageRepeated("A,B", "C,D"));
-        Assert.False(MarketplaceJobProcessor.PazaramaOrderPageRepeated(null, null));
-        Assert.True(MarketplaceJobProcessor.PazaramaOrderPageCap >= 100);
+        Assert.True(OrderReadService.PazaramaOrderPageRepeated("A,B", "A,B"));
+        Assert.False(OrderReadService.PazaramaOrderPageRepeated(null, "A,B"));
+        Assert.False(OrderReadService.PazaramaOrderPageRepeated("A,B", "C,D"));
+        Assert.False(OrderReadService.PazaramaOrderPageRepeated(null, null));
+        Assert.True(OrderReadService.PazaramaOrderPageCap >= 100);
     }
 
     [Fact]
     public void A_new_structure_root_category_takes_a_free_key()
     {
-        var keys = MarketplaceJobProcessor.StructureCategoryKeys("Bluz (Hepsiburada)", "KADIN BLUZ", "123");
+        var keys = CatalogImportService.StructureCategoryKeys("Bluz (Hepsiburada)", "KADIN BLUZ", "123");
 
-        Assert.Equal("KADIN BLUZ", MarketplaceJobProcessor.FreeStructureCategoryKey(keys, new HashSet<string>(), "Bluz (Hepsiburada)"));
+        Assert.Equal("KADIN BLUZ", CatalogImportService.FreeStructureCategoryKey(keys, new HashSet<string>(), "Bluz (Hepsiburada)"));
         // The path's key is held (a switched-off root, or the category mapped to another remote one): the name's key.
-        Assert.Equal(keys[1], MarketplaceJobProcessor.FreeStructureCategoryKey(keys, new HashSet<string> { "KADIN BLUZ" }, "Bluz (Hepsiburada)"));
+        Assert.Equal(keys[1], CatalogImportService.FreeStructureCategoryKey(keys, new HashSet<string> { "KADIN BLUZ" }, "Bluz (Hepsiburada)"));
         var allTaken = keys.ToHashSet();
-        var fallback = MarketplaceJobProcessor.FreeStructureCategoryKey(keys, allTaken, "Bluz (Hepsiburada)");
+        var fallback = CatalogImportService.FreeStructureCategoryKey(keys, allTaken, "Bluz (Hepsiburada)");
         Assert.DoesNotContain(fallback, allTaken);
     }
 }

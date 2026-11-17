@@ -72,7 +72,7 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
         await using (var db = fixture.CreateContext())
         {
             Assert.False(await db.Orders.AnyAsync(x => x.TenantId == tenant.Id));
-            var marker = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == MarketplaceJobProcessor.OrderNotImportedKey(connection.Id, number));
+            var marker = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == OrderIngestionService.OrderNotImportedKey(connection.Id, number));
             Assert.Equal((OperationalIssueRetentionService.OrderNotImportedCode, IssueStatus.Open), (marker.Code, marker.Status));
             var cursor = await db.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.ResourceType == RejectedOrderRereadPolicy.CursorResource);
             Assert.Equal(number, Assert.Single(RejectedOrderRereadPolicy.Parse(cursor.OpaqueCursor)).OrderId);
@@ -109,7 +109,7 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
         }
         RemoteReturnClaim Claim(DateTimeOffset modified) => new("claim-1", "ord-ret-1", "Accepted", null, null, null, modified,
             [new RemoteReturnLine("claim-line-1", "ol-2", 1, RawStatus: "Accepted")], "{}");
-        var key = MarketplaceJobProcessor.ReturnLineUnlinkedIssueKey(connection.Id, "claim-1", "claim-line-1");
+        var key = ReturnIngestionService.ReturnLineUnlinkedIssueKey(connection.Id, "claim-1", "claim-line-1");
 
         // The claim arrives before the order line it names.
         await using (var db = fixture.CreateContext())
@@ -132,7 +132,7 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
             // A notice left open by the code before this one (its line already linked) is closed by the retention pass;
             // one whose line is still missing stays.
             await db.OperationalIssues.Where(x => x.TenantId == tenant.Id && x.DedupeKey == key).ExecuteUpdateAsync(x => x.SetProperty(i => i.Status, IssueStatus.Open));
-            var missing = MarketplaceJobProcessor.ReturnLineUnlinkedIssueKey(connection.Id, "claim-1", "claim-line-9");
+            var missing = ReturnIngestionService.ReturnLineUnlinkedIssueKey(connection.Id, "claim-1", "claim-line-9");
             db.OperationalIssues.Add(Issue(tenant.Id, missing, "RETURN_LINE_ORDER_LINE_NOT_FOUND"));
             await db.SaveChangesAsync();
             Assert.True(await new OperationalIssueRetentionService(db, fixture.TimeProvider).ResolveLinkedReturnLineIssuesAsync(CancellationToken.None) >= 1);

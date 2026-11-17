@@ -1,0 +1,299 @@
+{
+  "Runs": [
+    {
+      "Run": "probe",
+      "JobType": "TRENDYOL_CAPABILITY_PROBE",
+      "Result": {
+        "Kind": "Blocked",
+        "ErrorCode": "AUTH_REJECTED",
+        "ErrorSummary": "golden: AUTH_REJECTED",
+        "RetryAfter": "00:05:00",
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": true,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.GetCommonLabel key=stage-capability-probe:job stageProbe \"7330000000001\" \"ZPL\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "AuditLog",
+      "Rows": [
+        {
+          "Action": "STAGE_TEST_ORDER_CREATED",
+          "ActorUserId": "actor",
+          "CorrelationId": "golden",
+          "CreatedAt": "T-00:05:00",
+          "Id": "<sequence>",
+          "Reason": "fresh-label-write-fixture:TRENDYOL",
+          "TargetId": "7101",
+          "TargetType": "StageTestOrder",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id1",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "NEW",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "7101",
+          "GrossAmount": 100.0000,
+          "Id": "order-7101",
+          "InvoiceAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-03:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "7101",
+          "OrderedAt": "T-1.00:00:00",
+          "ShipmentAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "8690000000001",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "31000001",
+          "Id": "id2",
+          "OrderId": "order-7101",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Created",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-1",
+          "SourceSnapshotJson": "<raw 2 chars sha256:44136fa355b3>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Ürün",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 100.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "NEW",
+          "Id": "id3",
+          "OccurredAt": "T-03:00:00",
+          "OrderId": "order-7101",
+          "PackageId": "package",
+          "RawStatus": "Created",
+          "RecordedAt": "T-00:30:00",
+          "SourceEventId": "P7101:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id4",
+          "OrderLineId": "id2",
+          "PackageId": "package",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "SourceEventId": "P7101:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformCapability",
+      "Rows": [
+        {
+          "ApiVersion": "V2",
+          "Code": "LABEL_READ",
+          "ConnectionId": "connection",
+          "ConstraintsJson": null,
+          "Environment": "STAGE",
+          "EvidenceNote": null,
+          "FixtureChecksum": null,
+          "Id": "capability-LABEL_READ",
+          "RequiredScope": null,
+          "SourceUrl": null,
+          "SourceVersion": null,
+          "StoreScope": "2738",
+          "SupportLevel": "Unknown",
+          "TenantId": "tenant",
+          "VerifiedAt": null,
+          "Version": 0
+        },
+        {
+          "ApiVersion": "V2",
+          "Code": "LABEL_WRITE",
+          "ConnectionId": "connection",
+          "ConstraintsJson": null,
+          "Environment": "STAGE",
+          "EvidenceNote": null,
+          "FixtureChecksum": null,
+          "Id": "capability-LABEL_WRITE",
+          "RequiredScope": null,
+          "SourceUrl": null,
+          "SourceVersion": null,
+          "StoreScope": "2738",
+          "SupportLevel": "Unknown",
+          "TenantId": "tenant",
+          "VerifiedAt": null,
+          "Version": 0
+        },
+        {
+          "ApiVersion": "V2",
+          "Code": "SHIPMENT_WRITE",
+          "ConnectionId": "connection",
+          "ConstraintsJson": null,
+          "Environment": "STAGE",
+          "EvidenceNote": null,
+          "FixtureChecksum": null,
+          "Id": "capability-SHIPMENT_WRITE",
+          "RequiredScope": null,
+          "SourceUrl": null,
+          "SourceVersion": null,
+          "StoreScope": "2738",
+          "SupportLevel": "Unknown",
+          "TenantId": "tenant",
+          "VerifiedAt": null,
+          "Version": 0
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "STAGE",
+          "ExternalStoreId": "2738",
+          "Id": "connection",
+          "LastErrorClass": "Authentication",
+          "LastErrorCode": "AUTH_REJECTED",
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "ARAS Kargo",
+          "CargoTrackingNumber": "7330000000001",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "P7101",
+          "GrossAmount": 100.0000,
+          "Id": "package",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-7101",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Created",
+          "RemoteVersion": null,
+          "Status": "New",
+          "StatusOccurredAt": "T-03:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 1,
+          "CursorStagnantSince": null,
+          "Id": "id5",
+          "LastAttemptAt": "T+00:00:01",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "AUTH_REJECTED",
+          "LastErrorAt": "T+00:00:03",
+          "LastFailedCount": 2,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 1,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "CAPABILITY_PROBE",
+          "TenantId": "tenant",
+          "Version": 3
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}

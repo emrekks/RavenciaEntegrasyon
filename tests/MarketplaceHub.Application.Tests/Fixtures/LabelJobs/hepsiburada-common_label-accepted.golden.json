@@ -1,0 +1,350 @@
+{
+  "Runs": [
+    {
+      "Run": "run-0",
+      "JobType": "TRENDYOL_COMMON_LABEL",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "COMMON_LABEL_READ_PENDING",
+        "ErrorSummary": "Hepsiburada paket etiketi salt okunur API’den alınıyor.",
+        "RetryAfter": "00:00:01",
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": []
+    },
+    {
+      "Run": "run-1",
+      "JobType": "TRENDYOL_COMMON_LABEL",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.GetCommonLabel key=common-label:job:poll \"P7101\" \"PDF\"",
+        "files.Save id1-common-label.pdf application/pdf 24 bytes"
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "FileAsset",
+      "Rows": [
+        {
+          "ArchivedAt": null,
+          "Classification": "SHIPMENT_LABEL",
+          "CreatedAt": "T+00:00:38",
+          "Id": "id1",
+          "MimeType": "application/pdf",
+          "OriginalNameSafe": "P7101.pdf",
+          "RelativePath": "stored/id1-common-label.pdf",
+          "Sha256": "7161A7D515FC90FCCB2AE7B875C10E42F0D32D7E5C141D31934A3479FCF8AA75",
+          "SizeBytes": 24,
+          "Status": "ACTIVE",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationJob",
+      "Rows": [
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:03",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "golden",
+          "CreatedAt": "T+00:00:00",
+          "EffectIdempotencyKey": "common-label:job",
+          "HeartbeatAt": null,
+          "Id": "job",
+          "JobDedupKey": "golden-label:job",
+          "JobType": "TRENDYOL_COMMON_LABEL",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "shipment_action",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "JobId": "job",
+            "PackageId": "package",
+            "Phase": "POLL",
+            "BoxQuantity": 1,
+            "VolumetricHeight": 10,
+            "StartedAt": "2030-01-01T08:59:00+00:00",
+            "DeadlineAt": "2030-01-01T09:30:00+00:00",
+            "Format": "PDF"
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "orders",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "Leased",
+          "TenantId": "tenant",
+          "TriggerType": "manual",
+          "Version": 1,
+          "WaitingChecks": 0
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id2",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "NEW",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "7101",
+          "GrossAmount": 100.0000,
+          "Id": "order-7101",
+          "InvoiceAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-03:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "7101",
+          "OrderedAt": "T-1.00:00:00",
+          "ShipmentAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "8690000000001",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "31000001",
+          "Id": "id3",
+          "OrderId": "order-7101",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Created",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-1",
+          "SourceSnapshotJson": "<raw 2 chars sha256:44136fa355b3>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Ürün",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 100.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "NEW",
+          "Id": "id4",
+          "OccurredAt": "T-03:00:00",
+          "OrderId": "order-7101",
+          "PackageId": "package",
+          "RawStatus": "Created",
+          "RecordedAt": "T-00:30:00",
+          "SourceEventId": "P7101:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id5",
+          "OrderLineId": "id3",
+          "PackageId": "package",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "SourceEventId": "P7101:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "HEPSIBURADA",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "HEPSIBURADA",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentDocument",
+      "Rows": [
+        {
+          "Checksum": "7161A7D515FC90FCCB2AE7B875C10E42F0D32D7E5C141D31934A3479FCF8AA75",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:39",
+          "DocumentKind": "COMMON_LABEL",
+          "DocumentVersion": 1,
+          "ExpiresAt": null,
+          "FileAssetId": "id1",
+          "Format": "PDF",
+          "Id": "id6",
+          "PackageId": "package",
+          "Source": "HEPSIBURADA",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentDocumentAttempt",
+      "Rows": [
+        {
+          "CompletedAt": "T+00:00:40",
+          "CreatedAt": "T+00:00:00",
+          "DocumentId": "id6",
+          "ErrorCode": null,
+          "ExternalOperationId": null,
+          "Id": "attempt",
+          "IdempotencyKey": "common-label:job",
+          "PackageId": "package",
+          "Status": "SUCCEEDED",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "HEPSIJET",
+          "CargoTrackingNumber": "7330000000001",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "P7101",
+          "GrossAmount": 100.0000,
+          "Id": "package",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-7101",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Created",
+          "RemoteVersion": null,
+          "Status": "New",
+          "StatusOccurredAt": "T-03:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id7",
+          "LastAttemptAt": "T+00:00:35",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 1,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": "T+00:00:04",
+          "LastSuccessAt": "T+00:00:41",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "COMMON_LABEL",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}

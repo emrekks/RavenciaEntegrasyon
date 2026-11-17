@@ -1,0 +1,42 @@
+{
+  "JobType": "SHOPIFY_ORDER_RECONCILIATION",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "ORDER_RECONCILE_1D",
+      "Watermark": null,
+      "LastSuccess": null,
+      "OpaqueCursor": null,
+      "Version": 1
+    },
+    {
+      "ResourceType": "ORDER_RECONCILIATION",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:10:06.000Z",
+      "OpaqueCursor": null,
+      "Version": 5
+    }
+  ],
+  "Issues": []
+}

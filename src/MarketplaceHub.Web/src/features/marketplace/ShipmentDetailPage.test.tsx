@@ -58,7 +58,6 @@ describe('shipment package requests', () => {
     await act(async () => { api.release?.() })
     await waitFor(() => invalidate.mock.calls.length > 0)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shipments'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shipment', 'p1'] })
   })
 

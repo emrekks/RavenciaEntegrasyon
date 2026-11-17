@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using MarketplaceHub.Api.Common;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Api.Security;
 using MarketplaceHub.Application;
@@ -9,14 +10,17 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Settings;
 
 // Ayarlar › Kullanıcılar: the workspace's users, managed by the owner and administrators only
 // (RoleAuthorizationMiddleware: every /api/v1/settings/users route is Elevated, reads included).
-//   GET  /api/v1/settings/users                          name, e-mail, role, 2FA, last sign-in, state
-//   POST /api/v1/settings/users                          add: a new account gets a one-time password (shown once,
-//                                                        changed at the first sign-in); an existing account joins
+//   GET  /api/v1/settings/users                          name, e-mail, role, 2FA, last sign-in, state; pending invitations
+//   POST /api/v1/settings/users                          add (Idempotency-Key): a new account gets a one-time password
+//                                                        (shown once, changed at the first sign-in); an existing account
+//                                                        is invited and joins only when it accepts (API-GUVENLIK-6)
+//   DELETE /api/v1/settings/users/invitations/{id}       Daveti Geri Çek: the pending invitation is removed
 //   PUT  /api/v1/settings/users/{id}/role                change the role in this workspace
 //   PUT  /api/v1/settings/users/{id}/status              Pasife Al / Etkinleştir (the membership in this workspace)
 //   POST /api/v1/settings/users/{id}/password-reset      a new one-time password, sessions ended
@@ -31,7 +35,13 @@ namespace MarketplaceHub.Api.Settings;
 public static class UserManagementEndpoints
 {
     public const string Created = "USER_CREATED";
+    // Written before invitations (16 Nov 2026) when an existing account was added at once; kept for reading old logs.
     public const string MembershipAdded = "USER_MEMBERSHIP_ADDED";
+    public const string Invited = "USER_INVITED";
+    public const string InvitationWithdrawn = "USER_INVITATION_WITHDRAWN";
+    public const string InvitationAccepted = "USER_INVITATION_ACCEPTED";
+    public const string InvitationDeclined = "USER_INVITATION_DECLINED";
+    public const string InvitationRevoked = "USER_INVITATION_REVOKED";
     public const string RoleChanged = "USER_ROLE_CHANGED";
     public const string Disabled = "USER_DISABLED";
     public const string Enabled = "USER_ENABLED";
@@ -46,14 +56,17 @@ public static class UserManagementEndpoints
 
     public static IEndpointRouteBuilder MapUserManagementEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/settings/users");
-        group.MapGet("", ListAsync);
-        group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPut("/{id:guid}/status", ChangeStatusAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/{id:guid}/password-reset", ResetPasswordAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/{id:guid}/mfa-reset", ResetMfaAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
-        group.MapPost("/{id:guid}/sessions/revoke", RevokeSessionsAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit);
+        var group = endpoints.MapGroup("/api/v1/settings/users").WithGates(ApiGate.Elevated, ApiGate.Elevated);
+        group.MapGet("", ListAsync).Produces<TenantUsersView>();
+        // A repeat with the same key is answered IDEMPOTENCY_RESPONSE_WITHHELD: the one-time password is never stored
+        // for a replay (SecretResponseRoutes).
+        group.MapPost("", CreateAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireIdempotencyKey().Produces<AddedBody>();
+        group.MapDelete("/invitations/{invitationId:guid}", WithdrawInvitationAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent(WriteReasons.Removes).Produces(StatusCodes.Status204NoContent);
+        group.MapPut("/{id:guid}/role", ChangeRoleAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("sets the role the body names").Produces(StatusCodes.Status204NoContent);
+        group.MapPut("/{id:guid}/status", ChangeStatusAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("sets the active state the body names").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/{id:guid}/password-reset", ResetPasswordAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("each call issues a new one-time temporary password and ends the user's sessions").Produces<TemporaryPasswordView>();
+        group.MapPost("/{id:guid}/mfa-reset", ResetMfaAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("clears the user's second factor; a repeat finds it cleared").Produces(StatusCodes.Status204NoContent);
+        group.MapPost("/{id:guid}/sessions/revoke", RevokeSessionsAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("ends the user's open sessions; a repeat ends none").Produces<SessionsRevokedView>();
         return endpoints;
     }
 
@@ -97,12 +110,35 @@ public static class UserManagementEndpoints
                 openSessions = x.OpenSessions,
                 self = x.Id == tenant.UserId
             });
-        return Results.Ok(new { currentUserId = tenant.UserId, currentRole = tenant.Role, items });
+        // The name and e-mail the inviter typed, not the account's own: the list tells nothing about the account.
+        var invitationRows = await db.TenantInvitations.AsNoTracking().Where(x => x.TenantId == tenant.TenantId).ToListAsync(http.RequestAborted);
+        var invitations = invitationRows
+            .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .Select(x => new TenantInvitationView(x.Id, x.DisplayName, x.Email, RoleWire(x.Role), x.CreatedAt, x.ExpiresAt, x.ExpiresAt <= now));
+        return Results.Ok(new { currentUserId = tenant.UserId, currentRole = tenant.Role, items, invitations });
+    }
+
+    // Withdrawing only takes back an offer that grants nothing yet, so it asks for no password; an administrator cannot
+    // withdraw an invitation to the owner role, as they cannot change an owner.
+    private static async Task<IResult> WithdrawInvitationAsync(Guid invitationId, HttpContext http, AppDbContext db, TimeProvider time)
+    {
+        if (Tenant(http) is not { } tenant) return ApiProblems.Unauthenticated(http);
+        var invitation = await db.TenantInvitations.SingleOrDefaultAsync(x => x.Id == invitationId && x.TenantId == tenant.TenantId, http.RequestAborted);
+        if (invitation is null) return Results.NoContent();
+        if (invitation.Role == MembershipRole.Owner && !IsOwner(tenant)) return Refused("OWNER_PROTECTED", "Sahip rolündeki bir daveti yalnız bir sahip geri çekebilir.");
+        var now = time.GetUtcNow();
+        if (await db.TenantInvitations.Where(x => x.Id == invitation.Id).ExecuteDeleteAsync(http.RequestAborted) == 1)
+        {
+            Audit(db, http, tenant, InvitationWithdrawn, invitation.UserId, $"role={RoleWire(invitation.Role)}; invitation={invitation.Id:D}", now);
+            await db.SaveChangesAsync(http.RequestAborted);
+        }
+        return Results.NoContent();
     }
 
     private static async Task<IResult> CreateAsync(CreateRequest request, HttpContext http, AppDbContext db, UserManager<ApplicationUser> users, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
         if (Tenant(http) is not { } tenant) return ApiProblems.Unauthenticated(http);
+        if (RequireIdempotency(http) is { } missingKey) return missingKey;
         var email = request.Email?.Trim() ?? string.Empty;
         var displayName = request.DisplayName?.Trim() ?? string.Empty;
         if (!IsEmail(email)) return Invalid("Geçerli bir e-posta adresi girin.");
@@ -117,10 +153,25 @@ public static class UserManagementEndpoints
         {
             if (await db.TenantMemberships.AnyAsync(x => x.TenantId == tenant.TenantId && x.UserId == existing.Id, http.RequestAborted))
                 return Conflict("USER_ALREADY_MEMBER", "Bu e-posta adresiyle bir kullanıcı bu çalışma alanında zaten var.");
-            db.TenantMemberships.Add(new TenantMembership { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, UserId = existing.Id, Role = role, CreatedAt = now, UpdatedAt = now });
-            Audit(db, http, tenant, MembershipAdded, existing.Id, $"role={RoleWire(role)}; existing-account", now);
-            await db.SaveChangesAsync(http.RequestAborted);
-            return Results.Ok(new { userId = existing.Id, existingAccount = true, temporaryPassword = (string?)null });
+            // API-GUVENLIK-6 (owner decision 16 Nov 2026): an existing account is invited, never added. The invitation grants
+            // nothing until the person accepts it after signing in (WorkspaceInvitationEndpoints).
+            var invitation = await db.TenantInvitations.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.UserId == existing.Id, http.RequestAborted);
+            // A declined invitation answers like a pending one for TenantInvitation.DeclineQuiet: the inviter does not learn
+            // it was declined, and the invited person is not asked again at every sign-in.
+            if (invitation is not null && (invitation.DeclinedAt is { } declined ? declined > now - TenantInvitation.DeclineQuiet : invitation.ExpiresAt > now))
+                return Conflict("INVITATION_PENDING", "Bu e-posta adresine bu çalışma alanından gönderilmiş, yanıt bekleyen bir davet var.");
+            if (invitation is null)
+            {
+                invitation = new TenantInvitation { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, UserId = existing.Id, Email = email, DisplayName = displayName };
+                db.TenantInvitations.Add(invitation);
+            }
+            // An expired (or long-declined) invitation is renewed in place: the same row, a new role, name and period.
+            invitation.Role = role; invitation.Email = email; invitation.DisplayName = displayName; invitation.InvitedByUserId = tenant.UserId;
+            invitation.CreatedAt = now; invitation.ExpiresAt = now.Add(TenantInvitation.Lifetime); invitation.DeclinedAt = null;
+            Audit(db, http, tenant, Invited, existing.Id, $"role={RoleWire(role)}; invitation={invitation.Id:D}; expires={invitation.ExpiresAt:O}", now);
+            try { await db.SaveChangesAsync(http.RequestAborted); }
+            catch (DbUpdateException) { return Conflict("USER_ADD_FAILED", "Kullanıcı şu anda eklenemedi; listeyi yenileyip yeniden deneyin."); }
+            return AddedResponse(null);
         }
 
         var temporary = BreakGlassService.TemporaryPassword();
@@ -129,8 +180,9 @@ public static class UserManagementEndpoints
         var created = await users.CreateAsync(user, temporary);
         if (!created.Succeeded)
         {
+            // An account made by someone else meanwhile: the answer does not say that an account exists (API-GUVENLIK-6).
             return created.Errors.Any(x => x.Code is "DuplicateEmail" or "DuplicateUserName")
-                ? Conflict("USER_ALREADY_EXISTS", "Bu e-posta adresiyle bir hesap zaten var.")
+                ? Conflict("USER_ADD_FAILED", "Kullanıcı şu anda eklenemedi; listeyi yenileyip yeniden deneyin.")
                 : Invalid("Kullanıcı oluşturulamadı: " + string.Join(", ", created.Errors.Select(x => x.Code)));
         }
         db.UserSecurities.Add(new UserSecurity { UserId = user.Id, TotpState = TotpState.Disabled });
@@ -138,8 +190,17 @@ public static class UserManagementEndpoints
         Audit(db, http, tenant, Created, user.Id, $"role={RoleWire(role)}; one-time-password", now);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
-        return Results.Ok(new { userId = user.Id, existingAccount = false, temporaryPassword = temporary });
+        return AddedResponse(temporary);
     }
+
+    // API-GUVENLIK-6: adding a user answers in one shape whether the e-mail was new or an existing account was invited:
+    // no account id and no "existing account" flag. Only a new account carries the one-time password, because that is
+    // how the inviter hands the new account over; so the body itself tells the inviter "an invitation was sent" (an
+    // existing account) from "an account was made" (owner accepted, 16 Nov 2026). Nothing here hides that difference,
+    // in the body or in timing; what stays hidden is the account itself, which joins nothing before it accepts.
+    internal static IResult AddedResponse(string? temporaryPassword) => Results.Ok(new AddedBody(true, temporaryPassword));
+
+    internal sealed record AddedBody(bool Added, string? TemporaryPassword);
 
     private static async Task<IResult> ChangeRoleAsync(Guid id, RoleRequest request, HttpContext http, AppDbContext db, UserManager<ApplicationUser> users, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
     {
@@ -151,11 +212,21 @@ public static class UserManagementEndpoints
         if (membership.Role == role) return Results.NoContent();
         if (membership.Role == MembershipRole.Owner && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        var ownerChange = membership.Role == MembershipRole.Owner;
+        await using var transaction = ownerChange ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : await db.Database.BeginTransactionAsync(http.RequestAborted);
+        if (ownerChange && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibinin rolü değiştirilemez.");
         var now = time.GetUtcNow();
         var previous = membership.Role;
         membership.Role = role; membership.UpdatedAt = now; membership.Version++;
         Audit(db, http, tenant, RoleChanged, membership.UserId, $"from={RoleWire(previous)}; to={RoleWire(role)}", now);
+        // Security review 16 Nov 2026: invitations the user can no longer give stop with the demotion. Below the elevated
+        // roles all of them; an owner made administrator, those to the owner role.
+        if (role is not (MembershipRole.Owner or MembershipRole.Administrator))
+            await WithdrawInvitationsOfAsync(db, http, tenant, membership.UserId, ownerOnly: false, "inviter-demoted", now);
+        else if (role == MembershipRole.Administrator && previous == MembershipRole.Owner)
+            await WithdrawInvitationsOfAsync(db, http, tenant, membership.UserId, ownerOnly: true, "inviter-demoted", now);
         await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
@@ -168,11 +239,17 @@ public static class UserManagementEndpoints
         if (membership.Status == target) return Results.NoContent();
         if (!request.Active && membership.Role == MembershipRole.Owner && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        var ownerChange = !request.Active && membership.Role == MembershipRole.Owner;
+        await using var transaction = ownerChange ? await LockMembershipsAsync(db, tenant.TenantId, http.RequestAborted) : await db.Database.BeginTransactionAsync(http.RequestAborted);
+        if (ownerChange && await IsLastActiveOwnerAsync(membership, db, http)) return Conflict("LAST_OWNER", "Çalışma alanının son etkin sahibi pasife alınamaz.");
         var now = time.GetUtcNow();
         membership.Status = target; membership.UpdatedAt = now; membership.Version++;
         var revoked = request.Active ? 0 : await RevokeWorkspaceSessionsAsync(membership.UserId, tenant.TenantId, db, now, http.RequestAborted);
         Audit(db, http, tenant, request.Active ? Enabled : Disabled, membership.UserId, request.Active ? "membership-active" : $"membership-disabled; sessions-revoked={revoked}", now);
+        // Security review 16 Nov 2026: a deactivated user's outstanding invitations stop with them.
+        if (!request.Active) await WithdrawInvitationsOfAsync(db, http, tenant, membership.UserId, ownerOnly: false, "inviter-disabled", now);
         await db.SaveChangesAsync(http.RequestAborted);
+        await transaction.CommitAsync(http.RequestAborted);
         return Results.NoContent();
     }
 
@@ -240,6 +317,21 @@ public static class UserManagementEndpoints
         return Results.Ok(new { revoked });
     }
 
+    // Removes the inviter's outstanding (not declined) invitations of this workspace, each audited as withdrawn. Declined
+    // rows stay: they only hold the re-invite quiet period and grant nothing.
+    private static async Task<int> WithdrawInvitationsOfAsync(AppDbContext db, HttpContext http, TenantContext actor, Guid inviterId, bool ownerOnly, string reason, DateTimeOffset now)
+    {
+        var outstanding = await db.TenantInvitations
+            .Where(x => x.TenantId == actor.TenantId && x.InvitedByUserId == inviterId && x.DeclinedAt == null && (!ownerOnly || x.Role == MembershipRole.Owner))
+            .ToListAsync(http.RequestAborted);
+        foreach (var invitation in outstanding)
+        {
+            db.TenantInvitations.Remove(invitation);
+            Audit(db, http, actor, InvitationWithdrawn, invitation.UserId, $"role={RoleWire(invitation.Role)}; invitation={invitation.Id:D}; {reason}; inviter={inviterId:D}", now);
+        }
+        return outstanding.Count;
+    }
+
     // Who may change whom, before anything is checked or counted.
     internal static IResult? Guard(TenantContext actor, TenantMembership target)
     {
@@ -250,6 +342,17 @@ public static class UserManagementEndpoints
 
     private static Task<TenantMembership?> TargetAsync(Guid userId, TenantContext tenant, AppDbContext db, HttpContext http) =>
         db.TenantMemberships.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.UserId == userId, http.RequestAborted);
+
+    // API-GUVENLIK-5: demoting or disabling an owner re-checks "another active owner remains" under a lock on the
+    // workspace's memberships, held until the change commits. Two owners demoting each other at once used to pass the
+    // check both (it ran before the seconds-long re-authentication) and leave the workspace without an owner; now the
+    // second waits for the first and sees its result. The rows are locked in one order, so two changes cannot deadlock.
+    private static async Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction> LockMembershipsAsync(AppDbContext db, Guid tenantId, CancellationToken cancellationToken)
+    {
+        var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM iam.tenant_memberships WHERE \"TenantId\" = {tenantId} ORDER BY \"Id\" FOR UPDATE", cancellationToken);
+        return transaction;
+    }
 
     // An active owner is one whose membership and account are both active.
     private static async Task<bool> IsLastActiveOwnerAsync(TenantMembership membership, AppDbContext db, HttpContext http) =>
@@ -307,7 +410,6 @@ public static class UserManagementEndpoints
         return MailAddress.TryCreate(value, out var parsed) && string.Equals(parsed.Address, value, StringComparison.OrdinalIgnoreCase) && parsed.Host.Contains('.', StringComparison.Ordinal);
     }
 
-    private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
     private static IResult Invalid(string message) => ApiProblems.Of(null, "INVALID_REQUEST", message, 400);
     private static IResult Refused(string code, string message) => ApiProblems.Of(null, code, message, 403);
     private static IResult Conflict(string code, string message) => ApiProblems.Of(null, code, message, 409);

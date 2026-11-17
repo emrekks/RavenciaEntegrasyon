@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, taxpayerStatusLabel, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
-import { invoiceGlyphKind } from './invoice-state-glyph'
+import { invoiceGlyphKind } from '../../shared/ui/invoice-state-glyph'
 
 import { invoiceStatusLabel, invoiceStatusTone } from '../../shared/status-labels'
 

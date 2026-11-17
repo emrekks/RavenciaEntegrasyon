@@ -1,0 +1,184 @@
+{
+  "total": 5,
+  "mapped": [
+    {
+      "order": {
+        "ExternalOrderId": "4000000001",
+        "OrderNumber": "4000000001",
+        "OrderedAt": "2026-11-05T11:30:00+00:00",
+        "LastModifiedAt": "2026-11-05T11:35:10+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 300.0,
+        "DiscountAmount": 30.0,
+        "NetAmount": 270.0,
+        "CustomerSnapshotJson": {
+          "name": "Test Musteri",
+          "email": null,
+          "phoneNumber": null
+        },
+        "ShipmentAddressSnapshotJson": {
+          "addressId": "addr-fake-1",
+          "address": "Fake Sokak 1",
+          "name": "Test Musteri",
+          "email": "customer@example.test",
+          "countryCode": "TR",
+          "phoneNumber": "5550000000",
+          "district": "Fake Mahalle",
+          "city": "İstanbul",
+          "town": "Kadıköy"
+        },
+        "InvoiceAddressSnapshotJson": {
+          "addressId": "addr-fake-2",
+          "address": "Fake Sokak 1",
+          "name": "Test Musteri",
+          "email": "customer@example.test",
+          "countryCode": "TR",
+          "phoneNumber": "5550000000",
+          "district": "Fake Mahalle",
+          "city": "İstanbul",
+          "town": "Kadıköy",
+          "turkishIdentityNumber": "00000000000",
+          "taxNumber": "",
+          "taxOffice": ""
+        },
+        "Lines": [
+          {
+            "ExternalLineId": "00000000-0000-4000-8000-0000000000c1",
+            "Sku": "SKU-FAKE-HB1",
+            "Barcode": null,
+            "Title": "Fake HB Ürün 1",
+            "Quantity": 3,
+            "UnitPrice": 100.0,
+            "VatRate": 20,
+            "RawStatus": "Open",
+            "SourceSnapshotJson": "<raw 1570 chars sha256:e529c3b3d676>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          }
+        ],
+        "Packages": [],
+        "RawJson": "<raw 1570 chars sha256:e529c3b3d676>",
+        "ShipmentDueAt": "2026-11-07T20:59:00+00:00",
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "NOT_CANCELLED",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": "Open",
+        "StoreFrontCode": null
+      },
+      "refusal": null
+    },
+    {
+      "order": {
+        "ExternalOrderId": "4000000002",
+        "OrderNumber": "4000000002",
+        "OrderedAt": "2026-11-05T06:00:00+00:00",
+        "LastModifiedAt": "2026-11-05T06:00:00+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 50.0,
+        "DiscountAmount": 0,
+        "NetAmount": 50.0,
+        "CustomerSnapshotJson": {
+          "name": "Test Musteri",
+          "email": null,
+          "phoneNumber": null
+        },
+        "ShipmentAddressSnapshotJson": {},
+        "InvoiceAddressSnapshotJson": {},
+        "Lines": [
+          {
+            "ExternalLineId": "00000000-0000-4000-8000-0000000000c2",
+            "Sku": "SKU-FAKE-HB2",
+            "Barcode": null,
+            "Title": "Fake HB Ürün 2",
+            "Quantity": 1,
+            "UnitPrice": 50.0,
+            "VatRate": 10,
+            "RawStatus": "",
+            "SourceSnapshotJson": "<raw 431 chars sha256:8d2c5967d685>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          }
+        ],
+        "Packages": [],
+        "RawJson": "<raw 431 chars sha256:8d2c5967d685>",
+        "ShipmentDueAt": null,
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": null,
+        "StoreFrontCode": null
+      },
+      "refusal": null
+    },
+    {
+      "order": {
+        "ExternalOrderId": "4000000003",
+        "OrderNumber": "4000000003",
+        "OrderedAt": "2026-11-05T06:00:00+00:00",
+        "LastModifiedAt": "2026-11-05T06:00:00+00:00",
+        "Currency": "TRY",
+        "GrossAmount": 79.90,
+        "DiscountAmount": 0,
+        "NetAmount": 79.90,
+        "CustomerSnapshotJson": {
+          "name": null,
+          "email": null,
+          "phoneNumber": null
+        },
+        "ShipmentAddressSnapshotJson": {},
+        "InvoiceAddressSnapshotJson": {},
+        "Lines": [
+          {
+            "ExternalLineId": "00000000-0000-4000-8000-0000000000c3",
+            "Sku": "SKU-FAKE-HB3",
+            "Barcode": null,
+            "Title": "Fake HB Ürün 3",
+            "Quantity": 2,
+            "UnitPrice": 39.95,
+            "VatRate": 20,
+            "RawStatus": "SomeFutureStatus",
+            "SourceSnapshotJson": "<raw 445 chars sha256:92750b3f5fb6>",
+            "CancelledQuantity": 0,
+            "CancelledAt": null,
+            "PlatformDiscount": null
+          }
+        ],
+        "Packages": [],
+        "RawJson": "<raw 445 chars sha256:92750b3f5fb6>",
+        "ShipmentDueAt": null,
+        "PaymentStatus": "UNKNOWN",
+        "CancellationStatus": "UNKNOWN",
+        "RefundStatus": "UNKNOWN",
+        "RefundedAmount": 0,
+        "Refunds": null,
+        "LifecycleStatus": "SomeFutureStatus",
+        "StoreFrontCode": null
+      },
+      "refusal": null
+    },
+    {
+      "order": null,
+      "refusal": {
+        "Code": "ORDER_PACKAGE_INVALID",
+        "Identity": "4000000004",
+        "Message": "Hepsiburada siparişi 4000000004 içeri alınmadı: sipariş tarihi (orderDate) yok; sipariş yeniden okunacak.",
+        "RereadOrderId": "4000000004"
+      }
+    },
+    {
+      "order": null,
+      "refusal": {
+        "Code": "ORDER_PACKAGE_INVALID",
+        "Identity": "00000000-0000-4000-8000-0000000000c5",
+        "Message": "Hepsiburada ödemesi tamamlanmış sipariş satırı içeri alınmadı: sipariş numarası (orderNumber) yok.",
+        "RereadOrderId": null
+      }
+    }
+  ]
+}

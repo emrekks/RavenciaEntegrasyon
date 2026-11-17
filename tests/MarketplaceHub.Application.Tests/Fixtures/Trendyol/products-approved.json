@@ -1,0 +1,72 @@
+// Source: hand-built on the ApprovedProductsResponse schema of Ravencia-API-Docs/trendyol-api-son.md "Ürün Filtreleme -
+// Onaylı Ürün (filterApprovedProducts)" (~29780-30296: content → variants with barcode, stockCode, onSale, locked,
+// archived, blacklisted, price, vatRate), merged with the former anonymous fixture product-approved.json. One content with
+// an on-sale variant, a locked one and an archived one; a second page follows by page number.
+{
+  "totalElements": 150,
+  "totalPages": 2,
+  "page": 0,
+  "size": 100,
+  "nextPageToken": null,
+  "content": [
+    {
+      "contentId": 800001,
+      "productMainId": "PRODUCT-FAKE-001",
+      "brand": { "id": 1001, "name": "Fake Marka" },
+      "category": { "id": 2001, "name": "Tişört" },
+      "creationDate": 1762200000000,
+      "lastModifiedDate": 1762300000000,
+      "lastModifiedBy": "api",
+      "title": "Fake Basic Tişört",
+      "description": "Sahte açıklama",
+      "images": [ { "url": "https://cdn.example.test/products/fake-001.jpg" } ],
+      "attributes": [ { "attributeId": 47, "attributeName": "Renk", "attributeValues": [ { "attributeValueId": 686230, "attributeValue": "Siyah" } ] } ],
+      "variants": [
+        {
+          "variantId": 810001,
+          "supplierId": 99999999,
+          "barcode": "0000000000051",
+          "stockCode": "SKU-FAKE-001-S",
+          "attributes": [ { "attributeId": 338, "attributeName": "Beden", "attributeValueId": 4602, "attributeValue": "S" } ],
+          "productUrl": "https://www.trendyol.com/fake/urun-p-800001",
+          "onSale": true,
+          "deliveryOptions": { "deliveryDuration": 2, "isRushDelivery": false, "fastDeliveryOptions": [] },
+          "stock": { "lastModifiedDate": 1762300000000 },
+          "price": { "salePrice": 199.9, "listPrice": 249.9 },
+          "vatRate": 10,
+          "locked": false,
+          "archived": false,
+          "blacklisted": false
+        },
+        {
+          "variantId": 810002,
+          "supplierId": 99999999,
+          "barcode": "0000000000052",
+          "stockCode": "SKU-FAKE-001-M",
+          "attributes": [ { "attributeId": 338, "attributeName": "Beden", "attributeValueId": 4603, "attributeValue": "M" } ],
+          "onSale": false,
+          "price": { "salePrice": 199.9, "listPrice": 249.9 },
+          "vatRate": 10,
+          "locked": true,
+          "lockReason": "Fake lock",
+          "lockDate": 1762300000000,
+          "archived": false,
+          "blacklisted": false
+        },
+        {
+          "variantId": 810003,
+          "supplierId": 99999999,
+          "barcode": "0000000000053",
+          "stockCode": "SKU-FAKE-001-L",
+          "attributes": [ { "attributeId": 338, "attributeName": "Beden", "attributeValueId": 4604, "attributeValue": "L" } ],
+          "price": { "salePrice": 199.9, "listPrice": 249.9 },
+          "vatRate": 10,
+          "locked": false,
+          "archived": true,
+          "archivedDate": 1762300000000,
+          "blacklisted": false
+        }
+      ]
+    }
+  ]
+}

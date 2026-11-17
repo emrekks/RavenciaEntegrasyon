@@ -1,15 +1,25 @@
+import type { ApiAnswer } from '../../../shared/api/api-answer'
 import type { QueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, variantOptionEntries, type Attribute, type MarketplaceConnection, type Product, type Variant } from '../shared'
 import { classifyPublicationAttributeIssues, type PublicationAttributeIssue, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
 import { publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { matchingVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
+import { queryKeys } from '../../../shared/api/query-keys'
 
 // The publish step's readiness check, in one place: the editor's cards run it on the form, the product list's bulk
 // publish runs it on each selected record (publicationReadinessDraftFromProduct fills the same input the editor's form
 // holds right after it opened that record), so both screens list the same gaps for the same product.
 
-export type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; isWebColor?: boolean; attribute: Attribute }
+type CategoryRequirementAnswer = ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>[number]
+// CONTRACT: the API declares a requirement's role as a string; CategoryRequirementRoles writes ATTRIBUTE or OPTION.
+export type CategoryRequirement = Omit<CategoryRequirementAnswer, 'role' | 'attribute'> & { role: 'ATTRIBUTE' | 'OPTION'; attribute: Attribute }
+
+// The category's requirements as the editor reads them. A role the panel does not know is read as ATTRIBUTE, an
+// ordinary field: a required one still asks for its value and blocks the send, instead of being dropped from the form.
+export function readCategoryRequirements(rows: ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>): CategoryRequirement[] {
+  return rows.map(row => ({ ...row, role: row.role === 'OPTION' ? 'OPTION' : 'ATTRIBUTE' }))
+}
 
 export function isOptionAttribute(attribute: Pick<Attribute, 'code' | 'name' | 'roles'>) {
   const normalizedName = normalizeVariantOptionName(attribute.name)
@@ -282,7 +292,7 @@ export function publicationReadinessDraftFromProduct(product: Product, allRequir
 type ReadinessConnection = Pick<MarketplaceConnection, 'id' | 'platformCode'>
 
 export function publicationReadinessQueryKey(connectionId: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[]) {
-  return ['publication-attribute-readiness', connectionId, categoryId, selectedAttributes] as const
+  return queryKeys.publicationAttributeReadiness(connectionId, categoryId, selectedAttributes)
 }
 
 // One read of the mapping check, cached in the query client under the check's own prefix: the editor's cards (one
@@ -290,7 +300,7 @@ export function publicationReadinessQueryKey(connectionId: string, categoryId: s
 // goes once. It sits under ['publication-attribute-readiness'], so every save that invalidates the check marks these
 // reads stale too and the next run reads what was saved.
 export function publicationReadinessSourceKey(connectionId: string, source: string, ...parts: string[]) {
-  return ['publication-attribute-readiness', 'source', connectionId, source, ...parts] as const
+  return queryKeys.publicationAttributeReadiness('source', connectionId, source, ...parts)
 }
 
 // A batch read of several fields of one marketplace category (attributeIds=a,b,c); `connectionId` is already encoded.
@@ -304,14 +314,14 @@ export function attributeValueBatchPath(path: string, connectionId: string, cate
 export async function loadPublicationAttributeIssues(client: QueryClient, connection: ReadinessConnection, cardName: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[], categoryName = ''): Promise<PublicationAttributeIssues> {
   const connectionId = encodeURIComponent(connection.id)
   const cached = <T,>(source: string, parts: string[], load: () => Promise<T>) => client.fetchQuery({ queryKey: publicationReadinessSourceKey(connection.id, source, ...parts), queryFn: load, staleTime: 15_000, retry: false })
-  const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => cached('category-mapping', [categoryId], () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)))
+  const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => cached('category-mapping', [categoryId], () => hubApi<ApiAnswer<'getMappingsCategoriesByLocalId'>>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)))
   if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${categoryName ? `${categoryName} kategorisinin` : 'Ürün kategorisinin'} ${cardName} karşılığı seçilmemiş; kategoriyi eşleyin.` }], optionalWarnings: [], categoryMapping: 'missing' }
   }
 
   // Only the mapped category's row of the list (with the list's snapshot id): the whole tree is 1.3 MB on Trendyol.
   const categoryScope = categoryMapping.externalId
-  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-category', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}&externalId=${encodeURIComponent(categoryScope)}`)))
+  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-category', [categoryScope], () => hubApi<ApiAnswer<'getReferenceDataCategories'>>(`/reference-data/categories?connectionId=${connectionId}&externalId=${encodeURIComponent(categoryScope)}`)))
   const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryScope && item.isActive && item.isLeaf)
   if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [], categoryMapping: 'stale' }
@@ -320,10 +330,10 @@ export async function loadPublicationAttributeIssues(client: QueryClient, connec
   if (['PTTAVM', 'SHOPIFY'].includes(connection.platformCode.trim().toUpperCase())) return { requiredIssues: [], optionalWarnings: [], categoryScope }
 
   const [attributeReferences, attributeMappings, attributeDefaults] = await Promise.all([
-    readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
-    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
+    readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<ApiAnswer<'getReferenceDataCategoriesByExternalIdAttributes'>>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
+    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<ApiAnswer<'getMappingsAttributes'>>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))),
     // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
-    cached('attribute-defaults', [], () => hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`)).catch(() => [] as Array<{ externalAttributeId: string }>)
+    cached('attribute-defaults', [], () => hubApi<ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'>>(`/connections/${connectionId}/attribute-defaults`)).catch((): ApiAnswer<'getConnectionsByConnectionIdAttributeDefaults'> => [])
   ])
   const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
   const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
@@ -367,13 +377,13 @@ export function missingPublicationChecks(productChecks: PublicationProductCheck[
 // The Shopify write permissions the server wants verified before it queues a publish (CatalogService
 // HasShopifyPublicationEvidenceAsync, SHOPIFY_PUBLICATION_SCOPES_REQUIRED). The editor's card and the bulk check both
 // read them through this key and turn them into gaps with `shopifyCapabilityIssues`, so the two agree.
-export type ConnectionCapability = { code: string; supportLevel: string; verifiedForConnection: boolean }
+export type ConnectionCapability = ApiAnswer<'getConnectionsByIdCapabilities'>[number]
 export const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE'] as const
 export function connectionCapabilitiesQueryKey(connectionId: string) {
-  return ['capabilities', connectionId] as const
+  return queryKeys.capabilities(connectionId)
 }
-export function loadConnectionCapabilities(connectionId: string) {
-  return hubApi<ConnectionCapability[]>(`/connections/${connectionId}/capabilities`)
+export function loadConnectionCapabilities(connectionId: string, signal?: AbortSignal) {
+  return hubApi<ConnectionCapability[]>(`/connections/${connectionId}/capabilities`, { signal })
 }
 export function missingShopifyCapabilities(capabilities: ConnectionCapability[] | undefined) {
   if (!capabilities) return []

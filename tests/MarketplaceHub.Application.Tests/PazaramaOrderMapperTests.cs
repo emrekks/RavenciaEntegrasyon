@@ -250,7 +250,7 @@ public sealed class PazaramaOrderMapperTests
         Assert.Equal("ayse@example.com", root.GetProperty("email").GetString());
         Assert.Equal("3099b7db-6a35-498d-a45a-4f6dd57a2ecb", root.GetProperty("pazaramaOrderId").GetString());
         Assert.Equal("11111111110", root.GetProperty("tcIdentityNumber").GetString());
-        Assert.Equal("Ayşe Nur Yılmaz", MarketplaceSalesService.ResolveCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson));
+        Assert.Equal("Ayşe Nur Yılmaz", OrderSnapshotReader.ResolveCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson));
     }
 
     [Fact]

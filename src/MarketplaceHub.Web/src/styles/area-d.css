@@ -49,9 +49,9 @@ html body .date-range-picker-popover :is(.date-range-picker-calendars > header, 
 /* Hazır Cevaplar window: the new-answer form is 340 px and the saved answers take the rest; Düzenle / Sil stack so the
    answer text gets the room (it had 367 of 550 px). */
 @media (min-width: 900px) {
-  :root:root body .rv-modal.qi-templates-modal .rv-question-templates { grid-template-columns: 340px minmax(0, 1fr); }
-  :root:root body .rv-modal.qi-templates-modal .rv-question-template-card { column-gap: 16px; }
-  :root:root body .rv-modal.qi-templates-modal .rv-question-template-card > :last-child { display: grid; gap: 8px; align-self: start; }
+  :root:root body .rr-modal.qi-templates-modal .rv-question-templates { grid-template-columns: 340px minmax(0, 1fr); }
+  :root:root body .rr-modal.qi-templates-modal .rv-question-template-card { column-gap: 16px; }
+  :root:root body .rr-modal.qi-templates-modal .rv-question-template-card > :last-child { display: grid; gap: 8px; align-self: start; }
 }
 
 /* İşlem Takibi row window: 1000 px so the six progress tiles sit in one row and their texts and the "Son kayıt"

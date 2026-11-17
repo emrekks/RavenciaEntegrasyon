@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
@@ -97,23 +95,11 @@ internal static class InvoiceDeliveryRetryReader
     {
         var payload = JsonSerializer.Serialize(new { invoiceId = invoice.Id, deliveryRetryKey = retryKey });
         var dedup = $"{InvoicingJobTypes.InvoiceDocumentFetch}:{invoice.Id}:{retryKey}";
-        return new IntegrationJob
+        return IntegrationJobFactory.New(new IntegrationJobRequest(invoice.TenantId, invoice.ProviderConnectionId, InvoicingJobTypes.InvoiceDocumentFetch, payload, dedup, correlationId, now)
         {
-            Id = Guid.CreateVersion7(),
-            TenantId = invoice.TenantId,
-            ConnectionId = invoice.ProviderConnectionId,
-            JobType = InvoicingJobTypes.InvoiceDocumentFetch,
-            PayloadJson = payload,
-            PayloadVersion = 1,
-            PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))),
-            JobDedupKey = dedup,
-            EffectIdempotencyKey = dedup,
             Priority = priority,
-            TriggerType = triggerType,
-            AvailableAt = now,
-            CorrelationId = correlationId,
-            Version = 1
-        };
+            TriggerType = triggerType
+        });
     }
 
     // Records an automatic attempt: the count goes up and the next one is scheduled, or none after the last.

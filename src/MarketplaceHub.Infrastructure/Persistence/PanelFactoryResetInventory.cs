@@ -123,7 +123,7 @@ public static class PanelFactoryResetInventory
 
         // catalog: options, products and what hangs on them
         D("catalog.product_options", Options), D("catalog.product_option_values", Options), D("catalog.variant_option_values", Options),
-        D("catalog.products", Products), D("catalog.product_models", Products), D("catalog.product_model_attributes", Products), D("catalog.product_variants", Products), D("catalog.product_media", Products),
+        D("catalog.products", Products), D("catalog.product_models", Products), D("catalog.product_model_attributes", Products), D("catalog.product_model_size_charts", Products), D("catalog.product_variants", Products), D("catalog.product_media", Products),
         D("catalog.product_attribute_assignments", Products), D("catalog.product_size_charts", Products),
         D("catalog.marketplace_product_links", Products), D("catalog.marketplace_model_links", Products), D("catalog.marketplace_variant_links", Products), D("catalog.marketplace_listing_states", Products),
         D("catalog.external_identifier_aliases", Products), D("catalog.channel_listing_profiles", Products), D("catalog.channel_listing_attributes", Products),
@@ -182,7 +182,7 @@ public static class PanelFactoryResetInventory
         // iam
         S("iam.tenant_settings", Invoices, "ayarlar kalır; yalnız fatura çalışma alanının gizlenen paket listesi silinir"),
         K("iam.user_sessions", "tam sıfırlamada isteyen oturum kalır, diğerleri silinir"),
-        K("iam.tenants", "hesap"), K("iam.tenant_memberships", "kullanıcı üyelikleri"), K("iam.bootstrap_state", "ilk kurulum kaydı"),
+        K("iam.tenants", "hesap"), K("iam.tenant_memberships", "kullanıcı üyelikleri"), K("iam.tenant_invitations", "bekleyen kullanıcı davetleri"), K("iam.bootstrap_state", "ilk kurulum kaydı"),
         K("iam.users", "kullanıcılar"), K("iam.roles", "roller"), K("iam.user_roles", "roller"), K("iam.role_claims", "roller"),
         K("iam.user_claims", "kullanıcı"), K("iam.user_logins", "kullanıcı"), K("iam.user_tokens", "kullanıcı (doğrulayıcı anahtarı)"),
         K("iam.user_security", "iki adımlı doğrulama"), K("iam.recovery_codes", "kurtarma kodları"),

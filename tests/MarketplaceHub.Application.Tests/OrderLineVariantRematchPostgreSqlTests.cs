@@ -53,7 +53,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         await using (var db = fixture.CreateContext())
         {
             var outcome = await Processor(db).RematchUnmatchedOrderLines(tenant.Id, hepsiburada.Id, CancellationToken.None);
-            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(3, 2, 1), outcome);
+            Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(3, 2, 1), outcome);
         }
 
         await using (var db = fixture.CreateContext())
@@ -68,7 +68,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
             Assert.DoesNotContain(deliveredLedger, x => x.MovementType == "ORDER_RECEIVED");
             // The open order's unit is still to ship: it leaves stock like a new order's.
             Assert.Equal(9m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.VariantId == openVariant.Id)).OnHand);
-            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Code == MarketplaceJobProcessor.UnmatchedOrderLineIssueCode);
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Code == OrderIngestionService.UnmatchedOrderLineIssueCode);
             Assert.Equal(IssueStatus.Open, issue.Status);
             Assert.Contains("4091991027", issue.Summary);
             Assert.Contains("KRL44118", issue.Summary);
@@ -78,7 +78,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         await using (var db = fixture.CreateContext())
         {
             var outcome = await Processor(db).RematchUnmatchedOrderLines(tenant.Id, hepsiburada.Id, CancellationToken.None);
-            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(1, 0, 1), outcome);
+            Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(1, 0, 1), outcome);
             Assert.Equal(10m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.VariantId == deliveredVariant.Id)).OnHand);
             Assert.Equal(9m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.VariantId == openVariant.Id)).OnHand);
             Assert.Equal(1, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).OccurrenceCount);
@@ -96,7 +96,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         await using (var db = fixture.CreateContext())
         {
             var outcome = await Processor(db).RematchUnmatchedOrderLines(tenant.Id, hepsiburada.Id, CancellationToken.None);
-            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(1, 1, 0), outcome);
+            Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(1, 1, 0), outcome);
             Assert.Equal(missingVariant.Id, (await db.OrderLines.AsNoTracking().SingleAsync(x => x.Id == missingLine.Id)).VariantId);
             Assert.Equal(4m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.VariantId == missingVariant.Id)).OnHand);
             Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).Status);
@@ -120,12 +120,13 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
             seed.PlatformConnections.Add(shopify);
             seed.Orders.Add(order);
             seed.OrderLines.Add(cancelled);
-            seed.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = key, Code = MarketplaceJobProcessor.UnmatchedOrderLineIssueCode, Summary = "eski", Status = IssueStatus.Open, FirstSeenAt = fixture.Now.AddDays(-6), LastSeenAt = fixture.Now.AddHours(-2), OccurrenceCount = 1 });
+            seed.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = key, Code = OrderIngestionService.UnmatchedOrderLineIssueCode, Summary = "eski", Status = IssueStatus.Open, FirstSeenAt = fixture.Now.AddDays(-6), LastSeenAt = fixture.Now.AddHours(-2), OccurrenceCount = 1 });
             await seed.SaveChangesAsync();
         }
 
+        // SIPARIS-STOK-2: the fully cancelled line is not read at all.
         await using (var db = fixture.CreateContext())
-            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(1, 0, 1), await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None));
+            Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(0, 0, 0), await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None));
 
         await using var verify = fixture.CreateContext();
         Assert.Null((await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == cancelled.Id)).VariantId);
@@ -133,14 +134,74 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         Assert.Equal(IssueStatus.Resolved, issue.Status);
     }
 
+    // SIPARIS-STOK-2: more unmatched lines than one batch are read in turns after the cursor's last line, so a line
+    // beyond the first batch is matched too; the notice of a code no line has any more is resolved only when the whole
+    // pass was read, and the notices the pass still saw stay open. Fully cancelled lines do not fill the batch.
+    [PostgreSqlFact]
+    public async Task Rematch_ReadsPastTheFirstBatch_AndResolvesOnlyAfterAWholePass()
+    {
+        var tenant = NewTenant("order-line-rematch-batches");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var order = NewOrder(tenant, shopify, "#R2001", "NEW");
+        var cancelled = NewLine(tenant, order, "CXL01", "CXL01", "{}");
+        cancelled.CancelledQuantity = 1m;
+        // Ids in reading order (Version 7 Ids made in the same millisecond do not sort by creation).
+        cancelled.Id = Guid.CreateVersion7(fixture.Now.AddSeconds(-10));
+        var lines = Enumerable.Range(1, 5).Select(index => { var line = NewLine(tenant, order, $"BATCH0{index}", $"BATCH0{index}", "{}"); line.Id = Guid.CreateVersion7(fixture.Now.AddSeconds(index)); return line; }).ToList();
+        var (lastProduct, lastVariant) = NewVariant(tenant, "BATCH05", "BATCH05");
+        var gone = $"order-line-variant-unmatched:{shopify.Id:N}:GONE01";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Products.Add(lastProduct);
+            seed.ProductVariants.Add(lastVariant);
+            seed.InventoryItems.Add(NewInventory(tenant, lastVariant, 5m));
+            seed.Orders.Add(order);
+            seed.OrderLines.Add(cancelled);
+            seed.OrderLines.AddRange(lines);
+            seed.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = gone, Code = OrderIngestionService.UnmatchedOrderLineIssueCode, Summary = "eski", Status = IssueStatus.Open, FirstSeenAt = fixture.Now.AddDays(-6), LastSeenAt = fixture.Now.AddHours(-2), OccurrenceCount = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<OrderIngestionService.OrderLineRematchOutcome> RunAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None, batchSize: 2);
+        }
+        async Task<IssueStatus> GoneAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == gone)).Status;
+        }
+
+        Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(2, 0, 2), await RunAsync());
+        Assert.Equal(IssueStatus.Open, await GoneAsync());
+        Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(2, 0, 2), await RunAsync());
+        Assert.Equal(IssueStatus.Open, await GoneAsync());
+        // The third run reads the last line, matches it and ends the pass.
+        Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(1, 1, 0), await RunAsync());
+        Assert.Equal(IssueStatus.Resolved, await GoneAsync());
+        await using (var verify = fixture.CreateContext())
+        {
+            Assert.Equal(lastVariant.Id, (await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lines[4].Id)).VariantId);
+            var open = await verify.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.Status == IssueStatus.Open).Select(x => x.DedupeKey).ToListAsync();
+            Assert.Equal(4, open.Count);
+            Assert.All(open, key => Assert.Contains(":BATCH0", key));
+            Assert.Null((await verify.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == OrderIngestionService.OrderLineRematchCursor)).OpaqueCursor);
+        }
+        // The next pass starts again from the first line.
+        Assert.Equal(new OrderIngestionService.OrderLineRematchOutcome(2, 0, 2), await RunAsync());
+    }
+
     [Fact]
     public void The_stock_shortfall_notice_names_the_marketplace_order_and_code()
     {
-        var summary = MarketplaceJobProcessor.StockShortfallSummary("TRENDYOL", "11789787348", "MZ029YD10", 1m);
+        var summary = OrderIngestionService.StockShortfallSummary("TRENDYOL", "11789787348", "MZ029YD10", 1m);
         Assert.Contains("Trendyol siparişi 11789787348", summary);
         Assert.Contains("MZ029YD10 kodlu", summary);
         Assert.Contains("1 adet stoktan düşülemedi", summary);
-        var bare = MarketplaceJobProcessor.StockShortfallSummary(null, null, null, 2m);
+        var bare = OrderIngestionService.StockShortfallSummary(null, null, null, 2m);
         Assert.Contains("Pazaryeri siparişindeki kodsuz ürünün", bare);
         Assert.Contains("2 adet", bare);
     }
@@ -215,7 +276,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
     {
         var now = DateTimeOffset.UtcNow;
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Ürün {sku}", Description = "Eşleştirme testi", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
-        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode.ToUpperInvariant(), ModelCode = "MODEL-1", OptionSignature = sku, CreatedAt = now, UpdatedAt = now };
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode.ToUpperInvariant(), ModelCode = sku, OptionSignature = sku, CreatedAt = now, UpdatedAt = now };
         return (product, variant);
     }
 

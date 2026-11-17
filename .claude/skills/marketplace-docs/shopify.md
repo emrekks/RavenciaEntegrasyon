@@ -3,7 +3,7 @@
 Docs: https://shopify.dev/docs/api/admin-graphql (Context7 or the Shopify MCP can also answer schema questions).
 Numbers below were not re-checked on the web on 2026-10-31.
 
-Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ `.Webhooks.cs`), `ShopifyAuthenticationHandler.cs`,
+Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ the `ShopifyHttpClient.*.cs` partials: Catalog, Connection, Invoices, OrderMapping, Orders, PriceInventory, ProductWrites, Returns, Shipments, Transport, Webhooks), `ShopifyAuthenticationHandler.cs`,
 `ShopifyWebhookVerifier.cs`, `ShopifyOptions.cs`, `ShopifyOrderHistoryPolicy.cs`.
 
 ## Connection
@@ -18,7 +18,7 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ `.Webhooks.cs`), `Shopif
   Remote5xx (`SHOPIFY_INTERNAL_ERROR`, 30 s); then MAX_COST_EXCEEDED, ACCESS_DENIED, the first message.
   (`ShopifyHttpClient.GraphQlError`, 2026-11-05)
   Repo doc: Standard 100 points/s, Advanced 200, Plus 1000.
-- HTTP 429 → `SHOPIFY_RATE_LIMITED`, Retry-After or 5 s. Single-query cost ceiling 1000; on `MAX_COST_EXCEEDED`
+- HTTP 429 → `SHOPIFY_RATE_LIMITED`, Retry-After or 5 s (a Retry-After of 0 or a past date counts as none, `RetryAfterHeader.Delay`, ADAPTOR-TY-HB-7). Single-query cost ceiling 1000; on `MAX_COST_EXCEEDED`
   the page size is quartered down to 1. Timeout 45 s.
 
 ## Windows and paging
@@ -33,7 +33,7 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ `.Webhooks.cs`), `Shopif
   Needs `read_returns` or `read_marketplace_returns` (live token has it, RETURN_READ verified 29 Oct 2026).
   Approve/decline stays behind RETURN_WRITE.
 - Nested lists are not paged: `lineItems(first:250)`, `fulfillmentLineItems(first:250)`, `events(first:50)`,
-  `refunds(first:100)` (`ShopifyHttpClient.cs`).
+  `refunds(first:100)` (`ShopifyHttpClient.Orders.cs`).
 - First read 3 months, daily baseline re-read, watermark − 10 min. Without `read_all_orders` only the last 60 days
   are visible.
 

@@ -58,14 +58,41 @@ public static class ProductFamilySharedFields
             ? ProductFamilyNewColorCard.Title(titleCard.Title.Trim(), titleWord, openedColor.Trim())
             : titleCard.Title.Trim();
         var vatCard = Most(card => $"{card.VatRate?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)}|{card.VatInclusion?.ToUpperInvariant()}");
+        // Garanti Süresi: an empty one (a draft saved with it emptied, 15 Nov 2026) is "not filled", not a value of its
+        // own; the model holds the value most filled cards hold, and is empty only while no card holds one.
+        var filledWarranty = cards.Where(card => card.WarrantyMonths is not null).ToList();
+        var warranty = filledWarranty.Count == 0 ? null : filledWarranty
+            .Select((card, index) => (card.WarrantyMonths, index)).GroupBy(item => item.WarrantyMonths)
+            .OrderByDescending(group => group.Count()).ThenBy(group => group.Min(item => item.index)).First().Key;
         return new ModelFields(
             title,
             Most(card => card.Description.Trim()).Description,
             Most(card => $"{card.BrandId}").BrandId,
             Most(card => $"{card.CategoryId}").CategoryId,
             vatCard.VatRate, vatCard.VatInclusion,
-            Most(card => $"{card.WarrantyMonths}").WarrantyMonths,
+            warranty,
             Most(card => $"{card.DeliveryDays}").DeliveryDays);
+    }
+
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026: "isimleri ilk çekilen gibi yapsın", "KDV ve desi de öyle olsun"): the values
+    // a model opened for its colours takes (a save, a marketplace import) are the first card's (the oldest, the first one
+    // brought in), field by field; where that card does not know a value (no VAT, category, warranty, delivery days or
+    // brand; an empty name or description) the oldest card that knows it gives it, and it stays unknown only when no colour
+    // knows it. Nothing is voted on. The other colours take the model's (the name with their colour word, TitleFor). The
+    // editor's ModelValues stays as it is.
+    public static ModelFields NewModelValues(IReadOnlyList<CardFields> cards)
+    {
+        if (cards.Count == 0) throw new ArgumentException("A model has at least one colour card.", nameof(cards));
+        CardFields? First(Func<CardFields, bool> known) => cards.FirstOrDefault(known);
+        var vat = First(card => card.VatRate is not null);
+        return new ModelFields(
+            (First(card => !string.IsNullOrWhiteSpace(card.Title)) ?? cards[0]).Title.Trim(),
+            First(card => !string.IsNullOrWhiteSpace(card.Description))?.Description ?? cards[0].Description,
+            First(card => card.BrandId is not null)?.BrandId,
+            First(card => card.CategoryId is not null)?.CategoryId,
+            vat?.VatRate, vat?.VatInclusion,
+            First(card => card.WarrantyMonths is not null)?.WarrantyMonths,
+            First(card => card.DeliveryDays is not null)?.DeliveryDays);
     }
 
     // The card (index in the family's order) whose attribute set most cards hold, on a tie the first: the model's attributes.

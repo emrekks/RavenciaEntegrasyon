@@ -36,7 +36,8 @@ public sealed class PazaramaQuestionTests
     [InlineData(2, "WAITING_FOR_APPROVE")]
     [InlineData(7, "PAZARAMA_STATUS_7")]
     [InlineData(3, "REJECTED")]
-    [InlineData(null, "WAITING_FOR_ANSWER")]
+    // D7: no status is unknown, not "waiting for an answer".
+    [InlineData(null, "UNKNOWN")]
     public void Pazarama_states_map_to_panel_states(int? status, string expected) => Assert.Equal(expected, PazaramaQuestionMapper.PanelStatus(status));
 
     // ---- list ----

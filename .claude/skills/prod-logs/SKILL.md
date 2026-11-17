@@ -1,7 +1,7 @@
 ---
 name: prod-logs
 description: Reads the live Hostinger server without changing anything - which image and sha each container (marketplacehub-api-1, -worker-1, -caddy-1, -postgres-1) runs, its state and health, its recent logs filtered by time or a pattern, and the host itself (disk, timers, failed units, backup sets, CrowdSec). Use to check a deploy reached live, to see why a job or request failed, or to look for errors after a change.
-argument-hint: "[status | host [--since 6h] | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX]]"
+argument-hint: "[status | host [--since 6h] | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX] | top-queries [N]]"
 ---
 
 # Read-only logs and state on live
@@ -27,6 +27,10 @@ bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" errors --since 1h
 
 # The journald copy (kept across deploys, 30 days); Caddy access log lines are JSON:
 bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" journal caddy --since 2h --grep "\"status\":5"
+
+# The slowest statements by total time from pg_stat_statements (says so while the extension is not installed; needs the
+# server's ravencia-ro reinstalled after 16 Nov 2026, docs/RUNBOOK-GERI-ALMA.md section 8):
+bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" top-queries 20
 ```
 
 - Logs are Serilog compact JSON: `@t` time, `@m` message, `@l` level (left out for Information), `@x` exception.

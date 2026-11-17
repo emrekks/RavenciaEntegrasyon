@@ -6,7 +6,7 @@ using Microsoft.Extensions.Caching.Memory;
 namespace MarketplaceHub.Api.Marketplace;
 
 // Answers whether a webhook address belongs to an active subscription of a connection that may receive
-// deliveries, before the body is read: a request with a random connection id, or with a known connection
+// deliveries (a paused one too: its deliveries are answered and recorded, not processed), before the body is read: a request with a random connection id, or with a known connection
 // id and a guessed route token, is refused with 404 without buffering up to 10 MiB first.
 // MarketplaceWebhookService checks the same again, with the signature or credentials.
 public interface IWebhookRouteGate
@@ -31,7 +31,7 @@ public sealed class WebhookRouteGate(AppDbContext db, IMemoryCache cache, TokenH
                            join subscription in db.WebhookSubscriptions.AsNoTracking() on new { connection.TenantId, ConnectionId = connection.Id } equals new { subscription.TenantId, subscription.ConnectionId }
                            where (subscription.RoutePublicId == connectionPublicId || (subscription.RoutePublicId == null && connection.PublicId == connectionPublicId))
                                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "HEPSIBURADA")
-                               && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")
+                               && MarketplaceWebhookService.AnsweringConnectionStatuses.Contains(connection.Status)
                                && subscription.Status == "ACTIVE" && subscription.RouteTokenHash == tokenHash
                            select subscription.Id).AnyAsync(cancellationToken);
         if (known) cache.Set(key, true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = KnownFor, Size = 1 });

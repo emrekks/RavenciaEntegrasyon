@@ -1,0 +1,334 @@
+{
+  "Runs": [
+    {
+      "Run": "run-0",
+      "JobType": "TRENDYOL_COMMON_LABEL",
+      "Result": {
+        "Kind": "ManualReview",
+        "ErrorCode": "EXTERNAL_EFFECT_AMBIGUOUS",
+        "ErrorSummary": "Ortak etiket oluşturma çağrısının sonucu kesinleştirilemedi.",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "orders.CreateCommonLabel key=common-label:job {\"CargoTrackingNumber\":\"7330000000001\",\"BoxQuantity\":1,\"VolumetricHeight\":10}"
+      ]
+    },
+    {
+      "Run": "run-1",
+      "JobType": "TRENDYOL_COMMON_LABEL",
+      "Result": {
+        "Kind": "ManualReview",
+        "ErrorCode": "EXTERNAL_EFFECT_AMBIGUOUS",
+        "ErrorSummary": "Önceki ortak etiket oluşturma çağrısının sonucu kesinleştirilemedi.",
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": []
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "ExternalEffectRecord",
+      "Rows": [
+        {
+          "Action": null,
+          "CompletedAt": null,
+          "ConnectionId": null,
+          "CreatedAt": "T+00:00:03",
+          "EffectType": "TRENDYOL_COMMON_LABEL",
+          "ExpectedValue": null,
+          "Id": "id1",
+          "IdempotencyKey": "common-label:job",
+          "LastCheckedAt": null,
+          "Outcome": null,
+          "SentAt": "T+00:00:05",
+          "TargetId": null,
+          "TenantId": "tenant",
+          "UnclearChecks": 0,
+          "VerificationSeconds": 0
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationJob",
+      "Rows": [
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:00",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "golden",
+          "CreatedAt": "T+00:00:00",
+          "EffectIdempotencyKey": "common-label:job",
+          "HeartbeatAt": null,
+          "Id": "job",
+          "JobDedupKey": "golden-label:job",
+          "JobType": "TRENDYOL_COMMON_LABEL",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "shipment_action",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "JobId": "job",
+            "PackageId": "package",
+            "Phase": "SUBMIT",
+            "BoxQuantity": 1,
+            "VolumetricHeight": 10,
+            "StartedAt": "2030-01-01T08:59:00+00:00",
+            "DeadlineAt": "2030-01-01T09:30:00+00:00",
+            "Format": "ZPL"
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "orders",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "Leased",
+          "TenantId": "tenant",
+          "TriggerType": "manual",
+          "Version": 1,
+          "WaitingChecks": 0
+        }
+      ]
+    },
+    {
+      "Table": "Order",
+      "Rows": [
+        {
+          "BuyerType": "Individual",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "Currency": "TRY",
+          "CustomerSearchName": "Golden",
+          "CustomerSearchStamp": "id2",
+          "CustomerSnapshotJson": {
+            "customerFirstName": "Golden"
+          },
+          "DerivedStatus": "NEW",
+          "DiscountAmount": 0.0000,
+          "ExternalOrderId": "7101",
+          "GrossAmount": 100.0000,
+          "Id": "order-7101",
+          "InvoiceAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "LabelPrintedAt": null,
+          "LastRemoteModifiedAt": "T-03:00:00",
+          "NetAmount": 100.0000,
+          "OrderNumber": "7101",
+          "OrderedAt": "T-1.00:00:00",
+          "ShipmentAddressSnapshotJson": {
+            "city": "İstanbul"
+          },
+          "ShipmentDueAt": null,
+          "StoreFrontCode": null,
+          "TenantId": "tenant",
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderLine",
+      "Rows": [
+        {
+          "Barcode": "8690000000001",
+          "CancelSeenAt": null,
+          "CancelledAt": null,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "DesiSnapshot": null,
+          "ExternalLineId": "31000001",
+          "Id": "id3",
+          "OrderId": "order-7101",
+          "OrderedQuantity": 1.0000,
+          "PlatformDiscount": null,
+          "RawStatus": "Created",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "Sku": "SKU-1",
+          "SourceSnapshotJson": "<raw 2 chars sha256:44136fa355b3>",
+          "TenantId": "tenant",
+          "TitleSnapshot": "Ürün",
+          "UnitCostSnapshot": null,
+          "UnitPrice": 100.0000,
+          "VariantId": null,
+          "VatRate": 20.0000,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OrderStatusHistory",
+      "Rows": [
+        {
+          "CanonicalStatus": "NEW",
+          "Id": "id4",
+          "OccurredAt": "T-03:00:00",
+          "OrderId": "order-7101",
+          "PackageId": "package",
+          "RawStatus": "Created",
+          "RecordedAt": "T-00:30:00",
+          "SourceEventId": "P7101:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PackageLineAllocation",
+      "Rows": [
+        {
+          "AllocatedQuantity": 1.0000,
+          "CancelledQuantity": 0.0000,
+          "DeliveredQuantity": 0.0000,
+          "Id": "id5",
+          "OrderLineId": "id3",
+          "PackageId": "package",
+          "ReturnedQuantity": 0.0000,
+          "ShippedQuantity": 0.0000,
+          "SourceEventId": "P7101:1893477600000",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentDocumentAttempt",
+      "Rows": [
+        {
+          "CompletedAt": "T+00:00:06",
+          "CreatedAt": "T+00:00:00",
+          "DocumentId": null,
+          "ErrorCode": "EXTERNAL_EFFECT_AMBIGUOUS",
+          "ExternalOperationId": null,
+          "Id": "attempt",
+          "IdempotencyKey": "common-label:job",
+          "PackageId": "package",
+          "Status": "MANUAL_REVIEW",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "ShipmentPackage",
+      "Rows": [
+        {
+          "CargoBarcode": null,
+          "CargoProviderExternalId": "ARAS Kargo",
+          "CargoTrackingNumber": "7330000000001",
+          "ConnectionId": "connection",
+          "CreatedAt": "T-00:30:00",
+          "CreatedBy": null,
+          "DiscountAmount": 0.0000,
+          "ExternalPackageId": "P7101",
+          "GrossAmount": 100.0000,
+          "Id": "package",
+          "ManualInvoiceStatus": null,
+          "MarketplaceInvoiceNumber": null,
+          "MarketplaceInvoiceObservedAt": null,
+          "MarketplaceInvoiceRawStatus": null,
+          "MarketplaceInvoiceSourceUpdatedAt": null,
+          "MarketplaceInvoiceStatus": "Unknown",
+          "MarketplaceInvoiceUrl": null,
+          "NetAmount": 100.0000,
+          "OrderId": "order-7101",
+          "OriginExternalPackageId": null,
+          "RawStatus": "Created",
+          "RemoteVersion": null,
+          "Status": "New",
+          "StatusOccurredAt": "T-03:00:00",
+          "TenantId": "tenant",
+          "UnreadableLineCount": 0,
+          "UpdatedAt": "T-00:30:00",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 2,
+          "CursorStagnantSince": null,
+          "Id": "id6",
+          "LastAttemptAt": "T+00:00:38",
+          "LastChangedCount": 0,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": "EXTERNAL_EFFECT_AMBIGUOUS",
+          "LastErrorAt": "T+00:00:40",
+          "LastFailedCount": 1,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 0,
+          "LastRequestCount": 0,
+          "LastRetryCount": 1,
+          "LastSkippedCount": 0,
+          "LastSliceAt": null,
+          "LastSuccessAt": null,
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "COMMON_LABEL",
+          "TenantId": "tenant",
+          "Version": 5
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "orders Order created x1",
+        "orders ShipmentPackage created x1"
+      ]
+    }
+  ]
+}

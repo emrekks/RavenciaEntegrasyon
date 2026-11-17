@@ -20,9 +20,9 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol renk kartları", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
         var categoryId = Guid.CreateVersion7();
         var brandId = Guid.CreateVersion7();
-        Product Card(string colour) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Kadın {colour} Triko Bluz", Description = $"{colour} eski açıklama", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", DefaultListPrice = 900m, DefaultSalePrice = 630m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
-        var siyah = Card("Siyah");
-        var bordo = Card("Bordo");
+        Product Card(string colour, int minute) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Kadın {colour} Triko Bluz", Description = $"{colour} eski açıklama", CategoryId = categoryId, BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", DefaultListPrice = 900m, DefaultSalePrice = 630m, Status = ProductStatus.Active, CreatedAt = now.AddMinutes(minute), UpdatedAt = now, Version = 1 };
+        var siyah = Card("Siyah", 0);
+        var bordo = Card("Bordo", 1);
         ProductVariant Variant(Product card, string code) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = card.Id, Sku = code, SkuNormalized = code, Barcode = code, BarcodeNormalized = code, ModelCode = "MZ051BYC", OptionSignature = $"Renk: {card.Title.Split(' ')[1]} | Beden: {code[^2..]}", Desi = 1m, Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var siyahL = Variant(siyah, "MZ051BYC-31");
         var siyahXl = Variant(siyah, "MZ051BYC-32");
@@ -97,8 +97,9 @@ public sealed class FamilyGalleryPublicationPostgreSqlTests(PostgreSqlTenantIsol
             }
         }
 
-        // Before: each colour card goes with its own name and description.
-        await AssertPayloads(colour => $"Kadın {colour} Triko Bluz", colour => $"{colour} eski açıklama");
+        // Before: each colour card goes with its own colour's name; KATALOG-14 phase D5b: the description is the model's,
+        // which it took from the oldest colour when the cards were saved.
+        await AssertPayloads(colour => $"Kadın {colour} Triko Bluz", _ => "Siyah eski açıklama");
 
         // The owner edits the model's name and description from the Siyah row (FamilySharedFields): every colour card
         // takes them, each name with its own colour word; the pictures and the content split per colour stay as they were.

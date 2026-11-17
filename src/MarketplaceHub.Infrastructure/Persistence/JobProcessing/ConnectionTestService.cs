@@ -1,0 +1,93 @@
+using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
+using Microsoft.EntityFrameworkCore;
+
+namespace MarketplaceHub.Infrastructure.Persistence;
+
+// ISLEYICI-9 stage 5 step 1 (16 Nov 2026): the connection test of every marketplace (*_CONNECTION_TEST), moved out of the
+// job processor as it was. It asks the marketplace who the credentials belong to and what they may do, and records the
+// answer on the connection and its capabilities; nothing is sent. The processor still records a refused credential of
+// any other job on the connection (RecordConnectionAuthenticationFailureAsync); this test records its own outcome.
+internal sealed class ConnectionTestService(AppDbContext db, IConnectionPort connections, TimeProvider timeProvider, JobRunContext run)
+{
+    private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
+
+    private void TrackRequest() => run.TrackRequest();
+
+    private void TrackReceived() => run.TrackReceived();
+
+    private void TrackResultFailure(AdapterError? error) => run.TrackResultFailure(error);
+
+    internal async Task<bool> TestConnection(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
+        // KUYRUK-9 (16 Nov 2026): named instead of the generic F3_JOB_REJECTED; still blocked, a missing connection stays missing.
+        if (connection is null) throw new JobProcessingException(JobExecutionResult.Blocked("CONNECTION_TEST_TARGET_NOT_FOUND", "Test edilecek mağaza bağlantısı panelde bulunamadı ya da desteklenen bir pazaryerine ait değil; test yapılmadı."));
+        var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
+        IConnectionPort port = connections;
+        var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.LastErrorClass = result.Error.Class.ToString(); connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
+        TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.LastErrorClass = discovery.Error.Class.ToString(); connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
+        if (connection.PlatformCode == "SHOPIFY")
+        {
+            connection.ApiVersion = result.Value!.ApiVersion;
+            connection.Environment = result.Value.Environment;
+            connection.ExternalStoreId = result.Value.ExternalStoreId;
+        }
+        // PTT AVM: the store the API user belongs to (a store name typed as the Mağaza ID gives way to it).
+        if (connection.PlatformCode == "PTTAVM") connection.ExternalStoreId = result.Value!.ExternalStoreId;
+        foreach (var _ in discovery.Value!) TrackReceived();
+        // The support each capability holds after this test: a probe that could not tell leaves a recent SUPPORTED in place
+        // (CapabilityEvidencePolicy.KeepsEarlierSupport), so a transient failure neither downgrades it nor fails the test.
+        var supportedAfter = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var evidence in discovery.Value!)
+        {
+            var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken);
+            if (capability is null)
+            {
+                capability = new PlatformCapability
+                {
+                    Id = Guid.CreateVersion7(),
+                    TenantId = tenantId,
+                    ConnectionId = connectionId,
+                    Code = evidence.Code,
+                    ApiVersion = connection.ApiVersion,
+                    Environment = connection.Environment,
+                    StoreScope = connection.ExternalStoreId,
+                    Version = 0
+                };
+                db.PlatformCapabilities.Add(capability);
+            }
+            if (!CapabilityEvidencePolicy.KeepsEarlierSupport(capability, evidence, now)) CapabilityEvidencePolicy.ApplyEvidence(capability, evidence);
+            if (capability.SupportLevel == CapabilitySupportLevel.Supported) supportedAfter.Add(evidence.Code);
+        }
+        if (connection.PlatformCode is "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM" && discovery.Value is not null
+            && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(supportedAfter.Contains))
+        {
+            connection.LastErrorCode = $"{connection.PlatformCode}_REQUIRED_READ_CAPABILITY";
+            connection.LastErrorClass = nameof(AdapterErrorClass.NotSupported);
+            connection.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.NotSupported, connection.LastErrorCode,
+                $"{(connection.PlatformCode switch { "N11" => "N11", "PAZARAMA" => "Pazarama", "PTTAVM" => "PttAVM", _ => "Hepsiburada" })} bağlantısı etkinleştirilemez: ürün ve sipariş okuma yeteneklerinin ikisi de doğrulanmalıdır.", null, null, null));
+        }
+        if (connection.PlatformCode == "SHOPIFY" && discovery.Value is not null
+            && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
+        {
+            connection.LastErrorCode = "SHOPIFY_REQUIRED_READ_SCOPE";
+            connection.LastErrorClass = nameof(AdapterErrorClass.Authentication);
+            connection.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            var failedCapabilities = discovery.Value
+                .Where(item => item.Code is MarketplaceCapabilities.ProductRead or MarketplaceCapabilities.OrderRead)
+                .Where(item => !string.Equals(item.SupportLevel, "SUPPORTED", StringComparison.Ordinal))
+                .Select(item => item.EvidenceNote)
+                .Where(note => !string.IsNullOrWhiteSpace(note))
+                .ToArray();
+            var detail = failedCapabilities.Length == 0
+                ? "Ürün ve sipariş okuma izinleri doğrulanamadı."
+                : string.Join(" ", failedCapabilities);
+            throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", $"{detail} Gerekli izinler: read_products, read_inventory, read_orders ve read_locations.", 403, null, null));
+        }
+        connection.LastSuccessAt = now; connection.LastErrorCode = null; connection.LastErrorClass = null; if (connection.Status == "DRAFT") connection.Status = "VERIFIED"; connection.Version++; await db.SaveChangesAsync(cancellationToken); return true;
+    }
+}

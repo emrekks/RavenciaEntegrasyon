@@ -1,0 +1,76 @@
+// Source: hand-built negative cases on the getShipmentPackages shape (Ravencia-API-Docs/trendyol-api-son.md ~3940-4130).
+// 3330900001: numbers sent as strings, an unknown package status, no invoice fields, one line without vatRate.
+// 3330900002: no orderDate (must be refused, never dated by lastModifiedDate).
+// 3330900003: orderDate out of range (must be refused).
+// 3330900004: no currencyCode (must be refused, never stored as lira).
+// (no id): a package without its id (refused with the order number as identity).
+{
+  "totalElements": 5,
+  "totalPages": 2,
+  "page": 0,
+  "size": 5,
+  "content": [
+    {
+      "shipmentPackageId": "3330900001",
+      "orderNumber": "10900000001",
+      "orderDate": 1762300800000,
+      "lastModifiedDate": "1762304400000",
+      "currencyCode": "TRY",
+      "status": "SomeFutureStatus",
+      "packageGrossAmount": "240.50",
+      "packageTotalPrice": "240.50",
+      "lines": [
+        {
+          "lineId": "4765900001",
+          "quantity": "2",
+          "stockCode": "SKU-FAKE-R1",
+          "barcode": "0000000000091",
+          "productName": "Fake Ürün R1",
+          "lineUnitPrice": "100.25",
+          "vatRate": "20",
+          "orderLineItemStatusName": "SomeFutureLineStatus"
+        },
+        {
+          "lineId": 4765900002,
+          "quantity": 1,
+          "stockCode": "SKU-FAKE-R2",
+          "productName": "Fake Ürün R2",
+          "lineUnitPrice": 40.00,
+          "orderLineItemStatusName": "Created"
+        }
+      ]
+    },
+    {
+      "shipmentPackageId": 3330900002,
+      "orderNumber": "10900000002",
+      "lastModifiedDate": 1762304400000,
+      "currencyCode": "TRY",
+      "status": "Created",
+      "lines": [ { "lineId": 4765900003, "quantity": 1, "stockCode": "SKU-FAKE-R3", "productName": "Fake Ürün R3", "lineUnitPrice": 10, "vatRate": 20 } ]
+    },
+    {
+      "shipmentPackageId": 3330900003,
+      "orderNumber": "10900000003",
+      "orderDate": 999999999999999999,
+      "lastModifiedDate": 1762304400000,
+      "currencyCode": "TRY",
+      "status": "Created",
+      "lines": [ { "lineId": 4765900004, "quantity": 1, "stockCode": "SKU-FAKE-R4", "productName": "Fake Ürün R4", "lineUnitPrice": 10, "vatRate": 20 } ]
+    },
+    {
+      "shipmentPackageId": 3330900004,
+      "orderNumber": "10900000004",
+      "orderDate": 1762300800000,
+      "lastModifiedDate": 1762304400000,
+      "status": "Created",
+      "lines": [ { "lineId": 4765900005, "quantity": 1, "stockCode": "SKU-FAKE-R5", "productName": "Fake Ürün R5", "lineUnitPrice": 10, "vatRate": 20 } ]
+    },
+    {
+      "orderNumber": "10900000005",
+      "orderDate": 1762300800000,
+      "currencyCode": "TRY",
+      "status": "Created",
+      "lines": []
+    }
+  ]
+}

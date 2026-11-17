@@ -7,11 +7,12 @@ const apiState = vi.hoisted(() => ({ calls: [] as string[] }))
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
-  const brands = [{ externalId: '2216217', name: 'Polo Garage', isActive: true }, { externalId: '101', name: 'Polo', isActive: true }, { externalId: '303', name: 'Apolo', isActive: true }]
+  const { testBrandSlice, testReferenceItem } = await import('../../../test/reference')
+  const brands = [testReferenceItem({ externalId: '2216217', name: 'Polo Garage' }), testReferenceItem({ externalId: '101', name: 'Polo' }), testReferenceItem({ externalId: '303', name: 'Apolo' })]
   const respond = async (path: string) => {
     apiState.calls.push(path)
     const url = new URL(path, 'http://hub.test')
-    const slice = (items: typeof brands) => ({ snapshotId: 'snap-1', resourceType: 'BRANDS', fetchedAt: url.searchParams.get('connectionId') === 'conn-new' ? '2026-10-29T12:00:00Z' : '2026-10-28T12:00:00Z', itemCount: 808409, items })
+    const slice = (items: typeof brands) => testBrandSlice(items, { fetchedAt: url.searchParams.get('connectionId') === 'conn-new' ? '2026-10-29T12:00:00Z' : '2026-10-28T12:00:00Z' })
     if (url.pathname === '/reference-data/brands/search') {
       const query = (url.searchParams.get('q') ?? '').toLocaleUpperCase('tr-TR')
       return slice(brands.filter(item => !query || item.name.toLocaleUpperCase('tr-TR').includes(query) || item.externalId === query))
@@ -25,9 +26,10 @@ vi.mock('../../../shared/api', async importOriginal => {
   return { ...original, hubApi: vi.fn(respond) }
 })
 
+import { testBrandSlice } from '../../../test/reference'
 import { BrandReferencePicker, brandLookupBatchSize, lookupBrandReferences, type BrandReferenceSlice } from './brand-reference'
 
-const snapshot: BrandReferenceSlice = { snapshotId: 'snap-1', resourceType: 'BRANDS', fetchedAt: '2026-10-28T12:00:00Z', itemCount: 808409, items: [] }
+const snapshot: BrandReferenceSlice = testBrandSlice([])
 const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
 const searches = () => apiState.calls.filter(path => path.startsWith('/reference-data/brands/search'))
 
@@ -70,7 +72,7 @@ describe('brand reference picker', () => {
     expect(options.map(option => option.querySelector('span')?.textContent)).toEqual(['Polo Garage', 'Polo', 'Apolo'])
 
     act(() => options[0].click())
-    expect(onChange).toHaveBeenCalledWith('2216217', { externalId: '2216217', name: 'Polo Garage', isActive: true })
+    expect(onChange).toHaveBeenCalledWith('2216217', expect.objectContaining({ externalId: '2216217', name: 'Polo Garage', isActive: true }))
     expect(host.querySelector('.brand-reference-picker')).toBeNull()
     expect(apiState.calls.some(path => path.startsWith('/reference-data/brands?'))).toBe(false)
   })

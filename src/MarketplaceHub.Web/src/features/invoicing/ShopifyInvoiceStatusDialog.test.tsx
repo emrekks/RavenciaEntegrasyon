@@ -18,6 +18,9 @@ vi.mock('../../shared/api', async importOriginal => ({
 const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string): unknown } }).process.getBuiltinModule('node:fs') as { readFileSync(path: URL, encoding: 'utf8'): string }
 const testFileUrl = import.meta.url
 const source = (path: string) => fs.readFileSync(new URL(path, testFileUrl), 'utf8')
+// The orders page is OrdersPage.tsx with its parts in orders-page/.
+const ordersPageFiles = ['OrdersPage.tsx', 'orders-page/order-page-helpers.tsx', 'orders-page/OrderInvoiceModals.tsx', 'orders-page/OrderShippingModals.tsx', 'orders-page/OrderReferenceRow.tsx', 'orders-page/OrderPlatformModals.tsx']
+const ordersPageSource = () => ordersPageFiles.map(file => source(`../marketplace/orders/${file}`)).join('\n')
 
 let container: HTMLDivElement
 let root: Root
@@ -74,12 +77,12 @@ describe('ShopifyInvoiceStatusDialog', () => {
 
   it('is the one window both the invoice page and the orders page open, with no document rule of their own', () => {
     for (const path of ['./pages.tsx', '../marketplace/orders/OrdersPage.tsx']) {
-      const code = source(path)
+      const code = path.endsWith('OrdersPage.tsx') ? ordersPageSource() : source(path)
       expect(code, path).toContain('<ShopifyInvoiceStatusDialog ')
       expect(code, path).not.toContain('function ShopifyInvoiceStatusModal')
     }
     // The orders page's bulk window follows the same rule: no document needed for "Faturası Yüklendi".
-    expect(source('../marketplace/orders/OrdersPage.tsx')).not.toContain("status === 'UPLOADED' && !item.invoiceDocumentUrl")
+    expect(ordersPageSource()).not.toContain("status === 'UPLOADED' && !item.invoiceDocumentUrl")
   })
 })
 

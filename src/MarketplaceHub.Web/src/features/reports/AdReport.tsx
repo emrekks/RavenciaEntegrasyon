@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
@@ -6,6 +7,7 @@ import { PanelSelect } from '../../shared/PanelSelect'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { formatIstanbul } from '../../shared/format-date'
 import { formatCount, formatNumber, formatPercent, formatTl } from './report-format'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // Trendyol's product ads report the seller uploads ("Ürün Reklamları Raporum", GET /reports/ad-report). Every figure is a
 // campaign's total since it started, as of the export: it is never the selected period's figure and is never mixed with
@@ -22,7 +24,7 @@ export type AdTotals = {
 export type AdReport = { id: string; connectionId: string; storeName: string; fileName: string; exportedAt: string; exportedAtFromFileName: boolean; uploadedAt: string; totals: AdTotals; campaigns: AdCampaign[] }
 export type AdReports = { reports: AdReport[]; stores: Array<{ connectionId: string; storeName: string }> }
 
-export const adReportQuery = { queryKey: ['reports', 'ad-report'], queryFn: () => hubApi<AdReports>('/reports/ad-report') }
+export const adReportQuery = { queryKey: queryKeys.reports('ad-report'), queryFn: ({ signal }: { signal: AbortSignal }) => hubApi<ApiAnswer<'getReportsAdReport'>>('/reports/ad-report', { signal }) }
 
 // A report older than this is said to be old: the totals have moved on since.
 export const staleDays = 7
@@ -75,7 +77,7 @@ export function AdReportModal({ open, onClose, data }: { open: boolean; onClose:
     mutationFn: (file: File) => {
       const body = new FormData()
       body.append('file', file)
-      return hubApi<{ report: AdReport; warnings: string[] }>(`/connections/${target}/ad-reports`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('ad-report') }, body })
+      return hubApi<ApiAnswer<'postConnectionsByConnectionIdAdReports'>>(`/connections/${target}/ad-reports`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('ad-report') }, body })
     },
     onSuccess: async result => {
       setMessage({ kind: result.warnings.length ? 'info' : 'success', text: `${formatCount(result.report.campaigns.length)} kampanya yüklendi; rapor zamanı ${when(result.report.exportedAt)}.`, warnings: result.warnings })

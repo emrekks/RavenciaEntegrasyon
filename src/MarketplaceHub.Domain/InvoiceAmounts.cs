@@ -46,13 +46,13 @@ public static class InvoiceAmounts
             return false;
         }
 
-        var grossLines = sourceLines.Select(line => Money(line.Quantity * line.UnitPrice)).ToArray();
+        var grossLines = sourceLines.Select(line => MoneyRounding.Round(line.Quantity * line.UnitPrice)).ToArray();
         var lineGrossTotal = grossLines.Sum();
-        var grossTotal = packageGrossAmount > 0 ? Money(packageGrossAmount) : lineGrossTotal;
-        var payableTotal = Money(packagePayableAmount);
+        var grossTotal = packageGrossAmount > 0 ? MoneyRounding.Round(packageGrossAmount) : lineGrossTotal;
+        var payableTotal = MoneyRounding.Round(packagePayableAmount);
         var discountGross = packageDiscountAmount > 0
-            ? Money(packageDiscountAmount)
-            : Money(Math.Max(0, grossTotal - payableTotal));
+            ? MoneyRounding.Round(packageDiscountAmount)
+            : MoneyRounding.Round(Math.Max(0, grossTotal - payableTotal));
         if (Math.Abs(lineGrossTotal - grossTotal) > 0.01m || discountGross < 0 || discountGross > grossTotal
             || Math.Abs(grossTotal - discountGross - payableTotal) > 0.01m)
         {
@@ -67,8 +67,8 @@ public static class InvoiceAmounts
             var source = sourceLines[index];
             var lineGross = grossLines[index];
             var lineGrossDiscount = index == sourceLines.Count - 1
-                ? Money(discountGross - allocatedGrossDiscount)
-                : grossTotal == 0 ? 0 : Money(discountGross * lineGross / grossTotal);
+                ? MoneyRounding.Round(discountGross - allocatedGrossDiscount)
+                : grossTotal == 0 ? 0 : MoneyRounding.Round(discountGross * lineGross / grossTotal);
             allocatedGrossDiscount += lineGrossDiscount;
             if (lineGrossDiscount < 0 || lineGrossDiscount > lineGross)
             {
@@ -77,16 +77,16 @@ public static class InvoiceAmounts
             }
 
             var grossAmounts = FromVatIncluded(lineGross, source.VatRate);
-            var payable = Money(lineGross - lineGrossDiscount);
+            var payable = MoneyRounding.Round(lineGross - lineGrossDiscount);
             var netAmounts = FromVatIncluded(payable, source.VatRate);
-            var taxExclusiveDiscount = Money(grossAmounts.TaxExclusiveAmount - netAmounts.TaxExclusiveAmount);
+            var taxExclusiveDiscount = MoneyRounding.Round(grossAmounts.TaxExclusiveAmount - netAmounts.TaxExclusiveAmount);
             lines.Add(new(source.OrderLineId, source.Description, source.Sku, source.Quantity,
                 decimal.Round(netAmounts.TaxExclusiveAmount / source.Quantity, 4, MidpointRounding.AwayFromZero),
                 taxExclusiveDiscount, source.VatRate, netAmounts.VatAmount, netAmounts.PayableAmount));
         }
 
         var roundedPayable = lines.Sum(line => line.PayableAmount);
-        var roundingDifference = Money(payableTotal - roundedPayable);
+        var roundingDifference = MoneyRounding.Round(payableTotal - roundedPayable);
         if (Math.Abs(roundingDifference) > 0.01m)
         {
             error = "Yuvarlama sonrası fatura toplamı paket toplamıyla uyuşmuyor.";
@@ -122,7 +122,7 @@ public static class InvoiceAmounts
 
         calculation = new(
             lines,
-            lines.Sum(line => Money(line.PayableAmount - line.VatAmount)),
+            lines.Sum(line => MoneyRounding.Round(line.PayableAmount - line.VatAmount)),
             lines.Sum(line => line.DiscountAmount),
             lines.Sum(line => line.VatAmount),
             payableTotal);
@@ -269,15 +269,15 @@ public static class InvoiceAmounts
         if (payableAmount < 0) throw new ArgumentOutOfRangeException(nameof(payableAmount));
         if (vatRate < 0) throw new ArgumentOutOfRangeException(nameof(vatRate));
 
-        var payable = Money(payableAmount);
-        var taxExclusive = vatRate == 0 ? payable : Money(payable / (1 + vatRate / 100m));
+        var payable = MoneyRounding.Round(payableAmount);
+        var taxExclusive = vatRate == 0 ? payable : MoneyRounding.Round(payable / (1 + vatRate / 100m));
         return new(taxExclusive, payable - taxExclusive, payable);
     }
 
     public static string TurkishInvoiceNote(decimal amount)
     {
         if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
-        var rounded = Money(amount);
+        var rounded = MoneyRounding.Round(amount);
         var lira = decimal.ToInt64(decimal.Truncate(rounded));
         var kurus = decimal.ToInt32((rounded - lira) * 100m);
         var text = $"YALNIZ: {IntegerToTurkish(lira)} TÜRK LİRASI";
@@ -285,7 +285,6 @@ public static class InvoiceAmounts
         return text;
     }
 
-    private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 
     private static string IntegerToTurkish(long value)
     {

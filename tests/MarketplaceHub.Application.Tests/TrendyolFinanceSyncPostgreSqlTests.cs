@@ -94,6 +94,31 @@ public sealed class TrendyolFinanceSyncPostgreSqlTests(PostgreSqlTenantIsolation
         }
     }
 
+    // ISLEYICI-7 (15 Nov 2026): a window whose pages pass the page cap is not written as read.
+    [PostgreSqlFact]
+    public async Task A_window_past_the_page_cap_is_not_written_and_opens_an_issue()
+    {
+        var (tenantId, connectionId) = await SeedAsync("fin-pagecap");
+        try
+        {
+            var port = new FakeFinancePort { SalesTotalPages = 201 };
+            var outcome = await RunAsync(tenantId, connectionId, port, Now);
+            Assert.False(outcome.Result.Succeeded);
+            Assert.Equal(TrendyolFinanceSyncJobHandler.PageCapCode, outcome.Result.ErrorCode);
+
+            await using var db = fixture.CreateContext();
+            var state = await db.MarketplaceFinanceSyncStates.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId);
+            Assert.Null(state.CoveredThrough);
+            Assert.Equal(0, await db.MarketplaceFinanceTransactions.CountAsync(x => x.TenantId == tenantId));
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.DedupeKey == TrendyolFinanceSyncJobHandler.FailureKey(connectionId));
+            Assert.Equal(IssueStatus.Open, issue.Status);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task A_payout_is_stored_and_its_records_get_its_id_once_a_day_has_passed()
     {
@@ -184,6 +209,8 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         private static readonly DateTimeOffset[] Days = [.. Enumerable.Range(0, 9).Select(k => Now.AddDays(-90 + 10 * k).AddHours(1)), Now.AddDays(-2).AddHours(1)];
 
         public DateTimeOffset? FailReturnsFrom { get; init; }
+        // Every sales read answers this many pages, one record each (the page cap test).
+        public int? SalesTotalPages { get; init; }
         public int CargoReads { get; private set; }
         public int PayoutPageReads { get; private set; }
         public int PayoutRecordReads { get; private set; }
@@ -193,6 +220,8 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         {
             if (transactionType == "Return" && FailReturnsFrom is { } from && start >= from)
                 return Task.FromResult(AdapterResult<RemoteStatementPage>.Failure(new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", 503, null, null)));
+            if (transactionType == "Sale" && SalesTotalPages is { } totalPages)
+                return Task.FromResult(AdapterResult<RemoteStatementPage>.Success(new([SaleRecord(start.AddMinutes(page), null)], page, totalPages, totalPages)));
             var items = transactionType == "Sale"
                 ? Days.Where(day => day >= start && day < end).Select(day => SaleRecord(day, payoutsRead && day == PaidDay ? "PO-1" : null)).ToArray()
                 : [];

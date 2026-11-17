@@ -1,0 +1,60 @@
+// Source: hand-built after Ravencia-API-Docs/trendyol-api-son.md getShipmentPackages (~3940-4130: micro, etgbNo,
+// etgbDate, hsCode as text, orderCountryCode) and the micro-export country table (AZ). A cross-border storefront order:
+// the shipment address is Trendyol's Istanbul export depot, the customer's country is in orderCountryCode. The page was
+// read under storeFrontCode AZ; the mapper itself does not read the storefront (the client stamps it after mapping).
+{
+  "totalElements": 1,
+  "totalPages": 1,
+  "page": 0,
+  "size": 50,
+  "content": [
+    {
+      "shipmentPackageId": 3330300001,
+      "orderNumber": "10800000001",
+      "orderCountryCode": "AZ",
+      "orderDate": 1762340400000,
+      "lastModifiedDate": 1762344000000,
+      "currencyCode": "TRY",
+      "status": "Created",
+      "shipmentPackageStatus": "Created",
+      "createdBy": "order-creation",
+      "originPackageIds": null,
+      "micro": true,
+      "is4P": false,
+      "etgbNo": "25000000EX000001",
+      "etgbDate": 1762387200000,
+      "hsCode": "620000000000",
+      "containsDangerousProduct": false,
+      "packageGrossAmount": 350.00,
+      "packageSellerDiscount": 0.00,
+      "packageTyDiscount": 0.00,
+      "packageTotalDiscount": 0.00,
+      "packageTotalPrice": 350.00,
+      "agreedDeliveryDate": 1762560000000,
+      "cargoProviderName": "Trendyol Express Marketplace",
+      "commercial": false,
+      "invoiceStatus": "NotInvoiced",
+      "shipmentAddress": { "firstName": "Trendyol", "lastName": "Export Depot", "city": "İstanbul", "district": "Fake District", "countryCode": "TR" },
+      "invoiceAddress": { "firstName": "Test", "lastName": "Musteri", "city": "Bakı", "countryCode": "AZ" },
+      "customerFirstName": "Test",
+      "customerLastName": "Musteri",
+      "lines": [
+        {
+          "lineId": 4765300001,
+          "quantity": 2,
+          "stockCode": "SKU-FAKE-C",
+          "barcode": "0000000000021",
+          "productName": "Fake Ürün C",
+          "lineGrossAmount": 175.00,
+          "lineSellerDiscount": 0.00,
+          "lineTyDiscount": 0.00,
+          "lineTotalDiscount": 0.00,
+          "lineUnitPrice": 175.00,
+          "vatRate": 0,
+          "currencyCode": "TRY",
+          "orderLineItemStatusName": "Created"
+        }
+      ]
+    }
+  ]
+}

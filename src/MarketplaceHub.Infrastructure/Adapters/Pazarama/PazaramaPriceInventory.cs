@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using static MarketplaceHub.Infrastructure.Adapters.RemoteFields;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
@@ -43,6 +44,7 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
     // shared 10 s price/stock slot, so the budget keeps a send within a few minutes; what it does not reach stays not sent
     // and comes back in the next send, without the lines this send recorded.
     internal const int MaxSplitRequests = 24;
+    internal const string BatchIdMissingCode = "PAZARAMA_BATCH_ID_MISSING";
 
     // Stock goes first (an unsent stock change risks overselling) and the two requests stand alone:
     // Pazarama refuses a value it already holds, so a retry must not depend on resending the part that
@@ -111,7 +113,15 @@ public sealed partial class PazaramaHttpClient : IInventoryPricePort
                 using var document = result.Value!;
                 var dataId = Data(document.RootElement, out var data) && data.ValueKind == JsonValueKind.String ? data.GetString()?.Trim() : null;
                 if (string.IsNullOrWhiteSpace(dataId))
-                    return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "PAZARAMA_BATCH_ID_MISSING", "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok.", HttpStatusCode.BadGateway);
+                {
+                    var missing = Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, BatchIdMissingCode, "Pazarama fiyat-stok yanıtında işlem numarası (dataId) yok.", HttpStatusCode.BadGateway);
+                    if (accepted == 0 && held == 0) return missing;
+                    // ADAPTOR-DIGER-3: parts already accepted or held keep their tracking ids; this part, whose result
+                    // cannot be read without one, is kept as not sent and comes back in the next send.
+                    lastError = missing.Error;
+                    parts.Add($"{kind}!:{BatchIdMissingCode}:{count}{position}");
+                    continue;
+                }
                 parts.Add($"{kind}:{dataId}:{count}{position}");
                 accepted++;
             }
@@ -199,8 +209,10 @@ public static class PazaramaPriceInventoryRules
         message is not null && message.Contains("önceki değerleriyle aynı olamaz", StringComparison.OrdinalIgnoreCase);
 
     // The hash that marks a price as sent; the composer and the catalog mapping must agree on it.
+    // Invariant culture: the mark must not depend on the machine's decimal separator (the live server runs invariant).
     public static string PriceHash(decimal listPrice, decimal salePrice, long priceVersion) =>
-        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{listPrice:0.00}|{salePrice:0.00}|TRY|{priceVersion}")));
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{listPrice:0.00}|{salePrice:0.00}|TRY|{priceVersion}"))));
 
     public static SplitBodies? Split(string payloadJson)
     {
@@ -321,17 +333,32 @@ public static class PazaramaBatchMapper
         foreach (var section in new[] { "price", "stock" })
             if (row.TryGetProperty(section, out var part) && part.ValueKind == JsonValueKind.Object && part.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.Number && status.TryGetInt32(out var value))
                 statuses.Add(value);
+        // D9: Pazarama's documented answer gives a price sent to approval section status 0 ("Ürün fiyat onayına
+        // gönderildi") with the row text "Onaya gönderildi" (pazarama-api-son.md ~905-935): the text or the detail saying
+        // so makes it pending approval, not done.
         if (statuses.Count > 0)
             return statuses.Any(x => x == 3) ? BatchState.Processing
-                : statuses.All(x => x is 0 or 5) ? (statuses.Any(x => x == 5) ? BatchState.PendingApproval : BatchState.Succeeded)
+                : statuses.All(x => x is 0 or 5) ? (statuses.Any(x => x == 5) || SentToApproval(row) ? BatchState.PendingApproval : BatchState.Succeeded)
                 : BatchState.Failed;
         return (Text(row, "operationStatusText") ?? "").ToLower(Turkish) switch
         {
             "başarılı" => BatchState.Succeeded,
             "onaya gönderildi" => BatchState.PendingApproval,
             "işleniyor" => BatchState.Processing,
-            _ => BatchState.Failed
+            "hata oluştu" or "tamamlanamadı" => BatchState.Failed,
+            // D10: no result and no text (or one the docs do not list) is no outcome yet: the result is read again
+            // (the operation stays IN_PROGRESS), never taken as a refusal.
+            _ => BatchState.Processing
         };
+    }
+
+    private static bool SentToApproval(JsonElement row)
+    {
+        if (string.Equals((Text(row, "operationStatusText") ?? "").Trim().ToLower(Turkish), "onaya gönderildi", StringComparison.Ordinal)) return true;
+        foreach (var section in new[] { "price", "stock" })
+            if (row.TryGetProperty(section, out var part) && part.ValueKind == JsonValueKind.Object
+                && (Text(part, "operationDetail") ?? "").ToLower(Turkish).Contains("onayına gönderildi", StringComparison.Ordinal)) return true;
+        return false;
     }
 
     private static string? Detail(JsonElement row)
@@ -427,17 +454,5 @@ public static class PazaramaBatchMapper
         }
         catch (JsonException) { }
         return (price, stock);
-    }
-
-    private static string? Text(JsonElement element, string property)
-    {
-        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        var text = value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.GetRawText(),
-            _ => null
-        };
-        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 }

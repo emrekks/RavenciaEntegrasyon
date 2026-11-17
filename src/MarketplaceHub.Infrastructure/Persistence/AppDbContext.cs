@@ -4,6 +4,8 @@ using MarketplaceHub.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -20,6 +22,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantSetting> TenantSettings => Set<TenantSetting>();
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+    public DbSet<TenantInvitation> TenantInvitations => Set<TenantInvitation>();
     public DbSet<UserSecurity> UserSecurities => Set<UserSecurity>();
     public DbSet<RecoveryCode> RecoveryCodes => Set<RecoveryCode>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
@@ -42,6 +45,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductModel> ProductModels => Set<ProductModel>();
     public DbSet<ProductModelAttribute> ProductModelAttributes => Set<ProductModelAttribute>();
+    public DbSet<ProductModelSizeChart> ProductModelSizeCharts => Set<ProductModelSizeChart>();
     public DbSet<MarketplaceModelLink> MarketplaceModelLinks => Set<MarketplaceModelLink>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();
@@ -165,32 +169,233 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        var returnClaims = ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, CancellationToken.None), []).GetAwaiter().GetResult();
         var models = ProductModelLinks.Capture(ChangeTracker);
-        var saved = base.SaveChanges(acceptAllChangesOnSuccess);
-        if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
-        return saved;
+        // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
+        var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
+        // KATALOG-14 phase D5a: the save, its model links and the model's values in one transaction (SaveChangesAsync).
+        var reported = ModelMirrorReport.Count;
+        using var owned = models is not null && Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
+        if (owned is not null) OwnsModelLinkTransaction = true;
+        try
+        {
+            int saved;
+            // KATALOG-14 phase D5b review 3: the models the save gives a field to are locked before any card row is written.
+            if (models is not null) ProductModelLinks.LockPendingModelsAsync(this, models, CancellationToken.None).GetAwaiter().GetResult();
+            _saving = true;
+            try { saved = base.SaveChanges(acceptAllChangesOnSuccess && owned is null); }
+            finally { _saving = false; }
+            CatalogListGenerations.Bump(catalogTenants);
+            ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
+            if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
+            if (owned is not null)
+            {
+                OwnsModelLinkTransaction = false;
+                owned.Commit();
+                if (acceptAllChangesOnSuccess) ChangeTracker.AcceptAllChanges();
+            }
+            RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
+            return saved;
+        }
+        catch
+        {
+            ForgetModelMirrorReport(reported);
+            throw;
+        }
+        finally
+        {
+            OwnsModelLinkTransaction = false;
+        }
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); OrderCustomerSearchNames.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit();
+        // SIPARIS-STOK-9: the Returns page's card columns of every return claim this save touches: the claims it changes in
+        // the save itself (after the outbox events, so the columns raise none), the others right after it, outside the
+        // tracker (ReturnCardColumns).
+        var returnClaims = await ReturnCardColumns.GuardAsync(this, () => ReturnCardColumns.BeforeSaveAsync(this, cancellationToken), []);
         var models = ProductModelLinks.Capture(ChangeTracker);
-        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-        if (models is not null) await LinkProductModelsAsync(models);
-        return saved;
+        // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
+        var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
+        // KATALOG-14 phase D5a: a save that adds or changes a card links it to its model and writes the model's values in
+        // the same transaction (the caller's, else one opened here), so no reader ever sees a card without its model or a
+        // model behind its cards.
+        var reported = ModelMirrorReport.Count;
+        await using var owned = models is not null && Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;
+        if (owned is not null) OwnsModelLinkTransaction = true;
+        try
+        {
+            int saved;
+            // KATALOG-14 phase D5b review 3: the models the save gives a field to are locked before any card row is written.
+            if (models is not null) await ProductModelLinks.LockPendingModelsAsync(this, models, cancellationToken);
+            _saving = true;
+            // In its own transaction the changes are accepted only after the commit: a link or model write that fails rolls
+            // the save back and leaves the tracked entities as they were, so the caller's next save writes them again.
+            try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess && owned is null, cancellationToken); }
+            finally { _saving = false; }
+            CatalogListGenerations.Bump(catalogTenants);
+            await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
+            if (models is not null) await LinkProductModelsAsync(models);
+            if (owned is not null)
+            {
+                OwnsModelLinkTransaction = false;
+                await owned.CommitAsync(cancellationToken);
+                if (acceptAllChangesOnSuccess) ChangeTracker.AcceptAllChanges();
+            }
+            await RefreshDeferredModelValuesAsync();
+            return saved;
+        }
+        catch
+        {
+            ForgetModelMirrorReport(reported);
+            throw;
+        }
+        finally
+        {
+            OwnsModelLinkTransaction = false;
+        }
+    }
+
+    // True while SaveChanges runs its own transaction around a save and its model links (KATALOG-14 phase D5a): the
+    // reconcile then takes its advisory locks inside it (ProductModelLinks.ReconcileAsync).
+    internal bool OwnsModelLinkTransaction { get; private set; }
+
+    // KATALOG-14 phase D5b: set while a marketplace product import saves (CatalogImportService.SyncProducts). A colour
+    // whose VAT, category, warranty or delivery days come in apart from its model's then does not move the model: the
+    // model keeps its value, the colour's copy takes it back and PRODUCT_MODEL_VALUES_DIFFER names the difference
+    // (ModelMirror). Every other save moves the model and all its colours.
+    internal bool MarketplaceCatalogImport { get; set; }
+
+    // KATALOG-14 phase D5b: what the saves since the last read wrote to models and their colours (ModelMirror), for the
+    // result messages of the writers ("Model İçindeki 3 Renge Uygulandı"). Read and cleared by the writer.
+    internal List<ModelMirror.Applied> ModelMirrorReport { get; } = [];
+
+    // KATALOG-14 phase D5b (owner, 17 Nov 2026): the order a marketplace import brought its new cards in (page and row), per
+    // card: the first one gives a new model its values (ProductModelLinks.FirstBroughtIn). Set by the import, cleared after
+    // each model group.
+    internal Dictionary<Guid, int> ModelOrderHint { get; } = [];
+
+    // KATALOG-14 phase D5b review: what a save that failed or was rolled back reported (its models were not written): it is
+    // dropped, so "Model İçindeki N Renge Uygulandı" counts only what stands.
+    internal void ForgetModelMirrorReport(int from)
+    {
+        if (from < ModelMirrorReport.Count) ModelMirrorReport.RemoveRange(from, ModelMirrorReport.Count - from);
+    }
+
+    // KATALOG-14 phase B: the models whose shared values a save inside a caller's transaction changed. The values are not
+    // written there: the model row update made a serializable editor save fail with a conflict whenever anything else
+    // (the backfill, the scan, a worker's save) wrote the same model meanwhile. They are refreshed right after the
+    // transaction commits (CommitHookTransactionFactory), in the refresh's own short transactions; a transaction rolled
+    // back leaves them for the next commit, where the refresh simply finds the cards as they are.
+    private readonly Dictionary<Guid, HashSet<Guid>> _deferredModelValues = [];
+    private bool _refreshingDeferredModelValues;
+    // SaveChanges commits its own transaction while EF still holds the context: the deferred models wait for its end.
+    private bool _saving;
+
+    internal void DeferModelValues(Guid tenantId, IEnumerable<Guid> modelIds)
+    {
+        if (!_deferredModelValues.TryGetValue(tenantId, out var set)) _deferredModelValues[tenantId] = set = [];
+        set.UnionWith(modelIds);
+    }
+
+    // KATALOG-14 phase D5b: the model fields a serializable caller's save gave its cards (ModelMirror), written after its
+    // commit with the deferred model values.
+    private readonly Dictionary<Guid, Dictionary<Guid, ModelMirror.FieldChange>> _deferredFieldChanges = [];
+
+    internal void DeferFieldChanges(Guid tenantId, IReadOnlyDictionary<Guid, ModelMirror.FieldChange> changes)
+    {
+        if (!_deferredFieldChanges.TryGetValue(tenantId, out var map)) _deferredFieldChanges[tenantId] = map = [];
+        foreach (var (productId, change) in changes) map[productId] = change;
+        if (!_deferredModelValues.ContainsKey(tenantId)) _deferredModelValues[tenantId] = [];
+    }
+
+    // The models deferred by saves inside a transaction, refreshed once no transaction is open. A failure is recorded as a
+    // PRODUCT_MODEL_LINK_FAILED issue and the daily scan repairs the model: the commit itself already stands.
+    public async Task RefreshDeferredModelValuesAsync()
+    {
+        if (_refreshingDeferredModelValues || _saving || _deferredModelValues.Count == 0 || Database.CurrentTransaction is not null) return;
+        var deferred = _deferredModelValues.ToList();
+        _deferredModelValues.Clear();
+        var deferredFields = _deferredFieldChanges.ToDictionary(x => x.Key, x => x.Value);
+        _deferredFieldChanges.Clear();
+        _refreshingDeferredModelValues = true;
+        try
+        {
+            foreach (var (tenantId, modelIds) in deferred)
+            {
+                var now = _timeProvider.GetUtcNow();
+                if (deferredFields.TryGetValue(tenantId, out var changes))
+                {
+                    var reported = ModelMirrorReport.Count;
+                    try
+                    {
+                        await using var transaction = await Database.BeginTransactionAsync();
+                        // KATALOG-14 phase D5b review: the models' rows first, in id order, as every other model write takes them.
+                        await ProductModelLinks.LockModelsOfCardsAsync(this, tenantId, [.. changes.Keys], [], CancellationToken.None);
+                        await ModelMirror.ApplyAsync(this, tenantId, changes, now, CancellationToken.None);
+                        await transaction.CommitAsync();
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        ForgetModelMirrorReport(reported);
+                        await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
+                    }
+                }
+                if (modelIds.Count == 0) continue;
+                try { await ProductModelValues.RefreshAsync(this, tenantId, modelIds, now, CancellationToken.None); }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
+                }
+            }
+        }
+        finally
+        {
+            _refreshingDeferredModelValues = false;
+        }
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
+        optionsBuilder.ReplaceService<IRelationalTransactionFactory, CommitHookTransactionFactory>();
+
+    // Runs RefreshDeferredModelValuesAsync after every commit of this context's transactions (each caller's own
+    // BeginTransaction(Async) … Commit(Async)), so no transactional caller has to remember it.
+    internal sealed class CommitHookTransactionFactory(RelationalTransactionFactoryDependencies dependencies) : RelationalTransactionFactory(dependencies)
+    {
+        public override RelationalTransaction Create(IRelationalConnection connection, System.Data.Common.DbTransaction transaction, Guid transactionId, IDiagnosticsLogger<DbLoggerCategory.Database.Transaction> logger, bool transactionOwned) =>
+            new CommitHookTransaction(connection, transaction, transactionId, logger, transactionOwned, Dependencies.SqlGenerationHelper);
+    }
+
+    private sealed class CommitHookTransaction(IRelationalConnection connection, System.Data.Common.DbTransaction transaction, Guid transactionId, IDiagnosticsLogger<DbLoggerCategory.Database.Transaction> logger, bool transactionOwned, ISqlGenerationHelper sqlGenerationHelper)
+        : RelationalTransaction(connection, transaction, transactionId, logger, transactionOwned, sqlGenerationHelper)
+    {
+        public override void Commit()
+        {
+            base.Commit();
+            if (Connection.Context is AppDbContext db) db.RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
+        }
+
+        public override async Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            await base.CommitAsync(cancellationToken);
+            if (Connection.Context is AppDbContext db) await db.RefreshDeferredModelValuesAsync();
+        }
     }
 
     // Model Kaydı Faz 1: the cards and variants this save added, deleted, re-coded or re-branded are linked to their model
     // (ProductModelLinks), right after the save and in its transaction when there is one. The link only follows the
     // model-code rule, so outside a transaction a failure here leaves a card unlinked (today's rule) and the save stands;
-    // inside one the error is the transaction's (PostgreSQL has already aborted it).
+    // inside one the error is the transaction's (PostgreSQL has already aborted it). Outside one any failure (the model
+    // refresh included) is recorded as the PRODUCT_MODEL_LINK_FAILED issue: a save that stands never becomes an error.
     private async Task LinkProductModelsAsync(ProductModelLinks.Pending models)
     {
-        try { await ProductModelLinks.AfterSaveAsync(this, models, _timeProvider.GetUtcNow(), CancellationToken.None); }
-        catch (Exception exception) when (Database.CurrentTransaction is null && exception is System.Data.Common.DbException or InvalidOperationException)
+        var now = _timeProvider.GetUtcNow();
+        try { await ProductModelLinks.AfterSaveAsync(this, models, now, CancellationToken.None); }
+        catch (Exception exception) when (Database.CurrentTransaction is null && exception is not OperationCanceledException)
         {
-            System.Diagnostics.Trace.TraceWarning($"Product model links not updated: {exception.GetType().Name}: {exception.Message}");
+            foreach (var tenantId in models.Tenants.ToList()) await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
         }
     }
 
@@ -255,11 +460,18 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             .ToHashSet();
         // Adding an outbox event updates ChangeTracker. Materialize the source
         // entries first so the enumeration is not invalidated by that append.
-        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified).ToList())
+        // FATURA-FINANS-3: a deleted row is announced too (a return line, an allocation...): the reports read from it as from
+        // a changed one. One event per aggregate and save, as for the others; deletes outside the tracker
+        // (ExecuteDelete, raw SQL) still announce themselves.
+        foreach (var entry in ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList())
         {
             // A row whose only change is a "last checked" time is still saved, but the screens have nothing new to show.
             if (SyncNoOpWrites.IsCheckOnly(entry)) continue;
-            var change = OutboxChange(entry.Entity);
+            // A deleted return claim is announced as a change of its order (as CancelledReturnClaimCleanup does): the report
+            // cache can no longer find the claim to place it in a period, but it finds the order (ReportCache).
+            var change = entry.State == EntityState.Deleted && entry.Entity is ReturnClaim deletedClaim
+                ? (deletedClaim.TenantId, "returns", "Order", deletedClaim.OrderId, (long?)null)
+                : OutboxChange(entry.Entity);
             if (change is null || !existing.Add((change.Value.ResourceType, change.Value.AggregateType, change.Value.AggregateId))) continue;
             var now = _timeProvider.GetUtcNow();
             IntegrationOutboxEvents.Add(new IntegrationOutboxEvent
@@ -267,7 +479,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
                 Id = Guid.CreateVersion7(),
                 TenantId = change.Value.TenantId,
                 ResourceType = change.Value.ResourceType,
-                OperationType = entry.State == EntityState.Added ? "created" : "updated",
+                OperationType = entry.State switch { EntityState.Added => "created", EntityState.Deleted => "deleted", _ => "updated" },
                 AggregateType = change.Value.AggregateType,
                 AggregateId = change.Value.AggregateId,
                 AggregateVersion = change.Value.Version,
@@ -367,6 +579,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.Role).HasConversion(MembershipRoleConverter).HasMaxLength(24); entity.Property(x => x.Status).HasConversion(RecordStatusConverter).HasMaxLength(24);
             entity.Property(x => x.Version).IsConcurrencyToken();
         });
+        builder.Entity<TenantInvitation>(entity =>
+        {
+            entity.ToTable("tenant_invitations", "iam"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.Property(x => x.Role).HasConversion(MembershipRoleConverter).HasMaxLength(24);
+            entity.Property(x => x.Email).HasMaxLength(256); entity.Property(x => x.DisplayName).HasMaxLength(160);
+        });
         builder.Entity<UserSecurity>(entity =>
         {
             entity.ToTable("user_security", "iam"); entity.HasKey(x => x.UserId);
@@ -401,7 +623,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         builder.Entity<IntegrationJob>(entity =>
         {
-            entity.ToTable("jobs", "integration", table => table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"")); entity.HasKey(x => x.Id);
+            // ck_jobs_status (VERITABANI-DAGITIM-15): a mistyped status (raw SQL, a hand fix) would leave a job no screen or
+            // sweep sees. The list is JobStatusConverter's output; StatusCheckConstraintModelTests keeps them equal.
+            entity.ToTable("jobs", "integration", table =>
+            {
+                table.HasCheckConstraint("ck_job_attempt_bounds", "\"AttemptCount\" >= 0 AND \"MaxAttempts\" > 0 AND \"AttemptCount\" <= \"MaxAttempts\"");
+                table.HasCheckConstraint("ck_jobs_status", "\"Status\" IN ('PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED')");
+            });
+            entity.HasKey(x => x.Id);
             entity.Property(x => x.JobType).HasMaxLength(96); entity.Property(x => x.ResourceType).HasMaxLength(48).HasDefaultValue("jobs"); entity.Property(x => x.OperationType).HasMaxLength(64).HasDefaultValue("execute"); entity.Property(x => x.TriggerType).HasMaxLength(32).HasDefaultValue("system"); entity.Property(x => x.JobDedupKey).HasMaxLength(256);
             entity.Property(x => x.EffectIdempotencyKey).HasMaxLength(256); entity.Property(x => x.PayloadHash).HasMaxLength(128);
             entity.Property(x => x.Status).HasConversion(JobStatusConverter).HasMaxLength(24); entity.Property(x => x.CreatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAdd(); entity.Property(x => x.MaxAttempts).HasDefaultValue(JobRetryPolicy.DefaultMaxAttempts); entity.Property(x => x.Version).IsConcurrencyToken();

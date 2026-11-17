@@ -11,6 +11,7 @@ public sealed class InvoiceSubmissionStateTests
     [InlineData("CAPABILITY_NOT_VERIFIED")]
     [InlineData("EFATURAM_SIGNIN_UNAVAILABLE")]
     [InlineData("EFATURAM_RATE_LIMITED")]
+    [InlineData("EFATURAM_GATEWAY_BLOCKED")]
     public void Provider_refusal_before_any_invoice_exists_is_retryable_and_shown_as_an_error(string errorCode)
     {
         Assert.True(InvoicingBillingService.IsStoppedBeforeProvider(InvoiceStatus.Submitting, errorCode, null));
@@ -53,9 +54,9 @@ public sealed class InvoiceSubmissionStateTests
     public void Lost_provider_answer_is_labelled_uncertain_not_rejected()
     {
         Assert.Equal("FATURA_BELIRSIZ", InvoicingBillingService.FiscalSubmissionLabel(InvoiceStatus.UnknownResult, "INVOICE_SUBMISSION_OUTCOME_UNKNOWN", null));
-        Assert.Equal("FATURA_BELIRSIZ", MarketplaceSalesService.InvoiceLabel(InvoiceStatus.UnknownResult, null, "{}", []));
-        Assert.Equal("FATURA_BELIRSIZ", MarketplaceSalesService.InvoiceLabel(InvoiceStatus.UnknownResult, null, MarketplaceInvoiceStatus.NotInvoiced, "{}", []));
-        Assert.Equal("FATURA_REDDEDILDI", MarketplaceSalesService.InvoiceLabel(InvoiceStatus.Rejected, null, "{}", []));
+        Assert.Equal("FATURA_BELIRSIZ", InvoiceLabelPolicy.InvoiceLabel(InvoiceStatus.UnknownResult, null, "{}", []));
+        Assert.Equal("FATURA_BELIRSIZ", InvoiceLabelPolicy.InvoiceLabel(InvoiceStatus.UnknownResult, null, MarketplaceInvoiceStatus.NotInvoiced, "{}", []));
+        Assert.Equal("FATURA_REDDEDILDI", InvoiceLabelPolicy.InvoiceLabel(InvoiceStatus.Rejected, null, "{}", []));
         // It stays in the work queue so the operator resolves it.
         Assert.True(InvoicingBillingService.IsWorkspaceInvoiceUninvoiced("FATURA_BELIRSIZ", canCreateInvoice: false));
     }

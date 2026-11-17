@@ -13,7 +13,7 @@ public static class ListingVerificationPolicy
     public const int DefaultIntervalSeconds = 86_400;
     // Spreads the connections over the first half of the window.
     public const int DefaultJitterSeconds = 5_400;
-    public static readonly TimeSpan IstanbulOffset = TimeSpan.FromHours(3);
+    public static readonly TimeSpan IstanbulOffset = TurkeyClock.Offset;
     public static readonly TimeSpan WindowStart = TimeSpan.FromHours(3);
     public static readonly TimeSpan WindowEnd = TimeSpan.FromHours(6);
     // A run that was queued but did not complete (a failing connection) is queued again an hour later at the earliest.

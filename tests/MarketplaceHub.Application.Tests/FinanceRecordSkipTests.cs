@@ -116,9 +116,10 @@ public sealed class FinanceRecordSkipTests
             <GetSettlementDetailResponse xmlns="http://www.n11.com/ws/schemas"><settlementDetail><settlement><status>ODENDI</status></settlement>
               <orderItemSettlementDataList><orderItemSettlements>
                 <orderItemSettlement><orderItemId>1</orderItemId><orderNumber>9001</orderNumber><settlementAmount>80</settlementAmount><paymentAmount>100</paymentAmount></orderItemSettlement>
-                <orderItemSettlement><orderNumber>9002</orderNumber><settlementAmount>80</settlementAmount></orderItemSettlement>
+                <orderItemSettlement><orderNumber>9002</orderNumber><settlementAmount>80</settlementAmount><paymentAmount>100</paymentAmount></orderItemSettlement>
                 <orderItemSettlement><orderItemId>3</orderItemId><orderNumber>9003</orderNumber><paymentAmount>100</paymentAmount></orderItemSettlement>
-                <orderItemSettlement><orderItemId>4</orderItemId><orderNumber>9004</orderNumber><settlementAmount>80</settlementAmount><adFee>1234,50</adFee></orderItemSettlement>
+                <orderItemSettlement><orderItemId>4</orderItemId><orderNumber>9004</orderNumber><settlementAmount>80</settlementAmount><paymentAmount>100</paymentAmount><adFee>1234,50</adFee></orderItemSettlement>
+                <orderItemSettlement><orderItemId>5</orderItemId><orderNumber>9005</orderNumber><settlementAmount>80</settlementAmount></orderItemSettlement>
               </orderItemSettlements><metadata><pageCount>1</pageCount></metadata></orderItemSettlementDataList></settlementDetail>
             </GetSettlementDetailResponse>
             """);
@@ -127,10 +128,12 @@ public sealed class FinanceRecordSkipTests
 
         var line = Assert.Single(page.Items);
         Assert.Equal(("1", 80m, 0m), (line.OrderItemId, line.SettlementAmount, line.Commission));
-        Assert.Equal(3, page.Skipped.Count);
+        Assert.Equal(4, page.Skipped.Count);
         Assert.Contains("kimliksiz kayıt (sipariş 9002): kimliği yok", page.Skipped[0].Description);
         Assert.Equal(("3", "kayıt 3 (sipariş 9003): tutarı yok ya da okunamadı"), (page.Skipped[1].Key, page.Skipped[1].Description));
         Assert.Equal("4", page.Skipped[2].Key);
+        // D6: a line without its paid amount is skipped too, never stored with a sales amount of 0.
+        Assert.Equal(("5", "kayıt 5 (sipariş 9005): tutarı yok ya da okunamadı"), (page.Skipped[3].Key, page.Skipped[3].Description));
     }
 }
 
@@ -183,6 +186,60 @@ public sealed class FinanceRecordSkipPostgreSqlTests(PostgreSqlTenantIsolationFi
             await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    // ISLEYICI-7 (16 Nov 2026): a window that is still full at the page cap ends the run with HEPSIBURADA_FINANCE_PAGE_CAP
+    // and nothing of the run is written (it used to end quietly and store what it had read as the whole range).
+    [PostgreSqlFact]
+    public async Task A_hepsiburada_window_cut_at_its_page_cap_writes_nothing_and_names_the_cap()
+    {
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"hbcap-{Guid.NewGuid():N}"[..20], DisplayName = "hb", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = Now, UpdatedAt = Now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "hb", ExternalStoreId = $"m-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            await seed.SaveChangesAsync();
+        }
+        try
+        {
+            var port = new EndlessPort();
+            await using (var db = fixture.CreateContext())
+            {
+                var handler = new HepsiburadaFinanceSyncJobHandler(db, port, new FixedClock(Now), new ConfigurationBuilder().Build());
+                var outcome = await handler.HandleAsync(new JobRequest(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaFinanceSync, "{}", "test", null), CancellationToken.None);
+                Assert.False(outcome.Result.Succeeded);
+                Assert.Equal(HepsiburadaFinanceSyncJobHandler.PageCapCode, outcome.Result.ErrorCode);
+            }
+            Assert.Equal(HepsiburadaFinanceSyncJobHandler.MaximumPages, port.Calls);
+            await using var check = fixture.CreateContext();
+            Assert.False(await check.MarketplaceFinanceTransactions.AnyAsync(x => x.TenantId == tenant.Id));
+            Assert.Equal(IssueStatus.Open, (await check.OperationalIssues.SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == HepsiburadaFinanceSyncJobHandler.FailureKey(connection.Id))).Status);
+        }
+        finally
+        {
+            await using var db = fixture.CreateContext();
+            await db.MarketplaceFinanceTransactions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
+    // Every page is full and the count says far more follow.
+    private sealed class EndlessPort : IHepsiburadaFinancePort
+    {
+        public int Calls { get; private set; }
+
+        public Task<AdapterResult<RemoteFinanceRecordPage>> GetFinanceRecordsAsync(AdapterContext context, string status, bool byDueDate, DateTimeOffset start, DateTimeOffset end, int offset, CancellationToken cancellationToken)
+        {
+            Calls++;
+            var items = Enumerable.Range(offset, 100)
+                .Select(index => new RemoteFinanceRecord($"r{index}", "Payment", null, status, null, null, null, null, 10m, 10m, "TRY", true, null, null, Now, null, "{}"))
+                .ToList();
+            return Task.FromResult(AdapterResult<RemoteFinanceRecordPage>.Success(new RemoteFinanceRecordPage(items, int.MaxValue)));
         }
     }
 

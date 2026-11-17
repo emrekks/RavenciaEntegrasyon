@@ -45,7 +45,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     // 10.11.2026 (MZ052BOD, 7 colours): an images-only send refused two colours for variants without a price.
     public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false, bool desiRequired = true, bool salesDataOptional = false)
     {
-        var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
+        var product = await EffectiveCatalog.Products(db).SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
@@ -135,7 +135,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // productMainId is the whole card's model code, so the variants a matched card adds join its Trendyol product.
-        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        // KATALOG-14 phase D5b: the model's code (EffectiveCatalog.CardModelCodesAsync).
+        var modelCodes = await EffectiveCatalog.CardModelCodesAsync(db, tenantId, productId, cardVariants.Select(x => x.ModelCode), cancellationToken);
         if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
         // Model Kaydı Faz 2b: the productMainId the model link holds (TrendyolProductMainIdAsync).
         var productMainId = await TrendyolProductMainIdAsync(db, tenantId, connectionId, product, cardVariants.Select(x => x.Id).ToArray(), modelCodes[0]!, cancellationToken);

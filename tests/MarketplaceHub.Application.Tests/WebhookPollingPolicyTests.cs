@@ -319,8 +319,8 @@ public sealed class WebhookEventPathTests
         Assert.Equal("ORDER_EVENT", cancel!.ResourceType);
         Assert.NotEqual(cancel.ExternalMessageId, deliver!.ExternalMessageId);
         using var document = System.Text.Json.JsonDocument.Parse(body);
-        Assert.Equal("4736002251", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "OrderNumber"));
-        Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindString(document.RootElement, "packageNumber"));
+        Assert.Equal("4736002251", MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindString(document.RootElement, "OrderNumber"));
+        Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindString(document.RootElement, "packageNumber"));
     }
 
     // An awaiting-action claim body the mapper could read still has no status date: the claims are read again, and
@@ -343,15 +343,15 @@ public sealed class WebhookEventPathTests
         var deliver = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create("""{"deliveredDate":"2026-10-19T10:00:00"}"""u8.ToArray(), "packages/57b1850c/deliver");
         var messageId = $"{Guid.NewGuid():N}:{deliver!.ExternalMessageId}";
 
-        var path = MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderEventPath(messageId);
+        var path = MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.OrderEventPath(messageId);
         Assert.Equal("packages/57b1850c/deliver", path);
-        Assert.Equal(("packages", "57b1850c"), MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.HepsiburadaEventReference(path));
-        Assert.Equal(("lineitems", "b17553de"), MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.HepsiburadaEventReference("lineitems/b17553de/cancel"));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.HepsiburadaEventReference("orders"));
-        Assert.Null(MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.OrderEventPath("returns:claim-1:ABC"));
+        Assert.Equal(("packages", "57b1850c"), MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.HepsiburadaEventReference(path));
+        Assert.Equal(("lineitems", "b17553de"), MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.HepsiburadaEventReference("lineitems/b17553de/cancel"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.HepsiburadaEventReference("orders"));
+        Assert.Null(MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.OrderEventPath("returns:claim-1:ABC"));
 
         using var unpack = System.Text.Json.JsonDocument.Parse("""{"packageNumber":"57b1850c","orderNumbers":["4736002251","4736002252"]}""");
-        Assert.Equal(["4736002251", "4736002252"], MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.FindStrings(unpack.RootElement, "orderNumbers"));
+        Assert.Equal(["4736002251", "4736002252"], MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindStrings(unpack.RootElement, "orderNumbers"));
     }
 }
 

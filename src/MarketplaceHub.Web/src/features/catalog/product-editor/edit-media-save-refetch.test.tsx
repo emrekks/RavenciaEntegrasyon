@@ -15,11 +15,14 @@ const fixture = vi.hoisted(() => {
     productMedia: [] as string[],
     variantMedia: [] as string[],
     version: 3,
-    client: undefined as import('@tanstack/react-query').QueryClient | undefined
+    client: undefined as import('@tanstack/react-query').QueryClient | undefined,
+    // A picture assignment save that has not answered yet, and the If-Match of each product write.
+    reconcileHeld: null as Promise<void> | null,
+    patchIfMatch: [] as Array<string | null>
   }
   const variant = () => ({ id: 'v1', productId: 'p1', version: 1, sku: 'SKU-1', barcode: 'B-1', modelCode: 'M-1', optionSignature: 'Renk: Bej', status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 0, available: 0, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: [...state.variantMedia], options: { Renk: 'Bej' }, attributes: [] })
   const product = () => ({
-    id: 'p1', version: state.version, title: 'Ürün', description: '', brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-06T15:00:00Z',
+    id: 'p1', version: state.version, title: 'Ürün', description: '', brandId: 'b1', categoryId: 'c1', warrantyMonths: 0, status: 'ACTIVE', updatedAt: '2026-11-06T15:00:00Z',
     variants: [variant()], primaryImageUrl: state.productMedia[0] ?? null, totalStock: 0, startingPrice: 90, currency: 'TRY', modelCode: 'M-1', activePlatforms: [],
     mediaUrls: [...new Set([...state.productMedia, ...state.variantMedia])],
     familyMediaUrls: [...state.productMedia],
@@ -39,7 +42,12 @@ vi.mock('../../../shared/api', async importOriginal => {
     // Each answer takes a moment, an upload longer than a read (as on live), so the page renders between the save's steps.
     await new Promise(resolve => setTimeout(resolve, path.startsWith('/files/') ? 30 : 5))
     if (path === '/products' && init?.method === 'POST') return product()
-    if (path === '/products/p1' && init?.method === 'PATCH') { state.version += 1; return product() }
+    if (path === '/products/p1' && init?.method === 'PATCH') {
+      const ifMatch = new Headers(init.headers).get('If-Match')
+      state.patchIfMatch.push(ifMatch)
+      if (ifMatch !== `"v${state.version}"`) throw new original.ApiRequestError('Sürüm değişti.', 412)
+      state.version += 1; return product()
+    }
     if (path === '/files/product-media' && init?.method === 'POST') {
       const assetId = `a${state.calls.filter(call => call === 'POST /files/product-media').length}`
       const url = `/api/v1/files/product-media/${assetId}/content`
@@ -50,6 +58,7 @@ vi.mock('../../../shared/api', async importOriginal => {
       return { fileAssetId: assetId }
     }
     if (path === '/files/product-media-reconcile') {
+      if (state.reconcileHeld) await state.reconcileHeld
       const body = JSON.parse(String(init?.body)) as { variantId: string | null; items: Array<{ url: string }> }
       if (body.variantId) state.variantMedia = body.items.map(item => item.url)
       else state.productMedia = body.items.map(item => item.url)
@@ -78,6 +87,8 @@ beforeEach(() => {
   fixture.state.productMedia = []
   fixture.state.variantMedia = []
   fixture.state.version = 3
+  fixture.state.reconcileHeld = null
+  fixture.state.patchIfMatch = []
   let blob = 0
   URL.createObjectURL = vi.fn(() => `blob:${++blob}`)
   URL.revokeObjectURL = vi.fn()
@@ -157,6 +168,65 @@ describe('new pictures saved on a colour product page while the product is read 
     expect(container.querySelectorAll('figure[data-media-kind="file"]')).toHaveLength(0)
   })
 })
+
+describe('a picture assignment saved on its own while Kaydet is pressed', () => {
+  it('Kaydet waits for the assignment save, names the version it left and shows no stale banner', async () => {
+    fixture.state.productMedia = ['https://cdn.example.com/a1.jpg']
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await renderAt('/products/p1', client)
+    await settle()
+    // An unsaved edit besides the assignment.
+    setValue(container.querySelector<HTMLInputElement>('.product-title-field input')!, 'Yeni Ad')
+    await settle(2)
+    let release = () => undefined as void
+    fixture.state.reconcileHeld = new Promise<void>(resolve => { release = resolve })
+    act(() => container.querySelector<HTMLButtonElement>('button.variant-media-button')!.click())
+    act(() => container.querySelector<HTMLButtonElement>('.variant-media-picker-modal button.variant-media-option')!.click())
+    const apply = Array.from(container.querySelectorAll<HTMLButtonElement>('.variant-media-picker-modal footer button')).find(button => button.textContent === 'Görselleri Kaydet')!
+    act(() => apply.click())
+    await settle(2)
+    expect(fixture.state.calls).toContain('PUT /files/product-media-reconcile')
+
+    const save = container.querySelector<HTMLButtonElement>('button[data-submit-intent="save"]')!
+    await act(async () => { save.form!.requestSubmit(save) })
+    await settle(5)
+    // The product write waits while the assignment is still being saved.
+    expect(fixture.state.calls.filter(call => call === 'PATCH /products/p1')).toHaveLength(0)
+    release()
+    await settle(30)
+    expect(fixture.state.calls.filter(call => call === 'PATCH /products/p1')).toHaveLength(1)
+    // The assignment moved the product to v4: Kaydet names that version, its own write is no other operation's change.
+    expect(fixture.state.patchIfMatch).toEqual(['"v4"'])
+    expect(container.querySelector('.product-stale-banner')).toBeNull()
+  })
+
+  it('W1: an assignment saved over an unsaved title keeps the title unsaved, and taking the title back leaves nothing unsaved', async () => {
+    fixture.state.productMedia = ['https://cdn.example.com/a1.jpg']
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await renderAt('/products/p1', client)
+    await settle()
+    const title = () => container.querySelector<HTMLInputElement>('.product-title-field input')!
+    setValue(title(), 'Yeni Ad')
+    await settle(2)
+    act(() => container.querySelector<HTMLButtonElement>('button.variant-media-button')!.click())
+    act(() => container.querySelector<HTMLButtonElement>('.variant-media-picker-modal button.variant-media-option')!.click())
+    const apply = Array.from(container.querySelectorAll<HTMLButtonElement>('.variant-media-picker-modal footer button')).find(button => button.textContent === 'Görselleri Kaydet')!
+    act(() => apply.click())
+    await settle(30)
+    expect(fixture.state.variantMedia).toEqual(['https://cdn.example.com/a1.jpg'])
+    expect(title().value).toBe('Yeni Ad')
+    expect(unloadBlocked()).toBe(true)
+    setValue(title(), 'Ürün')
+    await settle(2)
+    expect(unloadBlocked()).toBe(false)
+  })
+})
+
+function unloadBlocked() {
+  const event = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent
+  window.dispatchEvent(event)
+  return event.defaultPrevented
+}
 
 describe('new pictures on a new product', () => {
   it('uploads each once and ends on the product page with the pictures shown once', async () => {

@@ -1,0 +1,136 @@
+{
+  "ExternalOrderId": "10900000101",
+  "OrderNumber": "10900000101",
+  "OrderedAt": "2025-11-04T21:00:00+00:00",
+  "LastModifiedAt": "1970-01-01T00:00:00+00:00",
+  "Currency": "TRY",
+  "GrossAmount": 160.00,
+  "DiscountAmount": 0,
+  "NetAmount": 160.00,
+  "CustomerSnapshotJson": {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "claimId": "00000000-0000-4000-8000-000000000002",
+    "orderNumber": "10900000101",
+    "orderDate": 1762300800000,
+    "customerFirstName": "Test",
+    "customerLastName": "Musteri",
+    "claimDate": 1762905600000,
+    "cargoProviderName": "Trendyol Express",
+    "orderShipmentPackageId": 3330900101,
+    "items": [
+      {
+        "orderLine": {
+          "id": 4765900101,
+          "productName": "Fake Ürün U",
+          "barcode": "0000000000101",
+          "merchantSku": "SKU-FAKE-U",
+          "price": 80.00,
+          "vatRate": 20
+        },
+        "claimItems": [
+          {
+            "id": "00000000-0000-4000-8000-0000000000a1",
+            "orderLineItemId": 99000101,
+            "customerClaimItemReason": {
+              "name": "Teslim edilemeyen gönderi",
+              "externalReasonId": 401,
+              "code": "UNDELIVERED"
+            },
+            "trendyolClaimItemReason": {
+              "name": "Teslim edilemeyen gönderi",
+              "externalReasonId": 401,
+              "code": "UNDELIVERED"
+            },
+            "claimItemStatus": {
+              "name": "WaitingInAction"
+            },
+            "note": "",
+            "customerNote": "",
+            "resolved": false,
+            "autoAccepted": false,
+            "acceptedBySeller": false
+          },
+          {
+            "id": "00000000-0000-4000-8000-0000000000a2",
+            "orderLineItemId": 99000102,
+            "customerClaimItemReason": {
+              "name": "Teslim edilemeyen gönderi",
+              "externalReasonId": 401,
+              "code": "UNDELIVERED"
+            },
+            "trendyolClaimItemReason": {
+              "name": "Teslim edilemeyen gönderi",
+              "externalReasonId": 401,
+              "code": "UNDELIVERED"
+            },
+            "claimItemStatus": {
+              "name": "WaitingInAction"
+            },
+            "resolved": false,
+            "autoAccepted": false,
+            "acceptedBySeller": false
+          }
+        ]
+      }
+    ],
+    "lastModifiedDate": 1762909200000,
+    "_ravenciaReadModelSource": "RETURN_CLAIM"
+  },
+  "ShipmentAddressSnapshotJson": {},
+  "InvoiceAddressSnapshotJson": {},
+  "Lines": [
+    {
+      "ExternalLineId": "4765900101",
+      "Sku": "SKU-FAKE-U",
+      "Barcode": "0000000000101",
+      "Title": "Fake Ürün U",
+      "Quantity": 2,
+      "UnitPrice": 80.00,
+      "VatRate": 20,
+      "RawStatus": "UnDelivered",
+      "SourceSnapshotJson": "<raw 220 chars sha256:b0cd69592f2b>",
+      "CancelledQuantity": 0,
+      "CancelledAt": null,
+      "PlatformDiscount": null
+    }
+  ],
+  "Packages": [
+    {
+      "ExternalPackageId": "3330900101",
+      "OriginExternalPackageId": null,
+      "RawStatus": "UnDelivered",
+      "OccurredAt": "2025-11-12T01:00:00+00:00",
+      "CargoProviderExternalId": "Trendyol Express",
+      "CargoTrackingNumber": null,
+      "Allocations": [
+        {
+          "ExternalLineId": "4765900101",
+          "AllocatedQuantity": 2,
+          "CancelledQuantity": 0,
+          "ShippedQuantity": 2,
+          "DeliveredQuantity": 0,
+          "ReturnedQuantity": 0
+        }
+      ],
+      "GrossAmount": 160.00,
+      "DiscountAmount": 0,
+      "NetAmount": 160.00,
+      "Invoice": null,
+      "CreatedBy": null,
+      "IsStatusObservation": false,
+      "StatusTimeUnknown": false,
+      "CancelledAt": null,
+      "UnreadableLineCount": null,
+      "CargoBarcode": null
+    }
+  ],
+  "RawJson": "<raw 1943 chars sha256:2db7c0973bd1>",
+  "ShipmentDueAt": null,
+  "PaymentStatus": "UNKNOWN",
+  "CancellationStatus": "UNKNOWN",
+  "RefundStatus": "UNKNOWN",
+  "RefundedAmount": 0,
+  "Refunds": null,
+  "LifecycleStatus": null,
+  "StoreFrontCode": null
+}

@@ -16,10 +16,10 @@ public sealed class ReturnListCardTests
     [Fact]
     public void A_claim_with_accepted_and_waiting_lines_is_a_waiting_card_then_an_approved_card()
     {
-        var cards = MarketplaceSalesService.SplitReturnClaim([First, Second, Third],
+        var cards = ReturnQueryService.SplitReturnClaim([First, Second, Third],
             new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "ACTION_REQUIRED" });
 
-        Assert.Equal([MarketplaceSalesService.WaitingCard, MarketplaceSalesService.ApprovedCard], cards.Select(card => card.Kind));
+        Assert.Equal([ReturnQueryService.WaitingCard, ReturnQueryService.ApprovedCard], cards.Select(card => card.Kind));
         // A line without a status still waits for the seller.
         Assert.Equal([Second, Third], cards[0].LineIds);
         Assert.Equal([First], cards[1].LineIds);
@@ -28,11 +28,11 @@ public sealed class ReturnListCardTests
     [Fact]
     public void A_claim_stays_one_card_unless_it_mixes_accepted_and_waiting_lines()
     {
-        Assert.Single(MarketplaceSalesService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "COMPLETED" }));
-        Assert.Single(MarketplaceSalesService.SplitReturnClaim([First], new Dictionary<Guid, string> { [First] = "APPROVED" }));
-        Assert.Single(MarketplaceSalesService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "REJECTED" }));
-        Assert.Single(MarketplaceSalesService.SplitReturnClaim([First, Second], null));
-        Assert.Equal(MarketplaceSalesService.WholeCard, MarketplaceSalesService.SplitReturnClaim([First, Second], new Dictionary<Guid, string>())[0].Kind);
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "COMPLETED" }));
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First], new Dictionary<Guid, string> { [First] = "APPROVED" }));
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "REJECTED" }));
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], null));
+        Assert.Equal(ReturnQueryService.WholeCard, ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string>())[0].Kind);
     }
 
     [Theory]
@@ -47,20 +47,20 @@ public sealed class ReturnListCardTests
     [InlineData("SOMETHING_NEW", "REVIEW")]
     public void Cards_count_under_the_tab_that_lists_them(string status, string tab)
     {
-        Assert.Equal(tab, MarketplaceSalesService.ReturnTabGroup(status));
+        Assert.Equal(tab, ReturnQueryService.ReturnTabGroup(status));
     }
 
     [Fact]
     public void Platform_cargo_and_reason_filters_match_as_the_page_matched_them()
     {
-        Assert.True(MarketplaceSalesService.MatchesReturnRefinements("TRENDYOL", " Aras Kargo ", "  ", "Beden uymadı", new ReturnListQuery(Platforms: ["TRENDYOL", "N11"], Cargo: "Aras Kargo", ReasonKey: "Beden uymadı")));
-        Assert.False(MarketplaceSalesService.MatchesReturnRefinements("HEPSIBURADA", null, null, null, new ReturnListQuery(Platforms: ["TRENDYOL"])));
+        Assert.True(ReturnQueryService.MatchesReturnRefinements("TRENDYOL", " Aras Kargo ", "  ", "Beden uymadı", new ReturnListQuery(Platforms: ["TRENDYOL", "N11"], Cargo: "Aras Kargo", ReasonKey: "Beden uymadı")));
+        Assert.False(ReturnQueryService.MatchesReturnRefinements("HEPSIBURADA", null, null, null, new ReturnListQuery(Platforms: ["TRENDYOL"])));
         // "Tümünü Kaldır" sends a value no platform has: nothing is listed.
-        Assert.False(MarketplaceSalesService.MatchesReturnRefinements("TRENDYOL", null, null, null, new ReturnListQuery(Platforms: ["__NONE__"])));
-        Assert.False(MarketplaceSalesService.MatchesReturnRefinements("TRENDYOL", "Yurtiçi", null, null, new ReturnListQuery(Cargo: "Aras Kargo")));
+        Assert.False(ReturnQueryService.MatchesReturnRefinements("TRENDYOL", null, null, null, new ReturnListQuery(Platforms: ["__NONE__"])));
+        Assert.False(ReturnQueryService.MatchesReturnRefinements("TRENDYOL", "Yurtiçi", null, null, new ReturnListQuery(Cargo: "Aras Kargo")));
         // The reason key is the code when there is one, otherwise the text.
-        Assert.False(MarketplaceSalesService.MatchesReturnRefinements("TRENDYOL", null, "SIZE", "Beden uymadı", new ReturnListQuery(ReasonKey: "Beden uymadı")));
-        Assert.True(MarketplaceSalesService.MatchesReturnRefinements("TRENDYOL", null, "SIZE", "Beden uymadı", new ReturnListQuery(ReasonKey: "SIZE", Cargo: "ALL")));
+        Assert.False(ReturnQueryService.MatchesReturnRefinements("TRENDYOL", null, "SIZE", "Beden uymadı", new ReturnListQuery(ReasonKey: "Beden uymadı")));
+        Assert.True(ReturnQueryService.MatchesReturnRefinements("TRENDYOL", null, "SIZE", "Beden uymadı", new ReturnListQuery(ReasonKey: "SIZE", Cargo: "ALL")));
     }
 
     [Fact]
@@ -68,16 +68,16 @@ public sealed class ReturnListCardTests
     {
         var view = View(lines: [Line(First, "SKU-A", "Kırmızı İpek Şal"), Line(Second, "SKU-B", "Mavi Gömlek")]);
 
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First, Second], "ipek"));
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "AYŞE"));
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "claim-77"));
-        Assert.False(MarketplaceSalesService.MatchesReturnSearch(view, [First], "gömlek"));
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [Second], "GÖMLEK"));
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "  "));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First, Second], "ipek"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First], "AYŞE"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First], "claim-77"));
+        Assert.False(ReturnQueryService.MatchesReturnSearch(view, [First], "gömlek"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [Second], "GÖMLEK"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First], "  "));
         // The i letters fold like the database pre-filter: "kirmizi" and "KIRMIZI" find "Kırmızı" (O3).
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "kirmizi"));
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "KIRMIZI"));
-        Assert.True(MarketplaceSalesService.MatchesReturnSearch(view, [First], "İPEK"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First], "kirmizi"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First], "KIRMIZI"));
+        Assert.True(ReturnQueryService.MatchesReturnSearch(view, [First], "İPEK"));
     }
 
     [Fact]
@@ -87,21 +87,21 @@ public sealed class ReturnListCardTests
         var late = early.AddDays(2);
         var items = new (DateTimeOffset? Date, Guid ClaimId, int Kind)[] { (null, First, 0), (early, Third, 0), (late, Second, 2), (late, Second, 1), (early, First, 0) };
 
-        var descending = items.OrderBy(x => x, Comparer<(DateTimeOffset?, Guid, int)>.Create((left, right) => MarketplaceSalesService.CompareReturnCards(left, right, "APPROVED_DESC"))).ToList();
-        var byClaim = items.OrderBy(x => x, Comparer<(DateTimeOffset?, Guid, int)>.Create((left, right) => MarketplaceSalesService.CompareReturnCards(left, right, "ID"))).ToList();
+        var descending = items.OrderBy(x => x, Comparer<(DateTimeOffset?, Guid, int)>.Create((left, right) => ReturnQueryService.CompareReturnCards(left, right, "APPROVED_DESC"))).ToList();
+        var byClaim = items.OrderBy(x => x, Comparer<(DateTimeOffset?, Guid, int)>.Create((left, right) => ReturnQueryService.CompareReturnCards(left, right, "ID"))).ToList();
 
         Assert.Equal([(late, Second, 1), (late, Second, 2), (early, First, 0), (early, Third, 0), (null, First, 0)], descending);
         Assert.Equal([First, First, Second, Second, Third], byClaim.Select(x => x.ClaimId));
-        Assert.True(MarketplaceSalesService.CompareReturnCards((early, First, 0), (late, First, 0), "ORDERED_ASC") < 0);
+        Assert.True(ReturnQueryService.CompareReturnCards((early, First, 0), (late, First, 0), "ORDERED_ASC") < 0);
     }
 
     [Fact]
     public void A_split_card_shows_only_its_lines_and_their_refund()
     {
         var view = View(lines: [Line(First, "SKU-A", "A", 80m), Line(Second, "SKU-B", "B", 40m)]) with { ReturnAmounts = new(null, null, 120m, null) };
-        var card = new MarketplaceSalesService.ReturnCard(view.Id, MarketplaceSalesService.ApprovedCard, "APPROVED", "TRENDYOL", "Trendyol", null, null, null, [Second]);
+        var card = new ReturnQueryService.ReturnCard(view.Id, ReturnQueryService.ApprovedCard, "APPROVED", "TRENDYOL", "Trendyol", null, null, null, [Second]);
 
-        var shown = MarketplaceSalesService.ReturnCardView(view, card);
+        var shown = ReturnQueryService.ReturnCardView(view, card);
 
         Assert.Equal([Second], shown.Lines!.Select(line => line.Id));
         Assert.Equal(1, shown.ProductCount);
@@ -109,7 +109,7 @@ public sealed class ReturnListCardTests
         Assert.Equal("Accepted", shown.RawStatus);
         Assert.Equal(40m, shown.ReturnAmounts!.InvoicedAmount);
         Assert.Equal($"{view.Id:D}:approved", shown.RowKey);
-        Assert.Same(view, MarketplaceSalesService.ReturnCardView(view, card with { Kind = MarketplaceSalesService.WholeCard }));
+        Assert.Same(view, ReturnQueryService.ReturnCardView(view, card with { Kind = ReturnQueryService.WholeCard }));
     }
 
     [Theory]
@@ -120,18 +120,18 @@ public sealed class ReturnListCardTests
     [InlineData(MarketplaceInvoiceStatus.Unknown, "Invoiced")]
     public void The_invoice_label_reads_the_customer_snapshot_only_when_said_so(MarketplaceInvoiceStatus marketplaceStatus, string? rawStatus)
     {
-        Assert.False(MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(null, marketplaceStatus, rawStatus));
+        Assert.False(ReturnQueryService.ReturnInvoiceLabelReadsSnapshot(null, marketplaceStatus, rawStatus));
         Assert.Equal(
-            MarketplaceSalesService.InvoiceLabel(null, null, marketplaceStatus, "{}", [rawStatus]),
-            MarketplaceSalesService.InvoiceLabel(null, null, marketplaceStatus, """{"invoiceStatus":"REJECTED"}""", [rawStatus]));
+            InvoiceLabelPolicy.InvoiceLabel(null, null, marketplaceStatus, "{}", [rawStatus]),
+            InvoiceLabelPolicy.InvoiceLabel(null, null, marketplaceStatus, """{"invoiceStatus":"REJECTED"}""", [rawStatus]));
         foreach (var invoiceStatus in Enum.GetValues<InvoiceStatus>())
         {
-            Assert.False(MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(invoiceStatus, MarketplaceInvoiceStatus.Unknown, null));
+            Assert.False(ReturnQueryService.ReturnInvoiceLabelReadsSnapshot(invoiceStatus, MarketplaceInvoiceStatus.Unknown, null));
             Assert.Equal(
-                MarketplaceSalesService.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, "{}", [null]),
-                MarketplaceSalesService.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, """{"invoiceStatus":"REJECTED"}""", [null]));
+                InvoiceLabelPolicy.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, "{}", [null]),
+                InvoiceLabelPolicy.InvoiceLabel(invoiceStatus, "INV-1", MarketplaceInvoiceStatus.Unknown, """{"invoiceStatus":"REJECTED"}""", [null]));
         }
-        Assert.True(MarketplaceSalesService.ReturnInvoiceLabelReadsSnapshot(null, MarketplaceInvoiceStatus.Unknown, "Delivered"));
+        Assert.True(ReturnQueryService.ReturnInvoiceLabelReadsSnapshot(null, MarketplaceInvoiceStatus.Unknown, "Delivered"));
     }
 
     [Fact]

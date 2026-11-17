@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
@@ -7,7 +8,7 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
-import { RrIcon, RrLogo } from '../marketplace/returns-ui'
+import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { relativeAgeText } from '../marketplace/integrations/integration-helpers'
 import { jobTimeRangeOptions } from './job-list-query'
@@ -21,6 +22,7 @@ import {
 import { ProductThumb } from './ProductThumb'
 import './price-stock-send-log.css'
 import './product-activity-log.css'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // İşlem Takibi › Loglar › Ürün Hareketleri: every stock, price, sale status and return change of the products, newest
 // first. The first page is polled every 30 seconds while it is the only one loaded; older pages are read on demand.
@@ -109,16 +111,16 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
   // The summary counts every kind under the other filters, so a picked kind keeps the others' counts in view.
   const countFilters = useMemo(() => ({ ...filters, kinds: [] }), [filters])
   const counts = useQuery({
-    queryKey: ['product-activity', 'counts', countFilters],
-    queryFn: () => hubPoll<Array<{ kind: string; count: number }>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`),
+    queryKey: queryKeys.productActivity('counts', countFilters),
+    queryFn: ({ signal }) => hubPoll<ApiAnswer<'getProductActivityCounts'>>(`/product-activity/counts${activityCountsQueryString(countFilters)}`, { signal }),
     placeholderData: keepPreviousData,
     refetchInterval: firstPagePollMs
   })
   const summary = useMemo(() => counts.data ? activityKindCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
-    queryKey: ['product-activity', filters],
-    queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam)}`),
+    queryKey: queryKeys.productActivity(filters),
+    queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam)}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,

@@ -1,7 +1,9 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { hubApi } from '../../shared/api'
+import { queryKeys } from '../../shared/api/query-keys'
 
 // A model code belongs to one product: "Yeni Ürün" (and "Kopyala ile yeni ürün", a draft too) may not take one the
 // catalog already holds. The editor asks the server once the typing settles and stops the create until the code is
@@ -42,8 +44,8 @@ export function useModelCodeHolder(modelCode: string, enabled: boolean) {
   const code = modelCodeToCheck(modelCode)
   const settled = useSettledValue(code, modelCodeCheckDelayMs)
   const query = useQuery({
-    queryKey: ['model-code-holder', settled],
-    queryFn: () => hubApi<ModelCodeHolder>(`/catalog/model-codes/holder?code=${encodeURIComponent(settled)}`),
+    queryKey: queryKeys.modelCodeHolder(settled),
+    queryFn: ({ signal }) => hubApi<ApiAnswer<'getCatalogModelCodesHolder'>>(`/catalog/model-codes/holder?code=${encodeURIComponent(settled)}`, { signal }),
     enabled: enabled && Boolean(settled) && settled === code,
     staleTime: 15_000
   })

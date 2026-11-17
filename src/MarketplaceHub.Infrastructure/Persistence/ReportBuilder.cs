@@ -308,15 +308,15 @@ public static class ReportBuckets
         switch (platformCode)
         {
             case "TRENDYOL":
-                return Rate(commission) is { } trendyolRate ? Math.Round(keptAmount * trendyolRate / 100m, 2) : null;
+                return Rate(commission) is { } trendyolRate ? MoneyRounding.Round(keptAmount * trendyolRate / 100m) : null;
             case "HEPSIBURADA":
                 if (commissionType == "object" && Number(commission) is { } amount && amount >= 0)
-                    return Math.Round(amount * keptUnits * HepsiburadaCommissionVat, 2);
-                return Rate(commissionRate) is { } hepsiburadaRate ? Math.Round(keptAmount * hepsiburadaRate / 100m * HepsiburadaCommissionVat, 2) : null;
+                    return MoneyRounding.Round(amount * keptUnits * HepsiburadaCommissionVat);
+                return Rate(commissionRate) is { } hepsiburadaRate ? MoneyRounding.Round(keptAmount * hepsiburadaRate / 100m * HepsiburadaCommissionVat) : null;
             case "N11":
-                return Rate(commissionRate) is { } n11Rate ? Math.Round(keptAmount * n11Rate / 100m, 2) : null;
+                return Rate(commissionRate) is { } n11Rate ? MoneyRounding.Round(keptAmount * n11Rate / 100m) : null;
             case "PTTAVM":
-                return Rate(komisyon) is { } pttRate ? Math.Round(keptAmount * pttRate / 100m, 2) : null;
+                return Rate(komisyon) is { } pttRate ? MoneyRounding.Round(keptAmount * pttRate / 100m) : null;
             default:
                 return null;
         }
@@ -448,7 +448,7 @@ internal static class ReportBuilder
             var back = returnedOrder ? order.Amount : Math.Min(returnedAmount, order.Amount);
             // The same part of the order at its list price.
             var listAmount = Math.Max(order.ListAmount, order.Amount);
-            var backList = order.Amount > 0 ? Math.Round(back * listAmount / order.Amount, 2) : 0m;
+            var backList = order.Amount > 0 ? MoneyRounding.Round(back * listAmount / order.Amount) : 0m;
             // A line's money is its share of the order's revenue: what the customer paid plus the marketplace's own discount,
             // the price the marketplace also takes its commission on (LineValue is on the same base).
             var scale = order.LineValue > 0 ? order.Amount / order.LineValue : 0m;
@@ -478,7 +478,7 @@ internal static class ReportBuilder
                 var basis = lines.Sum(fact => fact.PaidUnitPrice * fact.Active);
                 lines = lines.Select(fact => fact with
                 {
-                    Commission = Math.Round(net * (basis > 0 ? fact.PaidUnitPrice * fact.Active / basis : 1m / lines.Count), 2)
+                    Commission = MoneyRounding.Round(net * (basis > 0 ? fact.PaidUnitPrice * fact.Active / basis : 1m / lines.Count))
                 }).ToList();
             }
             var extras = input.OrderExtras.GetValueOrDefault(order.Id);
@@ -505,19 +505,19 @@ internal static class ReportBuilder
         var cancelledUnits = cancelled.Sum(x => x.Quantity) + orders.SelectMany(x => x.Lines).Sum(x => Math.Max(0m, x.Row.CancelledQuantity));
         var ordered = sold + cancelledUnits;
         return new(orders.Count, cancelled.Count, Rate(cancelledUnits, ordered), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, ordered),
-            priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? Math.Round(gross / priced, 2) : null,
+            priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? MoneyRounding.Round(gross / priced) : null,
             orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try),
             list, list - gross, orders.Sum(x => x.BackList),
             orders.SelectMany(x => x.Lines).Where(x => x.Active > 0).Select(x => x.Row.VariantId?.ToString("D") ?? $"sku:{x.Row.Sku.Trim()}").Distinct(StringComparer.Ordinal).Count(),
-            Math.Round(orders.SelectMany(x => x.Lines).Sum(ReportCosts.VatFree), 2));
+            MoneyRounding.Round(orders.SelectMany(x => x.Lines).Sum(ReportCosts.VatFree)));
     }
 
     private static ReportCommissionView CommissionView(IReadOnlyList<OrderFact> orders, decimal netRevenue)
     {
         var lines = orders.SelectMany(x => x.Lines).Where(x => x.Commission is not null).ToList();
-        var covered = Math.Round(lines.Sum(x => x.KeptAmount), 2);
-        var commission = Math.Round(lines.Sum(x => x.Commission!.Value), 2);
-        return new(covered, netRevenue > 0 ? Math.Round(Math.Min(1m, covered / netRevenue), 4) : null, commission, covered - commission, covered > 0 ? Math.Round(commission / covered, 4) : null);
+        var covered = MoneyRounding.Round(lines.Sum(x => x.KeptAmount));
+        var commission = MoneyRounding.Round(lines.Sum(x => x.Commission!.Value));
+        return new(covered, netRevenue > 0 ? PercentRounding.Rate(Math.Min(1m, covered / netRevenue)) : null, commission, covered - commission, covered > 0 ? PercentRounding.Rate(commission / covered) : null);
     }
 
     private static ReportCostView CostView(IReadOnlyList<OrderFact> orders)
@@ -547,10 +547,10 @@ internal static class ReportBuilder
         }
         var grossProfit = costedRevenue - costTotal;
         var netProfit = profitRevenue - profitCost - profitCommission;
-        return new(kept, costed, kept > 0 ? Math.Round(costed / kept, 4) : null, Math.Round(costTotal, 2), Math.Round(costedRevenue, 2), Math.Round(grossProfit, 2),
-            costedRevenue > 0 ? Math.Round(grossProfit / costedRevenue, 4) : null,
-            profitUnits, kept > 0 ? Math.Round(profitUnits / kept, 4) : null, Math.Round(profitRevenue, 2), Math.Round(profitCost, 2), Math.Round(profitCommission, 2),
-            Math.Round(netProfit, 2), profitRevenue > 0 ? Math.Round(netProfit / profitRevenue, 4) : null, variants.Count, Math.Round(costedSales, 2), Math.Round(keptRevenue, 2));
+        return new(kept, costed, kept > 0 ? PercentRounding.Rate(costed / kept) : null, MoneyRounding.Round(costTotal), MoneyRounding.Round(costedRevenue), MoneyRounding.Round(grossProfit),
+            costedRevenue > 0 ? PercentRounding.Rate(grossProfit / costedRevenue) : null,
+            profitUnits, kept > 0 ? PercentRounding.Rate(profitUnits / kept) : null, MoneyRounding.Round(profitRevenue), MoneyRounding.Round(profitCost), MoneyRounding.Round(profitCommission),
+            MoneyRounding.Round(netProfit), profitRevenue > 0 ? PercentRounding.Rate(netProfit / profitRevenue) : null, variants.Count, MoneyRounding.Round(costedSales), MoneyRounding.Round(keptRevenue));
     }
 
     // Order-level buckets (platform, store, city, district): every order falls in exactly one, so they add up.
@@ -564,7 +564,7 @@ internal static class ReportBuilder
                 var lines = rows.SelectMany(x => x.Lines).ToList();
                 return new ReportGroupView(group.Key, name, name != Unknown, isTest(rows[0]), rows.Count, Sold(rows), Back(rows), rows.Sum(x => x.Claims), Rate(Back(rows), Sold(rows)),
                     rows.Count(x => x.Amount > 0), rows.Sum(x => x.Amount), rows.Sum(x => x.Kept),
-                    Math.Round(lines.Sum(x => x.Commission ?? 0m), 2), Math.Round(lines.Where(x => x.Commission is not null).Sum(x => x.KeptAmount), 2),
+                    MoneyRounding.Round(lines.Sum(x => x.Commission ?? 0m)), MoneyRounding.Round(lines.Where(x => x.Commission is not null).Sum(x => x.KeptAmount)),
                     children?.Invoke(rows) ?? [], split?.Invoke(rows) ?? []);
             })
             .OrderBy(x => x.Known ? 0 : 1).ThenByDescending(x => x.SoldQuantity).ThenBy(x => x.Label, StringComparer.Ordinal)
@@ -581,8 +581,8 @@ internal static class ReportBuilder
                 return new ReportGroupView(group.Key, group.Key, group.Key != Unknown, false, rows.Select(x => x.Order.Order.Id).Distinct().Count(), sold, back,
                     rows.Select(x => x.Order).Distinct().Sum(x => x.Claims), Rate(back, sold),
                     rows.Select(x => x.Order).Distinct().Count(x => x.Amount > 0),
-                    Math.Round(rows.Sum(x => x.Line.PaidUnitPrice * x.Line.Active), 2), Math.Round(rows.Sum(x => x.Line.KeptAmount), 2),
-                    Math.Round(rows.Sum(x => x.Line.Commission ?? 0m), 2), Math.Round(rows.Where(x => x.Line.Commission is not null).Sum(x => x.Line.KeptAmount), 2), [], []);
+                    MoneyRounding.Round(rows.Sum(x => x.Line.PaidUnitPrice * x.Line.Active)), MoneyRounding.Round(rows.Sum(x => x.Line.KeptAmount)),
+                    MoneyRounding.Round(rows.Sum(x => x.Line.Commission ?? 0m)), MoneyRounding.Round(rows.Where(x => x.Line.Commission is not null).Sum(x => x.Line.KeptAmount)), [], []);
             })
             .OrderBy(x => x.Known ? 0 : 1).ThenByDescending(x => x.SoldQuantity).ThenBy(x => x.Label, StringComparer.Ordinal)
             .ToList();
@@ -599,9 +599,9 @@ internal static class ReportBuilder
                 return new ReportProductView(first.VariantId, first.ProductId, title, first.Sku,
                     first.BrandId is { } brandId && names.Brands.TryGetValue(brandId, out var brand) ? brand : Unknown,
                     first.CategoryId is { } categoryId && names.Categories.TryGetValue(categoryId, out var category) ? category : Unknown,
-                    sold, back, Rate(back, sold), Math.Round(group.Sum(x => x.PaidUnitPrice * x.Active), 2),
-                    Math.Round(group.Sum(x => x.Commission ?? 0m), 2), Math.Round(group.Where(x => x.Commission is not null).Sum(x => x.KeptAmount), 2),
-                    NetAmount: Math.Round(group.Sum(x => x.KeptAmount), 2));
+                    sold, back, Rate(back, sold), MoneyRounding.Round(group.Sum(x => x.PaidUnitPrice * x.Active)),
+                    MoneyRounding.Round(group.Sum(x => x.Commission ?? 0m)), MoneyRounding.Round(group.Where(x => x.Commission is not null).Sum(x => x.KeptAmount)),
+                    NetAmount: MoneyRounding.Round(group.Sum(x => x.KeptAmount)));
             })
             .ToList();
 
@@ -658,7 +658,7 @@ internal static class ReportBuilder
         var partlyAmount = orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines).Sum(x => PartlyListUnitPrice(x) * Math.Max(0m, x.Row.CancelledQuantity));
         var cancelledUnits = cancelled.Sum(x => x.Quantity) + PartlyCancelled(orders);
         return new(cancelled.Count, cancelledUnits, Rate(cancelledUnits, orders.SelectMany(x => x.Lines).Sum(x => x.Active) + cancelledUnits), CancelWarningRate, platforms, reasons,
-            Math.Round(cancelled.Sum(x => x.Amount) + partlyAmount, 2));
+            MoneyRounding.Round(cancelled.Sum(x => x.Amount) + partlyAmount));
     }
 
     // Durations come from the stored status times; both ends of a duration are stored the same way for a marketplace,
@@ -677,10 +677,10 @@ internal static class ReportBuilder
                 var deliver = group.Select(x => Hours(x.ShippedAt, x.DeliveredAt)).Where(x => x is not null).Select(x => x!.Value).ToList();
                 var late = group.Where(x => x.ShippedAt is not null && byOrder[x.OrderId].Order.ShipmentDueAt is not null).ToList();
                 var lateCount = late.Count(x => x.ShippedAt > byOrder[x.OrderId].Order.ShipmentDueAt);
-                return new ReportCargoView(group.Key, group.Key != Unknown, group.Count(), total > 0 ? Math.Round((decimal)group.Count() / total, 4) : null,
-                    ship.Count > 0 ? Math.Round((decimal)ship.Average(), 1) : null, ship.Count,
-                    deliver.Count > 0 ? Math.Round((decimal)deliver.Average(), 1) : null, deliver.Count,
-                    lateCount, late.Count, late.Count > 0 ? Math.Round((decimal)lateCount / late.Count, 4) : null);
+                return new ReportCargoView(group.Key, group.Key != Unknown, group.Count(), total > 0 ? PercentRounding.Rate((decimal)group.Count() / total) : null,
+                    ship.Count > 0 ? MeasureRounding.Round((decimal)ship.Average(), 1) : null, ship.Count,
+                    deliver.Count > 0 ? MeasureRounding.Round((decimal)deliver.Average(), 1) : null, deliver.Count,
+                    lateCount, late.Count, late.Count > 0 ? PercentRounding.Rate((decimal)lateCount / late.Count) : null);
             })
             .OrderBy(x => x.Known ? 0 : 1).ThenByDescending(x => x.Packages).ThenBy(x => x.Label, StringComparer.Ordinal)
             .ToList();
@@ -704,8 +704,8 @@ internal static class ReportBuilder
         var byCustomer = identified.GroupBy(x => x.CustomerKey!, StringComparer.Ordinal).Select(x => x.Count()).ToList();
         var repeat = byCustomer.Count(x => x > 1);
         return new(identified.Count, orders.Count - identified.Count, byCustomer.Count, repeat,
-            byCustomer.Count > 0 ? Math.Round((decimal)repeat / byCustomer.Count, 4) : null,
-            byCustomer.Count > 0 ? Math.Round((decimal)identified.Count / byCustomer.Count, 2) : null);
+            byCustomer.Count > 0 ? PercentRounding.Rate((decimal)repeat / byCustomer.Count) : null,
+            byCustomer.Count > 0 ? MeasureRounding.Round((decimal)identified.Count / byCustomer.Count, 2) : null);
     }
 
     // A status set by hand decides; then an issued panel invoice; then the marketplace's own word; else unknown.
@@ -752,7 +752,7 @@ internal static class ReportBuilder
             .Select(x => (Package: x, Order: byOrder[x.OrderId], Bucket: ReportedInvoiceBucket(x, byOrder[x.OrderId]))).ToList();
         var labels = new[] { ("INVOICED", "Faturalı"), ("NOT_INVOICED", "Faturasız"), ("RETURNED", ReturnedInvoiceLabel), ("UNKNOWN", Unknown) };
         var buckets = labels.Select(item => new ReportInvoiceBucketView(item.Item1, item.Item2, rows.Count(x => x.Bucket == item.Item1),
-            Math.Round(rows.Where(x => x.Bucket == item.Item1 && x.Order.Currency == Try).Sum(x => x.Package.Amount), 2))).ToList();
+            MoneyRounding.Round(rows.Where(x => x.Bucket == item.Item1 && x.Order.Currency == Try).Sum(x => x.Package.Amount)))).ToList();
         var platforms = rows.GroupBy(x => x.Order.PlatformCode, StringComparer.Ordinal)
             .Select(group => new ReportInvoicePlatformView(group.Key, group.Count(x => x.Bucket == "INVOICED"), group.Count(x => x.Bucket == "NOT_INVOICED"), group.Count(x => x.Bucket == "UNKNOWN"), group.Count(x => x.Bucket == "RETURNED")))
             .OrderByDescending(x => x.Invoiced + x.NotInvoiced + x.Unknown + x.Returned).ToList();
@@ -764,10 +764,10 @@ internal static class ReportBuilder
         ReportStockRowView Row(ReportProductView product)
         {
             var kept = product.SoldQuantity - product.ReturnedQuantity;
-            var daily = days > 0 ? Math.Round(kept / days, 2) : (decimal?)null;
+            var daily = days > 0 ? MeasureRounding.Round(kept / days, 2) : (decimal?)null;
             decimal? available = product.VariantId is { } variantId && stock.TryGetValue(variantId, out var value) ? value : null;
             return new(product.VariantId, product.Title, product.Sku, kept, available, daily,
-                available is { } onHand && daily is > 0 ? Math.Round(Math.Max(0m, onHand) / daily.Value, 1) : null);
+                available is { } onHand && daily is > 0 ? MeasureRounding.Round(Math.Max(0m, onHand) / daily.Value, 1) : null);
         }
         var sellers = products.Where(x => x.VariantId != null && x.SoldQuantity - x.ReturnedQuantity > 0)
             .OrderByDescending(x => x.SoldQuantity - x.ReturnedQuantity).ThenBy(x => x.Title, StringComparer.Ordinal).ToList();
@@ -876,7 +876,7 @@ internal static class ReportBuilder
 
     private static decimal Sold(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Active));
     private static decimal Back(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Back));
-    private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? Math.Round(part / whole, 4) : null;
+    private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? PercentRounding.Rate(part / whole) : null;
 
     internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, decimal ListUnitPrice = 0m)
     {

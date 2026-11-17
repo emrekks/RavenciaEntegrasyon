@@ -14,28 +14,28 @@ public sealed class TrendyolReturnSyncCursorTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 20, 9, 0, 0, TimeSpan.Zero);
 
-    private static MarketplaceJobProcessor.ReturnSyncState StoreAndRead(MarketplaceJobProcessor.ReturnSyncState state) =>
-        MarketplaceJobProcessor.ReadReturnSyncState(
-            new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = MarketplaceJobProcessor.SerializeReturnSyncState(state), LastModifiedWatermark = Now.AddHours(-1) },
+    private static ReturnReadService.ReturnSyncState StoreAndRead(ReturnReadService.ReturnSyncState state) =>
+        ReturnReadService.ReadReturnSyncState(
+            new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = ReturnReadService.SerializeReturnSyncState(state), LastModifiedWatermark = Now.AddHours(-1) },
             Now,
             TimeSpan.FromMinutes(15));
 
     [Fact]
     public void BucketCursor_RoundTripsThroughTheStoredStateAcrossTwoPages()
     {
-        var first = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15));
-        Assert.Equal("0", MarketplaceJobProcessor.ReturnPageCursor(first));
-        Assert.Equal(TrendyolHttpClient.ClaimStatuses.Length, TrendyolHttpClient.ClaimBucketPages(MarketplaceJobProcessor.ReturnPageCursor(first)).Count);
+        var first = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15));
+        Assert.Equal("0", ReturnReadService.ReturnPageCursor(first));
+        Assert.Equal(TrendyolHttpClient.ClaimStatuses.Length, TrendyolHttpClient.ClaimBucketPages(ReturnReadService.ReturnPageCursor(first)).Count);
 
         // Page 1: only Created and Accepted had more claims.
-        var afterFirst = StoreAndRead(MarketplaceJobProcessor.NextReturnPage(first, TrendyolHttpClient.ClaimBucketCursor([("Created", 1), ("Accepted", 1)])));
-        Assert.Equal("s:Created=1,Accepted=1", MarketplaceJobProcessor.ReturnPageCursor(afterFirst));
-        Assert.Equal([("Created", 1), ("Accepted", 1)], TrendyolHttpClient.ClaimBucketPages(MarketplaceJobProcessor.ReturnPageCursor(afterFirst)));
+        var afterFirst = StoreAndRead(ReturnReadService.NextReturnPage(first, TrendyolHttpClient.ClaimBucketCursor([("Created", 1), ("Accepted", 1)])));
+        Assert.Equal("s:Created=1,Accepted=1", ReturnReadService.ReturnPageCursor(afterFirst));
+        Assert.Equal([("Created", 1), ("Accepted", 1)], TrendyolHttpClient.ClaimBucketPages(ReturnReadService.ReturnPageCursor(afterFirst)));
         Assert.Equal(1, afterFirst.Page);
 
         // Page 2: Created ran out; only Accepted is asked for its third page.
-        var afterSecond = StoreAndRead(MarketplaceJobProcessor.NextReturnPage(afterFirst, TrendyolHttpClient.ClaimBucketCursor([("Accepted", 2)])));
-        Assert.Equal([("Accepted", 2)], TrendyolHttpClient.ClaimBucketPages(MarketplaceJobProcessor.ReturnPageCursor(afterSecond)));
+        var afterSecond = StoreAndRead(ReturnReadService.NextReturnPage(afterFirst, TrendyolHttpClient.ClaimBucketCursor([("Accepted", 2)])));
+        Assert.Equal([("Accepted", 2)], TrendyolHttpClient.ClaimBucketPages(ReturnReadService.ReturnPageCursor(afterSecond)));
         Assert.Equal(2, afterSecond.Page);
     }
 
@@ -43,48 +43,48 @@ public sealed class TrendyolReturnSyncCursorTests
     public void NumericCursors_StillWork()
     {
         // A plain page number from an adapter is a page, not an opaque cursor.
-        var numeric = MarketplaceJobProcessor.NextReturnPage(MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)), "4");
+        var numeric = ReturnReadService.NextReturnPage(ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)), "4");
         Assert.Null(numeric.PageCursor);
-        Assert.Equal("4", MarketplaceJobProcessor.ReturnPageCursor(numeric));
+        Assert.Equal("4", ReturnReadService.ReturnPageCursor(numeric));
 
         // A state stored before PageCursor existed continues from its page number.
-        var legacyState = $$"""{"Version":"{{MarketplaceJobProcessor.ReturnSyncStateVersion}}","StoreFrontIndex":0,"Page":3,"Full":false,"StartAt":"2026-10-20T08:00:00+00:00","EndAt":"2026-10-20T09:00:00+00:00"}""";
-        var legacy = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = legacyState }, Now, TimeSpan.FromMinutes(15));
+        var legacyState = $$"""{"Version":"{{ReturnReadService.ReturnSyncStateVersion}}","StoreFrontIndex":0,"Page":3,"Full":false,"StartAt":"2026-10-20T08:00:00+00:00","EndAt":"2026-10-20T09:00:00+00:00"}""";
+        var legacy = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = legacyState }, Now, TimeSpan.FromMinutes(15));
         Assert.Equal(3, legacy.Page);
-        Assert.Equal("3", MarketplaceJobProcessor.ReturnPageCursor(legacy));
+        Assert.Equal("3", ReturnReadService.ReturnPageCursor(legacy));
 
         // The oldest cursors were a bare page number.
-        var bare = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = "5" }, Now, TimeSpan.FromMinutes(15));
-        Assert.Equal("5", MarketplaceJobProcessor.ReturnPageCursor(bare));
+        var bare = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = "5" }, Now, TimeSpan.FromMinutes(15));
+        Assert.Equal("5", ReturnReadService.ReturnPageCursor(bare));
     }
 
     [Fact]
     public void MissingOrOversizedCursor_FallsBackToTheNextPageNumber()
     {
-        var state = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)) with { Page = 2, PageCursor = "s:Created=2" };
+        var state = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)) with { Page = 2, PageCursor = "s:Created=2" };
 
-        var empty = MarketplaceJobProcessor.NextReturnPage(state, null);
-        Assert.Equal("3", MarketplaceJobProcessor.ReturnPageCursor(empty));
-        var oversized = MarketplaceJobProcessor.NextReturnPage(state, "s:" + new string('x', 2_000));
-        Assert.Equal("3", MarketplaceJobProcessor.ReturnPageCursor(oversized));
+        var empty = ReturnReadService.NextReturnPage(state, null);
+        Assert.Equal("3", ReturnReadService.ReturnPageCursor(empty));
+        var oversized = ReturnReadService.NextReturnPage(state, "s:" + new string('x', 2_000));
+        Assert.Equal("3", ReturnReadService.ReturnPageCursor(oversized));
 
-        var stored = MarketplaceJobProcessor.SerializeReturnSyncState(state with { PageCursor = new string('y', 2_000) });
-        var read = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = stored }, Now, TimeSpan.FromMinutes(15));
+        var stored = ReturnReadService.SerializeReturnSyncState(state with { PageCursor = new string('y', 2_000) });
+        var read = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = stored }, Now, TimeSpan.FromMinutes(15));
         Assert.Null(read.PageCursor);
-        Assert.Equal("2", MarketplaceJobProcessor.ReturnPageCursor(read));
+        Assert.Equal("2", ReturnReadService.ReturnPageCursor(read));
     }
 
     [Fact]
     public void OnlyPermanentRefusalsOfTheSavedPageCountTowardsARestart()
     {
-        var state = MarketplaceJobProcessor.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)) with { Page = 3, PageCursor = "s:Created=3" };
+        var state = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15)) with { Page = 3, PageCursor = "s:Created=3" };
         var refused = new AdapterError(AdapterErrorClass.Validation, "TRENDYOL_BAD_REQUEST", "Geçersiz sayfa.", 400, null, null);
         var quota = new AdapterError(AdapterErrorClass.RateLimit, "REMOTE_RATE_LIMITED", "Kota.", 429, TimeSpan.FromMinutes(1), null);
 
-        Assert.Equal((0, false), MarketplaceJobProcessor.ReturnPageRefusal(state, quota));
-        Assert.Equal((1, false), MarketplaceJobProcessor.ReturnPageRefusal(state, refused));
-        Assert.Equal((MarketplaceJobProcessor.ReturnPagePermanentFailureLimit, true),
-            MarketplaceJobProcessor.ReturnPageRefusal(state with { PermanentFailures = MarketplaceJobProcessor.ReturnPagePermanentFailureLimit - 1 }, refused));
+        Assert.Equal((0, false), ReturnReadService.ReturnPageRefusal(state, quota));
+        Assert.Equal((1, false), ReturnReadService.ReturnPageRefusal(state, refused));
+        Assert.Equal((ReturnReadService.ReturnPagePermanentFailureLimit, true),
+            ReturnReadService.ReturnPageRefusal(state with { PermanentFailures = ReturnReadService.ReturnPagePermanentFailureLimit - 1 }, refused));
         // The count survives the stored state.
         Assert.Equal(2, StoreAndRead(state with { PermanentFailures = 2 }).PermanentFailures);
     }
@@ -196,7 +196,7 @@ public sealed class TrendyolReturnSyncCursorPostgreSqlTests(PostgreSqlTenantIsol
             ApiVersion = "V2",
             SettingsJson = "{}"
         };
-        var saved = new MarketplaceJobProcessor.ReturnSyncState(MarketplaceJobProcessor.ReturnSyncStateVersion, 0, 4, false, fixture.Now.AddHours(-2), fixture.Now.AddHours(-1), "s:Created=4");
+        var saved = new ReturnReadService.ReturnSyncState(ReturnReadService.ReturnSyncStateVersion, 0, 4, false, fixture.Now.AddHours(-2), fixture.Now.AddHours(-1), "s:Created=4");
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
@@ -207,7 +207,7 @@ public sealed class TrendyolReturnSyncCursorPostgreSqlTests(PostgreSqlTenantIsol
                 TenantId = tenant.Id,
                 ConnectionId = connection.Id,
                 ResourceType = "RETURNS",
-                OpaqueCursor = MarketplaceJobProcessor.SerializeReturnSyncState(saved),
+                OpaqueCursor = ReturnReadService.SerializeReturnSyncState(saved),
                 LastModifiedWatermark = fixture.Now.AddHours(-2)
             });
             await seed.SaveChangesAsync();
@@ -215,7 +215,7 @@ public sealed class TrendyolReturnSyncCursorPostgreSqlTests(PostgreSqlTenantIsol
 
         try
         {
-            async Task<MarketplaceJobProcessor.ReturnSyncState?> RunAndReadAsync()
+            async Task<ReturnReadService.ReturnSyncState?> RunAndReadAsync()
             {
                 await using (var db = fixture.CreateContext())
                 {
@@ -229,7 +229,7 @@ public sealed class TrendyolReturnSyncCursorPostgreSqlTests(PostgreSqlTenantIsol
                 var stored = await check.SyncCursors.AsNoTracking()
                     .Where(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.ResourceType == "RETURNS")
                     .Select(x => x.OpaqueCursor).SingleAsync();
-                return stored is null ? null : JsonSerializer.Deserialize<MarketplaceJobProcessor.ReturnSyncState>(stored);
+                return stored is null ? null : JsonSerializer.Deserialize<ReturnReadService.ReturnSyncState>(stored);
             }
 
             var afterOne = await RunAndReadAsync();

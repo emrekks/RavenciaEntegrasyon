@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 // The performance panel's arithmetic, kept apart from the page so it can be tested. The server sends one row per
 // Istanbul calendar day × store × currency for the chosen period and the previous one of equal elapsed time
 // (GET /dashboard/performance); everything here only adds those rows up.
@@ -7,20 +8,11 @@
 
 import { dateRangePresets } from '../../shared/date-range'
 import { newChangeText } from '../../shared/components/ChangePill'
+import { roundPercent } from '../../shared/percent-rounding'
 
 export type PerformanceRow = { day: string; connectionId: string; currency: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
-export type DashboardChannel = { connectionId: string; platformCode: string; displayName: string; status: string }
-export type Performance = {
-  from: string; to: string; previousFrom: string; previousTo: string
-  currentStart: string; currentEnd: string; previousStart: string; previousEnd: string
-  partialDay: boolean; channels: DashboardChannel[]; current: PerformanceRow[]; previous: PerformanceRow[]
-  // A one-day period also comes hour by hour ("yyyy-MM-ddTHH:00", Istanbul); the previous day stops at the same time.
-  currentHours?: HourRow[] | null; previousHours?: HourRow[] | null
-  // The period's orders (every store) with a product line the panel could not read; shown apart in a note.
-  unreadableLineOrders?: number
-  // Each store's first order day (yyyy-MM-dd): a previous period starting before the chosen stores' one is not compared with.
-  firstOrderDays?: Record<string, string> | null
-}
+export type DashboardChannel = Performance['channels'][number]
+export type Performance = ApiAnswer<'getDashboardPerformance'>
 export type HourRow = Omit<PerformanceRow, 'day'> & { hour: string }
 // day is the calendar day, or the hour key ("yyyy-MM-ddTHH:00") of an hourly series; label is the axis text then.
 export type DayPoint = { day: string; label?: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
@@ -170,7 +162,7 @@ export function istanbulHour(instant: string) {
 export function periodTrend(current: number, previous: number): [string, boolean] | null {
   if (previous <= 0) return current > 0 ? [newChangeText, true] : null
   // Rounded to the one decimal shown first, so a change that shows as %0 carries no minus and no falling colour.
-  const delta = Math.round(((current - previous) / previous) * 1000) / 10
+  const delta = roundPercent(((current - previous) / previous) * 100, 1)
   return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
 }
 

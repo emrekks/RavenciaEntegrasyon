@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MarketplaceHub.Application;
@@ -15,12 +14,10 @@ public sealed class ShopifyAuthenticationHandler(
     AppDbContext db,
     IDataProtectionProvider dataProtection,
     IHttpClientFactory clients,
-    ILogger<ShopifyAuthenticationHandler> logger)
+    ILogger<ShopifyAuthenticationHandler> logger,
+    ShopifyTokenCache tokens)
 {
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.PlatformCredential.v1");
-    // Shared by every request and job of the process (the handler itself is scoped), keyed by the credential
-    // so a rotated credential never reuses the old token.
-    private static readonly ConcurrentDictionary<(Guid ConnectionId, Guid CredentialId), CachedToken> Tokens = new();
 
     // Why the last LoadAsync returned null when the token service could not be reached or timed out: the caller
     // answers this transient failure instead of reporting the credentials as invalid.
@@ -73,11 +70,13 @@ public sealed class ShopifyAuthenticationHandler(
         return new(connection, shop, apiVersion, token.Token, token.ExpiresAt);
     }
 
-    private async Task<CachedToken?> AccessTokenAsync((Guid ConnectionId, Guid CredentialId) key, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
-    {
-        var connectionId = key.ConnectionId;
-        if (Tokens.TryGetValue(key, out var cached) && cached.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1)) return cached;
+    // The process-wide token of a credential (ShopifyTokenCache): kept until a minute before it expires; concurrent jobs
+    // of one credential wait for a single token request; a failed request is not kept.
+    private Task<ShopifyTokenCache.CachedToken?> AccessTokenAsync((Guid ConnectionId, Guid CredentialId) key, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken) =>
+        tokens.GetAsync(key, token => RequestTokenAsync(key.ConnectionId, shop, payload, token), cancellationToken);
 
+    private async Task<ShopifyTokenCache.IssuedToken?> RequestTokenAsync(Guid connectionId, string shop, ShopifyCredentialPayload payload, CancellationToken cancellationToken)
+    {
         var endpoint = new Uri($"https://{shop}.myshopify.com/admin/oauth/access_token");
         using var client = clients.CreateBoundedClient("Shopify");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
@@ -98,15 +97,16 @@ public sealed class ShopifyAuthenticationHandler(
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning("Shopify token alınamadı. ConnectionId: {ConnectionId}, Status: {Status}", connectionId, (int)response.StatusCode);
+                // ADAPTOR-DIGER-2: a throttled or failing token service is a passing failure, not invalid credentials;
+                // only a refusal (400/401/403 and the like) is answered as SHOPIFY_CREDENTIAL_INVALID by the caller.
+                TokenRequestFailure = TokenServiceFailure(response);
                 return null;
             }
             using var json = JsonDocument.Parse(body);
             var accessToken = json.RootElement.TryGetProperty("access_token", out var tokenElement) && tokenElement.ValueKind == JsonValueKind.String ? tokenElement.GetString() : null;
             var expiresIn = RemoteJson.Int32(json.RootElement, "expires_in") ?? 86_400;
             if (string.IsNullOrWhiteSpace(accessToken)) return null;
-            cached = new(accessToken, DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)));
-            Tokens[key] = cached;
-            return cached;
+            return new(accessToken, TimeSpan.FromSeconds(Math.Max(60, expiresIn)));
         }
         catch (HttpRequestException exception)
         {
@@ -124,6 +124,21 @@ public sealed class ShopifyAuthenticationHandler(
         }
     }
 
+    internal const string TokenServiceUnavailableCode = "SHOPIFY_TOKEN_SERVICE_UNAVAILABLE";
+
+    // The error of a token answer that is a passing failure (429 or 5xx); null for any other status.
+    internal static AdapterError? TokenServiceFailure(HttpResponseMessage response)
+    {
+        var status = (int)response.StatusCode;
+        if (status != 429 && status < 500) return null;
+        var retryAfter = response.Headers.RetryAfter?.Delta is { } delta && delta > TimeSpan.Zero ? delta : TimeSpan.FromSeconds(30);
+        return new(status == 429 ? AdapterErrorClass.RateLimit : AdapterErrorClass.Remote5xx, TokenServiceUnavailableCode,
+            "Shopify oturum servisi geçici olarak yanıt vermiyor.", status, retryAfter, null);
+    }
+
+    // Drops the cached client-credentials tokens of a connection after Shopify refused one (401).
+    internal void Forget(Guid connectionId) => tokens.Forget(connectionId);
+
     private static bool IsValidShop(string shop) => shop.Length is >= 3 and <= 100
         && shop[0] is >= 'a' and <= 'z'
         && shop[^1] is >= 'a' and <= 'z' or >= '0' and <= '9'
@@ -136,10 +151,6 @@ public sealed class ShopifyAuthenticationHandler(
         public string? ResolvedClientId => ClientId ?? ApiKey;
         public string? ResolvedClientSecret => ClientSecret ?? ApiSecret;
         public override string ToString() => nameof(ShopifyCredentialPayload);
-    }
-    private sealed record CachedToken(string Token, DateTimeOffset ExpiresAt)
-    {
-        public override string ToString() => $"CachedToken {{ ExpiresAt = {ExpiresAt:O} }}";
     }
 }
 

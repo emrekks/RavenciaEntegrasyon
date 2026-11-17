@@ -1,5 +1,5 @@
 import { Fragment, type ReactNode } from 'react'
-import { RrAnchor, RrColumnPop, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
+import { RrAnchor, RrColumnPop, RrFilterCard, RrIcon } from '../../shared/ui/rr-components'
 import './filter-fields.css'
 
 // İşlem Takibi's filters in the panel's shared filter card (returns-ui: RrFilterCard, RrAnchor, rr-pop), the one the

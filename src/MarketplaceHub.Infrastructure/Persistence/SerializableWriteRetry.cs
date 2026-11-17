@@ -22,6 +22,15 @@ internal static class SerializableWriteRetry
         return false;
     }
 
+    // A deadlock (40P01) or a serialization failure (40001) anywhere in the chain (Npgsql's execution strategy wraps it):
+    // the attempt wrote nothing and may be run again (KATALOG-14 phase D5b review 3).
+    public static bool IsLockConflict(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected }) return true;
+        return false;
+    }
+
     // attempt opens, commits and disposes its own transaction. What a failed attempt loaded or added is forgotten before
     // the next one; what the request tracked before (the idempotency record) is kept.
     public static async Task<T> RunAsync<T>(AppDbContext db, Func<CancellationToken, Task<T>> attempt, Func<T> exhausted, CancellationToken cancellationToken)

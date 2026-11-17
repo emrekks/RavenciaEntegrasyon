@@ -104,6 +104,48 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.NotNull(row.CostUsd);
     }
 
+    // KATALOG-13: the chart row another tab opens between this request's read and its write is taken over, not a 500.
+    [PostgreSqlFact]
+    public async Task A_chart_row_opened_meanwhile_by_another_request_is_used_not_a_duplicate_error()
+    {
+        await using var setup = fixture.CreateContext();
+        var settings = new AiSettingsService(setup, new EphemeralDataProtectionProvider(), TimeProvider.System);
+        var (tenantId, productId) = await SeedAsync(settings);
+        var otherTab = new ChartRowOpenedMeanwhile(tenantId, productId);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")).AddInterceptors(otherTab).Options);
+        // The settings service that saved the key reads it back (an ephemeral protector is one per instance).
+        var claude = new ClaudeService(settings, new FakeClaude(SizeChartRules.Validate(Input()).Table!), db, TimeProvider.System);
+        var service = new SizeChartService(db, claude, new FailingStorage(), TimeProvider.System);
+
+        // The storage fails after the call, as in the test above; what matters is that the row write before it went through.
+        await Assert.ThrowsAsync<IOException>(() => service.GenerateAsync(tenantId, Guid.Empty, productId, Input(), CancellationToken.None));
+        Assert.True(otherTab.Fired);
+        await using var read = fixture.CreateContext();
+        var chart = await read.ProductSizeCharts.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ProductId == productId);
+        Assert.NotNull(chart.MeasurementsJson);
+    }
+
+    private sealed class ChartRowOpenedMeanwhile(Guid tenantId, Guid productId) : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public bool Fired { get; private set; }
+
+        public override async ValueTask<System.Data.Common.DbDataReader> ReaderExecutedAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandExecutedEventData eventData, System.Data.Common.DbDataReader result, CancellationToken cancellationToken = default)
+        {
+            if (!Fired && command.CommandText.Contains("catalog.product_size_charts", StringComparison.Ordinal) && command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+            {
+                Fired = true;
+                await using var connection = new Npgsql.NpgsqlConnection(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION"));
+                await connection.OpenAsync(cancellationToken);
+                await using var insert = new Npgsql.NpgsqlCommand("""INSERT INTO catalog.product_size_charts ("Id", "TenantId", "ProductId", "UpdatedAt") VALUES (@id, @tenant, @product, now())""", connection);
+                insert.Parameters.AddWithValue("id", Guid.CreateVersion7());
+                insert.Parameters.AddWithValue("tenant", tenantId);
+                insert.Parameters.AddWithValue("product", productId);
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+            return await base.ReaderExecutedAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task A_call_the_user_abandons_is_logged_as_cancelled_not_as_a_timeout()
     {
@@ -124,6 +166,27 @@ public sealed class SizeChartGenerationPostgreSqlTests(PostgreSqlTenantIsolation
         await using var read = fixture.CreateContext();
         var row = await read.AiUsageLogs.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Feature == "SIZE_CHART");
         Assert.Equal(ClaudeService.CancelledStatus, row.Status);
+    }
+
+    // API-GUVENLIK-3: once the tenant's runs of the last 24 hours cost the daily ceiling, no further run reaches Claude.
+    [PostgreSqlFact]
+    public async Task A_run_over_the_daily_spend_limit_never_reaches_Claude()
+    {
+        await using var db = fixture.CreateContext();
+        var settings = new AiSettingsService(db, new EphemeralDataProtectionProvider(), TimeProvider.System);
+        var (tenantId, productId) = await SeedAsync(settings);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.AiUsageLogs.Add(new AiUsageLog { Id = Guid.CreateVersion7(), TenantId = tenantId, Feature = "SIZE_CHART", Model = "claude-sonnet-5-5", CostUsd = 6m, Status = "SUCCEEDED", DurationMs = 1000, CreatedAt = DateTimeOffset.UtcNow.AddHours(-2) });
+            await seed.SaveChangesAsync();
+        }
+        var fake = new FakeClaude(SizeChartRules.Validate(Input()).Table!);
+        var service = new SizeChartService(db, new ClaudeService(settings, fake, db, TimeProvider.System, new AiSpendLimit(5m)), new MemoryStorage(), TimeProvider.System);
+
+        var failure = await Assert.ThrowsAsync<SizeChartException>(() => service.GenerateAsync(tenantId, Guid.Empty, productId, Input(), CancellationToken.None));
+
+        Assert.Equal("AI_BUDGET_EXCEEDED", failure.Code);
+        Assert.Null(fake.Request);
     }
 
     private sealed class MemoryStorage : IPrivateFileStorage

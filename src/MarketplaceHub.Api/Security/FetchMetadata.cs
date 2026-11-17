@@ -1,5 +1,12 @@
 namespace MarketplaceHub.Api.Security;
 
+/// <summary>Endpoint metadata: the endpoint refuses a request another site started (FetchMetadata.RequireSameOriginFetch).</summary>
+public sealed class SameOriginFetchRequired
+{
+    public static readonly SameOriginFetchRequired Instance = new();
+    private SameOriginFetchRequired() { }
+}
+
 public static class FetchMetadata
 {
     // Reads that call a marketplace live (and spend its quota) are GETs, and the session cookie is
@@ -15,8 +22,9 @@ public static class FetchMetadata
             && !site.Equals("none", StringComparison.OrdinalIgnoreCase);
     }
 
+    // The endpoint also carries SameOriginFetchRequired, so a test can check that every live read has the filter.
     public static TBuilder RequireSameOriginFetch<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>
-        builder.AddEndpointFilter((context, next) => IsStartedByAnotherSite(context.HttpContext.Request)
+        builder.WithMetadata(SameOriginFetchRequired.Instance).AddEndpointFilter((context, next) => IsStartedByAnotherSite(context.HttpContext.Request)
             ? ValueTask.FromResult<object?>(ApiProblems.Of(context.HttpContext, "CROSS_SITE_REQUEST_REFUSED", "Bu istek yalnız panelin kendisinden yapılabilir.", StatusCodes.Status403Forbidden))
             : next(context));
 

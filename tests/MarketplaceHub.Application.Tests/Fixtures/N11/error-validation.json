@@ -1,0 +1,7 @@
+// Source: hand-built after the n11 REST error fields N11HttpClient.RemoteMessage reads (message / errorMessage / reasons;
+// n11.md); the offline docs folder has no n11 copy.
+{
+  "status": "REJECT",
+  "message": "stockCode alanı boş olamaz.",
+  "reasons": [ "stockCode alanı boş olamaz." ]
+}

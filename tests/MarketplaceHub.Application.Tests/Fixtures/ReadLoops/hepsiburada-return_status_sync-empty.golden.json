@@ -1,0 +1,35 @@
+{
+  "JobType": "RETURN_STATUS_SYNC",
+  "Runs": [
+    {
+      "Run": "first",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    },
+    {
+      "Run": "empty",
+      "Result": "Succeeded",
+      "ErrorCode": null,
+      "Calls": {
+        "Count": 0,
+        "Head": [],
+        "Tail": []
+      }
+    }
+  ],
+  "Cursors": [
+    {
+      "ResourceType": "RETURN_LIFECYCLE",
+      "Watermark": null,
+      "LastSuccess": "2026-11-16T09:10:06.000Z",
+      "OpaqueCursor": null,
+      "Version": 7
+    }
+  ],
+  "Issues": []
+}
