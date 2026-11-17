@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
-import { TitleHint, UiIcon, DialogSurface } from '../../../shared/components'
+import { UiIcon, DialogSurface } from '../../../shared/components'
+import { RrModal } from '../../../shared/ui/rr-components'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { refreshedMatrixDrafts, type ChannelPricingDraft } from './marketplace-channel-pricing'
 import { VariantPlatformStatus } from '../shared'
@@ -110,15 +110,11 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
         <footer><button type="button" onClick={() => onSave(selectVariantDraftsByKeys(matrixDrafts, dirtyMatrixDraftKeys))} disabled={saving || !dirtyMatrixDraftKeys.length || !platforms.some(platform => platform.connectionId)}>{saving ? 'Kaydediliyor…' : 'Kaydet'}</button><button type="button" className="secondary" onClick={onClose} disabled={saving}>Vazgeç</button></footer>
       </DialogSurface>
     </div>
-    {matrixBulkEdit && createPortal(
-      <div className="workspace-modal-backdrop variant-platform-pricing-bulk-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMatrixBulkEdit(null) }}>
-        <DialogSurface as="section" onClose={() => { setMatrixBulkEdit(null) }} className="workspace-modal variant-bulk-edit-modal" aria-labelledby="variant-platform-pricing-bulk-title" onMouseDown={event => event.stopPropagation()}>
-          <header><div><p className="eyebrow">Platform Fiyatları</p><h2 id="variant-platform-pricing-bulk-title">{marketplacePlatformName(matrixBulkEdit.platform)} {matrixBulkEdit.label} Toplu Değiştir<TitleHint label={`${marketplacePlatformName(matrixBulkEdit.platform)} ${matrixBulkEdit.label} Toplu Değiştir`}>Değer, seçili renk ve bedenlerdeki varyantların bu platformdaki {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} alanına uygulanır. Uygula yalnız taslağı değiştirir; kalıcı olması için ana penceredeki Kaydet’e basın.</TitleHint></h2></div><button type="button" className="modal-close" onClick={() => setMatrixBulkEdit(null)} aria-label="Toplu fiyat değişikliği penceresini kapat"><UiIcon name="close" /></button></header>
-          <div className="variant-bulk-edit-body"><p className="variant-bulk-edit-target"><span>Uygulanacak Varyant</span><strong>{matchingRows.length.toLocaleString('tr-TR')} satır</strong></p><label htmlFor="variant-platform-pricing-bulk-value">Yeni Fiyat<input id="variant-platform-pricing-bulk-value" data-autofocus={touchScreen ? undefined : true} type="number" min="0" step="0.01" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>{matrixBulkEdit.error && <p className="variant-bulk-edit-error" id="variant-platform-pricing-bulk-error" role="alert">{matrixBulkEdit.error}</p>}</div>
-          <footer><button type="button" className="secondary" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyMatrixBulkEdit} disabled={!matchingRows.length}>Uygula</button></footer>
-        </DialogSurface>
-      </div>,
-      document.querySelector('main') ?? document.body
-    )}
+    {matrixBulkEdit && <RrModal crumb="Platform Fiyatları" title={`${marketplacePlatformName(matrixBulkEdit.platform)} ${matrixBulkEdit.label} Toplu Değiştir`} hint={<>Değer, seçili renk ve bedenlerdeki varyantların bu platformdaki {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} alanına uygulanır. Uygula yalnız taslağı değiştirir; kalıcı olması için ana penceredeki Kaydet’e basın.</>} size="md" modalClass="variant-platform-pricing-bulk-modal" onClose={() => setMatrixBulkEdit(null)}
+      foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={applyMatrixBulkEdit} disabled={!matchingRows.length}>Uygula</button></>}>
+      <p className="variant-bulk-edit-target"><span>Uygulanacak Varyant</span><strong>{matchingRows.length.toLocaleString('tr-TR')} satır</strong></p>
+      <label className="rr-fld" htmlFor="variant-platform-pricing-bulk-value"><small>Yeni Fiyat</small><input id="variant-platform-pricing-bulk-value" className="rr-in" data-autofocus={touchScreen ? undefined : true} type="number" min="0" step="0.01" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>
+      {matrixBulkEdit.error && <p className="rr-callout rr-danger" id="variant-platform-pricing-bulk-error" role="alert">{matrixBulkEdit.error}</p>}
+    </RrModal>}
   </>
 }

@@ -238,8 +238,8 @@
 .app-shell.stitch-shell main .reports-page .reports-panel { position: relative; }
 .app-shell.stitch-shell main .reports-page .reports-panel-title { flex: 1 1 160px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-panel-title .reports-tip-trigger { display: inline; }
-.app-shell.stitch-shell main .reports-page .reports-tip-host[data-tip-below] > .reports-hover-tip { top: calc(100% + 6px); bottom: auto; }
-.app-shell.stitch-shell main .reports-page .reports-tip-host[data-tip-end] > .reports-hover-tip { right: 0; left: auto; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host[data-tip-below] > .reports-hover-tip, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-host[data-tip-below] > .reports-hover-tip { top: calc(100% + 6px); bottom: auto; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host[data-tip-end] > .reports-hover-tip, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-host[data-tip-end] > .reports-hover-tip { right: 0; left: auto; }
 .app-shell.stitch-shell main .reports-page .reports-more.is-compact { width: 32px; padding: 0; justify-content: center; }
 
 /* Report cards: a plain card on the surface colour, its title row, actions and charts that grow from zero once, when
@@ -358,26 +358,26 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 }
 
 /* Kârlılık accounts: rows one under another; a minus on deductions, a rule over subtotals, the result in the accent. */
-.app-shell.stitch-shell main .reports-page .reports-ledger { display: grid; margin: 0; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px dashed var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div:first-child { padding-top: 0; border-top: 0; }
-.app-shell.stitch-shell main .reports-page .reports-ledger dt { display: grid; gap: 2px; min-width: 0; color: var(--rv-color-ink); font-size: 13.5px; }
+.app-shell.stitch-shell main .reports-page .reports-ledger, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger { display: grid; margin: 0; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px dashed var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div:first-child, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div:first-child { padding-top: 0; border-top: 0; }
+.app-shell.stitch-shell main .reports-page .reports-ledger dt, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger dt { display: grid; gap: 2px; min-width: 0; color: var(--rv-color-ink); font-size: 13.5px; }
 /* A long row name that does not fit beside its figure (a phone) wraps under itself instead of being cut. */
-.app-shell.stitch-shell main .reports-page .reports-ledger dt .reports-tip-trigger { overflow: visible; white-space: normal; }
-.app-shell.stitch-shell main .reports-page .reports-ledger dt small { color: var(--rv-color-subtle); font-size: 11.5px; line-height: 1.4; }
-.app-shell.stitch-shell main .reports-page .reports-ledger dd { margin: 0; color: var(--rv-color-ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dt { color: var(--rv-color-muted); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dd { color: var(--rv-color-danger); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-good dd { color: var(--rv-color-accent); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-bad dd { color: var(--rv-color-danger); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dt { padding-left: 14px; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div:is(.is-total, .is-result) { border-top: 1px solid var(--rv-color-border-strong); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div:is(.is-total, .is-result) dt { font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-total dd { font-size: 17px; font-weight: 700; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result { margin-top: 4px; padding: 14px 16px; background: color-mix(in srgb, var(--rv-color-accent) 12%, transparent); border: 0; border-radius: 14px; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result dd { color: var(--rv-color-accent); font-size: 20px; font-weight: 700; }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result.is-bad { background: color-mix(in srgb, var(--rv-color-danger) 12%, transparent); }
-.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result.is-bad dd { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-ledger dt .reports-tip-trigger, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger dt .reports-tip-trigger { overflow: visible; white-space: normal; }
+.app-shell.stitch-shell main .reports-page .reports-ledger dt small, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger dt small { color: var(--rv-color-subtle); font-size: 11.5px; line-height: 1.4; }
+.app-shell.stitch-shell main .reports-page .reports-ledger dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger dd { margin: 0; color: var(--rv-color-ink); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dt, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-minus dt { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-minus dd { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-good dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-good dd { color: var(--rv-color-accent); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-bad dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-bad dd { color: var(--rv-color-danger); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-minus dt, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-minus dt { padding-left: 14px; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div:is(.is-total, .is-result), .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div:is(.is-total, .is-result) { border-top: 1px solid var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div:is(.is-total, .is-result) dt, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div:is(.is-total, .is-result) dt { font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-total dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-total dd { font-size: 17px; font-weight: 700; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-result { margin-top: 4px; padding: 14px 16px; background: color-mix(in srgb, var(--rv-color-accent) 12%, transparent); border: 0; border-radius: 14px; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-result dd { color: var(--rv-color-accent); font-size: 20px; font-weight: 700; }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result.is-bad, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-result.is-bad { background: color-mix(in srgb, var(--rv-color-danger) 12%, transparent); }
+.app-shell.stitch-shell main .reports-page .reports-ledger > div.is-result.is-bad dd, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger > div.is-result.is-bad dd { color: var(--rv-color-danger); }
 
 /* Ürün tablosu: the picture beside the name. */
 .app-shell.stitch-shell main .reports-page .reports-product { display: flex; align-items: center; gap: 12px; min-width: 220px; max-width: 360px; }
@@ -450,25 +450,24 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 /* Kâr Köprüsü's row window: its explanation under the title, then the row's lines by kind (and by platform), each with
    what it is under its name and the amount on the right, the total that is the row's figure under them; 16 px between
    rows, a dashed rule between them as in Kâr Hesabı. */
-.app-shell.stitch-shell main .reports-page .rv-modal.reports-bridge-modal { width: min(620px, calc(100vw - 32px)); }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail { display: grid; gap: 20px; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail section { display: grid; gap: 10px; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail h3 { margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail ul { display: grid; margin: 0; padding: 0; list-style: none; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px dashed var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li:first-child { padding-top: 0; border-top: 0; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > i { width: 8px; height: 8px; justify-self: center; background: color-mix(in srgb, var(--rv-color-ink) 28%, transparent); border-radius: 50%; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .platform-square-mark { width: 24px; height: 24px; border-radius: 7px; font-size: 8px; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .reports-bridge-detail-name { display: grid; gap: 2px; min-width: 0; color: var(--rv-color-ink); font-size: 13.5px; font-weight: 500; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .reports-bridge-detail-name small { color: var(--rv-color-subtle); font-size: 11.5px; font-weight: 400; line-height: 1.4; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total { border-top: 1px solid var(--rv-color-border-strong); }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total > i { visibility: hidden; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total > .reports-bridge-detail-name { font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail dl { display: grid; gap: 8px; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border-radius: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail dl > div { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail dt { color: var(--rv-color-subtle); }
-.app-shell.stitch-shell main .reports-page .reports-bridge-detail dd { margin: 0; color: var(--rv-color-ink); font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail { display: grid; gap: 20px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail section, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail section { display: grid; gap: 10px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail h3, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail h3 { margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail ul, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail ul { display: grid; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px dashed var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li:first-child, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li:first-child { padding-top: 0; border-top: 0; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > i, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li > i { width: 8px; height: 8px; justify-self: center; background: color-mix(in srgb, var(--rv-color-ink) 28%, transparent); border-radius: 50%; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .platform-square-mark, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li > .platform-square-mark { width: 24px; height: 24px; border-radius: 7px; font-size: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .reports-bridge-detail-name, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li > .reports-bridge-detail-name { display: grid; gap: 2px; min-width: 0; color: var(--rv-color-ink); font-size: 13.5px; font-weight: 500; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > .reports-bridge-detail-name small, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li > .reports-bridge-detail-name small { color: var(--rv-color-subtle); font-size: 11.5px; font-weight: 400; line-height: 1.4; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li > b, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li > b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li.is-total { border-top: 1px solid var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total > i, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li.is-total > i { visibility: hidden; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail li.is-total > .reports-bridge-detail-name, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail li.is-total > .reports-bridge-detail-name { font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dl, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail dl { display: grid; gap: 8px; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dl > div, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail dl > div { display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dt, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail dt { color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .reports-page .reports-bridge-detail dd, .rr-layer.rr-layer .reports-bridge-modal .reports-bridge-detail dd { margin: 0; color: var(--rv-color-ink); font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .reports-page .reports-bridge .reports-tip-trigger[aria-haspopup='dialog'] { cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-journey-modal .reports-journey-pane { padding-top: 0; border-top: 0; }
 .app-shell.stitch-shell main .reports-page .reports-journey-modal .reports-journey-pane h3 { display: none; }
@@ -588,19 +587,19 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-kpis .is-text strong { white-space: normal; overflow-wrap: anywhere; }
 
 /* A row's explanation: a small card over the row while the pointer or the focus is on it; nothing moves. */
-.app-shell.stitch-shell main .reports-page .reports-tip-host { position: relative; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-host { position: relative; }
 /* A row's explanation: a card over the row, what the figure is in bold on its first line and how it is worked out
    under it, in the body size; it fades and rises in a little. */
-.app-shell.stitch-shell main .reports-page .reports-hover-tip { position: absolute; z-index: var(--rv-z-tooltip); bottom: calc(100% + 2px); left: 0; display: grid; gap: 4px; width: max-content; max-width: min(320px, 100%); padding: 10px 12px; color: color-mix(in srgb, var(--rv-color-ink) 78%, var(--rv-color-muted)); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip, .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip { position: absolute; z-index: var(--rv-z-tooltip); bottom: calc(100% + 2px); left: 0; display: grid; gap: 4px; width: max-content; max-width: min(320px, 100%); padding: 10px 12px; color: color-mix(in srgb, var(--rv-color-ink) 78%, var(--rv-color-muted)); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(4px); transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease; }
 /* The lines inside keep the card's own type whatever row they sit in (a row's amount is bold, right-aligned, on one line). */
-.app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > :is(b, span) { display: block; margin: 0; padding: 0; color: inherit; font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: none; border: 0; }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > :is(b, span), .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip.reports-hover-tip.reports-hover-tip > :is(b, span) { display: block; margin: 0; padding: 0; color: inherit; font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: none; border: 0; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > b, .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip.reports-hover-tip.reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
 /* An explanation opens from the round "?" beside its name (or the keyboard focus on the name), not from the whole row. */
-.app-shell.stitch-shell main .reports-page .reports-tip-host:has(.reports-qmark:hover, :focus-visible) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
-.app-shell.stitch-shell main .reports-page .reports-qmark { flex: none; display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: top; color: var(--rv-color-muted); cursor: default; transition: color 140ms ease; }
-.app-shell.stitch-shell main .reports-page .reports-qmark:hover { color: var(--rv-color-ink); }
-.app-shell.stitch-shell main .reports-page .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: none; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
-.app-shell.stitch-shell main .reports-page .reports-tip-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+.app-shell.stitch-shell main .reports-page .reports-tip-host:has(.reports-qmark:hover, :focus-visible) > .reports-hover-tip, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-host:has(.reports-qmark:hover, :focus-visible) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
+.app-shell.stitch-shell main .reports-page .reports-qmark, .rr-layer.rr-layer .reports-bridge-modal .reports-qmark { flex: none; display: inline-block; width: 14px; height: 14px; margin-left: 4px; vertical-align: top; color: var(--rv-color-muted); cursor: default; transition: color 140ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-qmark:hover, .rr-layer.rr-layer .reports-bridge-modal .reports-qmark:hover { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .reports-page .reports-tip-trigger, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: none; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
+.app-shell.stitch-shell main .reports-page .reports-tip-trigger:focus-visible, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .reports-page .reports-overview .reports-card-bridge { grid-template-rows: auto 1fr auto; }
 /* What the bridge's estimate leaves out: a ruled block of name and content rows (the cost entered as a bar, the
    platforms not taken off as chips). */
@@ -862,7 +861,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 /* Two panels stacked in one grid column, the lower one taking what is left of the row's height; a table's total row. */
 .app-shell.stitch-shell main .reports-page .reports-stack { display: grid; grid-template-rows: auto 1fr; gap: 20px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-table tfoot td { padding: 11px 10px; color: var(--rv-color-ink); font-weight: 700; border-top: 1px solid var(--rv-color-border-strong); border-bottom: 0; }
-.app-shell.stitch-shell main .reports-page .reports-ledger-panel > .reports-bridge-gaps { margin-top: 4px; }
+.app-shell.stitch-shell main .reports-page .reports-ledger-panel > .reports-bridge-gaps, .rr-layer.rr-layer .reports-bridge-modal .reports-ledger-panel > .reports-bridge-gaps { margin-top: 4px; }
 
 /* Tarifeler: the platforms as tabs above the store's tariffs. */
 .app-shell.stitch-shell main .reports-page .reports-tariffs { display: grid; gap: 20px; min-width: 0; }
@@ -894,29 +893,28 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-order-pager button { min-height: 0; height: 36px; border-radius: 7px; text-transform: none; }
 
 /* The order's analysis: what is left on top, the items and the charges side by side. */
-.reports-order-modal { width: min(1040px, calc(100vw - 32px)); }
-.reports-order-modal .reports-order-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 14px 18px; border-radius: 12px; }
-.reports-order-modal .reports-order-result span { display: grid; gap: 2px; font-weight: 600; }
-.reports-order-modal .reports-order-result small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
-.reports-order-modal .reports-order-result strong { font-size: 24px; font-variant-numeric: tabular-nums; }
-.reports-order-modal .reports-order-result.is-gain { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
-.reports-order-modal .reports-order-result.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
-.reports-order-modal .reports-order-result.is-unknown { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
-.reports-order-modal .reports-order-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
-.reports-order-modal h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; font-size: 14px; font-weight: 600; }
-.reports-order-modal h3 em { padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 11px; font-style: normal; }
-.reports-order-modal ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.reports-order-modal .reports-order-lines li { display: flex; align-items: flex-start; gap: 12px; padding: 10px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.reports-order-modal .reports-order-lines :is(img, i) { display: grid; flex: none; place-items: center; width: 56px; aspect-ratio: 2 / 3; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-style: normal; }
-.reports-order-modal .reports-order-lines span { display: grid; flex: 1; gap: 2px; min-width: 0; }
-.reports-order-modal .reports-order-lines b { font-size: 13px; }
-.reports-order-modal :is(.reports-order-lines, .reports-order-costs) small { color: var(--rv-color-muted); font-size: 12px; }
-.reports-order-modal :is(.reports-order-lines, .reports-order-costs) strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.reports-order-modal .reports-order-costs li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.reports-order-modal .reports-order-costs span { display: grid; gap: 2px; }
-.reports-order-modal .reports-order-costs b { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
-.reports-order-modal .reports-order-costs b em { padding: 1px 7px; color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
-@media (max-width: 760px) { .reports-order-modal .reports-order-columns { grid-template-columns: minmax(0, 1fr); } }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 14px 18px; border-radius: 12px; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result span { display: grid; gap: 2px; font-weight: 600; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result strong { color: var(--rv-color-ink); font-size: 24px; font-variant-numeric: tabular-nums; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result.is-gain { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.rr-layer.rr-layer .reports-order-modal .reports-order-result.is-unknown { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
+.rr-layer.rr-layer .reports-order-modal .reports-order-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.rr-layer.rr-layer .reports-order-modal h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.rr-layer.rr-layer .reports-order-modal h3 em { padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 11px; font-style: normal; }
+.rr-layer.rr-layer .reports-order-modal ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-lines li { display: flex; align-items: flex-start; gap: 12px; padding: 10px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-lines :is(img, i) { display: grid; flex: none; place-items: center; width: 56px; aspect-ratio: 2 / 3; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-style: normal; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-lines span { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-lines b { font-size: 13px; }
+.rr-layer.rr-layer .reports-order-modal :is(.reports-order-lines, .reports-order-costs) small { color: var(--rv-color-muted); font-size: 12px; }
+.rr-layer.rr-layer .reports-order-modal :is(.reports-order-lines, .reports-order-costs) strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-costs li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-costs span { display: grid; gap: 2px; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-costs b { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.rr-layer.rr-layer .reports-order-modal .reports-order-costs b em { padding: 1px 7px; color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
+@media (max-width: 760px) { .rr-layer.rr-layer .reports-order-modal .reports-order-columns { grid-template-columns: minmax(0, 1fr); } }
 
 /* Stok: the variant under a product's name, and the loading shape (the strips and panels the tab opens with, so
    nothing moves when the figures come in). */
@@ -1169,10 +1167,10 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 }
 
 /* A figure's explanation can list it per platform under the text (Genel Bakış: Net Ciro, Sipariş, Net Satılan Adet). */
-.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split { display: grid; gap: 4px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split > div { display: flex; justify-content: space-between; gap: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split dt { color: var(--rv-color-muted); }
-.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split, .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip .reports-tip-split { display: grid; gap: 4px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split > div, .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip .reports-tip-split > div { display: flex; justify-content: space-between; gap: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split dt, .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip .reports-tip-split dt { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split dd, .rr-layer.rr-layer .reports-bridge-modal .reports-hover-tip .reports-tip-split dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Strips whose labels need more room (is-long: Hakediş, Kârlılık, Stok, Sipariş Kârlılığı; owner, 7 Nov 2026): six or
    five across only while every box keeps its label on one line (the strip at least 1320px wide), else rows of three
@@ -1213,4 +1211,4 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
    without moving anything (an invisible ring around the toggle, vertical padding cancelled by margin on the tips). */
 .app-shell.stitch-shell main .reports-page .reports-kpi-delta-toggle { position: relative; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-delta-toggle::after { content: ""; position: absolute; inset: -7px -4px; }
-.app-shell.stitch-shell main .reports-page .reports-tip-trigger { padding-block: 7px; margin-block: -7px; }
+.app-shell.stitch-shell main .reports-page .reports-tip-trigger, .rr-layer.rr-layer .reports-bridge-modal .reports-tip-trigger { padding-block: 7px; margin-block: -7px; }

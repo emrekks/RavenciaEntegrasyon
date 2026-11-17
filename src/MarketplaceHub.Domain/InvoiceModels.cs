@@ -261,6 +261,9 @@ public sealed class MarketplaceDeliveryState
     public required string Status { get; set; }
     public string? ExternalReference { get; set; }
     public string? ErrorCode { get; set; }
+    // The link this delivery sent (E-Faturam's permanent URL or the panel's public link, stored form). Null on deliveries
+    // recorded before 17 Nov 2026: their link is read the old way (InvoiceDeliveredLinks).
+    public string? InvoiceLink { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

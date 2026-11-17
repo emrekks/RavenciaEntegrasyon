@@ -219,9 +219,6 @@
 }
 
 @layer features {
-}
-
-@layer features {
   .variant-table-row input.has-platform-code-issue { border-color: var(--rv-color-danger); box-shadow: inset 0 0 0 1px var(--rv-color-danger); }
 }
 
@@ -229,25 +226,17 @@
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
   /* Product editor dialog footers: 36 px buttons (design step 1). */
-  .app-shell.stitch-shell main :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button, :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button { min-height: 0; height: 36px; padding-block: 0; padding-inline: 14px; font-size: 13px; }
+  .app-shell.stitch-shell main :is(.marketplace-codes-modal, .variant-bulk-edit-modal, .variant-media-picker-modal) > footer button, :is(.marketplace-codes-modal, .variant-bulk-edit-modal, .variant-media-picker-modal) > footer button { min-height: 0; height: 36px; padding-block: 0; padding-inline: 14px; font-size: 13px; }
   /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
   .variant-option-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .variant-option-cell > .variant-option-text { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
   .variant-option-cell > .variant-option-edit-button { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; border-radius: 999px; cursor: pointer; }
   .variant-option-cell > .variant-option-edit-button:hover { color: var(--rv-color-primary-hover, var(--rv-color-primary)); background: none; }
   .variant-option-cell > .variant-option-edit-button:disabled { opacity: .5; cursor: not-allowed; }
-  .variant-option-edit-modal { width: min(560px, 100%); }
-  .variant-option-edit-body { display: grid; gap: 16px; padding: 20px 24px 0; overflow: auto; }
   .variant-option-edit-grid { display: grid; gap: 12px; }
   .variant-option-edit-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .variant-option-edit-pair label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--rv-color-muted); }
-  .variant-option-edit-pair input, .variant-option-edit-pair select { height: 36px; min-height: 0; }
-  .variant-option-edit-pair input:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
   .variant-option-edit-switch { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; cursor: pointer; }
   .variant-option-edit-switch > span { display: grid; gap: 2px; flex: 1; }
-  .variant-option-edit-switch small { color: var(--rv-color-muted); font-size: 12px; }
-  .variant-option-edit-body > footer { display: flex; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
-  .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
   @media (max-width: 560px) { .variant-option-edit-pair { grid-template-columns: 1fr; } }
   .marketplace-codes-body { display: grid; gap: var(--rv-space-2); padding: var(--rv-space-3) var(--rv-space-5); min-width: 0; }
   .app-shell.stitch-shell main .marketplace-codes-modal > header { padding-block: 14px; }
@@ -336,15 +325,6 @@
 
 @layer features {
   .variant-bulk-edit-filters { display: grid; gap: var(--rv-space-2); }
-}
-
-@layer features {
-}
-
-@layer features {
-}
-
-@layer features {
 }
 
 @layer features {
@@ -665,22 +645,6 @@
 }
 
 @layer features {
-  .variant-code-confirm-modal { width: min(560px, 100%); }
-}
-
-@layer features {
-  .media-removal-confirm-modal { width: min(520px, 100%); }
-}
-
-@layer features {
-  .media-removal-confirm-body { padding: var(--rv-space-5) var(--rv-space-6); }
-}
-
-@layer features {
-  .variant-code-confirm-body { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-5) var(--rv-space-6); }
-}
-
-@layer features {
   .variant-code-confirm-body > code { min-width: 0; overflow-wrap: anywhere; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
 }
 
@@ -765,11 +729,7 @@
 }
 
 @layer features {
-  .desi-calculator-body { padding: var(--rv-space-5) var(--rv-space-6); }
-}
-
-@layer features {
-  .calculated-field { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); margin-top: var(--rv-space-4); padding: var(--rv-space-4); background: var(--rv-color-primary-soft); border-radius: var(--rv-radius-md); }
+  .calculated-field { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-4); background: var(--rv-color-primary-soft); border-radius: var(--rv-radius-md); }
 }
 
 @media (max-width: 1200px) {
@@ -834,9 +794,6 @@
 
 @media (max-width: 700px) {
   .attribute-builder-web-color-manual { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 700px) {
 }
 
 @media (max-width: 700px) {
@@ -951,8 +908,6 @@
 .variant-status-tip > ul > li.is-pending::before { background: var(--rv-color-info); }
 .variant-status-tip > ul > li.is-error::before { background: var(--rv-color-danger); }
 .app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; background: none; border: 0; box-shadow: none; }
-.app-shell.stitch-shell main .variant-option-edit-pair select, .app-shell.stitch-shell main .variant-option-edit-pair input { height: 36px; min-height: 0; padding-block: 0; }
-.app-shell.stitch-shell main .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
 
 /* Spec sizes outside phones (controls 36px high): the global button rule's 44px min-height and the 10px field padding
    made the editor's fields 43px and its plain buttons 44px. Cards that are buttons (step tabs, attribute and filter
@@ -1304,3 +1259,13 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
    narrow instead of being cut with an ellipsis. */
 :root:root:root .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky.product-submit-sticky.rv-action-bar > div:first-child { flex-wrap: wrap; }
 :root:root:root .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky.product-submit-sticky.rv-action-bar > div:first-child > :is(p, small) { overflow: visible; text-overflow: clip; white-space: normal; }
+/* The editor's confirmations on RrModal (one-modal migration, 17 Nov 2026): the rr layer resets paragraphs, so their muted
+   text is set here. */
+.rr-layer.rr-layer .editor-confirm-text { color: var(--rr-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.rr-layer.rr-layer .variant-code-confirm-body { display: grid; gap: 12px; }
+.rr-layer.rr-layer .variant-code-confirm-body > :is(p, small) { color: var(--rr-muted); font-size: inherit; }
+/* Desi Hesapla on RrModal: two measures a row, on a phone too (as before). */
+.rr-layer.rr-layer .desi-calculator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+/* Varyant Düzenleme on RrModal: the read-only name field and the switch row's help line (the rr layer resets small). */
+.rr-layer.rr-layer .variant-option-edit-pair .rr-in:disabled { color: var(--rr-muted); background: var(--rr-raised); }
+.rr-layer.rr-layer .variant-option-edit-switch small { color: var(--rr-muted); font-size: 12px; }

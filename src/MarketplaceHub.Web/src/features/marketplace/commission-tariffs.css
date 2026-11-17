@@ -240,29 +240,28 @@
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.is-unknown { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); font-weight: 500; }
 .app-shell.stitch-shell main .commission-tariffs .commission-own small .unit-profit-badge { display: flex; width: max-content; }
-.unit-profit-modal { width: min(460px, calc(100vw - 32px)); }
 /* The heading: the product on at most two lines, then the price's chip and its note. */
-.unit-profit-modal > header p { display: grid; gap: 6px; }
-.unit-profit-modal .unit-profit-title { display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
-.unit-profit-modal .unit-profit-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; }
-.unit-profit-modal .unit-profit-tag { padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-weight: 600; white-space: nowrap; }
+.rr-layer.rr-layer .unit-profit-modal > .rr-m-head p { display: grid; gap: 6px; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-title { display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 12px; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-tag { padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-weight: 600; white-space: nowrap; }
 /* The charges and the total share one 8 px rhythm and one right edge (12 px padding inside a 1 px border). */
-.unit-profit-modal .unit-profit-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.unit-profit-modal .unit-profit-rows li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.unit-profit-modal .unit-profit-rows span { display: grid; gap: 2px; min-width: 0; }
-.unit-profit-modal .unit-profit-rows b { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
-.unit-profit-modal .unit-profit-rows small { color: var(--rv-color-muted); font-size: 12px; }
-.unit-profit-modal .unit-profit-rows strong { flex: none; color: var(--rv-color-ink); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
-.unit-profit-modal .unit-profit-rows strong.is-gain { color: var(--rv-color-accent); }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows span { display: grid; gap: 2px; min-width: 0; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows b { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows small { color: var(--rv-color-muted); font-size: 12px; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows strong { flex: none; color: var(--rv-color-ink); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-rows strong.is-gain { color: var(--rv-color-accent); }
 /* Both blocks start on one line: the labels on one row (the rate's "maliyete göre" beside its label), the values on
    one baseline under them. */
-.unit-profit-modal .unit-profit-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; margin: 8px 0 0; padding: 10px 12px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 12px; }
-.unit-profit-modal .unit-profit-total > span { display: grid; gap: 2px; min-width: 0; }
-.unit-profit-modal .unit-profit-total > span + span { justify-items: end; text-align: right; }
-.unit-profit-modal .unit-profit-total > span > span { display: flex; align-items: baseline; gap: 4px; height: 16px; font-size: 12px; font-weight: 600; line-height: 16px; white-space: nowrap; }
-.unit-profit-modal .unit-profit-total strong { font-size: 18px; font-weight: 700; line-height: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.unit-profit-modal .unit-profit-total small { font-size: 11px; font-weight: 500; opacity: .8; }
-.unit-profit-modal .unit-profit-total.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; margin: 8px 0 0; padding: 10px 12px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 12px; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total > span { display: grid; gap: 2px; min-width: 0; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total > span + span { justify-items: end; text-align: right; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total > span > span { display: flex; align-items: baseline; gap: 4px; height: 16px; font-size: 12px; font-weight: 600; line-height: 16px; white-space: nowrap; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total strong { font-size: 18px; font-weight: 700; line-height: 24px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total small { font-size: 11px; font-weight: 500; opacity: .8; }
+.rr-layer.rr-layer .unit-profit-modal .unit-profit-total.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
 /* The whole left cell opens and closes the model's sizes, not only the round button: the button's hit area is
    stretched over the cell while it keeps its round look. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand:has(> .commission-model-toggle) { position: relative; cursor: pointer; }

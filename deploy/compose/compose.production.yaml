@@ -23,6 +23,10 @@ services:
       FeatureFlags__ExternalWrites: "${MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED:-true}"
       FeatureFlags__InvoiceMarketplaceDeliveryWrites: "${MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED:-true}"
       Marketplace__PersistOrderSnapshots: "true"
+      # Invoice link sent to the marketplaces (MarketplaceInvoiceLinkPolicy, owner decision 17 Nov 2026): Provider =
+      # E-Faturam's permanent document URL (n11, Pazarama and PTT AVM keep the panel link), Panel = the panel's public link on
+      # every marketplace. MARKETPLACEHUB_INVOICE_LINK_SOURCE=Panel in production.env and a redeploy goes back.
+      Invoicing__MarketplaceInvoiceLink: "${MARKETPLACEHUB_INVOICE_LINK_SOURCE:-Provider}"
       # Owner and administrator accounts without an enabled authenticator may only read and set up MFA
       # (ElevatedRoleMfaMiddleware). Off until the owner has enrolled TOTP; turned on with
       # MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES=true in production.env and a redeploy (docs/CI-CD-DEPLOY.md).

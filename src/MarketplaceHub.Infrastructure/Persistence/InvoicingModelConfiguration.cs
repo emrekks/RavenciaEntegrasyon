@@ -221,6 +221,7 @@ internal static class InvoicingModelConfiguration
             entity.Property(x => x.Status).HasMaxLength(40);
             entity.Property(x => x.ExternalReference).HasMaxLength(256);
             entity.Property(x => x.ErrorCode).HasMaxLength(96);
+            entity.Property(x => x.InvoiceLink).HasMaxLength(4096);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.InvoiceId, x.PackageId }).IsUnique()
                 .HasDatabaseName("IX_marketplace_delivery_states_TenantId_InvoiceId_PackageId");

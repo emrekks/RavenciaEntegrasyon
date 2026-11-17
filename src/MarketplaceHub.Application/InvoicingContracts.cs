@@ -94,6 +94,14 @@ public static class InvoiceDeliveryProofPolicy
             ? numberMatches && linkMatches
             : numberMatches || linkMatches;
     }
+
+    // Every link the panel stored for this invoice is its own (E-Faturam's permanent URL for invoices delivered with it,
+    // the panel's public link and its .pdf alias for the older ones and for n11/Pazarama): the marketplace showing any of
+    // them shows this invoice. An empty set proves nothing by link.
+    public static bool HasExactProof(InvoiceDeliveryStatus status, string? invoiceNumber, IReadOnlyCollection<string> ownInvoiceLinks) =>
+        ownInvoiceLinks.Count == 0
+            ? HasExactProof(status, invoiceNumber, (string?)null)
+            : ownInvoiceLinks.Any(link => HasExactProof(status, invoiceNumber, link));
 }
 public sealed record RemoteMissingInvoicePackage(string OrderNumber, string PackageNumber, string? OrderStatus);
 

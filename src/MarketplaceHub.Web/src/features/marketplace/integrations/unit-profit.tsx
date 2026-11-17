@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { Modal } from '../../../shared/components'
+import { RrModal } from '../../../shared/ui/rr-components'
 import '../commission-tariffs.css'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
@@ -60,7 +59,7 @@ export function ProfitBadge({ price, title, tag, aside, missing, label, compact 
       {label ?? (short ? compactProfitText(price.remaining, price.costs) : full)}<span aria-hidden="true">›</span>
     </button>
     {/* Out of the table cell, so the card's styles do not reach it. */}
-    {open && createPortal(<ProfitBreakdown price={price} title={title} tag={tag} aside={aside} onClose={() => setOpen(false)} />, document.body)}
+    {open && <ProfitBreakdown price={price} title={title} tag={tag} aside={aside} onClose={() => setOpen(false)} />}
   </>
 }
 
@@ -85,7 +84,7 @@ export function ProfitBreakdown({ price, title, tag, aside, onClose }: { price: 
     {title && <span className="unit-profit-title" title={title}>{title}</span>}
     {(tag || aside) && <span className="unit-profit-meta">{tag && <span className="unit-profit-tag">{tag}</span>}{aside && <span>{aside}</span>}</span>}
   </> : undefined
-  return <Modal open onClose={onClose} className="unit-profit-modal" title="Hesaplama Kalemleri" description={heading}>
+  return <RrModal onClose={onClose} size="sm" modalClass="unit-profit-modal" title="Hesaplama Kalemleri" desc={heading}>
     <ul className="unit-profit-rows">
       {rows.map(([label, note, amount], index) => <li key={label}><span><b>{label}</b><small>{note}</small></span>
         <strong className={index > 0 && amount > 0 ? 'is-gain' : undefined}>{index > 0 && amount > 0 ? '+' : ''}{money(amount)}</strong></li>)}
@@ -94,5 +93,5 @@ export function ProfitBreakdown({ price, title, tag, aside, onClose }: { price: 
       <span><span>{profit < 0 ? 'Zarar' : 'Kâr'}</span><strong>{money(profit)}</strong></span>
       {share !== null && <span><span>Kâr Oranı <small>maliyete göre</small></span><strong>{percent(share)}</strong></span>}
     </div>
-  </Modal>
+  </RrModal>
 }

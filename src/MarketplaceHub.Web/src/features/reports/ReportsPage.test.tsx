@@ -485,7 +485,7 @@ describe('ReportsPage', () => {
       const label = row.querySelector('.reports-bridge-label')!.textContent!.replace(/^[−+] /u, '')
       const figure = Math.abs(tl(row.querySelector('b')?.textContent))
       await act(async () => { row.querySelector<HTMLButtonElement>('.reports-tip-trigger')!.click() })
-      const modal = page.querySelector('.reports-bridge-modal')!
+      const modal = document.querySelector('.reports-bridge-modal')!
       expect(modal.querySelector('h2')?.textContent, label).toBe(label)
       // The short help is in the window's header.
       expect(modal.querySelector('header p')?.textContent?.length, label).toBeGreaterThan(10)
@@ -495,8 +495,9 @@ describe('ReportsPage', () => {
         expect(tl(list.querySelector('li.is-total > b')?.textContent), label).toBe(figure)
       }
       opened.set(label, modal.cloneNode(true) as Element)
-      await act(async () => { modal.querySelector<HTMLButtonElement>('header button[aria-label="Kapat"]')!.click() })
-      expect(page.querySelector('.reports-bridge-modal')).toBeNull()
+      // RrModal plays its closing motion (180 ms) before it goes.
+      await act(async () => { modal.querySelector<HTMLButtonElement>('header button[aria-label="Pencereyi Kapat"]')!.click(); await new Promise(resolve => setTimeout(resolve, 200)) })
+      expect(document.querySelector('.reports-bridge-modal')).toBeNull()
     }
     const lines = (label: string) => [...opened.get(label)!.querySelectorAll('.reports-bridge-detail li')].map(line => `${line.querySelector('.reports-bridge-detail-name')?.firstChild?.textContent} ${line.querySelector('b')?.textContent}`)
     // Pazaryeri Masrafları: the real and estimated commission and the service fee by kind; by platform Trendyol's own
@@ -512,9 +513,9 @@ describe('ReportsPage', () => {
     expect(opened.get('Ürün Maliyeti')!.textContent).toContain('4 / 4 (%100,0)')
     // The result opens the whole account.
     await act(async () => { page.querySelector<HTMLButtonElement>('.reports-bridge > li.is-end .reports-tip-trigger')!.click() })
-    expect(page.querySelector('.reports-bridge-modal .reports-ledger')).not.toBeNull()
-    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
-    expect(page.querySelector('.reports-bridge-modal')).toBeNull()
+    expect(document.querySelector('.reports-bridge-modal .reports-ledger')).not.toBeNull()
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(resolve => setTimeout(resolve, 200)) })
+    expect(document.querySelector('.reports-bridge-modal')).toBeNull()
   })
 
   it('writes a carried-forward VAT\'s window total as the bridge writes it, added to the profit', async () => {
@@ -522,9 +523,9 @@ describe('ReportsPage', () => {
     const row = [...page.querySelectorAll('.reports-bridge > li')].find(item => item.textContent?.includes('Net KDV'))!
     expect(row.querySelector('b')?.textContent).toBe('+ ₺53,17')
     await act(async () => { row.querySelector<HTMLButtonElement>('.reports-tip-trigger')!.click() })
-    const total = page.querySelector('.reports-bridge-modal li.is-total')!
+    const total = document.querySelector('.reports-bridge-modal li.is-total')!
     expect(total.textContent).toBe('Toplam · Kâra Eklenir+ ₺53,17')
-    expect([...page.querySelectorAll('.reports-bridge-modal li:not(.is-total) > b')].map(cell => cell.textContent)).toEqual(['₺22,73', '− ₺7,27', '− ₺68,63'])
+    expect([...document.querySelectorAll('.reports-bridge-modal li:not(.is-total) > b')].map(cell => cell.textContent)).toEqual(['₺22,73', '− ₺7,27', '− ₺68,63'])
   })
 
   it('tells a fee invoice of a payout not read yet as covered by the estimate and takes it off nowhere', async () => {
