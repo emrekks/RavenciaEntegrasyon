@@ -6,119 +6,119 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// KATALOG-14 phase D5a: EffectiveCatalog reads a colour's own name / description (its override) else its model's, and
-// the brand, category, VAT, warranty and delivery days from the model, except that while the writers keep the card
-// copies a card whose own value differs from its model's is read with its own (review, 17 Nov 2026): phase A changes no
-// output. Every path that changes a card's text keeps its override in the same transaction, and the Worker's startup
-// pass repairs an override the previous release left stale during a deploy.
+// KATALOG-14 phase D5b (owner, 17 Nov 2026): the name, description, VAT, delivery days, warranty, brand, category and desi
+// are the model's; no colour or variant holds its own. A value given to one colour goes to the model and every colour
+// (ModelMirror), a marketplace import never moves a model (the difference is warned about), and the Worker's startup
+// pass keeps a value the previous release wrote to a card during a deploy (UpdatedAt after its model's).
 [Collection("postgres-integration")]
 public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    // The payloads escape non-ASCII letters (ç = ç): compared by the escaped spelling.
-    private const string OwnDescription = "Bordo a\\\\u00E7\\\\u0131klamas\\\\u0131";
-    private const string StaleOverride = "Bordo eski override";
+    private static Task<ProductModel> ModelOfAsync(AppDbContext db, Guid cardId) =>
+        db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == db.Products.Where(p => p.Id == cardId).Select(p => p.FamilyId).Single());
 
     [PostgreSqlFact]
-    public async Task AColoursOwnText_IsKeptInTheSaveAndRead_TheRestFromTheModel()
+    public async Task AValueGivenToOneColour_GoesToTheModelAndEveryColour()
     {
         var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
         var card = seeded.Cards[1];
         await using (var db = fixture.CreateContext())
         {
-            // An import-like save of one colour's description: its override in the same transaction.
-            (await db.Products.SingleAsync(x => x.Id == card.Id)).Description = "Bordo açıklaması";
+            // One colour's VAT, delivery days, description and name (an Excel row of one card, the API).
+            var stored = await db.Products.SingleAsync(x => x.Id == card.Id);
+            stored.VatRate = 20m;
+            stored.DeliveryDays = 5;
+            stored.Description = "Yeni ortak açıklama";
+            stored.Title = "Kadın Bordo Yeni Bluz";
+            (await db.ProductVariants.Where(x => x.ProductId == card.Id).OrderBy(x => x.SortOrder).FirstAsync()).Desi = 3m;
             await db.SaveChangesAsync();
+            var applied = Assert.Single(db.ModelMirrorReport);
+            Assert.Equal(3, applied.Colours);
+            Assert.False(applied.Refused);
         }
 
         await using (var db = fixture.CreateContext())
         {
-            var stored = await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id);
-            Assert.Equal("Bordo açıklaması", stored.DescriptionOverride);
-            var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == stored.FamilyId);
-            Assert.Equal("Yumuşak triko bluz, uzun kollu.", model.Description);
-            var sql = await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id);
-            var memory = EffectiveCatalog.Of(stored, model);
-            Assert.Equal(("Bordo açıklaması", card.Title, model.VatRate, model.CategoryId), (sql.Description, sql.Title, sql.VatRate, sql.CategoryId));
-            Assert.Equal((sql.Title, sql.Description, sql.BrandId, sql.WarrantyMonths, sql.DeliveryDays), (memory.Title, memory.Description, memory.BrandId, memory.WarrantyMonths, memory.DeliveryDays));
-        }
+            var model = await ModelOfAsync(db, card.Id);
+            Assert.Equal((20m, (int?)5, "Yeni ortak açıklama", "Kadın Bordo Yeni Bluz", "Bordo", 3m), (model.VatRate, model.DeliveryDays, model.Description, model.Title, model.TitleColor, model.Desi));
+            var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync();
+            Assert.All(cards, x => Assert.Equal((20m, (int?)5, "Yeni ortak açıklama"), (x.VatRate, x.DeliveryDays, x.Description)));
+            Assert.Equal(["Kadın Bordo Yeni Bluz", "Kadın Gri Yeni Bluz", "Kadın Siyah Yeni Bluz"], cards.Select(x => x.Title).Order(StringComparer.Ordinal));
+            Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(3m, x.Desi));
+            // The overrides are neither read nor written.
+            Assert.All(cards, x => Assert.Equal((null, null), (x.TitleOverride, x.DescriptionOverride)));
+            var read = await EffectiveCatalog.Products(db).Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync();
+            Assert.All(read, x => Assert.Equal((20m, (int?)5, "Yeni ortak açıklama"), (x.VatRate, x.DeliveryDays, x.Description)));
 
-        var payloads = await ModelComposerGoldenPostgreSqlTests.PayloadsAsync(fixture, seeded);
-        string Payload(string key) => payloads.Single(x => x.StartsWith(key + ": ", StringComparison.Ordinal));
-        Assert.Contains(OwnDescription, Payload("TRENDYOL card1 publication"), StringComparison.Ordinal);
-        Assert.Contains(OwnDescription, Payload("HEPSIBURADA card1 update"), StringComparison.Ordinal);
-        Assert.DoesNotContain(OwnDescription, Payload("TRENDYOL card0 publication"), StringComparison.Ordinal);
-    }
-
-    // A colour whose VAT, category, warranty or delivery days differ from its model's (an Excel row of one card, a bulk
-    // edit, a race) is read with its own: the invoice's VAT, the marketplace payload and the list show it.
-    [PostgreSqlFact]
-    public async Task AMinorityColour_IsReadWithItsOwnValues_InTheInvoiceThePayloadAndTheList()
-    {
-        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
-        var card = seeded.Cards[0];
-        await using (var db = fixture.CreateContext())
-            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20, "DeliveryDays" = 5, "WarrantyMonths" = 12 WHERE "Id" = {card.Id}""");
-
-        await using (var db = fixture.CreateContext())
-        {
-            var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == db.Products.Where(p => p.Id == card.Id).Select(p => p.FamilyId).Single());
-            Assert.Equal((10m, (int?)2, (int?)24), (model.VatRate, model.DeliveryDays, model.WarrantyMonths));
-            var own = await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id);
-            Assert.Equal((20m, (int?)5, (int?)12), (own.VatRate, own.DeliveryDays, own.WarrantyMonths));
-            var other = await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == seeded.Cards[1].Id);
-            Assert.Equal((10m, (int?)2, (int?)24), (other.VatRate, other.DeliveryDays, other.WarrantyMonths));
-
-            // The invoice: a Trendyol line without its own VAT takes the product card's.
-            var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == card.Id).OrderBy(x => x.SortOrder).FirstAsync();
-            var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ExternalLineId = "l-1", Sku = variant.Sku, TitleSnapshot = "Bluz", RawStatus = "Created", VariantId = variant.Id };
+            // The invoice: every colour is invoiced at the model's rate.
             var trendyol = seeded.Connections.Single(x => x.PlatformCode == "TRENDYOL");
-            var rates = await InvoiceLineVatRates.ResolveAsync(db, seeded.Tenant.Id, "TRENDYOL", trendyol.Id, [line], CancellationToken.None);
-            Assert.Equal(20m, rates[line.Id]);
-        }
-
-        var payloads = await ModelComposerGoldenPostgreSqlTests.PayloadsAsync(fixture, seeded);
-        var publication = payloads.Single(x => x.StartsWith("TRENDYOL card0 publication: ", StringComparison.Ordinal));
-        // The serialized draft escapes the inner payload's quotes. Trendyol's VAT comes from the offer; the delivery time
-        // from the card.
-        Assert.Contains("deliveryDuration\\u0022:5", publication, StringComparison.Ordinal);
-
-        // The product list: the colour's row (its family's member view) carries its own VAT.
-        await using (var db = fixture.CreateContext())
-        {
-            var service = new CatalogService(db, new CursorCodec(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(), TimeProvider.System), new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
-            var page = await service.ListProductsAsync(seeded.Tenant.Id, 50, null, null, null, null, null, null, CancellationToken.None);
-            Assert.Contains(page.Items, item => item.Id == card.Id && item.VatRate == 20m);
+            foreach (var colour in seeded.Cards)
+            {
+                var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == colour.Id).OrderBy(x => x.SortOrder).FirstAsync();
+                var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ExternalLineId = $"l-{colour.Id:N}", Sku = variant.Sku, TitleSnapshot = "Bluz", RawStatus = "Created", VariantId = variant.Id };
+                Assert.Equal(20m, (await InvoiceLineVatRates.ResolveAsync(db, seeded.Tenant.Id, "TRENDYOL", trendyol.Id, [line], CancellationToken.None))[line.Id]);
+            }
         }
     }
 
     [PostgreSqlFact]
-    public async Task AStaleOverride_LeftByThePreviousRelease_IsAlignedAtWorkerStartup()
+    public async Task AMarketplaceImport_NeverMovesTheModel_TheColourTakesItBack_AndTheDifferenceIsWarned()
     {
         var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
         var card = seeded.Cards[1];
-        // The colour had an override; the previous release then wrote the card's text alone (no override, no model).
-        await using (var db = fixture.CreateContext())
-            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "Description" = 'Eski sürümün açıklaması', "DescriptionOverride" = {StaleOverride} WHERE "Id" = {card.Id}""");
-        await using (var db = fixture.CreateContext())
-            Assert.Equal(StaleOverride, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id)).Description);
-
-        await using (var db = fixture.CreateContext())
-            Assert.True(await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None) >= 1);
-
         await using (var db = fixture.CreateContext())
         {
-            Assert.Equal("Eski sürümün açıklaması", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id)).Description);
-            // Every card of the tenant reads its own text again.
-            var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToDictionaryAsync(x => x.Id, x => (x.Title, x.Description));
-            var effective = await EffectiveCatalog.Products(db).Where(x => x.TenantId == seeded.Tenant.Id).ToDictionaryAsync(x => x.Id, x => (x.Title, x.Description));
-            Assert.Equal(cards, effective);
+            db.MarketplaceCatalogImport = true;
+            (await db.Products.SingleAsync(x => x.Id == card.Id)).VatRate = 20m;
+            await db.SaveChangesAsync();
+            Assert.True(Assert.Single(db.ModelMirrorReport).Refused);
         }
-        // A second pass writes nothing.
         await using (var db = fixture.CreateContext())
-            Assert.Equal(0, await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None));
+        {
+            Assert.Equal(10m, (await ModelOfAsync(db, card.Id)).VatRate);
+            Assert.Equal(10m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).VatRate);
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.Code == ProductModelValues.DifferCode && x.DedupeKey.StartsWith(ModelMirror.DifferDedupePrefix));
+            Assert.Equal(IssueStatus.Open, issue.Status);
+            Assert.Contains("MZ300 modelinin pazaryerinden gelen", issue.Summary);
+            Assert.Contains("KDV (%20 dahil; modelin: %10 dahil)", issue.Summary);
+
+            // The owner then gives the model a value (the editor, Excel): the warning is settled.
+            (await db.Products.SingleAsync(x => x.Id == card.Id)).VatRate = 20m;
+            await db.SaveChangesAsync();
+            Assert.Equal(20m, (await ModelOfAsync(db, card.Id)).VatRate);
+            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.Id == issue.Id)).Status);
+        }
     }
 
-    // A card without a model code holds a model of its own, whose brand follows the card's (review, 17 Nov 2026).
+    // The deploy: the previous release (phase A) wrote a card alone. The startup pass keeps a value written after the
+    // model's last change (the owner's) and gives it to the model and every colour; an older gap takes the model's back.
+    [PostgreSqlFact]
+    public async Task ACardThePreviousReleaseChangedDuringADeploy_KeepsTheOwnersValue_AtWorkerStartup()
+    {
+        var seeded = await ModelComposerGoldenPostgreSqlTests.SeedAsync(fixture, "same");
+        var changed = seeded.Cards[1];
+        await using (var db = fixture.CreateContext())
+        {
+            var model = await ModelOfAsync(db, changed.Id);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 20, "UpdatedAt" = {model.UpdatedAt.AddMinutes(5)} WHERE "Id" = {changed.Id}""");
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var (written, taken) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.True(written >= 1);
+            Assert.Contains(taken, x => x.StartsWith("MZ300", StringComparison.Ordinal));
+            Assert.Equal(20m, (await ModelOfAsync(db, changed.Id)).VatRate);
+            Assert.All(await db.Products.AsNoTracking().Where(x => x.TenantId == seeded.Tenant.Id).ToListAsync(), x => Assert.Equal(20m, x.VatRate));
+
+            // A card left apart by an older write takes the model's value back.
+            var model = await ModelOfAsync(db, changed.Id);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 1, "UpdatedAt" = {model.UpdatedAt.AddMinutes(-5)} WHERE "Id" = {seeded.Cards[0].Id}""");
+            var second = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.DoesNotContain(second.TakenFromACard, x => x.StartsWith("MZ300", StringComparison.Ordinal));
+            Assert.Equal(20m, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == seeded.Cards[0].Id)).VatRate);
+        }
+    }
+
+    // A card without a model code holds a model of its own, whose brand follows the card's.
     [PostgreSqlFact]
     public async Task ACodelessCard_HoldsItsOwnModel_WhoseBrandFollowsTheCard()
     {
@@ -132,7 +132,7 @@ public sealed class PostgreSqlEffectiveCatalogTests(PostgreSqlTenantIsolationFix
         db.Products.Add(card);
         db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ProductId = card.Id, Sku = $"SAL-{Guid.NewGuid():N}"[..20], SkuNormalized = "SAL", OptionSignature = "SAL", CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();
-        var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == db.Products.Where(p => p.Id == card.Id).Select(p => p.FamilyId).Single());
+        var model = await ModelOfAsync(db, card.Id);
         Assert.Equal(($"#{card.Id:N}", brands[0]), (model.ModelCodeKey, model.BrandId));
 
         card.BrandId = other.Id;

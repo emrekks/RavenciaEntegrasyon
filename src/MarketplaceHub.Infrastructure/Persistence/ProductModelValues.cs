@@ -211,15 +211,17 @@ public static class ProductModelValues
         // The stored name stays when it gives every colour of the model the same name the cards' name does.
         var keepTitle = cards.Select(x => x.Color).Append(null).All(color =>
             ProductFamilySharedFields.TitleFor(model.Title, model.TitleColor, color) == ProductFamilySharedFields.TitleFor(cardsTitle, cardsTitleColor, color));
-        var colors = Colors(cards);
-        var titleUnanimous = Unanimous(cards, card => TitleKey(card, colors));
-        var (title, titleColor) = titleUnanimous && !keepTitle ? (cardsTitle, cardsTitleColor) : (model.Title, model.TitleColor);
-        var description = Unanimous(cards, card => card.Description.Trim()) ? fields.Description : model.Description;
-        var overrides = cards.Select(card => (card, own: OverridesOf(card, title, titleColor, description)))
-            .Where(item => item.own != (item.card.TitleOverride, item.card.DescriptionOverride))
-            .Select(item => new CardOverride(item.card.Id, item.card.Title, item.card.Description, item.own.Title, item.own.Description)).ToList();
+        // KATALOG-14 phase D5b (owner, 17 Nov 2026): the name, description, VAT, delivery days, warranty, brand, category
+        // and desi are written to the model and the colours take them from it (ModelMirror): the refresh no longer votes
+        // on them and writes no override (the override columns are neither read nor written; phase C drops them). Only a
+        // model without a desi yet takes the one most of its variants hold.
+        _ = (cardsTitle, cardsTitleColor, keepTitle);
+        var (title, titleColor) = (model.Title, model.TitleColor);
+        var description = model.Description;
+        List<CardOverride> overrides = [];
+        fields = new ProductFamilySharedFields.ModelFields(title, description, model.BrandId, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays);
 
-        var desi = ModelDesi(cards.SelectMany(card => snapshot.VariantsByCard[card.Id]).Select(x => x.Desi));
+        var desi = model.Desi ?? ModelDesi(cards.SelectMany(card => snapshot.VariantsByCard[card.Id]).Select(x => x.Desi));
 
         var sets = cards.Select(card => snapshot.AttributesByCard[card.Id].Where(row => !snapshot.ColorAttributeIds.Contains(row.AttributeId)).ToList()).ToList();
         var setKeys = sets.Select(AttributeSetKey).ToList();
@@ -395,31 +397,24 @@ public static class ProductModelValues
             """, cancellationToken) > 0;
     }
 
-    // KATALOG-14 phase D5a: the readers read the overrides and the model, so a card whose text or shared value the
-    // previous release changed while a deploy ran (after the deploy's refresh) would be read stale. Run once when the
-    // Worker starts, before it takes a job: the models of every card whose override is not its own text, whose
-    // description without an override is not its model's, or whose brand, category, VAT, warranty or delivery days are
-    // not its model's, are refreshed (each in its own short transaction). Returns the number of models refreshed.
-    public static async Task<int> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // KATALOG-14 phase D5b: run once when the Worker starts, before it takes a job. The VAT, category, warranty and
+    // delivery days the previous release wrote to a card alone during a deploy (UpdatedAt after its model's) go to the
+    // model and every colour, so the owner's change is kept (ModelMirror.CloseGapsAsync); any other gap takes the model's
+    // value back; own models follow their card's brand. Returns the models written and those that took a card's values.
+    public static async Task<(int Written, IReadOnlyList<string> TakenFromACard)> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var stale = await (from card in db.Products.AsNoTracking()
-                           join model in db.ProductModels.AsNoTracking() on new { card.TenantId, Id = card.FamilyId } equals new { model.TenantId, Id = (Guid?)model.Id }
-                           where (card.TitleOverride != null && card.TitleOverride != card.Title)
-                                 || (card.DescriptionOverride != null && card.DescriptionOverride != card.Description)
-                                 || (card.DescriptionOverride == null && card.Description != model.Description)
-                                 || card.BrandId != model.BrandId || card.CategoryId != model.CategoryId || card.VatRate != model.VatRate
-                                 || card.VatInclusion != model.VatInclusion || card.WarrantyMonths != model.WarrantyMonths || card.DeliveryDays != model.DeliveryDays
-                           select new { card.TenantId, ModelId = model.Id }).Distinct().ToListAsync(cancellationToken);
-        // Only the models a refresh actually wrote are counted: a model whose colours keep differing (a colour's own VAT,
-        // read from the card, EffectiveCatalog) is visited again on every start but writes nothing (review, 17 Nov 2026).
+        var tenants = await db.ProductModels.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken);
         var written = 0;
-        foreach (var tenant in stale.GroupBy(x => x.TenantId))
+        var taken = new List<string>();
+        foreach (var tenantId in tenants)
         {
-            var ids = tenant.Select(x => x.ModelId).ToArray();
-            written += (await RefreshAsync(db, tenant.Key, ids, now, cancellationToken)).Written;
-            written += await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenant.Key, null, now, cancellationToken);
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+            var closed = await ModelMirror.CloseGapsAsync(db, tenantId, null, now, cancellationToken);
+            written += closed.ModelsTakingACard + await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);
+            taken.AddRange(closed.Taken);
+            await transaction.CommitAsync(cancellationToken);
         }
-        return written;
+        return (written, taken);
     }
 
     // The backfill and the nightly scan: every model of every tenant, then one PRODUCT_MODEL_VALUES_DIFFER warning per
@@ -444,6 +439,12 @@ public static class ProductModelValues
     // One tenant's models and its PRODUCT_MODEL_VALUES_DIFFER warning.
     public static async Task<Outcome> RefreshTenantAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        // KATALOG-14 phase D5b: the scan and the deploy first close the gaps between the models and their colours' copies.
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
+        {
+            await ModelMirror.CloseGapsAsync(db, tenantId, null, now, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
         var outcome = await RefreshAsync(db, tenantId, null, now, cancellationToken);
         await RecordDifferingAsync(db, tenantId, outcome.Differing, outcome.Skipped, now, cancellationToken);
         return outcome;

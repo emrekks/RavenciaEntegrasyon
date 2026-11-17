@@ -47,12 +47,25 @@ public static class ProductModelLinks
         // KATALOG-14 phase B: cards whose shared values (a model-row field, a variant's desi, a card-level attribute, the
         // size chart) the save changed: their model takes the values after it (ProductModelValues).
         public Dictionary<Guid, HashSet<Guid>> ValueProductIds { get; } = [];
+        // KATALOG-14 phase D5b: the model fields (VAT, category, warranty, delivery days) each changed card was given by the
+        // save, per tenant and card (ModelMirror).
+        public Dictionary<Guid, Dictionary<Guid, ModelMirror.FieldChange>> FieldChanges { get; } = [];
         public bool IsEmpty => Keys.Count == 0 && ProductIds.Count == 0 && ModelIds.Count == 0 && MediaProductIds.Count == 0 && ValueProductIds.Count == 0;
         public IEnumerable<Guid> Tenants => Keys.Keys.Concat(ProductIds.Keys).Concat(ModelIds.Keys).Concat(MediaProductIds.Keys).Concat(ValueProductIds.Keys).Distinct();
 
         internal void AddMedia(Guid tenantId, Guid productId) => Set(MediaProductIds, tenantId).Add(productId);
 
         internal void AddValues(Guid tenantId, Guid productId) => Set(ValueProductIds, tenantId).Add(productId);
+
+        internal ModelMirror.FieldChange FieldChangeOf(Guid tenantId, Guid productId) =>
+            FieldChanges.TryGetValue(tenantId, out var map) && map.TryGetValue(productId, out var change) ? change : ModelMirror.FieldChange.None;
+
+        internal void AddFieldChange(Guid tenantId, Guid productId, ModelMirror.FieldChange change)
+        {
+            if (!FieldChanges.TryGetValue(tenantId, out var map)) FieldChanges[tenantId] = map = [];
+            map[productId] = change;
+            AddValues(tenantId, productId);
+        }
 
         internal void AddKey(Guid tenantId, string? modelCode)
         {
@@ -85,6 +98,8 @@ public static class ProductModelLinks
                 case EntityState.Added:
                     pending.AddKey(variant.TenantId, variant.ModelCode);
                     pending.AddProduct(variant.TenantId, variant.ProductId);
+                    // KATALOG-14 phase D5b: a new size takes its model's desi (ModelMirror).
+                    pending.AddFieldChange(variant.TenantId, variant.ProductId, pending.FieldChangeOf(variant.TenantId, variant.ProductId).WithAddedDesi(variant.Desi));
                     break;
                 case EntityState.Deleted:
                     pending.AddKey(variant.TenantId, entry.Property(x => x.ModelCode).OriginalValue);
@@ -95,6 +110,8 @@ public static class ProductModelLinks
                     var product = entry.Property(x => x.ProductId);
                     var sort = entry.Property(x => x.SortOrder);
                     if (Changed(entry.Property(x => x.Desi)) || Changed(entry.Property(x => x.OptionSignature))) pending.AddValues(variant.TenantId, variant.ProductId);
+                    // KATALOG-14 phase D5b: a desi given to one variant goes to the model and every variant (ModelMirror).
+                    if (Changed(entry.Property(x => x.Desi))) pending.AddFieldChange(variant.TenantId, variant.ProductId, pending.FieldChangeOf(variant.TenantId, variant.ProductId).WithDesi(variant.Desi));
                     if (!Changed(code) && !Changed(product) && !Changed(sort)) break;
                     pending.AddKey(variant.TenantId, code.OriginalValue);
                     pending.AddKey(variant.TenantId, code.CurrentValue);
@@ -106,6 +123,29 @@ public static class ProductModelLinks
         foreach (var entry in tracker.Entries<Product>())
         {
             var product = entry.Entity;
+            // KATALOG-14 phase D5b: a model field given to the card goes to its model and every colour (ModelMirror).
+            if (entry.State is EntityState.Modified or EntityState.Added)
+            {
+                var added = entry.State == EntityState.Added;
+                var change = pending.FieldChangeOf(product.TenantId, product.Id) with
+                {
+                    Vat = added || Changed(entry.Property(x => x.VatRate)) || Changed(entry.Property(x => x.VatInclusion)),
+                    VatRate = product.VatRate,
+                    VatInclusion = product.VatInclusion,
+                    Category = added || Changed(entry.Property(x => x.CategoryId)),
+                    CategoryId = product.CategoryId,
+                    Warranty = added || Changed(entry.Property(x => x.WarrantyMonths)),
+                    WarrantyMonths = product.WarrantyMonths,
+                    Delivery = added || Changed(entry.Property(x => x.DeliveryDays)),
+                    DeliveryDays = product.DeliveryDays,
+                    Title = added || Changed(entry.Property(x => x.Title)),
+                    TitleText = product.Title,
+                    Description = added || Changed(entry.Property(x => x.Description)),
+                    DescriptionText = product.Description,
+                    Added = added,
+                };
+                if (change.Any) pending.AddFieldChange(product.TenantId, product.Id, change);
+            }
             switch (entry.State)
             {
                 case EntityState.Added:
@@ -181,15 +221,19 @@ public static class ProductModelLinks
                 var keyArray = keys.ToArray();
                 valueModels.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && keyArray.Contains(x.ModelCodeKey)).Select(x => x.Id).ToListAsync(cancellationToken));
             }
-            // KATALOG-14 phase D5a: the model's values are written in the save's own transaction (the caller's or the one
-            // SaveChanges opened); a refresh that fails fails the save. A serializable caller (the editor's save, the
-            // delete) is the exception (review, 17 Nov 2026): a model row written in it would make the commit fail
-            // whenever another session wrote the model meanwhile, so its models are refreshed right after its commit
-            // (AppDbContext.DeferModelValues). Until then the readers read the cards, whose values win wherever they
-            // differ from the model (EffectiveCatalog).
+            // KATALOG-14 phase D5a/b: the model's fields (ModelMirror) and values are written in the save's own transaction
+            // (the caller's or the one SaveChanges opened); a write that fails fails the save. A serializable caller (the
+            // editor's save, the delete) is the exception (review, 17 Nov 2026): a model row written in it would make the
+            // commit fail whenever another session wrote the model meanwhile, so its models are written right after its
+            // commit (AppDbContext.DeferModelValues).
+            var serializable = db.Database.CurrentTransaction is { } current && Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(current).IsolationLevel == System.Data.IsolationLevel.Serializable;
+            if (pending.FieldChanges.TryGetValue(tenantId, out var fieldChanges) && fieldChanges.Count > 0)
+            {
+                if (serializable) db.DeferFieldChanges(tenantId, fieldChanges);
+                else await ModelMirror.ApplyAsync(db, tenantId, fieldChanges, now, cancellationToken);
+            }
             if (valueModels.Count == 0) continue;
-            if (db.Database.CurrentTransaction is { } current && Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(current).IsolationLevel == System.Data.IsolationLevel.Serializable)
-                db.DeferModelValues(tenantId, valueModels);
+            if (serializable) db.DeferModelValues(tenantId, valueModels);
             else await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
         }
     }
@@ -420,6 +464,7 @@ public static class ProductModelLinks
     // re-key, KATALOG-2). productIds null: every card of the tenant without a model.
     public const string OwnModelKeyPrefix = "#";
 
+
     public static bool IsOwnModelKey(string key) => key.StartsWith(OwnModelKeyPrefix, StringComparison.Ordinal);
 
     public static async Task<int> EnsureOwnModelsAsync(AppDbContext db, Guid tenantId, Guid[]? productIds, DateTimeOffset now, CancellationToken cancellationToken)
@@ -467,57 +512,10 @@ public static class ProductModelLinks
               AND (@all OR m."ProductId" = ANY(@products)) AND m."FamilyId" IS DISTINCT FROM p."FamilyId"
             """, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("all", productIds is null), new NpgsqlParameter("products", productIds ?? [])], cancellationToken);
 
-    // Faz 2: the fields of every model the editor has not saved yet (FieldsSavedAt null) are the editor's ModelValues of
-    // its linked cards (oldest first), the same rule a model opened by the application gets. The backfill's SQL could only
-    // approximate it (whole-title majority, a colour found as a substring). Runs after the migrations (DatabaseMigrator);
-    // a model whose fields already agree is not written. Returns the number of models written.
-    public static async Task<int> RecomputeUnsavedFieldsAsync(AppDbContext db, CancellationToken cancellationToken)
-    {
-        var models = await db.ProductModels.AsNoTracking().Where(x => x.FieldsSavedAt == null).ToListAsync(cancellationToken);
-        if (models.Count == 0) return 0;
-        var modelIds = models.Select(x => x.Id).ToArray();
-        var cards = await db.Products.AsNoTracking().Where(x => x.FamilyId != null && modelIds.Contains(x.FamilyId.Value))
-            .Select(x => new { x.Id, x.FamilyId, x.CreatedAt, x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
-            .ToListAsync(cancellationToken);
-        var cardIds = cards.Select(x => x.Id).ToArray();
-        var signatures = (await db.ProductVariants.AsNoTracking().Where(x => cardIds.Contains(x.ProductId))
-                .Select(x => new { x.ProductId, x.SortOrder, x.Id, x.OptionSignature }).ToListAsync(cancellationToken))
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => group.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => ProductFamilyColorOrder.ColorOf(x.OptionSignature)).FirstOrDefault(color => !string.IsNullOrWhiteSpace(color)));
-        var byModel = cards.ToLookup(x => x.FamilyId);
-        var written = 0;
-        foreach (var model in models)
-        {
-            var linked = byModel[model.Id].OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToList();
-            if (linked.Count == 0) continue;
-            var fields = ProductFamilySharedFields.ModelValues(
-                [.. linked.Select(x => new ProductFamilySharedFields.CardFields(x.Id, signatures.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays))],
-                null);
-            // KATALOG-14 phase D2: the name and the description are not voted on; they move only when every colour holds
-            // one value (the name without its colour word), as in ProductModelValues.
-            var asCards = linked.Select(x => new ProductModelValues.Card(x.Id, x.CreatedAt, signatures.GetValueOrDefault(x.Id), x.Title, x.Description, x.BrandId, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays)).ToList();
-            var colors = asCards.Select(x => x.Color?.Trim()).OfType<string>().Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var titleCard = linked.FirstOrDefault(x => x.Title.Trim() == fields.Title);
-            var (title, titleColor) = ProductModelValues.Unanimous(asCards, card => ProductModelValues.TitleKey(card, colors))
-                ? (Short(fields.Title, 320), titleCard is not null && signatures.GetValueOrDefault(titleCard.Id) is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null)
-                : (model.Title, model.TitleColor);
-            var description = ProductModelValues.Unanimous(asCards, card => card.Description.Trim()) ? fields.Description : model.Description;
-            if ((model.Title, model.TitleColor, model.Description, model.CategoryId, model.VatRate, model.VatInclusion, model.WarrantyMonths, model.DeliveryDays)
-                == (title, titleColor, description, fields.CategoryId, fields.VatRate, fields.VatInclusion, fields.WarrantyMonths, fields.DeliveryDays)) continue;
-            // One model at a time: a model a save holds locked is left for the next deploy, the rest go on.
-            try
-            {
-                written += await db.ProductModels.Where(x => x.Id == model.Id && x.Version == model.Version && x.FieldsSavedAt == null)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(x => x.Title, title).SetProperty(x => x.TitleColor, titleColor).SetProperty(x => x.Description, description)
-                        .SetProperty(x => x.CategoryId, fields.CategoryId).SetProperty(x => x.VatRate, fields.VatRate).SetProperty(x => x.VatInclusion, fields.VatInclusion)
-                        .SetProperty(x => x.WarrantyMonths, fields.WarrantyMonths).SetProperty(x => x.DeliveryDays, fields.DeliveryDays)
-                        .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
-            }
-            catch (System.Data.Common.DbException) when (db.Database.CurrentTransaction is null) { }
-        }
-        return written;
-    }
+    // Faz 2 computed the fields of models the editor had not saved from their cards at every deploy. KATALOG-14 phase D5b:
+    // the model is the source of its fields; nothing recomputes them from the cards any more (DatabaseMigrator still calls
+    // this, so a rollback build is one method away). Returns 0.
+    public static Task<int> RecomputeUnsavedFieldsAsync(AppDbContext db, CancellationToken cancellationToken) => Task.FromResult(0);
 
     // Faz 2: the model's category attributes. The colour attributes (Renk, Web Color) stay each card's.
     private static async Task<HashSet<Guid>> ColorAttributeIdsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> attributeIds, CancellationToken cancellationToken)

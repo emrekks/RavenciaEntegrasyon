@@ -246,6 +246,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // reconcile then takes its advisory locks inside it (ProductModelLinks.ReconcileAsync).
     internal bool OwnsModelLinkTransaction { get; private set; }
 
+    // KATALOG-14 phase D5b: set while a marketplace product import saves (CatalogImportService.SyncProducts). A colour
+    // whose VAT, category, warranty or delivery days come in apart from its model's then does not move the model: the
+    // model keeps its value, the colour's copy takes it back and PRODUCT_MODEL_VALUES_DIFFER names the difference
+    // (ModelMirror). Every other save moves the model and all its colours.
+    internal bool MarketplaceCatalogImport { get; set; }
+
+    // KATALOG-14 phase D5b: what the saves since the last read wrote to models and their colours (ModelMirror), for the
+    // result messages of the writers ("Model İçindeki 3 Renge Uygulandı"). Read and cleared by the writer.
+    internal List<ModelMirror.Applied> ModelMirrorReport { get; } = [];
+
     // KATALOG-14 phase B: the models whose shared values a save inside a caller's transaction changed. The values are not
     // written there: the model row update made a serializable editor save fail with a conflict whenever anything else
     // (the backfill, the scan, a worker's save) wrote the same model meanwhile. They are refreshed right after the
@@ -262,6 +272,17 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         set.UnionWith(modelIds);
     }
 
+    // KATALOG-14 phase D5b: the model fields a serializable caller's save gave its cards (ModelMirror), written after its
+    // commit with the deferred model values.
+    private readonly Dictionary<Guid, Dictionary<Guid, ModelMirror.FieldChange>> _deferredFieldChanges = [];
+
+    internal void DeferFieldChanges(Guid tenantId, IReadOnlyDictionary<Guid, ModelMirror.FieldChange> changes)
+    {
+        if (!_deferredFieldChanges.TryGetValue(tenantId, out var map)) _deferredFieldChanges[tenantId] = map = [];
+        foreach (var (productId, change) in changes) map[productId] = change;
+        if (!_deferredModelValues.ContainsKey(tenantId)) _deferredModelValues[tenantId] = [];
+    }
+
     // The models deferred by saves inside a transaction, refreshed once no transaction is open. A failure is recorded as a
     // PRODUCT_MODEL_LINK_FAILED issue and the daily scan repairs the model: the commit itself already stands.
     public async Task RefreshDeferredModelValuesAsync()
@@ -269,12 +290,26 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         if (_refreshingDeferredModelValues || _saving || _deferredModelValues.Count == 0 || Database.CurrentTransaction is not null) return;
         var deferred = _deferredModelValues.ToList();
         _deferredModelValues.Clear();
+        var deferredFields = _deferredFieldChanges.ToDictionary(x => x.Key, x => x.Value);
+        _deferredFieldChanges.Clear();
         _refreshingDeferredModelValues = true;
         try
         {
             foreach (var (tenantId, modelIds) in deferred)
             {
                 var now = _timeProvider.GetUtcNow();
+                if (deferredFields.TryGetValue(tenantId, out var changes))
+                    try
+                    {
+                        await using var transaction = await Database.BeginTransactionAsync();
+                        await ModelMirror.ApplyAsync(this, tenantId, changes, now, CancellationToken.None);
+                        await transaction.CommitAsync();
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
+                    }
+                if (modelIds.Count == 0) continue;
                 try { await ProductModelValues.RefreshAsync(this, tenantId, modelIds, now, CancellationToken.None); }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {

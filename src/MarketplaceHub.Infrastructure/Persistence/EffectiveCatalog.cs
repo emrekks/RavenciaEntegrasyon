@@ -6,11 +6,10 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // KATALOG-14 phase D: the one reader of a colour card's shared values (name, description, brand, category, VAT, warranty,
 // delivery days). Every screen, export, report, readiness check and marketplace composer reads a card through it, so the
 // place the values come from changes here and nowhere else.
-// Rule: a colour's own value where it has one (TitleOverride / DescriptionOverride), else its model's
-// (catalog.product_models: description, brand, category, VAT, warranty, delivery days). Phase D5a keeps the card's own
-// value wherever it differs from the model (see Resolve). A card linked to no model reads its own columns. The name is
-// the colour's override, else the card's Title, which the model refresh keeps as the model's name with the colour's
-// word (TitleFor is C# and the colour comes from the variants, so it is not resolved in SQL).
+// Rule (phase D5b, owner 17 Nov 2026): the name, description, VAT, delivery days, warranty, brand, category and desi are
+// the model's; no colour or variant holds its own. The brand, category, VAT, warranty and delivery days are read from
+// catalog.product_models; the name, description and desi from the copies every writer mirrors from the model in the same
+// transaction (ModelMirror; the name with the colour's word). A card linked to no model reads its own columns.
 // Usable in SQL (Products: an IQueryable that EF translates, composable with Where/Join/OrderBy) and in memory (Of).
 public static class EffectiveCatalog
 {
@@ -25,23 +24,24 @@ public static class EffectiveCatalog
     {
         Id = x.Card.Id,
         TenantId = x.Card.TenantId,
-        // Phase D5a (review, 17 Nov 2026): while the writers keep the card copies the card stays the source. Each value is
-        // the model's where the card holds the same, and the card's own where it differs (a colour whose VAT, category,
-        // warranty or delivery days an Excel row, a bulk edit or a race left apart from its model; a description without
-        // an override that differs). So phase A changes no output; whether a colour may hold its own VAT is asked before
-        // phase B, which reads the model alone.
-        Title = x.Card.TitleOverride ?? x.Card.Title,
-        Description = x.Card.DescriptionOverride ?? (x.Model == null || x.Card.Description != x.Model.Description ? x.Card.Description : x.Model.Description),
-        BrandId = x.Model == null || x.Card.BrandId != x.Model.BrandId ? x.Card.BrandId : x.Model.BrandId,
-        CategoryId = x.Model == null || x.Card.CategoryId != x.Model.CategoryId ? x.Card.CategoryId : x.Model.CategoryId,
+        // Phase D5b (owner, 17 Nov 2026): the VAT (rate and whether prices include it), category, warranty and delivery days
+        // are always the model's; a colour cannot hold its own. The brand is the model's (part of its key). The card
+        // copies are kept as a mirror of the model (ModelMirror) so a rollback to phase A reads the same values.
+        // The name and the description are the model's too: every writer gives them to the model and mirrors them to
+        // every colour in the same transaction (the name with the colour's word, TitleFor, which SQL cannot resolve), so
+        // the card's columns are the model's values. The overrides are no longer read. Cards whose text still differs
+        // from their model's (phase A's overrides, 85 live models) keep it until the owner approves the flattening.
+        Title = x.Card.Title,
+        Description = x.Card.Description,
+        BrandId = x.Model == null ? x.Card.BrandId : x.Model.BrandId,
+        CategoryId = x.Model == null ? x.Card.CategoryId : x.Model.CategoryId,
         DefaultListPrice = x.Card.DefaultListPrice,
         DefaultSalePrice = x.Card.DefaultSalePrice,
-        WarrantyMonths = x.Model == null || x.Card.WarrantyMonths != x.Model.WarrantyMonths ? x.Card.WarrantyMonths : x.Model.WarrantyMonths,
-        DeliveryDays = x.Model == null || x.Card.DeliveryDays != x.Model.DeliveryDays ? x.Card.DeliveryDays : x.Model.DeliveryDays,
+        WarrantyMonths = x.Model == null ? x.Card.WarrantyMonths : x.Model.WarrantyMonths,
+        DeliveryDays = x.Model == null ? x.Card.DeliveryDays : x.Model.DeliveryDays,
         TrendyolWebColorValueId = x.Card.TrendyolWebColorValueId,
-        // The rate and whether prices include it go together: the card's pair where either differs.
-        VatRate = x.Model == null || x.Card.VatRate != x.Model.VatRate || x.Card.VatInclusion != x.Model.VatInclusion ? x.Card.VatRate : x.Model.VatRate,
-        VatInclusion = x.Model == null || x.Card.VatRate != x.Model.VatRate || x.Card.VatInclusion != x.Model.VatInclusion ? x.Card.VatInclusion : x.Model.VatInclusion,
+        VatRate = x.Model == null ? x.Card.VatRate : x.Model.VatRate,
+        VatInclusion = x.Model == null ? x.Card.VatInclusion : x.Model.VatInclusion,
         Status = x.Card.Status,
         SourcePolicyVersion = x.Card.SourcePolicyVersion,
         ArchivedAt = x.Card.ArchivedAt,

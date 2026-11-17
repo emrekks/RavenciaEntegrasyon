@@ -131,17 +131,17 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
     }
 
-    // KATALOG-14 phase D5a: before any job is taken, the models of cards the previous release changed during the deploy
-    // are refreshed (ProductModelValues.AlignStaleAsync), so no job reads a stale override or model value. A failure is
-    // logged and the nightly model scan repairs the rest.
+    // KATALOG-14 phase D5b: before any job is taken, the gaps between models and their colours are closed (a card the previous
+    // release changed during the deploy gives its newer value to the model and every colour; ProductModelValues.AlignStaleAsync).
+    // A failure is logged and the nightly model scan repairs the rest.
     private async Task AlignProductModelsAtStartupAsync(CancellationToken cancellationToken)
     {
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var refreshed = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
-            logger.LogInformation("Product models aligned at startup: {Models} written", refreshed);
+            var (written, taken) = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
+            logger.LogInformation("Product models aligned at startup: {Models} written; models that took a card's newer value: {Taken}", written, string.Join(", ", taken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)

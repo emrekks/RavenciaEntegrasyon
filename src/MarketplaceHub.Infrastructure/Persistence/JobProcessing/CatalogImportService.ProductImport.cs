@@ -17,7 +17,17 @@ internal sealed partial class CatalogImportService
     // that never ends.
     internal const int ProductImportPageCap = 5_000;
 
+    // KATALOG-14 phase D5b: while a marketplace import saves, a colour that comes in apart from its model never moves the
+    // model (ModelMirror, AppDbContext.MarketplaceCatalogImport).
     internal async Task<bool> SyncProducts(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
+    {
+        var previous = db.MarketplaceCatalogImport;
+        db.MarketplaceCatalogImport = true;
+        try { return await SyncProductsCore(tenantId, connectionId, payloadJson, correlationId, jobId, cancellationToken); }
+        finally { db.MarketplaceCatalogImport = previous; }
+    }
+
+    private async Task<bool> SyncProductsCore(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
