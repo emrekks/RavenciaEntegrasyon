@@ -65,6 +65,11 @@ sorgulamak; mükellefse e-Fatura, değilse e-Arşiv kesmek.
 - **Kim sorgulanır:** kurumsal alıcı (`InvoiceAmounts.IsCorporateBuyer` veya fatura gövdesinin kurumsal okuması) ya da
   pazaryerinin e-Fatura diye işaretlediği alıcı; Trendyol dahil her pazaryerinde. Bireysel alıcı sorgulanmaz, e-Arşiv
   (11111111111) kalır.
+- **Hepsiburada alıcı türü (16 Kasım 2026):** Hepsiburada tür bildirmez ve `11111111111` kimliği tek başına bireysel
+  demek değildir. Yer tutucu + vergi numarası ve dairesi yok → bireysel; geçerli 10 haneli VKN + vergi dairesi → kurumsal
+  (sorgu yapılır, alıcı VKN); başka her bileşim → belirsiz, fatura `EFATURAM_RECIPIENT_KIND_UNKNOWN` ile durur
+  (`TrendyolEFaturamCanonicalPayload.HepsiburadaBuyerEvidence`). Her pazaryerinde: siparişte geçerli şirket VKN'si varken
+  fatura `11111111111`'e kesilecekse durur (`EFATURAM_RECIPIENT_PLACEHOLDER_FOR_CORPORATE`, `InvoiceIssuePolicy`).
 - **Sonuç** (`EInvoiceRecipientPolicy.Decide`):
   - Mükellef: `TEMELFATURA`, `targetAlias` = tek INVOICE etiketi, yoksa tek `urn:mail:defaultpk` etiketi. Seçilemezse
     `EINVOICE_TARGET_ALIAS_UNRESOLVED` ile durur.

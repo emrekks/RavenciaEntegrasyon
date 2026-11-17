@@ -61,6 +61,13 @@ describe('order delivery line', () => {
     expect(undeliveredReturn(order({ derivedStatus: 'SHIPPED', lines: [{ rawStatus: 'UnDeliveredAndReturned' }] as Order['lines'] }))).toBe(false)
   })
 
+  it('reads the undelivered-and-returned raw status as the server Teslim Edilemedi tab does: any case, on a line or a package', () => {
+    // PTT AVM's gondericisine_teslim_edildi is stored as UndeliveredAndReturned; the server compares upper-cased.
+    expect(undeliveredReturn(order({ derivedStatus: 'RETURNED', packages: [{ rawStatus: 'UndeliveredAndReturned' }] as Order['packages'] }))).toBe(true)
+    // Another spelling is not that status on the server either, so the row does not claim it.
+    expect(undeliveredReturn(order({ derivedStatus: 'RETURNED', lines: [{ rawStatus: 'Undelivered_And_Returned' }] as Order['lines'] }))).toBe(false)
+  })
+
   it('counts the days an overdue order is late', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-05T09:00:00Z'))
