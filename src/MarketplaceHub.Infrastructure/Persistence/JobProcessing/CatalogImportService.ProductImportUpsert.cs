@@ -987,9 +987,25 @@ internal sealed partial class CatalogImportService
         if (brandId is not Guid brand || ProductFamilyKeyPolicy.ModelCodeKey(code) is not { } key) return null;
         var model = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key && x.BrandId != null && x.BrandId != brand)
             .Select(x => new { x.ModelCode, x.BrandId }).FirstOrDefaultAsync(cancellationToken);
-        if (model is null) return null;
-        var name = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == model.BrandId).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
-        return (key, string.IsNullOrWhiteSpace(model.ModelCode) ? code! : model.ModelCode, name ?? "markasız");
+        // KATALOG-14 phase D5b review 6a: a listing this import group opened a card for already (not saved yet) holds the code
+        // under another brand: this listing alone is skipped, the group goes on (its save would otherwise fail whole).
+        var opened = model is not null ? null : OpenedInThisGroup(tenantId, key, brand);
+        if (model is null && opened is null) return null;
+        var holder = model?.BrandId ?? opened!.Value.BrandId;
+        var name = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == holder).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
+        return (key, model is null ? opened!.Value.Code : string.IsNullOrWhiteSpace(model.ModelCode) ? code! : model.ModelCode, name ?? "markasız");
+    }
+
+    // A card this save adds (tracked, not saved yet) under the key with another brand than the given one: its brand and code.
+    private (Guid BrandId, string Code)? OpenedInThisGroup(Guid tenantId, string key, Guid brand)
+    {
+        var added = db.ChangeTracker.Entries<ProductVariant>()
+            .Where(entry => entry.State == EntityState.Added && entry.Entity.TenantId == tenantId && ProductFamilyKeyPolicy.ModelCodeKey(entry.Entity.ModelCode) == key)
+            .GroupBy(entry => entry.Entity.ProductId).ToDictionary(group => group.Key, group => group.First().Entity.ModelCode!.Trim());
+        if (added.Count == 0) return null;
+        return db.ChangeTracker.Entries<Product>()
+            .Where(entry => entry.State == EntityState.Added && entry.Entity.TenantId == tenantId && added.ContainsKey(entry.Entity.Id) && entry.Entity.BrandId is Guid other && other != brand)
+            .Select(entry => ((Guid BrandId, string Code)?)(entry.Entity.BrandId!.Value, added[entry.Entity.Id])).FirstOrDefault();
     }
     private async Task<Guid?> ImportBrandId(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, string platformName, bool byExternalId, bool create, CancellationToken cancellationToken)
     {

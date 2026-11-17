@@ -41,7 +41,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     private static string VariantId(int colour, int size) => (900_000 + colour * 100 + size).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private static string Title(string colour) => $"Kadın {colour} Triko Bluz";
 
-    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null, string? MainId = null);
+    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null, string? MainId = null, string? BrandExternal = null, string? BrandName = null);
 
     private static ContentSpec Spec(string colour) => new(colour, Sizes);
 
@@ -64,7 +64,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             productMainId = spec.MainId ?? ModelCode,
             title = spec.Title ?? Title(colour),
             description = spec.Description ?? "Yumuşak dokulu triko bluz.",
-            brand = new { id = long.Parse(BrandExternalId, System.Globalization.CultureInfo.InvariantCulture), name = "Ravencia" },
+            brand = new { id = long.Parse(spec.BrandExternal ?? BrandExternalId, System.Globalization.CultureInfo.InvariantCulture), name = spec.BrandName ?? "Ravencia" },
             category = new { id = long.Parse(CategoryExternalId, System.Globalization.CultureInfo.InvariantCulture), name = "Bluz" },
             images = (spec.Pictures ?? ContentPictures(key, count)).Select(url => new { url }).ToList(),
             attributes = new[] { new { attributeName = "Renk", attributeValue = colour } },
@@ -879,6 +879,38 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.Equal(Colours.Length, (await CardsAsync(db, seed)).Count);
         Assert.False(await db.ProductImportStagingRecords.AnyAsync(row => row.TenantId == seed.TenantId && row.State != "COMPLETED"));
         Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED"));
+    }
+
+    // KATALOG-14 phase D5b review 6a: one import group bringing the same model code under two brands (both new to the
+    // panel) no longer fails the whole group: the first listing opens the model, the other brand's listing alone is
+    // skipped and PRODUCT_MODEL_AMBIGUOUS says so; nothing is merged or re-branded.
+    [PostgreSqlFact]
+    public async Task TwoBrandsUnderOneCodeInOneGroup_SkipOnlyTheOtherBrandsListing_AndWarn()
+    {
+        var seed = await SeedAsync();
+        Guid lavian;
+        await using (var setup = fixture.CreateContext())
+        {
+            var now = DateTimeOffset.UtcNow;
+            lavian = Guid.CreateVersion7();
+            setup.Brands.Add(new Brand { Id = lavian, TenantId = seed.TenantId, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+            var brands = await setup.ReferenceSnapshots.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == "BRANDS");
+            setup.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, ResourceType = "BRANDS", ExternalId = "789", Name = "Lavian", NormalizedName = "LAVIAN", Path = "Lavian", Depth = 0, IsLeaf = true, IsActive = true, PayloadHash = "payload-BRANDS-789" });
+            setup.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, LocalId = lavian, ExternalId = "789", Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+            await setup.SaveChangesAsync();
+        }
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki"), Spec("Gri") with { BrandExternal = "789", BrandName = "Lavian" }]));
+        await RunAsync(seed, port, "{\"full\":true}");
+
+        await using var db = fixture.CreateContext();
+        var cards = await CardsAsync(db, seed);
+        Assert.Equal([ContentId("Bordo"), ContentId("Haki")], cards.Keys.Order(StringComparer.Ordinal));
+        Assert.All(cards.Values, card => Assert.Equal(seed.BrandId, card.Product.BrandId));
+        var model = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
+        Assert.Equal((seed.BrandId, ModelCode), (model.BrandId, model.ModelCodeKey));
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED"));
+        var warning = Assert.Single(await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == ProductModelLinks.AmbiguousCode).ToListAsync());
+        Assert.Contains("Lavian", warning.Summary, StringComparison.Ordinal);
     }
 
     // A conflict that comes back on the retry fails the model as before, and the issue names the conflicting rows.
