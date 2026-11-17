@@ -1075,7 +1075,10 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-preview-store > strong { font-size: 14px; }
 .app-shell.stitch-shell main .platform-update-preview-store ul, .app-shell.stitch-shell main .platform-update-preview-store ol { display: grid; gap: 4px; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .app-shell.stitch-shell main .platform-update-preview-line, .app-shell.stitch-shell main .platform-update-preview-store summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; margin: 0; font-size: 13px; line-height: 1.5; }
-.app-shell.stitch-shell main .platform-update-preview-store summary { cursor: pointer; }
+.app-shell.stitch-shell main .platform-update-preview-store summary { align-items: center; cursor: pointer; list-style: none; }
+.app-shell.stitch-shell main .platform-update-preview-store summary::-webkit-details-marker { display: none; }
+.app-shell.stitch-shell main .platform-update-preview-store summary > svg:last-child { flex: none; color: var(--rv-color-muted); transition: transform .16s ease; }
+.app-shell.stitch-shell main .platform-update-preview-store details[open] > summary > svg:last-child { transform: rotate(180deg); }
 .app-shell.stitch-shell main .platform-update-preview-store li.is-changes > details > summary > span { color: var(--rv-color-warning); font-weight: 600; }
 .app-shell.stitch-shell main .platform-update-preview-store li.is-unknown span, .app-shell.stitch-shell main .platform-update-preview-line > span { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .platform-update-preview-store li.is-same span, .app-shell.stitch-shell main .platform-update-preview-line.is-same > span { color: var(--rv-color-accent); }

@@ -44,7 +44,7 @@ function PreviewStoreRows({ store }: { store: PreviewStore }) {
     {!store.allSame && <ul>
       {store.rows.map(row => <li key={row.field} className={`is-${row.state.toLowerCase()}`}>
         {row.changes.length
-          ? <details><summary><b>{row.label}</b><span>{row.text}</span></summary>
+          ? <details><summary><b>{row.label}</b><span>{row.text}</span><UiIcon name="chevronDown" size={12} /></summary>
             <ol>{row.changes.map((change, index) => <li key={`${change.model}-${change.label}-${index}`}>
               <small>{change.model} · {change.label}{change.lengths ? ` · ${change.lengths}` : ''}</small>
               <span><s title="Pazaryerindeki">{change.before || '—'}</s><UiIcon name="arrowRight" size={12} /><ins title="Gidecek">{change.after || '—'}</ins></span>
@@ -54,7 +54,7 @@ function PreviewStoreRows({ store }: { store: PreviewStore }) {
       </li>)}
       {store.unknownFields && <li className="is-unknown"><p className="platform-update-preview-line"><b>{store.unknownFields}</b><span>{unknownMarketplaceValue}</span></p></li>}
     </ul>}
-    {store.problems.length > 0 && <details className="platform-update-preview-problems"><summary><UiIcon name="alert" size={12} /><span>{store.problems.length.toLocaleString('tr-TR')} kart için özet hazırlanamadı</span></summary>
+    {store.problems.length > 0 && <details className="platform-update-preview-problems"><summary><UiIcon name="alert" size={12} /><span>{store.problems.length.toLocaleString('tr-TR')} kart için özet hazırlanamadı</span><UiIcon name="chevronDown" size={12} /></summary>
       <ul>{store.problems.map((problem, index) => <li key={`${problem.label}-${index}`}><b>{problem.label}</b> {problem.message}</li>)}</ul>
     </details>}
   </article>
