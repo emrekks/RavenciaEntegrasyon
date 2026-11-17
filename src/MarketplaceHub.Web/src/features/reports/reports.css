@@ -1231,3 +1231,37 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .promotions-page .rv-tab-slide-grid { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .promotions-page .promotions-bar { min-width: 0; max-width: 100%; }
 }
+
+/* Raporlar on a phone: one spacing step between the blocks of a panel (owner, 18 Nov 2026) — the Hakediş list counted its gap and the blocks' own
+   16 px bottom margins twice (32 px between the payout summary, the search, the tabs and the first day). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page { --reports-gap-m: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-list { gap: var(--reports-gap-m); }
+  .app-shell.stitch-shell main .reports-page .reports-payout-list > :is(.reports-payout-regions, .reports-payout-filters, .rv-view-tabs) { margin-bottom: 0; }
+}
+
+/* Sipariş Kârlılığı on a phone (owner, 18 Nov 2026): no sideways scroll — each order is a three-line card (number with its copy button and
+   badges, and Detaylar at the right; the date and the order amount; the profit, ratio and margin side by side). The column heads give way
+   to a Sıralama choice above the list; the table stays a table for screen readers. Desktop keeps the table. */
+.reports-order-sortbar { display: none; }
+@media (max-width: 767px) {
+  .app-shell.stitch-shell main .reports-page .reports-order-sortbar { display: flex; align-items: center; gap: 8px; }
+  .app-shell.stitch-shell main .reports-page .reports-order-sortbar label { display: flex; flex: 1 1 auto; align-items: center; gap: 8px; min-width: 0; color: var(--rv-color-muted); font-size: 13px; }
+  .app-shell.stitch-shell main .reports-page .reports-order-sortbar select { flex: 1 1 auto; min-width: 0; height: 36px; min-height: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-order-sortbar button { flex: none; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; }
+  .app-shell.stitch-shell main .reports-page .reports-order-profit .reports-table-wrap { overflow: visible; background: none; border: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table, .app-shell.stitch-shell main .reports-page .reports-order-table tbody { display: block; width: 100%; min-width: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .app-shell.stitch-shell main .reports-page .reports-order-table tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "n n a" "d d t" "p r m"; gap: 6px 8px; margin: 0 0 var(--reports-gap-m, 12px); padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table tbody tr > :is(th, td) { display: block; height: auto; min-width: 0; padding: 0; background: none; border: 0; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table tbody tr > th { grid-area: n; white-space: normal; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table .reports-order-number { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table .reports-od-date { grid-area: d; color: var(--rv-color-muted); font-size: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table .reports-od-amount { grid-area: t; text-align: right; font-weight: 600; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table .reports-od-act { grid-area: a; justify-self: end; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l="Kâr Tutarı"] { grid-area: p; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l="Kâr Oranı"] { grid-area: r; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l="Kâr Marjı"] { grid-area: m; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l^="Kâr"] { text-align: center; font-variant-numeric: tabular-nums; }
+  .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l^="Kâr"]::before { content: attr(data-l); display: block; margin-bottom: 1px; color: var(--rv-color-muted); font-size: 11px; font-weight: 400; }
+}
