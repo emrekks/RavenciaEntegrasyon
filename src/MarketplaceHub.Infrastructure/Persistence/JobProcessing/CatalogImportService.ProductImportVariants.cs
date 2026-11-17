@@ -312,10 +312,7 @@ internal sealed partial class CatalogImportService
         var status = remote.Archived ? "INACTIVE" : "ACTIVE";
         var offer = db.ChannelOffers.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id)
             ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
-        var cardVatRate = offer is null && remote.VatRate is null
-            ? db.Products.Local.FirstOrDefault(x => x.Id == variant.ProductId)?.VatRate
-                ?? await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variant.ProductId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken)
-            : null;
+        var cardVatRate = offer is null && remote.VatRate is null ? await CardOrModelVatRateAsync(tenantId, variant.ProductId, variant.ModelCode, cancellationToken) : null;
         var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
         var observationSource = CatalogImportSource(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), observeOnly);
         if (offer is null)
@@ -413,7 +410,20 @@ internal sealed partial class CatalogImportService
 
     private Task RecordOfferVatUnknownAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         RecordIssue(tenantId, $"offer-vat-unknown:{connectionId:N}", "OFFER_VAT_UNKNOWN",
-            "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürün kartında KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Ürün kartlarının ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
+            "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürünün modelinde de KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Modelin KDV oranını girin ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
+
+    // The VAT an offer of a card takes when the marketplace reports none (review, 17 Nov 2026): the card's as every reader
+    // reads it (EffectiveCatalog: its model's), and for a new colour card this import has not saved yet (whose copy is
+    // still empty, the model's VAT reaching it only at the save, ModelMirror) its code's model's. Before, such a colour
+    // of a model with a VAT got a %0 offer and an OFFER_VAT_UNKNOWN warning.
+    private async Task<decimal?> CardOrModelVatRateAsync(Guid tenantId, Guid productId, string? modelCode, CancellationToken cancellationToken)
+    {
+        if (db.Products.Local.FirstOrDefault(x => x.Id == productId)?.VatRate is { } local) return local;
+        if (await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken) is { } stored) return stored;
+        return ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is { } key
+            ? await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => x.VatRate).FirstOrDefaultAsync(cancellationToken)
+            : null;
+    }
 
     // The VAT of an offer the raw import / mapping path opens (SeedChannelOfferAsync): the same rule as the catalog import
     // (CatalogOfferVatRate) — the marketplace's value, else the product card's VAT, else 0 with the single
@@ -423,11 +433,10 @@ internal sealed partial class CatalogImportService
         decimal? cardVatRate = null;
         if (remoteVatRate is null)
         {
-            var productId = db.ProductVariants.Local.FirstOrDefault(x => x.Id == variantId)?.ProductId
-                ?? await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variantId).Select(x => (Guid?)x.ProductId).SingleOrDefaultAsync(cancellationToken);
-            if (productId is { } cardId)
-                cardVatRate = db.Products.Local.FirstOrDefault(x => x.Id == cardId)?.VatRate
-                    ?? await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == cardId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken);
+            var local = db.ProductVariants.Local.FirstOrDefault(x => x.Id == variantId);
+            var card = local is not null ? new { local.ProductId, local.ModelCode }
+                : await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variantId).Select(x => new { x.ProductId, x.ModelCode }).SingleOrDefaultAsync(cancellationToken);
+            if (card is not null) cardVatRate = await CardOrModelVatRateAsync(tenantId, card.ProductId, card.ModelCode, cancellationToken);
         }
         var (vatRate, vatUnknown) = CatalogOfferVatRate(remoteVatRate, null, cardVatRate);
         if (vatUnknown) await RecordOfferVatUnknownAsync(tenantId, connectionId, cancellationToken);

@@ -41,7 +41,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
     private static string VariantId(int colour, int size) => (900_000 + colour * 100 + size).ToString(System.Globalization.CultureInfo.InvariantCulture);
     private static string Title(string colour) => $"Kadın {colour} Triko Bluz";
 
-    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null, string? MainId = null, string? BrandExternal = null, string? BrandName = null);
+    private sealed record ContentSpec(string Colour, string[] Sizes, string? Title = null, string[]? Pictures = null, int Stock = 4, string? Description = null, string? StockCodePrefix = null, decimal SalePrice = 630m, decimal ListPrice = 900m, string[]? ArchivedSizes = null, string? MainId = null, string? BrandExternal = null, string? BrandName = null, bool NoVat = false);
 
     private static ContentSpec Spec(string colour) => new(colour, Sizes);
 
@@ -80,7 +80,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
                     salePrice = spec.SalePrice,
                     listPrice = spec.ListPrice,
                     quantity = spec.Stock,
-                    vatRate = 10,
+                    vatRate = spec.NoVat ? (int?)null : 10,
                     dimensionalWeight = desi,
                     onSale = true,
                     archived = spec.ArchivedSizes?.Contains(size) == true
@@ -865,6 +865,26 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.False(await db.ProductImportStagingRecords.AnyAsync(row => row.TenantId == seed.TenantId && row.State != "COMPLETED"));
         var job = await db.IntegrationJobs.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.JobType == MarketplaceJobTypes.ProductSync).OrderByDescending(row => row.CreatedAt).FirstOrDefaultAsync();
         if (job is not null) Assert.Equal(0, job.ProgressFailed);
+    }
+
+    // Review (17 Nov 2026): a new colour of a model whose listing carries no VAT got a %0 offer and an OFFER_VAT_UNKNOWN
+    // warning saying the card had none, though the model held one (the card's copy is filled from the model only at the
+    // save). The offer now takes the model's VAT and nothing is warned.
+    [PostgreSqlFact]
+    public async Task ANewColourWithoutAListingVat_GetsItsModelsVatOnTheOffer_AndNoWarning()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo")])), "{\"full\":true}");
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { NoVat = true }])), "{\"full\":true}");
+
+        await using var db = fixture.CreateContext();
+        var haki = (await CardsAsync(db, seed))[ContentId("Haki")];
+        var variantIds = haki.Variants.Select(row => row.Id).ToList();
+        var offers = await db.ChannelOffers.AsNoTracking().Where(row => variantIds.Contains(row.VariantId)).ToListAsync();
+        Assert.NotEmpty(offers);
+        Assert.All(offers, offer => Assert.Equal(10m, offer.VatRate));
+        Assert.Equal(10m, (await EffectiveCatalog.Products(db).SingleAsync(row => row.Id == haki.Product.Id)).VatRate);
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "OFFER_VAT_UNKNOWN"));
     }
 
     [PostgreSqlFact]
