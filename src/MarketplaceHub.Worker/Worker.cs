@@ -44,6 +44,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
         if (schedulerEnabled) await RecoverAtStartupAsync(stoppingToken);
         else TouchHealthFile();
+        await AlignProductModelsAtStartupAsync(stoppingToken);
         // Each lane runs Worker:LaneSlots:<lane> concurrent loops. Slots of one lane lease
         // independently (FOR UPDATE SKIP LOCKED); jobs that collide on the same connection
         // lock group are deferred without consuming an attempt.
@@ -127,6 +128,25 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         finally
         {
             applicationLifetime.StopApplication();
+        }
+    }
+
+    // KATALOG-14 phase D5a: before any job is taken, the models of cards the previous release changed during the deploy
+    // are refreshed (ProductModelValues.AlignStaleAsync), so no job reads a stale override or model value. A failure is
+    // logged and the nightly model scan repairs the rest.
+    private async Task AlignProductModelsAtStartupAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var refreshed = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
+            logger.LogInformation("Product models aligned at startup: {Models} refreshed", refreshed);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Product models were not aligned at startup; the nightly model scan repairs them");
         }
     }
 

@@ -170,7 +170,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         // A field with no per-colour value (VAT) differing between colours is still reported.
         AddCard(db, seed, seed.Ravencia, "VAT1", "Siyah", "Kadın Siyah Şort", 11, vat: 10m);
         AddCard(db, seed, seed.Ravencia, "VAT1", "Mavi", "Kadın Mavi Şort", 12, vat: 20m);
-        // KENE01: one code under two brands stays unlinked and is not a model of this warning.
+        // KENE01: one code under two brands: a model per brand (KATALOG-14 phase D5a), not a model of this warning.
         AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Kot Etek", 7);
         AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Kot Etek", 8);
         await db.SaveChangesAsync();
@@ -183,7 +183,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         // KATALOG-14 phase D2 backfill: a value every colour holds is the model's; otherwise the model keeps its value
         // and each colour whose text is not the model's keeps its own as an override.
         var first = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-        Assert.Equal((5, 5), (first.Models, first.Written));
+        Assert.Equal((7, 7), (first.Models, first.Written));
         Assert.Equal((1m, "Model açıklaması"), ((await ModelOfAsync(db, agreeing.Id)).Desi, (await ModelOfAsync(db, agreeing.Id)).Description));
         // Desi 1 ×2 and 2 ×4 variants: 2 (the variants keep their own); the descriptions disagree: the model keeps 'eski'.
         Assert.Equal((2m, "eski"), ((await ModelOfAsync(db, majority.Id)).Desi, (await ModelOfAsync(db, majority.Id)).Description));
@@ -202,7 +202,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
 
         // Again: nothing to write.
         var second = await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-        Assert.Equal((5, 0), (second.Models, second.Written));
+        Assert.Equal((7, 0), (second.Models, second.Written));
         // No card's text, Version or UpdatedAt was written; the effective value of every card is its text.
         Assert.Equal(JsonSerializer.Serialize(cardsBefore), JsonSerializer.Serialize(await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.Version, x.UpdatedAt, x.Title, x.Description }).ToListAsync()));
         Assert.Equal(cardsBefore.Select(x => (x.Title, x.Description)), (await EffectiveCatalog.Products(db).Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Title, x.Description }).ToListAsync()).Select(x => (x.Title, x.Description)));
@@ -279,10 +279,20 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.NotNull(await ProductModelValues.RecordFieldsAsync(db, seed.Tenant.Id, agreeing[0].FamilyId, agreeing, fields, "Siyah", ProductFamilySharedFields.ModelValues(fields, "Siyah"), CancellationToken.None));
         Assert.Equal("Kadın Siyah Etek", shown.Title);
 
-        // Every record the editor did not save scrambled (an editor-saved record is today's rule's own source): the same.
+        // KATALOG-14 phase D5a: the model is the source, so a scrambled record is what the editor shows for the fields a
+        // colour does not hold of its own (the VAT, warranty, delivery days; the description of a colour without an
+        // override), while the name stays the colour's own text.
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Title" = 'Bozuk', "TitleColor" = NULL, "Description" = 'Bozuk', "VatRate" = 99, "WarrantyMonths" = 99, "DeliveryDays" = 99, "Desi" = 99 WHERE "TenantId" = {seed.Tenant.Id} AND "FieldsSavedAt" IS NULL""");
-        var scrambled = await ResponsesAsync();
-        for (var index = 0; index < before.Count; index++) Assert.Equal(before[index], scrambled[index]);
+        db.ChangeTracker.Clear();
+        var plain = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.DescriptionOverride == null && x.FamilyId != null && db.ProductModels.Any(m => m.Id == x.FamilyId && m.FieldsSavedAt == null)).OrderBy(x => x.Id).FirstAsync();
+        var scrambled = (await service.GetProductAsync(seed.Tenant.Id, plain.Id, CancellationToken.None)).Value!;
+        Assert.Equal((99m, (int?)99, (int?)99), (scrambled.VatRate, scrambled.WarrantyMonths, scrambled.DeliveryDays));
+        Assert.Equal("Bozuk", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == plain.Id)).Description);
+        Assert.Equal(plain.Title, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == plain.Id)).Title);
+        // The refresh rebuilds the record from the colours: the editor shows what it showed before.
+        await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        var rebuilt = await ResponsesAsync();
+        for (var index = 0; index < before.Count; index++) Assert.Equal(before[index], rebuilt[index]);
     }
 
     private static async Task<(string, string, Guid?, Guid?, decimal?, string?, int?, int?)> TodaysFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, ProductView view)
@@ -327,12 +337,15 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
     // The refresh's lock of one model row (ProductModelValues.RefreshAsync, outside a caller's transaction).
     private static bool LocksAModel(string sql) => sql.Contains("FROM catalog.product_models", StringComparison.Ordinal) && sql.Contains("FOR UPDATE", StringComparison.Ordinal);
 
-    // F1: a model refresh that fails with a database error leaves the caller's tracked entities as they are: an import
-    // that saves the same tracked cards again saves its next changes.
+    // F1, KATALOG-14 phase D5a: the model's values are written in the save's own transaction. A model write that fails
+    // with a database error fails the save and rolls it back whole (no card without its model's values); the caller's
+    // tracked entities keep their changes, so an import that saves again writes them and the model.
+    private static bool WritesAModel(string sql) => sql.Contains("UPDATE catalog.product_models", StringComparison.Ordinal);
+
     [PostgreSqlFact]
     public async Task AFailedRefresh_LeavesTheCallersTrackedEntitiesTracked_AndTheNextSaveWritesThem()
     {
-        var tap = new CommandTap(LocksAModel, () => new Npgsql.PostgresException("injected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.ForeignKeyViolation));
+        var tap = new CommandTap(WritesAModel, () => new Npgsql.PostgresException("injected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.ForeignKeyViolation));
         await using var db = ContextWith(tap);
         var seed = await SeedAsync(db);
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ300", "Siyah", "Kadın Siyah Etek", 0);
@@ -342,16 +355,19 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         tap.Fail = true;
         siyah.Description = "Pazaryeri açıklaması";
         mavi.Description = "Pazaryeri açıklaması";
-        await db.SaveChangesAsync();
+        await Assert.ThrowsAnyAsync<Exception>(() => db.SaveChangesAsync());
         tap.Fail = false;
         Assert.Equal("Model açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
-        Assert.Equal(EntityState.Unchanged, db.Entry(siyah).State);
-        Assert.Equal(EntityState.Unchanged, db.Entry(mavi).State);
+        Assert.Equal("Model açıklaması", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).Description);
+        Assert.Equal(EntityState.Modified, db.Entry(siyah).State);
+        Assert.Equal(EntityState.Modified, db.Entry(mavi).State);
 
         mavi.WarrantyMonths = 12;
         await db.SaveChangesAsync();
         Assert.Equal(12, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == mavi.Id)).WarrantyMonths);
+        Assert.Equal("Pazaryeri açıklaması", (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).Description);
         Assert.Equal("Pazaryeri açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
+        Assert.Equal(EntityState.Unchanged, db.Entry(siyah).State);
     }
 
     // Another session holding the model row locked (an editor save of the model) until it is disposed.
@@ -399,11 +415,11 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // F4: a save inside a caller's (here serializable) transaction does not touch the model row, so another session that
-    // writes the model meanwhile neither waits for it nor makes its commit fail; the model takes the values after the
-    // commit.
+    // F4, KATALOG-14 phase D5a: a save inside a caller's (here serializable) transaction writes the model's values in that
+    // transaction: the transaction reads them at once, another session sees them only with its commit, and a transaction
+    // rolled back leaves the model as it was.
     [PostgreSqlFact]
-    public async Task ASaveInsideATransaction_LeavesTheModelRowAlone_AndRefreshesItAfterTheCommit()
+    public async Task ASaveInsideATransaction_WritesTheModelInIt_AndARollbackLeavesTheModel()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -417,51 +433,44 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             siyah.Description = "Editör açıklaması";
             mavi.Description = "Editör açıklaması";
             await db.SaveChangesAsync();
-            // Another session (the scan, a worker's save) writes the model row meanwhile, without waiting.
+            Assert.Equal("Editör açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
             await using (var other = fixture.CreateContext())
-            {
-                await other.Database.OpenConnectionAsync();
-                await other.Database.ExecuteSqlRawAsync("SET lock_timeout = '1s'");
-                await other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}""");
-            }
+                Assert.Equal("Model açıklaması", (await other.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id)).Description);
             await transaction.CommitAsync();
         }
         Assert.Equal("Editör açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
 
-        // A transaction rolled back leaves its models to the next commit, which finds the cards as they are.
         await using (await db.Database.BeginTransactionAsync())
         {
             siyah.WarrantyMonths = 6;
+            mavi.WarrantyMonths = 6;
             await db.SaveChangesAsync();
+            Assert.Equal(6, (await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
         }
         db.ChangeTracker.Clear();
-        await using (var transaction = await db.Database.BeginTransactionAsync())
-        {
-            await transaction.CommitAsync();
-        }
         Assert.Equal(0, (await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
     }
 
-    // F5: any failure of the model refresh after a save that stands (outside a caller's transaction) is recorded as the
-    // PRODUCT_MODEL_LINK_FAILED issue; the save returns normally and its changes stay.
+    // F5, KATALOG-14 phase D5a: any failure of the model write in the save's own transaction (not a database error alone)
+    // fails the save: nothing of it stands, no card is left read with another value than its model gives.
     [PostgreSqlFact]
-    public async Task ARefreshThatThrowsAfterTheSave_IsRecorded_AndTheSaveStands()
+    public async Task ARefreshThatThrowsInTheSave_FailsTheSave_AndNothingStands()
     {
-        var tap = new CommandTap(LocksAModel, () => new InvalidCastException("injected"));
+        var tap = new CommandTap(WritesAModel, () => new InvalidCastException("injected"));
         await using var db = ContextWith(tap);
         var seed = await SeedAsync(db);
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ700", "Siyah", "Kadın Siyah Etek", 0);
-        AddCard(db, seed, seed.Ravencia, "MZ700", "Mavi", "Kadın Mavi Etek", 1);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ700", "Mavi", "Kadın Mavi Etek", 1);
         await db.SaveChangesAsync();
 
         tap.Fail = true;
         siyah.WarrantyMonths = 18;
-        await db.SaveChangesAsync();
+        mavi.WarrantyMonths = 18;
+        await Assert.ThrowsAnyAsync<InvalidCastException>(() => db.SaveChangesAsync());
         tap.Fail = false;
-        Assert.Equal(18, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).WarrantyMonths);
-        var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.LinkFailedCode);
-        Assert.Equal(IssueStatus.Open, issue.Status);
-        Assert.Contains("InvalidCastException", issue.Summary);
+        Assert.Equal(0, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).WarrantyMonths);
+        Assert.Equal(0, (await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
+        Assert.False(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.LinkFailedCode));
     }
 
     // F6: a run that skipped a model (locked) does not resolve the PRODUCT_MODEL_VALUES_DIFFER warning; the scan visits a
@@ -567,8 +576,9 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal([seed.Cotton], await ModelAttributeValuesAsync(db, model.Id));
     }
 
-    // KATALOG-6: a card whose link failed after its save (FamilyId left empty) is linked by the scan; the two-brand code
-    // stays unlinked and reported; no card is written.
+    // KATALOG-6: a card left without its model (FamilyId emptied) is linked by the scan; KATALOG-14 phase D5a: the
+    // two-brand code's cards each hold a model of their own brand (never merged), the code stays reported; no card's
+    // own columns are written.
     [PostgreSqlFact]
     public async Task TheScan_RelinksACardWhoseLinkFailed_AndLeavesTheTwoBrandCodeAlone()
     {
@@ -584,9 +594,10 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var versions = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version);
 
         var result = await ProductModelScan.RunTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-        Assert.Equal((3, 2), (result.UnlinkedCodedBefore, result.UnlinkedCodedAfter));
+        Assert.Equal((1, 0), (result.UnlinkedCodedBefore, result.UnlinkedCodedAfter));
         Assert.Equal(modelId, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id)).FamilyId);
-        Assert.Null((await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id)).FamilyId);
+        var lavianModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id)).FamilyId;
+        Assert.Equal(seed.Lavian, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == lavianModel)).BrandId);
         Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.AmbiguousCode)).Status);
         Assert.Equal(versions, await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version));
     }
@@ -636,7 +647,10 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var unlinked = AddCard(db, seed, seed.Ravencia, "KENE02", "Siyah", "Kadın Siyah Kot Etek", 2);
         await db.SaveChangesAsync();
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == linked.Id)).FamilyId);
-        Assert.Null((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
+        // KATALOG-14 phase D5a: the code under two brands: a model of its own brand; the card left without one (its link
+        // still to come) is found by its variants.
+        Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {unlinked.Id}""");
 
         Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, ["mz500"], CancellationToken.None))?.ProductId);
         Assert.Contains(unlinked.Id, await ModelCodeOwnership.ProductIdsWithKeys(db, seed.Tenant.Id, ["KENE02"]).ToListAsync());

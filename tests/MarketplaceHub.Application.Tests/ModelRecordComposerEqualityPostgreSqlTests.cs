@@ -7,11 +7,10 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// KATALOG-14 phase B: what the marketplaces receive does not depend on the model record. Every publication, update and
-// price/stock composer of every marketplace builds a seeded three-colour model byte for byte the same with the record as
-// the write-through left it, with every model column, attribute and chart scrambled, and after the backfill rewrote it.
-// The write-through and the backfill write only the record (never a card or variant), so the payloads before this
-// release and after it are the same.
+// KATALOG-14 phase B, D5a: every publication, update and price/stock composer of every marketplace builds a seeded
+// three-colour model byte for byte the same with the record as the write-through left it and after the backfill
+// rewrote it. Since phase D5a the readers read the record, so a scrambled record does reach the payloads; the backfill
+// (the colours' values, each colour's own text as its override) gives the same payloads back.
 [Collection("postgres-integration")]
 public sealed class ModelRecordComposerEqualityPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -147,8 +146,11 @@ public sealed class ModelRecordComposerEqualityPostgreSqlTests(PostgreSqlTenantI
             await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_model_attributes WHERE "TenantId" = {tenant.Id}""");
             await db.Database.ExecuteSqlInterpolatedAsync($$"""UPDATE catalog.product_model_size_charts SET "MeasurementsJson" = '{"columns":["X"],"rows":[]}' WHERE "TenantId" = {{tenant.Id}}""");
         }
+        // KATALOG-14 phase D5a: the readers read the model record, so a scrambled record reaches the payloads (a colour's
+        // own description, its override, still goes); the model refresh, which rebuilds the record from the colours, gives
+        // the very same payloads back.
         var scrambled = await PayloadsAsync();
-        for (var index = 0; index < written.Count; index++) Assert.Equal(written[index], scrambled[index]);
+        Assert.NotEqual(written, scrambled);
 
         await using (var db = fixture.CreateContext())
             Assert.Equal(1, (await ProductModelValues.RefreshTenantAsync(db, tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None)).Written);

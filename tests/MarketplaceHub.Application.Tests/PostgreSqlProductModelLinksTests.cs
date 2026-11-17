@@ -85,17 +85,20 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         Assert.Equal(model.Id, (await LinksAsync(db, seed.Tenant.Id))[mavi.Id]);
         Assert.Equal(1L, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).Version);
 
-        // KENE01: one code under two brands opens no model, links nothing and reports it.
+        // KENE01: one code under two brands is never merged: KATALOG-14 phase D5a gives each brand's card a model of its
+        // own brand (one per brand and code) and the code is reported.
         var lavian = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Asimetrik Kesim Kot Etek", 2);
         var ravencia = AddCard(db, seed, seed.Ravencia, "KENE01", "Mavi", "Kadın Denim Asimetrik Kesim Kot Etek", 3);
         // A Turkish-letter code is keyed like any other.
         var turkish = AddCard(db, seed, seed.Ravencia, "TYBCamKırıgı", "Beyaz", "Kadın Beyaz Bluz", 4);
         await db.SaveChangesAsync();
         var links = await LinksAsync(db, seed.Tenant.Id);
-        Assert.Null(links[lavian.Id]);
-        Assert.Null(links[ravencia.Id]);
+        Assert.NotNull(links[lavian.Id]);
+        Assert.NotNull(links[ravencia.Id]);
+        Assert.NotEqual(links[lavian.Id], links[ravencia.Id]);
         Assert.NotNull(links[turkish.Id]);
-        Assert.Equal(["MZ035YNC", "TYBCAMKIRIGI"], (await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ModelCodeKey).ToListAsync()).Order(StringComparer.Ordinal));
+        Assert.Equal(["KENE01", "KENE01", "MZ035YNC", "TYBCAMKIRIGI"], (await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ModelCodeKey).ToListAsync()).Order(StringComparer.Ordinal));
+        Assert.Equal(seed.Lavian, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == links[lavian.Id])).BrandId);
         var issue = Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id));
         Assert.Equal((IssueStatus.Open, "product-model-ambiguous:KENE01"), (issue.Status, issue.DedupeKey));
         Assert.Contains("Lavian, Ravencia", issue.Summary);
@@ -159,10 +162,12 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
             (lavianAfter.BrandId, lavianAfter.Version, lavianAfter.Title, lavianAfter.Description, lavianAfter.UpdatedAt));
         Assert.Equal(lavianVariantsBefore, await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == lavian.Id).OrderBy(x => x.Id)
             .Select(x => new { x.Id, x.Desi, x.DefaultListPrice, x.DefaultSalePrice, x.Version }).ToListAsync());
+        // KATALOG-14 phase D5a: each card stays in its own brand's model, never in the other's.
         var links = await LinksAsync(db, seed.Tenant.Id);
-        Assert.Null(links[lavian.Id]);
-        Assert.Null(links[ravencia.Id]);
-        Assert.False(await db.ProductModels.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "KENE01"));
+        Assert.Equal(lavianBefore.FamilyId, links[lavian.Id]);
+        Assert.NotNull(links[ravencia.Id]);
+        Assert.NotEqual(links[lavian.Id], links[ravencia.Id]);
+        Assert.Equal([seed.Lavian, seed.Ravencia], (await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "KENE01").Select(x => x.BrandId).ToListAsync()).OrderBy(x => x == seed.Ravencia));
         Assert.Equal(IssueStatus.Open, Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id)).Status);
         Assert.False(await db.ProductChangeEntries.AsNoTracking().AnyAsync(x => x.TenantId == seed.Tenant.Id && x.ProductId == lavian.Id));
         // The saved card took its own desi.
@@ -289,12 +294,17 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         Assert.Equal(variantsBefore, await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id)
             .Select(x => new { x.Id, x.ModelCode, x.Sku, x.Version, x.UpdatedAt }).ToListAsync());
 
-        // The application agrees with the backfill and links the one card SQL left.
+        // The application agrees with the backfill and links the cards SQL left: the code it cannot key, and (KATALOG-14
+        // phase D5a) each brand's KENE01 card into a model of its own brand.
         await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         var reconciled = await LinksAsync(db, seed.Tenant.Id);
-        Assert.All(links.Where(x => x.Key != other.Id), pair => Assert.Equal(pair.Value, reconciled[pair.Key]));
+        Assert.All(links.Where(x => x.Key != other.Id && x.Key != lavian.Id && x.Key != ravencia.Id), pair => Assert.Equal(pair.Value, reconciled[pair.Key]));
         Assert.NotNull(reconciled[other.Id]);
+        Assert.NotNull(reconciled[lavian.Id]);
+        Assert.NotNull(reconciled[ravencia.Id]);
+        Assert.NotEqual(reconciled[lavian.Id], reconciled[ravencia.Id]);
         Assert.Equal(applicationLinks.Keys.Order(), reconciled.Keys.Order());
+        Assert.DoesNotContain(null, reconciled.Values);
         Assert.Equal(applicationLinks.Values.Count(x => x is null), reconciled.Values.Count(x => x is null));
         await transaction.RollbackAsync();
     }

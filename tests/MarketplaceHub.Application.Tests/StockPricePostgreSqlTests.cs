@@ -1950,6 +1950,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.False(await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
 
         await db.Products.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, 10m).SetProperty(p => p.VatInclusion, "EXCLUDED"));
+        // KATALOG-14 phase D5a: the card's VAT is its model's (the readers read the model); the card copy is written alike.
+        await db.ProductModels.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, 10m).SetProperty(p => p.VatInclusion, "EXCLUDED"));
         db.ChangeTracker.Clear();
         var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);
         Assert.True(result.Succeeded, result.Error?.Message);
@@ -1967,7 +1969,11 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     {
         var (tenant, pttAvm, black, brown, variants) = await SeedPttAvmFamilyAsync("pttavm-bulk-card-vat");
         await using (var setup = fixture.CreateContext())
+        {
             await setup.Products.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, 10m).SetProperty(p => p.VatInclusion, "INCLUDED"));
+            // KATALOG-14 phase D5a: the card's VAT is its model's (the readers read the model); the card copy alike.
+            await setup.ProductModels.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(p => p.VatRate, 10m).SetProperty(p => p.VatInclusion, "INCLUDED"));
+        }
 
         await using var db = fixture.CreateContext();
         var result = await NewCatalogService(db).EnqueueBulkPublicationAsync(tenant.Id, Guid.CreateVersion7(), new BulkPublicationCommand([black.Id, brown.Id], [pttAvm.Id]), $"bulk-{Guid.NewGuid():N}", "trace", CancellationToken.None);

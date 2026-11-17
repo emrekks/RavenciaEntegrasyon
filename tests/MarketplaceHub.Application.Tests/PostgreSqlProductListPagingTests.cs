@@ -401,13 +401,14 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         Assert.False(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         await AssertSameListsAsync(db, seed.TenantId);
 
-        // Relinked (the scan): the SQL path again. Then KENE01 gets a second Lavian card: two cards of one brand stay
-        // unlinked (the code is ambiguous), one row in memory, two in SQL: the in-memory path.
+        // Relinked (the scan): the SQL path again. KATALOG-14 phase D5a: KENE01 gets a second Lavian card; the code is
+        // still ambiguous, but each brand's cards of it hold a model of their own brand, so the two Lavian cards are one
+        // row in SQL as in memory: the SQL path stays.
         await ProductModelScan.RunTenantAsync(db, seed.TenantId, DateTimeOffset.UtcNow, CancellationToken.None);
         Assert.True(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         AddCard(db, seed.TenantId, seed.Lavian, "KENE01", "Gri", "Kadın Gri Kot Etek", DateTimeOffset.UtcNow.AddHours(-1));
         await db.SaveChangesAsync();
-        Assert.False(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
+        Assert.True(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         await AssertSameListsAsync(db, seed.TenantId);
     }
 }

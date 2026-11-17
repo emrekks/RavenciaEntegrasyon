@@ -9,7 +9,7 @@
       "Status": "Active"
     }
   ],
-  "Models": 0,
+  "Models": 2,
   "Variants": [
     {
       "Sku": "123asd",
@@ -74,7 +74,10 @@
     }
   ],
   "AttributeAssignments": 0,
-  "ModelLinks": [],
+  "ModelLinks": [
+    "group:00000000-0000-4000-8000-000000000801",
+    "group:254abe46-2ab5-4fbf-bc5d-f6fafc0f5323"
+  ],
   "ProductLinks": [
     {
       "ExternalId": "group:00000000-0000-4000-8000-000000000801",

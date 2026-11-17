@@ -79,9 +79,13 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         var cards = await CardsAsync(db, seed);
         Assert.Equal([z, z], [cards[seed.A1.Id].BrandId, cards[seed.A2.Id].BrandId]);
         Assert.Equal((seed.Y, 1L), (cards[seed.B.Id].BrandId, cards[seed.B.Id].Version));
-        // The code is still under two brands: nothing linked, the warning stays open, B is in no model of A's.
-        Assert.Null(cards[seed.B.Id].FamilyId);
-        Assert.True(cards[seed.A1.Id].FamilyId is null || cards[seed.A1.Id].FamilyId != cards[seed.B.Id].FamilyId);
+        // The code is still under two brands: the warning stays open and B is in no model of A's. KATALOG-14 phase D5a:
+        // each brand's cards hold a model of their own brand (nothing merged or re-branded).
+        Assert.NotNull(cards[seed.B.Id].FamilyId);
+        Assert.Equal(cards[seed.A1.Id].FamilyId, cards[seed.A2.Id].FamilyId);
+        Assert.NotEqual(cards[seed.A1.Id].FamilyId, cards[seed.B.Id].FamilyId);
+        Assert.Equal(seed.Y, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == cards[seed.B.Id].FamilyId)).BrandId);
+        Assert.Equal(z, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == cards[seed.A1.Id].FamilyId)).BrandId);
         Assert.Equal(IssueStatus.Open, await AmbiguityAsync(db, seed));
     }
 

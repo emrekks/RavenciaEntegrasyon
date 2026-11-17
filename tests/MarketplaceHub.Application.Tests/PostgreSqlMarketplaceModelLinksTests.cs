@@ -59,7 +59,7 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // MZ035YNC: two colour cards, one Shopify product.
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ035YNC", "Siyah", "Kadın Siyah Bluz", 0, "gid-1");
         var mavi = AddCard(db, seed, seed.Ravencia, "MZ035YNC", "Mavi", "Kadın Mavi Bluz", 1, "gid-1");
-        // KENE01: one code under two brands, no model.
+        // KENE01: one code under two brands, a model per brand; one Shopify product spans both: no model link.
         AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 2, "gid-2");
         AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 3, "gid-2");
         // MZ040: listed as one Shopify product per colour.
@@ -99,7 +99,7 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // A model with a product link on one card while another card holds Shopify variants of another product.
         var linked = AddCard(db, seed, seed.Ravencia, "MZ061", "Siyah", "Kadın Siyah Ceket", 1, "gid-7");
         AddCard(db, seed, seed.Ravencia, "MZ061", "Mavi", "Kadın Mavi Ceket", 2, "gid-8");
-        // KENE01 card with a product link: no model, no model link.
+        // KENE01 card with a product link (a code under two brands): a model of its own brand.
         var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 3, "gid-9");
         AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 4, null);
         foreach (var (card, external) in new[] { (single, "8001"), (linked, "8002"), (kene, "8003") })
@@ -108,8 +108,12 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
 
         await db.Database.ExecuteSqlRawAsync(MarketplaceModelLinks_Backfill);
         await db.Database.ExecuteSqlRawAsync(MarketplaceModelLinks_Backfill);
-        var link = Assert.Single(await ModelLinksAsync(db, seed));
-        Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == single.Id).Select(x => x.FamilyId).SingleAsync(), "8001"), ((Guid?)link.ModelId, link.ExternalId));
+        // KATALOG-14 phase D5a: the KENE01 card holds a model of its own brand (never the other brand's), a one-card model
+        // the backfill links like any other.
+        var modelLinks = (await ModelLinksAsync(db, seed)).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
+        Assert.Equal(2, modelLinks.Count);
+        Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == single.Id).Select(x => x.FamilyId).SingleAsync(), "8001"), ((Guid?)modelLinks[0].ModelId, modelLinks[0].ExternalId));
+        Assert.Equal((await db.Products.AsNoTracking().Where(x => x.Id == kene.Id).Select(x => x.FamilyId).SingleAsync(), "8003"), ((Guid?)modelLinks[1].ModelId, modelLinks[1].ExternalId));
         Assert.Equal(3, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
         await transaction.RollbackAsync();
     }
@@ -215,7 +219,7 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // MZ093: two colours, the PTT AVM link on one card while the other card holds PTT AVM variant links: left to the import.
         var lacivert = AddCard(db, seed, seed.Ravencia, "MZ093", "Lacivert", "Kadın Lacivert Bluz", 7, "p93");
         var yesil = AddCard(db, seed, seed.Ravencia, "MZ093", "Yesil", "Kadın Yeşil Bluz", 8, "p93");
-        // KENE01 without a model.
+        // KENE01: a model per brand.
         var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 5, null);
         AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 6, null);
         void Link(PlatformConnection connection, Product card, string external, string? code = null) =>
@@ -238,8 +242,10 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         await db.Database.ExecuteSqlRawAsync(backfill);
         await db.Database.ExecuteSqlRawAsync(backfill);
         var model = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
-        var links = (await ModelLinksAsync(db, seed)).Select(x => ((Guid?)x.ModelId, x.ConnectionId, x.ExternalId, x.ExternalCode)).OrderBy(x => x.ExternalId).ToList();
-        Assert.Equal([(model, ptt.Id, "1523", (string?)"MZ090"), (model, pazarama.Id, "group:g-90", "g-90"), (model, n11.Id, "main:MZ090", null)], links);
+        var links = (await ModelLinksAsync(db, seed)).Select(x => ((Guid?)x.ModelId, x.ConnectionId, x.ExternalId, x.ExternalCode)).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
+        // KATALOG-14 phase D5a: the KENE01 card's own-brand model takes its PTT AVM product like any one-card model.
+        var keneModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == kene.Id)).FamilyId;
+        Assert.Equal([(model, ptt.Id, "1523", (string?)"MZ090"), (keneModel, ptt.Id, "1700", "KENE01"), (model, pazarama.Id, "group:g-90", "g-90"), (model, n11.Id, "main:MZ090", null)], links);
         Assert.Equal(10, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
         await transaction.RollbackAsync();
     }

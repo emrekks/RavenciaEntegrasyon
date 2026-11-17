@@ -382,6 +382,26 @@ public static class ProductModelValues
             """, cancellationToken) > 0;
     }
 
+    // KATALOG-14 phase D5a: the readers read the overrides and the model, so a card whose text or shared value the
+    // previous release changed while a deploy ran (after the deploy's refresh) would be read stale. Run once when the
+    // Worker starts, before it takes a job: the models of every card whose override is not its own text, whose
+    // description without an override is not its model's, or whose brand, category, VAT, warranty or delivery days are
+    // not its model's, are refreshed (each in its own short transaction). Returns the number of models refreshed.
+    public static async Task<int> AlignStaleAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var stale = await (from card in db.Products.AsNoTracking()
+                           join model in db.ProductModels.AsNoTracking() on new { card.TenantId, Id = card.FamilyId } equals new { model.TenantId, Id = (Guid?)model.Id }
+                           where (card.TitleOverride != null && card.TitleOverride != card.Title)
+                                 || (card.DescriptionOverride != null && card.DescriptionOverride != card.Description)
+                                 || (card.DescriptionOverride == null && card.Description != model.Description)
+                                 || card.BrandId != model.BrandId || card.CategoryId != model.CategoryId || card.VatRate != model.VatRate
+                                 || card.VatInclusion != model.VatInclusion || card.WarrantyMonths != model.WarrantyMonths || card.DeliveryDays != model.DeliveryDays
+                           select new { card.TenantId, ModelId = model.Id }).Distinct().ToListAsync(cancellationToken);
+        foreach (var tenant in stale.GroupBy(x => x.TenantId))
+            await RefreshAsync(db, tenant.Key, [.. tenant.Select(x => x.ModelId)], now, cancellationToken);
+        return stale.Count;
+    }
+
     // The backfill and the nightly scan: every model of every tenant, then one PRODUCT_MODEL_VALUES_DIFFER warning per
     // tenant naming the models whose cards disagree (resolved when none does). Nothing is merged or chosen for the owner:
     // the cards keep their values and the screens keep showing what they showed. Idempotent; a model a save holds

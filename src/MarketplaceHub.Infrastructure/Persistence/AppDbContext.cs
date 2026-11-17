@@ -174,15 +174,31 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         var models = ProductModelLinks.Capture(ChangeTracker);
         // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
         var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
-        int saved;
-        _saving = true;
-        try { saved = base.SaveChanges(acceptAllChangesOnSuccess); }
-        finally { _saving = false; }
-        CatalogListGenerations.Bump(catalogTenants);
-        ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
-        if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
-        RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
-        return saved;
+        // KATALOG-14 phase D5a: the save, its model links and the model's values in one transaction (SaveChangesAsync).
+        using var owned = models is not null && Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
+        if (owned is not null) OwnsModelLinkTransaction = true;
+        try
+        {
+            int saved;
+            _saving = true;
+            try { saved = base.SaveChanges(acceptAllChangesOnSuccess && owned is null); }
+            finally { _saving = false; }
+            CatalogListGenerations.Bump(catalogTenants);
+            ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, CancellationToken.None); return 0; }, 0).GetAwaiter().GetResult();
+            if (models is not null) LinkProductModelsAsync(models).GetAwaiter().GetResult();
+            if (owned is not null)
+            {
+                OwnsModelLinkTransaction = false;
+                owned.Commit();
+                if (acceptAllChangesOnSuccess) ChangeTracker.AcceptAllChanges();
+            }
+            RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
+            return saved;
+        }
+        finally
+        {
+            OwnsModelLinkTransaction = false;
+        }
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
@@ -195,16 +211,40 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         var models = ProductModelLinks.Capture(ChangeTracker);
         // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
         var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
-        int saved;
-        _saving = true;
-        try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
-        finally { _saving = false; }
-        CatalogListGenerations.Bump(catalogTenants);
-        await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
-        if (models is not null) await LinkProductModelsAsync(models);
-        await RefreshDeferredModelValuesAsync();
-        return saved;
+        // KATALOG-14 phase D5a: a save that adds or changes a card links it to its model and writes the model's values in
+        // the same transaction (the caller's, else one opened here), so no reader ever sees a card without its model or a
+        // model behind its cards.
+        await using var owned = models is not null && Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;
+        if (owned is not null) OwnsModelLinkTransaction = true;
+        try
+        {
+            int saved;
+            _saving = true;
+            // In its own transaction the changes are accepted only after the commit: a link or model write that fails rolls
+            // the save back and leaves the tracked entities as they were, so the caller's next save writes them again.
+            try { saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess && owned is null, cancellationToken); }
+            finally { _saving = false; }
+            CatalogListGenerations.Bump(catalogTenants);
+            await ReturnCardColumns.GuardAsync(this, async () => { await ReturnCardColumns.AfterSaveAsync(this, returnClaims, cancellationToken); return 0; }, 0);
+            if (models is not null) await LinkProductModelsAsync(models);
+            if (owned is not null)
+            {
+                OwnsModelLinkTransaction = false;
+                await owned.CommitAsync(cancellationToken);
+                if (acceptAllChangesOnSuccess) ChangeTracker.AcceptAllChanges();
+            }
+            await RefreshDeferredModelValuesAsync();
+            return saved;
+        }
+        finally
+        {
+            OwnsModelLinkTransaction = false;
+        }
     }
+
+    // True while SaveChanges runs its own transaction around a save and its model links (KATALOG-14 phase D5a): the
+    // reconcile then takes its advisory locks inside it (ProductModelLinks.ReconcileAsync).
+    internal bool OwnsModelLinkTransaction { get; private set; }
 
     // KATALOG-14 phase B: the models whose shared values a save inside a caller's transaction changed. The values are not
     // written there: the model row update made a serializable editor save fail with a conflict whenever anything else
