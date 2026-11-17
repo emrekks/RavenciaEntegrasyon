@@ -20,7 +20,7 @@ import { printedShippingLabelKey, type ShippingLabelFormat, type ShippingLabelSe
 import { productImageFallbackUrls as createProductImageFallbackUrls } from '../../product-image-lookups'
 import { formatMoney } from '../../../../shared/format-money'
 import { formatPackageLabel } from '../../../../shared/package-label'
-import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail } from '../order-delivery'
+import { deliveryDueLine, deliveryText, dueLineTitle, orderRingDetail, undeliveredReturn } from '../order-delivery'
 import { BuyerTypeTag, OrderRowMarkIcons } from '../order-row-marks'
 import { isPartlyCancelled, lineCancel, partialQuantityText, remainingText, rowLines } from '../order-line-cancel'
 import { CARGO_BARCODE_TITLE, cargoNumber } from '../cargo-number'
@@ -117,7 +117,7 @@ export function OrderReferenceRow({ item, selected, onSelect, selectionMode, onM
   ]
   const detailQuickAction = detailActions.find(action => action.key === 'process')
   const detailMenuActions = detailActions.filter(action => action !== detailQuickAction)
-  const [ringTone, ringProgress, ringLabel] = orderRingState(item.derivedStatus)
+  const [ringTone, ringProgress, ringLabel] = undeliveredReturn(item) ? (['bad', 1, 'Teslim Edilemedi'] as [RingTone, number, string]) : orderRingState(item.derivedStatus)
   const ringDetail = orderRingDetail(delivery)
   // Time left (or days late) before shipping moves from the status ring to the bottom of the order info, in red under a day.
   const dueLine = deliveryDueLine(delivery)
