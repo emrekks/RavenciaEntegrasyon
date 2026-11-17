@@ -676,6 +676,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         catch (DbUpdateConcurrencyException)
         {
             await transaction.RollbackAsync(CancellationToken.None);
+            db.ModelMirrorReport.Clear();
             db.ChangeTracker.Clear();
             return Stale("Bazı kayıtlar kayıt sırasında değişti; hiçbir değişiklik kaydedilmedi. Dosyayı yeniden yükleyin.");
         }
@@ -684,6 +685,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             // KATALOG-14 phase D5b review 3: another save of the same models (Toplu Değer Ata, a marketplace import) met
             // this one; nothing of the file is written and the owner can load it again.
             await transaction.RollbackAsync(CancellationToken.None);
+            db.ModelMirrorReport.Clear();
             db.ChangeTracker.Clear();
             return ServiceResult<ProductTransferApplyResult>.Fail(LockConflictCode, "Aynı modellerin ürünleri şu anda başka bir işlemde (Toplu Değer Ata, pazaryeri aktarımı) kaydediliyor; hiçbir değişiklik kaydedilmedi. Birkaç saniye sonra dosyayı yeniden yükleyin.", 409);
         }
@@ -692,6 +694,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             // KATALOG-14 phase D5b: the file broke the model-code rule (another brand, a code another model holds); nothing
             // of it is written.
             await transaction.RollbackAsync(CancellationToken.None);
+            db.ModelMirrorReport.Clear();
             db.ChangeTracker.Clear();
             return ServiceResult<ProductTransferApplyResult>.Fail(conflict.Code, conflict.Message, 409);
         }
@@ -699,6 +702,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         {
             // A barcode taken by another variant between the check above and the save.
             await transaction.RollbackAsync(CancellationToken.None);
+            db.ModelMirrorReport.Clear();
             db.ChangeTracker.Clear();
             return ServiceResult<ProductTransferApplyResult>.Fail("PRODUCT_TRANSFER_BARCODE_TAKEN", "Yazılmak istenen bir barkod kayıt sırasında başka bir varyanta verildi; hiçbir değişiklik kaydedilmedi. Dosyayı yeniden yükleyin.", 409);
         }

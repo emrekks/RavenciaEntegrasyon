@@ -211,16 +211,20 @@ public static class ProductModelLinks
             var productIds = (pending.FieldChanges.GetValueOrDefault(tenantId)?.Keys ?? Enumerable.Empty<Guid>())
                 .Concat(pending.CodeChanges.GetValueOrDefault(tenantId)?.Keys ?? Enumerable.Empty<Guid>())
                 .Concat(pending.ProductIds.GetValueOrDefault(tenantId) ?? []).Distinct().ToArray();
-            var keys = (pending.Keys.GetValueOrDefault(tenantId) ?? []).ToArray();
-            await db.Database.SqlQuery<int>($"""
-                SELECT 1 AS "Value" FROM catalog.product_models
-                WHERE "TenantId" = {tenantId}
-                  AND ("Id" IN (SELECT p."FamilyId" FROM catalog.products p WHERE p."TenantId" = {tenantId} AND p."Id" = ANY({productIds}) AND p."FamilyId" IS NOT NULL)
-                       OR "ModelCodeKey" = ANY({keys}))
-                ORDER BY "Id" FOR UPDATE
-                """).ToListAsync(cancellationToken);
+            await LockModelsOfCardsAsync(db, tenantId, productIds, [.. pending.Keys.GetValueOrDefault(tenantId) ?? []], cancellationToken);
         }
     }
+
+    // The rows of the models the given cards are linked to and of the given keys, locked in one statement in id order (the
+    // one order every model write takes them in), in the caller's transaction.
+    internal static Task<List<int>> LockModelsOfCardsAsync(AppDbContext db, Guid tenantId, Guid[] productIds, string[] keys, CancellationToken cancellationToken) =>
+        db.Database.SqlQuery<int>($"""
+            SELECT 1 AS "Value" FROM catalog.product_models
+            WHERE "TenantId" = {tenantId}
+              AND ("Id" IN (SELECT p."FamilyId" FROM catalog.products p WHERE p."TenantId" = {tenantId} AND p."Id" = ANY({productIds}) AND p."FamilyId" IS NOT NULL)
+                   OR "ModelCodeKey" = ANY({keys}))
+            ORDER BY "Id" FOR UPDATE
+            """).ToListAsync(cancellationToken);
 
     private static bool Changed<TEntity, T>(PropertyEntry<TEntity, T> property) where TEntity : class =>
         property.IsModified && !EqualityComparer<T>.Default.Equals(property.OriginalValue, property.CurrentValue);

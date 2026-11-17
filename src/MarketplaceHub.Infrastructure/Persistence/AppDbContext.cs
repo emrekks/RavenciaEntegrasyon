@@ -175,6 +175,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         // KATALOG-10: the product list's cached rule check of the tenants whose cards or variants this save writes.
         var catalogTenants = CatalogListGenerations.Bump(ChangeTracker);
         // KATALOG-14 phase D5a: the save, its model links and the model's values in one transaction (SaveChangesAsync).
+        var reported = ModelMirrorReport.Count;
         using var owned = models is not null && Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
         if (owned is not null) OwnsModelLinkTransaction = true;
         try
@@ -197,6 +198,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             RefreshDeferredModelValuesAsync().GetAwaiter().GetResult();
             return saved;
         }
+        catch
+        {
+            ForgetModelMirrorReport(reported);
+            throw;
+        }
         finally
         {
             OwnsModelLinkTransaction = false;
@@ -216,6 +222,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         // KATALOG-14 phase D5a: a save that adds or changes a card links it to its model and writes the model's values in
         // the same transaction (the caller's, else one opened here), so no reader ever sees a card without its model or a
         // model behind its cards.
+        var reported = ModelMirrorReport.Count;
         await using var owned = models is not null && Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;
         if (owned is not null) OwnsModelLinkTransaction = true;
         try
@@ -240,6 +247,11 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             await RefreshDeferredModelValuesAsync();
             return saved;
         }
+        catch
+        {
+            ForgetModelMirrorReport(reported);
+            throw;
+        }
         finally
         {
             OwnsModelLinkTransaction = false;
@@ -259,6 +271,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     // KATALOG-14 phase D5b: what the saves since the last read wrote to models and their colours (ModelMirror), for the
     // result messages of the writers ("Model İçindeki 3 Renge Uygulandı"). Read and cleared by the writer.
     internal List<ModelMirror.Applied> ModelMirrorReport { get; } = [];
+
+    // KATALOG-14 phase D5b review: what a save that failed or was rolled back reported (its models were not written): it is
+    // dropped, so "Model İçindeki N Renge Uygulandı" counts only what stands.
+    internal void ForgetModelMirrorReport(int from)
+    {
+        if (from < ModelMirrorReport.Count) ModelMirrorReport.RemoveRange(from, ModelMirrorReport.Count - from);
+    }
 
     // KATALOG-14 phase B: the models whose shared values a save inside a caller's transaction changed. The values are not
     // written there: the model row update made a serializable editor save fail with a conflict whenever anything else
@@ -303,16 +322,22 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             {
                 var now = _timeProvider.GetUtcNow();
                 if (deferredFields.TryGetValue(tenantId, out var changes))
+                {
+                    var reported = ModelMirrorReport.Count;
                     try
                     {
                         await using var transaction = await Database.BeginTransactionAsync();
+                        // KATALOG-14 phase D5b review: the models' rows first, in id order, as every other model write takes them.
+                        await ProductModelLinks.LockModelsOfCardsAsync(this, tenantId, [.. changes.Keys], [], CancellationToken.None);
                         await ModelMirror.ApplyAsync(this, tenantId, changes, now, CancellationToken.None);
                         await transaction.CommitAsync();
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException)
                     {
+                        ForgetModelMirrorReport(reported);
                         await ProductModelLinks.RecordLinkFailureAsync(this, tenantId, exception, now);
                     }
+                }
                 if (modelIds.Count == 0) continue;
                 try { await ProductModelValues.RefreshAsync(this, tenantId, modelIds, now, CancellationToken.None); }
                 catch (Exception exception) when (exception is not OperationCanceledException)

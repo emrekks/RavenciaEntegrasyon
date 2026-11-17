@@ -963,4 +963,30 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(("MZ900", (Guid?)seed.Ravencia, (decimal?)10m), (model.ModelCodeKey, model.BrandId, model.VatRate));
         Assert.Equal(10m, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == card.Id)).VatRate);
     }
+
+    // KATALOG-14 phase D5b review 6: a model whose save fails after its mirror reported (here the refresh's lock meets a
+    // deadlock) wrote nothing, so Toplu Değer Ata's "Model İçindeki N Renge Uygulandı" does not count its colours.
+    [PostgreSqlFact]
+    public async Task AFailedModelSave_IsNotCountedInTheColoursApplied()
+    {
+        Seed seed;
+        Product siyah;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            siyah = AddCard(setup, seed, seed.Ravencia, "MZ950", "Siyah", "Kadın Siyah Etek", 0);
+            AddCard(setup, seed, seed.Ravencia, "MZ950", "Mavi", "Kadın Mavi Etek", 1);
+            await setup.SaveChangesAsync();
+        }
+        // The refresh's lock of the save's models (after ModelMirror reported) fails once.
+        var tap = new CommandTap(sql => sql.Contains("OR \"Id\" = ANY(", StringComparison.Ordinal) && sql.Contains("FOR UPDATE", StringComparison.Ordinal),
+            () => new Npgsql.PostgresException("deadlock detected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.DeadlockDetected)) { Fail = true };
+        await using var db = ContextWith(tap);
+        var result = await Service(db).BulkSetFieldAsync(seed.Tenant.Id, new BulkProductFieldCommand([siyah.Id], BulkProductFields.VatRate, "20"), CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.True(tap.Count > 0);
+        Assert.Single(result.Value!.Failures);
+        Assert.Equal(0, result.Value.ModelColours);
+        Assert.Equal(10m, (await ModelOfAsync(db, siyah.Id)).VatRate);
+    }
 }
