@@ -19,7 +19,8 @@ import { canSaveAsDraft, isDraftStatus } from '../product-draft'
 import { familyItemsShownInStrip } from '../family-media-clear'
 import { variantCodeKey } from '../product-editor-state'
 import { isProductUpdateConnection, productUpdateCapabilities } from '../platform-update-targets'
-import { familyUpdatePlan, familyUpdateReach } from './family-update-plan'
+import { familyUpdatePlan, familyUpdatePlanWithLinks, familyUpdateReach } from './family-update-plan'
+import { skuKey } from './submit-media-step'
 import { readVariantMediaAssignmentDraft, variantMediaAssignmentKey } from '../variant-media-assignments'
 import { useModelCodeHolder } from '../model-code-holder'
 import { sortOptionValues } from './OptionValueChips'
@@ -114,8 +115,11 @@ export function useEditorView(c: EditorProps & EditorStateResult & EditorMediaPo
     ? (connection: MarketplaceConnection) => familyUpdateReach(familyUpdatePlan({ openedProductId: updateFamilyProduct.id, familyProductIds: updateFamilyProduct.familyProductIds, variants: updateFamilyProduct.variants, connectionId: connection.id, platformCode: connection.platformCode }))
     : undefined
   // The cards of the family the summary above Gönder compares on a store: the ones the update reaches there.
+  // Same function and the same link rows as Gönder (editor-marketplace-sends.ts): the editor's rows with the latest links
+  // of the loaded product laid over them; Gönder adds the saved product's links, which only a save can give.
+  const previewLinkRowsBySku = updateFamilyProduct ? new Map(withLatestVariantLinks(variantRows, updateFamilyProduct.variants).map(row => [skuKey(row.sku), row])) : undefined
   const platformUpdatePreviewCards = updateFamilyProduct
-    ? (connection: MarketplaceConnection) => familyUpdatePlan({ openedProductId: updateFamilyProduct.id, familyProductIds: updateFamilyProduct.familyProductIds, variants: updateFamilyProduct.variants, connectionId: connection.id, platformCode: connection.platformCode }).send.map(card => card.productId)
+    ? (connection: MarketplaceConnection) => familyUpdatePlanWithLinks({ openedProductId: updateFamilyProduct.id, familyProductIds: updateFamilyProduct.familyProductIds, variants: updateFamilyProduct.variants, linkRowsBySku: previewLinkRowsBySku, connectionId: connection.id, platformCode: connection.platformCode }).send.map(card => card.productId)
     : undefined
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
   const stripProduct = productAtSave ?? productToEdit.data

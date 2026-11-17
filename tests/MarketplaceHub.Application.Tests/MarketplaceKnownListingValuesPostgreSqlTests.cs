@@ -160,4 +160,145 @@ public sealed class MarketplaceKnownListingValuesPostgreSqlTests(PostgreSqlTenan
         Assert.Equal((ProductUpdateFields.Desi, ProductUpdatePreviewStates.Changes, 2), (field.Field, field.State, field.Changed));
         Assert.Empty(connection.UnknownFields);
     }
+
+    private static async Task<int> RowsAsync(AppDbContext db, Guid connectionId) => await db.MarketplaceKnownListingValues.CountAsync(x => x.ConnectionId == connectionId);
+
+    private async Task WriteBothStoresAsync(AppDbContext db, Seed seed)
+    {
+        foreach (var connection in new[] { seed.Trendyol, seed.Hepsiburada })
+        {
+            // The seed links its variants on Hepsiburada already (hbSku); the others are linked here.
+            var linked = await db.MarketplaceVariantLinks.Where(x => x.ConnectionId == connection.Id).Select(x => x.VariantId).ToListAsync();
+            await LinkAsync(db, seed, connection, seed.Variants.Where(x => !linked.Contains(x.Id)));
+            await MarketplaceKnownListingValueStore.RecordAcceptedAsync(db, seed.Data.Tenant.Id, connection.Id, [.. seed.Variants.Select(x => new MarketplaceKnownListingValueStore.Write(x.Id, Title: "Bluz"))], seed.Data.Now, CancellationToken.None);
+        }
+        Assert.Equal((seed.Variants.Count, seed.Variants.Count), (await RowsAsync(db, seed.Trendyol.Id), await RowsAsync(db, seed.Hepsiburada.Id)));
+    }
+
+    // Independent review K1: a field sent empty keeps the send's date, so a read older than the send cannot put the old
+    // value back; a later read can.
+    [PostgreSqlFact]
+    public async Task AFieldSentEmptyKeepsItsDate_SoAnOlderReadCannotPutTheOldValueBack()
+    {
+        var seed = await SeedAsync();
+        var tenant = seed.Data.Tenant.Id;
+        await using var db = fixture.CreateContext();
+        var variant = seed.Variants[0];
+        await LinkAsync(db, seed, seed.Trendyol, [variant]);
+        var reader = new MarketplaceKnownListingValuesReader(db);
+        var sentAt = Pg(seed.Data.Now);
+        await MarketplaceKnownListingValueStore.RecordImportAsync(db, tenant, seed.Trendyol.Id, "TRENDYOL", [Content("Eski", null, [(variant.Barcode!, null)])], sentAt.AddHours(-2), CancellationToken.None);
+        await MarketplaceKnownListingValueStore.RecordAcceptedAsync(db, tenant, seed.Trendyol.Id, [new(variant.Id, ClearTitle: true)], sentAt, CancellationToken.None);
+        Assert.Null((await reader.ReadAsync(tenant, seed.Trendyol.Id, [variant.Id], CancellationToken.None))[variant.Id].Title);
+        // A read taken between the two, processed late.
+        await MarketplaceKnownListingValueStore.RecordImportAsync(db, tenant, seed.Trendyol.Id, "TRENDYOL", [Content("Eski", null, [(variant.Barcode!, null)])], sentAt.AddHours(-1), CancellationToken.None);
+        Assert.Null((await reader.ReadAsync(tenant, seed.Trendyol.Id, [variant.Id], CancellationToken.None))[variant.Id].Title);
+        await MarketplaceKnownListingValueStore.RecordImportAsync(db, tenant, seed.Trendyol.Id, "TRENDYOL", [Content("Yeni Okunan", null, [(variant.Barcode!, null)])], sentAt.AddHours(1), CancellationToken.None);
+        Assert.Equal("Yeni Okunan", (await reader.ReadAsync(tenant, seed.Trendyol.Id, [variant.Id], CancellationToken.None))[variant.Id].Title!.Value);
+    }
+
+    // Migration review / independent review :231: a variant deleted while its values are written is skipped, not an FK
+    // error that would fail the import or update step (the write locks the variant FOR KEY SHARE and waits for the delete).
+    [PostgreSqlFact]
+    public async Task AWriteRacingAVariantDeleteSkipsTheVariantWithoutAnError()
+    {
+        var seed = await SeedAsync();
+        var tenant = seed.Data.Tenant.Id;
+        var bare = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant, ProductId = seed.Data.Cards[0].Id, Sku = "MZ300-RACE", SkuNormalized = "MZ300-RACE", OptionSignature = "Beden: XL", SortOrder = 9, CreatedAt = seed.Data.Now, UpdatedAt = seed.Data.Now };
+        await using (var add = fixture.CreateContext())
+        {
+            add.ProductVariants.Add(bare);
+            await add.SaveChangesAsync();
+        }
+        await using var deleter = fixture.CreateContext();
+        await using var transaction = await deleter.Database.BeginTransactionAsync();
+        Assert.Equal(1, await deleter.ProductVariants.Where(x => x.Id == bare.Id).ExecuteDeleteAsync());
+        await using var writer = fixture.CreateContext();
+        var write = MarketplaceKnownListingValueStore.RecordAcceptedAsync(writer, tenant, seed.Trendyol.Id, [new(bare.Id, Title: "Bluz")], seed.Data.Now, CancellationToken.None);
+        await Task.Delay(500);
+        Assert.False(write.IsCompleted);
+        await transaction.CommitAsync();
+        await write;
+        Assert.False(await writer.MarketplaceKnownListingValues.AnyAsync(x => x.VariantId == bare.Id));
+    }
+
+    // Independent review: every delete path takes the rows. The connection sweep (ConnectionLeftovers) and Bağlantıyı Sil
+    // (its product purge and its connection artifacts) remove the deleted store's rows and leave the other store's.
+    [PostgreSqlFact]
+    public async Task TheConnectionSweepRemovesADeletedStoresRows_AndKeepsTheOthers()
+    {
+        var seed = await SeedAsync();
+        await using var db = fixture.CreateContext();
+        await WriteBothStoresAsync(db, seed);
+        await db.PlatformConnections.Where(x => x.Id == seed.Hepsiburada.Id).ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, ConnectionLeftovers.DeletedStatus));
+        await ConnectionLeftovers.PurgeAsync(db, seed.Data.Tenant.Id, seed.Hepsiburada.Id, seed.Data.Now, CancellationToken.None);
+        Assert.Equal((seed.Variants.Count, 0), (await RowsAsync(db, seed.Trendyol.Id), await RowsAsync(db, seed.Hepsiburada.Id)));
+    }
+
+    [PostgreSqlFact]
+    public async Task DeletingAConnectionRemovesItsRows_AndItsPurgedProductsRowsEverywhere()
+    {
+        var seed = await SeedAsync();
+        await using var db = fixture.CreateContext();
+        await WriteBothStoresAsync(db, seed);
+        // Gri is Hepsiburada's alone: Bağlantıyı Sil purges it, its variants and with them its Trendyol rows (cascade).
+        var grey = seed.Data.Cards[2].Id;
+        db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Data.Tenant.Id, ConnectionId = seed.Hepsiburada.Id, ProductId = grey, ExternalId = "hb-grey", Version = 1 });
+        await db.SaveChangesAsync();
+        var hepsiburada = await db.PlatformConnections.AsNoTracking().SingleAsync(x => x.Id == seed.Hepsiburada.Id);
+        var result = await new OperationalDataMaintenanceService(db, fixture.TimeProvider, new NoDashboard(), Microsoft.Extensions.Logging.Abstractions.NullLogger<OperationalDataMaintenanceService>.Instance)
+            .DeleteConnectionAsync(seed.Data.Tenant.Id, Guid.CreateVersion7(), hepsiburada.Id, hepsiburada.Version, new DeleteConnectionCommand(hepsiburada.DisplayName), "corr", CancellationToken.None);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        await using var check = fixture.CreateContext();
+        Assert.Equal(0, await RowsAsync(check, seed.Hepsiburada.Id));
+        Assert.False(await check.ProductVariants.AnyAsync(x => x.ProductId == grey));
+        Assert.Equal(seed.Variants.Count(x => x.ProductId != grey), await RowsAsync(check, seed.Trendyol.Id));
+    }
+
+    // A card no longer on the marketplace (ResetMissingPublication): its links on the store go and its known values too.
+    [PostgreSqlFact]
+    public async Task UnlinkingAMissingListingTakesItsKnownValues()
+    {
+        var seed = await SeedAsync();
+        await using var db = fixture.CreateContext();
+        await WriteBothStoresAsync(db, seed);
+        var black = seed.Variants.Where(x => x.ProductId == seed.Data.Cards[0].Id).Select(x => x.Id).ToArray();
+        await ProductJobService.UnlinkMissingListingAsync(db, seed.Data.Tenant.Id, seed.Trendyol.Id, seed.Data.Cards[0].Id, black, CancellationToken.None);
+        await db.SaveChangesAsync();
+        Assert.Equal(seed.Variants.Count - black.Length, await RowsAsync(db, seed.Trendyol.Id));
+        Assert.False(await db.MarketplaceKnownListingValues.AnyAsync(x => x.ConnectionId == seed.Trendyol.Id && black.Contains(x.VariantId)));
+        Assert.Equal(seed.Variants.Count, await RowsAsync(db, seed.Hepsiburada.Id));
+    }
+
+    // Independent review K2: an accepted-values write that meets a lock conflict or a vanished variant is dropped and the
+    // update job goes on; inside a transaction the job's own writes stay usable.
+    [PostgreSqlFact]
+    public async Task ADroppedAcceptedWriteLeavesTheJobsTransactionUsable()
+    {
+        var seed = await SeedAsync();
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        // Another transaction holds the variant; the write gives up on the lock (55P03), as it would on a deadlock (40P01).
+        await db.Database.ExecuteSqlRawAsync("""SET LOCAL lock_timeout = '50ms'""");
+        await using (var holder = fixture.CreateContext())
+        {
+            await using var hold = await holder.Database.BeginTransactionAsync();
+            await holder.Database.ExecuteSqlRawAsync("""SELECT 1 FROM catalog.product_variants WHERE "Id" = {0} FOR UPDATE""", seed.Variants[0].Id);
+            var written = await MarketplaceKnownListingValueStore.TryRecordAcceptedAsync(db, seed.Data.Tenant.Id, seed.Trendyol.Id, [new(seed.Variants[0].Id, Title: "Bluz")], seed.Data.Now, CancellationToken.None);
+            Assert.False(written);
+            await hold.RollbackAsync();
+        }
+        Assert.Equal(1, await db.Database.SqlQueryRaw<int>("SELECT 1 AS \"Value\"").SingleAsync());
+        Assert.True(await MarketplaceKnownListingValueStore.TryRecordAcceptedAsync(db, seed.Data.Tenant.Id, seed.Trendyol.Id, [new(seed.Variants[0].Id, Title: "Bluz")], seed.Data.Now, CancellationToken.None));
+        await transaction.CommitAsync();
+        Assert.Equal(1, await RowsAsync(db, seed.Trendyol.Id));
+    }
+
+    private sealed class NoDashboard : IDashboardReadService
+    {
+        public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardCancellationsView>> CancellationsAsync(Guid tenantId, DateOnly? day, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 }

@@ -79,8 +79,64 @@ public sealed class MarketplaceKnownListingValuesTests
     {
         const string request = """{"merchantId":"m","items":[{"hbSku":"HB1","merchantSku":"MZ1-M","productName":"Yeni","productDescription":null,"desi":"2"},{"hbSku":"HB2","merchantSku":"MZ1-L","productName":"Yeni"}]}""";
         var writes = MarketplaceKnownListingValueStore.Accepted("HEPSIBURADA", "CONTENT", request,
-            [new RemoteOperationLine("MZ1-M", true, "HB1", null, false), new RemoteOperationLine("MZ1-L", false, "HB2", "REJECTED", false)], Listings);
+            [new RemoteOperationLine("MZ1-M", true, "HB1", null, false, "SUCCESS", ApprovedFields: ["NAME", "DESCRIPTION", "DESI"]), new RemoteOperationLine("MZ1-L", false, "HB2", "REJECTED", false)], Listings);
         var write = Assert.Single(writes);
         Assert.Equal((First, "Yeni", 2m, true, false), (write.VariantId, write.Title, write.Desi, write.ClearDescription, write.ClearTitle));
+    }
+
+    // Independent review :158: a content request writes only when no line of the answer is refused, whosever it is.
+    [Fact]
+    public void ATrendyolContentRequestWritesNothingWhenAnyLineOfTheAnswerIsRefused()
+    {
+        const string request = """{"items":[{"contentId":11,"title":"Yeni"}]}""";
+        Assert.Single(MarketplaceKnownListingValueStore.Accepted("TRENDYOL", "CONTENT", request, [new RemoteOperationLine("11", true, null, null, false)], Listings), x => x.VariantId == First);
+        Assert.Empty(MarketplaceKnownListingValueStore.Accepted("TRENDYOL", "CONTENT", request,
+            [new RemoteOperationLine("11", true, null, null, false), new RemoteOperationLine("99", false, null, "BAD", false)], Listings));
+    }
+
+    // Independent review E1a: a Hepsiburada line still in review (WAITING_APPROVAL, IN_REVIEW …) counts as accepted for
+    // the job but writes nothing; only the fields its line approves one by one are written.
+    [Fact]
+    public void AHepsiburadaLineWritesOnlyTheFieldsItApproves()
+    {
+        const string request = """{"merchantId":"m","items":[{"hbSku":"HB1","merchantSku":"MZ1-M","productName":"Yeni","productDescription":"Uzun","desi":"2"}]}""";
+        Assert.Empty(MarketplaceKnownListingValueStore.Accepted("HEPSIBURADA", "CONTENT", request, [new RemoteOperationLine("MZ1-M", true, "HB1", null, false, "WAITING_APPROVAL")], Listings));
+        Assert.Empty(MarketplaceKnownListingValueStore.Accepted("HEPSIBURADA", "CONTENT", request, [new RemoteOperationLine("MZ1-M", true, "HB1", null, false, "IN_REVIEW", ApprovedFields: [])], Listings));
+        var write = Assert.Single(MarketplaceKnownListingValueStore.Accepted("HEPSIBURADA", "CONTENT", request, [new RemoteOperationLine("MZ1-M", true, "HB1", null, false, "SUCCESS", ApprovedFields: ["NAME", "DESI"])], Listings));
+        Assert.Equal(("Yeni", (string?)null, 2m, false), (write.Title, write.Description, write.Desi, write.ClearDescription));
+        // Only the description approved: the title and desi that went with it stay as they were known.
+        var description = Assert.Single(MarketplaceKnownListingValueStore.Accepted("HEPSIBURADA", "CONTENT", request, [new RemoteOperationLine("MZ1-M", true, "HB1", null, false, "SUCCESS", ApprovedFields: ["DESCRIPTION"])], Listings));
+        Assert.Equal(((string?)null, "Uzun", (decimal?)null), (description.Title, description.Description, description.Desi));
+        // A refused line writes nothing even if it names an approved field.
+        Assert.Empty(MarketplaceKnownListingValueStore.Accepted("HEPSIBURADA", "CONTENT", request, [new RemoteOperationLine("MZ1-M", false, "HB1", "REJECTED", false, "REJECTED", ApprovedFields: ["NAME"])], Listings));
+    }
+
+    // The status answer's updateResults (offline doc IntegratorUpdateResultsDto) give the approved fields; the line's
+    // own Succeeded stays what it was for the job.
+    [Fact]
+    public void TheHepsiburadaStatusMapperReadsTheApprovedFields()
+    {
+        using var document = System.Text.Json.JsonDocument.Parse("""
+            {"data":[
+              {"merchantSku":"MZ1-M","productStatus":"WAITING_APPROVAL","importStatus":"DONE","updateResults":[{"fieldName":"NAME","fieldResult":"APPROVED"},{"fieldName":"DESCRIPTION","fieldResult":"IN_PROGRESS"},{"fieldName":"DESI","fieldResult":"REJECTED"}]},
+              {"merchantSku":"MZ1-L","productStatus":"WAITING_APPROVAL","importStatus":"DONE"}
+            ]}
+            """);
+        var status = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.ProductImportStatus(document.RootElement, "t1");
+        var medium = status.Lines.Single(x => x.ExternalKey == "MZ1-M");
+        Assert.True(medium.Succeeded);
+        Assert.Equal(["NAME"], medium.ApprovedFields);
+        Assert.Null(status.Lines.Single(x => x.ExternalKey == "MZ1-L").ApprovedFields);
+    }
+
+    // Independent review :92: a variant two read listings point at gets neither's values.
+    [Fact]
+    public void AVariantTwoReadListingsLinkIsLeftUnknown()
+    {
+        var shared = Guid.NewGuid();
+        var own = Guid.NewGuid();
+        var read = new Dictionary<string, (string? Title, string? Description, decimal? Desi)> { ["A"] = ("A", null, null), ["B"] = ("B", null, null), ["C"] = ("C", null, null) };
+        var writes = MarketplaceKnownListingValueStore.ImportWrites(read, [("A", shared), ("B", shared), ("C", own), ("D", Guid.NewGuid())]);
+        Assert.Equal(("C", own), (Assert.Single(writes).Title, writes[0].VariantId));
     }
 }

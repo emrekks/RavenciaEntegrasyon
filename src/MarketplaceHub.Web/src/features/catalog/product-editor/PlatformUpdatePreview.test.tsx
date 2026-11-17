@@ -34,9 +34,9 @@ const trendyol: ProductUpdatePreviewConnection = {
   models: [{
     label: 'MZ300',
     fields: [
-      { field: 'TITLE', unit: 'COLOR', state: 'CHANGES', changed: 2, same: 0, unknown: 1, changes: [{ label: 'Siyah', before: 'Kadın Siyah Eski Bluz', after: 'Kadın Siyah Triko Bluz' }, { label: 'Bordo', before: 'Eski', after: 'Yeni' }] },
-      { field: 'DESCRIPTION', unit: 'COLOR', state: 'CHANGES', changed: 1, same: 2, unknown: 0, changes: [{ label: 'Siyah', before: 'eski metin…', after: 'yeni metin…', beforeLength: 812, afterLength: 640 }] },
-      { field: 'DESI', unit: 'VARIANT', state: 'UNKNOWN', changed: 0, same: 2, unknown: 6, changes: [] }
+      { field: 'TITLE', unit: 'COLOR', state: 'CHANGES', changed: 2, same: 0, unknown: 1, sentSame: 0, changes: [{ label: 'Siyah', before: 'Kadın Siyah Eski Bluz', after: 'Kadın Siyah Triko Bluz' }, { label: 'Bordo', before: 'Eski', after: 'Yeni' }] },
+      { field: 'DESCRIPTION', unit: 'COLOR', state: 'CHANGES', changed: 1, same: 2, unknown: 0, sentSame: 0, changes: [{ label: 'Siyah', before: 'eski metin…', after: 'yeni metin…', beforeLength: 812, afterLength: 640 }] },
+      { field: 'DESI', unit: 'VARIANT', state: 'UNKNOWN', changed: 0, same: 2, unknown: 6, sentSame: 0, changes: [] }
     ]
   }],
   unknownFields: ['IMAGES', 'VAT_RATE'],
@@ -45,7 +45,7 @@ const trendyol: ProductUpdatePreviewConnection = {
   knownValuesSentAt: '2026-11-17T22:30:00Z'
 }
 
-const sameStore: ProductUpdatePreviewConnection = { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada Mağaza', models: [{ label: 'MZ300', fields: [{ field: 'TITLE', unit: 'COLOR', state: 'SAME', changed: 0, same: 3, unknown: 0, changes: [] }] }], unknownFields: [], problems: [], knownValuesReadAt: null }
+const sameStore: ProductUpdatePreviewConnection = { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada Mağaza', models: [{ label: 'MZ300', fields: [{ field: 'TITLE', unit: 'COLOR', state: 'SAME', changed: 0, same: 3, unknown: 0, sentSame: 0, changes: [] }] }], unknownFields: [], problems: [], knownValuesReadAt: null }
 
 const everywhere = (productIds: string[]): PreviewTarget[] => [{ connectionId: 'ty', productIds }, { connectionId: 'hb', productIds }]
 
@@ -74,6 +74,20 @@ describe('platform update preview', () => {
     // Where the compared values come from, in Istanbul dates; a store that knew none says nothing.
     expect(store.known).toBe('Pazaryerinde Okunan · 17.11.2026 · Son Gönderilen · 18.11.2026')
     expect(same.known).toBe('')
+  })
+
+  // Review finding E1b: a value equal only to what the panel last sent is never told as "the same as the marketplace".
+  it('keeps a value equal to the last send apart from one read on the marketplace', () => {
+    const sent: ProductUpdatePreviewConnection = { ...sameStore, models: [{ label: 'MZ300', fields: [
+      { field: 'TITLE', unit: 'COLOR', state: 'SENT_SAME', changed: 0, same: 1, unknown: 0, sentSame: 2, changes: [] },
+      { field: 'DESI', unit: 'VARIANT', state: 'CHANGES', changed: 1, same: 0, unknown: 0, sentSame: 3, changes: [] }
+    ] }], knownValuesSentAt: '2026-11-17T22:30:00Z' }
+    const [store] = previewStores([sent])
+    expect(store.rows.map(row => [row.state, row.text])).toEqual([
+      ['SENT_SAME', 'Son Gönderilenle Aynı · 18.11.2026 · Pazaryerinde Uygulandığı Bilinmiyor'],
+      ['CHANGES', '1 Beden Değişecek · 3 Beden Son Gönderilenle Aynı']
+    ])
+    expect(store.allSame).toBe(false)
   })
 
   it('asks the server with the product fields only and shows the changes, unknown fields and problems', async () => {

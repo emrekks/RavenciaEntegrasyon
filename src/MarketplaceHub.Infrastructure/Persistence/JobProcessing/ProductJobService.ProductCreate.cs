@@ -1081,22 +1081,27 @@ internal sealed partial class ProductJobService
             }
         }
 
-        var productLink = await db.MarketplaceProductLinks.SingleOrDefaultAsync(
-            x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == profile.ProductId,
-            cancellationToken);
-        if (productLink is not null) db.MarketplaceProductLinks.Remove(productLink);
-        var variantIds = listings.Select(x => x.VariantId).ToArray();
-        var variantLinks = await db.MarketplaceVariantLinks.Where(
-            x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId))
-            .ToListAsync(cancellationToken);
-        db.MarketplaceVariantLinks.RemoveRange(variantLinks);
-        // The listing's last known values go with its links (MarketplaceKnownListingValueStore).
-        db.MarketplaceKnownListingValues.RemoveRange(await db.MarketplaceKnownListingValues.Where(
-            x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken));
+        await UnlinkMissingListingAsync(db, tenantId, connectionId, profile.ProductId, [.. listings.Select(x => x.VariantId)], cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return JobExecutionResult.Success();
+    }
+
+    // The card is not on the marketplace any more: its product and variant links on the connection go, and with them the
+    // listing's last known values (MarketplaceKnownListingValueStore). Marked for removal; the caller saves.
+    internal static async Task UnlinkMissingListingAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid productId, Guid[] variantIds, CancellationToken cancellationToken)
+    {
+        var productLink = await db.MarketplaceProductLinks.SingleOrDefaultAsync(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId,
+            cancellationToken);
+        if (productLink is not null) db.MarketplaceProductLinks.Remove(productLink);
+        var variantLinks = await db.MarketplaceVariantLinks.Where(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId))
+            .ToListAsync(cancellationToken);
+        db.MarketplaceVariantLinks.RemoveRange(variantLinks);
+        db.MarketplaceKnownListingValues.RemoveRange(await db.MarketplaceKnownListingValues.Where(
+            x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken));
     }
 
     private async Task EnsureApprovalReconciliationJob(Guid tenantId, Guid connectionId, Guid productId, Guid profileId, string payloadHash, string correlationId, CancellationToken cancellationToken, string? externalOperationId = null, TimeSpan? firstCheckDelay = null)

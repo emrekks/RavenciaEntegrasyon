@@ -2879,6 +2879,7 @@ export type ProductUpdatePreviewField = {
   same: number
   unknown: number
   changes: ProductUpdatePreviewChange[]
+  sentSame: number
 }
 
 export type ProductUpdatePreviewModel = {

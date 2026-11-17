@@ -205,7 +205,7 @@ internal sealed partial class ProductJobService
     {
         var writes = MarketplaceKnownListingValueStore.Accepted(platformCode, TrendyolUpdateGroups.Part(phase), UpdatePayload(payload, phase), lines,
             [.. listings.Select(listing => new MarketplaceKnownListingValueStore.Listing(listing.VariantId, listing.ExternalBarcode, listing.ExternalSku))], payload.ContentNotFoundBarcodes);
-        if (writes.Count > 0) await MarketplaceKnownListingValueStore.RecordAcceptedAsync(db, tenantId, connectionId, writes, acceptedAt, cancellationToken);
+        if (writes.Count > 0) await MarketplaceKnownListingValueStore.TryRecordAcceptedAsync(db, tenantId, connectionId, writes, acceptedAt, cancellationToken);
     }
 
     private static string ProductUpdatePlatformName(bool isHepsiburada, bool isN11) => isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : "Trendyol";

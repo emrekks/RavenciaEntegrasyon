@@ -119,4 +119,64 @@ public sealed class ProductUpdatePreviewTests
         Assert.False(values.Carries(ProductUpdateFields.Description));
         Assert.False(values.Carries(ProductUpdateFields.Images));
     }
+
+    // Independent review K3: HTML tag names and zero-width characters are no change; the text's own case still is, and so
+    // is a word after "<" in plain text.
+    [Theory]
+    [InlineData("<P>Triko</P><BR>Uzun", "<p>Triko</p><br/>Uzun")]
+    [InlineData("<UL><LI>Pamuk</LI></UL>", "<ul><li>Pamuk</li></ul>")]
+    [InlineData("Triko\u200B Bluz", "Triko Bluz")]
+    [InlineData("\uFEFFTriko Bluz\u2060", "Triko Bluz")]
+    public void TagCaseAndZeroWidthCharactersAreNoChange(string marketplace, string panel) =>
+        Assert.True(MarketplaceTextComparison.SameText(System.Text.RegularExpressions.Regex.Unescape(marketplace), panel));
+
+    [Theory]
+    [InlineData("<p>TRIKO</p>", "<p>Triko</p>")]
+    [InlineData("Ölçü <Bluz>", "Ölçü <bluz>")]
+    [InlineData("Triko", "<p>Triko</p>")]
+    public void TextCaseAndPlainTextStayAChange(string marketplace, string panel) =>
+        Assert.False(MarketplaceTextComparison.SameText(marketplace, panel));
+
+    private static readonly ProductUpdatePreviewService.Card Black = new(Guid.NewGuid(), null, "Kadın Siyah Bluz", "MZ1");
+    private static ProductUpdatePreviewService.VariantRow Size(string sku, int order) => new(Guid.NewGuid(), Black.Id, sku, "MZ1", "Renk: Siyah | Beden: " + sku, order);
+
+    // Independent review :166: a desi the panel sends empty is not compared ("Değişecek" would claim a value that does
+    // not go); it is unknown.
+    [Fact]
+    public void AnEmptyPanelDesiIsUnknown_NotAChange()
+    {
+        var size = Size("M", 0);
+        var sent = new Dictionary<Guid, ProductUpdatePreviewService.SentValues> { [size.Id] = new(false, null, false, null, true, null) };
+        var known = new Dictionary<Guid, KnownListingValues> { [size.Id] = new(null, null, new(3m, "IMPORT", DateTimeOffset.UtcNow)) };
+        var field = Assert.Single(ProductUpdatePreviewService.Model([Black], [size], sent, known, [ProductUpdateFields.Desi], []).Fields);
+        Assert.Equal((ProductUpdatePreviewStates.Unknown, 0, 1), (field.State, field.Changed, field.Unknown));
+    }
+
+    // Independent review E1b: a value equal only to the last send is SENT_SAME (applied or not is unknown), never SAME;
+    // SAME is said only of a value read from the marketplace; a sent value that differs is still a change.
+    [Theory]
+    [InlineData("IMPORT", "Kadın Siyah Bluz", "SAME", 1, 0, 0)]
+    [InlineData("SENT", "Kadın Siyah Bluz", "SENT_SAME", 0, 1, 0)]
+    [InlineData("SENT", "Eski Bluz", "CHANGES", 0, 0, 1)]
+    public void AValueEqualOnlyToTheLastSendIsNotNoChange(string source, string known, string state, int same, int sentSame, int changed)
+    {
+        var small = Size("S", 0);
+        var medium = Size("M", 1);
+        var sent = new Dictionary<Guid, ProductUpdatePreviewService.SentValues>
+        {
+            [small.Id] = new(true, "Kadın Siyah Bluz", false, null, true, 2m),
+            [medium.Id] = new(true, "Kadın Siyah Bluz", false, null, true, 2m)
+        };
+        var at = DateTimeOffset.UtcNow;
+        var values = new Dictionary<Guid, KnownListingValues>
+        {
+            [small.Id] = new(new(known, source, at), null, new(2m, source, at)),
+            [medium.Id] = new(new(known, "IMPORT", at), null, new(2m, "IMPORT", at))
+        };
+        var fields = ProductUpdatePreviewService.Model([Black], [small, medium], sent, values, [ProductUpdateFields.Title, ProductUpdateFields.Desi], []).Fields;
+        var title = fields.Single(x => x.Field == ProductUpdateFields.Title);
+        Assert.Equal((state, same, sentSame, changed), (title.State, title.Same, title.SentSame, title.Changed));
+        var desi = fields.Single(x => x.Field == ProductUpdateFields.Desi);
+        Assert.Equal(source == "SENT" ? (ProductUpdatePreviewStates.SentSame, 1, 1) : (ProductUpdatePreviewStates.Same, 2, 0), (desi.State, desi.Same, desi.SentSame));
+    }
 }

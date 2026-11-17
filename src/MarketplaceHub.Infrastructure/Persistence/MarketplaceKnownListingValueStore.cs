@@ -1,6 +1,8 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -87,16 +89,22 @@ public static class MarketplaceKnownListingValueStore
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && externalIds.Contains(x.ExternalId))
             .Select(x => new { x.ExternalId, x.VariantId })
             .ToListAsync(cancellationToken);
-        var writes = links
+        var writes = ImportWrites(byExternalId, [.. links.Select(link => (link.ExternalId, link.VariantId))]);
+        if (writes.Count == 0) return;
+        await UpsertAsync(db, tenantId, connectionId, ImportSource, readAt(), writes, cancellationToken);
+    }
+
+    // The rows an import writes: one per variant that exactly one read listing links. A variant two listings point at (the
+    // unique link index forbids it on one connection today; a defence should that change) is left out, unknown, rather
+    // than given either listing's values.
+    internal static List<Write> ImportWrites(IReadOnlyDictionary<string, (string? Title, string? Description, decimal? Desi)> byExternalId, IReadOnlyList<(string ExternalId, Guid VariantId)> links) =>
+        [.. links
+            .Where(link => byExternalId.ContainsKey(link.ExternalId))
             .GroupBy(link => link.VariantId)
             .Where(group => group.Count() == 1)
             .Select(group => group.Single())
             .Select(link => byExternalId[link.ExternalId] is var value ? new Write(link.VariantId, value.Title, value.Description, value.Desi) : null)
-            .OfType<Write>()
-            .ToList();
-        if (writes.Count == 0) return;
-        await UpsertAsync(db, tenantId, connectionId, ImportSource, readAt(), writes, cancellationToken);
-    }
+            .OfType<Write>()];
 
     // Accepted send --------------------------------------------------------------------------------------------------------
 
@@ -132,12 +140,27 @@ public static class MarketplaceKnownListingValueStore
 
         if (platform == "HEPSIBURADA")
         {
+            // A Hepsiburada line counts as accepted for the job while the product is still in review (WAITING_APPROVAL,
+            // IN_REVIEW …): that is not the value being on Hepsiburada. Only a field its line approves one by one
+            // (updateResults fieldResult APPROVED: NAME, DESCRIPTION, DESI) is written; a pending or unclear line writes
+            // nothing (independent review E1, 18 Nov 2026).
+            var approved = answer.Where(line => !string.IsNullOrWhiteSpace(line.ExternalKey))
+                .GroupBy(line => line.ExternalKey.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() == 1 && group.Single().Succeeded && group.Single().ApprovedFields is { Count: > 0 })
+                .ToDictionary(group => group.Key, group => group.Single().ApprovedFields!.ToHashSet(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
             foreach (var item in items)
             {
                 var sku = Text(item, "merchantSku");
-                if (!Accepted(sku)) continue;
-                var listing = listings.Where(x => string.Equals(x.Sku?.Trim(), sku!.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
-                if (listing.Count == 1) Add(listing[0].VariantId, ReadItem(item));
+                if (string.IsNullOrWhiteSpace(sku) || !approved.TryGetValue(sku.Trim(), out var fields)) continue;
+                var listing = listings.Where(x => string.Equals(x.Sku?.Trim(), sku.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+                if (listing.Count != 1) continue;
+                var read = ReadItem(item);
+                Add(listing[0].VariantId, read with
+                {
+                    TitlePresent = read.TitlePresent && fields.Contains("NAME"),
+                    DescriptionPresent = read.DescriptionPresent && fields.Contains("DESCRIPTION"),
+                    DesiPresent = read.DesiPresent && fields.Contains("DESI")
+                });
             }
             return [.. writes.Values];
         }
@@ -171,6 +194,29 @@ public static class MarketplaceKnownListingValueStore
     public static Task RecordAcceptedAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Write> writes, DateTimeOffset acceptedAt, CancellationToken cancellationToken) =>
         UpsertAsync(db, tenantId, connectionId, SentSource, acceptedAt, writes, cancellationToken);
 
+    // From an update job's poll: the summary's values are a cache, so a write that meets a lock conflict (deadlock,
+    // serialization) or a variant deleted under it is logged and dropped, never failing the update job (independent review
+    // K2). Inside a transaction it runs under a savepoint, so the job's own writes stay usable. False when dropped.
+    public static async Task<bool> TryRecordAcceptedAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Write> writes, DateTimeOffset acceptedAt, CancellationToken cancellationToken)
+    {
+        var transaction = db.Database.CurrentTransaction;
+        const string savepoint = "known_listing_values";
+        if (transaction is not null) await transaction.CreateSavepointAsync(savepoint, cancellationToken);
+        try
+        {
+            await RecordAcceptedAsync(db, tenantId, connectionId, writes, acceptedAt, cancellationToken);
+            if (transaction is not null) await transaction.ReleaseSavepointAsync(savepoint, cancellationToken);
+            return true;
+        }
+        catch (PostgresException exception) when (exception.SqlState is PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.ForeignKeyViolation or PostgresErrorCodes.LockNotAvailable)
+        {
+            if (transaction is not null) await transaction.RollbackToSavepointAsync(savepoint, cancellationToken);
+            db.GetService<Microsoft.Extensions.Logging.ILoggerFactory>().CreateLogger(typeof(MarketplaceKnownListingValueStore).FullName!)
+                .LogWarning(exception, "Known listing values of {Count} variants on connection {ConnectionId} were not recorded ({SqlState}); the update job goes on", writes.Count, connectionId, exception.SqlState);
+            return false;
+        }
+    }
+
     // Writing ----------------------------------------------------------------------------------------------------------------
 
     // One upsert for the values and one update per cleared field; a variant gone since (deleted) is skipped.
@@ -197,22 +243,39 @@ public static class MarketplaceKnownListingValueStore
             var ids = cleared.Select(x => x.VariantId).ToArray();
             if (ids.Length == 0) continue;
             await db.Database.ExecuteSqlRawAsync(sql,
-                [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("connection", connectionId), new NpgsqlParameter("variants", ids), new NpgsqlParameter("at", at)],
+                [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("connection", connectionId), new NpgsqlParameter("source", source), new NpgsqlParameter("variants", ids), new NpgsqlParameter("at", at)],
                 cancellationToken);
         }
     }
 
+    // A field sent empty: its value goes but its date stays (the send), so a read older than the send cannot put the old
+    // value back (independent review K1). The reader treats a field without a value as not known.
     private const string ClearTitleSql = """
-        UPDATE catalog.marketplace_known_listing_values SET "Title" = NULL, "TitleSource" = NULL, "TitleReadAt" = NULL, "Version" = "Version" + 1
-        WHERE "TenantId" = @tenant AND "ConnectionId" = @connection AND "VariantId" = ANY(@variants) AND ("TitleReadAt" IS NULL OR "TitleReadAt" <= @at)
+        INSERT INTO catalog.marketplace_known_listing_values AS k ("Id", "TenantId", "ConnectionId", "VariantId", "TitleSource", "TitleReadAt", "Version")
+        SELECT gen_random_uuid(), @tenant, @connection, v."Id", @source, @at, 1
+        FROM unnest(@variants) AS r(variant)
+        JOIN catalog.product_variants v ON v."TenantId" = @tenant AND v."Id" = r.variant
+        FOR KEY SHARE OF v
+        ON CONFLICT ("TenantId", "ConnectionId", "VariantId") DO UPDATE SET "Title" = NULL, "TitleSource" = EXCLUDED."TitleSource", "TitleReadAt" = EXCLUDED."TitleReadAt", "Version" = k."Version" + 1
+        WHERE k."TitleReadAt" IS NULL OR k."TitleReadAt" <= EXCLUDED."TitleReadAt"
         """;
     private const string ClearDescriptionSql = """
-        UPDATE catalog.marketplace_known_listing_values SET "Description" = NULL, "DescriptionSource" = NULL, "DescriptionReadAt" = NULL, "Version" = "Version" + 1
-        WHERE "TenantId" = @tenant AND "ConnectionId" = @connection AND "VariantId" = ANY(@variants) AND ("DescriptionReadAt" IS NULL OR "DescriptionReadAt" <= @at)
+        INSERT INTO catalog.marketplace_known_listing_values AS k ("Id", "TenantId", "ConnectionId", "VariantId", "DescriptionSource", "DescriptionReadAt", "Version")
+        SELECT gen_random_uuid(), @tenant, @connection, v."Id", @source, @at, 1
+        FROM unnest(@variants) AS r(variant)
+        JOIN catalog.product_variants v ON v."TenantId" = @tenant AND v."Id" = r.variant
+        FOR KEY SHARE OF v
+        ON CONFLICT ("TenantId", "ConnectionId", "VariantId") DO UPDATE SET "Description" = NULL, "DescriptionSource" = EXCLUDED."DescriptionSource", "DescriptionReadAt" = EXCLUDED."DescriptionReadAt", "Version" = k."Version" + 1
+        WHERE k."DescriptionReadAt" IS NULL OR k."DescriptionReadAt" <= EXCLUDED."DescriptionReadAt"
         """;
     private const string ClearDesiSql = """
-        UPDATE catalog.marketplace_known_listing_values SET "Desi" = NULL, "DesiSource" = NULL, "DesiReadAt" = NULL, "Version" = "Version" + 1
-        WHERE "TenantId" = @tenant AND "ConnectionId" = @connection AND "VariantId" = ANY(@variants) AND ("DesiReadAt" IS NULL OR "DesiReadAt" <= @at)
+        INSERT INTO catalog.marketplace_known_listing_values AS k ("Id", "TenantId", "ConnectionId", "VariantId", "DesiSource", "DesiReadAt", "Version")
+        SELECT gen_random_uuid(), @tenant, @connection, v."Id", @source, @at, 1
+        FROM unnest(@variants) AS r(variant)
+        JOIN catalog.product_variants v ON v."TenantId" = @tenant AND v."Id" = r.variant
+        FOR KEY SHARE OF v
+        ON CONFLICT ("TenantId", "ConnectionId", "VariantId") DO UPDATE SET "Desi" = NULL, "DesiSource" = EXCLUDED."DesiSource", "DesiReadAt" = EXCLUDED."DesiReadAt", "Version" = k."Version" + 1
+        WHERE k."DesiReadAt" IS NULL OR k."DesiReadAt" <= EXCLUDED."DesiReadAt"
         """;
 
     // A field is replaced only when the new value is there and not older than the kept one. A variant deleted meanwhile is

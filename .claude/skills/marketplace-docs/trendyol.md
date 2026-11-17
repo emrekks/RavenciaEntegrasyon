@@ -470,3 +470,16 @@ packages only, no claim events.
   claim names no currency, refuses an unknown one, and builds no order without `orderDate` (the claim date is not the
   order date) or with a line whose price is unreadable (never priced 0); the claim then waits as RETURN_ORDER_NOT_FOUND
   until the order itself is read. Live 15 Nov 2026: 20 Trendyol orders still carry the RETURN_CLAIM mark.
+
+## Approved product update: what a batch SUCCESS says (18 Nov 2026)
+- `content-bulk-update` (Ürün Güncelleme - Onaylı Ürün v2, Content): partial update (only `contentId` required),
+  attributes all or none, a field sent as `null` is deleted, "slicer/varianter" attributes, barcode, productMainId,
+  brandId and categoryId cannot change; the result is read with `getBatchRequestResult` by `batchRequestId`.
+  Source: offline `trendyol-api-son.md` ~9106-9130.
+- The documentation says nothing of whether the changed content is reviewed before it shows on the storefront, and it
+  does not define a batch item `SUCCESS` as "applied on the storefront". Only product creation is said to enter the
+  approval process ("ürün onay sürecine girer", ~1304 / ~8426). The panel itself sets a listing to `APPROVAL_PENDING`
+  after an update (`ProductJobService.CompleteProductUpdate`) and polls approval.
+- So a value accepted by a batch `SUCCESS` is recorded only as "last sent" (`MarketplaceKnownListingValueStore`, Source
+  SENT) and the update summary never calls a panel value equal to it "no change" (state `SENT_SAME`, "Son Gönderilenle
+  Aynı · Pazaryerinde Uygulandığı Bilinmiyor"); only a value read back from the catalog (Source IMPORT) is.

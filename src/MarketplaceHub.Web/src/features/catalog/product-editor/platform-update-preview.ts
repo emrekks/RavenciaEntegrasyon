@@ -22,7 +22,12 @@ export const unsavedEditsNote = 'Kaydedilmemiş değişiklikler bu özette yok; 
 export type PreviewTarget = { connectionId: string; productIds: string[] }
 
 export type PreviewChangeLine = { model: string; label: string; before: string; after: string; lengths?: string }
-export type PreviewFieldRow = { field: string; label: string; state: 'CHANGES' | 'SAME' | 'UNKNOWN'; text: string; changes: PreviewChangeLine[] }
+export type PreviewFieldRow = { field: string; label: string; state: 'CHANGES' | 'SAME' | 'UNKNOWN' | 'SENT_SAME'; text: string; changes: PreviewChangeLine[] }
+
+// A value equal to what the panel last sent: whether the marketplace applied it is not known, so it is never told as
+// "no change" (independent review E1b, 18 Nov 2026).
+export const sameAsLastSent = 'Son Gönderilenle Aynı'
+export const appliedUnknown = 'Pazaryerinde Uygulandığı Bilinmiyor'
 export type PreviewStore = { connectionId: string; name: string; known: string; rows: PreviewFieldRow[]; unknownFields: string; allSame: boolean; nothing: boolean; problems: { label: string; message: string }[] }
 
 const format = (value: number) => value.toLocaleString('tr-TR')
@@ -30,17 +35,22 @@ const unitWord = (unit: string) => unit === 'VARIANT' ? 'Beden' : 'Renk'
 export const fieldName = (field: string) => platformUpdateFieldLabel(field as PlatformUpdateField)
 
 // One row per field across the store's models: how many colours / sizes change, then how many are not known.
-function fieldRow(field: string, entries: { model: string; value: ProductUpdatePreviewField }[]): PreviewFieldRow {
+function fieldRow(field: string, entries: { model: string; value: ProductUpdatePreviewField }[], sentAt?: string | null): PreviewFieldRow {
   const unit = unitWord(entries[0]?.value.unit ?? 'COLOR')
   const changed = entries.reduce((sum, entry) => sum + entry.value.changed, 0)
   const unknown = entries.reduce((sum, entry) => sum + entry.value.unknown, 0)
   const same = entries.reduce((sum, entry) => sum + entry.value.same, 0)
-  const state = changed > 0 ? 'CHANGES' : unknown > 0 ? 'UNKNOWN' : 'SAME'
+  const sentSame = entries.reduce((sum, entry) => sum + (entry.value.sentSame ?? 0), 0)
+  const state = changed > 0 ? 'CHANGES' : unknown > 0 ? 'UNKNOWN' : sentSame > 0 ? 'SENT_SAME' : 'SAME'
+  const sentPart = sentSame ? ` · ${format(sentSame)} ${unit} ${sameAsLastSent}` : ''
+  const sentDate = sentAt ? ` · ${formatDate(sentAt)}` : ''
   const text = state === 'CHANGES'
-    ? `${format(changed)} ${unit} Değişecek${unknown ? ` · ${format(unknown)} ${unit} Bilinmiyor` : ''}`
+    ? `${format(changed)} ${unit} Değişecek${unknown ? ` · ${format(unknown)} ${unit} Bilinmiyor` : ''}${sentPart}`
     : state === 'UNKNOWN'
-      ? `${unknownMarketplaceValue} · ${format(unknown + same)} ${unit}`
-      : sameAsMarketplace
+      ? `${unknownMarketplaceValue} · ${format(unknown + same + sentSame)} ${unit}`
+      : state === 'SENT_SAME'
+        ? `${sameAsLastSent}${sentDate} · ${appliedUnknown}`
+        : sameAsMarketplace
   const changes = entries.flatMap(entry => entry.value.changes.map(change => ({
     model: entry.model,
     label: change.label,
@@ -68,7 +78,7 @@ export function previewProductCount(targets: readonly PreviewTarget[]) {
 export function previewStores(connections: ProductUpdatePreviewConnection[]): PreviewStore[] {
   return connections.map(connection => {
     const fields = [...new Set(connection.models.flatMap(model => model.fields.map(field => field.field)))]
-    const rows = fields.map(field => fieldRow(field, connection.models.flatMap(model => model.fields.filter(item => item.field === field).map(value => ({ model: model.label, value })))))
+    const rows = fields.map(field => fieldRow(field, connection.models.flatMap(model => model.fields.filter(item => item.field === field).map(value => ({ model: model.label, value }))), connection.knownValuesSentAt))
     const unknownFields = connection.unknownFields.map(fieldName).join(', ')
     return {
       connectionId: connection.connectionId,

@@ -36015,7 +36015,8 @@
           "changed",
           "same",
           "unknown",
-          "changes"
+          "changes",
+          "sentSame"
         ],
         "type": "object",
         "properties": {
@@ -36045,6 +36046,11 @@
             "items": {
               "$ref": "#/components/schemas/ProductUpdatePreviewChange"
             }
+          },
+          "sentSame": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },

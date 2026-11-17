@@ -29,9 +29,12 @@ public sealed record ProductUpdatePreviewConnection(Guid ConnectionId, string Pl
 public sealed record ProductUpdatePreviewModel(string Label, IReadOnlyList<ProductUpdatePreviewField> Fields);
 
 // Field: TITLE, DESCRIPTION or DESI. Unit: COLOR (a colour card) or VARIANT (a size). State: CHANGES when at least one
-// unit differs, UNKNOWN when none differs but at least one has no known marketplace value, SAME when every unit is known
-// and equal. Changes: the differing units, marketplace value → panel value.
-public sealed record ProductUpdatePreviewField(string Field, string Unit, string State, int Changed, int Same, int Unknown, IReadOnlyList<ProductUpdatePreviewChange> Changes);
+// unit differs, UNKNOWN when none differs but at least one has no known marketplace value, SENT_SAME when none differs or
+// is unknown but at least one equals only a value the panel last sent (whether the marketplace applied it is not known,
+// so it is never told as "no change"), SAME when every unit equals a value read from the marketplace. Changes: the
+// differing units, known value → panel value. Same counts only values read from the marketplace; SentSame the units equal
+// to the last sent value (independent review E1b, 18 Nov 2026: a wrong "no change" is worse than "unknown").
+public sealed record ProductUpdatePreviewField(string Field, string Unit, string State, int Changed, int Same, int Unknown, IReadOnlyList<ProductUpdatePreviewChange> Changes, int SentSame = 0);
 
 // Before/After: the whole title, the desi as a number, or for a description the 80 characters from the first difference.
 // BeforeLength/AfterLength: a description's lengths in characters (after normalisation); null for other fields.
@@ -44,6 +47,7 @@ public static class ProductUpdatePreviewStates
     public const string Changes = "CHANGES";
     public const string Same = "SAME";
     public const string Unknown = "UNKNOWN";
+    public const string SentSame = "SENT_SAME";
     public const string ColorUnit = "COLOR";
     public const string VariantUnit = "VARIANT";
 }
@@ -80,17 +84,20 @@ public interface IMarketplaceKnownListingValues
 
 // How a marketplace text is compared with the panel's (title, description), so a text the marketplace merely re-wrote is
 // not reported as a change:
-//  1. HTML entities decoded (&amp; &nbsp; &#39; … → their characters), Unicode NFC;
-//  2. every <br>, <br/>, <br /> written as <br>; tag names and attributes otherwise kept (a different tag is a change);
+//  1. HTML entities decoded (&amp; &nbsp; &#39; … → their characters), Unicode NFC, zero-width characters (U+200B-U+200D,
+//     U+2060, U+FEFF) dropped;
+//  2. HTML tag names in lower case (<P> = <p>); every <br>, <br/>, <br /> written as <br>; attributes kept (a different tag
+//     is a change);
 //  3. every whitespace run (spaces, tabs, line breaks, non-breaking spaces) becomes one space, and whitespace right
 //     next to a tag is dropped ("<p> a </p>" = "<p>a</p>");
-//  4. trimmed. Case and punctuation count.
+//  4. trimmed. The text's own case and punctuation count. Plain text against the same text wrapped in <p> is a change.
 public static partial class MarketplaceTextComparison
 {
     public static string Normalize(string? text)
     {
         if (string.IsNullOrEmpty(text)) return "";
-        var value = WebUtility.HtmlDecode(text).Normalize(NormalizationForm.FormC);
+        var value = ZeroWidth().Replace(WebUtility.HtmlDecode(text).Normalize(NormalizationForm.FormC), "");
+        value = TagName().Replace(value, match => "<" + match.Groups[1].Value + match.Groups[2].Value.ToLowerInvariant());
         value = LineBreakTag().Replace(value, "<br>");
         value = Whitespace().Replace(value, " ");
         value = SpaceBeforeTag().Replace(value, "<");
@@ -122,6 +129,13 @@ public static partial class MarketplaceTextComparison
         var part = text.Substring(start, Math.Min(length, text.Length - start));
         return (start > 0 ? "…" : "") + part + (start + length < text.Length ? "…" : "");
     }
+
+    [GeneratedRegex("[​‌‍⁠﻿]", RegexOptions.CultureInvariant)]
+    private static partial Regex ZeroWidth();
+
+    // HTML tag names only (a "<" before a word in plain text keeps its case): the tag must end at a space, "/" or ">".
+    [GeneratedRegex(@"<(/?)(p|br|b|i|u|s|em|strong|span|div|ul|ol|li|h[1-6]|table|thead|tbody|tr|td|th|a|img|hr|sub|sup|small|big|font|blockquote|center|pre|code)(?=[\s/>])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex TagName();
 
     [GeneratedRegex(@"<br\s*/?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex LineBreakTag();

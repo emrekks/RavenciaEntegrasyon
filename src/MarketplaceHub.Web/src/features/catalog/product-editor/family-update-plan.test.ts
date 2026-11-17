@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { productSaveFeedback } from '../product-publication-submit'
-import { familyUpdatePlan, familyUpdateReach, updatesFamilyFromOneCard } from './family-update-plan'
+import { familyUpdatePlan, familyUpdatePlanWithLinks, familyUpdateReach, updatesFamilyFromOneCard } from './family-update-plan'
 
 const TRENDYOL = 'conn-ty'
 const linked = { platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: TRENDYOL, isLinked: true, isMatched: true, isMissing: false }
@@ -102,5 +102,19 @@ describe('the update result of a model family', () => {
     const feedback = save([{ platformName: 'Hepsiburada', queued: { productInformation: false, priceInventory: false }, family: { cards: 2, queuedCards: 0, queuedVariants: 0, absent: ['Bej', 'Gri'], failures: new Map() } }])
     expect(feedback.title).toBe('Aktarım Başlatılamadı')
     expect(feedback.lines).toEqual(['Hepsiburada: 2 renk bu mağazada yok (Bej, Gri); bu renkler güncellenmedi. Önce Yayınla ile gönderilmeleri gerekir.'])
+  })
+})
+
+// Independent review K4: Gönder (editor-marketplace-sends.ts) and the summary above it (use-editor-view.ts) both plan by
+// familyUpdatePlanWithLinks: the latest link rows laid over the family's variants by stock code.
+describe('familyUpdatePlanWithLinks', () => {
+  it('takes a card the latest link rows put on the marketplace, as Gönder does, and leaves one they take off', () => {
+    const variants = [...card('p1', 'Bej', false), ...card('p2', 'Ekru', true)]
+    const linkRowsBySku = new Map<string, { platformStatuses: (typeof linked)[] }>()
+    for (const row of card('p1', 'Bej', true)) linkRowsBySku.set(row.sku.toLocaleUpperCase('tr-TR'), { platformStatuses: row.platformStatuses })
+    for (const row of card('p2', 'Ekru', false)) linkRowsBySku.set(row.sku.toLocaleUpperCase('tr-TR'), { platformStatuses: [{ ...linked, isLinked: false, isMatched: false }] })
+    const input = { openedProductId: 'p1', familyProductIds: ['p2'], variants, connectionId: TRENDYOL, platformCode: 'TRENDYOL' }
+    expect(familyUpdatePlanWithLinks({ ...input, linkRowsBySku }).send.map(item => item.productId)).toEqual(['p1'])
+    expect(familyUpdatePlanWithLinks(input).send.map(item => item.productId)).toEqual(familyUpdatePlan(input).send.map(item => item.productId))
   })
 })

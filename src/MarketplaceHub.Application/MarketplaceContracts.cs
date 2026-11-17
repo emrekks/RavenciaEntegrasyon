@@ -465,7 +465,12 @@ public sealed record RemoteReferenceItem(string ResourceType, string ExternalId,
 public sealed record ReferenceResource(string ResourceType, string? ParentExternalId);
 public sealed record RemoteOperationRef(string ExternalOperationId, string Kind, DateTimeOffset SubmittedAt);
 // Reasons: every failure reason the marketplace gave for the line, verbatim (ErrorCode keeps the first).
-public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null, IReadOnlyList<string>? Reasons = null);
+// ApprovedFields: the fields the marketplace says it approved on this line, field by field (Hepsiburada's product update
+// status: updateResults[].fieldName with fieldResult APPROVED; NAME, DESCRIPTION, DESI …). Null when the answer names
+// none. It is narrower than Succeeded (which also counts a line still in review as accepted for the job) and only the
+// known-values store reads it. Left out of JSON when null, so a serialised line (Pazarama's operation id) is unchanged.
+public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null, IReadOnlyList<string>? Reasons = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? ApprovedFields = null);
 // UnlistedLinesUnconfirmed: the answer lists refused lines alone (Hepsiburada) but failed as a whole, so a line it
 // leaves out was not shown to be applied. IssueCode/IssueSummary: the lines went through, but something the job must
 // show did not (Shopify: pictures that did not arrive). ReportedItemCount: how many items the marketplace says the

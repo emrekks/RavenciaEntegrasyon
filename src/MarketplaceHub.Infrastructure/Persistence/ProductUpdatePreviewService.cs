@@ -99,8 +99,8 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
         return ServiceResult<ProductUpdatePreviewView>.Ok(new(ProductUpdatePreviewPolicy.MaxProducts, result));
     }
 
-    private sealed record Card(Guid Id, Guid? FamilyId, string Title, string? ModelCode);
-    private sealed record VariantRow(Guid Id, Guid ProductId, string Sku, string? ModelCode, string OptionSignature, int SortOrder);
+    internal sealed record Card(Guid Id, Guid? FamilyId, string Title, string? ModelCode);
+    internal sealed record VariantRow(Guid Id, Guid ProductId, string Sku, string? ModelCode, string OptionSignature, int SortOrder);
 
     // What the payload carries for one variant: a field the item names is sent (Sent), with its value. A field sent with
     // no usable value (Hepsiburada's package writes a missing one as null) is sent all the same, and what the marketplace
@@ -148,7 +148,7 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
         return values;
     }
 
-    private static ProductUpdatePreviewModel Model(IReadOnlyList<Card> cards, IReadOnlyList<VariantRow> variants, IReadOnlyDictionary<Guid, SentValues> sent, IReadOnlyDictionary<Guid, KnownListingValues> known, IReadOnlyList<string> compared, List<(string Source, DateTimeOffset At)> used)
+    internal static ProductUpdatePreviewModel Model(IReadOnlyList<Card> cards, IReadOnlyList<VariantRow> variants, IReadOnlyDictionary<Guid, SentValues> sent, IReadOnlyDictionary<Guid, KnownListingValues> known, IReadOnlyList<string> compared, List<(string Source, DateTimeOffset At)> used)
     {
         var first = cards[0];
         var label = !string.IsNullOrWhiteSpace(first.ModelCode) ? first.ModelCode.Trim()
@@ -157,7 +157,7 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
         foreach (var field in compared)
         {
             var changes = new List<ProductUpdatePreviewChange>();
-            int changed = 0, same = 0, unknown = 0;
+            int changed = 0, same = 0, unknown = 0, sentSame = 0;
             if (field == ProductUpdateFields.Desi)
             {
                 foreach (var variant in variants.Where(x => cards.Any(card => card.Id == x.ProductId)).OrderBy(x => cards.ToList().FindIndex(card => card.Id == x.ProductId)).ThenBy(x => x.SortOrder))
@@ -165,11 +165,11 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                     if (!sent.TryGetValue(variant.Id, out var values) || !values.DesiSent) continue;
                     if (values.Desi is null || !known.TryGetValue(variant.Id, out var marketplace) || marketplace.Desi is not { } desi) { unknown++; continue; }
                     used.Add((desi.Source, desi.ReadAt));
-                    if (MarketplaceTextComparison.SameDesi(desi.Value, values.Desi)) { same++; continue; }
+                    if (MarketplaceTextComparison.SameDesi(desi.Value, values.Desi)) { if (desi.Source == MarketplaceKnownListingValueStore.SentSource) sentSame++; else same++; continue; }
                     changed++;
                     changes.Add(new(variant.Sku.Trim(), MarketplaceTextComparison.DesiText(desi.Value), MarketplaceTextComparison.DesiText(values.Desi)));
                 }
-                if (changed + same + unknown > 0) fields.Add(Field(field, ProductUpdatePreviewStates.VariantUnit, changed, same, unknown, changes));
+                if (changed + same + unknown + sentSame > 0) fields.Add(Field(field, ProductUpdatePreviewStates.VariantUnit, changed, same, unknown, sentSame, changes));
                 continue;
             }
             // A title or description is the colour card's: the card changes when one of its variants' request carries a
@@ -181,6 +181,7 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                 if (cardVariants.Count == 0) continue;
                 (string Before, string After)? difference = null;
                 var anyUnknown = false;
+                var anySent = false;
                 foreach (var variant in cardVariants)
                 {
                     var panel = field == ProductUpdateFields.Title ? sent[variant.Id].Title : sent[variant.Id].Description;
@@ -188,6 +189,7 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                     if (panel is null || marketplace is null) { anyUnknown = true; continue; }
                     used.Add((marketplace.Source, marketplace.ReadAt));
                     if (!MarketplaceTextComparison.SameText(marketplace.Value, panel)) { difference = (marketplace.Value, panel); break; }
+                    anySent |= marketplace.Source == MarketplaceKnownListingValueStore.SentSource;
                 }
                 var colour = ColourLabel(card, cardVariants);
                 if (difference is { } pair)
@@ -202,15 +204,16 @@ public sealed class ProductUpdatePreviewService(AppDbContext db, IConfiguration 
                     }
                 }
                 else if (anyUnknown) unknown++;
+                else if (anySent) sentSame++;
                 else same++;
             }
-            if (changed + same + unknown > 0) fields.Add(Field(field, ProductUpdatePreviewStates.ColorUnit, changed, same, unknown, changes));
+            if (changed + same + unknown + sentSame > 0) fields.Add(Field(field, ProductUpdatePreviewStates.ColorUnit, changed, same, unknown, sentSame, changes));
         }
         return new(label, fields);
     }
 
-    private static ProductUpdatePreviewField Field(string field, string unit, int changed, int same, int unknown, IReadOnlyList<ProductUpdatePreviewChange> changes) =>
-        new(field, unit, changed > 0 ? ProductUpdatePreviewStates.Changes : unknown > 0 ? ProductUpdatePreviewStates.Unknown : ProductUpdatePreviewStates.Same, changed, same, unknown, changes);
+    private static ProductUpdatePreviewField Field(string field, string unit, int changed, int same, int unknown, int sentSame, IReadOnlyList<ProductUpdatePreviewChange> changes) =>
+        new(field, unit, changed > 0 ? ProductUpdatePreviewStates.Changes : unknown > 0 ? ProductUpdatePreviewStates.Unknown : sentSame > 0 ? ProductUpdatePreviewStates.SentSame : ProductUpdatePreviewStates.Same, changed, same, unknown, changes, sentSame);
 
     // The colour word of a card ("Renk: Siyah | Beden: M" → Siyah); its title when the variants name no colour.
     private static string ColourLabel(Card card, IReadOnlyList<VariantRow> variants)
