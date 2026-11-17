@@ -5,10 +5,9 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// The brand the products file writes is the model's: it goes to the colour cards of the model that had the row's own
-// brand. A card under the same model code with another brand (an ambiguous model-code group, which only a release before
-// KATALOG-14 phase D5b could leave: no save puts a card of another brand under a code) is only warned about (owner, 15 Nov
-// 2026): no other card's row re-brands it; its own row in the file brings it into the model when it names the model's brand.
+// A model is its brand and its code (owner, 17 Nov 2026: "farklı markalar aynı model kodunu kullanabiliyor"): the same code
+// under another brand is that brand's own model, nothing warned about. The brand the products file writes moves the row's
+// model with every colour to that brand; it is refused when that brand already has a model of the code (no merge).
 [Collection("postgres-integration")]
 public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -74,7 +73,8 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
-        Assert.Equal(IssueStatus.Open, await AmbiguityAsync(db, seed));
+        Assert.Null(await AmbiguityAsync(db, seed));
+        var modelBefore = (await CardsAsync(db, seed))[seed.A1.Id].FamilyId;
 
         await ApplyAsync(db, seed, new ProductTransferProductChange(seed.A1.Id, 1, null, null, Brand: "Mavera"));
 
@@ -82,33 +82,33 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         var cards = await CardsAsync(db, seed);
         Assert.Equal([z, z], [cards[seed.A1.Id].BrandId, cards[seed.A2.Id].BrandId]);
         Assert.Equal((seed.Y, 1L), (cards[seed.B.Id].BrandId, cards[seed.B.Id].Version));
-        // The code is still under two brands: the warning stays open and B is in no model of A's (KATALOG-14 phase D5b: the
-        // code's model is A's, B keeps a model of its own; nothing merged or re-branded).
+        // A's model moved to Mavera with both colours, keeping its id; B keeps Lavian's own model of the code; no warning.
+        Assert.Equal(modelBefore, cards[seed.A1.Id].FamilyId);
         Assert.NotNull(cards[seed.B.Id].FamilyId);
         Assert.Equal(cards[seed.A1.Id].FamilyId, cards[seed.A2.Id].FamilyId);
         Assert.NotEqual(cards[seed.A1.Id].FamilyId, cards[seed.B.Id].FamilyId);
         Assert.Equal(seed.Y, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == cards[seed.B.Id].FamilyId)).BrandId);
         Assert.Equal(z, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == cards[seed.A1.Id].FamilyId)).BrandId);
-        Assert.Equal(IssueStatus.Open, await AmbiguityAsync(db, seed));
+        Assert.Null(await AmbiguityAsync(db, seed));
     }
 
+    // Rows giving both brands' models of the code one brand would merge them: refused, nothing written.
     [PostgreSqlFact]
-    public async Task RowsForBothBrands_EachMoveTheirOwnCards()
+    public async Task RowsGivingBothBrandsModelsOneBrand_AreRefused_NothingIsMerged()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
 
-        await ApplyAsync(db, seed,
-            new ProductTransferProductChange(seed.A1.Id, 1, null, null, Brand: "Mavera"),
-            new ProductTransferProductChange(seed.B.Id, 1, null, null, Brand: "Mavera"));
+        var applied = await new ProductTransferService(db, fixture.TimeProvider).ApplyAsync(seed.TenantId, Guid.CreateVersion7(), new ApplyProductTransferCommand([],
+            [new ProductTransferProductChange(seed.A1.Id, 1, null, null, Brand: "Mavera"), new ProductTransferProductChange(seed.B.Id, 1, null, null, Brand: "Mavera")]), $"transfer-merge-{Guid.NewGuid():N}", CancellationToken.None);
 
-        var z = await BrandAsync(db, seed, "MAVERA");
+        Assert.False(applied.Succeeded);
+        Assert.Equal((ModelCodeUniquenessPolicy.BrandCodeTakenCode, 409), (applied.Error!.Code, applied.Error.Status));
+        Assert.StartsWith("Bu Markada Aynı Model Kodu Zaten Var", applied.Error.Message);
+        db.ChangeTracker.Clear();
         var cards = await CardsAsync(db, seed);
-        Assert.Equal([z, z, z], [cards[seed.A1.Id].BrandId, cards[seed.A2.Id].BrandId, cards[seed.B.Id].BrandId]);
-        // One brand under the code now: the reconcile links the three cards into one model and closes the warning.
-        Assert.NotNull(cards[seed.A1.Id].FamilyId);
-        Assert.Equal([cards[seed.A1.Id].FamilyId, cards[seed.A1.Id].FamilyId], [cards[seed.A2.Id].FamilyId, cards[seed.B.Id].FamilyId]);
-        Assert.Equal(IssueStatus.Resolved, await AmbiguityAsync(db, seed));
+        Assert.Equal((seed.X, seed.X, seed.Y), (cards[seed.A1.Id].BrandId!.Value, cards[seed.A2.Id].BrandId!.Value, cards[seed.B.Id].BrandId!.Value));
+        Assert.NotEqual(cards[seed.A1.Id].FamilyId, cards[seed.B.Id].FamilyId);
     }
 
     // Fails every card UPDATE with a deadlock (40P01) while set.
@@ -207,17 +207,22 @@ public sealed class PostgreSqlProductTransferBrandTests(PostgreSqlTenantIsolatio
         Assert.Equal([20m, 20m], [cards[seed.A1.Id].VatRate, cards[seed.A2.Id].VatRate]);
     }
 
+    // A row giving Lavian's model of the code Ravencia, which already has a model of the code: refused with a clear message,
+    // nothing merged or written.
     [PostgreSqlFact]
-    public async Task ARowRebrandingTheOtherBrandsCard_ToTheModelsBrand_LeavesTheModelsCardsAlone()
+    public async Task ARowGivingAModelABrandThatHoldsItsCode_IsRefused_NothingIsMerged()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
 
-        await ApplyAsync(db, seed, new ProductTransferProductChange(seed.B.Id, 1, null, null, Brand: "Ravencia"));
+        var applied = await new ProductTransferService(db, fixture.TimeProvider).ApplyAsync(seed.TenantId, Guid.CreateVersion7(), new ApplyProductTransferCommand([],
+            [new ProductTransferProductChange(seed.B.Id, 1, null, null, Brand: "Ravencia")]), $"transfer-merge-{Guid.NewGuid():N}", CancellationToken.None);
 
+        Assert.False(applied.Succeeded);
+        Assert.Equal((ModelCodeUniquenessPolicy.BrandCodeTakenCode, "Bu Markada Aynı Model Kodu Zaten Var (Ravencia · KENE77); modelin markası değiştirilmedi, hiçbir şey birleştirilmedi."), (applied.Error!.Code, applied.Error.Message));
+        db.ChangeTracker.Clear();
         var cards = await CardsAsync(db, seed);
-        Assert.Equal(seed.X, cards[seed.B.Id].BrandId);
-        Assert.Equal((seed.X, 1L, seed.X, 1L), (cards[seed.A1.Id].BrandId, cards[seed.A1.Id].Version, cards[seed.A2.Id].BrandId, cards[seed.A2.Id].Version));
-        Assert.Equal(IssueStatus.Resolved, await AmbiguityAsync(db, seed));
+        Assert.Equal((seed.Y, 1L), (cards[seed.B.Id].BrandId!.Value, cards[seed.B.Id].Version));
+        Assert.Equal((seed.X, 1L, seed.X, 1L), (cards[seed.A1.Id].BrandId!.Value, cards[seed.A1.Id].Version, cards[seed.A2.Id].BrandId!.Value, cards[seed.A2.Id].Version));
     }
 }

@@ -7,12 +7,13 @@ using Npgsql;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // MODEL-KAYDI-PLANI Faz 1: keeps catalog.product_models and products.FamilyId in step with the model-code rule. A card's
-// model code is its first variant's (sort order, id) non-blank ModelCode. KATALOG-14 phase D5b (owner, 17 Nov 2026): a
-// model is its code alone (one per tenant and key, a unique index) and the brand is one of its fields. For every key:
-// - the key's model is found, re-keyed (KATALOG-2) or opened, and the cards are linked to it; an open
-//   PRODUCT_MODEL_AMBIGUOUS issue of the key is resolved;
-// - a card of another brand joining the code is refused: a save fails (ModelRuleException), a whole-tenant run
-//   leaves the card on a model of its own and opens PRODUCT_MODEL_AMBIGUOUS; no card is merged or given another brand;
+// model code is its first variant's (sort order, id) non-blank ModelCode. A model is its brand and its code (owner, 17 Nov
+// 2026: "farklı markalar aynı model kodunu kullanabiliyor"; one per tenant, brand and key, a unique index). For every key
+// and brand:
+// - the brand's model of the key is found, re-keyed (KATALOG-2) or opened, and the cards are linked to it; the same code
+//   under another brand is that brand's own model (nothing is refused, skipped or warned about; an open
+//   PRODUCT_MODEL_AMBIGUOUS issue from before is resolved); a colour whose brand a save changed stays with its model, whose
+//   brand the save moves (ModelMirror, refused when that brand already holds the code);
 // - a card linked to a model whose key it no longer has is unlinked; a model left without cards is deleted.
 // An unlinked card simply follows today's model-code rule, so a link that is missing or late is never wrong, only late.
 // Only FamilyId of the cards is written (raw updates): no card's Version, UpdatedAt or other column changes.
@@ -247,9 +248,9 @@ public static class ProductModelLinks
                 keys.UnionWith(await PropagateCodeChangesAsync(db, tenantId, codeChanges, cancellationToken));
             if (keys.Count > 0)
             {
-                // The save's cards (a card of another brand among them joining a code fails the save) and the brands the save
-                // gave cards already linked (the model's brand as the save leaves it, ModelMirror writing it right after).
-                var brandChanges = (pending.FieldChanges.GetValueOrDefault(tenantId) ?? []).Where(x => x.Value.Brand && !x.Value.Added).ToDictionary(x => x.Key, x => x.Value.BrandId);
+                // The save's cards and the brands the save gave cards already linked (a brand change moves the whole model,
+                // ModelMirror writing it right after; a marketplace import moves no model, its card goes to its brand's model).
+                var brandChanges = (pending.FieldChanges.GetValueOrDefault(tenantId) ?? []).Where(x => x.Value.Brand && !x.Value.Added && !db.MarketplaceCatalogImport).ToDictionary(x => x.Key, x => x.Value.BrandId);
                 await ReconcileAsync(db, tenantId, keys, now, cancellationToken, new SaveScope(new HashSet<Guid>([.. productIds ?? [], .. brandChanges.Keys]), brandChanges));
             }
             // KATALOG-14 phase D5a: a card the model-code rule links to no model (no code) gets a model of its own.
@@ -302,11 +303,13 @@ public static class ProductModelLinks
         {
             var (before, after) = changes[card.Id];
             if (ProductFamilyKeyPolicy.ModelCodeKey(before) is not { } oldKey || ProductFamilyKeyPolicy.ModelCodeKey(after) is not { } newKey || oldKey == newKey) continue;
-            var model = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == card.ModelId && x.ModelCodeKey == oldKey).Select(x => (Guid?)x.Id).SingleOrDefaultAsync(cancellationToken);
-            if (model is not { } modelId) continue;
+            var model = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == card.ModelId && x.ModelCodeKey == oldKey).Select(x => new { x.Id, x.BrandId }).SingleOrDefaultAsync(cancellationToken);
+            if (model is null) continue;
+            var modelId = model.Id;
+            // A model is its brand and code: only a model of the same brand holding the new code refuses it.
             var holder = await (from other in db.ProductModels.AsNoTracking()
                                 join product in db.Products.AsNoTracking() on other.Id equals product.FamilyId
-                                where other.TenantId == tenantId && other.ModelCodeKey == newKey && other.Id != modelId && product.TenantId == tenantId
+                                where other.TenantId == tenantId && other.ModelCodeKey == newKey && other.BrandId == model.BrandId && other.Id != modelId && product.TenantId == tenantId
                                 orderby product.CreatedAt, product.Id
                                 select product.Title).FirstOrDefaultAsync(cancellationToken);
             if (holder is not null) throw ModelRuleException.CodeInUse(holder);
@@ -443,88 +446,77 @@ public static class ProductModelLinks
         foreach (var key in targetKeys.Order(StringComparer.Ordinal))
         {
             // In the order the cards were brought in (FirstBroughtIn): the first gives a new model its values.
-            var cards = FirstBroughtIn(db, cardKeys.Where(x => x.Key == key && products.ContainsKey(x.ProductId)).Select(x => (Card: products[x.ProductId], x.Color, x.Code)),
+            var keyCards = FirstBroughtIn(db, cardKeys.Where(x => x.Key == key && products.ContainsKey(x.ProductId)).Select(x => (Card: products[x.ProductId], x.Color, x.Code)),
                 x => x.Card.Id, x => x.Card.CreatedAt, x => x.Color, externalIds);
-            // KATALOG-14 phase D5b (owner, 17 Nov 2026): a model is its code alone, one per key; the brand is one of its
-            // fields (ModelMirror gives a brand change of one colour to the model and every colour).
+            // Owner (17 Nov 2026, "farklı markalar aynı model kodunu kullanabiliyor"): a model is its brand and its code. The same
+            // code under another brand is that brand's own model: nothing is refused, skipped or warned about.
             var keyModels = models.Where(x => x.ModelCodeKey == key && !rekeyed.Contains(x.Id)).ToList();
-            if (cards.Count == 0)
+            if (openIssueKeys.Contains(AmbiguousDedupeKey(key))) await ResolveAmbiguityAsync(db, tenantId, key, now, cancellationToken);
+            if (keyCards.Count == 0) continue;
+            // A brand a save gives a linked colour moves its model to that brand's key: refused here, in the save's transaction,
+            // when that brand already has a model of the code (nothing is merged; the editor's deferred model write would be late).
+            if (save is not null && keyCards.FirstOrDefault(x => save.BrandChanges.TryGetValue(x.Card.Id, out var given) && keyModels.FirstOrDefault(model => model.Id == x.Card.FamilyId) is { } linked
+                    && given != linked.BrandId && keyModels.Any(model => model.Id != linked.Id && model.BrandId == given)) is { Card: not null } moving)
             {
-                if (openIssueKeys.Contains(AmbiguousDedupeKey(key))) await ResolveAmbiguityAsync(db, tenantId, key, now, cancellationToken);
-                continue;
+                var brandName = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == save.BrandChanges[moving.Card.Id]).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
+                throw ModelRuleException.BrandCodeTaken(moving.Code, brandName ?? "markasız");
             }
-            var current = keyModels.OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault();
-            var target = current?.Id;
-            var modelBrand = current?.BrandId;
-            // KATALOG-14 phase D5b review: a model left without a colour (its cards deleted or re-coded) is deleted, never
-            // re-branded or reused: the cards that come to its code open a new model from their own values (a stale model's
-            // old values would otherwise reach them, and no run touches a model's brand).
-            if (current is not null && !linkedElsewhere.Any(x => x.FamilyId == current.Id)
-                && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == current.Id && !db.Products.Any(product => product.TenantId == tenantId && product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken) == 1)
+            // A colour whose brand this save changed stays with its model (a brand change moves the whole model, ModelMirror);
+            // every other card goes to its own brand's model of the code. A card without a brand is no other brand (owner, 17 Nov
+            // 2026): it stays with the model of the code it is linked to, else joins the code's one model of a brand, else
+            // the models without a brand.
+            var brandedModels = keyModels.Where(model => model.BrandId is not null).ToList();
+            Guid? GroupBrand(Guid cardId, Guid? familyId, Guid? cardBrand) =>
+                (save is not null && save.BrandChanges.ContainsKey(cardId) || cardBrand is null) && keyModels.FirstOrDefault(model => model.Id == familyId) is { } linked ? linked.BrandId
+                : cardBrand is null && brandedModels.Count == 1 ? brandedModels[0].BrandId
+                : cardBrand;
+            foreach (var brandGroup in keyCards.GroupBy(x => GroupBrand(x.Card.Id, x.Card.FamilyId, x.Card.BrandId)))
             {
-                rekeyed.Add(current.Id);
-                current = null;
-                target = null;
-                modelBrand = null;
-            }
-            // KATALOG-2: the cards' code was corrected together. A model is kept by its id, not re-opened under the new
-            // code: when every card linked to one model of another key now holds this key (none stays behind on the old
-            // code, and no card of another key was given it in this run), that model takes the new code, so its
-            // marketplace model links and saved attributes stay. Cards of another model or of none may join it.
-            if (target is null
-                && models.Where(model => model.ModelCodeKey != key && !rekeyed.Contains(model.Id) && cards.Any(x => x.Card.FamilyId == model.Id))
-                    .OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault() is { } recoding
-                && linkedElsewhere.Where(x => x.FamilyId == recoding.Id).All(x => cards.Any(card => card.Card.Id == x.Id))
-                && !desired.Any(pair => pair.Value == recoding.Id)
-                && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == recoding.Id && !db.ProductModels.Any(other => other.TenantId == tenantId && other.ModelCodeKey == key))
-                    .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ModelCode, Short(cards[0].Code, 160)).SetProperty(x => x.ModelCodeKey, key)
-                        .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken) == 1)
-            {
-                rekeyed.Add(recoding.Id);
-                target = recoding.Id;
-                modelBrand = recoding.BrandId;
-            }
-            if (target is null)
-            {
-                // KATALOG-14 phase D5b review 5: unknown values do not vote; most colours that know a value, on a tie the oldest.
-                var fields = ProductFamilySharedFields.NewModelValues(
-                    [.. cards.Select(x => new ProductFamilySharedFields.CardFields(x.Card.Id, x.Color, x.Card.Title, x.Card.Description, x.Card.BrandId, x.Card.CategoryId, x.Card.VatRate, x.Card.VatInclusion, x.Card.WarrantyMonths, x.Card.DeliveryDays))]);
-                var titleCard = cards.FirstOrDefault(x => x.Card.Title.Trim() == fields.Title);
-                // KATALOG-14 phase D5b: the colour word the name holds, whichever colour card it came from (a copy can hold another colour's).
-                var titleColor = (titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? color : cards.Select(x => x.Color).FirstOrDefault(other => other is not null && ProductFamilyNewColorCard.HasColorWord(fields.Title, other))) is { } word ? Short(word.Trim(), 120) : null;
-                // The brand of the first card that has one (an empty brand only when no colour has one), as every field.
-                var brandId = fields.BrandId;
-                await db.Database.ExecuteSqlInterpolatedAsync($"""
-                    INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
-                    VALUES ({Guid.CreateVersion7()}, {tenantId}, {brandId}, {Short(cards[0].Code, 160)}, {key}, {Short(fields.Title, 320)}, {titleColor}, {fields.Description}, {fields.CategoryId}, {fields.VatRate}, {fields.VatInclusion}, {fields.WarrantyMonths}, {fields.DeliveryDays}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
-                    ON CONFLICT DO NOTHING
-                    """, cancellationToken);
-                var opened = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).OrderBy(x => x.Id).Select(x => new { x.Id, x.BrandId }).FirstOrDefaultAsync(cancellationToken);
-                target = opened?.Id;
-                modelBrand = opened?.BrandId;
-            }
-            // A card of another brand joining the code (one not linked to the model yet) is refused: in a save the save
-            // fails with "Bu Model Kodu <kod> Başka Bir Markada Kayıtlı (<marka>)"; in a whole-tenant run (a code two
-            // brands share from before) the card stays on a model of its own and PRODUCT_MODEL_AMBIGUOUS names the code.
-            // Nothing is merged or given another brand (owner, 14 and 17 Nov 2026). A colour already linked to the model
-            // whose brand changed gives the model its brand (ModelMirror), so it is not a joining card: the model's brand is
-            // read as the save leaves it. A card of another brand left from before (on a model of its own) that the save
-            // did not touch only keeps the code reported.
-            if (save is not null && cards.Where(x => x.Card.FamilyId == target && save.BrandChanges.ContainsKey(x.Card.Id)).Select(x => save.BrandChanges[x.Card.Id]).OfType<Guid>().Distinct().ToList() is [var given])
-                modelBrand = given;
-            var refused = cards.Where(x => x.Card.FamilyId != target && x.Card.BrandId is Guid brand && modelBrand is Guid held && brand != held).ToList();
-            if (refused.Count > 0)
-            {
-                if (save is not null && refused.Any(x => save.Products.Contains(x.Card.Id)))
+                var brand = brandGroup.Key;
+                var cards = brandGroup.ToList();
+                var current = keyModels.Where(model => model.BrandId == brand).OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault();
+                var target = current?.Id;
+                // KATALOG-14 phase D5b review: a model left without a colour (its cards deleted or re-coded) is deleted, never
+                // reused: the cards that come to its brand and code open a new model from their own values.
+                if (current is not null && !linkedElsewhere.Any(x => x.FamilyId == current.Id)
+                    && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == current.Id && !db.Products.Any(product => product.TenantId == tenantId && product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken) == 1)
                 {
-                    var brandName = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == modelBrand).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
-                    throw ModelRuleException.OtherBrand(cards[0].Code, brandName ?? "markasız");
+                    rekeyed.Add(current.Id);
+                    target = null;
                 }
-                foreach (var (card, _, _) in refused) desired[card.Id] = card.FamilyId is Guid family && ownModelIds.Contains(family) ? family : null;
-                await OpenAmbiguityAsync(db, tenantId, key, cards[0].Code, [.. cards.Select(x => x.Card.BrandId).Distinct()], cards.Count, now, cancellationToken);
+                // KATALOG-2: the cards' code was corrected together. A model of the same brand is kept by its id, not re-opened
+                // under the new code: when every card linked to it now holds this key (none stays behind on the old code, and no
+                // card of another key was given it in this run), it takes the new code, so its marketplace model links and
+                // saved attributes stay. Cards of another model or of none may join it.
+                if (target is null
+                    && models.Where(model => model.ModelCodeKey != key && model.BrandId == brand && !rekeyed.Contains(model.Id) && cards.Any(x => x.Card.FamilyId == model.Id))
+                        .OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault() is { } recoding
+                    && linkedElsewhere.Where(x => x.FamilyId == recoding.Id).All(x => cards.Any(card => card.Card.Id == x.Id))
+                    && !desired.Any(pair => pair.Value == recoding.Id)
+                    && await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == recoding.Id && !db.ProductModels.Any(other => other.TenantId == tenantId && other.ModelCodeKey == key && other.BrandId == brand))
+                        .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ModelCode, Short(cards[0].Code, 160)).SetProperty(x => x.ModelCodeKey, key)
+                            .SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken) == 1)
+                {
+                    rekeyed.Add(recoding.Id);
+                    target = recoding.Id;
+                }
+                if (target is null)
+                {
+                    // Owner (17 Nov 2026): every field from the first card brought in (else the oldest card that knows it).
+                    var fields = ProductFamilySharedFields.NewModelValues(
+                        [.. cards.Select(x => new ProductFamilySharedFields.CardFields(x.Card.Id, x.Color, x.Card.Title, x.Card.Description, x.Card.BrandId, x.Card.CategoryId, x.Card.VatRate, x.Card.VatInclusion, x.Card.WarrantyMonths, x.Card.DeliveryDays))]);
+                    var titleCard = cards.FirstOrDefault(x => x.Card.Title.Trim() == fields.Title);
+                    // KATALOG-14 phase D5b: the colour word the name holds, whichever colour card it came from (a copy can hold another colour's).
+                    var titleColor = (titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? color : cards.Select(x => x.Color).FirstOrDefault(other => other is not null && ProductFamilyNewColorCard.HasColorWord(fields.Title, other))) is { } word ? Short(word.Trim(), 120) : null;
+                    await db.Database.ExecuteSqlInterpolatedAsync($"""
+                        INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
+                        VALUES ({Guid.CreateVersion7()}, {tenantId}, {brand}, {Short(cards[0].Code, 160)}, {key}, {Short(fields.Title, 320)}, {titleColor}, {fields.Description}, {fields.CategoryId}, {fields.VatRate}, {fields.VatInclusion}, {fields.WarrantyMonths}, {fields.DeliveryDays}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
+                        ON CONFLICT DO NOTHING
+                        """, cancellationToken);
+                    target = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key && x.BrandId == brand).OrderBy(x => x.Id).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+                }
+                foreach (var (card, _, _) in cards) desired[card.Id] = target;
             }
-            else if (openIssueKeys.Contains(AmbiguousDedupeKey(key))) await ResolveAmbiguityAsync(db, tenantId, key, now, cancellationToken);
-            foreach (var (card, _, _) in cards.Except(refused)) desired[card.Id] = target;
         }
         // A card linked to one of these models that no longer carries its key (its code changed): unlinked, unless its own
         // key is reconciled above.
@@ -601,8 +593,8 @@ public static class ProductModelLinks
     }
 
     // The PRODUCT_MODEL_VALUES_DIFFER warnings of a model that no longer exists (its own key names it; the tenant's
-    // warning when the tenant has no model left) and the PRODUCT_MODEL_AMBIGUOUS warnings of a code no model holds any
-    // more are resolved: a deleted catalog leaves no open model warning behind.
+    // warning when the tenant has no model left) are resolved, and every PRODUCT_MODEL_AMBIGUOUS warning: the same code under
+    // two brands is two models (owner, 17 Nov 2026), so nothing is ambiguous any more.
     public static Task ResolveWarningsOfMissingModelsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var at = now.ToUniversalTime();
@@ -613,10 +605,7 @@ public static class ProductModelLinks
                     AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId} AND replace(m."Id"::text, '-', '') = split_part(i."DedupeKey", ':', 2)))
                 OR (i."Code" = {ProductModelValues.DifferCode} AND i."DedupeKey" = {ProductModelValues.DifferDedupeKey}
                     AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId}))
-                OR (i."Code" = {AmbiguousCode} AND i."DedupeKey" LIKE {AmbiguousKeyPrefix + "%"}
-                    AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId} AND m."ModelCodeKey" = substring(i."DedupeKey" from {AmbiguousKeyPrefix.Length + 1})))
-                OR (i."Code" = {AmbiguousCode} AND i."DedupeKey" LIKE 'product-model-other-brand:%'
-                    AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId} AND m."ModelCodeKey" = split_part(i."DedupeKey", ':', 3))))
+                OR i."Code" = {AmbiguousCode})
             """, cancellationToken);
     }
 
@@ -882,27 +871,6 @@ public static class ProductModelLinks
             .Select(x => new CodeRow(x.ProductId, x.ModelCode, x.SortOrder, x.Id, null)).ToListAsync(cancellationToken);
         var keys = ids.Select(id => CardKey(codes.Where(x => x.ProductId == id))).ToList();
         return keys.All(key => key is not null) && keys.Distinct(StringComparer.Ordinal).Count() == 1;
-    }
-
-    private static async Task OpenAmbiguityAsync(AppDbContext db, Guid tenantId, string key, string code, IReadOnlyCollection<Guid?> brandIds, int cardCount, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var ids = brandIds.OfType<Guid>().ToArray();
-        var names = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).Select(x => x.Name).ToListAsync(cancellationToken);
-        if (brandIds.Any(x => x is null)) names.Add("markasız");
-        var held = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => x.BrandId).FirstOrDefaultAsync(cancellationToken);
-        var heldName = held is null ? null : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == held).Select(x => x.Name).FirstOrDefaultAsync(cancellationToken);
-        var summary = Short($"{ModelCodeUniquenessPolicy.OtherBrandMessage(code, heldName ?? "markasız")}. Model kodu {code} {brandIds.Count} ayrı markada kullanılıyor ({string.Join(", ", names.Order(StringComparer.Ordinal))}, {cardCount} kart): kartlar bir modele bağlanmadı, hiçbir şey birleştirilmedi; hangi modele ait olduklarına siz karar verin.", 1000);
-        var dedupeKey = AmbiguousDedupeKey(key);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")
-            VALUES ({Guid.CreateVersion7()}, {tenantId}, {dedupeKey}, {AmbiguousCode}, {summary}, 'Open', {now}, {now}, 1, NULL)
-            ON CONFLICT ("TenantId", "DedupeKey") DO UPDATE SET
-                "Summary" = EXCLUDED."Summary",
-                "LastSeenAt" = EXCLUDED."LastSeenAt",
-                "OccurrenceCount" = i."OccurrenceCount" + CASE WHEN i."Status" = 'Resolved' THEN 1 ELSE 0 END,
-                "Status" = CASE WHEN i."Status" = 'Resolved' THEN 'Open' ELSE i."Status" END,
-                "ResolvedAt" = NULL
-            """, cancellationToken);
     }
 
     public const string LinkFailedCode = "PRODUCT_MODEL_LINK_FAILED";

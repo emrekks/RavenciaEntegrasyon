@@ -16,12 +16,12 @@ public static class ModelCodeUniquenessPolicy
 
     public const string ChangeConflictCode = "MODEL_CODE_CHANGE_IN_USE";
 
-    // KATALOG-14 phase D5b (owner, 17 Nov 2026): a model is its code alone and the brand is one of its fields, so a card
-    // of another brand never joins a code: refused on every path (the editor, Excel, the API), skipped by an import.
-    public const string OtherBrandCode = "MODEL_CODE_OTHER_BRAND";
+    // A model is its brand and its code (owner, 17 Nov 2026): giving a model (all its colours) another brand moves it to
+    // that brand's key, refused when that brand already has a model of the code; nothing is merged.
+    public const string BrandCodeTakenCode = "MODEL_CODE_TAKEN_IN_BRAND";
 
-    public static string OtherBrandMessage(string modelCode, string brandName) =>
-        $"Bu Model Kodu {modelCode} Başka Bir Markada Kayıtlı ({brandName})";
+    public static string BrandCodeTakenMessage(string modelCode, string brandName) =>
+        $"Bu Markada Aynı Model Kodu Zaten Var ({brandName} · {modelCode}); modelin markası değiştirilmedi, hiçbir şey birleştirilmedi.";
 
     public static string ChangeMessage(string productTitle) =>
         $"Yeni model kodu '{productTitle}' ürününde kullanılıyor; değiştirilirse iki ürün tek ürünün renkleri gibi birleşir. Başka bir model kodu girin.";
