@@ -280,6 +280,19 @@ public static class ProductModelValues
         var differing = new List<(string, IReadOnlyList<string>)>();
         if (db.Database.CurrentTransaction is not null)
         {
+            // KATALOG-14 phase D5a (review, 17 Nov 2026): the model rows are locked before their cards are read, so two
+            // saves of sibling colours take turns and the second reads the first's committed cards (a model left on an
+            // old majority otherwise). One order for every caller (model id ascending) so two saves of several models
+            // never wait on each other in a circle; the wait is bounded (LockTimeout) and the caller's own lock_timeout is
+            // put back after the lock.
+            var previous = (await db.Database.SqlQuery<string>($"""SELECT current_setting('lock_timeout') AS "Value" """).ToListAsync(cancellationToken)).Single();
+            await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {LockTimeout}, true) AS "Value" """).ToListAsync(cancellationToken);
+            await db.Database.SqlQuery<int>($"""
+                SELECT 1 AS "Value" FROM catalog.product_models
+                WHERE "TenantId" = {tenantId} AND ({ids == null} OR "Id" = ANY({ids ?? Array.Empty<Guid>()}))
+                ORDER BY "Id" FOR UPDATE
+                """).ToListAsync(cancellationToken);
+            await db.Database.SqlQuery<string>($"""SELECT set_config('lock_timeout', {previous}, true) AS "Value" """).ToListAsync(cancellationToken);
             var snapshot = await ReadAsync(db, tenantId, ids, cancellationToken);
             foreach (var model in snapshot.Models)
                 if (Compute(snapshot, model) is { } target)
@@ -397,9 +410,16 @@ public static class ProductModelValues
                                  || card.BrandId != model.BrandId || card.CategoryId != model.CategoryId || card.VatRate != model.VatRate
                                  || card.VatInclusion != model.VatInclusion || card.WarrantyMonths != model.WarrantyMonths || card.DeliveryDays != model.DeliveryDays
                            select new { card.TenantId, ModelId = model.Id }).Distinct().ToListAsync(cancellationToken);
+        // Only the models a refresh actually wrote are counted: a model whose colours keep differing (a colour's own VAT,
+        // read from the card, EffectiveCatalog) is visited again on every start but writes nothing (review, 17 Nov 2026).
+        var written = 0;
         foreach (var tenant in stale.GroupBy(x => x.TenantId))
-            await RefreshAsync(db, tenant.Key, [.. tenant.Select(x => x.ModelId)], now, cancellationToken);
-        return stale.Count;
+        {
+            var ids = tenant.Select(x => x.ModelId).ToArray();
+            written += (await RefreshAsync(db, tenant.Key, ids, now, cancellationToken)).Written;
+            written += await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenant.Key, null, now, cancellationToken);
+        }
+        return written;
     }
 
     // The backfill and the nightly scan: every model of every tenant, then one PRODUCT_MODEL_VALUES_DIFFER warning per

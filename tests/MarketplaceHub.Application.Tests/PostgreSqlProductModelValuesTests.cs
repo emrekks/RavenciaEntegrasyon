@@ -279,20 +279,11 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.NotNull(await ProductModelValues.RecordFieldsAsync(db, seed.Tenant.Id, agreeing[0].FamilyId, agreeing, fields, "Siyah", ProductFamilySharedFields.ModelValues(fields, "Siyah"), CancellationToken.None));
         Assert.Equal("Kadın Siyah Etek", shown.Title);
 
-        // KATALOG-14 phase D5a: the model is the source, so a scrambled record is what the editor shows for the fields a
-        // colour does not hold of its own (the VAT, warranty, delivery days; the description of a colour without an
-        // override), while the name stays the colour's own text.
+        // Every record the editor did not save scrambled (an editor-saved record is today's rule's own source): the same.
+        // KATALOG-14 phase D5a keeps this: a card whose value differs from its model's is read with its own value.
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "Title" = 'Bozuk', "TitleColor" = NULL, "Description" = 'Bozuk', "VatRate" = 99, "WarrantyMonths" = 99, "DeliveryDays" = 99, "Desi" = 99 WHERE "TenantId" = {seed.Tenant.Id} AND "FieldsSavedAt" IS NULL""");
-        db.ChangeTracker.Clear();
-        var plain = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.DescriptionOverride == null && x.FamilyId != null && db.ProductModels.Any(m => m.Id == x.FamilyId && m.FieldsSavedAt == null)).OrderBy(x => x.Id).FirstAsync();
-        var scrambled = (await service.GetProductAsync(seed.Tenant.Id, plain.Id, CancellationToken.None)).Value!;
-        Assert.Equal((99m, (int?)99, (int?)99), (scrambled.VatRate, scrambled.WarrantyMonths, scrambled.DeliveryDays));
-        Assert.Equal("Bozuk", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == plain.Id)).Description);
-        Assert.Equal(plain.Title, (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == plain.Id)).Title);
-        // The refresh rebuilds the record from the colours: the editor shows what it showed before.
-        await ProductModelValues.RefreshTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
-        var rebuilt = await ResponsesAsync();
-        for (var index = 0; index < before.Count; index++) Assert.Equal(before[index], rebuilt[index]);
+        var scrambled = await ResponsesAsync();
+        for (var index = 0; index < before.Count; index++) Assert.Equal(before[index], scrambled[index]);
     }
 
     private static async Task<(string, string, Guid?, Guid?, decimal?, string?, int?, int?)> TodaysFieldsAsync(AppDbContext db, Guid tenantId, Guid productId, ProductView view)
@@ -415,11 +406,12 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // F4, KATALOG-14 phase D5a: a save inside a caller's (here serializable) transaction writes the model's values in that
-    // transaction: the transaction reads them at once, another session sees them only with its commit, and a transaction
-    // rolled back leaves the model as it was.
+    // F4: a save inside a caller's serializable transaction (the editor's save, the delete) does not touch the model row,
+    // so another session that writes the model meanwhile neither waits for it nor makes its commit fail; the model takes
+    // the values after the commit (KATALOG-14 phase D5a keeps this for serializable callers; review, 17 Nov 2026).
+    // Meanwhile the readers read the cards, whose values win where they differ from the model.
     [PostgreSqlFact]
-    public async Task ASaveInsideATransaction_WritesTheModelInIt_AndARollbackLeavesTheModel()
+    public async Task ASaveInsideATransaction_LeavesTheModelRowAlone_AndRefreshesItAfterTheCommit()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -433,22 +425,60 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             siyah.Description = "Editör açıklaması";
             mavi.Description = "Editör açıklaması";
             await db.SaveChangesAsync();
-            Assert.Equal("Editör açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
+            // The readers already give the saved text (the card's, which differs from the model's).
+            Assert.Equal("Editör açıklaması", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == siyah.Id)).Description);
+            // Another session (the scan, a worker's save) writes the model row meanwhile, without waiting.
             await using (var other = fixture.CreateContext())
-                Assert.Equal("Model açıklaması", (await other.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id)).Description);
+            {
+                await other.Database.OpenConnectionAsync();
+                await other.Database.ExecuteSqlRawAsync("SET lock_timeout = '1s'");
+                await other.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "UpdatedAt" = now() WHERE "Id" = {model.Id}""");
+            }
             await transaction.CommitAsync();
         }
         Assert.Equal("Editör açıklaması", (await ModelOfAsync(db, siyah.Id)).Description);
 
+        // A read-committed transaction writes the model in it; rolled back, the model stays as it was.
         await using (await db.Database.BeginTransactionAsync())
         {
             siyah.WarrantyMonths = 6;
-            mavi.WarrantyMonths = 6;
             await db.SaveChangesAsync();
-            Assert.Equal(6, (await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
         }
         db.ChangeTracker.Clear();
+        await using (var transaction = await db.Database.BeginTransactionAsync())
+        {
+            await transaction.CommitAsync();
+        }
         Assert.Equal(0, (await ModelOfAsync(db, siyah.Id)).WarrantyMonths);
+    }
+
+    // KATALOG-14 phase D5a (review, 17 Nov 2026): the model rows are locked before the cards are read in a save's
+    // transaction, so two saves of sibling colours take turns: the second reads the first's committed colour and the model
+    // takes the value both now hold.
+    [PostgreSqlFact]
+    public async Task TwoSavesOfSiblingColours_TakeTurnsOnTheModel_AndItTakesTheirOneValue()
+    {
+        await using var db = fixture.CreateContext();
+        var seed = await SeedAsync(db);
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ650", "Siyah", "Kadın Siyah Etek", 0);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ650", "Mavi", "Kadın Mavi Etek", 1);
+        await db.SaveChangesAsync();
+
+        await using var first = fixture.CreateContext();
+        await using var second = fixture.CreateContext();
+        await using var transaction = await first.Database.BeginTransactionAsync();
+        (await first.Products.SingleAsync(x => x.Id == siyah.Id)).Description = "Yeni açıklama";
+        await first.SaveChangesAsync();
+        // The second save of the other colour waits for the first's model lock.
+        (await second.Products.SingleAsync(x => x.Id == mavi.Id)).Description = "Yeni açıklama";
+        var waiting = second.SaveChangesAsync();
+        await Task.Delay(500);
+        Assert.False(waiting.IsCompleted);
+        await transaction.CommitAsync();
+        await waiting;
+
+        Assert.Equal("Yeni açıklama", (await ModelOfAsync(db, siyah.Id)).Description);
+        Assert.Equal([null, null], await DescriptionOverridesAsync(db, siyah.Id, mavi.Id));
     }
 
     // F5, KATALOG-14 phase D5a: any failure of the model write in the save's own transaction (not a database error alone)

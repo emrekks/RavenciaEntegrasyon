@@ -6,12 +6,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // KATALOG-14 phase D: the one reader of a colour card's shared values (name, description, brand, category, VAT, warranty,
 // delivery days). Every screen, export, report, readiness check and marketplace composer reads a card through it, so the
 // place the values come from changes here and nowhere else.
-// Rule: a colour's own value where it has one (TitleOverride / DescriptionOverride), else its model's.
-// Phase D5 (contract, prepared on scan12/model-contract; ships only after the owner's re-import): the model's value is
-// read from catalog.product_models for a linked card: description, brand, category, VAT, warranty and delivery days. A
-// card linked to no model reads its own columns. The name is the card's own text (TitleOverride, else the card's Title,
-// which the model refresh keeps as the model's name with the colour's word: TitleFor is C# and the colour comes from the
-// variants, so it is not resolved in SQL).
+// Rule: a colour's own value where it has one (TitleOverride / DescriptionOverride), else its model's
+// (catalog.product_models: description, brand, category, VAT, warranty, delivery days). Phase D5a keeps the card's own
+// value wherever it differs from the model (see Resolve). A card linked to no model reads its own columns. The name is
+// the colour's override, else the card's Title, which the model refresh keeps as the model's name with the colour's
+// word (TitleFor is C# and the colour comes from the variants, so it is not resolved in SQL).
 // Usable in SQL (Products: an IQueryable that EF translates, composable with Where/Join/OrderBy) and in memory (Of).
 public static class EffectiveCatalog
 {
@@ -26,17 +25,23 @@ public static class EffectiveCatalog
     {
         Id = x.Card.Id,
         TenantId = x.Card.TenantId,
+        // Phase D5a (review, 17 Nov 2026): while the writers keep the card copies the card stays the source. Each value is
+        // the model's where the card holds the same, and the card's own where it differs (a colour whose VAT, category,
+        // warranty or delivery days an Excel row, a bulk edit or a race left apart from its model; a description without
+        // an override that differs). So phase A changes no output; whether a colour may hold its own VAT is asked before
+        // phase B, which reads the model alone.
         Title = x.Card.TitleOverride ?? x.Card.Title,
-        Description = x.Card.DescriptionOverride ?? (x.Model == null ? x.Card.Description : x.Model.Description),
-        BrandId = x.Model == null ? x.Card.BrandId : x.Model.BrandId,
-        CategoryId = x.Model == null ? x.Card.CategoryId : x.Model.CategoryId,
+        Description = x.Card.DescriptionOverride ?? (x.Model == null || x.Card.Description != x.Model.Description ? x.Card.Description : x.Model.Description),
+        BrandId = x.Model == null || x.Card.BrandId != x.Model.BrandId ? x.Card.BrandId : x.Model.BrandId,
+        CategoryId = x.Model == null || x.Card.CategoryId != x.Model.CategoryId ? x.Card.CategoryId : x.Model.CategoryId,
         DefaultListPrice = x.Card.DefaultListPrice,
         DefaultSalePrice = x.Card.DefaultSalePrice,
-        WarrantyMonths = x.Model == null ? x.Card.WarrantyMonths : x.Model.WarrantyMonths,
-        DeliveryDays = x.Model == null ? x.Card.DeliveryDays : x.Model.DeliveryDays,
+        WarrantyMonths = x.Model == null || x.Card.WarrantyMonths != x.Model.WarrantyMonths ? x.Card.WarrantyMonths : x.Model.WarrantyMonths,
+        DeliveryDays = x.Model == null || x.Card.DeliveryDays != x.Model.DeliveryDays ? x.Card.DeliveryDays : x.Model.DeliveryDays,
         TrendyolWebColorValueId = x.Card.TrendyolWebColorValueId,
-        VatRate = x.Model == null ? x.Card.VatRate : x.Model.VatRate,
-        VatInclusion = x.Model == null ? x.Card.VatInclusion : x.Model.VatInclusion,
+        // The rate and whether prices include it go together: the card's pair where either differs.
+        VatRate = x.Model == null || x.Card.VatRate != x.Model.VatRate || x.Card.VatInclusion != x.Model.VatInclusion ? x.Card.VatRate : x.Model.VatRate,
+        VatInclusion = x.Model == null || x.Card.VatRate != x.Model.VatRate || x.Card.VatInclusion != x.Model.VatInclusion ? x.Card.VatInclusion : x.Model.VatInclusion,
         Status = x.Card.Status,
         SourcePolicyVersion = x.Card.SourcePolicyVersion,
         ArchivedAt = x.Card.ArchivedAt,

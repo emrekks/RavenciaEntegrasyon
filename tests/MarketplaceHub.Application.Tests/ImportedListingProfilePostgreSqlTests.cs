@@ -244,8 +244,6 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
         {
             await ImportedListingProfiles.EnsureAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Product.Id], CancellationToken.None);
             await db.Products.Where(x => x.Id == seeded.Product.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.DeliveryDays, (int?)null));
-            // KATALOG-14 phase D5a: the card's delivery time is its model's (the readers read the model); emptied alike.
-            await db.ProductModels.Where(x => db.Products.Any(card => card.Id == seeded.Product.Id && card.FamilyId == x.Id)).ExecuteUpdateAsync(set => set.SetProperty(x => x.DeliveryDays, (int?)null));
         }
         await using (var db = fixture.CreateContext())
         {

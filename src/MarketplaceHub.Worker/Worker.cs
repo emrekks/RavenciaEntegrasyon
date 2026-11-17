@@ -141,7 +141,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             await using var scope = scopeFactory.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var refreshed = await ProductModelValues.AlignStaleAsync(db, DateTimeOffset.UtcNow, cancellationToken);
-            logger.LogInformation("Product models aligned at startup: {Models} refreshed", refreshed);
+            logger.LogInformation("Product models aligned at startup: {Models} written", refreshed);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)

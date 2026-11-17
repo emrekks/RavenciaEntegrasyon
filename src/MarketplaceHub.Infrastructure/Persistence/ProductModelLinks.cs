@@ -162,7 +162,11 @@ public static class ProductModelLinks
             }
             if (keys.Count > 0) await ReconcileAsync(db, tenantId, keys, now, cancellationToken);
             // KATALOG-14 phase D5a: a card the model-code rule links to no model (no code) gets a model of its own.
-            if (productIds is { Count: > 0 }) await EnsureOwnModelsAsync(db, tenantId, [.. productIds], now, cancellationToken);
+            if (productIds is { Count: > 0 })
+            {
+                await EnsureOwnModelsAsync(db, tenantId, [.. productIds], now, cancellationToken);
+                await SyncOwnModelBrandsAsync(db, tenantId, [.. productIds], now, cancellationToken);
+            }
             if (pending.MediaProductIds.TryGetValue(tenantId, out var mediaProductIds) && mediaProductIds.Count > 0)
                 await SyncMediaFamiliesAsync(db, tenantId, [.. mediaProductIds], cancellationToken);
             // KATALOG-14 phase B: the models of the cards the save added, moved or changed a shared value of (read after
@@ -177,10 +181,16 @@ public static class ProductModelLinks
                 var keyArray = keys.ToArray();
                 valueModels.UnionWith(await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && keyArray.Contains(x.ModelCodeKey)).Select(x => x.Id).ToListAsync(cancellationToken));
             }
-            // KATALOG-14 phase D5a: the readers read the model, so its values are written in the save's own transaction
-            // (the caller's or the one SaveChanges opened); a refresh that fails fails the save.
+            // KATALOG-14 phase D5a: the model's values are written in the save's own transaction (the caller's or the one
+            // SaveChanges opened); a refresh that fails fails the save. A serializable caller (the editor's save, the
+            // delete) is the exception (review, 17 Nov 2026): a model row written in it would make the commit fail
+            // whenever another session wrote the model meanwhile, so its models are refreshed right after its commit
+            // (AppDbContext.DeferModelValues). Until then the readers read the cards, whose values win wherever they
+            // differ from the model (EffectiveCatalog).
             if (valueModels.Count == 0) continue;
-            await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
+            if (db.Database.CurrentTransaction is { } current && Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(current).IsolationLevel == System.Data.IsolationLevel.Serializable)
+                db.DeferModelValues(tenantId, valueModels);
+            else await ProductModelValues.RefreshAsync(db, tenantId, valueModels, now, cancellationToken);
         }
     }
 
@@ -387,6 +397,7 @@ public static class ProductModelLinks
         // KATALOG-14 phase D5a: a card left without a model (its code gone) gets one of its own; the whole tenant's run
         // gives one to every card still without.
         await EnsureOwnModelsAsync(db, tenantId, keyArray is null ? null : [.. desired.Where(pair => pair.Value is null).Select(pair => pair.Key)], now, cancellationToken);
+        if (keyArray is null) await SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);
         // KATALOG-10: the links moved; the product list's cached rule check of the tenant is dropped.
         CatalogListGenerations.Bump(tenantId);
         // Faz 2: the pictures follow their card's model.
@@ -434,6 +445,17 @@ public static class ProductModelLinks
         if (cards.Count > 0) await SyncMediaFamiliesAsync(db, tenantId, [.. cards.Select(x => x.Id)], cancellationToken);
         return cards.Count;
     }
+
+    // KATALOG-14 phase D5a (review, 17 Nov 2026): a one-card model ("#<card id>") holds its card's brand: a card whose
+    // brand changes takes its model with it (a coded model is one per brand and code, re-linked by the reconcile).
+    // productIds null: every own model of the tenant. Returns the number of models moved.
+    public static Task<int> SyncOwnModelBrandsAsync(AppDbContext db, Guid tenantId, Guid[]? productIds, DateTimeOffset now, CancellationToken cancellationToken) =>
+        db.Database.ExecuteSqlRawAsync("""
+            UPDATE catalog.product_models m SET "BrandId" = p."BrandId", "UpdatedAt" = @now, "Version" = m."Version" + 1
+            FROM catalog.products p
+            WHERE m."TenantId" = @tenant AND p."TenantId" = m."TenantId" AND p."FamilyId" = m."Id" AND m."ModelCodeKey" LIKE '#%'
+              AND (@all OR p."Id" = ANY(@products)) AND m."BrandId" IS DISTINCT FROM p."BrandId"
+            """, [new NpgsqlParameter("tenant", tenantId), new NpgsqlParameter("all", productIds is null), new NpgsqlParameter("products", productIds ?? []), new NpgsqlParameter("now", now.ToUniversalTime())], cancellationToken);
 
     // Faz 2: a picture belongs to its card's model (product_media.FamilyId = products.FamilyId); productIds null: the tenant.
     // Only rows that differ are written.

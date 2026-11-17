@@ -101,11 +101,9 @@ public sealed class FamilyModelFieldsPostgreSqlTests(PostgreSqlTenantIsolationFi
             var opened = (await service.GetProductAsync(tenant.Id, card.Id, CancellationToken.None)).Value!;
             Assert.Equal(($"Kadın {colour} Yeni {Name}", "Model kaydının açıklaması"), (opened.Title, opened.Description));
         }
-        // KATALOG-14 phase D5a: the model is the source: a card stamped after the model's save still reads the model's
-        // description (a colour without an override of its own takes its model's), in the editor and in every reader.
+        // A card changed after the model was saved: the cards' own values again.
         await db.Products.Where(x => x.Id == zumrut.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedAt, record.FieldsSavedAt!.Value.AddMinutes(1)));
-        Assert.Equal("Model kaydının açıklaması", (await service.GetProductAsync(tenant.Id, gri.Id, CancellationToken.None)).Value!.Description);
-        Assert.Equal("Model kaydının açıklaması", (await EffectiveCatalog.Products(db).SingleAsync(x => x.Id == zumrut.Id)).Description);
+        Assert.Equal("Model açıklaması", (await service.GetProductAsync(tenant.Id, gri.Id, CancellationToken.None)).Value!.Description);
         await transaction.RollbackAsync();
 
         async Task AssertCards(Func<string, string> title)
