@@ -39,6 +39,18 @@ describe('order delivery line', () => {
     expect(hepsiburada.kind).toBe('shipping')
   })
 
+  it('says a returned order was returned instead of counting days late past its old deadline', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-17T09:00:00Z'))
+    const returned = deliveryText(order({ derivedStatus: 'RETURNED', shipmentDueAt: '2026-11-11T20:59:00Z' }))
+    expect(returned.kind).toBe('status')
+    expect(returned.value).toBe('İade Edildi')
+    expect(returned.overdue).toBe(false)
+    expect(deliveryDueLine(returned)).toBeNull()
+    expect(deliveryText(order({ derivedStatus: 'RETURN_IN_TRANSIT', shipmentDueAt: '2026-11-11T20:59:00Z' })).value).toBe('İade Yolda')
+    vi.useRealTimers()
+  })
+
   it('counts the days an overdue order is late', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-05T09:00:00Z'))

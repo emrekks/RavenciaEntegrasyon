@@ -18,6 +18,10 @@ export function deliveryText(item: Order): DeliveryInfo {
   if (item.derivedStatus === 'PAYMENT_PENDING') return { kind: 'status', label: 'Sipariş Durumu', value: 'Ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }
   // An undelivered order reads the same on every marketplace, Hepsiburada included (item 6, 5 Nov 2026).
   if (['SHIPPED', 'UNDELIVERED'].includes(item.derivedStatus)) return { kind: 'shipping', label: 'Taşıma Durumunda', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Kargo zamanı bekleniyor', note: 'Kargoya teslim edildi', overdue: false }
+  // A parcel that came back (undelivered and returned, or a customer return) is past its shipping deadline for good:
+  // it says what happened instead of counting days late.
+  if (item.derivedStatus === 'RETURNED') return { kind: 'status', label: 'Sipariş Durumu', value: 'İade Edildi', note: null, overdue: false }
+  if (item.derivedStatus === 'RETURN_IN_TRANSIT') return { kind: 'status', label: 'Sipariş Durumu', value: 'İade Yolda', note: null, overdue: false }
   if (item.derivedStatus === 'ON_HOLD') return { kind: 'status', label: 'Sipariş Durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }
   const dueAt = usableShipmentDueAt(item.shipmentDueAt)
   const overdueDays = overdueShipmentDays(item.derivedStatus, dueAt)
