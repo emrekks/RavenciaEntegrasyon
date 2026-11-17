@@ -144,9 +144,9 @@
 .panel.mapping-step.cm-card .cm-count { display: inline-grid; min-width: 20px; height: 18px; margin-left: 6px; place-items: center; padding: 0 5px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-radius: 7px; font-size: 11px; font-weight: 600; }
 .panel.mapping-step.cm-card .cm-has-conflicts .cm-count { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); }
 .cm-extra-modal { width: min(760px, calc(100vw - 32px)); }
-.cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) { margin: 0; padding: 0; background: transparent; border: 0; }
-.cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) > summary { display: none; }
-.cm-extra-modal .cm-empty { margin: 0; padding: 24px 0; color: var(--rv-color-muted); text-align: center; }
+.cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel), .rr-layer.rr-layer .cm-defaults-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) { margin: 0; padding: 0; background: transparent; border: 0; }
+.cm-extra-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) > summary, .rr-layer.rr-layer .cm-defaults-modal :is(.attribute-defaults-panel, .mapping-conflicts-panel) > summary { display: none; }
+.cm-extra-modal .cm-empty, .rr-layer.rr-layer .cm-defaults-modal .cm-empty { margin: 0; padding: 24px 0; color: var(--rv-color-muted); text-align: center; }
 /* Field names in regular weight, as in the design; the global button rule sets 500 with !important. */
 .app-shell .panel.mapping-step.cm-card .cm-item { font-weight: 400 !important; }
 
@@ -276,22 +276,22 @@
 .app-shell.stitch-shell main .mapping-saved-card .mapping-delete-button:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 
 /* Platform defaults popup: two flat columns, a saved list as rows, quiet value chips. */
-.cm-extra-modal .attribute-defaults-body { gap: 0; padding: 0; }
-.cm-extra-modal .attribute-defaults-section > h4 { margin: 0 0 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
-.cm-extra-modal .attribute-defaults-list { gap: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.cm-extra-modal .attribute-defaults-list li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 8px 0 14px; background: none; border: 0; border-radius: 0; }
-.cm-extra-modal .attribute-defaults-list li + li { border-top: 1px solid var(--rv-color-border); }
-.cm-extra-modal .attribute-defaults-list li > span { flex: 1; font-size: 14px; }
-.cm-extra-modal .attribute-defaults-list li > strong { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-ink); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; }
-.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
-.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.cm-extra-modal .attribute-defaults-state { color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
-.cm-extra-modal .attribute-defaults-form label { gap: 6px; }
-.cm-extra-modal .attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
-.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-form :is(select, input) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
-.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button { height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
-.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button.is-chosen { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
-.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-actions button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.cm-extra-modal .attribute-defaults-body, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-body { gap: 0; padding: 0; }
+.cm-extra-modal .attribute-defaults-section > h4, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-section > h4 { margin: 0 0 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.cm-extra-modal .attribute-defaults-list, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-list { gap: 0; overflow: hidden; background: none; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.cm-extra-modal .attribute-defaults-list li, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-list li { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 8px 0 14px; background: none; border: 0; border-radius: 0; }
+.cm-extra-modal .attribute-defaults-list li + li, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-list li + li { border-top: 1px solid var(--rv-color-border); }
+.cm-extra-modal .attribute-defaults-list li > span, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-list li > span { flex: 1; font-size: 14px; }
+.cm-extra-modal .attribute-defaults-list li > strong, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-list li > strong { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-ink); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-remove { display: grid; width: 28px; min-width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove:hover:not(:disabled), .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-remove:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.cm-extra-modal .attribute-defaults-state, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-state { color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
+.cm-extra-modal .attribute-defaults-form label, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-form label { gap: 6px; }
+.cm-extra-modal .attribute-defaults-form label > span, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-form :is(select, input), .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-form :is(select, input) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-values button { height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button.is-chosen, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-values button.is-chosen { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }
+.app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-actions button, .rr-layer.rr-layer .cm-defaults-modal .attribute-defaults-actions button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 
 /* Web Color: own editor (one Web Color value, several panel colours) in the shared field layout. */
 .app-shell.stitch-shell main .cm-detail .cm-webcolor-link { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
