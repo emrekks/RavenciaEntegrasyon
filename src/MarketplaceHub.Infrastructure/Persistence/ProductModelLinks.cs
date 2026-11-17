@@ -550,9 +550,45 @@ public static class ProductModelLinks
             await db.ProductModels.Where(x => x.TenantId == tenantId && !db.Products.Any(product => product.FamilyId == x.Id)).ExecuteDeleteAsync(cancellationToken);
         // Faz 2: a model link whose model no longer has a card holding a variant link on its connection goes.
         await MarketplaceModelLinks.RemoveOrphansAsync(db, tenantId, keyArray is null ? null : modelIds, cancellationToken);
+        // KATALOG-14 phase D5b review: the model warnings of models this run (or an earlier delete) removed are settled.
+        await ResolveWarningsOfMissingModelsAsync(db, tenantId, now, cancellationToken);
 
         Guid? CurrentFamily(Guid productId) =>
             products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
+    }
+
+    // KATALOG-14 phase D5b (review, 17 Nov 2026): the models the given cards were linked to that no card holds any more go
+    // (a product delete, in its own transaction, so a reconcile that fails afterwards leaves no stale model whose old values
+    // a re-import would hand its new colours), then the model warnings of models that are gone are settled.
+    public static async Task DeleteCardlessModelsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> modelIds, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (modelIds.Count > 0)
+        {
+            var ids = modelIds.ToArray();
+            await db.ProductModels.Where(x => x.TenantId == tenantId && ids.Contains(x.Id) && !db.Products.Any(product => product.TenantId == tenantId && product.FamilyId == x.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+        await ResolveWarningsOfMissingModelsAsync(db, tenantId, now, cancellationToken);
+    }
+
+    // The PRODUCT_MODEL_VALUES_DIFFER warnings of a model that no longer exists (its own key names it; the tenant's
+    // warning when the tenant has no model left) and the PRODUCT_MODEL_AMBIGUOUS warnings of a code no model holds any
+    // more are resolved: a deleted catalog leaves no open model warning behind.
+    public static Task ResolveWarningsOfMissingModelsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var at = now.ToUniversalTime();
+        return db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE ops.operational_issues i SET "Status" = 'Resolved', "ResolvedAt" = {at}, "LastSeenAt" = {at}
+            WHERE i."TenantId" = {tenantId} AND i."Status" <> 'Resolved' AND (
+                (i."Code" = {ProductModelValues.DifferCode} AND (i."DedupeKey" LIKE {ModelMirror.GapDedupePrefix + "%"} OR i."DedupeKey" LIKE {ModelMirror.DifferDedupePrefix + "%"})
+                    AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId} AND replace(m."Id"::text, '-', '') = split_part(i."DedupeKey", ':', 2)))
+                OR (i."Code" = {ProductModelValues.DifferCode} AND i."DedupeKey" = {ProductModelValues.DifferDedupeKey}
+                    AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId}))
+                OR (i."Code" = {AmbiguousCode} AND i."DedupeKey" LIKE {AmbiguousKeyPrefix + "%"}
+                    AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId} AND m."ModelCodeKey" = substring(i."DedupeKey" from {AmbiguousKeyPrefix.Length + 1})))
+                OR (i."Code" = {AmbiguousCode} AND i."DedupeKey" LIKE 'product-model-other-brand:%'
+                    AND NOT EXISTS (SELECT 1 FROM catalog.product_models m WHERE m."TenantId" = {tenantId} AND m."ModelCodeKey" = split_part(i."DedupeKey", ':', 3))))
+            """, cancellationToken);
     }
 
     // KATALOG-14 phase D5a: a card the model-code rule gives no model (it has no model code) is a model of its own, keyed

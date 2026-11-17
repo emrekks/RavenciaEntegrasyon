@@ -1013,6 +1013,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             USING purge_product_ids p
             WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
             """, cancellationToken);
+        // KATALOG-14 phase D5b review: a model whose last card went is deleted in the delete's own transaction (with its
+        // open warnings settled), so a reconcile that fails afterwards leaves no stale model for a re-import to reuse.
+        await ProductModelLinks.DeleteCardlessModelsAsync(db, tenantId, [.. products.Select(x => x.FamilyId).OfType<Guid>().Distinct()], timeProvider.GetUtcNow(), cancellationToken);
         // The deletes above raise no change events of their own (AppDbContext announces only added and changed rows), so
         // each deleted product is announced here, in the same transaction: the report cache (ReportCache) drops the
         // reports its order lines' costs and names were read into, and the open panels refresh.

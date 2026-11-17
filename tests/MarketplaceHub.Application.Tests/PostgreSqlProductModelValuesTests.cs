@@ -890,4 +890,55 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(3m, ProductModelValues.ModelDesi([3m, 3m, 2m, 2m]));
         Assert.Equal(2m, ProductModelValues.ModelDesi([null, 2m, 3m, 3m, 2m, 2m]));
     }
+
+    // KATALOG-14 phase D5b review: the owner deletes every product before the re-import. The models (an own "#id" model
+    // included) go in the delete's own transaction, even when the reconcile after it fails, and no model warning stays
+    // open (the import's, the startup pass's, the tenant's and an ambiguous code's).
+    [PostgreSqlFact]
+    public async Task DeletingEveryProduct_LeavesNoModel_AndNoOpenModelWarning_EvenWhenTheReconcileFails()
+    {
+        Seed seed;
+        Guid[] ids;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var siyah = AddCard(setup, seed, seed.Ravencia, "MZ800", "Siyah", "Kadın Siyah Etek", 0, status: ProductStatus.Draft);
+            var mavi = AddCard(setup, seed, seed.Ravencia, "MZ800", "Mavi", "Kadın Mavi Etek", 1, status: ProductStatus.Draft);
+            var kodsuz = AddCard(setup, seed, seed.Ravencia, null, "Beyaz", "Kodsuz Gömlek", 2, status: ProductStatus.Draft);
+            await setup.SaveChangesAsync();
+            ids = [siyah.Id, mavi.Id, kodsuz.Id];
+            Assert.Equal(2, await setup.ProductModels.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            // An import brought another VAT (the model's warning), the previous release wrote one card alone (the startup
+            // pass's and the tenant's warnings), a code was shared by two brands (an ambiguity warning).
+            setup.ChangeTracker.Clear();
+            setup.MarketplaceCatalogImport = true;
+            (await setup.Products.SingleAsync(x => x.Id == mavi.Id)).VatRate = 20m;
+            await setup.SaveChangesAsync();
+            setup.MarketplaceCatalogImport = false;
+            await setup.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "VatRate" = 1 WHERE "Id" = {siyah.Id}""");
+            await ProductModelValues.RefreshTenantAsync(setup, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            var at = DateTimeOffset.UtcNow;
+            await setup.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO ops.operational_issues ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount")
+                VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, {ProductModelLinks.AmbiguousDedupeKey("MZ800")}, {ProductModelLinks.AmbiguousCode}, 'iki marka', 'Open', {at}, {at}, 1)
+                """);
+            Assert.Equal(4, await setup.OperationalIssues.CountAsync(x => x.TenantId == seed.Tenant.Id && x.Status == IssueStatus.Open
+                && (x.Code == ProductModelValues.DifferCode || x.Code == ProductModelLinks.AmbiguousCode)));
+        }
+
+        // The reconcile after the delete fails (its advisory key lock).
+        var tap = new CommandTap(sql => sql.Contains("pg_advisory_xact_lock", StringComparison.Ordinal), () => new Npgsql.PostgresException("injected", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.LockNotAvailable)) { Fail = true };
+        await using (var db = ContextWith(tap))
+        {
+            var deleted = await Service(db).BulkDeleteProductsAsync(seed.Tenant.Id, new BulkProductDeleteCommand(ids), CancellationToken.None);
+            Assert.True(deleted.Succeeded, deleted.Error?.Message);
+            Assert.True(tap.Count > 0);
+        }
+
+        await using var check = fixture.CreateContext();
+        Assert.Equal(0, await check.Products.CountAsync(x => x.TenantId == seed.Tenant.Id));
+        Assert.Equal(0, await check.ProductModels.CountAsync(x => x.TenantId == seed.Tenant.Id));
+        Assert.Equal(0, await check.OperationalIssues.CountAsync(x => x.TenantId == seed.Tenant.Id && x.Status == IssueStatus.Open
+            && (x.Code == ProductModelValues.DifferCode || x.Code == ProductModelLinks.AmbiguousCode)));
+    }
 }
