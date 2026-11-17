@@ -84,6 +84,9 @@ public static class DependencyInjection
         // Serves entries only in a process that runs CategoryRequirementsChangeListener (the API).
         services.AddSingleton<CategoryRequirementsCache>();
         services.AddScoped<ICatalogService, CatalogService>();
+        // The "Platformlarda Güncelle" summary (read only) and its marketplace values: none are kept yet (NoKnownListingValues).
+        services.AddScoped<IProductUpdatePreviewService, ProductUpdatePreviewService>();
+        services.AddSingleton<IMarketplaceKnownListingValues, NoKnownListingValues>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IImportJobProcessor, ImportJobProcessor>();
         services.AddScoped<IShopifyOrderCsvImportService, ShopifyOrderCsvImportService>();

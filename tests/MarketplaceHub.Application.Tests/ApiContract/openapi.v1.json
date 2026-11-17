@@ -15529,6 +15529,76 @@
         }
       }
     },
+    "/api/v1/products/update-preview": {
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "operationId": "postProductsUpdatePreview",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductUpdatePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductUpdatePreviewView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/products/{id}": {
       "get": {
         "tags": [
@@ -35838,6 +35908,223 @@
           "missingDesiCount": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "ProductUpdatePreviewChange": {
+        "required": [
+          "label",
+          "before",
+          "after"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "beforeLength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "afterLength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProductUpdatePreviewConnection": {
+        "required": [
+          "connectionId",
+          "platformCode",
+          "displayName",
+          "models",
+          "unknownFields",
+          "problems"
+        ],
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewModel"
+            }
+          },
+          "unknownFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewProblem"
+            }
+          },
+          "knownValuesReadAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ProductUpdatePreviewField": {
+        "required": [
+          "field",
+          "unit",
+          "state",
+          "changed",
+          "same",
+          "unknown",
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "same": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unknown": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewChange"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewModel": {
+        "required": [
+          "label",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewField"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewProblem": {
+        "required": [
+          "productId",
+          "label",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductUpdatePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "productIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "connectionIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "fields": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewView": {
+        "required": [
+          "maxProducts",
+          "connections"
+        ],
+        "type": "object",
+        "properties": {
+          "maxProducts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewConnection"
+            }
           }
         }
       },
