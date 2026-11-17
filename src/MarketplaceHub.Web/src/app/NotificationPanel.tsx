@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
 import { describeNotification, notificationItemList, presentNotification } from '../shared/notification-describe'
@@ -74,11 +74,37 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
   </article>
 }
 
+// The cards the first frame of an open draws; the rest follow once the panel has opened. Opening with all 20 cards
+// (~570 elements) cost one 100+ ms task before the first frame on a 4x slowed phone CPU (style, layout and React work
+// grow with every card), so the panel came late and its opening motion stuttered; the first cards already fill the
+// panel's whole height on every screen, the rest sit below them.
+export const notificationPanelFirstFrameCards = 8
+
+// True once the panel is on screen and its opening motion (styles/notifications.css, 280 ms) has played: a frame
+// callback runs before the first paint and a task queued from it after; the motion's own animations say when it ends.
+function useOpened(anchor: RefObject<HTMLElement | null>) {
+  const [opened, setOpened] = useState(false)
+  useEffect(() => {
+    let live = true
+    let timer = 0
+    const frame = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => {
+        const animations = anchor.current?.parentElement?.getAnimations?.() ?? []
+        void Promise.allSettled(animations.map(animation => animation.finished)).then(() => { if (live) setOpened(true) })
+      }, 0)
+    })
+    return () => { live = false; window.cancelAnimationFrame(frame); window.clearTimeout(timer) }
+  }, [anchor])
+  return opened
+}
+
 type PanelProps = { notifications: AppNotification[]; onNavigate: (href: string) => void; onCleared: () => void }
 
 export function NotificationPanel({ notifications, onNavigate, onCleared }: PanelProps) {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const headingRef = useRef<HTMLDivElement>(null)
+  const opened = useOpened(headingRef)
   const unread = notifications.filter(notification => !notification.read)
   const errors = notifications.filter(notification => notification.kind === 'error')
   const visible = filter === 'UNREAD' ? unread : filter === 'ERROR' ? errors : notifications
@@ -86,6 +112,14 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     const label = dayLabel(notification.createdAt)
     return map.set(label, [...(map.get(label) ?? []), notification])
   }, new Map<string, AppNotification[]>()))
+  // Day headers keep their full counts; until the panel has opened only the first cards are drawn under them.
+  let budget = opened ? Infinity : notificationPanelFirstFrameCards
+  const drawn = groups.flatMap(([label, items]) => {
+    if (budget <= 0) return []
+    const shown = items.slice(0, budget)
+    budget -= shown.length
+    return [[label, items, shown] as const]
+  })
   const dayKind = (label: string) => label === 'Bugün' ? 'is-today' : label === 'Dün' ? 'is-yesterday' : 'is-older'
   const filters: Array<[Filter, string, number, ViewTabIconName]> = [['ALL', 'Tümü', notifications.length, 'all'], ['UNREAD', 'Okunmamış', unread.length, 'unread'], ['ERROR', 'Hatalar', errors.length, 'attention']]
 
@@ -95,7 +129,7 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
   }
 
   return <>
-    <div className="rv-notification-history-heading">
+    <div ref={headingRef} className="rv-notification-history-heading">
       <span className="rv-notification-history-title"><strong>Bildirimler</strong>{unread.length > 0 && <b aria-label={`${unread.length} okunmamış bildirim`}>{unread.length}</b>}</span>
       <div className="rv-notification-history-actions">
         <button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unread.length === 0} title="Tüm bildirimleri okundu olarak işaretle"><UiIcon name="check" size={14} />Tümünü Okundu Yap</button>
@@ -108,9 +142,9 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     {visible.length === 0
       ? <p className="rv-notification-history-empty">{notifications.length === 0 ? 'Henüz kaydedilmiş bildirim yok.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'}</p>
       : <div className="rv-notification-history-list rv-notification-timeline">
-        {groups.map(([label, items]) => <section key={label} className={`rv-notification-day ${dayKind(label)}`} aria-label={label}>
+        {drawn.map(([label, items, shown]) => <section key={label} className={`rv-notification-day ${dayKind(label)}`} aria-label={label}>
           <h4 className="rv-notification-group"><i aria-hidden="true" /><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></h4>
-          <div className="rv-notification-day-body">{items.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>
+          <div className="rv-notification-day-body">{shown.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>
         </section>)}
       </div>}
     {/* The notification center keeps every notification for a week, also the ones cleared here. */}
