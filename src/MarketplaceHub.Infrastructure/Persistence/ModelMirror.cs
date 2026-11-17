@@ -166,6 +166,14 @@ public static class ModelMirror
                 // New sizes that came with another desi take the model's; a desi difference is not warned about (owner, 17 Nov 2026).
             }
 
+            // A model is its brand and its code (owner, 17 Nov 2026): a brand given to the model moves it, with every colour, to
+            // that brand's key, refused when that brand already has a model of the code (nothing is merged).
+            if (fields.Contains(ProductModelValues.Brand) && !ProductModelLinks.IsOwnModelKey(model.ModelCodeKey)
+                && await db.ProductModels.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id != model.Id && x.ModelCodeKey == model.ModelCodeKey && x.BrandId == target.BrandId, cancellationToken))
+            {
+                var brandName = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == target.BrandId).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken);
+                throw ModelRuleException.BrandCodeTaken(model.ModelCode, brandName ?? "markasız");
+            }
             if (fields.Count > 0)
             {
                 await db.ProductModels.Where(x => x.TenantId == tenantId && x.Id == model.Id)

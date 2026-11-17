@@ -922,36 +922,67 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED"));
     }
 
-    // KATALOG-14 phase D5b review 6a: one import group bringing the same model code under two brands (both new to the
-    // panel) no longer fails the whole group: the first listing opens the model, the other brand's listing alone is
-    // skipped and PRODUCT_MODEL_AMBIGUOUS says so; nothing is merged or re-branded.
+    // A second panel brand, Lavian, mapped to Trendyol brand 789.
+    private async Task<Guid> AddLavianAsync(Seed seed)
+    {
+        await using var setup = fixture.CreateContext();
+        var now = DateTimeOffset.UtcNow;
+        var lavian = Guid.CreateVersion7();
+        setup.Brands.Add(new Brand { Id = lavian, TenantId = seed.TenantId, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+        var brands = await setup.ReferenceSnapshots.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == "BRANDS");
+        setup.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, ResourceType = "BRANDS", ExternalId = "789", Name = "Lavian", NormalizedName = "LAVIAN", Path = "Lavian", Depth = 0, IsLeaf = true, IsActive = true, PayloadHash = "payload-BRANDS-789" });
+        setup.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, LocalId = lavian, ExternalId = "789", Status = "VERIFIED", VerifiedAt = now, Version = 1 });
+        await setup.SaveChangesAsync();
+        return lavian;
+    }
+
+    // The live case (17 Nov 2026, KENE01): the panel holds Ravencia's model of a code; a later pull brings a Lavian listing
+    // under the same code. It comes in and opens Lavian's own model; Ravencia's model and cards are not touched.
     [PostgreSqlFact]
-    public async Task TwoBrandsUnderOneCodeInOneGroup_SkipOnlyTheOtherBrandsListing_AndWarn()
+    public async Task ALaterListingOfAnotherBrandUnderAHeldCode_OpensItsOwnModel_AndLeavesTheHeldModelAlone()
     {
         var seed = await SeedAsync();
-        Guid lavian;
-        await using (var setup = fixture.CreateContext())
-        {
-            var now = DateTimeOffset.UtcNow;
-            lavian = Guid.CreateVersion7();
-            setup.Brands.Add(new Brand { Id = lavian, TenantId = seed.TenantId, Name = "Lavian", NormalizedName = "LAVIAN", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
-            var brands = await setup.ReferenceSnapshots.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ResourceType == "BRANDS");
-            setup.ReferenceItems.Add(new ReferenceItem { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, ResourceType = "BRANDS", ExternalId = "789", Name = "Lavian", NormalizedName = "LAVIAN", Path = "Lavian", Depth = 0, IsLeaf = true, IsActive = true, PayloadHash = "payload-BRANDS-789" });
-            setup.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ConnectionId = seed.ConnectionId, SnapshotId = brands.Id, LocalId = lavian, ExternalId = "789", Status = "VERIFIED", VerifiedAt = now, Version = 1 });
-            await setup.SaveChangesAsync();
-        }
+        var lavian = await AddLavianAsync(seed);
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki")])), "{\"full\":true}");
+        ProductModel held;
+        await using (var db = fixture.CreateContext()) held = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
+
+        await RunAsync(seed, new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki"), Spec("Gri") with { BrandExternal = "789", BrandName = "Lavian" }])), "{\"full\":true}");
+
+        await using var check = fixture.CreateContext();
+        var cards = await CardsAsync(check, seed);
+        Assert.Equal(lavian, cards[ContentId("Gri")].Product.BrandId);
+        var models = await check.ProductModels.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        Assert.Equal(2, models.Count);
+        var after = models.Single(model => model.Id == held.Id);
+        Assert.Equal((held.BrandId, held.Title, held.Version), (after.BrandId, after.Title, after.Version));
+        Assert.Equal([held.Id, held.Id], [cards[ContentId("Bordo")].Product.FamilyId!.Value, cards[ContentId("Haki")].Product.FamilyId!.Value]);
+        var lavianModel = models.Single(model => model.Id != held.Id);
+        Assert.Equal((lavian, ModelCode, lavianModel.Id), (lavianModel.BrandId!.Value, lavianModel.ModelCodeKey, cards[ContentId("Gri")].Product.FamilyId!.Value));
+        Assert.False(await check.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == ProductModelLinks.AmbiguousCode && row.Status == IssueStatus.Open));
+    }
+
+    // Owner (17 Nov 2026, "farklı markalar aynı model kodunu kullanabiliyor"): one import group bringing the same model code
+    // under two brands opens two models, one per brand; every listing comes in and nothing is warned about.
+    [PostgreSqlFact]
+    public async Task TwoBrandsUnderOneCodeInOneGroup_OpenTwoModels_AndEveryListingComesIn()
+    {
+        var seed = await SeedAsync();
+        var lavian = await AddLavianAsync(seed);
         var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki"), Spec("Gri") with { BrandExternal = "789", BrandName = "Lavian" }]));
         await RunAsync(seed, port, "{\"full\":true}");
 
         await using var db = fixture.CreateContext();
         var cards = await CardsAsync(db, seed);
-        Assert.Equal([ContentId("Bordo"), ContentId("Haki")], cards.Keys.Order(StringComparer.Ordinal));
-        Assert.All(cards.Values, card => Assert.Equal(seed.BrandId, card.Product.BrandId));
-        var model = await db.ProductModels.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId);
-        Assert.Equal((seed.BrandId, ModelCode), (model.BrandId, model.ModelCodeKey));
-        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED"));
-        var warning = Assert.Single(await db.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == ProductModelLinks.AmbiguousCode).ToListAsync());
-        Assert.Contains("Lavian", warning.Summary, StringComparison.Ordinal);
+        Assert.Equal([ContentId("Bordo"), ContentId("Haki"), ContentId("Gri")], cards.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(lavian, cards[ContentId("Gri")].Product.BrandId);
+        var models = await db.ProductModels.AsNoTracking().Where(row => row.TenantId == seed.TenantId).ToListAsync();
+        Assert.Equal(2, models.Count);
+        Assert.All(models, model => Assert.Equal(ModelCode, model.ModelCodeKey));
+        Assert.Equal(new Guid?[] { seed.BrandId, lavian }.Order(), models.Select(model => model.BrandId).Order());
+        Assert.Equal(models.Single(model => model.BrandId == lavian).Id, cards[ContentId("Gri")].Product.FamilyId);
+        Assert.Equal(cards[ContentId("Bordo")].Product.FamilyId, cards[ContentId("Haki")].Product.FamilyId);
+        Assert.False(await db.OperationalIssues.AnyAsync(row => row.TenantId == seed.TenantId && (row.Code == "PRODUCT_IMPORT_FAILED" || row.Code == ProductModelLinks.AmbiguousCode)));
     }
 
     // A conflict that comes back on the retry fails the model as before, and the issue names the conflicting rows.

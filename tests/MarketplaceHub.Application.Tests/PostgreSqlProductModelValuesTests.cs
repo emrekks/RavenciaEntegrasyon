@@ -602,11 +602,11 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal([seed.Cotton], await ModelAttributeValuesAsync(db, model.Id));
     }
 
-    // KATALOG-6: a card left without its model (FamilyId emptied) is linked by the scan; KATALOG-14 phase D5b: a code two
-    // brands share from before keeps its model (of the oldest card's brand), the other brand's card stays on a model of its
-    // own and the code is reported (never merged); no card's own columns are written.
+    // KATALOG-6: a card left without its model (FamilyId emptied) is linked by the scan; a code two brands share is two
+    // models, one per brand (owner, 17 Nov 2026), and an ambiguity warning left from before is resolved; no card's own
+    // columns are written.
     [PostgreSqlFact]
-    public async Task TheScan_RelinksACardWhoseLinkFailed_AndLeavesTheTwoBrandCodeAlone()
+    public async Task TheScan_RelinksACardWhoseLinkFailed_AndGivesEachBrandItsModelOfTheCode()
     {
         await using var db = fixture.CreateContext();
         var seed = await SeedAsync(db);
@@ -615,9 +615,13 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var lavian = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Kot Etek", 2);
         var ravencia = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Kot Etek", 3);
         await db.SaveChangesAsync();
-        // KATALOG-14 phase D5b: a code two brands share can only come from before (no save puts a card of another brand
-        // under a code).
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {ravencia.Id}""");
+        // An ambiguity warning the previous release left open.
+        var at = DateTimeOffset.UtcNow;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO ops.operational_issues ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount")
+            VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, {ProductModelLinks.AmbiguousDedupeKey("KENE01")}, {ProductModelLinks.AmbiguousCode}, 'iki marka', 'Open', {at}, {at}, 1)
+            """);
         var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {bordo.Id}""");
         var versions = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version);
@@ -627,7 +631,9 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.Equal(modelId, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == bordo.Id)).FamilyId);
         var lavianModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == lavian.Id)).FamilyId;
         Assert.Equal(seed.Lavian, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == lavianModel)).BrandId);
-        Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.AmbiguousCode)).Status);
+        var ravenciaModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == ravencia.Id)).FamilyId;
+        Assert.Equal(("KENE01", (Guid?)seed.Ravencia), ((await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == ravenciaModel)).ModelCodeKey, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == ravenciaModel)).BrandId));
+        Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.Code == ProductModelLinks.AmbiguousCode)).Status);
         Assert.Equal(versions, await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version));
     }
 

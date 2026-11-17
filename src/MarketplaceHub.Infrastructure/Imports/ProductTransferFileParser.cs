@@ -553,7 +553,7 @@ public static class ProductTransferImportPlanner
     {
         var result = new Dictionary<Guid, string>();
         foreach (var model in rows.Where(item => item.Row.Brand.Kind == ProductTransferValueKind.Set)
-                     .GroupBy(item => ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) ?? item.Variant.ProductId.ToString("N"), StringComparer.Ordinal))
+                     .GroupBy(ModelOf, StringComparer.Ordinal))
         {
             if (model.Select(item => Persistence.PanelBrandByName.Key(item.Row.Brand.Text)).Distinct(StringComparer.Ordinal).Count() < 2) continue;
             var message = $"Aynı modelin ({ModelName(model.First())}) satırlarında farklı marka var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); marka modelin tüm renklerinde aynıdır, tüm satırlara aynı markayı yazın.";
@@ -594,7 +594,7 @@ public static class ProductTransferImportPlanner
     {
         var result = new Dictionary<Guid, string>();
         foreach (var model in rows.Where(item => value(item).Kind == ProductTransferValueKind.Set && changes(item))
-                     .GroupBy(item => ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) ?? item.Variant.ProductId.ToString("N"), StringComparer.Ordinal))
+                     .GroupBy(ModelOf, StringComparer.Ordinal))
         {
             if (model.Select(key).Distinct(StringComparer.Ordinal).Count() < 2) continue;
             var message = $"Aynı modelin ({ModelName(model.First())}) satırlarında farklı {label} var (satır {string.Join(", ", model.Select(item => item.Row.RowNumber))}); {label} modelin tüm renklerinde aynıdır, tüm satırlara aynı değeri yazın.";
@@ -602,6 +602,11 @@ public static class ProductTransferImportPlanner
         }
         return result;
     }
+
+    // The model a row's variant belongs to: its brand and its model code (owner, 17 Nov 2026: the same code under another
+    // brand is another model); a card without a model code is a model of its own.
+    private static string ModelOf((ProductTransferFileRow Row, ProductTransferCandidate Variant) item) =>
+        ProductFamilyKeyPolicy.ModelCodeKey(item.Variant.ModelCode) is { } key ? $"{Persistence.PanelBrandByName.Key(item.Variant.BrandName)}|{key}" : item.Variant.ProductId.ToString("N");
 
     // The model a refused row belongs to, as the owner knows it: its model code, else its card's name.
     private static string ModelName((ProductTransferFileRow Row, ProductTransferCandidate Variant) item) =>

@@ -807,8 +807,9 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         && (change.Description is null || ProductTransferImportPlanner.CleanDescription(change.Description).Value is not { } description || product.Description == description)
         && (change.Brand is null || currentBrandId is Guid brandId && product.BrandId == brandId);
 
-    // Each product with the colour cards of its model: the visible cards sharing its model code (any brand, archived ones
-    // left out), the product itself always. A card without a model code is a model of its own.
+    // Each product with the colour cards of its model: the visible cards of its brand sharing its model code (a model is its
+    // brand and its code, owner 17 Nov 2026; archived ones left out), the product itself always. A card without a model code
+    // is a model of its own.
     private async Task<Dictionary<Guid, HashSet<Guid>>> ModelCardsAsync(Guid tenantId, Guid[] productIds, CancellationToken cancellationToken)
     {
         var codes = (await db.ProductVariants.AsNoTracking()
@@ -817,7 +818,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             .GroupBy(variant => variant.ProductId)
             .ToDictionary(group => group.Key, group => ProductFamilyKeyPolicy.ModelCodeKey(group.OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).First().ModelCode));
         var keys = codes.Values.OfType<string>().ToHashSet(StringComparer.Ordinal);
-        var cardsByKey = new Dictionary<string, HashSet<Guid>>(StringComparer.Ordinal);
+        var cardsByKey = new Dictionary<(string Key, Guid? Brand), HashSet<Guid>>();
+        var brandOf = new Dictionary<Guid, Guid?>();
         if (keys.Count > 0)
         {
             // KATALOG-8: only the cards that may hold one of the keys are read; the key still decides below.
@@ -826,15 +828,18 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                               join product in EffectiveCatalog.Products(db) on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
                               where variant.TenantId == tenantId && variant.ModelCode != null && variant.ModelCode != "" && product.Status != ProductStatus.Archived
                                   && candidates.Contains(product.Id)
-                              select new { product.Id, variant.ModelCode }).Distinct().ToListAsync(cancellationToken);
+                              select new { product.Id, product.BrandId, variant.ModelCode }).Distinct().ToListAsync(cancellationToken);
             foreach (var row in rows)
+            {
+                brandOf[row.Id] = row.BrandId;
                 if (ProductFamilyKeyPolicy.ModelCodeKey(row.ModelCode) is { } key && keys.Contains(key))
                 {
-                    if (!cardsByKey.TryGetValue(key, out var cards)) cardsByKey[key] = cards = [];
+                    if (!cardsByKey.TryGetValue((key, row.BrandId), out var cards)) cardsByKey[(key, row.BrandId)] = cards = [];
                     cards.Add(row.Id);
                 }
+            }
         }
-        return productIds.ToDictionary(id => id, id => new HashSet<Guid>(codes.GetValueOrDefault(id) is { } key && cardsByKey.TryGetValue(key, out var cards) ? cards : []) { id });
+        return productIds.ToDictionary(id => id, id => new HashSet<Guid>(codes.GetValueOrDefault(id) is { } key && brandOf.TryGetValue(id, out var brand) && cardsByKey.TryGetValue((key, brand), out var cards) ? cards : []) { id });
     }
 
     private static bool HoldsPrice(ChannelOffer offer, ProductTransferPriceChange price) => offer.SalePrice == price.SalePrice && offer.ListPrice == price.ListPrice;

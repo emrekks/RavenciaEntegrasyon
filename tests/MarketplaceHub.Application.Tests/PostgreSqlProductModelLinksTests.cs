@@ -58,8 +58,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
     private static Task<Dictionary<Guid, Guid?>> LinksAsync(AppDbContext db, Guid tenantId) =>
         db.Products.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.FamilyId);
 
-    // A code two brands share as a release before KATALOG-14 phase D5b could leave it: the card's code set by SQL, then the
-    // whole tenant's reconcile (which leaves the card of the other brand on a model of its own and reports the code).
+    // A code two brands share: the card's code set by SQL, then the whole tenant's reconcile (each brand its own model).
     private static async Task SharedCodeFromBeforeAsync(AppDbContext db, Seed seed, Product card, string code)
     {
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = {code} WHERE "ProductId" = {card.Id}""");
@@ -93,24 +92,22 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         Assert.Equal(model.Id, (await LinksAsync(db, seed.Tenant.Id))[mavi.Id]);
         Assert.Equal(1L, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).Version);
 
-        // KATALOG-14 phase D5b (owner, 17 Nov 2026): a model is its code alone and the brand one of its fields. KENE01 of
-        // Lavian opens the model; a card of another brand under the code is refused and nothing of its save stands.
+        // Owner (17 Nov 2026, "farklı markalar aynı model kodunu kullanabiliyor"): a model is its brand and its code. KENE01
+        // of Lavian opens Lavian's model; KENE01 of Ravencia opens Ravencia's own, nothing refused or warned about.
         var lavian = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Asimetrik Kesim Kot Etek", 2);
         // A Turkish-letter code is keyed like any other.
         var turkish = AddCard(db, seed, seed.Ravencia, "TYBCamKırıgı", "Beyaz", "Kadın Beyaz Bluz", 4);
         await db.SaveChangesAsync();
         var ravencia = AddCard(db, seed, seed.Ravencia, "KENE01", "Mavi", "Kadın Denim Asimetrik Kesim Kot Etek", 3);
-        await transaction.CreateSavepointAsync("other-brand");
-        var refused = await Assert.ThrowsAsync<ModelRuleException>(() => db.SaveChangesAsync());
-        Assert.Equal((ModelCodeUniquenessPolicy.OtherBrandCode, "Bu Model Kodu KENE01 Başka Bir Markada Kayıtlı (Lavian)"), (refused.Code, refused.Message));
-        await transaction.RollbackToSavepointAsync("other-brand");
+        await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
-        Assert.False(await db.Products.AsNoTracking().AnyAsync(x => x.Id == ravencia.Id));
         var links = await LinksAsync(db, seed.Tenant.Id);
         Assert.NotNull(links[lavian.Id]);
         Assert.NotNull(links[turkish.Id]);
-        Assert.Equal(["KENE01", "MZ035YNC", "TYBCAMKIRIGI"], (await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ModelCodeKey).ToListAsync()).Order(StringComparer.Ordinal));
-        Assert.Equal(seed.Lavian, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == links[lavian.Id])).BrandId);
+        Assert.NotEqual(links[lavian.Id], links[ravencia.Id]);
+        Assert.Equal(["KENE01", "KENE01", "MZ035YNC", "TYBCAMKIRIGI"], (await db.ProductModels.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.ModelCodeKey).ToListAsync()).Order(StringComparer.Ordinal));
+        Assert.Equal((seed.Lavian, seed.Ravencia), ((await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == links[lavian.Id])).BrandId!.Value, (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == links[ravencia.Id])).BrandId!.Value));
+        Assert.Empty(await AmbiguityIssuesAsync(db, seed.Tenant.Id));
 
         // A code changed on one colour is the model's new code: every colour takes it and the model keeps its id.
         foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == mavi.Id).ToListAsync()) variant.ModelCode = "MZ036";
@@ -120,7 +117,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         var recoded = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == model.Id);
         Assert.Equal(("MZ036", "MZ036"), (recoded.ModelCode, recoded.ModelCodeKey));
         Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == siyah.Id).ToListAsync(), variant => Assert.Equal("MZ036", variant.ModelCode));
-        // A code another model holds is refused.
+        // A code another model of the same brand holds is refused.
         db.ChangeTracker.Clear();
         foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == mavi.Id).ToListAsync()) variant.ModelCode = "KENE01";
         await transaction.CreateSavepointAsync("code-in-use");
@@ -131,7 +128,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
 
     // KATALOG-14 phase D5b (owner, 17 Nov 2026): the brand is a field of the model, so a brand changed from one colour's
     // editor reaches the model and every colour of it (no colour keeps another brand), and the model keeps its code and id.
-    // A card of another brand never joins the code: the editor's own family is the model's colours only.
+    // The editor's own family is the model's colours only (its brand and code).
     [PostgreSqlFact]
     public async Task AnEditorBrandChange_OfOneColour_IsTheModelsBrand_OnEveryColour()
     {
@@ -187,8 +184,38 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         await transaction.RollbackAsync();
     }
 
+    // Owner (17 Nov 2026): a brand is part of the model's key. An editor brand change that would move the model to a brand
+    // already holding a model of the code is refused with a clear message: nothing is merged, no colour changes brand.
     [PostgreSqlFact]
-    public async Task DeletingCards_RemovesAModelWithoutCards_AndLinksACodeLeftUnderOneBrand()
+    public async Task AnEditorBrandChange_IntoABrandThatHoldsTheCode_IsRefused_NothingIsMerged()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        AddSeed(db, seed);
+        var mavi = AddCard(db, seed, seed.Ravencia, "KENE09", "Mavi", "Kadın Mavi Kot Etek", 0);
+        var denim = AddCard(db, seed, seed.Ravencia, "KENE09", "Denim Rengi", "Kadın Denim Rengi Kot Etek", 1);
+        var lavian = AddCard(db, seed, seed.Lavian, "KENE09", "Gri", "Kadın Gri Kot Etek", 2);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.Equal(2, await db.ProductModels.CountAsync(x => x.TenantId == seed.Tenant.Id));
+
+        var service = Service(db);
+        var shown = (await service.GetProductAsync(seed.Tenant.Id, denim.Id, CancellationToken.None)).Value!;
+        Assert.Equal(new[] { mavi.Id, denim.Id }.Order(), shown.FamilyProductIds!.Order());
+        var saved = await service.UpdateProductAsync(seed.Tenant.Id, denim.Id, shown.Version, Command(shown) with { BrandId = seed.Lavian, LoadedFamilyVersions = shown.FamilyVersions }, CancellationToken.None);
+        Assert.False(saved.Succeeded);
+        Assert.Equal(ModelCodeUniquenessPolicy.BrandCodeTakenCode, saved.Error!.Code);
+        Assert.StartsWith("Bu Markada Aynı Model Kodu Zaten Var", saved.Error.Message);
+        db.ChangeTracker.Clear();
+        var cards = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id);
+        Assert.Equal((seed.Ravencia, seed.Ravencia, seed.Lavian), (cards[mavi.Id].BrandId!.Value, cards[denim.Id].BrandId!.Value, cards[lavian.Id].BrandId!.Value));
+        Assert.Equal(cards[mavi.Id].FamilyId, cards[denim.Id].FamilyId);
+        Assert.NotEqual(cards[mavi.Id].FamilyId, cards[lavian.Id].FamilyId);
+        Assert.Equal(2, await db.ProductModels.CountAsync(x => x.TenantId == seed.Tenant.Id));
+    }
+
+    [PostgreSqlFact]
+    public async Task DeletingCards_RemovesAModelWithoutCards_AndKeepsTheOtherBrandsModelOfTheCode()
     {
         var seed = NewSeed();
         Product single, lavian, ravencia;
@@ -199,10 +226,10 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
             lavian = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 1);
             ravencia = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Kot Etek", 2);
             await db.SaveChangesAsync();
-            // KATALOG-14 phase D5b: a code two brands share can only come from before (no save puts a card of another brand
-            // under a code): the Ravencia card holds a model of its own and the code is reported.
+            // Owner (17 Nov 2026): the same code under two brands is two models, nothing reported.
             await SharedCodeFromBeforeAsync(db, seed, ravencia, "KENE01");
-            Assert.Equal(IssueStatus.Open, Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id)).Status);
+            Assert.Empty(await AmbiguityIssuesAsync(db, seed.Tenant.Id));
+            Assert.Equal(2, await db.ProductModels.CountAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "KENE01"));
         }
         await using (var db = fixture.CreateContext())
         {
@@ -213,7 +240,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
             var model = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id);
             Assert.Equal((seed.Ravencia, "KENE01"), (model.BrandId, model.ModelCodeKey));
             Assert.Equal(model.Id, (await LinksAsync(db, seed.Tenant.Id))[ravencia.Id]);
-            Assert.Equal(IssueStatus.Resolved, Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id)).Status);
+            Assert.Empty(await AmbiguityIssuesAsync(db, seed.Tenant.Id));
         }
     }
 
@@ -295,10 +322,10 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
 
     // KATALOG-14 phase D5b, deploy: the previous release, still running after the unique key's migration, opens a second
     // brand's model of a code; its insert is skipped and the card is linked to a model of its own ("#<card id>") although
-    // it carries the code. The new release's startup pass (and the nightly scan) links such a card to its code's model
-    // when the brand is the model's, and leaves a card of another brand where it is with "Başka Bir Markada Kayıtlı".
+    // it carries the code. The new release's startup pass (and the nightly scan) links such a card to its brand's model of
+    // the code, opening it when the brand has none (owner, 17 Nov 2026: the same code under another brand is another model).
     [PostgreSqlFact]
-    public async Task ACodedCardOnAModelOfItsOwn_JoinsItsCodesModel_UnlessItsBrandIsAnother()
+    public async Task ACodedCardOnAModelOfItsOwn_JoinsItsBrandsModelOfTheCode_OrOpensIt()
     {
         var seed = NewSeed();
         await using var db = fixture.CreateContext();
@@ -330,11 +357,10 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         var links = await LinksAsync(db, seed.Tenant.Id);
         Assert.Equal([model.Id, model.Id], [links[first.Id], links[same.Id]]);
         Assert.NotEqual(model.Id, links[other.Id]);
-        Assert.StartsWith("#", (await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == links[other.Id])).ModelCodeKey);
-        Assert.Equal(seed.Lavian, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == other.Id)).BrandId);
-        var issue = Assert.Single(await AmbiguityIssuesAsync(db, seed.Tenant.Id));
-        Assert.Equal(IssueStatus.Open, issue.Status);
-        Assert.StartsWith("Bu Model Kodu KENE05 Başka Bir Markada Kayıtlı (Ravencia)", issue.Summary);
+        var lavianModel = await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == links[other.Id]);
+        Assert.Equal(("KENE05", (Guid?)seed.Lavian), (lavianModel.ModelCodeKey, lavianModel.BrandId));
+        Assert.False(await db.ProductModels.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey.StartsWith("#")));
+        Assert.Empty(await AmbiguityIssuesAsync(db, seed.Tenant.Id));
         await transaction.RollbackAsync();
     }
 
