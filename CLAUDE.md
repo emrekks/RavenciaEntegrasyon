@@ -73,6 +73,12 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Never infer a marketplace state from a missing field (no invoice link is not "not invoiced"); unknown stays unknown.
 - Trendyol cross-border storefront orders (SA, AZ, BG, RO, GR, AE) ship to Trendyol's Istanbul export depot; they
   count in their storefront's country, not in Istanbul.
+- A product model (`catalog.product_models`) is BRAND + MODEL CODE: the same code under another brand is another model.
+  Its eight fields (name, description, VAT, desi, delivery days, warranty, brand, category) belong to the model; every
+  colour and variant takes them from it (`ModelMirror`, `EffectiveCatalog`). An import never changes an existing model;
+  deploy, startup and nightly passes never write these fields, they only warn.
+- Invoice link (`MarketplaceInvoiceLinkPolicy`): Trendyol, Hepsiburada and Shopify get E-Faturam's permanent URL; n11,
+  Pazarama and PTT AVM the panel's `.../invoice.pdf` link. A missing provider link stops the delivery, no fallback.
 
 ## UI
 - Controls 36 px high; radii 7 / 12 / 14 px; labels in Title Case.

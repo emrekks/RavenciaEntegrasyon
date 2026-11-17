@@ -86,8 +86,15 @@ süren bir deploy yarıda kesilebilir.
   değiştiyse (ya da çalışan sürüm bilinmiyorsa) prova yapar; kod-yalnız deploy'lar etkilenmez. Seçim:
   `RAVENCIA_MIGRATION_REHEARSAL` (elle) ya da `production.env` içinde
   `MARKETPLACEHUB_MIGRATION_REHEARSAL=auto|always|never`. Kök disk %80'in üstündeyse (ikinci bir veritabanı
-  kopyası gerekir) prova uyarıyla atlanır. Süre dolması üretimde de uzun sürecek bir migration demektir:
+  kopyası gerekir) ve migration'lar değiştiyse deploy üretime dokunmadan durur (yer açılır ya da migration
+  kontrol edilip elle `RAVENCIA_MIGRATION_REHEARSAL=never` ile deploy edilir); migration değişmemişken
+  (`always`) prova yalnız uyarıyla atlanır. Süre dolması üretimde de uzun sürecek bir migration demektir:
   bir pencere planlanıp elle `RAVENCIA_MIGRATION_REHEARSAL=never` ile deploy edilir.
+- **Prova migration'dan önce düşerse** ("Migration rehearsal failed … production was not migrated"): canlı
+  veritabanı ve çalışan api/worker/caddy değişmez, sürüm `.hold`'a girmez. Neden migration'ın kendisiyse düzeltme
+  commit'i olağan yoldan gelir; neden geçiciyse (disk, ağ, kopma) aynı sha
+  `gh workflow run deploy.yml --ref main` ile yeniden denenir: son başarılı deploy bu sha'yı içermediği için
+  giriş betiği deploy'u yeniden çalıştırır.
 - **Migration süresi**: `fast-deploy.sh` migrate konteynerini `docker wait` ile en çok 30 dakika bekler
   (`RAVENCIA_MIGRATION_TIMEOUT_SECONDS`, varsayılan 1800); süre dolarsa konteyneri durdurur (açık işlem geri
   alınır, eski yığın son tamamlanan migration'ın şemasıyla hizmete devam eder) ve deploy başarısız olur.

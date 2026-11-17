@@ -11,6 +11,7 @@ kökünden çalıştırılır. Genel deploy akışı: [CI-CD-DEPLOY.md](CI-CD-DE
 | Yeni sürümde hata var, veriler doğru (ekran çöküyor, bir uç 500 veriyor, iş kuyruğu takılıyor) | **Yalnız kodu geri al** (bölüm 2). Veri kaybı yok. |
 | Hata küçük ve nedeni belli | Geri almak yerine **ileri düzelt**: düzeltmeyi `main`'e push et; Validate → Deploy olağan yoldan gider. |
 | Migration yarıda kaldı / deploy "Database migration did not complete" ile durdu | Eski konteynerler hâlâ çalışıyor (deploy migration bitmeden onları değiştirmez). Panel çalışıyorsa acil iş yok: migration logunu incele, ileri düzelt. |
+| Deploy "Migration rehearsal failed … production was not migrated" ile durdu | Canlıya hiçbir şey olmadı; eski sürüm çalışıyor, `.hold` yok. Neden geçiciyse `gh workflow run deploy.yml --ref main` aynı sha'yı yeniden dener; migration hatalıysa ileri düzelt ([CI-CD-DEPLOY.md](CI-CD-DEPLOY.md) "Migration provası"). |
 | Yeni migration veriyi **bozdu ya da sildi** (yanlış UPDATE/DELETE, kolon düşürüldü, veri dönüşümü hatalı) | **Veritabanını geri yükle** (bölüm 3). Yedekten sonraki tüm yazmalar kaybolur — son çare. |
 | Eski kod yeni şemayla çalışamıyor (kolon adı değişti, NOT NULL kolon eklendi) | Kod geri alma tek başına yetmez: ya ileri düzelt ya da bölüm 3. |
 
@@ -381,8 +382,12 @@ yazmaları durdurup canlı veritabanını o zamana döndürmek ayrı bir karard�
   canlı `ce8d854e99b4` ve bir önceki sürüm sütunu hiç anmıyor (16 Kasım, salt okuma: 7 faturanın 0'ında değer var);
   imaj geri alındığında da sütun okunmaz. `6802b4706b64` öncesi bir imaja ELLE dönülecekse önce bu migration'ın
   `Down`'ı çalıştırılır: o imajlar sütunu eşler, sütun yokken her fatura sorgusu 42703 ile düşer (otomatik geri alma
-  bu durumu üretmez). Canlıya çıkınca: `/prod-sql --columns billing.invoices` listesinde
-  `SequenceNumber` olmamalı.
+  bu durumu üretmez). **Canlıda uygulandı:** 17 Kasım 2026, salt okuma: `billing.invoices`'ta `SequenceNumber`
+  sütunu yok, son uygulanan migration `20261117181003_ProductModelCodeKeyPerBrand`.
+- **KATALOG-14 model anahtarı:** `20261117181003_ProductModelCodeKeyPerBrand` `(TenantId, ModelCodeKey)` indeksini
+  yeniden düz yaptı (model = marka + model kodu; tekil indeks `(TenantId, BrandId, ModelCodeKey)` kalır). Önceki sürüm
+  düz indeksle sorunsuz çalışır, yalnız kod geri alma güvenlidir. `Down` aynı kodu iki markada taşıyan model varsa
+  sayıyla durur, hiçbir şey birleştirmez.
 
 ## 10. Kesintisiz deploy: iki API kopyası (hazır yama, uygulanmamış; VERITABANI-DAGITIM-4)
 

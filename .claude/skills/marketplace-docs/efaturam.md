@@ -74,7 +74,8 @@ insufficient balance surfaces only as 409 `…/gateway/insufficient-credit` on i
   read-only SQL (coordinator): Hepsiburada invoices hold only the PDF row, host apigateway.trendyolecozum.com; Pazarama
   invoices hold the panel row.
 - Since 17 Nov 2026 (`MarketplaceInvoiceLinkPolicy`, setting `Invoicing:MarketplaceInvoiceLink` = `Provider` default |
-  `Panel`): Trendyol, Hepsiburada and Shopify get the provider URL of the verified PDF row; n11, Pazarama and PTT AVM
+  `Panel`, set on the host by `MARKETPLACEHUB_INVOICE_LINK_SOURCE` in production.env and a redeploy; any value but `Panel`
+  is the default): Trendyol, Hepsiburada and Shopify get the provider URL of the verified PDF row; n11, Pazarama and PTT AVM
   always the panel link, so the release changes no marketplace's delivered link. Each delivery stores the link it carried (`marketplace_delivery_states.InvoiceLink`); retries,
   the Hepsiburada exchange re-send, confirmation and link removal use that link, and a delivery recorded before the
   column keeps its old link (the panel row when one exists, else the latest document). A missing or unusable provider
