@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261117084612_ProductModelCodeKeyUnique")]
+    [Migration("20261117151526_ProductModelCodeKeyUnique")]
     partial class ProductModelCodeKeyUnique
     {
         /// <inheritdoc />
@@ -3577,6 +3577,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("InvoiceId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("InvoiceLink")
+                        .HasMaxLength(4096)
+                        .HasColumnType("character varying(4096)");
 
                     b.Property<Guid?>("PackageId")
                         .HasColumnType("uuid");
