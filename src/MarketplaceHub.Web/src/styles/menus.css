@@ -65,8 +65,13 @@ html body .app-shell.stitch-shell :is(.reference-menu-popover > :is(a, button), 
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
 
-/* The checkbox: round 16px (owner, 8 Nov 2026: "yuvarlak olmalı her yerde"), purple with a white tick (rr-cb, ss-cb and native boxes alike). */
+/* The checkbox, one rule for every screen (owner, 18 Nov 2026): 16px round box, purple with a white tick when chosen. The tick
+   is a 10px mask drawn on whole pixels and centred by the box itself (no rotated border), it scales in over 140 ms and out
+   again; the dash for the half-chosen state (indeterminate, data-mixed) is drawn the same way. rr-cb, ss-cb and native boxes
+   alike; radios stay round dots and switches keep their own rules. */
 html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input) {
+  --ck-tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.8 5.3l2.3 2.3 4.1-4.6' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --ck-dash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 5h6' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E");
   position: relative;
   box-sizing: border-box;
   flex: 0 0 16px;
@@ -84,38 +89,34 @@ html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch,
   box-shadow: none;
   cursor: pointer;
   vertical-align: middle;
+  transition: background-color .14s ease, border-color .14s ease;
 }
-html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):is(:checked, :indeterminate) {
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):is(:checked, :indeterminate, [data-mixed]) {
   background: var(--rv-color-primary) !important;
   border-color: var(--rv-color-primary) !important;
 }
-html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):checked::after {
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input)::after {
   content: "" !important;
   position: absolute !important;
-  inset: auto !important;
-  left: 4.5px !important;
-  top: 1.5px !important;
-  width: 4px !important;
-  height: 8px !important;
-  background: none !important;
-  border: solid #fff !important;
-  border-width: 0 1.8px 1.8px 0 !important;
-  transform: rotate(45deg) !important;
-}
-html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):indeterminate:not(:checked)::after {
-  content: "" !important;
-  position: absolute !important;
-  inset: auto !important;
-  left: 3.5px !important;
-  top: 6.2px !important;
-  width: 7px !important;
-  height: 1.8px !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
   background: #fff !important;
   border: 0 !important;
-  transform: none !important;
+  opacity: 0;
+  transform: scale(.4) !important;
+  -webkit-mask: var(--ck-tick) center / 10px 10px no-repeat;
+  mask: var(--ck-tick) center / 10px 10px no-repeat;
+  pointer-events: none;
+  transition: transform .14s ease-out, opacity .14s ease-out;
 }
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):is(:checked, :indeterminate, [data-mixed])::after { opacity: 1; transform: scale(1) !important; }
+html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):is(:indeterminate, [data-mixed]):not(:checked)::after { -webkit-mask-image: var(--ck-dash); mask-image: var(--ck-dash); }
 html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):disabled { cursor: not-allowed; opacity: .5; }
 html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input), html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input)::after { transition: none; }
+}
 
 /* ---------- table-head sort buttons: 24px ---------- */
 html body :is(main .rr, .rr-layer) :is(.rr-sortbtn, .rr-fbtn) { width: 24px; height: 24px; min-width: 0; min-height: 0; }
@@ -145,7 +146,4 @@ html body .app-shell.stitch-shell main .product-add-page.product-add-page label:
 /* Promosyon's Tablo Boyutu and Eşleştirmeler' A–Z: compact menus beside their labels. */
 html body .app-shell.stitch-shell .commission-zoom > .pm-select { width: 96px; }
 
-/* Round checkbox: the tick and the indeterminate dash sit in the middle of the circle (they were placed for a square). */
-html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):checked::after { left: 50% !important; top: 46% !important; transform: translate(-50%, -50%) rotate(45deg) !important; }
-html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input):indeterminate:not(:checked)::after { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%) !important; }
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check::after { left: 50%; top: 46%; transform: translate(-50%, -50%) rotate(45deg); }

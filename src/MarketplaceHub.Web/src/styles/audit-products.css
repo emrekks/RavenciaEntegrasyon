@@ -32,7 +32,7 @@
 /* Ürün Düzenleyici variant table: Liste Fiyatı (heading, pencil and bulk icon) was 96 px and wrapped to two lines while
    Seçenek and Barkod had room; every heading stays on one line and the table fits at 1280 px without sideways scroll. */
 @media (min-width: 1201px) {
-  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(878px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(108px, .9fr) minmax(108px, .9fr) 76px 112px 112px 112px 168px; }
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(894px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(116px, .9fr) minmax(116px, .9fr) 76px 112px 112px 112px 168px; }
   :root:root:root body .variant-table-editor .variant-table-head > * > span { white-space: nowrap; }
 }
 

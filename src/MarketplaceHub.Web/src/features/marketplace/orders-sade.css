@@ -172,7 +172,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="Fatura"] { grid-area: i; padding-top: 10px !important; border-top: 1px solid var(--rr-line) !important; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl tbody tr > td[data-l="İşlemler"] { grid-area: a; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell { align-items: center; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 8px; min-width: 0; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 12px; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark, :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark-text { grid-row: 1; grid-column: 1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark-row { grid-row: 1; grid-column: 1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-on-no { grid-row: 1; grid-column: 2; min-width: 0; }

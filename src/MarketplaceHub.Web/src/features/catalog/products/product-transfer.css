@@ -32,7 +32,7 @@
   /* The description column says only that it changes and its length (one line, never the HTML). */
   .pci-desc { white-space: nowrap; }
   .pci-check { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
-  .pci-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); }
+  .pci-check input { margin: 0; }
   .pci-check.is-missing { color: var(--rv-color-muted); cursor: not-allowed; }
 
   .pci-drop { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; color: var(--rv-color-muted); text-align: center; background: var(--rv-color-surface); border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }

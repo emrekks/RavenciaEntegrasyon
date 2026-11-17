@@ -136,19 +136,12 @@ describe('panel factory reset confirmation', () => {
     expect(panelResetStepLabel('Loglar siliniyor', 'failed')).toBe('Loglar silinemedi')
   })
 
-  it('shows a finished run as completed with its steps folded behind a toggle', async () => {
+  it('does not show an old finished run again when the page is opened', async () => {
     const job = { jobId: 'j', status: 'SUCCEEDED', full: true, categories: [], steps: baseView.steps, step: 3, progressLabel: null, progressPercent: 100, error: null, createdAt: '2026-11-13T21:49:00Z', completedAt: '2026-11-13T21:50:00Z' }
     state.view = { ...baseView, job }
     await render()
-    const progress = container.querySelector('.ss-fr-progress')!
-    expect(progress.className).toContain('is-done')
-    expect(progress.querySelector('strong')!.textContent).toBe('Tam Sıfırlama Tamamlandı')
-    expect(progress.textContent).toContain('tarihinde tamamlandı')
-    expect(container.querySelector('.ss-fr-steps')).toBeNull()
-    const toggle = container.querySelector<HTMLButtonElement>('.ss-fr-steps-toggle')!
-    expect(toggle.textContent).toBe('Adımları Göster')
-    await act(async () => { toggle.click() })
-    expect(Array.from(container.querySelectorAll('.ss-fr-steps li')).map(item => item.textContent)).toEqual(['Süren işler bitti', 'Faturalar ve belgeleri silindi', 'Siparişler, paketler, iadeler ve sorular silindi', 'Tamamlandı'])
+    expect(container.querySelector('.ss-fr-progress')).toBeNull()
+    expect(container.querySelector('.ss-fr-steps-toggle')).toBeNull()
   })
 
   it('keeps the list open while running', async () => {

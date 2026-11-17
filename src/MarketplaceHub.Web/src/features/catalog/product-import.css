@@ -1,7 +1,7 @@
 /* "Ürünleri platformdan çek" dialog: roomier cards, section labels, segmented tabs, selection summary. */
 .app-shell.stitch-shell main .product-import-mode strong { font-weight: 600; }
 .app-shell.stitch-shell main .product-import-mode { align-items: start; min-height: 72px; padding: 14px 16px; }
-.app-shell.stitch-shell main .product-import-mode > input { margin-top: 2px; accent-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .product-import-mode > input { margin-top: 2px; }
 
 /* Cards hover to a neutral grey like the returns list; the purple stays for selected cards. */
 .app-shell.stitch-shell main .product-import-mode:not(.selected):hover { background: var(--rv-hover, var(--rv-color-surface-raised)); border-color: var(--rv-color-border-strong); }
