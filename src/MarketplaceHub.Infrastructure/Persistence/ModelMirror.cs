@@ -94,7 +94,7 @@ public static class ModelMirror
             }
 
             Take(ProductModelValues.Title, x => x.Title, x => (x.Change.TitleText ?? x.Card.Title, x.Card.Color),
-                value => TitleKey(value.Item1, value.Item2, colors), (target.Title, target.TitleColor),
+                value => value.Item2 is null ? value.Item1.Trim() : TitleKey(value.Item1, value.Item2, colors), (target.Title, target.TitleColor),
                 (v, x) => v with { Title = Short(x.Item1.Trim(), 320), TitleColor = x.Item2 is { } color && ProductFamilyNewColorCard.HasColorWord(x.Item1, color) ? Short(color.Trim(), 120) : null });
             Take(ProductModelValues.Description, x => x.Description, x => x.Change.DescriptionText ?? x.Card.Description, value => value.Trim(), target.Description, (v, x) => v with { Description = x });
             Take(ProductModelValues.Vat, x => x.Vat, x => (x.Change.VatRate, x.Change.VatInclusion), value => $"{value.VatRate?.ToString("0.####", CultureInfo.InvariantCulture)}|{value.VatInclusion?.ToUpperInvariant()}", (target.VatRate, target.VatInclusion), (v, x) => v with { VatRate = x.VatRate, VatInclusion = x.VatInclusion });

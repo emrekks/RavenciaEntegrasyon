@@ -384,7 +384,8 @@ public static class ProductModelLinks
                         [.. cards.Select(x => new ProductFamilySharedFields.CardFields(x.Card.Id, x.Color, x.Card.Title, x.Card.Description, x.Card.BrandId, x.Card.CategoryId, x.Card.VatRate, x.Card.VatInclusion, x.Card.WarrantyMonths, x.Card.DeliveryDays))],
                         null);
                     var titleCard = cards.FirstOrDefault(x => x.Card.Title.Trim() == fields.Title);
-                    var titleColor = titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null;
+                    // KATALOG-14 phase D5b: the colour word the name holds, whichever colour card it came from (a copy can hold another colour's).
+                    var titleColor = (titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? color : cards.Select(x => x.Color).FirstOrDefault(other => other is not null && ProductFamilyNewColorCard.HasColorWord(fields.Title, other))) is { } word ? Short(word.Trim(), 120) : null;
                     await db.Database.ExecuteSqlInterpolatedAsync($"""
                         INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
                         VALUES ({Guid.CreateVersion7()}, {tenantId}, {brandId}, {Short(cards[0].Code, 160)}, {key}, {Short(fields.Title, 320)}, {titleColor}, {fields.Description}, {fields.CategoryId}, {fields.VatRate}, {fields.VatInclusion}, {fields.WarrantyMonths}, {fields.DeliveryDays}, {(DateTimeOffset?)null}, {now}, {now}, {1L})
@@ -410,7 +411,7 @@ public static class ProductModelLinks
                             [.. brandCards.Select(x => new ProductFamilySharedFields.CardFields(x.Card.Id, x.Color, x.Card.Title, x.Card.Description, x.Card.BrandId, x.Card.CategoryId, x.Card.VatRate, x.Card.VatInclusion, x.Card.WarrantyMonths, x.Card.DeliveryDays))],
                             null);
                         var titleCard = brandCards.FirstOrDefault(x => x.Card.Title.Trim() == fields.Title);
-                        var titleColor = titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? Short(color.Trim(), 120) : null;
+                        var titleColor = (titleCard.Color is { } color && ProductFamilyNewColorCard.HasColorWord(fields.Title, color) ? color : brandCards.Select(x => x.Color).FirstOrDefault(other => other is not null && ProductFamilyNewColorCard.HasColorWord(fields.Title, other))) is { } word ? Short(word.Trim(), 120) : null;
                         var brandId = brand.Key;
                         await db.Database.ExecuteSqlInterpolatedAsync($"""
                             INSERT INTO catalog.product_models ("Id", "TenantId", "BrandId", "ModelCode", "ModelCodeKey", "Title", "TitleColor", "Description", "CategoryId", "VatRate", "VatInclusion", "WarrantyMonths", "DeliveryDays", "FieldsSavedAt", "CreatedAt", "UpdatedAt", "Version")
