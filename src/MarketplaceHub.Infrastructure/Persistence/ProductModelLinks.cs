@@ -99,7 +99,7 @@ public static class ProductModelLinks
                     pending.AddKey(variant.TenantId, variant.ModelCode);
                     pending.AddProduct(variant.TenantId, variant.ProductId);
                     // KATALOG-14 phase D5b: a new size takes its model's desi (ModelMirror).
-                    pending.AddFieldChange(variant.TenantId, variant.ProductId, pending.FieldChangeOf(variant.TenantId, variant.ProductId).WithAddedDesi(variant.Desi));
+                    pending.AddFieldChange(variant.TenantId, variant.ProductId, pending.FieldChangeOf(variant.TenantId, variant.ProductId).WithDesi(variant.Id, variant.Desi, added: true));
                     break;
                 case EntityState.Deleted:
                     pending.AddKey(variant.TenantId, entry.Property(x => x.ModelCode).OriginalValue);
@@ -111,7 +111,7 @@ public static class ProductModelLinks
                     var sort = entry.Property(x => x.SortOrder);
                     if (Changed(entry.Property(x => x.Desi)) || Changed(entry.Property(x => x.OptionSignature))) pending.AddValues(variant.TenantId, variant.ProductId);
                     // KATALOG-14 phase D5b: a desi given to one variant goes to the model and every variant (ModelMirror).
-                    if (Changed(entry.Property(x => x.Desi))) pending.AddFieldChange(variant.TenantId, variant.ProductId, pending.FieldChangeOf(variant.TenantId, variant.ProductId).WithDesi(variant.Desi));
+                    if (Changed(entry.Property(x => x.Desi))) pending.AddFieldChange(variant.TenantId, variant.ProductId, pending.FieldChangeOf(variant.TenantId, variant.ProductId).WithDesi(variant.Id, variant.Desi));
                     if (!Changed(code) && !Changed(product) && !Changed(sort)) break;
                     pending.AddKey(variant.TenantId, code.OriginalValue);
                     pending.AddKey(variant.TenantId, code.CurrentValue);

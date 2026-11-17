@@ -276,7 +276,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
     {
         var now = DateTimeOffset.UtcNow;
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Ürün {sku}", Description = "Eşleştirme testi", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
-        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode.ToUpperInvariant(), ModelCode = "MODEL-1", OptionSignature = sku, CreatedAt = now, UpdatedAt = now };
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode.ToUpperInvariant(), ModelCode = sku, OptionSignature = sku, CreatedAt = now, UpdatedAt = now };
         return (product, variant);
     }
 
