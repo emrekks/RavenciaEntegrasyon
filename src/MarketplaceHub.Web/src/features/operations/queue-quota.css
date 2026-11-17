@@ -64,9 +64,12 @@
   .app-shell.stitch-shell main .qq .qq-table tbody td:first-child, .app-shell.stitch-shell main .qq .qq-table tbody td.qq-usage-cell { grid-column: 1 / -1; }
   .app-shell.stitch-shell main .qq .qq-table tbody td[data-label]::before { content: attr(data-label); display: block; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
   .app-shell.stitch-shell main .qq .qq-table tbody tr:hover td { background: none; }
-  .qq-window { flex-direction: column; align-items: stretch; gap: 6px; }
-  .app-shell.stitch-shell main .qq .qq-window .rr-fld { width: 100%; }
-  .app-shell.stitch-shell main .qq .qq-window .rr-fld .rr-trigger { flex: 1; width: auto; }
+  /* One 36px line: [label] [choice v] [i] ........ [refresh] (owner, 18 Nov 2026); the bar is as tall as its content. */
+  .app-shell.stitch-shell main .jobs-reference-page .qq-toolbar { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+  .qq-window { flex: 1 1 auto; flex-direction: row; align-items: center; gap: 6px; min-width: 0; }
+  .app-shell.stitch-shell main .qq .qq-window .rr-fld { flex: 0 1 auto; width: auto; min-width: 0; gap: 6px; }
+  .app-shell.stitch-shell main .qq .qq-window .rr-fld .rr-trigger { flex: none; width: 132px; }
+  .app-shell.stitch-shell main .jobs-reference-page .qq-toolbar .jobs-reference-toolbar-actions { flex: none; width: auto; }
   .qq-card strong { font-size: 19px; }
   .qq-states { grid-template-columns: minmax(0, 1fr); }
 }

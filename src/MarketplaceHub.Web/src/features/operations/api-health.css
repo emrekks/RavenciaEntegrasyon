@@ -29,3 +29,19 @@ html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x .rr-mx-nm small { max-width: 13
   html body main .rr.rr-dashboard.api-health-rr .rr-mxt.rr-mxt.rr-mxt td[data-l]::before { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   html body main .rr.rr-dashboard.api-health-rr .rr-mxt.rr-mxt.rr-mxt td[data-l] > :is(.rr-mx, .psm-chip) { max-width: 100%; white-space: nowrap; }
 }
+
+/* Phones: the panel's head is two lines (owner, 18 Nov 2026): the title with the attention pill (short wording) beside it, the note under
+   it; the stop-all button only shows when it can be pressed. The panel takes its padding from its head and rows, like the cards above it. */
+.rr-lbl-short { display: none; }
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel { padding: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h { display: flex; flex-flow: row wrap; align-items: center; gap: 4px 10px; padding: 14px 16px; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h > div:first-child { display: contents; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h h2 { order: 1; flex: 1 1 auto; min-width: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h .rr-hpill { order: 2; flex: none; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h p { order: 3; flex: 1 1 100%; margin: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h .psm-stop { order: 4; width: 100%; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-panel-h .psm-stop:disabled { display: none; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-hpill .rr-lbl-long { display: none; }
+  html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-hpill .rr-lbl-short { display: inline; }
+}

@@ -65,10 +65,8 @@
   /* The panel of a card in the right-hand column opens to the left so it stays on the screen. */
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:nth-child(even) .rr-metric-tip { right: 0; left: auto; }
 }
-/* The card (or the Kısmi İptal chip) whose list is open: selected like the other selected controls, primary-soft with a
-   primary border; tapping it again closes the list. Every width. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link.rr-metric-on,
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link.rr-metric-on:hover { background: var(--rr-primary-soft, var(--rv-color-primary-soft)); border-color: var(--rr-primary, var(--rv-color-primary)); }
+/* The card whose list is open looks like every other card (owner, 18 Nov 2026): the open list below says which one it is. Only the
+   Kısmi İptal chip keeps its primary border. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-on { background: var(--rr-surface); border-color: var(--rr-primary, var(--rv-color-primary)); animation: none; }
 /* The small "Paket | N Adet Ürün" note is 12px weight 500 on every card, the cards that open a list too (inside their
    button the note took the button's 600). */

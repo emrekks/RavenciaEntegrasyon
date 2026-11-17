@@ -1,11 +1,11 @@
 /* İşlem Takibi › Bildirimler (NotificationCenter.tsx): the filter card, the summary bar and one card per notification. */
-.ncl { display: grid; gap: 12px; min-width: 0; }
-.ncl-toolbar .jobs-reference-status-summary > span[role='button'] { cursor: pointer; border-radius: 7px; padding: 4px 8px; margin: -4px -8px; }
+.ncl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.ncl-toolbar .jobs-reference-status-summary > span[role='button'] { cursor: pointer; }
 .ncl-toolbar .jobs-reference-status-summary > span[role='button'].is-on { background: var(--rv-color-primary-soft); color: var(--rv-color-ink) !important; }
 .ncl-toolbar .jobs-reference-toolbar-actions { display: flex; align-items: center; gap: 8px; }
 .ncl-mark-all.rv-button { height: 36px; min-height: 0; gap: 6px; white-space: nowrap; }
 
-.ncl-list { display: grid; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; overflow: hidden; }
+.ncl-list { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; overflow: hidden; }
 .ncl-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; padding: 14px 16px; border-top: 1px solid var(--rv-color-border); }
 .ncl-row:first-child { border-top: 0; }
 .ncl-row.is-unread { background: color-mix(in srgb, var(--rv-color-primary-soft) 45%, var(--rv-color-surface)); }
@@ -24,6 +24,7 @@
 .ncl-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; color: var(--rv-color-muted); }
 .ncl-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .ncl-tag.is-muted { color: var(--rv-color-muted); }
+.app-shell .ncl .ncl-meta .platform-square-mark { width: 20px; height: 20px; }
 .ncl-source { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
 .ncl-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding-top: 2px; min-width: 0; }
 .ncl-actions > .ncl-btn { flex: 0 0 auto; }
@@ -49,6 +50,10 @@
   .ncl-title { white-space: normal; }
   .ncl-toolbar .jobs-reference-toolbar-actions { justify-content: space-between; }
   .ncl-mark-all.rv-button { flex: 1; }
+  /* The action buttons are 36px and never run off the card: two to a row, a lone first one (Entegrasyona Git) takes a whole row. */
+  .ncl-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .app-shell .ncl .ncl-actions > .ncl-btn { width: 100%; height: 36px; justify-content: center; white-space: nowrap; }
+  .app-shell .ncl .ncl-actions > .ncl-btn:first-child:nth-last-child(3) { grid-column: 1 / -1; }
 }
 
 .ncl-items em { font-style: normal; color: var(--rv-color-muted); }

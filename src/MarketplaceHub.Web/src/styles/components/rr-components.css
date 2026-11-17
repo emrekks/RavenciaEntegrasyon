@@ -1257,10 +1257,8 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl th .rr-hf > .rr-anchor:not(:has(> .rr-pop)) { z-index: auto; }
 }
 
-/* owner, 14 Nov: the copy buttons beside order numbers have a small hover frame everywhere (22 px, 6 px radius, icon stays 14 px);
-   touch screens keep the larger target set elsewhere. The İadeler invoice status never breaks inside a word. */
-@media (min-width: 761px) and (hover: hover) and (pointer: fine) {
+/* owner, 14 Nov: the copy buttons beside order numbers have a small hover frame everywhere (20 px, owner 18 Nov, touch screens too; 6 px radius, icon stays 14 px);
+   the touch target is widened by the ::before in phone-spacing.css. The İadeler invoice status never breaks inside a word. */
 :root:root:root:root:root:root:root:root :is(.rr-icon-btn[title="Kopyala"], .rr-icon-btn[title="Kopyalandı"], .order-number-copy, .reports-order-copy, .rr-code-copy) { box-sizing: border-box; flex: 0 0 20px; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; border-radius: 6px; }
 :root:root:root:root:root:root:root:root :is(.rr-icon-btn[title="Kopyala"], .rr-icon-btn[title="Kopyalandı"], .order-number-copy, .reports-order-copy, .rr-code-copy) > :is(svg, .ui-icon) { width: 14px; height: 14px; }
-}
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-invcell :is(b, span) { overflow-wrap: normal; word-break: normal; }
