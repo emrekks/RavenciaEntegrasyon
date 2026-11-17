@@ -1,6 +1,6 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-import { Button, Modal, TitleHint } from '../../../shared/components'
+import { TitleHint } from '../../../shared/components'
+import { RrModal } from '../../../shared/ui/rr-components'
 import { DEFAULT_CARGO, DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
 import { cargoHint, commissionHint, serviceFeeHint, type HintContent } from './price-assumptions'
 import './price-suggestion.css'
@@ -52,8 +52,8 @@ export function PriceSuggestionLink({ fields, onApply }: { fields: PriceSuggesti
   const [open, setOpen] = useState(false)
   return <>
     <button type="button" className="price-suggestion-link" onClick={() => setOpen(true)}>Hesapla</button>
-    {/* Out of the pricing card, so the card's styles do not reach it (as the tariff's ProfitBadge). */}
-    {open && createPortal(<PriceSuggestionDialog fields={fields} onClose={() => setOpen(false)} onApply={prices => { onApply(prices); setOpen(false) }} />, document.body)}
+    {/* RrModal draws it in the body, out of the pricing card, so the card's styles do not reach it. */}
+    {open && <PriceSuggestionDialog fields={fields} onClose={() => setOpen(false)} onApply={prices => { onApply(prices); setOpen(false) }} />}
   </>
 }
 
@@ -75,10 +75,11 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
 
   const missing = numberOf(cost) === null || numberOf(cost)! <= 0 ? 'Maliyeti girin.' : numberOf(targetKind === 'amount' ? targetAmount : targetRate) === null ? (targetKind === 'amount' ? 'Hedef kâr tutarını girin.' : 'Hedef kâr oranını girin.') : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
   const footer = <>
-    <Button variant="secondary" onClick={onClose}>İptal</Button>
-    <Button disabled={!suggestion} onClick={() => suggestion && onApply(appliedPrices(suggestion.price, fields.listPrice))}>Fiyatı Uygula</Button>
+    <span className="rr-note" />
+    <button type="button" className="rr-btn" onClick={onClose}>İptal</button>
+    <button type="button" className="rr-btn rr-primary" disabled={!suggestion} onClick={() => suggestion && onApply(appliedPrices(suggestion.price, fields.listPrice))}>Fiyatı Uygula</button>
   </>
-  return <Modal open onClose={onClose} className="price-suggestion-modal" title="Fiyat Hesapla" hint="Maliyet ve istediğiniz kâr oranından satış fiyatı önerir; kâr, komisyon tarifesindeki kâr hesabıyla aynı kalemlerle bulunur." footer={footer}>
+  return <RrModal onClose={onClose} size="md" modalClass="price-suggestion-modal" title="Fiyat Hesapla" hint="Maliyet ve istediğiniz kâr oranından satış fiyatı önerir; kâr, komisyon tarifesindeki kâr hesabıyla aynı kalemlerle bulunur." foot={footer}>
     <div className="price-suggestion-basis" role="group" aria-label="Hedef kâr nasıl girilsin">
       {([['rate', 'Oran (%)'], ['amount', 'Tutar (₺)']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={targetKind === value} onClick={() => setTargetKind(value)}>{label}</button>)}
     </div>
@@ -103,5 +104,5 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
         <div><dt>Satışa Göre</dt><dd>{percent(suggestion.margin)}</dd></div>
       </dl>
     </div> : <p className="price-suggestion-empty" aria-live="polite">{missing}</p>}
-  </Modal>
+  </RrModal>
 }
