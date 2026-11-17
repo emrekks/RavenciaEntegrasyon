@@ -62,7 +62,9 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 PanelListPrice = variant.DefaultListPrice ?? product.DefaultListPrice,
                 product.VatRate,
                 variant.CostPrice,
-                variant.Desi
+                variant.Desi,
+                ProductId = product.Id,
+                product.Description
             })
             .AsNoTracking()
             .ToListAsync(cancellationToken);
@@ -82,8 +84,12 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             .GroupBy(item => item.VariantId).ToDictionary(group => group.Key, group => group.First().OnHand);
         var stores = await StoresAsync(tenantId, cancellationToken);
 
-        var header = new List<object?> { "Ürün Adı", "Varyant", "Stok Kodu", "Barkod", "Model Kodu", "Marka", "Kategori", "Durum", ProductTransferFileParser.PanelSaleHeader, ProductTransferFileParser.PanelListHeader, "KDV Oranı", "Stok", "Maliyet (₺)", "Desi" };
-        var widths = new List<double> { 48, 26, 22, 18, 18, 18, 22, 13, 18, 18, 11, 10, 14, 10 };
+        var header = new List<object?> { "Ürün Adı", "Varyant", "Stok Kodu", "Barkod", "Model Kodu", "Marka", "Kategori", "Durum", ProductTransferFileParser.PanelSaleHeader, ProductTransferFileParser.PanelListHeader, "KDV Oranı", "Stok", "Maliyet (₺)", "Desi", "Açıklama" };
+        var widths = new List<double> { 48, 26, 22, 18, 18, 18, 22, 13, 18, 18, 11, 10, 14, 10, 60 };
+        // KATALOG-14 phase D5b (owner, 17 Nov 2026): the model's description on every row of the model. One longer than an
+        // Excel cell holds is left empty (an empty cell changes nothing on the way back) and its model is named in the notes.
+        var tooLong = rows.Where(row => (row.Description ?? "").Length > ProductTransferFileParser.MaximumDescriptionCell)
+            .Select(row => string.IsNullOrWhiteSpace(row.ModelCode) ? row.Title : row.ModelCode.Trim()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         foreach (var store in stores)
         {
             var (sale, list) = ProductTransferFileParser.StorePriceHeaders(store.Name);
@@ -109,7 +115,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 row.VatRate is decimal vat ? "%" + vat.ToString("0.##", CultureInfo.GetCultureInfo("tr-TR")) : null,
                 stockByVariant.TryGetValue(row.Id, out var onHand) ? WholeStock(onHand) : null,
                 Rounded(row.CostPrice),
-                Rounded(row.Desi)
+                Rounded(row.Desi),
+                string.IsNullOrEmpty(row.Description) || row.Description.Length > ProductTransferFileParser.MaximumDescriptionCell ? null : row.Description
             };
             foreach (var store in stores)
             {
@@ -122,9 +129,10 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var notes = new List<IReadOnlyList<object?>>
         {
             new object?[] { "Ürün dosyası nasıl düzenlenir?" },
-            new object?[] { "Her satır bir varyanttır. Yüklerken hangi alanların panele yazılacağını siz seçersiniz: Ürün Adı, Marka, Barkod, Model Kodu, Panel Fiyatı, KDV Oranı, Stok, Desi, Maliyet ve mağaza fiyatları. Seçmediğiniz sütunlar dosyada olsa da okunmaz." },
+            new object?[] { "Her satır bir varyanttır. Yüklerken hangi alanların panele yazılacağını siz seçersiniz: Ürün Adı, Açıklama, Marka, Barkod, Model Kodu, Panel Fiyatı, KDV Oranı, Stok, Desi, Maliyet ve mağaza fiyatları. Seçmediğiniz sütunlar dosyada olsa da okunmaz." },
             new object?[] { "Marka modele aittir: modelin (aynı model kodlu tüm renklerin) satırlarına aynı markayı yazın; marka modelin tüm renk kartlarına yazılır. Panelde aynı adlı marka varsa o kullanılır (büyük/küçük harf, Türkçe karakter ve boşluk farkı gözetilmez), yoksa yeni marka açılır; kapatılmış bir marka yeniden açılmaz, o satır hatalı olur. Marka silinemez." },
             new object?[] { "Varyant, Kategori ve Durum sütunları yalnız bilgi içindir; değiştirmeniz hiçbir şeyi değiştirmez. Stok Kodu satırın eşleştirme anahtarıdır ve değiştirilemez." },
+            new object?[] { "Açıklama modele aittir: modelin (aynı model kodlu tüm renklerin) satırlarına aynı açıklamayı yazın; değişen açıklama modele ve bütün renklerine yazılır. Yalnız bir satırı değiştirmeniz yeterlidir; eski açıklamayı taşıyan diğer satırlar değişmemiş sayılır, satırlarda iki farklı yeni açıklama olursa o modelin satırları reddedilir. HTML yazılabilir; editördeki gibi temizlenir, en fazla 60.000 karakter olur ve boş olamaz. Boş hücre açıklamayı değiştirmez, silmez." },
             new object?[] { "Ürün Adı ve KDV Oranı ürünün kendisine aittir: bir ürünün tüm satırlarına aynı değeri yazın. Barkod tek bir varyantta olabilir ve silinemez; barkodu değiştirirken satır yalnız Stok Kodu ile eşleştirilir. Model kodunu silmek için - yazın; satışa açık ya da kapalı üründe model kodu ve desi zorunludur, yalnız taslakta silinebilir." },
             new object?[] { "Panel Satış Fiyatı ve Panel Liste Fiyatı ürünün panel ana fiyatıdır; liste fiyatı satış fiyatından küçük olamaz. Panel fiyatı ve KDV panele kaydedilir, pazaryerine fiyat göndermez." },
             new object?[] { "Maliyet: 1 adetin Türk lirası maliyeti, ürün kartındaki \"Maliyet\" alanıyla aynı değer. Kâr raporu bu değeri, müşterinin ödediği KDV dahil satış tutarından düşer. 0 maliyet girilmemiş sayılır: kayıtlı maliyeti siler, kâr hesaplanmaz ve varyant eksik maliyet listesinde kalır." },
@@ -137,6 +145,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             new object?[] { "Dosyayı yükledikten sonra değişiklikler önce önizlenir; siz onaylamadan hiçbir şey kaydedilmez." },
             new object?[] { "Dosyayı .xlsx olarak kaydedin (CSV de kabul edilir) ve en fazla 20.000 satır, 10 MiB yükleyin. Formül içeren hücreler okunmaz." }
         };
+        if (tooLong.Count > 0)
+            notes.Insert(3, new object?[] { $"Bu Modelin Açıklaması Excel İçin Çok Uzun, Editörden Düzenleyin: {string.Join(", ", tooLong)}. Bu modellerin Açıklama hücresi boş bırakıldı; boş hücre açıklamayı değiştirmez." });
         var workbook = SimpleXlsxWriter.Write(
         [
             new SimpleXlsxSheet("Ürünler", data, widths),
@@ -148,7 +158,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     public async Task<ServiceResult<ProductTransferImportPreview>> PreviewAsync(Guid tenantId, string fileName, Stream content, IReadOnlyCollection<string> fields, CancellationToken cancellationToken)
     {
         if (fields.Count == 0 || fields.Any(field => !ProductTransferFields.All.Contains(field)))
-            return ServiceResult<ProductTransferImportPreview>.Fail("PRODUCT_TRANSFER_FIELDS_INVALID", "Aktarılacak en az bir alan seçin: ürün adı, marka, barkod, model kodu, panel fiyatı, KDV oranı, stok, desi, maliyet ya da mağaza fiyatları.", 400);
+            return ServiceResult<ProductTransferImportPreview>.Fail("PRODUCT_TRANSFER_FIELDS_INVALID", "Aktarılacak en az bir alan seçin: ürün adı, açıklama, marka, barkod, model kodu, panel fiyatı, KDV oranı, stok, desi, maliyet ya da mağaza fiyatları.", 400);
         await using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken);
         if (buffer.Length is 0 or > MaximumFileBytes)
@@ -218,6 +228,10 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 .Select(offer => new { offer.VariantId, Offer = new ProductTransferOffer(offer.ConnectionId, offer.Id, offer.Version, offer.SalePrice, offer.ListPrice) }).ToListAsync(cancellationToken))
                 .GroupBy(item => item.VariantId).ToDictionary(group => group.Key, group => (IReadOnlyList<ProductTransferOffer>)group.Select(item => item.Offer).ToList())
             : [];
+        // The model's description each card reads (only when the description is picked: it can be long).
+        var descriptions = fields.Contains(ProductTransferFields.Description)
+            ? await EffectiveCatalog.Products(db).Where(product => product.TenantId == tenantId).Select(product => new { product.Id, product.Description }).ToDictionaryAsync(product => product.Id, product => (string?)product.Description, cancellationToken)
+            : [];
         var candidates = variants.Select(variant => new ProductTransferCandidate(
             variant.Id, variant.ProductId, variant.Version, variant.Sku, variant.Barcode, variant.Title, variant.OptionSignature, variant.CostPrice, variant.Desi,
             stockByVariant.TryGetValue(variant.Id, out var onHand) ? onHand : null,
@@ -228,7 +242,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             variant.PanelListPrice,
             variant.VatRate,
             variant.BrandId is Guid brandId ? brandNames.GetValueOrDefault(brandId) : null,
-            ProductDraftPolicy.IsDraft(variant.ProductStatus))).ToList();
+            ProductDraftPolicy.IsDraft(variant.ProductStatus),
+            descriptions.GetValueOrDefault(variant.ProductId))).ToList();
         var preview = ProductTransferImportPlanner.Plan(safeName, file.Rows, candidates, fields, stores, file.AvailableFields, switchedOffBrandKeys);
         return ServiceResult<ProductTransferImportPreview>.Ok(preview);
     }
@@ -241,7 +256,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         if (changes.Count > MaximumChanges || productChanges.Count > MaximumChanges) return Invalid("PRODUCT_TRANSFER_CHANGES_TOO_MANY", $"Tek seferde en fazla {MaximumChanges:N0} varyant kaydedilebilir.");
         if (changes.Select(change => change.VariantId).Distinct().Count() != changes.Count || productChanges.Select(change => change.ProductId).Distinct().Count() != productChanges.Count)
             return Invalid("PRODUCT_TRANSFER_CHANGES_DUPLICATE", "Aynı varyant ya da ürün birden çok kez gönderildi.");
-        if (changes.Any(change => !change.WritesVariant() && change.Stock is null && (change.Prices ?? []).Count == 0) || productChanges.Any(change => change.Title is null && change.VatRate is null && change.Brand is null))
+        if (changes.Any(change => !change.WritesVariant() && change.Stock is null && (change.Prices ?? []).Count == 0) || productChanges.Any(change => change.Title is null && change.VatRate is null && change.Brand is null && change.Description is null))
             return Invalid("PRODUCT_TRANSFER_CHANGES_EMPTY", "Her değişiklik en az bir alanı değiştirmelidir.");
         if (changes.Any(change => change.SetCost && (change.Cost is < 0 or > ProductTransferFileParser.MaximumCost || change.Cost is decimal cost && decimal.Round(cost, 2) != cost)))
             return Invalid("PRODUCT_TRANSFER_COST_INVALID", "Maliyet 0 ile 10.000.000 ₺ arasında ve en fazla iki ondalıklı olmalıdır.");
@@ -265,6 +280,15 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             return Invalid("PRODUCT_TRANSFER_TITLE_INVALID", "Ürün adı boş olamaz, en fazla 320 karakter olmalı ve formül gibi başlayamaz.");
         if (productChanges.Any(change => change.VatRate is < 0 or > 100 || change.VatRate is decimal vat && decimal.Round(vat, 2) != vat))
             return Invalid("PRODUCT_TRANSFER_VAT_INVALID", "KDV oranı 0 ile 100 arasında ve en fazla iki ondalıklı olmalıdır.");
+        // KATALOG-14 phase D5b: the description is cleaned and checked again (the client's plan is not trusted), as the preview
+        // cleaned it; the cleaned text is what is saved.
+        var descriptionOf = new Dictionary<Guid, string>();
+        foreach (var change in productChanges.Where(change => change.Description is not null))
+        {
+            var (cleaned, error) = ImportFileReader.LooksLikeFormula(change.Description!.Trim()) ? (null, "Açıklama: formül benzeri içerik kabul edilmez.") : ProductTransferImportPlanner.CleanDescription(change.Description!);
+            if (cleaned is null) return Invalid("PRODUCT_TRANSFER_DESCRIPTION_INVALID", error ?? "Açıklama geçersiz.");
+            descriptionOf[change.ProductId] = cleaned;
+        }
         if (productChanges.Any(change => change.Brand is { } brandName && (brandName.Trim() != brandName || brandName.Length > PanelBrandByName.MaximumNameLength || PanelBrandByName.Key(brandName).Length == 0 || ImportFileReader.LooksLikeFormula(brandName))))
             return Invalid("PRODUCT_TRANSFER_BRAND_INVALID", "Marka boş olamaz, en fazla 160 karakter olmalı, harf ya da rakam içermeli ve formül gibi başlayamaz.");
 
@@ -370,7 +394,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         // KATALOG-3: the name and the VAT are the model's; the rows of one model may not ask for two values (the preview
         // refuses it; checked again here, as the client's plan is not trusted). The cards of a model are those the write
         // below gives the value to; a name is compared without its card's colour word, as the preview compares it.
-        var modelFieldChanges = productChanges.Where(change => change.Title is not null || change.VatRate is not null).ToList();
+        var modelFieldChanges = productChanges.Where(change => change.Title is not null || change.VatRate is not null || change.Description is not null).ToList();
         var fieldCards = new Dictionary<Guid, HashSet<Guid>>();
         var colours = new Dictionary<Guid, string?>();
         if (modelFieldChanges.Count > 0)
@@ -388,7 +412,8 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                     var label = change.Title is { } title && other.Title is { } otherTitle
                         && ProductTransferImportPlanner.ModelTitleKey(title, colours.GetValueOrDefault(change.ProductId)) != ProductTransferImportPlanner.ModelTitleKey(otherTitle, colours.GetValueOrDefault(other.ProductId))
                             ? "ürün adı"
-                            : change.VatRate is decimal vat && other.VatRate is decimal otherVat && vat != otherVat ? "KDV oranı" : null;
+                            : change.VatRate is decimal vat && other.VatRate is decimal otherVat && vat != otherVat ? "KDV oranı"
+                            : descriptionOf.TryGetValue(change.ProductId, out var text) && descriptionOf.TryGetValue(other.ProductId, out var otherText) && text != otherText ? "açıklama" : null;
                     var modelName = label is null ? null : await (from product in db.Products.AsNoTracking()
                                                                   join model in db.ProductModels.AsNoTracking() on product.FamilyId equals model.Id
                                                                   where product.TenantId == tenantId && product.Id == change.ProductId
@@ -423,7 +448,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var now = timeProvider.GetUtcNow();
         var applyId = Guid.CreateVersion7();
         int costsUpdated = 0, costsCleared = 0, desiUpdated = 0, desiCleared = 0, stocksUpdated = 0, pricesUpdated = 0;
-        int titlesUpdated = 0, barcodesUpdated = 0, modelCodesUpdated = 0, modelCodesCleared = 0, panelPricesUpdated = 0, vatUpdated = 0, brandsUpdated = 0, brandsCreated = 0;
+        int descriptionsUpdated = 0, titlesUpdated = 0, barcodesUpdated = 0, modelCodesUpdated = 0, modelCodesCleared = 0, panelPricesUpdated = 0, vatUpdated = 0, brandsUpdated = 0, brandsCreated = 0;
         var written = new HashSet<Guid>();
         var products = new HashSet<Guid>();
         // Products whose own row changes (version bump) and those whose marketplace links get the local-edit mark.
@@ -514,6 +539,14 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             {
                 product.Title = title;
                 titlesUpdated++;
+                touchedProducts.Add(product.Id);
+                contentProducts.Add(product.Id);
+            }
+            // The description goes to the model and every colour (ModelMirror, in this save's transaction).
+            if (descriptionOf.TryGetValue(change.ProductId, out var description) && product.Description != description)
+            {
+                product.Description = description;
+                descriptionsUpdated++;
                 touchedProducts.Add(product.Id);
                 contentProducts.Add(product.Id);
             }
@@ -629,7 +662,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             Action = "PRODUCT_TRANSFER_IMPORTED",
             TargetType = "ProductVariant",
             TargetId = null,
-            Reason = $"Ürün dosyası içe aktarıldı: {written.Count} varyant ({products.Count} ürün); maliyet {costsUpdated} güncellendi, {costsCleared} silindi; desi {desiUpdated} güncellendi, {desiCleared} silindi; stok {stocksUpdated}; mağaza fiyatı {pricesUpdated}; ürün adı {titlesUpdated}; barkod {barcodesUpdated}; model kodu {modelCodesUpdated} güncellendi, {modelCodesCleared} silindi; panel fiyatı {panelPricesUpdated}; KDV {vatUpdated}; marka {brandsUpdated} ürün kartı ({brandsCreated} yeni marka).",
+            Reason = $"Ürün dosyası içe aktarıldı: {written.Count} varyant ({products.Count} ürün); maliyet {costsUpdated} güncellendi, {costsCleared} silindi; desi {desiUpdated} güncellendi, {desiCleared} silindi; stok {stocksUpdated}; mağaza fiyatı {pricesUpdated}; ürün adı {titlesUpdated}; açıklama {descriptionsUpdated}; barkod {barcodesUpdated}; model kodu {modelCodesUpdated} güncellendi, {modelCodesCleared} silindi; panel fiyatı {panelPricesUpdated}; KDV {vatUpdated}; marka {brandsUpdated} ürün kartı ({brandsCreated} yeni marka).",
             CorrelationId = correlationId,
             CreatedAt = now
         });
@@ -672,7 +705,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         return ServiceResult<ProductTransferApplyResult>.Ok(new ProductTransferApplyResult(
             written.Count, costsUpdated, costsCleared, desiUpdated, desiCleared, stocksUpdated, pricesUpdated, products.Count,
             titlesUpdated, barcodesUpdated, modelCodesUpdated, modelCodesCleared, panelPricesUpdated, vatUpdated, brandsUpdated, brandsCreated,
-            ModelMirror.ColoursReached(db.ModelMirrorReport)));
+            ModelMirror.ColoursReached(db.ModelMirrorReport), descriptionsUpdated));
 
         void Written(ProductVariant variant)
         {
@@ -724,6 +757,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
 
     private static bool HoldsProduct(Product product, ProductTransferProductChange change, Guid? currentBrandId) =>
         (change.Title is null || product.Title == change.Title) && (change.VatRate is null || product.VatRate == change.VatRate)
+        && (change.Description is null || ProductTransferImportPlanner.CleanDescription(change.Description).Value is not { } description || product.Description == description)
         && (change.Brand is null || currentBrandId is Guid brandId && product.BrandId == brandId);
 
     // Each product with the colour cards of its model: the visible cards sharing its model code (any brand, archived ones

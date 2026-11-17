@@ -35024,7 +35024,8 @@
           "vatUpdated",
           "brandsUpdated",
           "brandsCreated",
-          "modelColours"
+          "modelColours",
+          "descriptionsUpdated"
         ],
         "type": "object",
         "properties": {
@@ -35101,6 +35102,11 @@
             "default": 0
           },
           "modelColours": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "descriptionsUpdated": {
             "type": "integer",
             "format": "int32",
             "default": 0
@@ -35227,7 +35233,8 @@
           "modelCodeClears",
           "panelPriceUpdates",
           "vatUpdates",
-          "brandUpdates"
+          "brandUpdates",
+          "descriptionUpdates"
         ],
         "type": "object",
         "properties": {
@@ -35359,6 +35366,11 @@
             "default": 0
           },
           "brandUpdates": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "descriptionUpdates": {
             "type": "integer",
             "format": "int32",
             "default": 0
@@ -35500,6 +35512,12 @@
             "format": "double"
           },
           "brand": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
             "type": [
               "null",
               "string"
@@ -35744,6 +35762,19 @@
               "null",
               "string"
             ]
+          },
+          "descriptionChange": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "newDescriptionLength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },

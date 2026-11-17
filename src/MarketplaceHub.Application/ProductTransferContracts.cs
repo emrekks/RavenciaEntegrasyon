@@ -10,7 +10,9 @@ namespace MarketplaceHub.Application;
 // variant the row names by its stock code.
 //
 // Writable fields:
-//  - Ürün Bilgileri: product title (Product.Title, the same on every row of a product), brand (the model's: the same on
+//  - Ürün Bilgileri: product title (Product.Title, the same on every row of a product), description (the model's: the same on
+//    every row of the model, HTML cleaned as file imports clean it, given to the model and every colour; an empty cell
+//    changes nothing and it cannot be removed; one longer than an Excel cell holds is not exported), brand (the model's: the same on
 //    every row of the model, found or opened by name with PanelBrandByName as the imports do, and written to every colour
 //    card of the model like Toplu Değer Ata; it cannot be removed), barcode (unique in the tenant, cannot be removed) and
 //    model code ("-" removes it). Written to the panel only; the product's marketplace links are marked as carrying
@@ -37,6 +39,8 @@ public sealed record ProductTransferSummaryView(int VariantCount, int MissingCos
 public static class ProductTransferFields
 {
     public const string Title = "TITLE";
+    // The model's description (KATALOG-14 phase D5b, owner 17 Nov 2026): written to the model and every colour.
+    public const string Description = "DESCRIPTION";
     public const string Brand = "BRAND";
     public const string Barcode = "BARCODE";
     public const string ModelCode = "MODEL_CODE";
@@ -46,7 +50,7 @@ public static class ProductTransferFields
     public const string Desi = "DESI";
     public const string Stock = "STOCK";
     public const string Prices = "PRICES";
-    public static readonly IReadOnlyList<string> All = [Title, Brand, Barcode, ModelCode, PanelPrices, Vat, Cost, Desi, Stock, Prices];
+    public static readonly IReadOnlyList<string> All = [Title, Description, Brand, Barcode, ModelCode, PanelPrices, Vat, Cost, Desi, Stock, Prices];
 }
 
 // What an upload does to one field of a variant: SET writes the new value, CLEAR removes the stored one.
@@ -102,7 +106,10 @@ public sealed record ProductTransferRowView(
     string? VatChange = null,
     string? OldBrand = null,
     string? NewBrand = null,
-    string? BrandChange = null);
+    string? BrandChange = null,
+    // The description is shown by its length only ("Açıklama Değişti (N Karakter)"), never as HTML in the table.
+    string? DescriptionChange = null,
+    int? NewDescriptionLength = null);
 
 // A stock change against the on-hand stock the preview read.
 public sealed record ProductTransferStockChange(decimal ExpectedOnHand, decimal OnHand);
@@ -136,7 +143,7 @@ public sealed record ProductTransferChange(
 
 // A product-level change (title, VAT rate, brand name) against the product version the preview read. Null leaves a
 // field alone.
-public sealed record ProductTransferProductChange(Guid ProductId, long Version, string? Title, decimal? VatRate, string? Brand = null);
+public sealed record ProductTransferProductChange(Guid ProductId, long Version, string? Title, decimal? VatRate, string? Brand = null, string? Description = null);
 
 public sealed record ProductTransferImportPreview(
     string FileName,
@@ -166,7 +173,8 @@ public sealed record ProductTransferImportPreview(
     int ModelCodeClears = 0,
     int PanelPriceUpdates = 0,
     int VatUpdates = 0,
-    int BrandUpdates = 0);
+    int BrandUpdates = 0,
+    int DescriptionUpdates = 0);
 
 public sealed record ApplyProductTransferCommand(IReadOnlyList<ProductTransferChange>? Changes, IReadOnlyList<ProductTransferProductChange>? ProductChanges = null);
 
@@ -189,7 +197,8 @@ public sealed record ProductTransferApplyResult(
     int BrandsCreated = 0,
     // KATALOG-14 phase D5b: the colour cards of the models a model field (name, VAT, brand, desi) reached: the file's own
     // and those it did not list ("Model İçindeki N Renge Uygulandı").
-    int ModelColours = 0);
+    int ModelColours = 0,
+    int DescriptionsUpdated = 0);
 
 // Which variants an export lists: every one, or only those still missing a cost or a desi.
 public enum ProductTransferExportFilter { All, MissingCost, MissingDesi }

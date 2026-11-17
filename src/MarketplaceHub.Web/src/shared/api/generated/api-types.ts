@@ -2714,6 +2714,7 @@ export type ProductTransferApplyResult = {
   brandsUpdated: number
   brandsCreated: number
   modelColours: number
+  descriptionsUpdated: number
 }
 
 export type ProductTransferChange = {
@@ -2760,6 +2761,7 @@ export type ProductTransferImportPreview = {
   panelPriceUpdates: number
   vatUpdates: number
   brandUpdates: number
+  descriptionUpdates: number
 }
 
 export type ProductTransferPanelPriceChange = {
@@ -2789,6 +2791,7 @@ export type ProductTransferProductChange = {
   title?: null | string
   vatRate?: null | number | string
   brand?: null | string
+  description?: null | string
 }
 
 export type ProductTransferRowView = {
@@ -2829,6 +2832,8 @@ export type ProductTransferRowView = {
   oldBrand?: null | string
   newBrand?: null | string
   brandChange?: null | string
+  descriptionChange?: null | string
+  newDescriptionLength?: null | number
 }
 
 export type ProductTransferStockChange = {
