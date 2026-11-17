@@ -28,9 +28,9 @@ tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus-visible)::after { t
 .rr-cust .rr-buyer-tag { margin-top: 4px; }
 .rr-buyer-reason { color: var(--rr-muted); font-size: 12px; }
 /* The order number, its copy button and the marks: comfortable, even spacing and no overlapping hit areas (owner, 14 Nov
-   2026: the 9-11 Nov pull-in left them too close). The 28 px button keeps its own box with no negative margin; its 14 px
-   icon already sits 7 px inside it, so the number and the marks read about 6-7 px from the icon; the marks sit 4 px apart. */
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no { column-gap: 0; }
+   2026: the 9-11 Nov pull-in left them too close). The 20 px button keeps its own box with no negative margin; its 14 px
+   icon sits 3 px inside it, so the number and the marks read about 7 px from the icon; the marks sit 4 px apart. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no { column-gap: 4px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-icon-btn { margin-inline: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no > .rr-omarks { margin-left: 0; gap: 4px; }
 /* "Alıcı: Name [Bireysel]" in the order cell: the tag 6 px from the name and centred on its line (it touched the name and

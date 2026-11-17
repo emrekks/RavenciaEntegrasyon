@@ -131,8 +131,6 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-paired.rr-open,
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-qtable-wrap { animation: none; }
 }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cb[data-mixed]:not(:checked)::after { content: ""; position: absolute; left: 3px; right: 3px; top: 6.5px; height: 1.6px; background: var(--rr-violet); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cb[data-mixed] { border-color: var(--rr-violet-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src:hover { background: var(--rv-hover, var(--rr-hover)); }
