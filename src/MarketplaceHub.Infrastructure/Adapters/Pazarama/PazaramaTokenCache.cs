@@ -1,23 +1,38 @@
+using MarketplaceHub.Application;
+
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
 // Pazarama access tokens live one hour. One token per stored credential is kept in memory
 // and renewed five minutes before it expires; concurrent callers of the same credential
 // wait for a single token request.
+// A passing failure of the token service (an empty 200, a 5xx, a timeout, a quota or gateway refusal) is kept for
+// FailureHold (17 Nov 2026: during a Pazarama outage every job and every open order of the lifecycle scan asked the
+// token service again), so the callers of that half minute get the same answer instead of each asking again. A refused
+// credential or an unreadable answer is never kept: the next caller asks again.
 public sealed class PazaramaTokenCache(TimeProvider timeProvider)
 {
     internal static readonly TimeSpan RenewBefore = TimeSpan.FromMinutes(5);
-    private readonly SingleFlightTokenCache<Guid, CachedToken> tokens = new(timeProvider, (cached, now) => cached.ExpiresAt - RenewBefore > now);
+    internal static readonly TimeSpan FailureHold = TimeSpan.FromSeconds(30);
+    private readonly SingleFlightTokenCache<Guid, CachedToken> tokens = new(timeProvider, (cached, now) => cached.Token.IsSuccess
+        ? cached.ExpiresAt - RenewBefore > now
+        : cached.ExpiresAt > now);
 
     public Task<PazaramaToken> GetAsync(Guid credentialId, Func<CancellationToken, Task<PazaramaToken>> issue, CancellationToken cancellationToken) =>
         tokens.GetAsync(
             credentialId,
             issue,
-            (token, now) => token.IsSuccess ? new CachedToken(token, now + token.ExpiresIn) : null,
+            (token, now) => token.IsSuccess ? new CachedToken(token, now + token.ExpiresIn)
+                : IsPassing(token.Error) ? new CachedToken(token, now + FailureHold)
+                : null,
             cached => cached.Token,
             cancellationToken);
 
     // Called when Pazarama answers 401 for a cached token (revoked or rotated in the panel).
     public void Forget(Guid credentialId) => tokens.Forget(credentialId);
+
+    // A failure that says nothing about the credentials: the token service did not answer usefully this time.
+    internal static bool IsPassing(AdapterError? error) =>
+        error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.RateLimit;
 
     private sealed record CachedToken(PazaramaToken Token, DateTimeOffset ExpiresAt);
 }

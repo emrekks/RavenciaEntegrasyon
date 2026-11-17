@@ -14,6 +14,15 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   `grant_type=client_credentials&scope=merchantgatewayapi.fullaccess`; then `Authorization: Bearer <token>`.
   Token lives 1 h; cached per credential, refreshed 5 min early and once on 401.
 - Generating a new API key invalidates the old one at once.
+- The docs (`pazarama-api-son.md:103-150`, token-alma) give no error answers and no limit for the token service.
+  Seen live 17 Nov 2026 from 22:27Z: right after `order/getOrdersForApi` answered "İşleminiz şu anda
+  gerçekleştirilemiyor" (22:25Z) and a 30 s timeout, every token request got **HTTP 200 with an empty body** (field
+  outline "boş"), twice a 504, for at least 25 minutes; same credentials had worked all day, nothing changed on our side.
+  So an empty 2xx is a Pazarama outage, not a key or contract problem: code `PAZARAMA_TOKEN_REMOTE_ERROR` (Remote5xx),
+  asked again after 2 s and 5 s inside the single token flight, the failure held 30 s per credential, then the job is
+  requeued (`PazaramaHttpClient.IssueWithRetriesAsync`, `PazaramaTokenCache.FailureHold`). A 2xx with fields but no token
+  stays `PAZARAMA_TOKEN_INVALID` (contract, manual review). Each failed token answer is logged with status, OAuth
+  `error`, field names, content type and length (never values). Source: worker logs and `integration.jobs`, 17 Nov 2026.
 
 ## Limits
 - Price/stock and product create: documented 10 s between requests per seller; code keeps 12.5 s, price and stock
