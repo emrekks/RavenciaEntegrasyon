@@ -796,7 +796,9 @@ public static class ProductModelLinks
         var ids = brandIds.OfType<Guid>().ToArray();
         var names = await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).Select(x => x.Name).ToListAsync(cancellationToken);
         if (brandIds.Any(x => x is null)) names.Add("markasız");
-        var summary = Short($"Model kodu {code} {brandIds.Count} ayrı markada kullanılıyor ({string.Join(", ", names.Order(StringComparer.Ordinal))}, {cardCount} kart): kartlar bir modele bağlanmadı, hiçbir şey birleştirilmedi; hangi modele ait olduklarına siz karar verin.", 1000);
+        var held = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCodeKey == key).Select(x => x.BrandId).FirstOrDefaultAsync(cancellationToken);
+        var heldName = held is null ? null : await db.Brands.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == held).Select(x => x.Name).FirstOrDefaultAsync(cancellationToken);
+        var summary = Short($"{ModelCodeUniquenessPolicy.OtherBrandMessage(code, heldName ?? "markasız")}. Model kodu {code} {brandIds.Count} ayrı markada kullanılıyor ({string.Join(", ", names.Order(StringComparer.Ordinal))}, {cardCount} kart): kartlar bir modele bağlanmadı, hiçbir şey birleştirilmedi; hangi modele ait olduklarına siz karar verin.", 1000);
         var dedupeKey = AmbiguousDedupeKey(key);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO ops.operational_issues AS i ("Id", "TenantId", "DedupeKey", "Code", "Summary", "Status", "FirstSeenAt", "LastSeenAt", "OccurrenceCount", "ResolvedAt")

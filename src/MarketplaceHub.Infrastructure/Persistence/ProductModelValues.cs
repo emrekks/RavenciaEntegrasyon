@@ -408,6 +408,10 @@ public static class ProductModelValues
         var taken = new List<string>();
         foreach (var tenantId in tenants)
         {
+            // A card the previous release linked during the deploy to a model of its own although it carries a code (its
+            // insert of a second brand's model under the unique key was skipped): the whole tenant's reconcile links it to
+            // its code's model when the brand is the model's, else leaves it alone and opens PRODUCT_MODEL_AMBIGUOUS.
+            await ProductModelLinks.ReconcileTenantAsync(db, tenantId, now, cancellationToken);
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var closed = await ModelMirror.CloseGapsAsync(db, tenantId, null, now, cancellationToken);
             written += closed.ModelsTakingACard + await ProductModelLinks.SyncOwnModelBrandsAsync(db, tenantId, null, now, cancellationToken);

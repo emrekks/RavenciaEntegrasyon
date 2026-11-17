@@ -59,13 +59,16 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // MZ035YNC: two colour cards, one Shopify product.
         var siyah = AddCard(db, seed, seed.Ravencia, "MZ035YNC", "Siyah", "Kadın Siyah Bluz", 0, "gid-1");
         var mavi = AddCard(db, seed, seed.Ravencia, "MZ035YNC", "Mavi", "Kadın Mavi Bluz", 1, "gid-1");
-        // KENE01: one code under two brands, a model per brand; one Shopify product spans both: no model link.
+        // KENE01: one code under two brands (from before KATALOG-14 phase D5b), the code's model and a card on a model of its
+        // own; one Shopify product spans both: no model link.
         AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 2, "gid-2");
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 3, "gid-2");
+        var keneRavencia = AddCard(db, seed, seed.Ravencia, "KENE01-ESKI", "Siyah", "Kadın Siyah Etek", 3, "gid-2");
         // MZ040: listed as one Shopify product per colour.
         AddCard(db, seed, seed.Ravencia, "MZ040", "Gri", "Kadın Gri Etek", 4, "gid-3");
         AddCard(db, seed, seed.Ravencia, "MZ040", "Bej", "Kadın Bej Etek", 5, "gid-4");
         await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {keneRavencia.Id}""");
+        await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         var variantLinksBefore = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).OrderBy(x => x.Id).Select(x => new { x.Id, x.VariantId, x.ExternalId, x.Version }).ToListAsync();
 
         var now = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
@@ -218,9 +221,9 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         // MZ093: two colours, the PTT AVM link on one card while the other card holds PTT AVM variant links: left to the import.
         var lacivert = AddCard(db, seed, seed.Ravencia, "MZ093", "Lacivert", "Kadın Lacivert Bluz", 7, "p93");
         var yesil = AddCard(db, seed, seed.Ravencia, "MZ093", "Yesil", "Kadın Yeşil Bluz", 8, "p93");
-        // KENE01: a model per brand.
+        // KENE01: a one-card model (KATALOG-14 phase D5b: a code is one model, the other brand's card holds another code).
         var kene = AddCard(db, seed, seed.Lavian, "KENE01", "Mavi", "Kadın Mavi Etek", 5, null);
-        AddCard(db, seed, seed.Ravencia, "KENE01", "Siyah", "Kadın Siyah Etek", 6, null);
+        AddCard(db, seed, seed.Ravencia, "KENE02", "Siyah", "Kadın Siyah Etek", 6, null);
         void Link(PlatformConnection connection, Product card, string external, string? code = null) =>
             db.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ProductId = card.Id, ExternalId = external, ExternalCode = code, SyncStatus = "SYNCED", Version = 1 });
         Link(ptt, siyah, "1523", "MZ090");
@@ -242,14 +245,14 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         await db.Database.ExecuteSqlRawAsync(backfill);
         var model = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
         var links = (await ModelLinksAsync(db, seed)).Select(x => ((Guid?)x.ModelId, x.ConnectionId, x.ExternalId, x.ExternalCode)).OrderBy(x => x.ExternalId, StringComparer.Ordinal).ToList();
-        // KATALOG-14 phase D5a: the KENE01 card's own-brand model takes its PTT AVM product like any one-card model.
+        // The KENE01 card's model takes its PTT AVM product like any one-card model.
         var keneModel = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == kene.Id)).FamilyId;
         Assert.Equal([(model, ptt.Id, "1523", (string?)"MZ090"), (keneModel, ptt.Id, "1700", "KENE01"), (model, pazarama.Id, "group:g-90", "g-90"), (model, n11.Id, "main:MZ090", null)], links);
         Assert.Equal(10, await db.MarketplaceProductLinks.AsNoTracking().CountAsync(x => x.TenantId == seed.Tenant.Id));
         await transaction.RollbackAsync();
     }
     [PostgreSqlFact]
-    public async Task APicture_BelongsToItsCardsModel_AndFollowsTheCardToAnotherModel()
+    public async Task APicture_BelongsToItsCardsModel_AndStaysWithItWhenTheModelIsRecoded()
     {
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
@@ -265,10 +268,18 @@ public sealed class PostgreSqlMarketplaceModelLinksTests(PostgreSqlTenantIsolati
         var mz100 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ100");
         Assert.Equal(mz100.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
 
-        // The card is re-coded to MZ101: it and its picture move to that model.
+        // KATALOG-14 phase D5b: a code changed on one colour is the model's new code; the model keeps its id and the picture
+        // stays with it. A code another model holds (MZ101) is refused.
+        db.ChangeTracker.Clear();
         foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ101";
+        await transaction.CreateSavepointAsync("taken");
+        await Assert.ThrowsAsync<ModelRuleException>(() => db.SaveChangesAsync());
+        await transaction.RollbackToSavepointAsync("taken");
+        db.ChangeTracker.Clear();
+        foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ102";
         await db.SaveChangesAsync();
-        var mz101 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ101");
+        var mz101 = await db.ProductModels.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ModelCodeKey == "MZ102");
+        Assert.Equal(mz100.Id, mz101.Id);
         Assert.Equal(mz101.Id, (await db.ProductMedia.AsNoTracking().SingleAsync(x => x.ProductId == siyah.Id)).FamilyId);
 
         // The backfill gives the same value.

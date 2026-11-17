@@ -564,7 +564,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes), "transfer-test", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
-        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 2), applied.Value);
+        Assert.Equal(new ProductTransferApplyResult(2, 1, 1, 1, 0, 0, 0, 2, ModelColours: 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var stored = await check.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.Sku).ToListAsync();
@@ -704,7 +704,7 @@ public sealed class ProductTransferPostgreSqlTests(PostgreSqlTenantIsolationFixt
 
         var applied = await service.ApplyAsync(tenant.Id, Guid.CreateVersion7(), new ApplyProductTransferCommand(preview.Value.Changes, preview.Value.ProductChanges), "transfer-info", CancellationToken.None);
         Assert.True(applied.Succeeded, applied.Error?.Message);
-        Assert.Equal(new ProductTransferApplyResult(2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1), applied.Value);
+        Assert.Equal(new ProductTransferApplyResult(2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, ModelColours: 1), applied.Value);
         await using (var check = fixture.CreateContext())
         {
             var storedProduct = await check.Products.AsNoTracking().SingleAsync(x => x.Id == product.Id);
