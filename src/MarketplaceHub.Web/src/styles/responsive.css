@@ -156,14 +156,6 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number > strong { cursor: pointer; }
 }
 
-/* Product image window on phones: centred, with the same 16px gap on all four sides. */
-@media (max-width: 760px) {
-  html body .workspace-modal-backdrop:has(> .product-image-modal) { align-items: center; justify-items: center; padding: 16px; }
-  html body .product-image-modal { width: 100%; max-width: none; max-height: calc(100dvh - 32px); margin: 0; border-width: 1px; border-radius: var(--rv-radius-lg); overflow: hidden; }
-  html body .product-image-modal-body { overflow-y: auto; }
-  html body .product-image-modal-frame { max-height: calc(100dvh - 32px - 120px); }
-}
-
 /* Phones: the hidden copy button is removed from layout entirely so the number sits flush right. */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .order-number { gap: 0; }

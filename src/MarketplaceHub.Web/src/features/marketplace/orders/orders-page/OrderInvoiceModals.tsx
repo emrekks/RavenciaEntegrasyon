@@ -2,7 +2,6 @@ import type { ApiAnswer } from '../../../../shared/api/api-answer'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../../shared/api'
-import { Busy, ErrorBox, UiIcon, DialogSurface } from '../../../../shared/components'
 import { newIdempotencyKey } from '../../../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../../../shared/hooks/useCanSendInvoices'
 import { statusLabel } from '../../../../shared/status-labels'
@@ -46,9 +45,11 @@ export function InvoiceDraftModal({ item, providers, onClose, onFeedback }: { it
   const marketplace = providers.find(connection => connection.id === order?.connectionId)
   const provider = invoiceProviderForEnvironment(providers, marketplace?.environment)
   const packageId = order ? orderDisplayShipment(order)?.id : undefined
-  if (detail.isLoading) return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-draft-modal" aria-label="Fatura önizlemesi" onMouseDown={event => event.stopPropagation()}><Busy text="Sipariş, paket ve fatura verileri okunuyor…" /></DialogSurface></div>
-  if (detail.isError || !order) return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-draft-modal" aria-label="Fatura önizlemesi" onMouseDown={event => event.stopPropagation()}><ErrorBox error={detail.error} onRetry={() => void detail.refetch()} /><button type="button" className="secondary" onClick={onClose}>Kapat</button></DialogSurface></div>
-  if (!packageId || !provider) return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-draft-modal" aria-labelledby="invoice-draft-blocked-title" onMouseDown={event => event.stopPropagation()}><header><div><h2 id="invoice-draft-blocked-title">Fatura Önizlemesi Açılamadı</h2><p>{displayOrderNumber(order.orderNumber)}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header><p className="notice" role="status">{!packageId ? 'Fatura için pazaryeri paket bilgisi henüz yok. Paket eşitlemesinden sonra yeniden deneyin.' : `Sipariş ortamında (${marketplace?.environment ?? 'bilinmiyor'}) etkin ve credential’ı olan E-Faturam bağlantısı bulunamadı.`}</p><footer><button type="button" className="secondary" onClick={onClose}>Kapat</button></footer></DialogSurface></div>
+  // The window's states before the preview: reading the order, a failed read, and an order the preview cannot open yet.
+  const closeFoot = <><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>
+  if (detail.isLoading) return <RrModal title="Fatura Önizlemesi" size="xl" onClose={onClose}><RrLoading text="Sipariş, paket ve fatura verileri okunuyor…" /></RrModal>
+  if (detail.isError || !order) return <RrModal title="Fatura Önizlemesi" size="xl" onClose={onClose} foot={closeFoot}><RrError error={detail.error} onRetry={() => void detail.refetch()} /></RrModal>
+  if (!packageId || !provider) return <RrModal title="Fatura Önizlemesi Açılamadı" desc={displayOrderNumber(order.orderNumber)} size="xl" onClose={onClose} foot={closeFoot}><p className="rr-callout rr-warn" role="status">{!packageId ? 'Fatura için pazaryeri paket bilgisi henüz yok. Paket eşitlemesinden sonra yeniden deneyin.' : `Sipariş ortamında (${marketplace?.environment ?? 'bilinmiyor'}) etkin ve credential’ı olan E-Faturam bağlantısı bulunamadı.`}</p></RrModal>
   const target: InvoicePreviewTarget = { orderId: order.id, packageId, providerConnectionId: provider.id }
   return <InvoiceWorkspacePreviewModal targets={[target]} onClose={onClose} onNotice={(text, kind, context) => onFeedback(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: queryKeys.orders() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspacePage() }), client.invalidateQueries({ queryKey: queryKeys.invoiceWorkspaceSummary() })]) }} />
 }

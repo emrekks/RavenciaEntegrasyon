@@ -378,9 +378,6 @@
   .workspace-modal-backdrop, .rv-overlay { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .workspace-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(760px, 100%); max-height: calc(100dvh - 32px); min-width: 0; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .workspace-modal > * { min-width: 0; }
-  .product-image-modal { position: relative; width: min(720px, 100%); max-height: calc(100dvh - 32px); }
-  .product-image-modal-body { display: grid; min-height: 0; place-items: center; overflow: auto; padding: var(--rv-space-5); }
-  .product-image-modal > img, .product-image-modal-body img { display: block; width: auto; max-width: 100%; max-height: calc(100dvh - 170px); margin: 0 auto; object-fit: contain; }
   .workspace-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .workspace-modal > header h2 { margin-bottom: var(--rv-space-1); }
   .workspace-modal > header p { margin: 0; }
@@ -603,7 +600,6 @@
   .invoice-document-upload small { color: var(--rv-color-muted); }
   .invoice-document-upload input[type="file"] { min-width: 0; }
   .integrations-reference-page { min-width: 0; }
-  .image-lightbox-backdrop { background: rgb(5 16 29 / 78%); }
   .is-error { color: var(--rv-color-danger); }
   .invoice-reference-state { display: grid; min-height: 180px; place-items: center; }
   .invoice-detail-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
@@ -636,8 +632,8 @@
   .invoice-detail-footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
   /* Legacy invoice actions still used by the order workspace share the same
      bounded modal contract instead of relying on browser-sized content. */
-  .invoice-draft-modal, .invoice-upload-modal { display: block; width: min(980px, 100%); max-height: calc(100dvh - 32px); overflow: auto; }
-  .invoice-draft-modal > footer, .invoice-upload-modal > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); margin-top: var(--rv-space-5); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
+  .invoice-upload-modal { display: block; width: min(980px, 100%); max-height: calc(100dvh - 32px); overflow: auto; }
+  .invoice-upload-modal > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); margin-top: var(--rv-space-5); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
   .invoice-dropzone { display: grid; min-height: 220px; place-items: center; align-content: center; gap: var(--rv-space-3); margin: var(--rv-space-5) var(--rv-space-6) var(--rv-space-4); padding: var(--rv-space-6); border: 1px dashed var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); text-align: center; cursor: pointer; }
   .invoice-dropzone:hover, .invoice-dropzone.dragging { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
   .invoice-dropzone input[type="file"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -1349,7 +1345,7 @@
   .page-heading { align-items: flex-start; flex-direction: column; gap: var(--rv-space-3); }
   .invoice-reference-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .invoice-reference-workspace > header { align-items: flex-start; flex-direction: column; }
-  .invoice-draft-modal > footer, .invoice-upload-modal > footer { margin-inline: var(--rv-space-4); }
+  .invoice-upload-modal > footer { margin-inline: var(--rv-space-4); }
   .integration-settings-modal { border-left: 0; border-radius: 0; }
   .integration-settings-modal > header { padding-inline: var(--rv-space-4); }
   .integration-inline-workspace { padding: var(--rv-space-4); }
@@ -1695,16 +1691,6 @@ button,
 .brand-library-list > span.active { color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface-raised)); border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 24%, transparent); }
 .brand-library-list > span.active .category-chip-remove { color: var(--rv-color-muted); border-left-color: color-mix(in srgb, var(--rv-color-primary) 36%, var(--rv-color-border)); }
 .brand-library-list > span.active .category-chip-remove:hover { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
-
-.product-image-modal { grid-template-rows: auto minmax(0, 1fr); width: min(480px, calc(100vw - 32px)); }
-.product-image-modal-header { position: relative; padding: var(--rv-space-5) 56px var(--rv-space-4) var(--rv-space-5); }
-.product-image-modal-header > div { display: grid; min-width: 0; gap: 4px; }
-.product-image-modal-header h2 { margin: 0; }
-.product-image-modal-header h2 { overflow-wrap: anywhere; }
-.product-image-modal-header .modal-close { position: absolute; top: var(--rv-space-4); right: var(--rv-space-4); }
-.product-image-modal-body { padding: 0; }
-.product-image-modal-frame { display: grid; width: 100%; height: auto; min-height: 0; max-width: 100%; margin: 0; place-items: center; overflow: hidden; aspect-ratio: 2 / 3; background: var(--rv-color-surface-raised); border: 0; border-radius: 0; box-shadow: none; }
-.product-image-modal-frame img { display: block; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
 
 .order-number { flex-wrap: nowrap; }
 
@@ -3801,51 +3787,10 @@ small,
   }
 }
 
-/* Product image previews should follow the catalog's 2:3 portrait format. */
-.app-shell.stitch-shell main .product-image-modal {
-  width: min(480px, calc(100vw - 32px));
-  max-height: calc(100dvh - 32px);
-}
-
-.app-shell.stitch-shell main .product-image-modal-body {
-  padding: 0;
-}
-
-.app-shell.stitch-shell main .product-image-modal-frame {
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  background: transparent;
-  border: 1px solid var(--rv-color-border-strong);
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.app-shell.stitch-shell main .product-image-modal-frame img {
-  object-fit: cover;
-}
-
-@media (max-height: 860px) {
-  .app-shell.stitch-shell main .product-image-modal { width: min(440px, calc(100vw - 32px)); }
-}
-
-@media (max-height: 740px) {
-  .app-shell.stitch-shell main .product-image-modal { width: min(380px, calc(100vw - 32px)); }
-}
-
 .app-shell.stitch-shell main .variant-table-editor > .empty.small {
   min-height: 132px;
   border: 0;
   border-radius: var(--rv-radius-lg);
-}
-
-/* Product image preview: compact header, title first, and variant context
-   next to the model information. */
-.app-shell.stitch-shell main .product-image-modal-header {
-  padding: 16px 56px 13px var(--rv-space-5);
-}
-
-.app-shell.stitch-shell main .product-image-modal-header > div {
-  gap: 2px;
 }
 
 /* Restore the requested slide when the menu changes between compact and

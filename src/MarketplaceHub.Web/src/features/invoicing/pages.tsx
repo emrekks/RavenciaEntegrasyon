@@ -37,7 +37,7 @@ import './invoice-filter-card.css'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
 import { invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable, safeInvoiceReferenceUrl } from './invoice-reference-document-link'
 import { marketplacePlatformOptions } from '../marketplace/marketplace-platform-support'
-import { RrAnchor, RrColumnPop, RrFilterCard, RrIcon, RrPageSize } from '../../shared/ui/rr-components'
+import { RrAnchor, RrColumnPop, RrFilterCard, RrIcon, RrImagePreview, RrPageSize } from '../../shared/ui/rr-components'
 import { waitForReferenceSyncJobs } from '../marketplace/reference-value-sync'
 import { ReturnPlatformPop } from '../marketplace/shared'
 import './invoice-detail-ui.css'
@@ -236,22 +236,13 @@ function addressLines(value: string | null | undefined) {
   } catch { return [] }
 }
 
-function InvoiceDetailImagePreview({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
-  return createPortal(<div className="workspace-modal-backdrop image-lightbox-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <DialogSurface as="section" onClose={() => { onClose() }} className="workspace-modal product-image-modal" aria-labelledby="invoice-detail-image-modal-title" onMouseDown={event => event.stopPropagation()}>
-      <header className="product-image-modal-header"><div><h2 id="invoice-detail-image-modal-title">{title}</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Kapat"><UiIcon name="close" /></button></header>
-      <div className="product-image-modal-body"><div className="product-image-modal-frame"><img src={url} alt={`${title} büyük ürün görseli`} loading="eager" decoding="async" /></div></div>
-    </DialogSurface>
-  </div>, document.body)
-}
-
 function InvoiceDetailLineImage({ url, title }: { url: string; title: string }) {
   const [previewOpen, setPreviewOpen] = useState(false)
   return <>
     <button type="button" className="invoice-detail-line-media invoice-detail-line-image-button" onClick={() => setPreviewOpen(true)} aria-label={`${title} görselini büyüt`} title="Büyütmek için tıklayın">
       <img src={url} alt="" loading="lazy" decoding="async" />
     </button>
-    {previewOpen && <InvoiceDetailImagePreview url={url} title={title} onClose={() => setPreviewOpen(false)} />}
+    {previewOpen && <RrImagePreview title={title} sources={[url]} onClose={() => setPreviewOpen(false)} />}
   </>
 }
 

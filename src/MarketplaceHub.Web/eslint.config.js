@@ -46,7 +46,6 @@ const handWrittenBackdropFiles = [
   'src/features/marketplace/mappings/mapping-pages/BrandMappingPage.tsx',
   'src/features/marketplace/mappings/mapping-pages/CategoryAttributeWorkspace.tsx',
   'src/features/marketplace/mappings/mapping-pages/ValueMappingEditors.tsx',
-  'src/features/marketplace/orders/orders-page/OrderInvoiceModals.tsx',
   'src/features/operations/pages.tsx',
   'src/shared/MobileFilterShell.tsx',
 ]
