@@ -159,7 +159,3 @@
   :root:root:root body .variant-table-editor .variant-table-head > * { white-space: nowrap; overflow: visible; }
   :root:root:root body .variant-table-editor .variant-table-head .variant-table-header-with-action { flex-wrap: nowrap; gap: 6px; }
 }
-
-@media (min-width: 1025px) and (max-width: 1200px) {
-  :root:root:root body .variant-table-editor .variant-table-head .variant-table-header-with-action { gap: 6px; }
-}
