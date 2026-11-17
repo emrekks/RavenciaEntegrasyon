@@ -49,7 +49,9 @@ public sealed partial class InvoicingBillingService
         var permanentLinks = await db.InvoiceDocuments.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.InvoiceId == invoiceId && x.PermanentUrl != null)
             .Select(x => x.PermanentUrl!).ToListAsync(cancellationToken);
-        var expectedLinks = permanentLinks.Concat(permanentLinks.Select(InvoiceDocumentLink.PdfAlias)).Distinct(StringComparer.Ordinal).ToList();
+        // The link this package's delivery carried comes first (E-Faturam's URL or the panel link), then every other link
+        // of the invoice, so a removal recognises whichever kind the marketplace holds.
+        var expectedLinks = InvoiceDeliveredLinks.Expand((state.InvoiceLink is { } delivered ? [delivered] : Array.Empty<string>()).Concat(permanentLinks)).ToList();
         var reference = new ExternalInvoiceDeliveryReference(package.ExternalPackageId, order?.OrderNumber, null, invoice.InvoiceNumber, expectedLinks.FirstOrDefault(),
             order is null ? null : new PackageLookup(package.StatusOccurredAt, new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode), InvoiceOnly: true));
         var context = new AdapterContext(tenantId, connection.Id, correlationId, $"invoice-link-revocation:{state.Id:N}", now.AddMinutes(2), IsExplicitManualInvoiceDelivery: true);

@@ -143,7 +143,9 @@ public sealed class TrendyolEFaturamHttpClient(
             if (!download.Succeeded && SafeRemoteDocumentDownloader.IsDocumentNotReady(download.ErrorCode))
                 return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, download.ErrorCode!, "E-Faturam belgesi henüz PDF olarak hazır değil; yeniden denenecek.", null, TimeSpan.FromMinutes(2), null));
             if (!download.Succeeded) return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.ContractViolation, download.ErrorCode ?? "EFATURAM_DOCUMENT_REJECTED", "E-Faturam belge adresi veya PDF içeriği güvenlik doğrulamasını geçemedi.", null, null, null));
-            return AdapterResult<RemoteInvoiceDocument>.Success(new("PDF", "application/pdf", $"invoice-{documentUuid}.pdf", download.Content!, documentUuid, download.FinalUrl), response.RateLimit);
+            // The URL E-Faturam answered is the permanent one the marketplaces get (MarketplaceInvoiceLinkPolicy); where a
+            // redirect led is not kept, it may be a short-lived storage address. The download above verified it.
+            return AdapterResult<RemoteInvoiceDocument>.Success(new("PDF", "application/pdf", $"invoice-{documentUuid}.pdf", download.Content!, documentUuid, permanentUrl), response.RateLimit);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_DOCUMENT_TIMEOUT", "E-Faturam belgesi zaman aşımı nedeniyle indirilemedi.", null, TimeSpan.FromSeconds(5), null)); }
         catch (Exception exception) when (exception is HttpRequestException or SocketException) { return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, "EFATURAM_DOCUMENT_NETWORK_ERROR", "E-Faturam belgesi indirilemedi.", null, TimeSpan.FromSeconds(5), null)); }

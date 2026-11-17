@@ -22,6 +22,9 @@ export function invoiceFailureReason(code: string | null) {
     INVOICE_SUBMISSION_TRANSPORT_UNKNOWN: 'Sağlayıcıdan yanıt alınamadı. Sonuç E-Faturam’dan faturanın kimliğiyle okunuyor; kimliği olmayan eski bir gönderimse E-Faturam portalından kontrol edin.',
     REMOTE_INVOICE_NOT_PRESENT: 'Pazaryeri iletilen faturayı göstermedi; iletim yeniden denenecek.',
     INVOICE_DOCUMENT_MISSING_NOT_DELIVERED: 'Belge alınamadı; fatura pazaryerine iletilmedi.',
+    // MarketplaceInvoiceLinkPolicy: the delivery stops instead of sending the panel link in place of E-Faturam's link.
+    INVOICE_PROVIDER_LINK_MISSING: 'E-Faturam’ın doğrulanmış kalıcı belge linki yok; fatura linki pazaryerine gönderilmedi. Tekrar Gönder ile yeniden deneyebilirsiniz.',
+    INVOICE_PROVIDER_LINK_INVALID: 'E-Faturam’ın kalıcı belge linki pazaryerinin link kuralına uymuyor; fatura linki gönderilmedi ve panel linkine geçilmedi.',
     // Whether and when it is tried again is shown beside it (invoiceDeliveryRetryText), never promised here.
     DOCUMENT_CONTENT_TYPE_INVALID: 'Belge alınamadı: E-Faturam PDF yerine başka bir yanıt verdi.',
     DOCUMENT_PDF_SIGNATURE_INVALID: 'Belge alınamadı: E-Faturam yanıtı geçerli bir PDF değil.',

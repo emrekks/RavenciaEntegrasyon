@@ -180,21 +180,19 @@ internal sealed partial class OrderIngestionService
         if (incomingStatus == MarketplaceInvoiceStatus.Invoiced && invoice.Status is InvoiceStatus.Submitted or InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed)
         {
             var remoteInvoiceNumber = observation?.InvoiceNumber?.Trim();
-            var localInvoiceLink = await db.InvoiceDocuments.AsNoTracking()
-                .Where(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
-                .OrderByDescending(document => document.CreatedAt)
-                .Select(document => document.PermanentUrl)
-                .FirstOrDefaultAsync(cancellationToken);
+            // Every link the panel stored for this invoice is its own: E-Faturam's permanent URL (deliveries since
+            // 17 Nov 2026, and Trendyol/Hepsiburada before) and the panel link (n11, Pazarama, older PTT AVM deliveries).
+            var localInvoiceLinks = await InvoiceDeliveredLinks.OwnAsync(db, invoice.TenantId, invoice.Id, cancellationToken);
             var exactProof = InvoiceDeliveryProofPolicy.HasExactProof(
                 new(package.ExternalPackageId, observation?.RawStatus ?? string.Empty, true,
                     observation?.InvoiceNumber, observation?.InvoiceUrl, observation?.ReferencesAreAuthoritative == true),
                 invoice.InvoiceNumber,
-                localInvoiceLink)
+                localInvoiceLinks)
                 // A read without references is weaker than what the package already holds: when that is exactly this
                 // invoice's number and link, the read confirms it instead of sending a confirmed delivery to review.
                 || string.IsNullOrWhiteSpace(observation?.InvoiceNumber) && string.IsNullOrWhiteSpace(observation?.InvoiceUrl)
-                    && InvoiceDeliveryRecoveryPolicy.StoredReferencesProveDelivery(
-                        package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl, invoice.InvoiceNumber, localInvoiceLink);
+                    && localInvoiceLinks.Any(localInvoiceLink => InvoiceDeliveryRecoveryPolicy.StoredReferencesProveDelivery(
+                        package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl, invoice.InvoiceNumber, localInvoiceLink));
             if (exactProof)
             {
                 await RecordExactMarketplaceInvoiceProofAsync(invoice, package, observedAt, cancellationToken);

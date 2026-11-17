@@ -774,7 +774,7 @@ public sealed partial class InvoicingBillingService(
             ? []
             : await db.MarketplaceDeliveryStates.AsNoTracking()
                 .Where(state => state.TenantId == tenantId && invoiceIds.Contains(state.InvoiceId))
-                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt, state.ExternalIdempotencyKey })
+                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt, state.ExternalIdempotencyKey, state.InvoiceLink })
                 .ToListAsync(cancellationToken);
         var deliveryAttempts = invoiceIds.Length == 0
             ? []
@@ -847,9 +847,10 @@ public sealed partial class InvoicingBillingService(
                 ?? (candidate.Package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced ? "REMOTE_PRESENT_UNMATCHED" : "NOT_SENT");
             var currentPlatformInvoiceUrl = packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl;
             // Hepsiburada does not return the invoice link, but once our own delivery is confirmed the platform holds exactly the link we sent.
-            if (string.IsNullOrWhiteSpace(currentPlatformInvoiceUrl) && candidate.Invoice is not null && deliveryState?.Status == "CONFIRMED"
-                && deliveredLinks.TryGetValue(candidate.Invoice.Id, out var deliveredLink))
-                currentPlatformInvoiceUrl = deliveredLink;
+            // A delivery since 17 Nov 2026 recorded its own link; an older one sent the invoice's latest document link.
+            if (string.IsNullOrWhiteSpace(currentPlatformInvoiceUrl) && candidate.Invoice is not null && deliveryState?.Status == "CONFIRMED")
+                currentPlatformInvoiceUrl = deliveryState.InvoiceLink
+                    ?? (deliveredLinks.TryGetValue(candidate.Invoice.Id, out var deliveredLink) ? deliveredLink : null);
             var allowedActions = InvoiceWorkspaceActionPolicy.Resolve(
                 candidate.Connection.PlatformCode,
                 candidate.Package.MarketplaceInvoiceStatus,
