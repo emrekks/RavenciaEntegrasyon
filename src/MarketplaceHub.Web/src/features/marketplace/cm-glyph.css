@@ -1,0 +1,4 @@
+/* The status glyph (shared.tsx, integrations/connection-auth-alert.tsx): its size lives with the component, not in a page's own stylesheet.
+   category-workbench.css only loads with the mapping pages, so on the connection window the glyph had no width or height and iOS Safari
+   drew the <svg> as big as its box (owner, 18 Nov 2026: "devasa"). */
+.cm-glyph { display: inline-block; flex: none; width: 16px; height: 16px; min-width: 0; max-width: 16px; vertical-align: -3px; }
