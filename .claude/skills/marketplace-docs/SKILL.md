@@ -83,6 +83,16 @@ Shared across all of them:
   `vendor`, no brand list; PTT AVM no brand), so a product the import opens takes the same-named panel brand, or a new
   one, and no mapping is written (a mapping needs the marketplace's brand id). Details in trendyol.md.
 
+## Offers at the panel price (owner rule, 18 Nov 2026)
+
+A variant linked to a listing without an offer there is sent at the panel price; "Özel Fiyat" (`FollowsPanelPrice = false`)
+keeps its own. Missing offers are opened (marked as sent: nothing goes out then) only on Trendyol, Hepsiburada and Shopify,
+whose stock request can carry the stock alone (Trendyol sends only what differs from the last confirmed values; Hepsiburada
+and Shopify leave the price out while its mark holds: `PriceInventoryComposer.BuildForPlatformAsync`). n11, Pazarama and
+PTT AVM build every line whole (stock with price), so an opened offer's first stock send would carry a price the marketplace
+never had: they get none (`PanelPriceOfferPolicy.OpensOffers`). Hepsiburada and PTT AVM take a sale price only: list = sale.
+Hepsiburada's current marketplace price is not stored in the panel (no price column outside offers and order lines).
+
 ## Official docs, offline (search these first)
 
 Full copies of the official developer docs, downloaded 2026-11-01, are kept outside the repository (this repository

@@ -168,16 +168,27 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
     expect(offerMatchesPanel({ listPrice: 300, salePrice: 250 }, { listPrice: null, salePrice: null }, true)).toBe(false)
   })
 
-  it('starts ticked only for a marketplace with an offer at another price', () => {
+  it('without a saved panel price, starts ticked only for a marketplace with an offer at another price', () => {
+    // No panel price saved: the panel shown is the first offer's (300/250), and a choice never stored follows it only at that price.
+    const unsaved = {}
+    const shown = { listPrice: 300, salePrice: 250 }
     const items = [
-      { product, variant: { platformStatuses: [status('c-ty', 300, 250), status('c-hb', 250, 250), status('c-n11', 400, 350)] } },
-      { product, variant: { platformStatuses: [status('c-ty', 300, 250)] } },
+      { product: unsaved, variant: { ...shown, platformStatuses: [status('c-ty', 300, 250), status('c-hb', 250, 250), status('c-n11', 400, 350)] } },
+      { product: unsaved, variant: { ...shown, platformStatuses: [status('c-ty', 300, 250)] } },
     ]
     expect(initialCustomChannels(items, columns)).toEqual({ 'c-ty': false, 'c-hb': false, 'c-n11': true })
     // No offer anywhere: every marketplace follows the panel, as the editor shows a new choice.
     expect(initialCustomChannels([{ product, variant: { platformStatuses: [] } }], columns)).toEqual({ 'c-ty': false, 'c-hb': false, 'c-n11': false })
-    // One differing variant is enough to keep that marketplace's own prices.
-    expect(initialCustomChannels([...items, { product, variant: { defaultSalePrice: 200, platformStatuses: [status('c-ty', 300, 250)] } }], columns)['c-ty']).toBe(true)
+    // One variant whose offer keeps its own price (Özel Fiyat stored) is enough to keep that marketplace's own prices.
+    expect(initialCustomChannels([...items, { product, variant: { platformStatuses: [{ ...status('c-ty', 300, 250), followsPanelPrice: false }] } }], columns)['c-ty']).toBe(true)
+  })
+
+  it('with a saved panel price, a choice never stored follows the panel (owner, 18 Nov 2026)', () => {
+    const items = [{ product, variant: { platformStatuses: [status('c-ty', 300, 250), status('c-hb', 250, 250), status('c-n11', 400, 350)] } }]
+    expect(initialCustomChannels(items, columns)).toEqual({ 'c-ty': false, 'c-hb': false, 'c-n11': false })
+    expect(offerFollowsPanel({ listPrice: 400, salePrice: 350, followsPanelPrice: null }, { listPrice: 300, salePrice: 250 }, true, true)).toBe(true)
+    // Özel Fiyat on keeps its own price whatever the panel price.
+    expect(offerFollowsPanel({ listPrice: 400, salePrice: 350, followsPanelPrice: false }, { listPrice: 300, salePrice: 250 }, true, true)).toBe(false)
   })
 
   it('reads the stored choice first, else the prices; no offer follows the panel', () => {
@@ -194,7 +205,9 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
   it('ticks a marketplace from the stored choice, else from the prices', () => {
     const stored = (connectionId: string, listPrice: number, salePrice: number, followsPanelPrice: boolean | null) => ({ ...status(connectionId, listPrice, salePrice), followsPanelPrice })
     const items = [{ product, variant: { platformStatuses: [stored('c-ty', 300, 250, false), stored('c-hb', 999, 999, true), stored('c-n11', 400, 350, null)] } }]
-    expect(initialCustomChannels(items, columns)).toEqual({ 'c-ty': true, 'c-hb': false, 'c-n11': true })
+    // n11's choice was never stored: with the saved panel price (250) it follows the panel.
+    expect(initialCustomChannels(items, columns)).toEqual({ 'c-ty': true, 'c-hb': false, 'c-n11': false })
+    expect(initialCustomChannels([{ product: {}, variant: items[0].variant }], columns)).toEqual({ 'c-ty': true, 'c-hb': false, 'c-n11': true })
     // A card's variants: its own price as soon as one variant's offer keeps its own.
     const twoVariants = [items[0], { product, variant: { platformStatuses: [stored('c-hb', 250, 250, false)] } }]
     expect(channelKeepsOwnPrice(twoVariants, 'c-hb', false)).toBe(true)
@@ -206,8 +219,11 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
       { platformStatuses: [{ ...status('c-ty', 300, 250), platformCode: 'TRENDYOL' }, { ...status('c-hb', 999, 999), platformCode: 'HEPSIBURADA', followsPanelPrice: true }, { connectionId: 'c-n11', platformCode: 'N11', offerId: null }] },
       { platformStatuses: [{ ...status('c-ty', 420, 380), platformCode: 'TRENDYOL' }, { ...status('c-hb', 260, 260), platformCode: 'HEPSIBURADA', followsPanelPrice: false }] },
     ]
-    // Trendyol: the first variant follows (panel price), the second keeps its own, so the card is on with its price.
-    expect(editorCustomChannelPrices(variants, product)).toEqual({ 'c-ty': { listPrice: '420', salePrice: '380' }, 'c-hb': { listPrice: '260', salePrice: '260' } })
+    // A saved panel price: Trendyol's choices were never stored, so both follow it; Hepsiburada's second keeps its own.
+    expect(editorCustomChannelPrices(variants, product)).toEqual({ 'c-hb': { listPrice: '260', salePrice: '260' } })
+    // No panel price saved (the first offer's shown): Trendyol's first variant follows, the second keeps its own price.
+    const shown = (variant: typeof variants[number]) => ({ ...variant, listPrice: 300, salePrice: 250 })
+    expect(editorCustomChannelPrices(variants.map(shown), {})).toEqual({ 'c-ty': { listPrice: '420', salePrice: '380' }, 'c-hb': { listPrice: '260', salePrice: '260' } })
     expect(editorCustomChannelPrices([variants[0]], product)).toEqual({})
     expect(editorCustomChannelPrices([], product)).toEqual({})
   })

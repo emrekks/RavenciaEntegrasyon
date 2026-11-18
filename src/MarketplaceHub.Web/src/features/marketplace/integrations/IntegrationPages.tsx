@@ -18,6 +18,8 @@ import { webhookSetupText, type WebhookSetup } from '../webhook-setup'
 import { instantNotificationsQueryKey, instantNotificationStateLabel, routeOnlyWebhookMessage, type InstantNotificationStatus } from '../instant-notification-status'
 import { RrModal, titleTr } from '../../../shared/ui/rr-components'
 import { externalWriteEvidenceState, externalWriteGroupState } from '../external-write-group-state'
+import { PanelPriceOffersLine } from './PanelPriceOffersLine'
+import { panelPriceOfferNotice, panelPriceOffersPath, panelPriceOffersQueryKey, type PanelPriceOfferPreview } from './panel-price-offers'
 import { saveExternalWriteGroup as saveExternalWriteGroupRequest } from '../external-write-group-save'
 import { lockPageScroll } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, failureNotice, inferNotificationTarget, notificationError, notificationPlatformName } from '../../../shared/notifications'
@@ -759,18 +761,21 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
     externalWriteGroupBusy.current = true
     try {
       if (enabled && groupKey === 'automatic-external-writes') {
-        const accepted = await confirm({ title: 'Otomatik Fiyat-Stok Gönderimi Açılsın mı?', message: automaticWritesBaselineMessage(externalWriteTo), confirmLabel: 'Aç ve Sonrakileri Gönder' })
+        // Owner rule of 18 Nov 2026: the missing offers open at the panel price with the switch, sent nothing; the counts are the server's.
+        const preview = await client.fetchQuery({ queryKey: panelPriceOffersQueryKey(id), queryFn: ({ signal }) => hubApi<PanelPriceOfferPreview>(panelPriceOffersPath(id), { signal }), staleTime: 0 }).catch(() => null)
+        const accepted = await confirm({ title: 'Otomatik Fiyat-Stok Gönderimi Açılsın mı?', message: [automaticWritesBaselineMessage(externalWriteTo), ...panelPriceOfferNotice(preview)].join(' '), confirmLabel: 'Aç ve Sonrakileri Gönder' })
         if (!accepted) return
       }
       const latest = client.getQueryData<SyncPolicy[]>(queryKeys.syncPolicies(id))
       await saveExternalWriteGroup.mutateAsync({ policies: policies.map(policy => latest?.find(value => value.resourceType === policy.resourceType) ?? policy), enabled }).catch(() => undefined)
+      await client.invalidateQueries({ queryKey: panelPriceOffersQueryKey(id) })
     } finally {
       externalWriteGroupBusy.current = false
     }
   }
   const renderExternalWriteGroup = (externalGroup: typeof externalWriteGroups[number]) => {
     const { policies, evidence, state } = externalWriteGroupStatus(externalGroup)
-    return <article className={'sync-policy-row ' + (state.enabled ? 'is-enabled' : 'is-disabled') + (state.partiallyEnabled ? ' is-partial' : '')} key={externalGroup.key} data-external-write-group={externalGroup.key}><div className="sync-policy-card-summary"><strong>{externalGroup.label}<TitleHint label={externalGroup.label}>{externalGroup.description}</TitleHint></strong></div><label className="sync-policy-card-switch" title={[externalGroup.label, state.label, evidence.details].filter(Boolean).join(' · ')}><span>{state.label}</span><input type="checkbox" checked={state.configuredEnabled} disabled={saveExternalWriteGroup.isPending || state.disabled} onChange={event => void toggleExternalWriteGroup(externalGroup.key, policies, event.target.checked)} aria-label={externalGroup.label + ' seçeneğini ' + (state.configuredEnabled ? 'kapat' : 'aç')} /><i aria-hidden="true" /></label></article>
+    return <article className={'sync-policy-row ' + (state.enabled ? 'is-enabled' : 'is-disabled') + (state.partiallyEnabled ? ' is-partial' : '')} key={externalGroup.key} data-external-write-group={externalGroup.key}><div className="sync-policy-card-summary"><strong>{externalGroup.label}<TitleHint label={externalGroup.label}>{externalGroup.description}</TitleHint></strong>{externalGroup.key === 'automatic-external-writes' ? <PanelPriceOffersLine connectionId={id} onFeedback={setFeedback} /> : null}</div><label className="sync-policy-card-switch" title={[externalGroup.label, state.label, evidence.details].filter(Boolean).join(' · ')}><span>{state.label}</span><input type="checkbox" checked={state.configuredEnabled} disabled={saveExternalWriteGroup.isPending || state.disabled} onChange={event => void toggleExternalWriteGroup(externalGroup.key, policies, event.target.checked)} aria-label={externalGroup.label + ' seçeneğini ' + (state.configuredEnabled ? 'kapat' : 'aç')} /><i aria-hidden="true" /></label></article>
   }
   const syncPolicyLabel = (resourceType: string) => resourceType === 'ORDER_RECONCILE_DAILY' && item.platformCode === 'SHOPIFY' ? 'Üç Günlük Sipariş Uzlaştırması' : ({ ORDERS: 'Siparişler ve Paket Durumları', ORDER_RECOVERY: 'Sipariş Geçmişi Kurtarma', ORDER_LIFECYCLE: 'Açık Sipariş Yaşam Döngüsü', ORDER_RECONCILE_SHORT: 'Kısa Sipariş Uzlaştırması', ORDER_RECONCILE_MEDIUM: 'Orta Sipariş Uzlaştırması', ORDER_RECONCILE_DAILY: 'Günlük Sipariş Uzlaştırması', ORDER_INVOICE_RECONCILIATION: 'Paket Fatura Kontrolü', RETURNS: 'İade Talepleri', RETURN_LIFECYCLE: 'Açık İade Yaşam Döngüsü', RETURN_RECONCILE_SHORT: 'Kısa İade Uzlaştırması', RETURN_RECONCILE_MEDIUM: 'Orta İade Uzlaştırması', RETURN_RECONCILE_DAILY: 'Günlük İade Uzlaştırması', STOCK_RECONCILE_SHORT: 'Kısa Stok Uzlaştırması', STOCK_RECONCILE_MEDIUM: 'Orta Stok Uzlaştırması', STOCK_RECONCILE_DAILY: 'Günlük Stok Uzlaştırması', LISTING_VERIFY: 'Günlük Yayın Doğrulaması', PRICE_WRITE: 'Fiyat Gönderimleri', STOCK_WRITE: 'Stok Gönderimleri', SHIPMENT_WRITE: 'Kargo ve Etiket İşlemleri', RETURN_WRITE: 'İade Kararları', MANUAL_WRITE: 'Manuel Dış Yazmalar', REFERENCE_DATA: 'Katalog Referansları', ORDER_CARGO_INFO: 'Kargo Bilgisi Eşitleme', QUESTIONS: 'Müşteri Soruları', FINANCE: 'Cari Hesap ve Masraflar' } as Record<string, string>)[resourceType] ?? resourceType
   const syncPolicyIntervals: Array<[number, string]> = [[0, 'Anında'], [30, '30 saniye'], [60, '1 dakika'], [120, '2 dakika'], [180, '3 dakika'], [300, '5 dakika'], [480, '8 dakika'], [540, '9 dakika'], [600, '10 dakika'], [900, '15 dakika'], [1800, '30 dakika'], [2700, '45 dakika'], [3600, '1 saat'], [10800, '3 saat'], [21600, '6 saat'], [43200, '12 saat'], [86400, '24 saat'], [259200, '3 gün']]

@@ -396,6 +396,16 @@ public sealed record UpdateChannelOfferCommand(decimal ListPrice, decimal SalePr
 // Stores the "Özel Fiyat" choice on the variants' existing offers of one connection without a price change (a variant
 // without an offer there gets none). No price changes, so nothing is sent to a marketplace.
 public sealed record SetChannelOfferPanelFollowCommand(Guid ConnectionId, IReadOnlyList<Guid> VariantIds, bool FollowsPanelPrice);
+// Owner rule of 18 Nov 2026 ("teklif kaydı yoksa panel fiyatıyla gönder"), per connection, read only. OpensOffers: the platform
+// gets missing offers opened (Trendyol, Hepsiburada, Shopify). LinkedWithoutOffer: active variants linked to a listing there
+// without an offer; of them Openable get one at the panel price, MissingPanelPrice (no panel sale price above zero, or a
+// list price below it) and MissingVat do not. Following: offers that follow the panel price on its next change (Özel Fiyat
+// off, or a choice never stored on a variant with a saved panel price); FollowingAtOtherPrice of them hold another price
+// now ("Fiyatları Panel Fiyatına Eşitle" would change them), FollowingWithoutPanelPrice have no panel price to follow.
+// CustomPrice: Özel Fiyat on. Differences: up to 50 of FollowingAtOtherPrice with both prices.
+public sealed record PanelPriceOfferDifference(Guid VariantId, string Sku, decimal SalePrice, decimal ListPrice, decimal PanelSalePrice, decimal PanelListPrice, bool? FollowsPanelPrice);
+public sealed record PanelPriceOfferPreview(Guid ConnectionId, string PlatformCode, bool OpensOffers, bool AutomaticWritesOpen, int LinkedWithoutOffer, int Openable, int MissingPanelPrice, int MissingVat, int Following, int FollowingAtOtherPrice, int FollowingWithoutPanelPrice, int CustomPrice, IReadOnlyList<PanelPriceOfferDifference> Differences);
+public sealed record PanelPriceOffersOpened(Guid ConnectionId, int Opened, int MissingPanelPrice, int MissingVat);
 public sealed record ChannelOfferPanelFollowView(int UpdatedCount);
 
 public interface IInventoryService
@@ -409,6 +419,8 @@ public interface IInventoryService
     Task<ServiceResult<ChannelOfferPanelFollowView>> SetOfferPanelFollowAsync(Guid tenantId, SetChannelOfferPanelFollowCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null);
     Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, bool price = true, bool stock = true);
+    Task<ServiceResult<PanelPriceOfferPreview>> PanelPriceOfferPreviewAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
+    Task<ServiceResult<PanelPriceOffersOpened>> OpenPanelPriceOffersAsync(Guid tenantId, Guid userId, Guid connectionId, CancellationToken cancellationToken);
 }
 
 public interface IImportJobProcessor
