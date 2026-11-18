@@ -18,14 +18,14 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-mixed { border-style: dashed; border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
 /* The list scrolls inside itself; each colour is one row, a thin line between colours. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { max-height: min(60dvh, 560px); overflow-y: auto; overflow-x: hidden; border: 1px solid var(--rr-line); border-radius: 12px; overscroll-behavior: contain; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: center; gap: 8px 18px; padding: 6px 14px 6px 12px; background: var(--rr-surface); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: center; gap: 8px 18px; padding: 3px 14px 3px 12px; background: var(--rr-surface); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color > b { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { display: flex; flex-wrap: wrap; gap: 6px 18px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { display: inline-flex; align-items: center; gap: 6px; padding: 2px 2px 2px 8px; border-radius: 9px; transition: background-color .12s; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { display: inline-flex; align-items: center; gap: 6px; padding: 1px 2px 1px 8px; border-radius: 9px; transition: background-color .12s; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on { background: color-mix(in srgb, var(--rr-primary-soft) 70%, var(--rr-surface)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { min-width: 24px; color: var(--rr-muted); font-size: 12px; font-weight: 600; cursor: pointer; text-align: right; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 24px; color: var(--rr-muted); font-size: 12px; font-weight: 600; cursor: pointer; text-align: right; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on .rr-cr-size { color: var(--rr-ink); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair:focus-within .rr-cr-size { color: var(--rr-primary); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-round { border-radius: 50%; }
