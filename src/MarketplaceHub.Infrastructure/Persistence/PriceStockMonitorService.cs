@@ -48,18 +48,14 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             .GroupBy(x => x.ConnectionId!.Value)
             .Select(group => new { ConnectionId = group.Key, Count = group.Count(), Waiting = group.Count(x => x.LastErrorCode == OrderFreshnessGatePolicy.WaitCode) })
             .ToDictionaryAsync(x => x.ConnectionId, cancellationToken);
-        var failed = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId != null && ids.Contains(x.ConnectionId.Value) && x.JobType == MarketplaceJobTypes.PriceInventorySync
-                && (FailedStatuses.Contains(x.Status) && x.CompletedAt >= since || x.Status == JobStatus.ManualReview))
+        var failed = await FailedPushes(db, tenantId, ids, since)
             .Select(x => new { ConnectionId = x.ConnectionId!.Value, x.Id, x.Status, x.LastErrorCode, x.LastErrorSummary, x.CompletedAt })
             .ToListAsync(cancellationToken);
         var issuePrefix = PriceInventoryOfferIssues.KeyPrefix;
-        var offerIssues = await db.OperationalIssues.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(issuePrefix))
+        var offerIssues = await PriceInventoryOfferIssues.Open(db, tenantId, issuePrefix)
             .Select(x => new { x.DedupeKey, x.Code, x.Summary, x.LastSeenAt })
             .ToListAsync(cancellationToken);
-        var linkHealth = await db.MarketplaceVariantLinks.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.HealthStatus == MarketplaceVariantLinkHealth.NotFound || x.HealthStatus == MarketplaceVariantLinkHealth.Rejected))
+        var linkHealth = await BrokenLinks(db, tenantId, ids)
             .GroupBy(x => new { x.ConnectionId, x.HealthStatus })
             .Select(group => new { group.Key.ConnectionId, group.Key.HealthStatus, Count = group.Count() })
             .ToListAsync(cancellationToken);
@@ -112,6 +108,123 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
                 LostListings(lostLinks.Where(x => x.ConnectionId == connection.Id)));
         }).ToList();
         return new PriceStockMonitorView(now, rows);
+    }
+
+    // The automatic sends that failed (blocked or dead since the given moment) or wait for a review: the monitor's
+    // FailedPushes7d and ManualReviewPushes and the failed-pushes list read the same rows.
+    private static IQueryable<IntegrationJob> FailedPushes(AppDbContext db, Guid tenantId, Guid[] ids, DateTimeOffset since) =>
+        db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId != null && ids.Contains(x.ConnectionId.Value) && x.JobType == MarketplaceJobTypes.PriceInventorySync
+                && (FailedStatuses.Contains(x.Status) && x.CompletedAt >= since || x.Status == JobStatus.ManualReview));
+
+    // The links the marketplace no longer holds or refused: the monitor's NotFoundLinks/RejectedLinks and the lost-links list.
+    private static IQueryable<MarketplaceVariantLink> BrokenLinks(AppDbContext db, Guid tenantId, Guid[] ids) =>
+        db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.HealthStatus == MarketplaceVariantLinkHealth.NotFound || x.HealthStatus == MarketplaceVariantLinkHealth.Rejected));
+
+    private static ServiceResult<T> ConnectionNotFound<T>() => ServiceResult<T>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
+
+    // A connection the monitor shows: the tenant's, not deleted, a marketplace.
+    private Task<bool> MonitoredAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED" && MarketplacePlatforms.Contains(x.PlatformCode), cancellationToken);
+
+    private sealed record VariantFacts(Guid VariantId, Guid ProductId, string Sku, string? Barcode, string OptionSignature, decimal? ListPrice, decimal? SalePrice, string Title);
+
+    // The variants and their cards (as the catalog shows them), in two queries for the whole set.
+    private async Task<Dictionary<Guid, VariantFacts>> VariantFactsAsync(Guid tenantId, Guid[] variantIds, CancellationToken cancellationToken)
+    {
+        if (variantIds.Length == 0) return [];
+        return await (from variant in db.ProductVariants.AsNoTracking()
+                      join product in EffectiveCatalog.Products(db) on variant.ProductId equals product.Id
+                      where variant.TenantId == tenantId && product.TenantId == tenantId && variantIds.Contains(variant.Id)
+                      select new VariantFacts(variant.Id, product.Id, variant.Sku, variant.Barcode, variant.OptionSignature, variant.DefaultListPrice, variant.DefaultSalePrice, product.Title))
+            .ToDictionaryAsync(x => x.VariantId, cancellationToken);
+    }
+
+    internal static string? VariantLabel(string? signature)
+    {
+        var values = VariantOptionSignature.Parse(signature).Select(option => option.Value).Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+        return values.Count == 0 ? null : string.Join(" / ", values);
+    }
+
+    public async Task<ServiceResult<PriceStockInvalidOffersView>> InvalidOffersAsync(Guid tenantId, Guid connectionId, string? search, string? reason, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        if (!await MonitoredAsync(tenantId, connectionId, cancellationToken)) return ConnectionNotFound<PriceStockInvalidOffersView>();
+        var issues = await PriceInventoryOfferIssues.Open(db, tenantId, PriceInventoryOfferIssues.ConnectionPrefix(connectionId))
+            .Select(x => new { x.DedupeKey, x.Code, x.Summary, x.LastSeenAt })
+            .ToListAsync(cancellationToken);
+        var variantIds = issues.Select(x => PriceInventoryOfferIssues.VariantOf(x.DedupeKey)).OfType<Guid>().Distinct().ToArray();
+        var variants = await VariantFactsAsync(tenantId, variantIds, cancellationToken);
+        var offers = variantIds.Length == 0 ? [] : await db.ChannelOffers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId))
+            .Select(x => new { x.Id, x.VariantId, x.ListPrice, x.SalePrice, x.Currency })
+            .ToListAsync(cancellationToken);
+        var offerByVariant = offers.GroupBy(x => x.VariantId).ToDictionary(group => group.Key, group => group.First());
+        var rows = issues.Select(issue =>
+        {
+            var variantId = PriceInventoryOfferIssues.VariantOf(issue.DedupeKey) ?? Guid.Empty;
+            variants.TryGetValue(variantId, out var variant);
+            offerByVariant.TryGetValue(variantId, out var offer);
+            return new PriceStockInvalidOfferView(offer?.Id, variantId, variant?.ProductId, variant?.Sku, variant?.Barcode, variant?.Title, VariantLabel(variant?.OptionSignature),
+                issue.Code, issue.Summary, variant?.ListPrice, variant?.SalePrice, offer?.ListPrice, offer?.SalePrice, offer?.Currency, issue.LastSeenAt);
+        }).ToList();
+        var reasons = rows.GroupBy(x => x.ReasonCode, StringComparer.Ordinal).Select(group => new PriceStockReasonCountView(group.Key, group.Count()))
+            .OrderByDescending(x => x.Count).ThenBy(x => x.Code, StringComparer.Ordinal).ToList();
+        var term = search?.Trim();
+        var wantedReason = reason?.Trim();
+        var filtered = rows
+            .Where(x => string.IsNullOrEmpty(wantedReason) || string.Equals(x.ReasonCode, wantedReason, StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrEmpty(term) || Contains(x.Sku, term) || Contains(x.Barcode, term) || Contains(x.ProductTitle, term))
+            .OrderByDescending(x => x.LastSeenAt).ThenBy(x => x.Sku, StringComparer.Ordinal).ThenBy(x => x.VariantId)
+            .ToList();
+        return ServiceResult<PriceStockInvalidOffersView>.Ok(new(filtered.Skip((page - 1) * pageSize).Take(pageSize).ToList(), page, pageSize, rows.Count, filtered.Count, reasons, PriceStockOfferIssueCodes.All));
+
+        static bool Contains(string? value, string term) => value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public async Task<ServiceResult<PriceStockFailedPushesView>> FailedPushesAsync(Guid tenantId, Guid connectionId, string? kind, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var manualReview = (kind?.Trim().ToLowerInvariant()) switch
+        {
+            null or "" or "failed" => false,
+            "manual-review" => true,
+            _ => throw new ArgumentException("kind failed ya da manual-review olmalıdır.")
+        };
+        if (!await MonitoredAsync(tenantId, connectionId, cancellationToken)) return ConnectionNotFound<PriceStockFailedPushesView>();
+        var since = timeProvider.GetUtcNow().AddDays(-7).ToUniversalTime();
+        var query = FailedPushes(db, tenantId, [connectionId], since).Where(x => manualReview ? x.Status == JobStatus.ManualReview : x.Status != JobStatus.ManualReview);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.OrderByDescending(x => x.CompletedAt).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(x => new { x.Id, x.LastErrorCode, x.LastErrorSummary, x.Status, x.CompletedAt })
+            .ToListAsync(cancellationToken);
+        return ServiceResult<PriceStockFailedPushesView>.Ok(new(
+            items.Select(x => new PriceStockPushFailureView(x.Id, x.LastErrorCode, JobErrorMessages.Display(x.LastErrorCode, x.LastErrorSummary), x.Status.ToString(), x.CompletedAt)).ToList(),
+            page, pageSize, total));
+    }
+
+    public async Task<ServiceResult<PriceStockLostLinksView>> LostLinksAsync(Guid tenantId, Guid connectionId, string? health, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var wanted = health?.Trim().ToUpperInvariant() switch
+        {
+            null or "" => null,
+            MarketplaceVariantLinkHealth.NotFound => MarketplaceVariantLinkHealth.NotFound,
+            MarketplaceVariantLinkHealth.Rejected => MarketplaceVariantLinkHealth.Rejected,
+            _ => throw new ArgumentException("health NOT_FOUND ya da REJECTED olmalıdır.")
+        };
+        if (!await MonitoredAsync(tenantId, connectionId, cancellationToken)) return ConnectionNotFound<PriceStockLostLinksView>();
+        var query = BrokenLinks(db, tenantId, [connectionId]).Where(x => wanted == null || x.HealthStatus == wanted);
+        var total = await query.CountAsync(cancellationToken);
+        var links = await query.OrderBy(x => x.HealthChangedAt).ThenBy(x => x.VariantId)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(x => new { x.VariantId, x.HealthStatus, x.HealthChangedAt })
+            .ToListAsync(cancellationToken);
+        var variants = await VariantFactsAsync(tenantId, links.Select(x => x.VariantId).Distinct().ToArray(), cancellationToken);
+        return ServiceResult<PriceStockLostLinksView>.Ok(new(links.Select(link =>
+        {
+            variants.TryGetValue(link.VariantId, out var variant);
+            return new PriceStockLostLinkView(link.VariantId, variant?.ProductId, variant?.Sku, variant?.Barcode, variant?.Title, VariantLabel(variant?.OptionSignature), link.HealthStatus!, link.HealthChangedAt);
+        }).ToList(), page, pageSize, total));
     }
 
     internal const int LostListingProductLimit = 20;

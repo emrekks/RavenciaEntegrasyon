@@ -35,9 +35,19 @@ public sealed record ApiHealthConnectionSignals(
 
 public sealed record ApiHealthSignalsView(DateTimeOffset GeneratedAt, IReadOnlyList<ApiHealthConnectionSignals> Connections);
 
+/// <summary>One failed attempt behind the error-rate cell: its job, when it started, its class (ApiHealthSignalPolicy.Classes)
+/// and its code with the summary a job screen shows.</summary>
+public sealed record ApiHealthAttemptView(Guid JobId, string JobType, DateTimeOffset AttemptedAt, string Class, string? ErrorCode, string? ErrorSummary);
+
+/// <summary>The error-rate cell's last 24 hours for one connection: Totals is the cell itself; Items are the failed attempts
+/// (of one class when asked), newest first, TotalCount of them; Classes lists every class.</summary>
+public sealed record ApiHealthAttemptsView(ApiHealthErrorRateSignal Totals, IReadOnlyList<ApiHealthAttemptView> Items, int Page, int PageSize, int TotalCount, IReadOnlyList<string> Classes);
+
 public interface IApiHealthSignalsService
 {
     Task<ApiHealthSignalsView> SignalsAsync(Guid tenantId, CancellationToken cancellationToken);
+    /// <summary>CONNECTION_NOT_FOUND (404) for a connection the signals do not show.</summary>
+    Task<ServiceResult<ApiHealthAttemptsView>> AttemptsAsync(Guid tenantId, Guid connectionId, string? attemptClass, int page, int pageSize, CancellationToken cancellationToken);
 }
 
 /// <summary>How a job attempt's error code reads as a signal. The adapters name the code after the HTTP answer (401/403 =
@@ -66,6 +76,17 @@ public static class ApiHealthSignalPolicy
     public static bool IsOurSide(string? code) =>
         code is not null && (code.EndsWith("_REQUEST_REJECTED", StringComparison.Ordinal) || IsAuthRefusal(code));
 
+    public const string ClassMarketplace = "marketplace";
+    public const string ClassOurs = "ours";
+    public const string ClassRateLimited = "rateLimited";
+    public const string ClassWorkflowOther = "workflowOther";
+    public static IReadOnlyList<string> Classes { get; } = [ClassMarketplace, ClassOurs, ClassRateLimited, ClassWorkflowOther];
+
+    /// <summary>Who a failed attempt's code says is at fault, in this order: quota, the marketplace, ours, or none of them (a
+    /// flow waiting or the hub's own rule). The error-rate cell and its attempt list both count by this.</summary>
+    public static string ClassOf(string? code) =>
+        IsRateLimited(code) ? ClassRateLimited : IsRemoteSide(code) ? ClassMarketplace : IsOurSide(code) ? ClassOurs : ClassWorkflowOther;
+
     /// <summary>The split of a failed attempt's code: remote, ours, quota or none of them (a flow waiting or the hub's own rule).</summary>
     public static ApiHealthErrorRateSignal ErrorRate(IEnumerable<(bool Succeeded, string? ErrorCode)> attempts)
     {
@@ -75,10 +96,13 @@ public static class ApiHealthSignalPolicy
             total++;
             if (succeeded) continue;
             failed++;
-            if (IsRateLimited(code)) quota++;
-            else if (IsRemoteSide(code)) remote++;
-            else if (IsOurSide(code)) ours++;
-            else wait++;
+            switch (ClassOf(code))
+            {
+                case ClassRateLimited: quota++; break;
+                case ClassMarketplace: remote++; break;
+                case ClassOurs: ours++; break;
+                default: wait++; break;
+            }
         }
         return new ApiHealthErrorRateSignal(total, failed, remote, ours, quota, wait);
     }
