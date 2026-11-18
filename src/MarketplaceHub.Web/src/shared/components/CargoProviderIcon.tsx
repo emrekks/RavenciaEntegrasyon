@@ -24,9 +24,21 @@ function cargoFallbackLabel(value: string | null | undefined) {
   return label.toLocaleLowerCase('tr-TR') === 'other' ? 'Diğer' : label
 }
 
+// The carrier of a raw name, worked out once per name: every order row asks for it several times per render (icon, label,
+// filter counts), and each answer upper-cased and stripped every alias of every carrier again (~100 ms per tab change of
+// Siparişler on a 4x slowed CPU). The carriers never change while the panel runs.
+let carrierKeys: Array<{ carrier: CargoCarrier; keys: Array<[full: string, short: string]> }> | null = null
+const carrierByName = new Map<string, CargoCarrier | undefined>()
+
 export function cargoCarrier(value: string | null | undefined) {
+  const name = value ?? ''
+  if (carrierByName.has(name)) return carrierByName.get(name)
+  carrierKeys ??= cargoCarriers.map(carrier => ({ carrier, keys: [carrier.code, carrier.label, ...(carrier.aliases ?? [])].map(candidate => [normalizedCargo(candidate), normalizedCargo(candidate.replace(' Kargo', ''))] as [string, string]) }))
   const normalized = normalizedCargo(value)
-  return cargoCarriers.find(carrier => [carrier.code, carrier.label, ...(carrier.aliases ?? [])].some(candidate => normalized === normalizedCargo(candidate) || normalized.includes(normalizedCargo(candidate.replace(' Kargo', '')))))
+  const found = carrierKeys.find(({ keys }) => keys.some(([full, short]) => normalized === full || normalized.includes(short)))?.carrier
+  if (carrierByName.size >= 500) carrierByName.clear()
+  carrierByName.set(name, found)
+  return found
 }
 
 export function cargoLabel(value: string | null | undefined) {
