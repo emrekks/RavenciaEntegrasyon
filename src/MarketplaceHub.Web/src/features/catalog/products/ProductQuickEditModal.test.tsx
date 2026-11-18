@@ -197,6 +197,22 @@ describe('ProductQuickEditModal price mode tabs', () => {
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(4)
   })
 
+  it('names the value in a band above the sizes and in step 2, and both follow the picked value', async () => {
+    await renderPrices()
+    const band = () => document.body.querySelector('.rr-cr-band')?.textContent
+    expect(band()).toBe('Satış Fiyatı (₺)')
+    expect(document.body.textContent).toContain('Satış Fiyatını Düzenle')
+    await pickValue('Panel', 'Liste')
+    expect(band()).toBe('Liste Fiyatı (₺)')
+    expect(document.body.textContent).toContain('Liste Fiyatını Düzenle')
+    expect(document.body.querySelector('.rr-qe-applyrow input[aria-label="Liste Fiyatı (₺)"]')).not.toBeNull()
+    expect(document.body.querySelector('.rr-qe-applyrow input[aria-label="Satış Fiyatı (₺)"]')).toBeNull()
+    await pickValue('Trendyol', 'Satış')
+    expect(band()).toBe('Trendyol · Satış Fiyatı (₺)')
+    await pickValue('Stok')
+    expect(band()).toBe('Stok (Adet)')
+  })
+
   it('puts the Özel Fiyat switch beside a marketplace value only', async () => {
     await renderPrices()
     expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')).toBeNull()
