@@ -1243,8 +1243,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (code is not null) added.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, VariantId = variantId, ExternalId = code, HealthStatus = MarketplaceVariantLinkHealth.Unverified, HealthChangedAt = timeProvider.GetUtcNow(), Version = 1 });
         }
         if (readdressed.Count > 0)
+        {
             foreach (var offer in await ChannelOfferSendMarks.Candidates(db, readdressed).ToListAsync(cancellationToken))
                 if (readdressed.Contains((offer.TenantId, offer.ConnectionId, offer.VariantId))) ChannelOfferSendMarks.Reset(offer);
+            // The last known marketplace values were the old listing's: the variant's new code knows none yet.
+            var readdressedVariants = readdressed.Select(x => x.VariantId).Distinct().ToArray();
+            var knownValues = await db.MarketplaceKnownListingValues.Where(x => x.TenantId == tenantId && readdressedVariants.Contains(x.VariantId)).ToListAsync(cancellationToken);
+            db.MarketplaceKnownListingValues.RemoveRange(knownValues.Where(x => readdressed.Contains((x.TenantId, x.ConnectionId, x.VariantId))));
+        }
         try
         {
             await db.SaveChangesAsync(cancellationToken);

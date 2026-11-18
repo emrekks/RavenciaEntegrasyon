@@ -105,6 +105,7 @@ export const queryKeys = {
   productActivity: queryRoot('product-activity', []),
   productDeletePreview: queryRoot('product-delete-preview', []),
   productMarketplaceCodes: queryRoot('product-marketplace-codes', []),
+  productUpdatePreview: queryRoot('product-update-preview', []),
   promotionOffer: queryRoot('promotion-offer', []),
   promotionOffers: queryRoot('promotion-offers', []),
   publicationAttributeReadiness: queryRoot('publication-attribute-readiness', []),

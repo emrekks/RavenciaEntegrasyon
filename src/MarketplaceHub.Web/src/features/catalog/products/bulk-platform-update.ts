@@ -85,7 +85,7 @@ export function bulkPlatformUpdateRequests(records: readonly BulkUpdateRecord[],
     const connection = connections.find(item => item.id === connectionId)
     if (!connection) continue
     const plan = platformUpdatePlan(connection.platformCode, fields)
-    const onStore = ready.filter(record => isOnMarketplace(record, connection))
+    const onStore = bulkUpdateCardsOn(ready, connection)
     if (plan.productFields.length) {
       for (let start = 0; start < onStore.length; start += bulkUpdateGroupSize) {
         const group = onStore.slice(start, start + bulkUpdateGroupSize)
@@ -96,6 +96,11 @@ export function bulkPlatformUpdateRequests(records: readonly BulkUpdateRecord[],
     if (plan.price || plan.stock) for (const record of onStore.filter(item => isListedOn(item, connection))) requests.push({ kind: 'priceInventory', productId: record.id, connectionId, price: plan.price, stock: plan.stock })
   }
   return requests
+}
+
+// The records the product information goes to on one store: ready (no gap, not a draft) and on that store.
+export function bulkUpdateCardsOn<T extends Pick<BulkUpdateRecord, 'gaps' | 'status' | 'platformStatuses'>>(records: readonly T[], connection: Connection) {
+  return records.filter(record => !record.gaps.length && record.status.trim().toUpperCase() !== 'DRAFT' && isOnMarketplace(record, connection))
 }
 
 // How many of the records are on each store, for the store's card ("4/6 ürün bu mağazada").

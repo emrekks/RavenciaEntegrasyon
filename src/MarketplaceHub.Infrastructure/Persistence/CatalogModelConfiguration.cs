@@ -236,6 +236,18 @@ internal static class CatalogModelConfiguration
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId });
             entity.HasOne<ProductModel>().WithMany().HasForeignKey(x => new { x.TenantId, x.ModelId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
+        builder.Entity<MarketplaceKnownListingValue>(entity =>
+        {
+            // MarketplaceKnownListingValues. No key to the connection (as marketplace_model_links): the connection data
+            // deletes remove its rows by name. The variant key cascades, so no variant delete (old code included) is held
+            // up by it and no row outlives its variant.
+            entity.ToTable("marketplace_known_listing_values", "catalog"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.VariantId }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.VariantId });
+            entity.Property(x => x.TitleSource).HasMaxLength(16); entity.Property(x => x.DescriptionSource).HasMaxLength(16); entity.Property(x => x.DesiSource).HasMaxLength(16);
+            entity.Property(x => x.Desi).HasPrecision(19, 4); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<MarketplaceVariantLink>(entity =>
         {
             entity.ToTable("marketplace_variant_links", "catalog"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.VariantId }).IsUnique(); entity.Property(x => x.Version).IsConcurrencyToken();

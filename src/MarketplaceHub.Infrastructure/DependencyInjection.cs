@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<OperationalIssueRetentionService>();
         services.AddScoped<IJobOperationsService, JobOperationsService>();
         services.AddScoped<IPriceStockSendLogService, PriceStockSendLogService>();
+        services.AddScoped<IJobChangesService, JobChangesService>();
         services.AddScoped<IProductActivityService, ProductActivityService>();
         services.AddScoped<IDashboardReadService, DashboardReadService>();
         services.AddScoped<IAttentionNoticeService, AttentionNoticeService>();
@@ -84,6 +85,9 @@ public static class DependencyInjection
         // Serves entries only in a process that runs CategoryRequirementsChangeListener (the API).
         services.AddSingleton<CategoryRequirementsCache>();
         services.AddScoped<ICatalogService, CatalogService>();
+        // The "Platformlarda Güncelle" summary (read only) and its marketplace values (MarketplaceKnownListingValueStore).
+        services.AddScoped<IProductUpdatePreviewService, ProductUpdatePreviewService>();
+        services.AddScoped<IMarketplaceKnownListingValues, MarketplaceKnownListingValuesReader>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IImportJobProcessor, ImportJobProcessor>();
         services.AddScoped<IShopifyOrderCsvImportService, ShopifyOrderCsvImportService>();

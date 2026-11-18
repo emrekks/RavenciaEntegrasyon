@@ -21,6 +21,7 @@ import { isProductLevelJob } from './job-write-summary'
 import { JobWriteDetail } from './JobWriteDetail'
 import { JobSentDetail } from './JobSentDetail'
 import { JobReadRecords } from './JobReadRecords'
+import { jobHasChanges } from './job-changes-applies'
 import { jobProgressPercent, keepsReadRecords, readProgressCounts, type JobReadSummary } from './job-read-summary'
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
@@ -36,6 +37,8 @@ const OperationLogs = lazy(() => import('./OperationLogs'))
 const ApiHealthView = lazy(() => import('./ApiHealthView').then(module => ({ default: module.ApiHealthView })))
 const QueueQuotaView = lazy(() => import('./QueueQuotaView'))
 const NotificationCenter = lazy(() => import('./NotificationCenter'))
+// İş detayı › Gidenler ve Değişenler, loaded when a price/stock or product import job is opened.
+const JobChanges = lazy(() => import('./JobChanges'))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? platformDisplayNames.TRENDYOL_EFATURAM : marketplacePlatformLabel(code)
@@ -267,7 +270,7 @@ type JobDetailQueryState = { isLoading: boolean; isError: boolean; data: JobDeta
 type JobActionState = { isPending: boolean; isError: boolean; variables?: { id: string; verb: 'retry' | 'cancel' }; mutate: (variables: { id: string; verb: 'retry' | 'cancel' }) => void }
 type OneTimeInvoiceDeliveryActionState = { isPending: boolean; isError: boolean; mutate: (variables: { id: string; confirmed: boolean; orderNumber: string }) => void }
 
-function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, oneTimeInvoiceDelivery, onClose }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; oneTimeInvoiceDelivery: OneTimeInvoiceDeliveryActionState; onClose: () => void }) {
+function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, oneTimeInvoiceDelivery, onClose, onOpenJob }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; oneTimeInvoiceDelivery: OneTimeInvoiceDeliveryActionState; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
   const [oneTimeDeliveryOpen, setOneTimeDeliveryOpen] = useState(false)
   const [oneTimeDeliveryConfirmed, setOneTimeDeliveryConfirmed] = useState(false)
   return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="aside" onClose={onClose} className="job-detail-drawer jobs-reference-drawer panel" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
@@ -297,6 +300,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         {selectedIsRunning && actionPending && <p className="jobs-reference-cancel-note">Çalışan işlem durduruluyor. Dış API çağrısı tamamlanana kadar durum birkaç saniye daha “Çalışıyor” görünebilir.</p>}
         {productDetail ? <JobWriteDetail write={detail.data.write ?? null} variantResults={detail.data.variantResults ?? null} approvalCheck={job.jobType.toUpperCase() === 'PRODUCT_APPROVAL_RECONCILE'} running={!['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(job.status)} links={relatedLinks} note={detail.data.write?.parts.length ? null : change.detail} /> : <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem Özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div>{relatedLinks.length > 0 && <nav className="jobs-reference-related-links" aria-label="İlgili Kayıtlar">{relatedLinks.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>}</section>}
         {!productDetail && detail.data.write && <JobSentDetail write={detail.data.write} />}
+        {!productDetail && jobHasChanges(job.jobType) && <Suspense fallback={<Busy text="Gidenler ve değişenler yükleniyor…" />}><JobChanges jobId={job.id} jobType={job.jobType} onOpenJob={onOpenJob} /></Suspense>}
         {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura Denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3></div><div className="jobs-reference-order-facts"><p><small>Fatura Kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura Durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura Türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura Tutarı</small><strong>{formatMoney(detail.data.invoice.payableTotal, detail.data.invoice.currency)}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura Numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket No</small><strong>{formatPackageLabel(detail.data.invoice.externalPackageId)}</strong></p>}</div></section>}
         {!productDetail && <JobProgressSummary job={job} read={detail.data.read ?? null} />}
         {!productDetail && <JobReadRecords read={detail.data.read ?? null} recordsKept={keepsReadRecords(job.jobType)} />}
@@ -617,7 +621,7 @@ export function JobsPage({ me }: { me: Me }) {
       </>}
       </>}
     </div>
-     {selectedId && <JobDetailDrawer key={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
+     {selectedId && <JobDetailDrawer key={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} onOpenJob={setSelectedId} />}
      {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} title={feedback.context?.title} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
   </section>
 }

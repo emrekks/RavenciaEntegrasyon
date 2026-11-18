@@ -1,4 +1,5 @@
-import { Fragment, createContext, useContext, useId, useState, type ReactNode } from 'react'
+import { Fragment, createContext, useContext, useEffect, useId, useState, type ReactNode } from 'react'
+import { isTouchOnly } from '../../../shared/touch-tips'
 import { CardBackgroundIcon, EmptyState, UiIcon, type CardIconName, type UiIconName } from '../../../shared/components'
 import { ChangePill } from '../../../shared/components/ChangePill'
 import { ViewTabsWithMore } from '../../../shared/view-tabs'
@@ -269,6 +270,16 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
     setOpen({ key, width, top: strip.offsetTop + cell.offsetTop + cell.offsetHeight + 8, left: Math.max(0, Math.min(cell.offsetLeft, strip.clientWidth - width)) })
   }
   const hide = () => setOpen(null)
+  // On a touch screen a tip opens only from the (i) mark itself (a tap on the card, the label or a figure never opens it); a tap on the mark
+  // again, a tap anywhere else, a scroll or Esc closes it, and only one is ever open.
+  const touch = isTouchOnly
+  useEffect(() => {
+    if (!open) return
+    const away = (event: Event) => { if (!(event.target instanceof Element) || !event.target.closest('.reports-qmark')) setOpen(null) }
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(null) }
+    document.addEventListener('pointerdown', away, true); window.addEventListener('scroll', hide, true); document.addEventListener('keydown', key)
+    return () => { document.removeEventListener('pointerdown', away, true); window.removeEventListener('scroll', hide, true); document.removeEventListener('keydown', key) }
+  }, [open])
   const current = open ? items.find(item => item.key === open.key) : undefined
   return <div className="reports-kpis-wrap">
     <div ref={ref} className={`reports-kpis is-${items.length}${aligned ? ' is-aligned' : ''}${long ? ' is-long' : ''}${stack ? ' is-stack' : ''}`} role="group" aria-label={label}>{items.map(item => {
@@ -276,13 +287,14 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
       // Whole counts stay whole while they count up; money shows whole liras (the kuruş rounded) in a strip.
       const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
       return <div key={item.key} className={`${item.text !== undefined ? 'is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
-        onMouseEnter={marks && !item.split?.length ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
+        onMouseEnter={marks && !item.split?.length ? undefined : event => { if (!touch()) show(item.key, event.currentTarget) }} onMouseLeave={hide}>
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={item.tip ? id : undefined}
-          onMouseEnter={marks && item.tip ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
+          onMouseEnter={marks && item.tip ? event => { if (!touch() && event.currentTarget.parentElement) show(item.key, event.currentTarget.parentElement) } : undefined}
+          onClick={event => { if (!touch() || !item.tip) return; const cell = event.currentTarget.parentElement; if (!cell || !(event.target instanceof Element) || !event.target.closest('.reports-qmark')) return; if (open?.key === item.key) hide(); else show(item.key, cell) }}
           // With a "?" mark the tip belongs to the label: it closes as the pointer leaves it, not only the card.
           onMouseLeave={marks && !item.split?.length ? hide : undefined}
-          onFocus={item.tip ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined} onBlur={hide}>{item.label}{marks && item.tip && <TipMark />}</button>
+          onFocus={item.tip ? event => { if (!touch() && event.currentTarget.parentElement) show(item.key, event.currentTarget.parentElement) } : undefined} onBlur={() => { if (!touch()) hide() }}>{item.label}{marks && item.tip && <TipMark />}</button>
         <strong>{hasSource === false ? noValue : item.text ?? (item.value === null ? noValue : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}

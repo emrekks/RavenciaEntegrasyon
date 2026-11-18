@@ -11112,6 +11112,127 @@
         }
       }
     },
+    "/api/v1/jobs/{id}/changes": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsByIdChanges",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1-50; the service brings any other value into it. Default 50.",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageResultOfJobChangeLineView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        },
+        "x-paging": "cursor"
+      }
+    },
+    "/api/v1/jobs/{id}/changes/summary": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsByIdChangesSummary",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobChangesSummaryView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{id}/invoice-delivery-once": {
       "post": {
         "tags": [
@@ -15612,6 +15733,76 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/products/update-preview": {
+      "post": {
+        "tags": [
+          "products"
+        ],
+        "operationId": "postProductsUpdatePreview",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductUpdatePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductUpdatePreviewView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -28641,6 +28832,279 @@
           }
         }
       },
+      "JobChangeCounts": {
+        "type": "object",
+        "properties": {
+          "scanned": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "sent": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "applied": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "unchanged": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "pending": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "rejected": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "uncertain": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "superseded": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "priceChanged": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "stockChanged": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "JobChangeLineView": {
+        "required": [
+          "id",
+          "occurredAt",
+          "kind",
+          "source",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "productId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "productTitle": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "imageUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "modelCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "barcode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stockCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "optionText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "previousQuantity": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "newQuantity": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "previousSalePrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "newSalePrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "previousListPrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "newListPrice": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errorMessage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "connectionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "platformCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "storeName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "JobChangesSummaryView": {
+        "required": [
+          "mode",
+          "counts",
+          "spawnedJobs"
+        ],
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "counts": {
+            "$ref": "#/components/schemas/JobChangeCounts"
+          },
+          "spawnedJobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSpawnedJobView"
+            }
+          },
+          "sourceTrigger": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sourceOrderNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "JobChangeView": {
         "required": [
           "label",
@@ -29182,6 +29646,44 @@
               "string"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "JobSpawnedJobView": {
+        "required": [
+          "id",
+          "jobType",
+          "status",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastErrorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -32360,6 +32862,46 @@
           }
         }
       },
+      "PageResultOfJobChangeLineView": {
+        "required": [
+          "items",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobChangeLineView"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "totalCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "supportedFilters": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "PageResultOfJobSummaryView": {
         "required": [
           "items",
@@ -34292,6 +34834,12 @@
               "null",
               "string"
             ]
+          },
+          "optionText": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -35951,6 +36499,247 @@
           "missingDesiCount": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "ProductUpdatePreviewChange": {
+        "required": [
+          "label",
+          "before",
+          "after"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "beforeLength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "afterLength": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ProductUpdatePreviewConnection": {
+        "required": [
+          "connectionId",
+          "platformCode",
+          "displayName",
+          "models",
+          "unknownFields",
+          "problems"
+        ],
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewModel"
+            }
+          },
+          "unknownFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewProblem"
+            }
+          },
+          "knownValuesReadAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "knownValuesSentAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "ProductUpdatePreviewField": {
+        "required": [
+          "field",
+          "unit",
+          "state",
+          "changed",
+          "same",
+          "unknown",
+          "changes",
+          "sentSame"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "same": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unknown": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewChange"
+            }
+          },
+          "sentSame": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          }
+        }
+      },
+      "ProductUpdatePreviewModel": {
+        "required": [
+          "label",
+          "fields"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewField"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewProblem": {
+        "required": [
+          "productId",
+          "label",
+          "code",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ProductUpdatePreviewRequest": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewTarget"
+            }
+          },
+          "fields": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewTarget": {
+        "required": [
+          "connectionId"
+        ],
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "ProductUpdatePreviewView": {
+        "required": [
+          "maxProducts",
+          "connections"
+        ],
+        "type": "object",
+        "properties": {
+          "maxProducts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductUpdatePreviewConnection"
+            }
           }
         }
       },

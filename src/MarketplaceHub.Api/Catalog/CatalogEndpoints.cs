@@ -158,6 +158,10 @@ public static partial class CatalogEndpoints
             var queued = await service.EnqueueProductUpdateWithNoticesAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields, command.SendGroupId);
             return queued.Succeeded ? Results.Accepted($"/api/v1/jobs/{queued.Value!.JobId:D}", new { jobId = queued.Value.JobId, notices = queued.Value.Notices }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, queued.Error!);
         }).RequireIdempotencyKey().Produces<ProductUpdateQueuedView>(StatusCodes.Status202Accepted);
+        // The "Platformlarda Güncelle" summary: which fields the update would change on each store, per model, before
+        // Gönder. Read only (no job, no write, no marketplace call); at most ProductUpdatePreviewPolicy.MaxProducts cards.
+        api.MapPost("/products/update-preview", async (ProductUpdatePreviewRequest command, HttpContext http, IProductUpdatePreviewService service) =>
+            Tenant(http) is { } tenant ? Result(await service.PreviewAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ProductUpdatePreviewView>().Idempotent(WriteReasons.ReadOnly);
         api.MapPost("/connections/{connectionId:guid}/sale-status-jobs", async (Guid connectionId, PazaramaSaleStatusRequest command, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

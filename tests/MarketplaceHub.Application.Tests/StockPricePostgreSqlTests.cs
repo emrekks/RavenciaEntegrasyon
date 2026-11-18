@@ -1060,6 +1060,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             seed.MarketplaceVariantLinks.AddRange(
                 new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = small.Id, ExternalId = "HBCV00001ABCD", ExternalSku = "SAVE-S", ExternalBarcode = "8690000000302" },
                 new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = other.Id, ExternalId = "HBCV0000OTHER", ExternalSku = "OTHER-S" });
+            // What Hepsiburada was last known to show for each linked listing.
+            seed.MarketplaceKnownListingValues.AddRange(
+                new MarketplaceKnownListingValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = small.Id, Title = "Eski ilan", TitleSource = "IMPORT", TitleReadAt = fixture.Now },
+                new MarketplaceKnownListingValue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = hepsiburada.Id, VariantId = other.Id, Title = "Öteki ilan", TitleSource = "IMPORT", TitleReadAt = fixture.Now });
             await seed.SaveChangesAsync();
         }
         CatalogService Service(AppDbContext context) => new(context, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
@@ -1079,6 +1083,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal("HBCV00001ABCD", codes[medium.Id][hepsiburada.Id].ExternalId);
             Assert.Equal("44791234567899", codes[small.Id][shopify.Id].ExternalId);
             Assert.False(codes[medium.Id].ContainsKey(shopify.Id));
+            // Small now names another listing: the old listing's known values went; the untouched variant keeps its own.
+            Assert.Equal([other.Id], await db.MarketplaceKnownListingValues.Where(x => x.TenantId == tenant.Id).Select(x => x.VariantId).ToListAsync());
         }
 
         await using (var db = fixture.CreateContext())

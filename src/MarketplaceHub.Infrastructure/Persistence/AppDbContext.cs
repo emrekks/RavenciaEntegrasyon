@@ -47,6 +47,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ProductModelAttribute> ProductModelAttributes => Set<ProductModelAttribute>();
     public DbSet<ProductModelSizeChart> ProductModelSizeCharts => Set<ProductModelSizeChart>();
     public DbSet<MarketplaceModelLink> MarketplaceModelLinks => Set<MarketplaceModelLink>();
+    public DbSet<MarketplaceKnownListingValue> MarketplaceKnownListingValues => Set<MarketplaceKnownListingValue>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<AttributeDefinition> AttributeDefinitions => Set<AttributeDefinition>();

@@ -104,7 +104,7 @@ internal static partial class HepsiburadaJsonMapper
                 var rejected = normalizedProductStatus is "MISSING_INFO" or "URUN_BILGILERI_EKSIK" or "REJECTED" or "FAILED" or "INVALID";
                 if (!succeeded && !rejected) throw new JsonException("Hepsiburada ürün durum satırında tanınmayan ürün durumu var.");
                 var errorCode = succeeded ? null : ProductImportErrorCode(item);
-                lines.Add(new(merchantSku.Trim(), succeeded, Text(item, "hbSku", "HBSku"), errorCode, false, normalizedProductStatus));
+                lines.Add(new(merchantSku.Trim(), succeeded, Text(item, "hbSku", "HBSku"), errorCode, false, normalizedProductStatus, ApprovedFields: ApprovedUpdateFields(item)));
             }
         }
         else if (items.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
@@ -113,6 +113,22 @@ internal static partial class HepsiburadaJsonMapper
         if (status == "COMPLETED" && lines.Count > 0 && lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
             throw new JsonException("Hepsiburada ürün aktarım yanıtında merchantSku yineleniyor.");
         return new(trackingId, status, lines);
+    }
+
+    // The fields a product update status line says were approved one by one (offline doc, IntegratorUpdateResultsDto:
+    // updateResults[] { fieldName NAME | DESCRIPTION | DESI | …, fieldResult APPROVED | REJECTED | IN_PROGRESS |
+    // PARTIAL_APPROVED }). Only APPROVED counts; null when the line carries no updateResults (a create's status, or an
+    // answer that names none): nothing is then known to be applied.
+    internal static IReadOnlyList<string>? ApprovedUpdateFields(JsonElement item)
+    {
+        var results = Find(item, "updateResults", "UpdateResults");
+        if (results.ValueKind != JsonValueKind.Array) return null;
+        return [.. results.EnumerateArray()
+            .Where(result => result.ValueKind == JsonValueKind.Object && string.Equals(Text(result, "fieldResult", "FieldResult")?.Trim(), "APPROVED", StringComparison.OrdinalIgnoreCase))
+            .Select(result => Text(result, "fieldName", "FieldName")?.Trim().ToUpperInvariant())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .Distinct(StringComparer.Ordinal)];
     }
 
     // What an unrecognised import status answer looks like, for the job's error text: its top-level field names, the
