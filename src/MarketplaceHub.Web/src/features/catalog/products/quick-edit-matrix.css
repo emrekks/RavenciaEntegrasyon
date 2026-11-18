@@ -30,8 +30,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { display: block; width: 72px; color: var(--rr-subtle); line-height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx :is(.rr-mx-corner, .rr-mx-color) { width: 96px; min-width: 96px; max-width: 96px; padding-left: 8px; font-size: 12px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-color > b { max-width: 54px; margin-left: 6px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx tbody td { min-width: 56px; padding: 4px 3px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 52px; padding: 0 4px; font-size: 12px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx :is(.rr-mx-corner, .rr-mx-color) { width: 88px; min-width: 88px; max-width: 88px; padding-left: 6px; font-size: 12px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-color > b { max-width: 50px; margin-left: 4px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx tbody td { min-width: 52px; padding: 4px 2px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 48px; padding: 0 4px; font-size: 12px; }
 }
