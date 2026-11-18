@@ -252,7 +252,22 @@ public sealed record JobCountView(string Status, string JobType, int Count);
 
 // Lane is USER (actions a user started), INITIAL (first imports), HOT (new data) or BACKGROUND.
 // Slots: how many jobs the lane runs at once (the worker's Worker:LaneSlots:<lane>, else the lane's default).
-public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running, int Slots = 0);
+// Worker lanes step 1 (19 Nov 2026), the lane against its wait target (LaneWaitTargets, Worker:LaneTargets:<lane>):
+//   TargetSeconds         the longest a job of the lane should wait in the queue (p95);
+//   RecentP95WaitSeconds  p95 wait of the jobs the lane leased in the last five minutes (null: none leased);
+//   OldestWaitSeconds     how long the oldest job a slot could take now has been waiting (null: none waiting);
+//   WaitStatus            OK, OVER_TARGET (missed at this look) or ALERT (missed for ten minutes on end: an open operational
+//                         issue QUEUE_WAIT_TARGET_EXCEEDED, which closes itself after ten minutes within target);
+//   AlertSince            when the open alert was raised (null without one).
+public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running, int Slots = 0,
+    double? TargetSeconds = null, double? RecentP95WaitSeconds = null, double? OldestWaitSeconds = null, string WaitStatus = LaneWaitStatus.Ok, DateTimeOffset? AlertSince = null);
+
+public static class LaneWaitStatus
+{
+    public const string Ok = "OK";
+    public const string OverTarget = "OVER_TARGET";
+    public const string Alert = "ALERT";
+}
 // Lane is FOREGROUND (new-order reads, user actions) or BACKGROUND (every other order read).
 public sealed record QuotaUsageView(string PlatformCode, string StoreName, string Lane, int LimitPerMinute, int LastHourRequests, int PeakMinuteRequests, double AveragePerMinute);
 

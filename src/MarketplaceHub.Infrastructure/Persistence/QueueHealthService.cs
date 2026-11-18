@@ -45,12 +45,20 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             """;
         var attempts = await db.Database.SqlQueryRaw<LaneAttemptRow>(sql, [.. parameters]).ToListAsync(cancellationToken);
         var queue = await RunnableDepthAsync(db, tenantId, now, cancellationToken);
+        // Worker lanes step 1: each lane against its wait target now, and its open alert.
+        var monitor = new LaneWaitMonitor(db, timeProvider, configuration);
+        var waits = await monitor.SnapshotAsync(tenantId, LaneWaitMonitor.DefaultWindow, null, cancellationToken);
+        var alerts = await monitor.OpenAlertsAsync(tenantId, cancellationToken);
         return lanes.Select(definition =>
         {
             var code = LaneCode(definition.Name);
             var attempt = attempts.FirstOrDefault(row => row.Lane == definition.Name);
             var depth = queue.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).ToArray();
-            return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), LaneSlots(definition));
+            var wait = waits.FirstOrDefault(row => row.Lane == definition.Name);
+            var alertSince = alerts.TryGetValue(definition.Name, out var since) ? since : (DateTimeOffset?)null;
+            var status = alertSince is not null ? LaneWaitStatus.Alert : wait?.Breached == true ? LaneWaitStatus.OverTarget : LaneWaitStatus.Ok;
+            return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), LaneSlots(definition),
+                LaneWaitTargets.For(configuration, definition.Name).TotalSeconds, wait?.RecentP95WaitSeconds, wait?.OldestWaitSeconds, status, alertSince);
         }).ToList();
     }
 

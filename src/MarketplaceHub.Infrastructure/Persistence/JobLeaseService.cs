@@ -12,11 +12,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     private static readonly string[] LockGroupJobTypes = [.. MarketplaceJobTypes.ProcessorJobTypes];
     private static readonly string[] LockGroups = [.. MarketplaceJobTypes.ProcessorJobTypes.Select(MarketplaceSyncExecutionLock.GroupFor)];
 
-    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
+    public async Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null)
     {
         var now = timeProvider.GetUtcNow();
         includedJobTypes ??= [];
         excludedJobTypes ??= [];
+        // Quota-aware leasing (JobQuotaHold): the held pairs and the moment before which a held job became runnable too long
+        // ago to be held any longer. No pairs: the condition matches nothing.
+        var hold = quotaHold is { IsEmpty: false } ? quotaHold : JobQuotaHold.None;
+        var heldConnections = hold.ConnectionIds.ToArray();
+        var heldJobTypes = hold.JobTypes.ToArray();
+        var holdRunnableAfter = now - hold.MaximumHold;
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
         // A job whose connection already runs a job of the same execution-lock group, or whose connection and
         // group wait out a quota backoff, is skipped here instead of being leased and then deferred, so the slot
@@ -71,6 +77,13 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                       WHERE backoff."ConnectionId" = candidate."ConnectionId"
                         AND backoff."LockGroup" = coalesce(candidate."LockGroup", candidate_group.lock_group)
                         AND backoff."Until" > {now})
+                  -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
+                  -- Never a user action, and never longer than the hold allows since the job became runnable.
+                  AND NOT (candidate."Priority" > {JobPriorityPolicy.BulkUserAction}
+                      AND greatest(candidate."AvailableAt", candidate."CreatedAt") > {holdRunnableAfter}
+                      AND EXISTS (
+                          SELECT 1 FROM unnest({heldConnections}::uuid[], {heldJobTypes}::text[]) AS held(connection_id, job_type)
+                          WHERE held.connection_id = candidate."ConnectionId" AND held.job_type = candidate."JobType"))
                   -- Paneli Tamamen Sıfırla runs alone: from its request to its end nothing else of the tenant starts,
                   -- the scheduler's reads included (they would bring back the orders being deleted).
                   AND NOT EXISTS (

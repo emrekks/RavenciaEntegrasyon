@@ -4,12 +4,15 @@ import { jobsMainTab, withJobsMainTab } from './jobs-url-state'
 
 const metric = (jobType: string, queued: number, running: number, attempts: number): JobTypeMetric =>
   ({ jobType, queued, running, attempts, failed: 0, averageWaitSeconds: null, p95WaitSeconds: null, averageDurationSeconds: null, p95DurationSeconds: null })
+// A lane within its wait target (GET /jobs/metrics/lanes, worker lanes step 1).
+const withinTarget = (targetSeconds: number) =>
+  ({ targetSeconds, recentP95WaitSeconds: null, oldestWaitSeconds: null, waitStatus: 'OK', alertSince: null })
 
 describe('Kuyruk ve Kota', () => {
   it('adds the lanes up and names them in plain words', () => {
     expect(laneTotals([
-      { lane: 'HOT', attempts: 10, averageWaitSeconds: 1, p95WaitSeconds: 2, queued: 3, running: 2, slots: 3 },
-      { lane: 'USER', attempts: 4, averageWaitSeconds: null, p95WaitSeconds: null, queued: 0, running: 1, slots: 2 }
+      { lane: 'HOT', attempts: 10, averageWaitSeconds: 1, p95WaitSeconds: 2, queued: 3, running: 2, slots: 3, ...withinTarget(60) },
+      { lane: 'USER', attempts: 4, averageWaitSeconds: null, p95WaitSeconds: null, queued: 0, running: 1, slots: 2, ...withinTarget(5) }
     ])).toEqual({ running: 3, queued: 3, slots: 5, attempts: 14 })
     expect(laneLabel('HOT')).toBe('Öncelikli İşler')
     expect(laneLabel('NEW_LANE')).toBe('New Lane')
