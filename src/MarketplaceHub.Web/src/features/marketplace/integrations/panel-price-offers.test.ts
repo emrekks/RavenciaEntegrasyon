@@ -9,7 +9,7 @@ const preview = (values: Partial<PanelPriceOfferPreview>): PanelPriceOfferPrevie
 describe('panel price offers (owner rule, 18 Nov 2026)', () => {
   it('tells the switch confirmation how many offers open and that nothing is sent now', () => {
     expect(panelPriceOfferNotice(preview({ linkedWithoutOffer: 3137, openable: 3000, missingPanelPrice: 130, missingVat: 7 }))).toEqual([
-      '3.000 beden için panel fiyatıyla teklif açılacak; şimdi pazaryerine bir şey gönderilmeyecek, yalnız sonradan değişen stok ve panel fiyatı gider.',
+      '3.000 beden için panel fiyatıyla teklif açılacak; şimdi pazaryerine bir şey gönderilmeyecek; bedenin bir sonraki stok gönderiminde stokla birlikte geçerli fiyat da gider.',
       'Panel fiyatı olmayan 130 beden gönderime alınmadı.',
       'KDV oranı olmayan 7 beden gönderime alınmadı.'
     ])
@@ -19,9 +19,9 @@ describe('panel price offers (owner rule, 18 Nov 2026)', () => {
     expect(panelPriceOfferNotice(null)).toEqual(['Panel fiyatıyla açılacak teklif sayısı okunamadı.'])
   })
 
-  it('says a platform whose stock carries the price opens none', () => {
-    expect(panelPriceOfferNotice(preview({ platformCode: 'PTTAVM', opensOffers: false, linkedWithoutOffer: 12, openable: 0, missingPanelPrice: 2 }))).toEqual([
-      '12 bağlı bedenin bu pazaryerinde teklifi yok; burada stokla fiyat da gittiği için panel fiyatıyla kendiliğinden açılmaz.'
+  it('says a connection that opens no offers (not a marketplace store) opens none', () => {
+    expect(panelPriceOfferNotice(preview({ platformCode: 'TRENDYOL_EFATURAM', opensOffers: false, linkedWithoutOffer: 12, openable: 0, missingPanelPrice: 2 }))).toEqual([
+      '12 bağlı bedenin bu bağlantıda teklifi yok; bu bağlantıda panel fiyatıyla teklif açılmaz.'
     ])
   })
 

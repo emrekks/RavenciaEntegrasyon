@@ -346,7 +346,9 @@ public sealed class StockPushPipelinePostgreSqlTests(PostgreSqlTenantIsolationFi
         var (product, valid) = NewVariant(tenant, "MS-OK");
         var zero = NewVariant(tenant, "MS-ZERO", product.Id).Variant;
         var zeroOffer = NewOffer(tenant, n11, zero);
-        zeroOffer.SalePrice = 0m;
+        // An offer n11 cannot take at all: since the owner rule of 18 Nov 2026 an offer price of 0 still sends the stock
+        // alone (n11 takes a quantity without a price), so the refused offer here is one in another currency.
+        zeroOffer.Currency = "USD";
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);

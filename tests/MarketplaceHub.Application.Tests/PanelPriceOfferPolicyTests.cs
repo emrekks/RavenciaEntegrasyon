@@ -9,12 +9,13 @@ public sealed class PanelPriceOfferPolicyTests
     [InlineData("TRENDYOL", true)]
     [InlineData("hepsiburada", true)]
     [InlineData("SHOPIFY", true)]
-    // Their stock request carries the price: an opened offer's first stock send would carry a price never confirmed.
-    [InlineData("N11", false)]
-    [InlineData("PAZARAMA", false)]
-    [InlineData("PTTAVM", false)]
+    // Owner rule of 18 Nov 2026: every stock send carries the price in force on every marketplace, so all open them.
+    [InlineData("N11", true)]
+    [InlineData("PAZARAMA", true)]
+    [InlineData("PTTAVM", true)]
+    [InlineData("TRENDYOL_EFATURAM", false)]
     [InlineData(null, false)]
-    public void OnlyPlatformsWhoseStockGoesAlone_OpenOffers(string? platformCode, bool opens) =>
+    public void EveryMarketplace_OpensOffers(string? platformCode, bool opens) =>
         Assert.Equal(opens, PanelPriceOfferPolicy.OpensOffers(platformCode));
 
     [Fact]

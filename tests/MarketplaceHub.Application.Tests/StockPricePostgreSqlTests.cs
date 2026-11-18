@@ -2737,13 +2737,14 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.True(draft.Succeeded, draft.Error?.Message);
             var lines = draft.Value!.Lines.ToDictionary(x => x.VariantId);
             Assert.False(lines.ContainsKey(same.Id));
-            Assert.Equal((false, true), (lines[stockOnly.Id].QuantityOmitted, lines[stockOnly.Id].PriceOmitted));
+            // Owner rule of 18 Nov 2026: the price goes with every stock line, even when Trendyol confirmed the same price.
+            Assert.Equal((false, false), (lines[stockOnly.Id].QuantityOmitted, lines[stockOnly.Id].PriceOmitted));
             Assert.Equal((true, false), (lines[priceOnly.Id].QuantityOmitted, lines[priceOnly.Id].PriceOmitted));
             Assert.Equal((false, false), (lines[never.Id].QuantityOmitted, lines[never.Id].PriceOmitted));
             using var payload = System.Text.Json.JsonDocument.Parse(draft.Value.PayloadJson);
             var items = payload.RootElement.GetProperty("items").EnumerateArray().ToDictionary(x => x.GetProperty("barcode").GetString()!);
             Assert.False(items.ContainsKey("TY-A"));
-            Assert.False(items["TY-B"].TryGetProperty("salePrice", out _));
+            Assert.True(items["TY-B"].TryGetProperty("salePrice", out _) && items["TY-B"].TryGetProperty("quantity", out _));
             Assert.False(items["TY-C"].TryGetProperty("quantity", out _));
             Assert.True(items["TY-D"].TryGetProperty("quantity", out _) && items["TY-D"].TryGetProperty("salePrice", out _));
         }

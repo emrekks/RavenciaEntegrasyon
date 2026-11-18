@@ -56,8 +56,7 @@ internal static class PanelPriceOffers
 
     // Adds the missing offers of a connection to the caller's unit of work, each counting as sent at its values (B): its
     // price mark is the one the platform's build computes and its stock mark the variant's current stock version. Nothing
-    // is queued. A platform whose stock request carries the price too (n11, Pazarama, PTT AVM) gets none: its first stock
-    // change would send a price the marketplace never had, without the owner pricing it.
+    // is queued. Every marketplace opens them (owner, 18 Nov 2026: the price in force goes with every stock send anyway).
     public static async Task<Counts> OpenAsync(AppDbContext db, Guid tenantId, Guid connectionId, string platformCode, Guid? actorUserId, DateTimeOffset now, CancellationToken cancellationToken, IReadOnlyCollection<Guid>? variantIds = null)
     {
         if (!PanelPriceOfferPolicy.OpensOffers(platformCode)) return new(0, 0, 0, 0);

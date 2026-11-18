@@ -53,7 +53,7 @@ public sealed partial class InventoryService
             .SingleOrDefaultAsync(cancellationToken);
         if (connection is null) return NotFound<PanelPriceOffersOpened>();
         if (!PanelPriceOfferPolicy.OpensOffers(connection.PlatformCode))
-            return ServiceResult<PanelPriceOffersOpened>.Fail("PANEL_PRICE_OFFERS_UNSUPPORTED", "Bu pazaryerinde stok gönderimi fiyatı da taşıdığı için eksik teklif panel fiyatıyla açılmaz; fiyatı ürün ekranından ya da ürün aktarımıyla verin.", 422);
+            return ServiceResult<PanelPriceOffersOpened>.Fail("PANEL_PRICE_OFFERS_UNSUPPORTED", "Bu bağlantı bir pazaryeri mağazası değil; panel fiyatıyla teklif açılmaz.", 422);
         for (var attempt = 1; ; attempt++)
         {
             var counts = await PanelPriceOffers.OpenAsync(db, tenantId, connectionId, connection.PlatformCode, userId, timeProvider.GetUtcNow(), cancellationToken);

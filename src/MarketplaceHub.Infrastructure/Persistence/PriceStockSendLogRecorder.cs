@@ -18,13 +18,39 @@ internal static class PriceStockSendLogRecorder
     {
         if (payload.Lines.Count == 0) return;
         var offerIds = payload.Lines.Select(line => line.OfferId).Distinct().ToArray();
-        var confirmed = await db.ChannelOffers.AsNoTracking()
+        var offers = await db.ChannelOffers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && offerIds.Contains(x.Id))
-            .Select(x => new { x.Id, Values = new PriceStockConfirmedValues(x.LastSentCode, x.LastSentQuantity, x.LastSentSalePrice, x.LastSentListPrice) })
-            .ToDictionaryAsync(x => x.Id, x => x.Values, cancellationToken);
+            .Select(x => new { x.Id, Values = new PriceStockConfirmedValues(x.LastSentCode, x.LastSentQuantity, x.LastSentSalePrice, x.LastSentListPrice), x.SalePrice, x.ListPrice })
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        // Owner rule of 18 Nov 2026: the previous values are filled whenever they are known. The confirmed values of the
+        // same code first (cleared when the writes were switched on, which left every first send empty on live); else the
+        // last values the marketplace took for the same code in this log; the price else the offer's stored price (the
+        // value read from the marketplace or set in the panel); the quantity else unknown (null).
+        var earlier = (await db.PriceStockSendLogs.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && offerIds.Contains(x.OfferId)
+                    && (x.Result == PriceStockSendResults.Applied || x.Result == PriceStockSendResults.Unchanged))
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => new { x.OfferId, x.Barcode, x.NewQuantity, x.NewSalePrice, x.NewListPrice })
+                .Take(Math.Max(200, offerIds.Length * 4))
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => (x.OfferId, x.Barcode))
+            .ToDictionary(group => group.Key, group => new PriceStockConfirmedValues(group.Key.Barcode,
+                group.Select(x => x.NewQuantity).FirstOrDefault(x => x is not null),
+                group.Select(x => x.NewSalePrice).FirstOrDefault(x => x is not null),
+                group.Select(x => x.NewListPrice).FirstOrDefault(x => x is not null)));
+        PriceStockConfirmedValues? Previous(PriceInventoryPushLine line)
+        {
+            if (!offers.TryGetValue(line.OfferId, out var offer)) return null;
+            var confirmed = offer.Values.Code is not null && string.Equals(offer.Values.Code, line.Barcode, StringComparison.Ordinal) ? offer.Values : null;
+            var logged = earlier.GetValueOrDefault((line.OfferId, line.Barcode));
+            return new(line.Barcode,
+                confirmed?.Quantity ?? logged?.Quantity,
+                confirmed?.SalePrice ?? logged?.SalePrice ?? offer.SalePrice,
+                confirmed?.ListPrice ?? logged?.ListPrice ?? offer.ListPrice);
+        }
         var trigger = Trigger(job, payload);
         db.PriceStockSendLogs.AddRange(payload.Lines.Select(line => PriceStockSendLogPolicy.Row(tenantId, connectionId, platformCode, job.Id, line,
-            confirmed.GetValueOrDefault(line.OfferId), trigger, externalRequestId, now, result, errorCode, errorMessage)));
+            Previous(line), trigger, externalRequestId, now, result, errorCode, errorMessage)));
     }
 
     // The open rows of a polled request, tracked, so the poll's own save writes their outcomes with the offers.
@@ -44,7 +70,7 @@ internal static class PriceStockSendLogRecorder
             .ExecuteUpdateAsync(set => set
                 .SetProperty(x => x.Result, settled.Result)
                 .SetProperty(x => x.ErrorCode, settled.ErrorCode)
-                .SetProperty(x => x.ErrorMessage, settled.ErrorMessage)
+                .SetProperty(x => x.ErrorMessage, x => settled.ErrorMessage ?? x.ErrorMessage)
                 .SetProperty(x => x.CompletedAt, settled.CompletedAt), cancellationToken);
     }
 }

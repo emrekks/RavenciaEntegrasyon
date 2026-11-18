@@ -53,7 +53,7 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
     }
 
     [PostgreSqlFact]
-    public async Task AfterOpening_AStockChangeSendsThatVariantOnly_PanelStockLessSafetyStock_WithoutAPrice()
+    public async Task AfterOpening_AStockChangeSendsThatVariantOnly_PanelStockLessSafetyStock_WithThePriceInForce()
     {
         var seed = await SeedAsync("TRENDYOL");
         await using (var db = fixture.CreateContext())
@@ -73,8 +73,9 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         Assert.True(build.Succeeded, build.Error?.Message);
         var line = Assert.Single(build.Value!.Lines);
         Assert.Equal(seed.Priced.Id, line.VariantId);
-        // 9 on hand less the connection's safety stock of 1; the price was never changed, so it stays out.
-        Assert.Equal((8m, false, true), (line.Quantity, line.QuantityOmitted, line.PriceOmitted));
+        // 9 on hand less the connection's safety stock of 1, with the price in force (the saved panel price 250/200):
+        // owner rule of 18 Nov 2026, the price goes with every stock send.
+        Assert.Equal((8m, false, false, 250m, 200m), (line.Quantity, line.QuantityOmitted, line.PriceOmitted, line.ListPrice, line.SalePrice));
     }
 
     // A panel price the owner changes (here from the product file) reaches the offers that follow it: Özel Fiyat off, or
@@ -202,20 +203,18 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
     }
 
     [PostgreSqlFact]
-    public async Task APlatformWhoseStockCarriesThePrice_OpensNone()
+    public async Task PttAvm_OpensOffersToo_SinceThePriceGoesWithEveryStockSend()
     {
         var seed = await SeedAsync("PTTAVM");
         await using (var db = fixture.CreateContext())
-        {
-            var refused = await Inventory(db).OpenPanelPriceOffersAsync(seed.Tenant.Id, Owner, seed.Connection.Id, CancellationToken.None);
-            Assert.Equal(("PANEL_PRICE_OFFERS_UNSUPPORTED", 422), (refused.Error?.Code, refused.Error?.Status));
-        }
-        await using (var db = fixture.CreateContext())
             Assert.True((await Connections(db).UpdateExternalWriteGroupAsync(seed.Tenant.Id, seed.Connection.Id, Group(true), CancellationToken.None)).Succeeded);
         await using var read = fixture.CreateContext();
-        Assert.Equal(1, await read.ChannelOffers.CountAsync(x => x.TenantId == seed.Tenant.Id));
+        var opened = Assert.Single(await read.ChannelOffers.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.VariantId == seed.Priced.Id).ToListAsync());
+        // PTT AVM takes the sale price only: list = sale.
+        Assert.Equal((200m, 200m, true), (opened.ListPrice, opened.SalePrice, opened.FollowsPanelPrice));
+        Assert.Equal(0, await read.IntegrationJobs.CountAsync(x => x.TenantId == seed.Tenant.Id));
         var preview = (await Inventory(read).PanelPriceOfferPreviewAsync(seed.Tenant.Id, seed.Connection.Id, CancellationToken.None)).Value!;
-        Assert.Equal((false, 0, 5), (preview.OpensOffers, preview.Openable, preview.LinkedWithoutOffer));
+        Assert.Equal((true, 0, 4), (preview.OpensOffers, preview.Openable, preview.LinkedWithoutOffer));
     }
 
     [PostgreSqlFact]

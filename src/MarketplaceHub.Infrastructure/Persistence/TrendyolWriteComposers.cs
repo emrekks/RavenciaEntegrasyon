@@ -373,12 +373,14 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
 
         var lines = new List<PriceInventoryPushLine>();
         var settled = new List<SettledOffer>();
+        var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
         foreach (var row in rows)
         {
             if (row.Inventory is not { } inventory) continue;
             var salePrice = OutboundSalePrice(row.Offer);
             var listPrice = OutboundListPrice(row.Offer);
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice)
+            // Trendyol's 0 TL offers stay out as before; Hepsiburada and Shopify take the stock alone (below).
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || isTrendyol && (salePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice))
             {
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.") is { } refused) return refused;
                 continue;
@@ -392,36 +394,45 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var publishable = Math.Max(0, inventory.Available - row.Offer.SafetyStock);
             // C10: Trendyol stock is capped at 20,000; the capped quantity is what the payload (and its hash) carries.
             var quantity = isTrendyol ? TrendyolStockRules.Quantity(publishable) : decimal.Floor(publishable);
+            // The marks stay the stored offer's (decision B, the baseline, the reconcile scan): a panel price change alone
+            // queues nothing; it goes with the variant's next stock or price send.
             var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == inventory.ProjectionVersion) continue;
             var barcode = row.Barcode.Trim();
+            var (sendList, sendSale, priceKnown) = OutboundInForce(connection.PlatformCode, row.Offer, row.Variant, cards, listPrice, salePrice);
             var quantityOmitted = false;
             var priceOmitted = false;
             if (isTrendyol)
             {
-                // Trendyol: only what differs from the values it last confirmed for this barcode goes; a new version
-                // carrying the same values is recorded as sent without a request.
-                var fields = PriceInventorySendPolicy.TrendyolFields(row.Offer, barcode, quantity, salePrice, listPrice, priceHash, inventory.ProjectionVersion);
-                if (!fields.Any) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
+                // Owner rule of 18 Nov 2026: the price in force goes with every stock line, even when it equals the value
+                // Trendyol last confirmed: the marketplace's value may have been changed outside the panel (a campaign set
+                // by hand), and the panel is the source. Only the stock keeps the "what differs from the confirmed value"
+                // rule; a price change without a stock change still goes only when it differs.
+                var fields = PriceInventorySendPolicy.TrendyolFields(row.Offer, barcode, quantity, sendSale, sendList, priceHash, inventory.ProjectionVersion);
+                var price = priceKnown && (fields.Price || fields.Quantity);
+                if (!fields.Quantity && !price) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
                 quantityOmitted = !fields.Quantity;
-                priceOmitted = !fields.Price;
+                priceOmitted = !price;
             }
             else if (isHepsiburada && row.FulfilledByMarketplace == true)
             {
                 // A listing Hepsiburada fulfils (isFulfilledByHB) keeps its stock at Hepsiburada: only the price goes, and a
                 // stock change alone has nothing to send.
-                if (row.Offer.LastPriceHash == priceHash) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
+                if (row.Offer.LastPriceHash == priceHash || !priceKnown) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
                 quantityOmitted = true;
             }
-            // Hepsiburada and Shopify: a stock change alone carries the stock only; the price goes when it changed.
-            else priceOmitted = row.Offer.LastPriceHash == priceHash;
+            // Hepsiburada and Shopify (owner rule of 18 Nov 2026): the stock goes with the price in force, one request
+            // (Hepsiburada's listing upload takes both; Shopify writes the price then the stock in the same job, a cut
+            // after the price leaving the line PRICE_ONLY_APPLIED to be sent again). No price in force: the stock alone.
+            else priceOmitted = !priceKnown;
             // A part the user did not pick is held: left out of the request and not settled, so it still goes later.
             var priceHeld = holdPrice && !priceOmitted;
             var stockHeld = holdStock && !quantityOmitted;
             if (priceHeld) priceOmitted = true;
             if (stockHeld) quantityOmitted = true;
             if (priceOmitted && quantityOmitted) continue;
-            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted, row.Offer.SafetyStock, priceHeld, stockHeld));
+            lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, sendList, sendSale, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted, row.Offer.SafetyStock, priceHeld, stockHeld,
+                !priceKnown && !quantityOmitted ? PanelPriceOfferPolicy.PriceNotSentNote : null));
         }
         await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
@@ -587,14 +598,19 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
 
         var lines = new List<PriceInventoryPushLine>();
         var settled = new List<SettledOffer>();
+        var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
-            var (listPrice, salePrice) = N11Prices(row.Offer);
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase))
             {
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
                 continue;
             }
+            // Owner rule of 18 Nov 2026: the price in force goes with every stock line; n11 takes a SKU with its quantity
+            // alone, so without a price in force the stock goes alone and the line says why.
+            var inForce = PricedInForce("N11", row.Offer, row.Variant, cards);
+            var (listPrice, salePrice) = inForce is null ? (0m, 0m) : N11Prices(inForce);
+            var priceKnown = salePrice > 0;
             // An n11 product read without a stock code is linked as "n11:{productId}"; n11 takes price and stock by
             // stock code only, so it cannot be addressed and stays out.
             if (row.StockCode.StartsWith("n11:", StringComparison.Ordinal)) continue;
@@ -604,9 +620,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // n11depom keeps and ships the stock of a SKU it stores: n11 takes the price only, so a stock change alone has
             // nothing to send.
             var depot = row.Depot == true;
-            if (depot && row.Offer.LastPriceHash == priceHash) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, row.Inventory.ProjectionVersion)); continue; }
-            // A stock change alone carries the stock only: n11 updates the fields a SKU carries.
-            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: depot, PriceOmitted: !depot && row.Offer.LastPriceHash == priceHash, SafetyStock: row.Offer.SafetyStock));
+            if (depot && (row.Offer.LastPriceHash == priceHash || !priceKnown)) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, row.Inventory.ProjectionVersion)); continue; }
+            lines.Add(new(row.Variant.Id, row.Offer.Id, row.StockCode.Trim(), quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: depot, PriceOmitted: !priceKnown, SafetyStock: row.Offer.SafetyStock,
+                PriceNote: !priceKnown ? PanelPriceOfferPolicy.PriceNotSentNote : null));
         }
         await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
@@ -637,10 +653,14 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
 
         var lines = new List<(PriceInventoryPushLine Line, bool Price, bool Stock)>();
+        var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
-            var (listPrice, salePrice) = PazaramaPrices(row.Offer);
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 0)
+            var (storedList, storedSale) = PazaramaPrices(row.Offer);
+            var inForce = PricedInForce("PAZARAMA", row.Offer, row.Variant, cards);
+            var (listPrice, salePrice) = inForce is null ? (storedList, storedSale) : PazaramaPrices(inForce);
+            var priceKnown = inForce is not null && salePrice > 0;
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase))
             {
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
                 continue;
@@ -652,11 +672,20 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 continue;
             }
             var quantity = PazaramaPriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
-            var priceHash = PazaramaPriceInventoryRules.PriceHash(listPrice, salePrice, row.Offer.PriceVersion);
+            var priceHash = PazaramaPriceInventoryRules.PriceHash(storedList, storedSale, row.Offer.PriceVersion);
             var priceChanged = row.Offer.LastPriceHash != priceHash;
             var stockChanged = row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
             if (!priceChanged && !stockChanged) continue;
-            lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: !stockChanged, PriceOmitted: !priceChanged, SafetyStock: row.Offer.SafetyStock), priceChanged, stockChanged));
+            // Owner rule of 18 Nov 2026: the price in force goes with every stock change (Pazarama's price request beside
+            // its stock request, from the same line); without a price in force the stock goes alone.
+            var sendsPrice = priceKnown;
+            if (!sendsPrice && !stockChanged)
+            {
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
+                continue;
+            }
+            lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: !stockChanged, PriceOmitted: !sendsPrice, SafetyStock: row.Offer.SafetyStock,
+                PriceNote: !sendsPrice ? PanelPriceOfferPolicy.PriceNotSentNote : null), sendsPrice, stockChanged));
         }
         if (lines.Count == 0) return NoChanges(missingInventory);
         // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
@@ -741,6 +770,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var items = new List<PttAvmPriceInventoryRules.Item>();
         var lines = new List<PriceInventoryPushLine>();
         var sentBarcodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
         foreach (var group in rows.Where(row => row.Inventory is not null).GroupBy(row => PttProductCode(row.Variant.ProductId, row.Variant.ModelCode) ?? $"panel:{row.Variant.ProductId:N}"))
         {
             var priced = new List<(PriceInventoryPushLine Line, decimal? VatRate, bool PriceChanged, bool Changed, string? OptionSignature)>();
@@ -749,7 +779,10 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var productRefused = false;
             foreach (var row in group)
             {
-                var salePrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(row.Offer));
+                // Owner rule of 18 Nov 2026: the price in force (Özel Fiyat: the offer's; else the saved panel price; else
+                // the offer's stored price). PTT AVM takes no stock without a price, so a line without one is refused.
+                var inForce = PricedInForce("PTTAVM", row.Offer, row.Variant, cards);
+                var salePrice = inForce is null ? 0m : PttAvmPriceInventoryRules.Price(OutboundSalePrice(inForce));
                 // PTT AVM refuses a price of 1 or less.
                 if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
                 {
@@ -769,18 +802,12 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 var priceHash = PttAvmPriceHash(row.Offer);
                 var priceChanged = row.Offer.LastPriceHash != priceHash;
                 var changed = priceChanged || row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
-                // UpdateProductsStockPrice takes no stock without a price (PriceWithVAT is required). A stock change alone
-                // therefore carries the price PTT AVM last confirmed for the code, not the panel price; only where none is
-                // known (never confirmed, or cleared by a new address or by switching the automatic writes on) does the
-                // panel price go, as before.
-                var sentPrice = priceChanged ? salePrice : PttAvmConfirmedPrice(row.Offer, code) ?? salePrice;
-                priced.Add((new(row.Variant.Id, row.Offer.Id, code, quantity, sentPrice, sentPrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, SafetyStock: row.Offer.SafetyStock), vatRate, priceChanged, changed, row.Variant.OptionSignature));
+                // UpdateProductsStockPrice takes no stock without a price (PriceWithVAT is required). Owner rule of 18 Nov
+                // 2026: the price in force goes with every stock change, not the price PTT AVM last confirmed (which may have
+                // been changed by hand there); the panel is the source.
+                priced.Add((new(row.Variant.Id, row.Offer.Id, code, quantity, salePrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, SafetyStock: row.Offer.SafetyStock), vatRate, priceChanged, changed, row.Variant.OptionSignature));
             }
             if (productRefused || !priced.Any(x => x.Changed)) continue;
-            // A product whose price changed anywhere goes with every variant at its panel price (the differences are priced
-            // against each other).
-            if (priced.Any(x => x.PriceChanged))
-                priced = priced.Select(x => x with { Line = x.Line with { SalePrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(group.First(row => row.Offer.Id == x.Line.OfferId).Offer)), ListPrice = PttAvmPriceInventoryRules.Price(OutboundSalePrice(group.First(row => row.Offer.Id == x.Line.OfferId).Offer)) } }).ToList();
             var productCode = group.Key.StartsWith("panel:", StringComparison.Ordinal) ? null : group.Key;
             var only = priced.Count == 1 ? priced[0] : default;
             // A product without variants: PTT AVM keeps it by the variant's own code. An old option-id link
@@ -797,10 +824,11 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 // A product with variants is sent by its PTT AVM barcode only; before the mapping recorded it, it waits.
                 if (productCode is null || !sentBarcodes.Add(productCode)) continue;
                 var basePrice = priced.Min(x => x.Line.SalePrice);
-                var anyPriceChanged = priced.Any(x => x.PriceChanged);
                 var variants = new List<PttAvmPriceInventoryRules.VariantItem>();
                 string Sku(PriceInventoryPushLine line) => group.First(row => row.Offer.Id == line.OfferId).Variant.Sku;
-                foreach (var entry in priced.Where(x => anyPriceChanged || x.Changed))
+                // Every variant of the product goes with its price in force: PTT AVM keeps a variant's price as a difference to
+                // the product price, and the product price is the lowest price sent, so a variant left out could be repriced.
+                foreach (var entry in priced)
                 {
                     var attributes = PttAvmVariantAttributes(entry.OptionSignature);
                     // PTT AVM names a variant only by its colour and size: one without either cannot go, and says so
@@ -833,11 +861,6 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return ServiceResult<PriceInventoryDraft>.Ok(new(Hash(payload), payload, lines) { MissingInventorySkus = missingInventory });
     }
 
-    // The price PTT AVM last confirmed for the code (a price it would take: more than 1), or null when none is known.
-    internal static decimal? PttAvmConfirmedPrice(ChannelOffer offer, string code) =>
-        offer.LastSentCode is not null && string.Equals(offer.LastSentCode, code, StringComparison.Ordinal) && offer.LastSentSalePrice is decimal price && price > 1m
-            ? PttAvmPriceInventoryRules.Price(price)
-            : null;
 
     // A panel variant's colour and size as PTT AVM names its variant attributes ("Renk", "Beden").
     internal static IReadOnlyList<PttAvmPriceInventoryRules.VariantAttribute> PttAvmVariantAttributes(string? optionSignature)
@@ -849,6 +872,59 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (!string.IsNullOrWhiteSpace(color)) attributes.Add(new("Renk", color.Trim()));
         if (!string.IsNullOrWhiteSpace(size)) attributes.Add(new("Beden", size.Trim()));
         return attributes;
+    }
+
+    // The saved panel prices of the cards the given variants belong to (the variant's own are on the variant row).
+    private async Task<Dictionary<Guid, (decimal? Sale, decimal? List)>> CardPanelPricesAsync(Guid tenantId, IEnumerable<Guid> productIds, CancellationToken cancellationToken)
+    {
+        var ids = productIds.Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        return (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).Select(x => new { x.Id, x.DefaultSalePrice, x.DefaultListPrice }).ToListAsync(cancellationToken))
+            .ToDictionary(x => x.Id, x => (x.DefaultSalePrice, x.DefaultListPrice));
+    }
+
+    // Owner rule of 18 Nov 2026: the offer as a send prices it (PanelPriceOfferPolicy.InForce), a detached copy carrying the
+    // price in force and the offer's own VAT and rounding; null when no price can be sent. The copy's marks are the
+    // offer's: the send marks stay those of the stored price.
+    internal static ChannelOffer? PricedInForce(string platformCode, ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards)
+    {
+        var card = cards.GetValueOrDefault(variant.ProductId);
+        if (PanelPriceOfferPolicy.InForce(platformCode, offer.FollowsPanelPrice, offer.ListPrice, offer.SalePrice, variant.DefaultSalePrice, card.Sale, variant.DefaultListPrice, card.List) is not { } inForce) return null;
+        return new ChannelOffer
+        {
+            Id = offer.Id,
+            TenantId = offer.TenantId,
+            ConnectionId = offer.ConnectionId,
+            VariantId = offer.VariantId,
+            ListPrice = inForce.ListPrice,
+            SalePrice = inForce.SalePrice,
+            Currency = offer.Currency,
+            VatRate = offer.VatRate,
+            VatInclusion = offer.VatInclusion,
+            RoundingMode = offer.RoundingMode,
+            SafetyStock = offer.SafetyStock,
+            Status = offer.Status,
+            PriceVersion = offer.PriceVersion,
+            LastPriceHash = offer.LastPriceHash,
+            LastStockProjectionVersion = offer.LastStockProjectionVersion,
+            LastSentCode = offer.LastSentCode,
+            LastSentQuantity = offer.LastSentQuantity,
+            LastSentSalePrice = offer.LastSentSalePrice,
+            LastSentListPrice = offer.LastSentListPrice,
+            LastSentAt = offer.LastSentAt,
+            FollowsPanelPrice = offer.FollowsPanelPrice,
+            Version = offer.Version
+        };
+    }
+
+    // The outbound prices in force of a Trendyol, Hepsiburada or Shopify line, with whether they can be sent; without a
+    // price in force, the stored outbound prices (left out of the request).
+    private static (decimal ListPrice, decimal SalePrice, bool Known) OutboundInForce(string platformCode, ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards, decimal storedList, decimal storedSale)
+    {
+        if (PricedInForce(platformCode, offer, variant, cards) is not { } inForce) return (storedList, storedSale, false);
+        var sale = OutboundSalePrice(inForce);
+        var list = OutboundListPrice(inForce);
+        return sale > 0 && list >= sale ? (list, sale, true) : (storedList, storedSale, false);
     }
 
     // The prices that leave the panel: VAT added for an offer kept without VAT, two decimals.

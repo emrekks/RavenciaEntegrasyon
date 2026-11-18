@@ -97,19 +97,8 @@ public sealed class PriceStockAuditFixesTests
         Assert.Equal(120m, JsonNode.Parse(PriceInventoryComposer.ShopifyPayload([Line()]))!["items"]![0]!["salePrice"]!.GetValue<decimal>());
     }
 
-    // Item 5, PTT AVM: PriceWithVAT is required, so a stock change alone carries the price PTT AVM last confirmed.
-    [Fact]
-    public void PttAvmStockOnly_UsesTheConfirmedPriceOfTheSameCode()
-    {
-        var offer = Offer();
-        Assert.Null(PriceInventoryComposer.PttAvmConfirmedPrice(offer, "CODE-1"));
-        offer.LastSentCode = "CODE-1";
-        offer.LastSentSalePrice = 99.5m;
-        Assert.Equal(99.5m, PriceInventoryComposer.PttAvmConfirmedPrice(offer, "CODE-1"));
-        Assert.Null(PriceInventoryComposer.PttAvmConfirmedPrice(offer, "CODE-2"));
-        offer.LastSentSalePrice = 1m;
-        Assert.Null(PriceInventoryComposer.PttAvmConfirmedPrice(offer, "CODE-1"));
-    }
+    // Item 5, PTT AVM (stock alone with the price PTT AVM last confirmed) gave way to the owner rule of 18 Nov 2026: every
+    // stock send carries the price in force (PriceInForceComposerPostgreSqlTests).
 
     // Item 2 ("fixle"): the emergency stop cancels only automatic sends not yet submitted.
     [Fact]

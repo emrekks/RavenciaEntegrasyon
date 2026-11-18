@@ -15,8 +15,9 @@ const count = (value: number) => value.toLocaleString('tr-TR')
 export function panelPriceOfferNotice(preview: PanelPriceOfferPreview | null | undefined): string[] {
   if (!preview) return ['Panel fiyatıyla açılacak teklif sayısı okunamadı.']
   const lines: string[] = []
-  if (preview.opensOffers && preview.openable > 0) lines.push(`${count(preview.openable)} beden için panel fiyatıyla teklif açılacak; şimdi pazaryerine bir şey gönderilmeyecek, yalnız sonradan değişen stok ve panel fiyatı gider.`)
-  if (!preview.opensOffers && preview.linkedWithoutOffer > 0) lines.push(`${count(preview.linkedWithoutOffer)} bağlı bedenin bu pazaryerinde teklifi yok; burada stokla fiyat da gittiği için panel fiyatıyla kendiliğinden açılmaz.`)
+  // Every stock send carries the price in force (owner, 18 Nov 2026): the first send of an opened offer carries its panel price.
+  if (preview.opensOffers && preview.openable > 0) lines.push(`${count(preview.openable)} beden için panel fiyatıyla teklif açılacak; şimdi pazaryerine bir şey gönderilmeyecek; bedenin bir sonraki stok gönderiminde stokla birlikte geçerli fiyat da gider.`)
+  if (!preview.opensOffers && preview.linkedWithoutOffer > 0) lines.push(`${count(preview.linkedWithoutOffer)} bağlı bedenin bu bağlantıda teklifi yok; bu bağlantıda panel fiyatıyla teklif açılmaz.`)
   if (preview.opensOffers && preview.missingPanelPrice > 0) lines.push(`Panel fiyatı olmayan ${count(preview.missingPanelPrice)} beden gönderime alınmadı.`)
   if (preview.opensOffers && preview.missingVat > 0) lines.push(`KDV oranı olmayan ${count(preview.missingVat)} beden gönderime alınmadı.`)
   return lines

@@ -448,12 +448,23 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   gönder; Özel Fiyat açıksa kendi fiyatıyla"). Bir bağlantıda otomatik fiyat/stok yazması açılırken, pazaryeri ilanına bağlı
   ama orada teklifi olmayan aktif bedenlere **panel fiyatıyla teklif açılır** (`FollowsPanelPrice = true`, KDV modelden,
   güvenlik stoğu bağlantı varsayılanı) ve açılan teklif de "gönderilmiş" sayılır: **açılışta pazaryerine hiçbir şey
-  gitmez**, yalnız sonradan değişen stok ve panel fiyatı gider. Yazması zaten açık bağlantıda aynı işi Entegrasyonlar ›
+  gitmez**; bedenin bir sonraki stok ya da fiyat gönderiminde stokla birlikte geçerli fiyat da gider. Yazması zaten açık bağlantıda aynı işi Entegrasyonlar ›
   Otomatik Dış Yazmalar altındaki **Eksik Teklifleri Aç** yapar (yalnız sahip/yönetici; denetim kaydı
   `CHANNEL_OFFERS_OPENED_AT_PANEL_PRICE`). Panel satış fiyatı yoksa ya da 0'sa, liste fiyatı satıştan küçükse ya da
-  KDV boşsa teklif **açılmaz** ve sayı gösterilir. Yalnız Trendyol, Hepsiburada ve Shopify'da açılır; N11, Pazarama ve
-  PttAVM'de stok isteği fiyatı da taşıdığı için açılmaz (sahip fiyatı görmeden fiyat gitmesin). Deploy, worker, tarama ve
+  KDV boşsa teklif **açılmaz** ve sayı gösterilir. Altı pazaryerinin hepsinde açılır. Deploy, worker, tarama ve
   migration teklif açmaz (`PanelPriceOffers.cs`, `PanelPriceOfferPolicy.cs`, `AutomaticPriceStockWrites.cs`).
+- **Stokla birlikte geçerli fiyat** (sahip kararı, 18 Kas 2026: "stokla beraber fiyatı da gönderelim"): her stok
+  gönderiminde (sipariş, elle stok, Excel, iade, uzlaştırma; otomatik ve elle) bütün pazaryerlerinde stokla birlikte o
+  pazaryerinin **geçerli fiyatı** da gider. Geçerli fiyat: Özel Fiyat açıksa teklifin kendi fiyatı; değilse kayıtlı panel
+  fiyatı; kayıtlı panel fiyatı yoksa (18 Kas'ta canlıdaki 3.721 bedenin hepsi) teklifin kayıtlı fiyatı. Fiyat, Trendyol'un
+  son onayladığı değerle aynı olsa da gider (pazaryerinde elle değiştirilmiş olabilir; panel kaynaktır). Geçerli fiyat
+  boş, 0 ya da liste < satış ise fiyat gitmez: Trendyol, Hepsiburada, Shopify, N11 ve Pazarama'da stok tek başına gider
+  ve günlük satırı "Fiyat gönderilmedi…" notunu taşır; PttAVM fiyatsız stok almadığı için satır gönderilmez ve sayılır.
+  Trendyol'un 0 TL teklif kuralı aynen. Gönderilmiş işaretleri kayıtlı teklif fiyatından hesaplanır: yalnız panel fiyatı
+  değişince kendiliğinden gönderim olmaz, fiyat bir sonraki stok ya da fiyat gönderimiyle gider. Gönderim günlüğünde önceki
+  değerler: aynı kod için onaylanan → yoksa günlükteki son kabul edilen → fiyat için yoksa teklifin kayıtlı fiyatı;
+  önceki stok bilinmiyorsa boş. Risk: pazaryerinde kampanya için elle değiştirilmiş fiyat, o bedenin ilk stok hareketinde
+  panelin fiyatıyla ezilir (`PanelPriceOfferPolicy.InForce`, `PriceInventoryComposer`).
 - **Panel fiyatını izleyen teklif**: panel fiyatı sahip tarafından değişince (ürün düzenleyici, Hızlı/Toplu fiyat, Ürün
   Excel'i) Özel Fiyat'ı kapalı tekliflerin fiyatı panel fiyatına çekilir ve yazması açık bağlantıya gider. Özel Fiyat açık
   (`false`) teklif değişmez. Seçimi hiç kaydedilmemiş (`NULL`) teklif, bedenin **kayıtlı** panel fiyatı varsa izler;
