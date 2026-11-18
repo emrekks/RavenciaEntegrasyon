@@ -184,7 +184,8 @@ internal sealed partial class CatalogImportService
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
-        DateTimeOffset? modifiedAfter = !effectiveFullScan && !singleLookup && hasSnapshots && cursor.LastModifiedWatermark is not null ? cursor.LastModifiedWatermark.Value.AddMinutes(-2) : null;
+        // "Mevcut Ürünleri Güncelle" (Fiyat ve Stokları Güncelle) reads the whole catalog, not the changed-since window.
+        var modifiedAfter = ProductImportScanPolicy.IncrementalReadStart(effectiveFullScan, existingOnly, singleLookup, hasSnapshots, cursor.LastModifiedWatermark);
         var productFilter = ProductImportFilter(modifiedAfter, productLookup, includePendingApproval);
         // Read the remote catalog into the durable staging pool before preparing
         // the larger Trendyol reference snapshots. The worker can therefore
@@ -198,7 +199,7 @@ internal sealed partial class CatalogImportService
         var importedAttributeLibrary = new Dictionary<string, AttributeDefinition>(StringComparer.Ordinal);
         var categoryContexts = new Dictionary<string, CategoryAttributeContext>(StringComparer.Ordinal);
         var nextCursor = scanRequired
-            ? importSession.PageNumber > 0 ? importSession.NextCursor : singleLookup || effectiveFullScan ? null : cursor.OpaqueCursor
+            ? importSession.PageNumber > 0 ? importSession.NextCursor : singleLookup || effectiveFullScan || existingOnly ? null : cursor.OpaqueCursor
             : null;
         var pageNumber = importSession.PageNumber;
         if (jobId is { } currentJob && scanRequired)

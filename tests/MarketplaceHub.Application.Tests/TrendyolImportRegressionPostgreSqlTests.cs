@@ -701,6 +701,29 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
+    // "Fiyat ve Stokları Güncelle" reads the whole catalog (19 Nov 2026): a listing whose stock changed at Trendyol without
+    // entering the changed-since window (MZ040RCY: Trendyol 50, panel 44 after job 01a1f0bc read 13 of 1,013 contents) is
+    // still updated. Before, the run took the PRODUCTS watermark and read only the window's contents.
+    [PostgreSqlFact]
+    public async Task FocusedPriceStock_ReadsTheWholeCatalog_NotTheChangedSinceWindow()
+    {
+        var seed = await SeedAsync();
+        await RunAsync(seed, new TrendyolCatalogPort(Read(Colours.Select(entry => Spec(entry.Colour)))), "{\"full\":true}");
+        await using (var db = fixture.CreateContext())
+            Assert.NotNull((await db.SyncCursors.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ConnectionId == seed.ConnectionId && row.ResourceType == "PRODUCTS")).LastModifiedWatermark);
+
+        // Trendyol now has 50 of every size; only Siyah's content falls in the changed-since window.
+        var port = new TrendyolCatalogPort(Read(Repriced(50, 555m, 820m)), new HashSet<string>(StringComparer.Ordinal) { ContentId("Siyah") });
+        await RunAsync(seed, port, FocusedBoth);
+
+        Assert.All(port.Filters, filter => Assert.Null(filter.ModifiedAfter));
+        await using var check = fixture.CreateContext();
+        var stock = await check.InventoryItems.AsNoTracking().Where(row => row.TenantId == seed.TenantId).Select(row => row.OnHand).ToListAsync();
+        Assert.Equal(Colours.Length * Sizes.Length, stock.Count);
+        Assert.All(stock, onHand => Assert.Equal(50m, onHand));
+        Assert.All(await check.ChannelOffers.AsNoTracking().Where(row => row.TenantId == seed.TenantId).Select(row => row.SalePrice).ToListAsync(), sale => Assert.Equal(555m, sale));
+    }
+
     // Query budget: a focused pull of 7 cards × 5 sizes stays within ~9 commands per variant (12 Nov 2026: 327), a third
     // below the full path even here, where the category has no attribute values (live: ~4,000 queries per model), and reads
     // no attribute or reference table.
@@ -1453,14 +1476,20 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         return new(productId, await MediaRowsAsync(seed, onlyProductId: productId));
     }
 
-    private sealed class TrendyolCatalogPort(IReadOnlyList<RemoteCatalogProduct> snapshots) : IProductPort
+    // `changedSinceWatermark`: the contents Trendyol's changed-since window (startDate + VARIANT_MODIFIED_DATE) returns;
+    // null returns every content whatever the window.
+    private sealed class TrendyolCatalogPort(IReadOnlyList<RemoteCatalogProduct> snapshots, IReadOnlySet<string>? changedSinceWatermark = null) : IProductPort
     {
         public int WriteAttempts { get; private set; }
+        public List<ProductReadFilter> Filters { get; } = [];
 
         public Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
         {
+            Filters.Add(filter);
             // A single lookup by model code reads that model's contents only (Trendyol's productMainId filter).
-            var items = string.IsNullOrWhiteSpace(filter.ProductMainId) ? snapshots : [.. snapshots.Where(row => row.ProductMainId == filter.ProductMainId)];
+            IReadOnlyList<RemoteCatalogProduct> items = string.IsNullOrWhiteSpace(filter.ProductMainId) ? snapshots : [.. snapshots.Where(row => row.ProductMainId == filter.ProductMainId)];
+            if (filter.ModifiedAfter is not null && changedSinceWatermark is not null)
+                items = [.. items.Where(row => changedSinceWatermark.Contains(row.ExternalProductId))];
             return Task.FromResult(AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(new(items, null, false, items.Count)));
         }
 

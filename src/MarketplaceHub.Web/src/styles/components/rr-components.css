@@ -2,6 +2,8 @@
    only through that script). Every class carries an "rr-" prefix and every rule is scoped to the returns page or to
    its popup layer, so nothing here reaches another page. The proposal's tokens map onto the panel theme. */
 main .rr, .rr-layer {
+  /* The product photo of an order / return / resend row: one size everywhere (2:3), a larger one on a phone card. */
+  --rr-thumb-w: 76px; --rr-thumb-h: 114px; --rr-thumb-card-w: 92px;
   --rr-bg: var(--rv-color-bg); --rr-surface: var(--rv-color-surface); --rr-raised: var(--rv-color-surface-raised); --rr-soft: var(--rv-color-surface-soft);
   --rr-line: var(--rv-color-border); --rr-line-strong: var(--rv-color-border-strong);
   --rr-ink: var(--rv-color-ink); --rr-muted: var(--rv-color-muted); --rr-subtle: var(--rv-color-subtle);
@@ -1059,8 +1061,8 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small b.rr-num { overflow-wrap: anywhere; word-break: break-word; }
 @media (min-width: 1025px) {
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 276px; }
-main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; }
-main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: 60px; height: 90px; }
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: var(--rr-thumb-w) minmax(0, 1fr); gap: 10px; }
+main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-thumb { width: var(--rr-thumb-w); height: var(--rr-thumb-h); border-radius: 8px; }
 main .rr.rr-orders .rr-tbl.rr-tbl { min-width: 1146px; }
 main .rr.rr-returns .rr-tbl.rr-tbl { min-width: 1308px; }
 /* returns: each column gets the width its values need (the status column had far more than its badge) so tracking
@@ -1193,8 +1195,8 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1196px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1308px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1196px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1308px; }
-main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 60px minmax(0, 1fr); gap: 10px; }
-main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-thumb { width: 60px; height: 90px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-pline { grid-template-columns: var(--rr-thumb-w) minmax(0, 1fr); gap: 10px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-thumb { width: var(--rr-thumb-w); height: var(--rr-thumb-h); border-radius: 8px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(td[data-l="Alıcı"] .rr-cust b, .rr-pline > div > b:first-child, .rr-reasoncell > b) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: break-word !important; word-break: normal; }
 /* Overflow pass (owner, 14 Nov): words break only at spaces (a word longer than its cell breaks as a last resort); numbers
    wrap anywhere, the delivery number sits on its own line under its label; the tracking number stays inside its cell; a
@@ -1213,10 +1215,10 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
    column visible (text wraps instead of the table scrolling). Narrower screens scroll inside the card; the first column
    stays pinned so the order is always in view. */
 @media (min-width: 1025px) {
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1288px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1304px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 249px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 132px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 296px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 312px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 102px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 160px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 160px; }
@@ -1232,15 +1234,15 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 /* owner, 14 Nov: a buyer name never breaks inside a word, and each Bilgiler "Label: value" line stays on one line */
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow-wrap: normal; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1522px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1664px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1536px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1678px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1538px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1680px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1552px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1694px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 224px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 238px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 142px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 300px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 316px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 102px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 162px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 216px; }
