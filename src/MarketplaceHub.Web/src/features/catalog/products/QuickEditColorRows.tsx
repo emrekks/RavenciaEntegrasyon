@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react'
 import { variantGroupSelectionState } from '../variant-bulk-edit'
 import './quick-edit-matrix.css'
 
@@ -23,6 +23,19 @@ export function buildMatrix<T>(items: readonly T[], colorKeyOf: (item: T) => str
     cells.set(key, [...(cells.get(key) ?? []), item])
   }
   return { rows: colors.filter(color => present.has(color.key)), sizes: [...sizes].sort(compareSizes), cells }
+}
+
+// The one grid every colour row shares: the colour column is as wide as the longest colour name (at most 168 px), the size
+// label column as wide as the longest size label, then a box (76 px); each size sits in the same column in every row. The
+// window opens wide enough for all sizes on one line (up to the screen less 32 px); when they do not fit, the rows wrap at
+// the same column everywhere.
+export function colorRowsLayout(rows: readonly MatrixLine[], sizes: readonly string[]) {
+  const colorPx = Math.min(168, Math.max(96, Math.max(0, ...rows.map(row => row.label.length)) * 7.5 + 46))
+  const labelPx = Math.max(24, Math.max(0, ...sizes.map(size => size.length)) * 8 + 6)
+  const cellPx = labelPx + 6 + 76
+  // colour column + 18 gap + cells with 12 gaps + the row, list, section and body paddings
+  const windowPx = Math.ceil(colorPx + 18 + sizes.length * cellPx + Math.max(0, sizes.length - 1) * 12 + 140)
+  return { colorPx, labelPx, cellPx, windowPx }
 }
 
 export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selected, onSelect, renderCell, caption, head }: {
@@ -72,7 +85,8 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
     element.addEventListener('keydown', move)
     return () => element.removeEventListener('keydown', move)
   }, [rowCount, sizeCount])
-  return <div className="rr-cr">
+  const layout = colorRowsLayout(rows, sizes)
+  return <div className="rr-cr" style={{ '--cr-color': `${layout.colorPx}px`, '--cr-label': `${layout.labelPx}px`, '--cr-cell': `${layout.cellPx}px` } as CSSProperties}>
     <div className="rr-cr-sticky">
     {head}
     <div className="rr-cr-bar">
@@ -90,13 +104,13 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
         const rowState = state(rowIds)
         return <div className="rr-cr-row" key={row.key} role="group" aria-label={row.label}>
           <label className="rr-cr-color"><Tick checked={rowState.checked} mixed={rowState.indeterminate} round label={`${row.label} rengindeki tüm varyantları seç`} onChange={checked => onSelect(rowIds, checked)} /><b title={row.label}>{row.label}</b></label>
-          <div className="rr-cr-sizes">{sizes.map((size, colIndex) => (cells.get(matrixCellKey(row.key, size)) ?? []).map(item => {
+          <div className="rr-cr-sizes">{sizes.map((size, colIndex) => { const here = cells.get(matrixCellKey(row.key, size)) ?? []; return here.length ? here.map(item => {
             const on = selected.has(idOf(item))
             return <div className={`rr-cr-pair${on ? ' rr-on' : ''}`} key={idOf(item)}>
               <label className="rr-cr-size" title={`${labelOf(item)} varyantını seç`}><input type="checkbox" className="rr-cr-tick sr-only" tabIndex={-1} checked={on} aria-label={`${labelOf(item)} varyantını seç`} onChange={event => onSelect([idOf(item)], event.currentTarget.checked)} /><span>{size}</span></label>
               {renderCell(item, { row: rowIndex, col: colIndex })}
             </div>
-          }))}</div>
+          }) : [<span className="rr-cr-gap" key={`gap-${size}`} aria-hidden="true" />] })}</div>
         </div>
       })}
     </div>
