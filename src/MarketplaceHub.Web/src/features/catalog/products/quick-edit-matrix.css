@@ -19,8 +19,10 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip:hover { color: var(--rr-ink); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-on { color: var(--rr-ink); background: color-mix(in srgb, var(--rr-primary-soft) 60%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-mixed { border-style: dashed; border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
-/* The list scrolls inside itself; each colour is one row, a thin line between colours. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { max-height: min(60dvh, 560px); overflow-y: auto; overflow-x: hidden; border: 1px solid var(--rr-line); border-radius: 12px; overscroll-behavior: contain; }
+/* One scroll in the window: the list runs its full height and the window body scrolls; the value picker and the ticks stay
+   at the top of the body. Each colour is one row, a thin line between colours. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sticky { position: sticky; top: 0; z-index: 4; display: grid; gap: 8px; margin: -8px 0 0; padding: 8px 0; background: var(--rr-surface); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { overflow: clip; border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: center; gap: 8px 18px; padding: 3px 14px 3px 12px; background: var(--rr-surface); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; cursor: pointer; }

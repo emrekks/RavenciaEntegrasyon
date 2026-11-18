@@ -25,7 +25,7 @@ export function buildMatrix<T>(items: readonly T[], colorKeyOf: (item: T) => str
   return { rows: colors.filter(color => present.has(color.key)), sizes: [...sizes].sort(compareSizes), cells }
 }
 
-export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selected, onSelect, renderCell, caption }: {
+export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selected, onSelect, renderCell, caption, head }: {
   rows: readonly MatrixLine[]
   sizes: readonly string[]
   cells: ReadonlyMap<string, T[]>
@@ -35,6 +35,8 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
   onSelect: (ids: string[], checked: boolean) => void
   renderCell: (item: T, position: MatrixPosition) => ReactNode
   caption: string
+  // Shown above the ticks, in the sticky row (the value picker).
+  head?: ReactNode
 }) {
   const idsIn = (predicate: (colorKey: string, size: string) => boolean) => rows.flatMap(row => sizes.flatMap(size => predicate(row.key, size) ? (cells.get(matrixCellKey(row.key, size)) ?? []).map(idOf) : []))
   const allIds = idsIn(() => true)
@@ -71,6 +73,8 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
     return () => element.removeEventListener('keydown', move)
   }, [rowCount, sizeCount])
   return <div className="rr-cr">
+    <div className="rr-cr-sticky">
+    {head}
     <div className="rr-cr-bar">
       <div className="rr-cr-all"><Tick id={allId} checked={all.checked} mixed={all.indeterminate} round label="Tüm varyantları seç" disabled={!allIds.length} onChange={checked => onSelect(allIds, checked)} /><label htmlFor={allId}>Tümünü Seç</label></div>
       {sizes.length > 1 && <div className="rr-cr-sizebar" role="group" aria-label="Beden kısayolu"><span className="rr-cr-sizebar-label">Beden</span>{sizes.map(size => {
@@ -78,6 +82,7 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
         const chip = state(ids)
         return <button key={size} type="button" className={`rr-cr-chip${chip.checked ? ' rr-on' : chip.indeterminate ? ' rr-mixed' : ''}`} aria-pressed={chip.checked ? true : chip.indeterminate ? 'mixed' : false} aria-label={`${size} bedenindeki tüm varyantları seç`} onClick={() => onSelect(ids, !chip.checked)}>{size}</button>
       })}</div>}
+    </div>
     </div>
     <div className="rr-cr-list" ref={list} role="region" aria-label={caption}>
       {rows.map((row, rowIndex) => {

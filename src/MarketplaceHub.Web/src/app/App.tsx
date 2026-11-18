@@ -1,3 +1,4 @@
+import { blurNumberInputOnWheel } from '../shared/number-wheel'
 import type { ApiAnswer } from '../shared/api/api-answer'
 import { memo, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { BrandSymbol } from '../shared/components/BrandSymbol'
@@ -279,10 +280,6 @@ export function App() {
   // session's idle clock alone.
   useEffect(() => trackUserActivity(), [])
   useEffect(() => {
-    const blurNumberInputOnWheel = (event: WheelEvent) => {
-      const target = event.target
-      if (target instanceof HTMLInputElement && target.type === 'number' && document.activeElement === target) target.blur()
-    }
     document.addEventListener('wheel', blurNumberInputOnWheel, { capture: true })
     return () => document.removeEventListener('wheel', blurNumberInputOnWheel, { capture: true })
   }, [])

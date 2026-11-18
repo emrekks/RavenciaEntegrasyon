@@ -92,7 +92,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-acc-b { display: grid; gap: 2px; margin: 0 0 4px 22px; padding-left: 8px; border-left: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pop .rr-logo { width: 24px; height: 24px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px; border: 1px solid var(--rr-line); border-radius: 12px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-m-body { padding-bottom: 16px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-m-body { padding-bottom: 16px; overscroll-behavior: contain; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-stepn { display: grid; place-items: center; width: 22px; height: 22px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line-strong); border-radius: 7px; font-size: 12px; font-weight: 600; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-trigger.rr-sm { width: auto; height: 36px; font-size: 13px; }
