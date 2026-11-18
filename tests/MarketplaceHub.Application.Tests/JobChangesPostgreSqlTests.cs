@@ -55,7 +55,7 @@ public sealed class JobChangesPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var refused = page.Items.Single(x => x.Result == PriceStockSendResults.Rejected);
         Assert.Equal(("Fiyat aralık dışında", JobChangeLineKinds.StockAndPrice, job.Id), (refused.ErrorMessage, refused.Kind, refused.JobId));
         Assert.Equal((6m, 5m, 130m, 120m), (refused.PreviousQuantity!.Value, refused.NewQuantity!.Value, refused.PreviousSalePrice!.Value, refused.NewSalePrice!.Value));
-        Assert.Equal(($"Ürün 1 {seed.Tag}", "Kırmızı / M"), (refused.ProductTitle, refused.OptionText));
+        Assert.Equal(($"Ürün 2 {seed.Tag}", "Kırmızı / M"), (refused.ProductTitle, refused.OptionText));
     }
 
     [PostgreSqlFact]
@@ -252,7 +252,7 @@ public sealed class JobChangesPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         {
             var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Ürün {index} {tag}", Description = "İş detayı", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
             var barcode = $"869{tag}{index}";
-            var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = $"SKU-{tag}-{index}", SkuNormalized = $"SKU-{tag}-{index}", Barcode = barcode, BarcodeNormalized = barcode, ModelCode = $"MDL-{tag}", OptionSignature = index == 2 ? "Kırmızı / M" : $"Renk {index}", CreatedAt = now, UpdatedAt = now };
+            var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = $"SKU-{tag}-{index}", SkuNormalized = $"SKU-{tag}-{index}", Barcode = barcode, BarcodeNormalized = barcode, ModelCode = $"MDL-{tag}-{index}", OptionSignature = index == 2 ? "Kırmızı / M" : $"Renk {index}", CreatedAt = now, UpdatedAt = now };
             var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 5m, Available = 5m };
             var offer = new ChannelOffer
             {
