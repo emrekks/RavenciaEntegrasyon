@@ -3,3 +3,7 @@
 .rr-buyer-tag.rr-return-exchange { color: var(--rr-primary); background: var(--rr-primary-soft); border-color: color-mix(in srgb, var(--rr-primary) 35%, transparent); }
 .rr-ordercell .rr-on-no > .rr-return-exchange { margin-left: 2px; }
 .rr-acts > .rr-return-exchange, .rr-facts .rr-return-exchange { align-self: center; }
+/* The order number line never lets a tag cross the column: when number, copy mark and tag do not fit one line, the tag drops to
+   its own line under the number, left-aligned (a tag is never cut or split). */
+main .rr.rr .rr-ordercell .rr-on-no:has(> .rr-buyer-tag) { flex-wrap: wrap; row-gap: 2px; }
+main .rr.rr .rr-ordercell .rr-on-no > .rr-buyer-tag { flex: none; max-width: 100%; margin-left: 0; white-space: nowrap; }
