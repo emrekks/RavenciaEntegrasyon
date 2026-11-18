@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from '../../shared/components'
 import { useDismissable } from '../../shared/hooks/useDismissable'
@@ -19,15 +19,19 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
   const root = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const [place, setPlace] = useState<CSSProperties | null>(null)
-  useLayoutEffect(() => {
-    if (!open || !root.current) { setPlace(null); return }
-    const bounds = root.current.getBoundingClientRect()
-    const below = window.innerHeight - bounds.bottom - 16
-    const above = bounds.top - 16
-    const openAbove = below < 200 && above > below
-    const maxHeight = Math.max(140, Math.min(280, openAbove ? above : below))
-    setPlace({ left: bounds.left, width: bounds.width, maxHeight, ...(openAbove ? { bottom: window.innerHeight - bounds.top + 6 } : { top: bounds.bottom + 6 }) })
-  }, [open])
+  // Placed from the click, before the list is in the page: placed in a layout effect, the list was drawn twice before its
+  // first paint (once without a place, once with it).
+  const toggle = () => {
+    if (!open && root.current) {
+      const bounds = root.current.getBoundingClientRect()
+      const below = window.innerHeight - bounds.bottom - 16
+      const above = bounds.top - 16
+      const openAbove = below < 200 && above > below
+      const maxHeight = Math.max(140, Math.min(280, openAbove ? above : below))
+      setPlace({ left: bounds.left, width: bounds.width, maxHeight, ...(openAbove ? { bottom: window.innerHeight - bounds.top + 6 } : { top: bounds.bottom + 6 }) })
+    }
+    setOpen(current => !current)
+  }
   useEffect(() => {
     if (!open) return
     const closeOnScroll = (event: Event) => { if (!menu.current?.contains(event.target as Node)) setOpen(false) }
@@ -44,7 +48,7 @@ export function PanelValueMultiSelect({ label, options, selectedIds, assignedEls
   const unmatchedCount = options.filter(option => stateOf(option.id) === 'unmatched').length
   const summary = selected.length === 0 ? 'Panel değeri seçin' : selected.map(option => option.value).join(', ')
   return <div className="panel-value-multi" ref={root}>
-    <button type="button" className={`panel-value-multi-trigger${selected.length ? '' : ' is-empty'}`} aria-label={`${label} panel değerleri`} aria-haspopup="listbox" aria-expanded={open} disabled={disabled} onClick={() => setOpen(current => !current)}>
+    <button type="button" className={`panel-value-multi-trigger${selected.length ? '' : ' is-empty'}`} aria-label={`${label} panel değerleri`} aria-haspopup="listbox" aria-expanded={open} disabled={disabled} onClick={toggle}>
       <span title={summary}>{summary}</span>
       {selected.length > 1 && <b>{selected.length}</b>}
       <UiIcon name="chevronDown" size={16} />
