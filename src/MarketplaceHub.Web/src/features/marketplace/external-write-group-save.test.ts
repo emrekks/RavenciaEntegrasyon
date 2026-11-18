@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const state = vi.hoisted(() => ({ groupRoute: true, calls: [] as Array<{ path: string; ifMatch: string | null; body: unknown }>, open: 0, maxOpen: 0 }))
+const state = vi.hoisted(() => ({ groupRoute: true, groupCode: undefined as string | undefined, calls: [] as Array<{ path: string; ifMatch: string | null; body: unknown }>, open: 0, maxOpen: 0 }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../shared/api')>()
@@ -8,7 +8,7 @@ vi.mock('../../shared/api', async importOriginal => {
     ...original,
     hubApi: vi.fn(async (path: string, init?: RequestInit) => {
       state.calls.push({ path, ifMatch: new Headers(init?.headers).get('If-Match'), body: JSON.parse(String(init?.body)) })
-      if (path.endsWith('/external-write-group') && !state.groupRoute) throw new original.ApiRequestError('İşlem tamamlanamadı (404).', 404)
+      if (path.endsWith('/external-write-group') && !state.groupRoute) throw new original.ApiRequestError(state.groupCode ?? 'İşlem tamamlanamadı (404).', 404, state.groupCode)
       state.open++; state.maxOpen = Math.max(state.maxOpen, state.open)
       await new Promise(resolve => setTimeout(resolve, 5))
       state.open--
@@ -24,7 +24,7 @@ const pair = [
   { resourceType: 'STOCK_WRITE', version: 4, intervalSeconds: 0, overlapSeconds: 0, jitterSeconds: 0 }
 ]
 
-beforeEach(() => { state.groupRoute = true; state.calls = []; state.open = 0; state.maxOpen = 0 })
+beforeEach(() => { state.groupRoute = true; state.groupCode = undefined; state.calls = []; state.open = 0; state.maxOpen = 0 })
 
 describe('saveExternalWriteGroup', () => {
   it('sends the pair as one request with each version', async () => {
@@ -38,5 +38,13 @@ describe('saveExternalWriteGroup', () => {
     await saveExternalWriteGroup('c1', pair, true)
     expect(state.calls.slice(1).map(call => [call.path, call.ifMatch])).toEqual([['/connections/c1/sync-policies/PRICE_WRITE', '"v3"'], ['/connections/c1/sync-policies/STOCK_WRITE', '"v4"']])
     expect(state.maxOpen).toBe(1)
+  })
+
+  // A 404 the API wrote itself (the connection is gone) is an answer, not a missing route: no policy PUT follows.
+  it('a 404 carrying a problem code does not fall back to the single-policy PUTs', async () => {
+    state.groupRoute = false
+    state.groupCode = 'RESOURCE_NOT_FOUND'
+    await expect(saveExternalWriteGroup('c1', pair, true)).rejects.toMatchObject({ status: 404, code: 'RESOURCE_NOT_FOUND' })
+    expect(state.calls.map(call => call.path)).toEqual(['/connections/c1/external-write-group'])
   })
 })

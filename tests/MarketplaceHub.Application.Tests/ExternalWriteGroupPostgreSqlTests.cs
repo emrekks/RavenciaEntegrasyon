@@ -113,6 +113,27 @@ public sealed class ExternalWriteGroupPostgreSqlTests(PostgreSqlTenantIsolationF
         Assert.Equal(2, stock.Version);
     }
 
+    // A conflict on the policy row itself (another tab switched it meanwhile) is the user's: it is never retried, and
+    // nothing of the group is saved.
+    [PostgreSqlFact]
+    public async Task APolicySavedMeanwhile_FailsTheGroupWithoutARetry()
+    {
+        var (tenant, connection, offer) = await SeedAsync("group-policy-race", priceVersion: 1, stockVersion: 1);
+        var stock = (await PoliciesAsync(tenant, connection)).Single(x => x.ResourceType == MarketplaceExternalWritePolicies.Stock);
+        var interceptor = new ConcurrentPolicyWrite(stock.Id);
+
+        await using var db = ContextWith(interceptor);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Service(db).UpdateExternalWriteGroupAsync(tenant.Id, connection.Id, Group(true, (MarketplaceExternalWritePolicies.Price, 1), (MarketplaceExternalWritePolicies.Stock, 1)), CancellationToken.None));
+
+        Assert.Equal(1, interceptor.Saves);
+        var policies = await PoliciesAsync(tenant, connection);
+        Assert.All(policies, policy => Assert.False(policy.Enabled));
+        Assert.Equal(1, policies.Single(x => x.ResourceType == MarketplaceExternalWritePolicies.Price).Version);
+        var stored = await OfferAsync(offer);
+        Assert.Null(stored.LastPriceHash);
+        Assert.Equal(1, stored.Version);
+    }
+
     private static UpdateExternalWriteGroupCommand Group(bool enabled, params (string ResourceType, long Version)[] policies) =>
         new(enabled, policies.Select(x => new ExternalWriteGroupPolicy(x.ResourceType, x.Version)).ToList());
 
@@ -167,6 +188,20 @@ public sealed class ExternalWriteGroupPostgreSqlTests(PostgreSqlTenantIsolationF
 
     private static IConfiguration WritesOn() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
+
+    // At every save of the context another session saves the policy row first, as a second tab would.
+    private sealed class ConcurrentPolicyWrite(Guid policyId) : SaveChangesInterceptor
+    {
+        public int Saves { get; private set; }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Saves++;
+            await using var other = new PostgreSqlTenantIsolationFixture().CreateContext();
+            await other.ConnectionSyncPolicies.Where(x => x.Id == policyId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+            return result;
+        }
+    }
 
     // Before the first save of the context, another session saves the offer (its version moves on), as the second
     // parallel PUT of the pair did on live.
