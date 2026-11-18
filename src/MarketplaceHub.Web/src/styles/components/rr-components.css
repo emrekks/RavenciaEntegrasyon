@@ -1226,12 +1226,12 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 142px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 314px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 92px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 104px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 162px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 216px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 216px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 168px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 112px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 130px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 12px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 12px; }
 /* owner, 18 Nov: status labels and the remaining time stay on one line; the reason and its customer note take two lines each */
