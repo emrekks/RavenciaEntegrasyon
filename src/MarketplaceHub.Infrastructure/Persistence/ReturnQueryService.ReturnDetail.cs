@@ -48,6 +48,8 @@ internal sealed partial class ReturnQueryService
             ReturnClaimStatus.ActionRequired => Array.Empty<string>(),
             _ => await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken)
         };
+        // A Trendyol exchange request is approved in Trendyol's seller panel only (ReturnCustomerRequestPolicy.ApprovalBlocked).
+        if (ReturnCustomerRequestPolicy.ApprovalBlocked(platformCode, claim.CustomerRequest)) actions = actions.Where(action => action != "APPROVE").ToArray();
         var approvedAt = claim.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
             ? await db.ReturnDecisions.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.Action == "APPROVE" && x.Status == "SUCCEEDED")

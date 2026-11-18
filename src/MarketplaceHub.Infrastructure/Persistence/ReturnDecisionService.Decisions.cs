@@ -65,6 +65,8 @@ internal sealed partial class ReturnDecisionService
         var preApprovalConfirm = action == "PREAPPROVAL_CONFIRM";
         var awaitingPreApproval = isHepsiburada && HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(claim.RawStatus);
         if (action is not ("APPROVE" or "REJECT") && !preApprovalConfirm) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE, PREAPPROVAL_CONFIRM veya REJECT olmalıdır.");
+        if (action == "APPROVE" && ReturnCustomerRequestPolicy.ApprovalBlocked(platformCode, claim.CustomerRequest))
+            return ServiceResult<ReturnDetailView>.Fail(ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode, ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedMessage, 409);
         var isN11 = IsN11(platformCode);
         var wholeClaim = ReturnDecisionScope.IsWholeClaim(platformCode);
         if (action == "REJECT" && isN11 && N11ReturnDenyRule.Problem(command.ReasonCode, command.Explanation, command.ReturnShipment?.ShipmentCompanyId, command.ReturnShipment?.TrackingNumber) is { } denyProblem)

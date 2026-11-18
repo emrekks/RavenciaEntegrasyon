@@ -160,6 +160,40 @@ describe('returns page', () => {
 
   // Owner, 18 Nov 2026 (Trendyol 11805950639, reason WRONGCHANGEREQUEST): an exchange request reads "Değişim" beside the
   // order number; a refund or an unknown request shows no tag.
+  // Owner, 18 Nov 2026: Trendyol handles an exchange request with "Değişim Yap" in its seller panel, an action its API
+  // does not document; the panel offers no approval for it and keeps it out of the bulk decision. Hepsiburada's exchange
+  // is approved here as before (Para İadesi / Değişim choice).
+  it('offers no approval and no bulk selection for a Trendyol exchange request, and keeps both for Hepsiburada', async () => {
+    const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
+    const original = hubApi.getMockImplementation()!
+    hubApi.mockImplementation(async (path: string) => {
+      if (!path.startsWith('/returns?')) return original(path)
+      return { items: [claim('7', { customerRequest: 'CHANGE', reasonCode: 'WRONGCHANGEREQUEST' }), claim('8', { customerRequest: 'CHANGE', platformCode: 'HEPSIBURADA', platformDisplayName: 'Hepsiburada', rawStatus: 'AwaitingAction' })], nextCursor: null, hasMore: false, totalCount: 2 }
+    })
+    try {
+      const { host } = renderPage('/returns?status=ACTION_REQUIRED')
+      await waitFor(() => host.textContent!.includes('#8'))
+      const rows = [...host.querySelectorAll<HTMLTableRowElement>('tbody tr')]
+      const box = (row: HTMLElement) => row.querySelector<HTMLInputElement>('.rr-ordercell input.rr-cb')!
+      expect(box(rows[0]).disabled).toBe(true)
+      expect(box(rows[0]).title).toContain('Değişim Yap')
+      expect(box(rows[1]).disabled).toBe(false)
+      const menu = (row: HTMLElement) => {
+        act(() => { byText<HTMLButtonElement>(row, 'button.rr-trigger', 'İşlemler').click() })
+        const items = [...host.ownerDocument.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map(item => ({ text: item.textContent, disabled: item.disabled }))
+        act(() => { byText<HTMLButtonElement>(row, 'button.rr-trigger', 'İşlemler').click() })
+        return items
+      }
+      const trendyolMenu = menu(rows[0])
+      expect(trendyolMenu.some(item => item.text === 'İadeyi Onayla')).toBe(false)
+      expect(trendyolMenu.find(item => item.text === 'Değişim Trendyol Panelinde')?.disabled).toBe(true)
+      expect(trendyolMenu.some(item => item.text === 'İade Ret Talebi')).toBe(true)
+      expect(menu(rows[1]).find(item => item.text === 'İadeyi Onayla')?.disabled).toBe(false)
+    } finally {
+      hubApi.mockImplementation(original)
+    }
+  })
+
   it('tags an exchange request "Değişim" in the order cell and nothing on a refund or an unknown request', async () => {
     const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
     const original = hubApi.getMockImplementation()!

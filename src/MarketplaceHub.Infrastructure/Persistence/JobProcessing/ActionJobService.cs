@@ -237,6 +237,14 @@ internal sealed class ActionJobService(
             evidenceFiles.Add(new(asset.OriginalNameSafe ?? $"evidence-{asset.Id:N}", asset.MimeType, bytes)); totalBytes += bytes.LongLength;
         }
         var existingEffect = await effectGuard.FindAsync(tenantId, MarketplaceJobTypes.ReturnAction, decision.IdempotencyKey, cancellationToken);
+        // A Trendyol exchange request is approved in Trendyol's seller panel only: an approval queued before the claim was
+        // known as one is not sent (ReturnCustomerRequestPolicy.ApprovalBlocked); one already sent is left to its effect.
+        if (existingEffect is null && decision.Action == "APPROVE"
+            && ReturnCustomerRequestPolicy.ApprovalBlocked(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), claim.CustomerRequest))
+        {
+            decision.Status = "FAILED"; decision.ErrorCode = ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.Blocked(ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode, ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedMessage));
+        }
         var gate = ExternalEffectGuard.Gate(existingEffect);
         if (gate == ExternalEffectGate.Open) { decision.Status = "MANUAL_REVIEW"; decision.ErrorCode = "EXTERNAL_EFFECT_AMBIGUOUS"; decision.CompletedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); throw new JobProcessingException(JobExecutionResult.ManualReview(decision.ErrorCode, "Önceki iade aksiyonunun sonucu kesinleştirilemedi; tekrar gönderim engellendi.")); }
         // Q-2: a record closed as unresolved does not make the decision submitted. The claim is read once, and

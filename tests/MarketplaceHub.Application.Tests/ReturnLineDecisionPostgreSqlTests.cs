@@ -103,6 +103,40 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Owner, 18 Nov 2026 (11805950639): a Trendyol exchange request is approved with "Değişim Yap" in Trendyol's seller
+    // panel; the API documents approveClaimLineItems for returns only. The detail offers no approval, a direct approval
+    // is refused with its own code and nothing reaches Trendyol; the rejection (createClaimIssue) stays.
+    [PostgreSqlFact]
+    public async Task A_Trendyol_exchange_request_is_never_approved_from_the_panel()
+    {
+        var seed = await SeedAsync("rl-exch");
+        var port = new LineReturnPort("RL-CLAIM", seed.ExternalLineIds);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.CustomerRequest, ReturnCustomerRequestPolicy.Change));
+            await using (var db = fixture.CreateContext())
+            {
+                var detail = (await Service(db, port).ReturnAsync(seed.TenantId, seed.ClaimId, CancellationToken.None)).Value!;
+                Assert.DoesNotContain("APPROVE", detail.AllowedActions);
+                Assert.Contains("REJECT", detail.AllowedActions);
+                var refused = await Service(db, port).ProcessReturnActionInstantAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, await VersionAsync(seed.ClaimId),
+                    new("APPROVE", null, null, [], null), "rl-exch:approve", "rl-exch", CancellationToken.None);
+                Assert.Equal(ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode, refused.Error!.Code);
+            }
+            Assert.Empty(port.Commands);
+            await using (var verify = fixture.CreateContext())
+            {
+                Assert.False(await verify.ReturnDecisions.AnyAsync(x => x.TenantId == seed.TenantId));
+                Assert.Equal(ReturnClaimStatus.ActionRequired, (await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).Status);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid ClaimId, Guid[] LineIds, string[] ExternalLineIds, Guid[] InventoryItemIds);
 
     private MarketplaceSalesService Service(AppDbContext db, IReturnPort port) =>

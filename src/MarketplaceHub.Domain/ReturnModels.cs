@@ -241,6 +241,18 @@ public static class ReturnCustomerRequestPolicy
     // replacement package Trendyol sends for the claim (getClaims replacementOutboundpackageinfo, "Değişim giden paket
     // bilgisi (değişim yoksa boş)", trendyol-api-son.md:17452). Anything else is unknown (null): getClaims names no
     // refund request either, and the reason's text is never searched.
+    // A Trendyol exchange request is handled in Trendyol's seller panel ("Değişim Yap"), an action its API does not
+    // document: approveClaimLineItems (PUT claims/{claimId}/items/approve) is documented for returns only
+    // (trendyol-api-son.md "İade Siparişleri Onaylama"), so what it would do to an exchange is unknown and the panel never
+    // sends it (owner's screenshot of 11805950639, 18 Nov 2026). The seller's issue (createClaimIssue) stays: Trendyol
+    // reviews it, and its reasons name exchange cases (2101).
+    public const string TrendyolExchangeApproveBlockedCode = "TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL";
+    public const string TrendyolExchangeApproveBlockedMessage = "Değişim talebi Trendyol satıcı panelinden “Değişim Yap” ile işlenir; panelden iade onayı gönderilmez.";
+
+    public static bool ApprovalBlocked(string? platformCode, string? customerRequest) =>
+        string.Equals(platformCode?.Trim(), "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(customerRequest?.Trim(), Change, StringComparison.OrdinalIgnoreCase);
+
     public static string? FromTrendyol(string? reasonCode, bool hasReplacementPackage) =>
         hasReplacementPackage || string.Equals(reasonCode?.Trim(), TrendyolExchangeReasonCode, StringComparison.OrdinalIgnoreCase) ? Change : null;
 
