@@ -1,8 +1,7 @@
 /* The quick edit windows' variant list: a value tab strip, then one line per colour with its sizes side by side. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-note { color: var(--rr-muted); font-size: 12px; }
 /* "Düzenlenen Değer": one dropdown (grouped by marketplace), the Özel Fiyat switch beside it. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 280px; max-width: 360px; min-width: 240px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 0 0 240px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld .pm-select, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld .pm-trigger { width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-switchrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 36px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-trig, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-opt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
@@ -21,7 +20,12 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-mixed { border-style: dashed; border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
 /* One scroll in the window: the list runs its full height and the window body scrolls; the value picker and the ticks stay
    at the top of the body. Each colour is one row, a thin line between colours. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sticky { position: sticky; top: 0; z-index: 4; display: grid; gap: 8px; margin: -8px 0 0; padding: 8px 0; background: var(--rr-surface); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sticky { position: sticky; top: 0; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: -8px 0 0; padding: 8px 0; background: var(--rr-surface); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-mx-tabs, .rr-cr-bar) { display: contents; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-all { order: 1; min-height: 36px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar { order: 2; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-switchrow { order: 3; margin-left: auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-trigk { margin-right: 6px; color: var(--rr-muted); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { overflow: clip; border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { display: grid; grid-template-columns: var(--cr-color, 168px) minmax(0, 1fr); align-items: center; gap: 8px 18px; padding: 3px 14px 3px 12px; background: var(--rr-surface); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
@@ -40,6 +44,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { display: block; width: 76px; color: var(--rr-subtle); line-height: 36px; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 100%; }
   /* A phone: the colour on its own line above, its sizes wrapping underneath. */
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 10px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { gap: 6px 10px; }
