@@ -361,14 +361,14 @@ html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-
    gap on its left and right (the row checkbox sits in the order cell's 12px gap, the order content 28px after it), a head's
    filter button follows its label, and the Alıcı column is wide enough for a typical full name on one line. */
 @media (min-width: 1025px) {
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 1fr) 140px 148px 164px 164px 112px 128px; }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: var(--ir-pl, 12px) var(--ir-pr, 12px); }
-.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :first-child { --ir-ji: start; --ir-jc: start; --ir-ta: left; }
-.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :last-child { --ir-pr: 12px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter:not(:first-child) { --ir-pl: 36px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 1fr) 136px 140px 160px 180px 112px 124px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: var(--ir-pl, 10px) var(--ir-pr, 10px); }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :first-child { --ir-pl: 12px; --ir-ji: start; --ir-jc: start; --ir-ta: left; }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :last-child { --ir-pr: 10px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter:not(:first-child) { --ir-pl: 34px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(.order-column-filter, .invoice-reference-platform-heading) { gap: 0; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { position: static; transform: none; }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: var(--ir-pl, 12px) var(--ir-pr, 12px); justify-items: var(--ir-ji, center); justify-content: var(--ir-jc, center); text-align: var(--ir-ta, center); }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: var(--ir-pl, 10px) var(--ir-pr, 10px); justify-items: var(--ir-ji, center); justify-content: var(--ir-jc, center); text-align: var(--ir-ta, center); }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > input.invoice-reference-select { left: 12px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > :not(input) { margin-left: 28px; }
 }
