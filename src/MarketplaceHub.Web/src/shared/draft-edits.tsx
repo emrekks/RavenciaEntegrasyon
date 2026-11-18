@@ -42,9 +42,12 @@ export function useUnsavedChangesGuard(active: boolean) {
   }, [active])
 }
 
-// "N Değişiklik · Vazgeç · Kaydet", shown only while a draft exists and sticking to the bottom of its window. Kaydet
-// first shows one confirmation line (what will change, where it goes); leaving with a draft asks in the same bar.
-export function DraftSaveBar({ count, busy = false, invalid = '', summary, notice, leaving = false, onSave, onDiscard, onStay, onLeave }: {
+// The save bar of every in-place editor. In a window it is the window's own foot (variant "foot", the one place to save): the state
+// on the left ("3 Değişiklik · Kaydedilmedi", "Değişiklik Yok"), "Vazgeç" (drops the drafts; "Kapat" when there are none) and the
+// primary "Kaydet" on the right. Kaydet first shows one confirmation (what will change, where it goes); leaving with a draft asks
+// in the same place. On a page (variant "strip") it is a sticky strip with the same words.
+export function DraftSaveBar({ variant = 'strip', count, busy = false, invalid = '', summary, notice, leaving = false, onSave, onDiscard, onStay, onLeave, onClose }: {
+  variant?: 'strip' | 'foot'
   count: number
   busy?: boolean
   // Why Kaydet is off (a draft that does not pass its checks); empty when it can be saved.
@@ -56,24 +59,24 @@ export function DraftSaveBar({ count, busy = false, invalid = '', summary, notic
   onDiscard: () => void
   onStay?: () => void
   onLeave?: () => void
+  // "Kapat" while there is nothing to discard.
+  onClose?: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
   useEffect(() => { if (!count) setConfirming(false) }, [count])
-  if (!count) return null
-  if (leaving) {
-    return <div className="rv-draftbar rv-draftbar-leave" role="alertdialog" aria-label="Kaydedilmemiş değişiklikler var" aria-describedby="rv-draftbar-leave-text">
-      <span id="rv-draftbar-leave-text" className="rv-draftbar-text"><b>Kaydedilmemiş değişiklikler var.</b> Kapatırsanız {count} değişiklik silinir.</span>
-      <span className="rv-draftbar-actions"><button type="button" className="rr-btn" onClick={onStay}>Düzenlemeye Dön</button><button type="button" className="rr-btn rr-danger" onClick={onLeave}>Değişiklikleri Sil ve Kapat</button></span>
-    </div>
+  const foot = variant === 'foot'
+  if (!count && !foot) return null
+  const wrap = (text: ReactNode, actions: ReactNode, tone = '') => foot
+    ? <><span className="rr-note rv-draftbar-text" role="status">{text}</span>{actions}</>
+    : <div className={`rv-draftbar${tone}`} role="region" aria-label="Kaydedilmemiş değişiklikler"><span className="rv-draftbar-text">{text}</span><span className="rv-draftbar-actions">{actions}</span></div>
+  if (leaving && count) {
+    return wrap(<><b>Kaydedilmemiş değişiklikler var.</b> Kapatırsanız {count} değişiklik silinir.</>, <><button type="button" className="rr-btn" onClick={onStay}>Düzenlemeye Dön</button><button type="button" className="rr-btn rr-danger" onClick={onLeave}>Değişiklikleri Sil ve Kapat</button></>, ' rv-draftbar-leave')
   }
-  if (confirming) {
-    return <div className="rv-draftbar rv-draftbar-confirm" role="alertdialog" aria-label="Değişiklikleri kaydet" aria-describedby="rv-draftbar-confirm-text">
-      <span id="rv-draftbar-confirm-text" className="rv-draftbar-text">{summary}{notice ? <small>{notice}</small> : null}</span>
-      <span className="rv-draftbar-actions"><button type="button" className="rr-btn" onClick={() => setConfirming(false)} disabled={busy}>Geri Dön</button><button type="button" className="rr-btn rr-primary" disabled={busy} onClick={() => { setConfirming(false); onSave() }}>Onayla ve Kaydet</button></span>
-    </div>
+  if (confirming && count) {
+    return wrap(<>{summary}{notice ? <small>{notice}</small> : null}</>, <><button type="button" className="rr-btn" onClick={() => setConfirming(false)} disabled={busy}>Geri Dön</button><button type="button" className="rr-btn rr-primary rv-draftbar-save" disabled={busy} onClick={() => { setConfirming(false); onSave() }}>Onayla ve Kaydet</button></>, ' rv-draftbar-confirm')
   }
-  return <div className="rv-draftbar" role="region" aria-label="Kaydedilmemiş değişiklikler">
-    <span className="rv-draftbar-text"><b>{count} Değişiklik</b><small>{invalid || 'Kaydedilmedi'}</small></span>
-    <span className="rv-draftbar-actions"><button type="button" className="rr-btn" onClick={onDiscard} disabled={busy}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={busy || Boolean(invalid)} title={invalid || undefined} onClick={() => setConfirming(true)}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button></span>
-  </div>
+  return wrap(
+    count ? <><b>{count} Değişiklik</b> · {invalid || 'Kaydedilmedi'}</> : <>Değişiklik Yok</>,
+    <><button type="button" className="rr-btn" onClick={count ? onDiscard : onClose} disabled={busy}>{count ? 'Vazgeç' : 'Kapat'}</button><button type="button" className="rr-btn rr-primary rv-draftbar-save" disabled={busy || !count || Boolean(invalid)} title={invalid || undefined} onClick={() => setConfirming(true)}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button></>
+  )
 }

@@ -45,9 +45,10 @@ const valueOptions = () => Array.from(document.body.querySelectorAll<HTMLElement
 // Opens the "Düzenlenen Değer" list and picks a row: 'Stok', or a marketplace group and the row under it ('Satış' / 'Liste' / none for a single row).
 async function pickValue(group: string, row?: string) {
   await act(async () => { valueTrigger().click() })
-  const options = valueOptions()
-  const at = options.findIndex(option => option.textContent?.startsWith(group))
-  const target = row === undefined ? options[at + (options[at]?.getAttribute('aria-disabled') === 'true' || options[at]?.hasAttribute('disabled') ? 1 : 0)] : options.slice(at + 1).find(option => option.textContent?.startsWith(row))
+  const children = Array.from(document.body.querySelectorAll<HTMLElement>('.pm-pop > *'))
+  const at = children.findIndex(item => item.textContent?.startsWith(group))
+  // Stok is an option of its own; a marketplace is a heading, its rows follow it.
+  const target = children[at].getAttribute('role') === 'option' ? children[at] : row === undefined ? children[at + 1] : children.slice(at + 1).find(item => item.getAttribute('role') === 'option' && item.textContent?.startsWith(row))
   await act(async () => { target!.click() })
 }
 
@@ -73,35 +74,35 @@ describe('ProductQuickEditModal variant selection', () => {
     for (let round = 0; round < 3; round++) {
       await click(groupBox('Bej'))
       expect(groupBox('Bej').checked).toBe(true)
-      expect(note()).toContain('2 varyant')
+      expect(note()).toContain('2 seçili varyanta')
       await click(groupBox('Siyah'))
-      expect(note()).toContain('4 varyant')
+      expect(note()).toContain('4 seçili varyanta')
       await click(groupBox('Bej'))
       expect(groupBox('Bej').checked).toBe(false)
       await click(groupBox('Siyah'))
-      expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
+      expect(note()).toContain('Seçim yok: 4 varyantın tümüne')
     }
     expect(errors).toEqual([])
   })
 
   it('ticks a size in every colour, a single variant and all of them; a half-ticked row shows the mixed state', async () => {
     await render()
-    const columnBox = (size: string) => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
+    const columnBox = (size: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
     const cellBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} varyantını seç"]`)!
     const corner = document.body.querySelector<HTMLInputElement>('input[aria-label="Tüm varyantları seç"]')!
     await click(columnBox('XL'))
-    expect(note()).toContain('2 varyant seçildi')
+    expect(note()).toContain('2 seçili varyanta')
     expect(groupBox('Bej').indeterminate).toBe(true)
     expect(groupBox('Bej').checked).toBe(false)
     await click(cellBox('Bej · S'))
     expect(groupBox('Bej').checked).toBe(true)
-    expect(note()).toContain('3 varyant seçildi')
+    expect(note()).toContain('3 seçili varyanta')
     await click(corner)
-    expect(note()).toContain('4 varyant seçildi')
+    expect(note()).toContain('4 seçili varyanta')
     expect(corner.checked).toBe(true)
     await click(corner)
-    expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
-    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).map(button => button.textContent)).toEqual(['Tümüne Uygula'])
+    expect(note()).toContain('Seçim yok: 4 varyantın tümüne')
+    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).map(button => button.textContent)).toEqual(['Uygula'])
     expect(errors).toEqual([])
   })
 
@@ -131,13 +132,22 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(3)
   })
 
+  it('the list frame starts with a header row on the rows own grid: a corner tick and one tick per size', async () => {
+    await render()
+    const head = document.body.querySelector('.rr-cr-list > .rr-cr-hrow')!
+    expect(head.querySelector('.rr-cr-hcolor')?.textContent).toBe('Tümünü Seç')
+    expect(Array.from(head.querySelectorAll('.rr-cr-hpair .rr-cr-size span')).map(item => item.textContent)).toEqual(['S', 'XL'])
+    expect(head.querySelectorAll('.rr-cr-hpair input.rr-cr-tick')).toHaveLength(2)
+    expect(document.body.querySelector('.rr-cr-bar, .rr-cr-chip, .rr-cr-sizebar')).toBeNull()
+  })
+
   it('a size label ticks its variant and turns the pair purple', async () => {
     await render()
-    const pair = document.body.querySelector('.rr-cr-pair')!
+    const pair = document.body.querySelector('.rr-cr-row:not(.rr-cr-hrow) .rr-cr-pair')!
     expect(pair.classList.contains('rr-on')).toBe(false)
     await click(pair.querySelector<HTMLInputElement>('input.rr-cr-tick')!)
     expect(pair.classList.contains('rr-on')).toBe(true)
-    expect(note()).toContain('1 varyant seçildi')
+    expect(note()).toContain('1 seçili varyanta')
   })
 
   it('moves between the boxes with the arrow keys and Enter, skipping dashes', async () => {
@@ -174,9 +184,14 @@ describe('ProductQuickEditModal price mode tabs', () => {
     expect(valueTrigger().textContent).toContain('Panel Satış Fiyatı')
     expect(document.body.querySelector('[role="tab"], .rr-mx-tablist')).toBeNull()
     await act(async () => { valueTrigger().click() })
+    const headings = Array.from(document.body.querySelectorAll('.pm-pop > .rr-opt-group')).map(item => item.textContent)
+    expect(headings).toEqual(expect.arrayContaining(['Panel', 'Trendyol', 'N11']))
+    // A heading is not an option: no circle, no option role, so the arrow keys skip it.
+    expect(document.body.querySelector('.pm-pop > .rr-opt-group .rr-radio')).toBeNull()
+    expect(document.body.querySelector('.pm-pop > .rr-opt-group[role="option"], .pm-pop > button.rr-opt-group')).toBeNull()
     const texts = valueOptions().map(option => option.textContent)
     expect(texts[0]).toBe('Stok')
-    expect(texts.filter(text => text === 'Panel' || text === 'Trendyol' || text === 'N11')).toEqual(['Panel', 'Trendyol', 'N11'])
+    expect(texts).not.toContain('Panel')
     expect(texts).toContain('Liste Fiyatı')
     // One box per variant, whatever the value.
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(4)
@@ -195,7 +210,7 @@ describe('ProductQuickEditModal price mode tabs', () => {
     await render()
     expect(valueTrigger().textContent).toContain('Stok')
     await act(async () => { valueTrigger().click() })
-    expect(valueOptions().some(option => option.textContent === 'Panel')).toBe(true)
+    expect(Array.from(document.body.querySelectorAll('.pm-pop > .rr-opt-group')).some(item => item.textContent === 'Panel')).toBe(true)
   })
 })
 
@@ -234,7 +249,7 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
     })
     await act(async () => { document.body.querySelector<HTMLFormElement>('#product-quick-edit-form')!.requestSubmit() })
     expect(calls).toEqual([])
-    const bar = () => document.body.querySelector('.rv-draftbar')!
+    const bar = () => document.body.querySelector('.rr-m-foot')!
     expect(bar().textContent).toContain('3 Değişiklik')
     await click(Array.from(bar().querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Kaydet')!)
     expect(calls).toEqual([])

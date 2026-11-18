@@ -89,6 +89,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop.rr-static { position: static; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop .rr-ph { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 8px; color: var(--rr-muted); font-size: 12px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; color: var(--rr-ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 13px; }
+/* A group heading of a grouped list: small, semi-bold, secondary text; a thin line above it (not the first); no circle, no hover. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt-group { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 10px 10px 4px; color: var(--rr-muted); border-top: 1px solid var(--rr-line); font-size: 12px; font-weight: 600; cursor: default; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt-group:first-child, :is(main .rr.rr, .rr-layer.rr-layer) .rr-ph + .rr-opt-group { margin-top: 0; border-top: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:hover { background: var(--rv-hover, var(--rr-soft)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: var(--rr-primary-soft); color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-grow { flex: 1; }
@@ -139,6 +142,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; background: var(--rr-raised); border-top: 1px solid var(--rr-line); border-radius: 0 0 14px 14px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot .rr-note { flex: 1 1 0; min-width: 0; color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot .rr-note b { color: var(--rr-ink); font-weight: 600; }
+/* A window title is one line: cut with an ellipsis (the full title is its tooltip), never pushing the close cross. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-m-head > div { min-width: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-m-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts > div { display: grid; gap: 4px; align-content: start; justify-items: start; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--rr-line); box-shadow: 0 -1px 0 var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts small { color: var(--rr-subtle); font-size: 12px; }

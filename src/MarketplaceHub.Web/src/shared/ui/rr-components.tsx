@@ -357,7 +357,7 @@ export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onC
   return createPortal(<div className={['rr-layer', layerClass, closing ? 'rr-closing' : ''].filter(Boolean).join(' ')}>
     <div className="rr-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close.current() }}>
       <div ref={dialog} tabIndex={-1} style={modalStyle} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role={role} aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)} aria-describedby={describedBy}>
-        <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : (label ?? 'Pencere')}>{hint}</TitleHint> : null}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
+        <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2 title={typeof title === 'string' ? title : undefined}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : (label ?? 'Pencere')}>{hint}</TitleHint> : null}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
         <div className={`rr-m-body${flush ? ' rr-flush' : ''}`}>{children}</div>
         {foot && <footer className={closeOnlyFoot(foot) ? 'rr-m-foot rr-m-foot-close-only' : 'rr-m-foot'}>{foot}</footer>}
       </div>
