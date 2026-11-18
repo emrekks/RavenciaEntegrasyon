@@ -158,6 +158,28 @@ describe('returns page', () => {
     expect(cargoCell.querySelector('a')).toBeNull()
   })
 
+  // Owner, 18 Nov 2026 (Trendyol 11805950639, reason WRONGCHANGEREQUEST): an exchange request reads "Değişim" beside the
+  // order number; a refund or an unknown request shows no tag.
+  it('tags an exchange request "Değişim" in the order cell and nothing on a refund or an unknown request', async () => {
+    const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
+    const original = hubApi.getMockImplementation()!
+    hubApi.mockImplementation(async (path: string) => {
+      if (!path.startsWith('/returns?')) return original(path)
+      return { items: [claim('7', { customerRequest: 'CHANGE', reasonCode: 'WRONGCHANGEREQUEST' }), claim('8', { customerRequest: 'REFUND' }), claim('9', { customerRequest: null })], nextCursor: null, hasMore: false, totalCount: 3 }
+    })
+    try {
+      const { host } = renderPage()
+      await waitFor(() => host.textContent!.includes('#9'))
+      const cells = [...host.querySelectorAll<HTMLElement>('.rr-ordercell')]
+      expect(cells).toHaveLength(3)
+      expect(cells[0].querySelector('.rr-return-exchange')?.textContent).toBe('Değişim')
+      expect(cells[1].querySelector('.rr-return-exchange')).toBeNull()
+      expect(cells[2].querySelector('.rr-return-exchange')).toBeNull()
+    } finally {
+      hubApi.mockImplementation(original)
+    }
+  })
+
   it('continues with the cursor and jumps to a page by number', async () => {
     const { host } = renderPage()
     await waitFor(() => host.textContent?.includes('#2'))

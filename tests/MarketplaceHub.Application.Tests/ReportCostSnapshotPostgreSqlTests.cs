@@ -118,6 +118,8 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
                 var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, OrderId = seed.Order.Id, ExternalClaimId = $"claim-{Guid.NewGuid():N}", Status = ReturnClaimStatus.Approved, RawStatus = "Accepted", CustomerRequest = request, CreatedAt = ReportNow, UpdatedAt = ReportNow };
                 await using (var db = fixture.CreateContext())
                 {
+                    // Only Hepsiburada's exchanges take no units back (ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform, 18 Nov 2026).
+                    await db.PlatformConnections.Where(row => row.Id == seed.Connection.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.PlatformCode, ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform));
                     db.ReturnClaims.Add(claim);
                     db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = seed.Line.Id, ExternalLineId = "claim-line-1", Quantity = 1m, RawStatus = "Accepted" });
                     await db.SaveChangesAsync();
