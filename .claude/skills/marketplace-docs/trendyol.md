@@ -511,3 +511,11 @@ packages only, no claim events.
   TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL; no bulk selection; a queued approval is not sent). createClaimIssue stays.
 - An open claim is read again by RETURN_STATUS_SYNC; a closed one only while RETURN_SYNC / RETURN_RECONCILIATION
   (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.
+- A made exchange comes back as **Rejected** (owner, 18 Nov 2026: 11805950639 exchanged with "Değişim Yap", live
+  Status/RawStatus Rejected, RejectedPackageState AWAITING_CARGO, 13:55Z). Read as closed by exchange
+  (`ResolvedWith` CHANGE, `ReturnCustomerRequestPolicy.ResolvedWithFromTrendyol`) only from explicit data: a replacement
+  package, or a claim item's `trendyolClaimItemReason.id` 1851 "Ürün değişimi yapıldı" (:7160) / 2006 "Analiz Değişim"
+  (:7021). Then the panel shows "Değişim Onaylandı" and leaves it out of the refused-return cards (Kargolanmayı
+  Bekleyen Red, Bugün Reddedilen) and counts it among the reports' exchanges. Whether getClaims really carries either
+  for a made exchange is **unverified** (no raw claim is stored); the card stays in the Reddedilenler tab (TabGroup
+  follows Status only).

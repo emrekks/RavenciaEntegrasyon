@@ -199,13 +199,13 @@ describe('returns page', () => {
     const original = hubApi.getMockImplementation()!
     hubApi.mockImplementation(async (path: string) => {
       if (!path.startsWith('/returns?')) return original(path)
-      return { items: [claim('7', { customerRequest: 'CHANGE', reasonCode: 'WRONGCHANGEREQUEST', reasonText: 'Trendyol Oto Not: değişim', actionDueAt: new Date(Date.now() + 30 * 3_600_000).toISOString(), actionDueAtEstimated: true }), claim('8', { customerRequest: 'REFUND' }), claim('9', { customerRequest: null })], nextCursor: null, hasMore: false, totalCount: 3 }
+      return { items: [claim('7', { customerRequest: 'CHANGE', reasonCode: 'WRONGCHANGEREQUEST', reasonText: 'Trendyol Oto Not: değişim', actionDueAt: new Date(Date.now() + 30 * 3_600_000).toISOString(), actionDueAtEstimated: true }), claim('8', { customerRequest: 'REFUND' }), claim('9', { customerRequest: null }), claim('6', { customerRequest: 'CHANGE', status: 'REJECTED', rawStatus: 'Rejected', exchangeApproved: true }), claim('5', { customerRequest: 'CHANGE', status: 'REJECTED', rawStatus: 'Rejected', exchangeApproved: false })], nextCursor: null, hasMore: false, totalCount: 5 }
     })
     try {
       const { host } = renderPage()
       await waitFor(() => host.textContent!.includes('#9'))
       const cells = [...host.querySelectorAll<HTMLElement>('.rr-ordercell')]
-      expect(cells).toHaveLength(3)
+      expect(cells).toHaveLength(5)
       expect(cells[0].querySelector('.rr-return-exchange')?.textContent).toBe('Değişim Talebi')
       expect(cells[1].querySelector('.rr-return-exchange')).toBeNull()
       expect(cells[2].querySelector('.rr-return-exchange')).toBeNull()
@@ -216,6 +216,9 @@ describe('returns page', () => {
       expect(row.querySelector('.rr-reasoncell small')?.textContent).toContain('Trendyol Oto Not: değişim')
       expect(row.querySelector('[data-l="Durum"] small')?.getAttribute('title')).toMatch(/^Trendyol otomatik onayına kalan süre: .+ \(tahmini\)$/u)
       expect(row.querySelector('[data-l="Durum"] b')?.textContent).toBe('Aksiyon Bekliyor')
+      // Owner, 18 Nov 2026: an exchange Trendyol made (it answers Rejected) reads Değişim Onaylandı; without its word it stays a rejection.
+      expect(cells[3].closest('tr')!.querySelector('[data-l="Durum"] b')?.textContent).toBe('Değişim Onaylandı')
+      expect(cells[4].closest('tr')!.querySelector('[data-l="Durum"] b')?.textContent).not.toBe('Değişim Onaylandı')
     } finally {
       hubApi.mockImplementation(original)
     }

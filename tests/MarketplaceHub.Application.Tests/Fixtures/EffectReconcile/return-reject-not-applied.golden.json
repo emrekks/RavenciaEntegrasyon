@@ -339,7 +339,7 @@
           "ReasonText": "Customer note",
           "RejectedPackageState": null,
           "RequestedAt": "T-4255.03:23:57.1730000",
-          "ResolvedWith": null,
+          "ResolvedWith": "CHANGE",
           "Status": "InTransit",
           "TabGroup": "SHIPPING",
           "TenantId": "tenant",

@@ -187,7 +187,8 @@ internal sealed partial class ReturnQueryService
                 ReturnClaimAmounts(claimLines.Count, lineViews),
                 CustomerRequest: claim.CustomerRequest,
                 OrderReturnStatus: partiallyApprovedOrders.Contains(claim.OrderId) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : null,
-                RequestedAt: claim.RequestedAt);
+                RequestedAt: claim.RequestedAt,
+                ExchangeApproved: ReturnCustomerRequestPolicy.IsTrendyolExchangeMade(platformCode, claim.CustomerRequest, claim.ResolvedWith));
         }).ToList();
         return rows;
     }

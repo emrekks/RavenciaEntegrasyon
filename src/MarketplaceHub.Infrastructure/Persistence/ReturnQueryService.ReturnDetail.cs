@@ -133,7 +133,8 @@ internal sealed partial class ReturnQueryService
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, ReturnStatusWire(claim.Status, sourceLines.Select(line => line.RawStatus).ToList()), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, stockDispositionAvailable, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
             ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList()), claim.CustomerRequest,
-            ReturnDecisionScope.IsWholeClaim(platformCode), IsN11(platformCode)));
+            ReturnDecisionScope.IsWholeClaim(platformCode), IsN11(platformCode),
+            ExchangeApproved: ReturnCustomerRequestPolicy.IsTrendyolExchangeMade(platformCode, claim.CustomerRequest, claim.ResolvedWith)));
     }
 
     internal static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);

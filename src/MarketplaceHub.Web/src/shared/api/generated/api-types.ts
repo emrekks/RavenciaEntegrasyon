@@ -3915,6 +3915,7 @@ export type ReturnDetailView = {
   wholeClaimDecision: boolean
   rejectNeedsReturnShipment: boolean
   stockPendingNextSync: boolean
+  exchangeApproved: boolean
 }
 
 export type ReturnDispositionCommand = {
@@ -4010,6 +4011,7 @@ export type ReturnListView = {
   customerRequest?: null | string
   orderReturnStatus?: null | string
   requestedAt?: null | string
+  exchangeApproved: boolean
 }
 
 export type ReturnMetricCounts = {

@@ -253,6 +253,21 @@ public static class ReturnCustomerRequestPolicy
         string.Equals(platformCode?.Trim(), "TRENDYOL", StringComparison.OrdinalIgnoreCase)
         && string.Equals(customerRequest?.Trim(), Change, StringComparison.OrdinalIgnoreCase);
 
+    // Trendyol reason ids that say the exchange was made: 1851 "Ürün değişimi yapıldı" (getClaimsIssueReasons,
+    // trendyol-api-son.md:7160-7161) and 2006 "Analiz Değişim" (İade Sebepleri, Trendyol's own, :7021).
+    public static readonly IReadOnlySet<string> TrendyolExchangeMadeReasonIds = new HashSet<string>(StringComparer.Ordinal) { "1851", "2006" };
+
+    // How Trendyol settled the claim, from its explicit data only: a replacement package, or a Trendyol reason saying the
+    // exchange was made, closes it as an exchange (Trendyol answers a made exchange as Rejected, owner 18 Nov 2026 on
+    // 11805950639). Anything else is unknown (null): a refund is never inferred.
+    public static string? ResolvedWithFromTrendyol(bool hasReplacementPackage, IReadOnlyCollection<string> trendyolReasonIds) =>
+        hasReplacementPackage || trendyolReasonIds.Any(TrendyolExchangeMadeReasonIds.Contains) ? Change : null;
+
+    // A Trendyol exchange the marketplace made (ResolvedWith CHANGE): the panel shows it as "Değişim Onaylandı" whatever
+    // the claim's own word (Trendyol says Rejected), and it raises no rejected-return warning.
+    public static bool IsTrendyolExchangeMade(string? platformCode, string? customerRequest, string? resolvedWith) =>
+        ApprovalBlocked(platformCode, customerRequest) && resolvedWith == Change;
+
     public static string? FromTrendyol(string? reasonCode, bool hasReplacementPackage) =>
         hasReplacementPackage || string.Equals(reasonCode?.Trim(), TrendyolExchangeReasonCode, StringComparison.OrdinalIgnoreCase) ? Change : null;
 

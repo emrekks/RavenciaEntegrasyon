@@ -500,7 +500,40 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal(expected, claim.CustomerRequest);
-        Assert.Null(claim.ResolvedWith);
+        // A replacement package also says the exchange was made (ResolvedWith); the reason code alone does not.
+        Assert.Equal(expected == "CHANGE" && replacement is not null ? "CHANGE" : null, claim.ResolvedWith);
+    }
+
+    // Owner, 18 Nov 2026: Trendyol answers a made exchange as Rejected. It is read as closed by exchange (ResolvedWith
+    // CHANGE) only from explicit data: a replacement package, or a Trendyol reason 1851 "Ürün değişimi yapıldı" or 2006
+    // "Analiz Değişim"; any other reason leaves it unknown, never a refund.
+    [Theory]
+    [InlineData("1851", null, "CHANGE")]
+    [InlineData("2006", null, "CHANGE")]
+    [InlineData("451", null, null)]
+    [InlineData(null, null, null)]
+    [InlineData("451", """{ "packageid": 28717254 }""", "CHANGE")]
+    [InlineData("451", "{}", null)]
+    public void ReturnClaim_ReadsAMadeExchangeFromExplicitDataOnly(string? trendyolReasonId, string? replacement, string? expected)
+    {
+        var reason = trendyolReasonId is null ? "" : ", \"trendyolClaimItemReason\": { \"id\": \"" + trendyolReasonId + "\", \"name\": \"Sebep\", \"code\": \"X\" }";
+        var replacementField = replacement is null ? "" : "\"replacementOutboundpackageinfo\": " + replacement + ",";
+        var json = $$"""
+        {
+          "content": [
+            {
+              "claimId": "claim-made-1", "orderNumber": "11805950639", "orderDate": 1782998302000, {{replacementField}}
+              "items": [ { "orderLine": { "id": 1, "price": 10 }, "claimItems": [ { "id": "ci-1", "claimItemStatus": { "name": "Rejected" }, "customerClaimItemReason": { "id": "1", "name": "Sebep", "code": "WRONGCHANGEREQUEST" }{{reason}} } ] } ]
+            }
+          ],
+          "page": 0, "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(expected, claim.ResolvedWith);
+        Assert.Equal("CHANGE", claim.CustomerRequest);
     }
 
     [Fact]

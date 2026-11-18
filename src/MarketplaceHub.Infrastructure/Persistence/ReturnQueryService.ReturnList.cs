@@ -20,7 +20,7 @@ internal sealed partial class ReturnQueryService
     internal static readonly string[] ReturnTabs = ["ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED"];
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 
-    internal sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null, bool? CardSplit = null);
+    internal sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null, bool? CardSplit = null, bool ExchangeMade = false);
 
     // SIPARIS-STOK-9: the tenant's line raw statuses sorted by the split rule (accepted; waiting, a missing status aside),
     // and whether every claim of the tenant has its card columns (ReturnCardColumns) filled and equal to the rule right
@@ -162,7 +162,8 @@ internal sealed partial class ReturnQueryService
         if (columns.Fresh && !string.IsNullOrEmpty(tab) && tab != "ALL")
             query = tab == "APPROVED" ? query.Where(x => x.TabGroup == tab || x.CardSplit == true) : query.Where(x => x.TabGroup == tab);
         var rows = await query.OrderBy(x => x.Id)
-            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit))
+            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit,
+                    x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change))
             .ToListAsync(cancellationToken);
         var claims = rows.ToDictionary(x => x.Id);
         if (rows.Count == 0) return new([], claims, null);
@@ -613,7 +614,8 @@ internal sealed partial class ReturnQueryService
         var awaitingCargo = 0; var unknownCargo = 0;
         foreach (var card in counted.Cards)
         {
-            if (ReturnTabGroup(card.Status) != "REJECTED" || !counted.Claims.TryGetValue(card.ClaimId, out var row)) continue;
+            // An exchange Trendyol made answers Rejected but is no refused return: no package back to wait for (owner, 18 Nov 2026).
+            if (ReturnTabGroup(card.Status) != "REJECTED" || !counted.Claims.TryGetValue(card.ClaimId, out var row) || row.ExchangeMade) continue;
             var (awaiting, unknown) = RejectedCargoState(row.Status, row.RejectedPackageState);
             if (awaiting) awaitingCargo++;
             if (unknown) unknownCargo++;
@@ -626,7 +628,7 @@ internal sealed partial class ReturnQueryService
         {
             if (!cardClaims.Contains(row.Id) || row.DecidedAt is not { } decidedAt || decidedAt < dayStart) continue;
             if (IsApproved(row)) approved.Add(row.Id);
-            else if (row.Status == ReturnClaimStatus.Rejected) rejected.Add(row.Id);
+            else if (row.Status == ReturnClaimStatus.Rejected && !row.ExchangeMade) rejected.Add(row.Id);
         }
         if (cardClaims.Count > 0)
         {

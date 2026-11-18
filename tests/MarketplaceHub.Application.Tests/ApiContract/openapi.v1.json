@@ -41117,7 +41117,8 @@
           "actionDueAtEstimated",
           "wholeClaimDecision",
           "rejectNeedsReturnShipment",
-          "stockPendingNextSync"
+          "stockPendingNextSync",
+          "exchangeApproved"
         ],
         "type": "object",
         "properties": {
@@ -41267,6 +41268,10 @@
             "default": false
           },
           "stockPendingNextSync": {
+            "type": "boolean",
+            "default": false
+          },
+          "exchangeApproved": {
             "type": "boolean",
             "default": false
           }
@@ -41530,7 +41535,8 @@
           "isMicroExport",
           "platformCode",
           "platformDisplayName",
-          "actionDueAtEstimated"
+          "actionDueAtEstimated",
+          "exchangeApproved"
         ],
         "type": "object",
         "properties": {
@@ -41742,6 +41748,10 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "exchangeApproved": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

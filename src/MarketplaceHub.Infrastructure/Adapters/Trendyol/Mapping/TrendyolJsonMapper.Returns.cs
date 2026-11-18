@@ -29,7 +29,8 @@ public static partial class TrendyolJsonMapper
                 ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null, RejectedPackageState: RejectedPackageState(claim, status),
                 // The request date is the documented claimDate only (GMT epoch milliseconds); no other field stands in.
                 RequestedAt: FlexibleInstant(claim, "claimDate"),
-                CustomerRequest: ReturnCustomerRequestPolicy.FromTrendyol(ClaimReasonCode(claim), HasReplacementPackage(claim))));
+                CustomerRequest: ReturnCustomerRequestPolicy.FromTrendyol(ClaimReasonCode(claim), HasReplacementPackage(claim)),
+                ResolvedWith: ReturnCustomerRequestPolicy.ResolvedWithFromTrendyol(HasReplacementPackage(claim), TrendyolReasonIds(claim))));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
@@ -59,6 +60,11 @@ public static partial class TrendyolJsonMapper
         return package.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
             && items.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()));
     }
+
+    // The ids of the claim items' trendyolClaimItemReason (getClaims claimItems; trendyol-api-son.md :6903-6908).
+    internal static IReadOnlyList<string> TrendyolReasonIds(JsonElement claim) =>
+        ClaimItems(claim).Select(item => item.TryGetProperty("trendyolClaimItemReason", out var reason) && reason.ValueKind == JsonValueKind.Object ? NullText(reason, "id")?.Trim() : null)
+            .Where(id => !string.IsNullOrEmpty(id)).Select(id => id!).Distinct(StringComparer.Ordinal).ToList();
 
     public static IReadOnlyList<RemoteReturnLine> ReturnLines(string json)
     {

@@ -494,6 +494,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                       {
                           Exchange = !(claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
                           || claim.ResolvedWith == ReturnCustomerRequestPolicy.Refund),
+                          ExchangeMade = claim.CustomerRequest == ReturnCustomerRequestPolicy.Change && claim.ResolvedWith == ReturnCustomerRequestPolicy.Change,
                           OrderId = claim.OrderId,
                           ConnectionId = claim.ConnectionId,
                           Status = claim.Status,

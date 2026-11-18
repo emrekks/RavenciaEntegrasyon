@@ -153,6 +153,48 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Owner, 18 Nov 2026: 11805950639's exchange, made with "Değişim Yap", came back as Rejected. With Trendyol's own word
+    // that the exchange was made (ResolvedWith CHANGE) it reads "Değişim Onaylandı" and raises no refused-return count;
+    // without it, a rejected exchange request stays a rejection.
+    [PostgreSqlFact]
+    public async Task A_Trendyol_exchange_made_reads_approved_and_is_no_refused_return()
+    {
+        var seed = await SeedAsync("rl-made");
+        var port = new LineReturnPort("RL-CLAIM", seed.ExternalLineIds);
+        try
+        {
+            async Task<(ReturnListView Row, ReturnSummaryView Summary, ReturnDetailView Detail)> ReadAsync()
+            {
+                await using var db = fixture.CreateContext();
+                var service = Service(db, port);
+                var rows = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(), false, CancellationToken.None);
+                return (Assert.Single(rows.Items), await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(), CancellationToken.None),
+                    (await service.ReturnAsync(seed.TenantId, seed.ClaimId, CancellationToken.None)).Value!);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                await db.ReturnLines.Where(x => x.ClaimId == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(l => l.RawStatus, "Rejected"));
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, ReturnClaimStatus.Rejected).SetProperty(c => c.RawStatus, "Rejected")
+                    .SetProperty(c => c.CustomerRequest, ReturnCustomerRequestPolicy.Change).SetProperty(c => c.RejectedPackageState, ReturnRejectedPackageStates.AwaitingCargo)
+                    .SetProperty(c => c.DecidedAt, DateTimeOffset.UtcNow));
+            }
+            var unknown = await ReadAsync();
+            Assert.False(unknown.Row.ExchangeApproved);
+            Assert.Equal((1, 1), (unknown.Summary.Metrics!.RejectedAwaitingCargo, unknown.Summary.Metrics.TodayRejected));
+
+            await using (var db = fixture.CreateContext())
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.ResolvedWith, ReturnCustomerRequestPolicy.Change));
+            var made = await ReadAsync();
+            Assert.True(made.Row.ExchangeApproved);
+            Assert.True(made.Detail.ExchangeApproved);
+            Assert.Equal((0, 0), (made.Summary.Metrics!.RejectedAwaitingCargo, made.Summary.Metrics.TodayRejected));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid ClaimId, Guid[] LineIds, string[] ExternalLineIds, Guid[] InventoryItemIds);
 
     private MarketplaceSalesService Service(AppDbContext db, IReturnPort port) =>

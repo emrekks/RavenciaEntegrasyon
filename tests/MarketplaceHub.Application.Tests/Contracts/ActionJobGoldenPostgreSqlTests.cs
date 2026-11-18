@@ -44,7 +44,7 @@ public sealed class ActionJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixt
             if (claim)
                 // The docs sample's first claim carries a replacement package (an exchange request, which the panel never
                 // approves); these scenarios are about a return decision, so it is read as a plain return claim.
-                await processor.UpsertReturn(run.Tenant.Id, run.Connection.Id, TrendyolJsonMapper.Returns(ContractFixture.Read("Trendyol/getClaims-docs-sample.json")).Items[0] with { CustomerRequest = null }, CancellationToken.None);
+                await processor.UpsertReturn(run.Tenant.Id, run.Connection.Id, TrendyolJsonMapper.Returns(ContractFixture.Read("Trendyol/getClaims-docs-sample.json")).Items[0] with { CustomerRequest = null, ResolvedWith = null }, CancellationToken.None);
             else
                 await processor.UpsertOrders(run.Tenant.Id, run.Connection.Id, [Order("Created")], CancellationToken.None);
         }

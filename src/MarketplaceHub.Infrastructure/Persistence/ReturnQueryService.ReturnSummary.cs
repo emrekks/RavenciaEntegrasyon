@@ -130,14 +130,15 @@ internal sealed partial class ReturnQueryService
         var dayStart = IstanbulDayStart(timeProvider.GetUtcNow());
         var cargo = await set.First.GroupBy(_ => 1).Select(group => new
         {
-            AwaitingCargo = group.Count(x => x.Status == ReturnClaimStatus.Rejected && x.RejectedPackageState == ReturnRejectedPackageStates.AwaitingCargo),
-            UnknownCargo = group.Count(x => x.Status == ReturnClaimStatus.Rejected && x.RejectedPackageState == null)
+            // An exchange Trendyol made answers Rejected but is no refused return (ReturnMetricsAsync, owner 18 Nov 2026).
+            AwaitingCargo = group.Count(x => x.Status == ReturnClaimStatus.Rejected && x.RejectedPackageState == ReturnRejectedPackageStates.AwaitingCargo && !(x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
+            UnknownCargo = group.Count(x => x.Status == ReturnClaimStatus.Rejected && x.RejectedPackageState == null && !(x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change))
         }).SingleOrDefaultAsync(cancellationToken);
         var today = await set.Claims.Where(set.AnyCard).GroupBy(_ => 1).Select(group => new
         {
             ApprovedToday = group.Count(x => (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed)
                 && (x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "APPROVE" && decision.CompletedAt >= dayStart))),
-            RejectedToday = group.Count(x => x.Status == ReturnClaimStatus.Rejected
+            RejectedToday = group.Count(x => x.Status == ReturnClaimStatus.Rejected && !(x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
                 && (x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "REJECT" && decision.CompletedAt >= dayStart)))
         }).SingleOrDefaultAsync(cancellationToken);
         return new(cargo?.AwaitingCargo ?? 0, cargo?.UnknownCargo ?? 0, today?.ApprovedToday ?? 0, today?.RejectedToday ?? 0);

@@ -119,6 +119,8 @@ internal sealed class ReportClaimRow
 {
     // An exchange not closed with a refund (ReturnCustomerRequestPolicy.IsKeptExchange): no return claim, counted apart.
     public bool Exchange { get; init; }
+    // An exchange the marketplace says it made (ResolvedWith CHANGE), Trendyol answering Rejected for it.
+    public bool ExchangeMade { get; init; }
     public Guid OrderId { get; init; }
     public Guid ConnectionId { get; init; }
     public ReturnClaimStatus Status { get; init; }
@@ -422,7 +424,8 @@ internal static class ReportBuilder
     private static int ExchangeClaims(ReportInput input, IReadOnlyList<OrderFact> orders)
     {
         var ids = orders.Select(order => order.Order.Id).ToHashSet();
-        return input.Claims.Count(x => x.Exchange && ids.Contains(x.OrderId) && x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled));
+        // A Trendyol exchange the marketplace made answers Rejected (ExchangeMade): counted here, never as a refused return.
+        return input.Claims.Count(x => x.Exchange && ids.Contains(x.OrderId) && x.Status != ReturnClaimStatus.Cancelled && (x.Status != ReturnClaimStatus.Rejected || x.ExchangeMade));
     }
 
     // The period's non-cancelled orders with their units, money and buckets, and the cancelled ones apart.
