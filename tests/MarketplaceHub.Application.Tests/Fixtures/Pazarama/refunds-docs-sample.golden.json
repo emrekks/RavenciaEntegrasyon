@@ -33,7 +33,9 @@
       "DecidedAt": null,
       "CustomerRequest": null,
       "ResolvedWith": null,
-      "RequestedAt": "2021-10-06T16:46:00+00:00"
+      "RequestedAt": "2021-10-06T16:46:00+00:00",
+      "ReplacementPackage": null,
+      "ReplacementInfoPresent": null
     },
     {
       "ExternalClaimId": "00000000-0000-4000-8000-000000000501",
@@ -68,7 +70,9 @@
       "DecidedAt": null,
       "CustomerRequest": null,
       "ResolvedWith": null,
-      "RequestedAt": null
+      "RequestedAt": null,
+      "ReplacementPackage": null,
+      "ReplacementInfoPresent": null
     }
   ],
   "NextCursor": null,

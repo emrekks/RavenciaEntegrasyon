@@ -843,7 +843,11 @@ public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewSta
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
 // CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
 // ResolvedWith: how an approved claim was closed (REFUND or CHANGE, Hepsiburada finalizedWith); null = unknown.
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null, DateTimeOffset? RequestedAt = null);
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null, DateTimeOffset? RequestedAt = null,
+    RemoteReplacementPackage? ReplacementPackage = null, bool? ReplacementInfoPresent = null);
+// The package a marketplace sends for an exchange (Trendyol getClaims replacementOutboundpackageinfo); null when it names none.
+// ReplacementInfoPresent: whether the claim carried the field at all (Trendyol only; null elsewhere), for the read log.
+public sealed record RemoteReplacementPackage(string PackageId, string? CargoProviderName, string? CargoTrackingNumber, string? CargoTrackingLink);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 // ReturnShipment: the seller's shipment of the product back to the buyer that a denial names (n11 ClaimReturnDeny CUSTOM).
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null, ReturnShipmentCommand? ReturnShipment = null);
@@ -1377,7 +1381,12 @@ public sealed record OrderListView(
     // the amount may be short until a read fills the line in (UnreadableOrderLines.AmountIssueCode).
     bool AmountMayBeIncomplete = false,
     // Bireysel / kurumsal by the invoice's own rule (OrderBuyerTypeView).
-    OrderBuyerTypeView? BuyerType = null);
+    OrderBuyerTypeView? BuyerType = null,
+    // The exchange this order is a resend for (owner, 18 Nov 2026): its claim names Trendyol's exchange package or the owner
+    // marked it made. Null when it is no such exchange.
+    OrderExchangeResendView? ExchangeResend = null);
+// PackageId and the carrier as Trendyol named them (null: not named); Shipped once the package's tracking link is known.
+public sealed record OrderExchangeResendView(string? PackageId, string? CargoProviderName, string? CargoTrackingNumber, bool Shipped);
 // The buyer kind of an order, decided by the same rule the invoice uses (TrendyolEFaturamCanonicalPayload.ResolveBuyerType,
 // report item 12): Individual, Corporate, or CorporateTaxIdMissing (a corporate buyer without a tax number: the invoice
 // stops and asks the owner). Reason is a short Turkish explanation of what decided it.

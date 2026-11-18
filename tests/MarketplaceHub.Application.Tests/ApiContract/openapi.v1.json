@@ -31864,6 +31864,35 @@
           }
         }
       },
+      "OrderExchangeResendView": {
+        "required": [
+          "shipped"
+        ],
+        "type": "object",
+        "properties": {
+          "packageId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cargoProviderName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cargoTrackingNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "shipped": {
+            "type": "boolean"
+          }
+        }
+      },
       "OrderFacetsView": {
         "required": [
           "platforms",
@@ -32276,6 +32305,16 @@
               },
               {
                 "$ref": "#/components/schemas/OrderBuyerTypeView"
+              }
+            ]
+          },
+          "exchangeResend": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OrderExchangeResendView"
               }
             ]
           }

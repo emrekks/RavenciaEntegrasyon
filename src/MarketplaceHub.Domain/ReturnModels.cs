@@ -396,6 +396,13 @@ public sealed class ReturnClaim
     // Where ResolvedWith came from when it is not the marketplace's own word: MANUAL (ReturnCustomerRequestPolicy.ManualSource),
     // the owner's "Değişim Onaylandı Olarak İşaretle" (18 Nov 2026). Null: the marketplace said it (or nothing is set).
     public string? ResolvedWithSource { get; set; }
+    // The package Trendyol sends the customer for an exchange (getClaims replacementOutboundpackageinfo, "Değişim giden paket
+    // bilgisi", trendyol-api-son.md:6850, :17450): its package id and carrier, kept once read (a read without it leaves them).
+    // Null: Trendyol did not say (unknown, never "no package"). Listed under Siparişler › Yeniden Gönderimler.
+    public string? ReplacementPackageId { get; set; }
+    public string? ReplacementCargoProviderName { get; set; }
+    public string? ReplacementCargoTrackingNumber { get; set; }
+    public string? ReplacementCargoTrackingLink { get; set; }
     // When the customer asked for the return, as the marketplace dates the claim: Trendyol claimDate, Hepsiburada
     // claimDate (Istanbul local), n11 requestDate, Pazarama refundDate, Shopify return createdAt. Null when the
     // marketplace gives none (PTT AVM) or the claim was not read again since the field came; never guessed.
