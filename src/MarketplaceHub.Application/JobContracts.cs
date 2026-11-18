@@ -252,7 +252,7 @@ public sealed record JobCountView(string Status, string JobType, int Count);
 
 // Lane is USER (actions a user started), INITIAL (first imports), HOT (new data) or BACKGROUND.
 // Slots: how many jobs the lane runs at once (the worker's Worker:LaneSlots:<lane>, else the lane's default).
-// Worker lanes step 1 (19 Nov 2026), the lane against its wait target (LaneWaitTargets, Worker:LaneTargets:<lane>):
+// Worker lanes step 1 (19 Nov 2026), the lane against its wait target (LaneWaitTargets, LaneTargets:<lane>; bulk user work stays out of the user lane's figures):
 //   TargetSeconds         the longest a job of the lane should wait in the queue (p95);
 //   RecentP95WaitSeconds  p95 wait of the jobs the lane leased in the last five minutes (null: none leased);
 //   OldestWaitSeconds     how long the oldest job a slot could take now has been waiting (null: none waiting);

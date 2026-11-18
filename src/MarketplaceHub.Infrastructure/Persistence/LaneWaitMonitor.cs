@@ -24,9 +24,11 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
     }
 
     // Every lane of every tenant with work in the window or queued now (tenantId: one tenant only). A job held for a full
-    // marketplace quota (hold) waits for the marketplace, not for a slot, so it does not count as waiting here, the same way
-    // a job waiting for its connection's busy lock group or quota backoff does not (QueueHealthService.RunnableDepthAsync).
-    public async Task<IReadOnlyList<LaneWait>> SnapshotAsync(Guid? tenantId, TimeSpan window, JobQuotaHold? hold, CancellationToken cancellationToken)
+    // marketplace quota (quota-aware leasing) counts as waiting: its delay must show against the target and in the alert. A
+    // job waiting for its connection's busy lock group, a quota backoff or the tenant's Paneli Tamamen Sıfırla waits for that,
+    // not for a slot, and does not count (the lease skips it the same way). In the user lane only UserAction jobs count
+    // (LaneWaitTargets.CountsTowardTarget): bulk user work is queued on purpose.
+    public async Task<IReadOnlyList<LaneWait>> SnapshotAsync(Guid? tenantId, TimeSpan window, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var lanes = WorkerLanes.All(hotPriorityCeiling);
@@ -34,10 +36,13 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
         var parameters = new List<object>
         {
             new Npgsql.NpgsqlParameter("since", now - window),
-            new Npgsql.NpgsqlParameter("tenant", (object?)tenantId ?? DBNull.Value) { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Uuid }
+            new Npgsql.NpgsqlParameter("tenant", (object?)tenantId ?? DBNull.Value) { NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Uuid },
+            new Npgsql.NpgsqlParameter("userAction", JobPriorityPolicy.UserAction),
+            new Npgsql.NpgsqlParameter("firstNonUser", JobPriorityPolicy.InitialDataSync)
         };
         parameters.AddRange(laneParameters);
-        // The same wait İşlem Takibi shows: first attempts of jobs that were never retried, from AvailableAt to the lease.
+        // The same wait İşlem Takibi shows: first attempts of jobs that were never retried, from AvailableAt to the lease. Bulk
+        // user work (between UserAction and the first non-user priority) stays out of the target.
         var sql = "SELECT attempt.\"TenantId\" AS \"TenantId\", " + lane + """
              AS "Lane",
                    count(wait.seconds)::int AS "Attempts",
@@ -45,6 +50,7 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
             FROM integration.job_attempts attempt
             JOIN integration.jobs job ON job."Id" = attempt."JobId"
             CROSS JOIN LATERAL (SELECT CASE WHEN attempt."AttemptNumber" = 1 AND job."AttemptCount" <= 1 AND job."AvailableAt" <= attempt."StartedAt"
+                AND NOT (job."Priority" > @userAction AND job."Priority" < @firstNonUser)
                 THEN EXTRACT(EPOCH FROM attempt."StartedAt" - job."AvailableAt")::double precision END AS seconds) wait
             WHERE attempt."StartedAt" >= @since AND (@tenant IS NULL OR attempt."TenantId" = @tenant)
             GROUP BY 1, 2
@@ -52,18 +58,13 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
         var recent = await db.Database.SqlQueryRaw<RecentRow>(sql, [.. parameters]).ToListAsync(cancellationToken);
         var waiting = await WaitingAsync(tenantId, now, cancellationToken);
 
-        var heldPairs = hold is { IsEmpty: false }
-            ? hold.ConnectionIds.Zip(hold.JobTypes).ToHashSet()
-            : [];
         var oldest = new Dictionary<(Guid, string), double>();
         foreach (var row in waiting)
         {
-            var since = row.RunnableSince;
-            var held = row.ConnectionId is { } connection && row.Priority > JobPriorityPolicy.BulkUserAction
-                && heldPairs.Contains((connection, row.JobType)) && hold is not null && since > now - hold.MaximumHold;
-            if (held) continue;
-            var key = (row.TenantId, WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling));
-            var seconds = Math.Max(0, (now - since).TotalSeconds);
+            var laneName = WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling);
+            if (!LaneWaitTargets.CountsTowardTarget(laneName, row.Priority)) continue;
+            var key = (row.TenantId, laneName);
+            var seconds = Math.Max(0, (now - row.RunnableSince).TotalSeconds);
             oldest[key] = Math.Max(oldest.GetValueOrDefault(key), seconds);
         }
 
@@ -80,14 +81,11 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
 
     // Opens an issue for each lane whose target has been missed for the alarm's sustain time and resolves the issues of lanes
     // back within target for its clear time. Returns how many issues changed.
-    public async Task<int> EvaluateAsync(LaneWaitAlarm alarm, TimeSpan window, JobQuotaHold? hold, CancellationToken cancellationToken)
+    public async Task<int> EvaluateAsync(LaneWaitAlarm alarm, TimeSpan window, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var snapshot = await SnapshotAsync(null, window, hold, cancellationToken);
-        var openIssues = await db.OperationalIssues.AsNoTracking()
-            .Where(issue => issue.TenantId != null && issue.Code == LaneWaitTargets.IssueCode && issue.Status == IssueStatus.Open)
-            .Select(issue => new { TenantId = issue.TenantId!.Value, issue.DedupeKey })
-            .ToListAsync(cancellationToken);
+        var snapshot = await SnapshotAsync(null, window, cancellationToken);
+        var openIssues = await OpenIssuesAsync(cancellationToken);
         var open = openIssues.Select(issue => (issue.TenantId, issue.DedupeKey)).ToHashSet();
         // A tenant with an open alert but no work any more is healthy: its lanes are looked at too.
         var lanes = WorkerLanes.All(hotPriorityCeiling).Select(lane => lane.Name).ToArray();
@@ -113,9 +111,30 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
                     break;
             }
         }
+        // Lanes of tenants that dropped out of the snapshot start their count again when they come back.
+        alarm.ForgetStale(now);
         if (changed > 0) await db.SaveChangesAsync(cancellationToken);
         return changed;
     }
+
+    // Lane alerts switched off (Worker:LaneAlerts:Enabled=false): every open lane alert is resolved, nothing watches it any more.
+    public async Task<int> ResolveAllAsync(CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var openIssues = await OpenIssuesAsync(cancellationToken);
+        if (openIssues.Count == 0) return 0;
+        var recorder = new IssueRecorder(db);
+        foreach (var issue in openIssues)
+            await recorder.ResolveAsync(issue.TenantId, issue.DedupeKey, now, cancellationToken, IssueResolveStamps.ResolvedAt | IssueResolveStamps.LastSeenAt);
+        await db.SaveChangesAsync(cancellationToken);
+        return openIssues.Count;
+    }
+
+    private async Task<List<(Guid TenantId, string DedupeKey)>> OpenIssuesAsync(CancellationToken cancellationToken) =>
+        [.. (await db.OperationalIssues.AsNoTracking()
+            .Where(issue => issue.TenantId != null && issue.Code == LaneWaitTargets.IssueCode && issue.Status == IssueStatus.Open)
+            .Select(issue => new { TenantId = issue.TenantId!.Value, issue.DedupeKey })
+            .ToListAsync(cancellationToken)).Select(issue => (issue.TenantId, issue.DedupeKey))];
 
     // The open lane alerts of a tenant: lane name -> since when (the issue's last opening).
     public async Task<Dictionary<string, DateTimeOffset>> OpenAlertsAsync(Guid tenantId, CancellationToken cancellationToken)
@@ -129,8 +148,8 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
             .ToDictionary(issue => issue.DedupeKey[prefix.Length..], issue => issue.LastSeenAt, StringComparer.Ordinal);
     }
 
-    // Queued jobs a slot could take now (not waiting for a busy lock group or a quota backoff), with the moment the oldest of
-    // each group became runnable. Same rule as QueueHealthService.RunnableDepthAsync.
+    // Queued jobs a slot could take now (not waiting for a busy lock group, a quota backoff or the tenant's Paneli Tamamen
+    // Sıfırla), with the moment the oldest of each group became runnable. Same rules as the lease (JobLeaseService).
     private Task<List<WaitingRow>> WaitingAsync(Guid? tenantId, DateTimeOffset now, CancellationToken cancellationToken) =>
         db.Database.SqlQuery<WaitingRow>($"""
             WITH busy AS (
@@ -149,6 +168,14 @@ public sealed class LaneWaitMonitor(AppDbContext db, TimeProvider timeProvider, 
               AND NOT EXISTS (SELECT 1 FROM busy WHERE busy."ConnectionId" = job."ConnectionId" AND busy.lock_group = coalesce(job."LockGroup", job_group.lock_group))
               AND NOT EXISTS (SELECT 1 FROM integration.connection_backoffs backoff
                   WHERE backoff."ConnectionId" = job."ConnectionId" AND backoff."LockGroup" = coalesce(job."LockGroup", job_group.lock_group) AND backoff."Until" > {now})
+              AND NOT EXISTS (
+                  SELECT 1 FROM integration.jobs panel_reset
+                  WHERE panel_reset."TenantId" = job."TenantId"
+                    AND panel_reset."JobType" = {PanelJobTypes.FactoryReset}
+                    AND panel_reset."Status" IN ('PENDING', 'LEASED', 'RETRY_SCHEDULED')
+                    AND panel_reset."Id" <> job."Id"
+                    AND (job."JobType" <> {PanelJobTypes.FactoryReset}
+                      OR (panel_reset."CreatedAt", panel_reset."Id") < (job."CreatedAt", job."Id")))
             GROUP BY 1, 2, 3, 4
             """).ToListAsync(cancellationToken);
 

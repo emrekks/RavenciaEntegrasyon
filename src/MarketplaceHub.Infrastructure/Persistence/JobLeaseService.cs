@@ -23,6 +23,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var heldConnections = hold.ConnectionIds.ToArray();
         var heldJobTypes = hold.JobTypes.ToArray();
         var holdRunnableAfter = now - hold.MaximumHold;
+        var heldAbovePriority = Math.Max(JobPriorityPolicy.BulkUserAction, hold.HeldAbovePriority);
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
         // A job whose connection already runs a job of the same execution-lock group, or whose connection and
         // group wait out a quota backoff, is skipped here instead of being leased and then deferred, so the slot
@@ -78,8 +79,9 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                         AND backoff."LockGroup" = coalesce(candidate."LockGroup", candidate_group.lock_group)
                         AND backoff."Until" > {now})
                   -- Quota-aware leasing: a job whose marketplace quota is full right now waits in the queue, not in a slot.
-                  -- Never a user action, and never longer than the hold allows since the job became runnable.
-                  AND NOT (candidate."Priority" > {JobPriorityPolicy.BulkUserAction}
+                  -- Background work only (never a user action, a new-order read, a webhook or a write), and never longer
+                  -- than the hold allows since the job became runnable.
+                  AND NOT (candidate."Priority" > {heldAbovePriority}
                       AND greatest(candidate."AvailableAt", candidate."CreatedAt") > {holdRunnableAfter}
                       AND EXISTS (
                           SELECT 1 FROM unnest({heldConnections}::uuid[], {heldJobTypes}::text[]) AS held(connection_id, job_type)

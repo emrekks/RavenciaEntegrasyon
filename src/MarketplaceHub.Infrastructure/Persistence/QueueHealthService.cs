@@ -45,9 +45,10 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             """;
         var attempts = await db.Database.SqlQueryRaw<LaneAttemptRow>(sql, [.. parameters]).ToListAsync(cancellationToken);
         var queue = await RunnableDepthAsync(db, tenantId, now, cancellationToken);
-        // Worker lanes step 1: each lane against its wait target now, and its open alert.
+        // Worker lanes step 1: each lane against its wait target now, and its open alert. The same snapshot, window and targets
+        // as the worker's alert (LaneWaitMonitor, LaneWaitTargets), so the panel and the alert agree.
         var monitor = new LaneWaitMonitor(db, timeProvider, configuration);
-        var waits = await monitor.SnapshotAsync(tenantId, LaneWaitMonitor.DefaultWindow, null, cancellationToken);
+        var waits = await monitor.SnapshotAsync(tenantId, LaneWaitTargets.Window(configuration), cancellationToken);
         var alerts = await monitor.OpenAlertsAsync(tenantId, cancellationToken);
         return lanes.Select(definition =>
         {
