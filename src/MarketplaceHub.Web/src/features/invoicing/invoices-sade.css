@@ -365,6 +365,7 @@ html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: var(--ir-pl, 18px) var(--ir-pr, 18px); }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :first-child { --ir-pl: 12px; }
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :last-child { --ir-pr: 12px; }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > .order-column-filter:not(:first-child, :last-child) { --ir-pr: 8px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(.order-column-filter, .invoice-reference-platform-heading) { gap: 4px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { position: static; transform: none; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: var(--ir-pl, 18px) var(--ir-pr, 18px); }

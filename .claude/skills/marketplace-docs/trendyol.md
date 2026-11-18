@@ -483,3 +483,23 @@ packages only, no claim events.
 - So a value accepted by a batch `SUCCESS` is recorded only as "last sent" (`MarketplaceKnownListingValueStore`, Source
   SENT) and the update summary never calls a panel value equal to it "no change" (state `SENT_SAME`, "Son Gönderilenle
   Aynı · Pazaryerinde Uygulandığı Bilinmiyor"); only a value read back from the catalog (Source IMPORT) is.
+
+## Exchange claims ("Değişim", 18 Nov 2026)
+- getClaims has no claim-type field and no refund/exchange request field. Its only documented exchange datum is
+  `replacementOutboundpackageinfo` ("Değişim giden paket bilgisi (değişim yoksa boş)": cargo, `packageid`, `items` =
+  claim item ids; trendyol-api-son.md:6850-6858 sample, :17450-17478 schema). The "İade Sebepleri" table
+  (trendyol-api-son.md:6996-7037) lists ids and names only, no `code` strings and no customer exchange reason; 2006
+  "Analiz Değişim" is a Trendyol (analysis) reason. The seller's reject reasons 2101 "Sipariş sorusundan gelen değişim
+  talebi" and 1851 "Ürün değişimi yapıldı" (getClaimsIssueReasons, :7150-7162) are what the seller sends, not what the
+  claim carries.
+- Live code: `customerClaimItemReason.code` WRONGCHANGEREQUEST (customer note "Trendyol Oto Not: Müşteri, yanlış ürünün
+  değişimini istiyor."), order 11805950639, claim of 12 Nov 2026, WaitingInAction; the owner called it an exchange
+  (18 Nov 2026). It is the only one among 255 live Trendyol claims (18 Nov 2026: BIGSIZE 100, SMALLSIZE 68, DISLIKE 51,
+  UNDELIVERED 9, WRONGORDER 6, ABANDON 6, WRONGITEM 6, UNDELIVEREDINT 3, OTHER 2, DAMAGEDITEM 2, FAKEPRODUCT 1).
+  The claim's raw JSON is not stored, so whether live claims carry `replacementOutboundpackageinfo` is **unverified**.
+- Code: `ReturnCustomerRequestPolicy.FromTrendyol` sets `CustomerRequest` CHANGE for that code or a replacement package
+  naming `packageid` or items; anything else stays null (the reason text is never searched). Shown as the "Değişim"
+  tag on İadeler. Invoice, stock and reports are unchanged: only Hepsiburada exchanges take no units back
+  (`ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform`), since getClaims names no refund outcome for an exchange.
+- An open claim is read again by RETURN_STATUS_SYNC; a closed one only while RETURN_SYNC / RETURN_RECONCILIATION
+  (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.

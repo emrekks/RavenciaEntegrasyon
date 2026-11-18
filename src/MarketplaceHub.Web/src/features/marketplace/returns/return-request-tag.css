@@ -1,0 +1,5 @@
+/* "Değişim" beside the return's order number and in its detail: the buyer tag's 20 px chip (order-row-marks.css) in the
+   info tone, so an exchange request reads apart from a refund at a glance. */
+.rr-buyer-tag.rr-return-exchange { color: var(--rr-primary); background: var(--rr-primary-soft); border-color: color-mix(in srgb, var(--rr-primary) 35%, transparent); }
+.rr-ordercell .rr-on-no > .rr-return-exchange { margin-left: 2px; }
+.rr-acts > .rr-return-exchange, .rr-facts .rr-return-exchange { align-self: center; }
