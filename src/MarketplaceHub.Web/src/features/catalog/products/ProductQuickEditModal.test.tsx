@@ -40,7 +40,16 @@ async function render(products: Product[] = [product]) {
 const groupBox = (color: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${color} rengindeki tüm varyantları seç"]`)!
 const note = () => document.body.querySelector('.rr-note')?.textContent ?? ''
 async function click(element: HTMLElement) { await act(async () => { element.click() }) }
-const tab = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]')).find(item => item.textContent?.startsWith(label))!
+const valueTrigger = () => document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!
+const valueOptions = () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+// Opens the "Düzenlenen Değer" list and picks a row: 'Stok', or a marketplace group and the row under it ('Satış' / 'Liste' / none for a single row).
+async function pickValue(group: string, row?: string) {
+  await act(async () => { valueTrigger().click() })
+  const options = valueOptions()
+  const at = options.findIndex(option => option.textContent?.startsWith(group))
+  const target = row === undefined ? options[at + (options[at]?.getAttribute('aria-disabled') === 'true' || options[at]?.hasAttribute('disabled') ? 1 : 0)] : options.slice(at + 1).find(option => option.textContent?.startsWith(row))
+  await act(async () => { target!.click() })
+}
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -155,26 +164,33 @@ describe('ProductQuickEditModal price mode tabs', () => {
     })
   }
 
-  it('picks the edited value with a tab strip: the panel prices, then each marketplace', async () => {
+  it('offers every value in one list grouped by marketplace, the window starting on the panel sale price', async () => {
     await renderPrices()
-    const labels = Array.from(document.body.querySelectorAll('button[role="tab"]')).map(item => item.textContent)
-    expect(labels[0]).toBe('Panel Satış Fiyatı')
-    expect(labels[1]).toBe('Panel Liste Fiyatı')
-    expect(labels.some(label => label?.startsWith('Trendyol'))).toBe(true)
-    expect(labels.some(label => label?.startsWith('N11'))).toBe(true)
-    expect(document.body.querySelector('.rr-cr')).not.toBeNull()
-    // One box per variant, whatever the tab.
+    expect(valueTrigger().textContent).toContain('Panel Satış Fiyatı')
+    expect(document.body.querySelector('[role="tab"], .rr-mx-tablist')).toBeNull()
+    await act(async () => { valueTrigger().click() })
+    const texts = valueOptions().map(option => option.textContent)
+    expect(texts[0]).toBe('Stok')
+    expect(texts.filter(text => text === 'Panel' || text === 'Trendyol' || text === 'N11')).toEqual(['Panel', 'Trendyol', 'N11'])
+    expect(texts).toContain('Liste Fiyatı')
+    // One box per variant, whatever the value.
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(4)
   })
 
-  it('puts the Özel Fiyat switch beside a marketplace tab only', async () => {
+  it('puts the Özel Fiyat switch beside a marketplace value only', async () => {
     await renderPrices()
     expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')).toBeNull()
-    await click(tab('Trendyol'))
-    const toggle = document.body.querySelector('.rr-mx-tabs input[role="switch"]')!
-    expect(toggle.getAttribute('aria-label')).toBe('Trendyol özel fiyat')
-    await click(tab('N11'))
+    await pickValue('Trendyol', 'Satış')
+    expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')?.getAttribute('aria-label')).toBe('Trendyol özel fiyat')
+    await pickValue('N11', 'Satış')
     expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')?.getAttribute('aria-label')).toBe('N11 özel fiyat')
+  })
+
+  it('the stock window opens on Stok and offers the prices too', async () => {
+    await render()
+    expect(valueTrigger().textContent).toContain('Stok')
+    await act(async () => { valueTrigger().click() })
+    expect(valueOptions().some(option => option.textContent === 'Panel')).toBe(true)
   })
 })
 
@@ -237,8 +253,8 @@ describe('ProductQuickEditModal with the products list copies', () => {
     root = createRoot(container, { onUncaughtError: error => { errors.push(error) } })
     for (const [index, products] of steps.entries()) {
       await act(async () => { root.render(view(products)) })
-      // The switch sits beside a marketplace tab: open it.
-      if (index === 0) await click(tab('Trendyol'))
+      // The switch sits beside a marketplace value: choose it.
+      if (index === 0) await pickValue('Trendyol', 'Satış')
     }
   }
 
