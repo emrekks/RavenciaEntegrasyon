@@ -84,6 +84,15 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ the `TrendyolHttpClien
   2026; "Temel Bilgiler v2" `.../product/{barcode}` answers one barcode only). Host, path and seller id are those of
   the approved list that reads fine. Source: offline docs "Ürün Filtreleme - Onaysız Ürün v2", "Ürün Filtreleme V1",
   "Ürün Filtreleme - Temel Bilgiler v2"; live job 01a1da88 and its worker log line, 14 Nov 2026.
+- Approved list `dateQueryType=VARIANT_MODIFIED_DATE` filters `sellerModifiedDate`, "the date the seller last updated
+  the barcode" (offline docs, approved products v2 parameter table). Whether a stock fall from a sale, or a stock or
+  price change in the seller panel, moves it is **not documented** (unknown). Live hint, 18 Nov 2026: "Fiyat ve
+  Stokları Güncelle" (job 01a1f0bc, 22:17Z) sent `startDate=<PRODUCTS watermark 17 Nov 17:00:41Z less 2 min>` and got
+  13 of 1,013 contents; MZ040RCY (panel 44, read 17 Nov 17:15Z by a full scan; owner: 50 on Trendyol) was not among
+  them. Since 19 Nov 2026 the existing-only run reads the whole approved list without a date
+  (`ProductImportScanPolicy.IncrementalReadStart`); only the plain incremental read takes the window. Source: offline
+  docs "Ürün Filtreleme - Onaylı Ürün v2"; live `integration.jobs`, `integration.sync_cursors`,
+  `inventory.inventory_items`, 19 Nov 2026.
 - Live 14 Nov 2026 15:33Z, the whole list without status or date: `statuses "rejected=6", total 6`. The seller panel's
   "Onay Bekleyenler" held products the API names `rejected`, not `pendingApproval`. Owner: rejected ones are imported
   too. Since 14 Nov every unapproved row is imported; its `status` becomes the imported listing profile's state

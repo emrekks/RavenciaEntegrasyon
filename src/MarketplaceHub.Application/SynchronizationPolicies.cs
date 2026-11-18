@@ -517,6 +517,16 @@ public static class ProductImportScanPolicy
     public static bool RequiresFullCatalogForMapping(bool mappingOnly, bool includeArchived, bool includeDrafts) =>
         mappingOnly;
 
+    // Where a catalog read starts: the "changed since" moment (the PRODUCTS watermark less two minutes), or null for the
+    // whole catalog. Only the plain incremental read ("Yeni ve değişen ürünler") takes the window. A full scan, a mapping,
+    // a single lookup and "Mevcut Ürünleri Güncelle" (Fiyat ve Stokları Güncelle) read every listing: a scoped run never
+    // moves the watermark (CompletedWatermark), and the marketplace's change date does not follow every stock or price
+    // change (Trendyol's VARIANT_MODIFIED_DATE is the date "the seller" last updated the barcode). Until 19 Nov 2026 the
+    // existing-only run took the window and read 13 of Trendyol's 1,013 contents (job 01a1f0bc, 18 Nov 22:17Z), so MZ040RCY
+    // kept panel stock 44 while Trendyol had 50.
+    public static DateTimeOffset? IncrementalReadStart(bool fullScan, bool existingOnly, bool singleLookup, bool hasSnapshots, DateTimeOffset? watermark) =>
+        !fullScan && !existingOnly && !singleLookup && hasSnapshots && watermark is { } value ? value.AddMinutes(-2) : null;
+
     // A Trendyol "Mevcut Ürünleri Güncelle" run with none of its choices ticked: refused (owner, 12 Nov 2026).
     public static bool ExistingUpdateSelectsNothing(string? platformCode, bool existingUpdate, bool updateExistingProducts, bool updatePrices, bool updateStock) =>
         existingUpdate && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
