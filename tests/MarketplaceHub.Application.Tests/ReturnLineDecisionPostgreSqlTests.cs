@@ -183,7 +183,8 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
             Assert.Equal((1, 1), (unknown.Summary.Metrics!.RejectedAwaitingCargo, unknown.Summary.Metrics.TodayRejected));
 
             await using (var db = fixture.CreateContext())
-                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.ResolvedWith, ReturnCustomerRequestPolicy.Change));
+                // As a read sets it: the claim changes (UpdatedAt), so the 30-second summary cache does not answer for it.
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.ResolvedWith, ReturnCustomerRequestPolicy.Change).SetProperty(c => c.UpdatedAt, DateTimeOffset.UtcNow.AddSeconds(1)));
             var made = await ReadAsync();
             Assert.True(made.Row.ExchangeApproved);
             Assert.True(made.Detail.ExchangeApproved);
