@@ -1,19 +1,19 @@
-import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes } from 'react'
 import { variantOptionParts } from '../variant-option-label'
 import { colourFirstOptions } from '../variant-option-matching'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { TitleHint } from '../../../shared/components'
-import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
-import { RrAnchor, RrIcon, RrModal } from '../../../shared/ui/rr-components'
+import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import { type NotificationContext } from '../../../shared/notifications'
-import { updateVariantGroupSelection, variantGroupSelectionState, variantShortcutLabel, variantShortcutSelection } from '../variant-bulk-edit'
+import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { applyQuickEditDraft, quickEditDraftValues, type QuickEditDraftChange, type QuickEditDraftRow, type QuickEditDraftValues } from './quick-edit-draft'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { QuickEditMatrix, buildMatrix, type MatrixLine } from './QuickEditMatrix'
 import { DraftSaveBar, useDraftEdits, useUnsavedChangesGuard } from '../../../shared/draft-edits'
 import { MarketplaceConnection, Product, Variant, compareLabelsAlphabetically, compareOptionValues, compareVariantOptionSignatures, formatCatalogOptionLabel, isVariantOptionName, preferredColorOption, variantColorKey, variantOptionEntries } from '../shared'
 
@@ -99,16 +99,6 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const colorLabels = sortedVariants.reduce<Record<string, string>>((result, item) => { const key = colorOf(item); result[key] ??= formatCatalogOptionLabel(colorLabelOf(item)); return result }, {})
   const colorOptions = Object.keys(groups).sort((left, right) => compareLabelsAlphabetically(colorLabels[left] || left, colorLabels[right] || right))
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
-  const [selectedColors, setSelectedColors] = useState<string[]>([])
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([])
-  const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
-  // The groups in one grid row open and close together (two columns in a stock window, one on a phone or for prices).
-  const phoneWidth = useMediaQuery('(max-width: 760px)')
-  const groupColumns = phoneWidth ? 1 : 2
-  // Each colour group opens on its own; an open group's table takes the full width right under its row.
-  const [closingGroups, setClosingGroups] = useState<string[]>([])
-  const [revealPanel, setRevealPanel] = useState<string | null>(null)
-  const groupPanelId = useId()
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
   // Where a price change goes: the panel's own price (preset: it sends nothing to a marketplace) or one channel the
@@ -165,23 +155,8 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // action goes to all of its variants; ticking rows (by hand or with Renk / Beden) narrows it to them.
   const targetIds = selectionDraft.length ? selectionDraft : sortedVariants.map(item => item.variant.id)
   const activeSelectedSet = selectedSet
-  const sizeOptions = [...new Set(sortedVariants.filter(item => !selectedColors.length || selectedColors.includes(colorOf(item))).map(sizeOf))].sort((left, right) => compareOptionValues('Beden', left, right))
-  const toggleColor = (color: string) => {
-    const next = selectedColors.includes(color) ? selectedColors.filter(item => item !== color) : [...selectedColors, color]
-    setSelectedColors(next)
-    applyFilterSelection(next, selectedSizes)
-  }
-  const toggleSize = (size: string) => {
-    const next = selectedSizes.includes(size) ? selectedSizes.filter(item => item !== size) : [...selectedSizes, size]
-    setSelectedSizes(next)
-    applyFilterSelection(selectedColors, next)
-  }
-  // A checkbox ticked by hand makes the selection the person's own: the Renk / Beden shortcuts no longer describe it.
-  const clearShortcuts = () => { setSelectedColors([]); setSelectedSizes([]) }
-  const toggle = (id: string) => { clearShortcuts(); setSelectionDraft(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]) }
-  function applyFilterSelection(colors: string[], sizes: string[]) {
-    setSelectionDraft(variantShortcutSelection(sortedVariants, colors, sizes, colorOf, sizeOf, item => item.variant.id))
-  }
+  // Ticking a row, a column, the corner or one cell's mark adds or drops those variants (updateVariantGroupSelection).
+  const selectIds = (ids: string[], checked: boolean) => setSelectionDraft(current => updateVariantGroupSelection(current, ids, checked))
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (saving) return
     if (draft) {
@@ -312,74 +287,83 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const requestClose = () => { if (draftCount > 0 && !draft) setConfirmClose(true); else onClose() }
   const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.</>
   const stepTwoTitle = mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'
-  const reduceMotion = () => typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  const toggleColorGroup = (color: string, panelId: string) => {
-    if (!openColorGroups.includes(color)) { setOpenColorGroups(current => [...current, color]); setRevealPanel(panelId); return }
-    if (reduceMotion()) { setOpenColorGroups(current => current.filter(item => item !== color)); return }
-    setClosingGroups(current => [...current, color])
-    window.setTimeout(() => { setOpenColorGroups(current => current.filter(item => item !== color)); setClosingGroups(current => current.filter(item => item !== color)) }, 150)
+  // Which value the matrix edits: Stok, or one price (the panel's Satış / Liste, each marketplace's). The editor's own rows
+  // (draft) edit Stok, Maliyet, Liste and Satış. Drafts of the tabs not shown are kept.
+  type ValueTab = { id: string; label: string; kind: 'stock' | 'price' | 'draft'; columnId?: string; field: 'stock' | 'sale' | 'list' | 'costPrice' | 'listPrice' | 'salePrice' }
+  const valueTabs: ValueTab[] = draft
+    ? [{ id: 'stock', label: 'Stok', kind: 'draft', field: 'stock' }, { id: 'costPrice', label: 'Maliyet', kind: 'draft', field: 'costPrice' }, { id: 'listPrice', label: 'Liste Fiyatı', kind: 'draft', field: 'listPrice' }, { id: 'salePrice', label: 'Satış Fiyatı', kind: 'draft', field: 'salePrice' }]
+    : [
+      ...(showStockColumn ? [{ id: 'stock', label: 'Stok', kind: 'stock', field: 'stock' } as ValueTab] : []),
+      ...(showPriceColumns ? priceColumns.flatMap((column): ValueTab[] => {
+        const name = column.id === PANEL_PRICE_CHOICE ? 'Panel' : column.label
+        return column.takesListPrice
+          ? [{ id: `${column.id}:sale`, label: `${name} Satış Fiyatı`, kind: 'price', columnId: column.id, field: 'sale' }, { id: `${column.id}:list`, label: `${name} Liste Fiyatı`, kind: 'price', columnId: column.id, field: 'list' }]
+          : [{ id: `${column.id}:sale`, label: `${name} Fiyatı`, kind: 'price', columnId: column.id, field: 'sale' }]
+      }) : [])
+    ]
+  const [activeTabId, setActiveTabId] = useState('')
+  const activeTab = valueTabs.find(item => item.id === activeTabId) ?? valueTabs[0]
+  const activeColumn = activeTab?.kind === 'price' ? priceColumns.find(column => column.id === activeTab.columnId) : undefined
+  const activeChannel = activeColumn && activeColumn.id !== PANEL_PRICE_CHOICE ? activeColumn : undefined
+  const tabHasDraft = (tab: ValueTab) => tab.kind === 'stock' ? stockDrafts.count > 0 : tab.kind === 'price' ? [...priceDrafts.entries].some(([key, entry]) => key.endsWith(`|${tab.columnId}`) && entry.value[tab.field as 'sale' | 'list'] !== entry.original[tab.field as 'sale' | 'list']) : false
+  const matrixColors: MatrixLine[] = colorOptions.map(color => ({ key: color, label: colorLabels[color] || formatCatalogOptionLabel(color) }))
+  const matrix = buildMatrix(sortedVariants, colorOf, sizeOf, (left, right) => compareOptionValues('Beden', left, right), matrixColors)
+  const itemLabel = (item: typeof variants[number]) => { const parts = variantAxisParts(item.variant.optionSignature); return parts.length ? parts.map(part => part.value).join(' · ') : item.variant.sku }
+  // One cell's box: the loaded value, or the draft typed over it (purple frame, the saved value in its tooltip).
+  function renderCell(item: typeof variants[number], position: { row: number; col: number }) {
+    if (!activeTab) return null
+    const variant = item.variant
+    const where = { 'data-mr': position.row, 'data-mc': position.col }
+    const identity = `${variant.sku}${variant.barcode ? ` · ${variant.barcode}` : ''}`
+    if (activeTab.kind === 'draft') {
+      const values = draftValues[variant.id]
+      const field = activeTab.field as keyof QuickEditDraftValues
+      const name = itemLabel(item)
+      const aria = `${name} ${field === 'stock' ? 'stok' : field === 'costPrice' ? 'maliyet' : field === 'listPrice' ? 'liste fiyatı' : 'satış fiyatı'}`
+      return <span className="rr-mx-box">{field === 'stock'
+        ? <input {...where} className="rr-in rr-num rr-mx-in" title={identity} aria-label={aria} type="text" inputMode="numeric" autoComplete="off" value={values[field]} onChange={event => setDraftValue(variant.id, field, event.target.value)} />
+        : <QuickPriceInput {...where} className="rr-in rr-num rr-mx-in" title={identity} aria-label={aria} value={values[field]} onValue={value => setDraftValue(variant.id, field, value)} />}</span>
+    }
+    if (activeTab.kind === 'stock') {
+      const shown = quickStockCellValue(variant.onHand, savedStocks.current.get(variant.id) ?? null).value
+      const drafted = stockDrafts.get(variant.id)?.value
+      const error = cellError(`s:${variant.id}`)
+      return <span className={`rr-mx-box${drafted !== undefined ? ' rr-draft' : ''}`}><input {...where} className="rr-in rr-num rr-mx-in" aria-label={`${variant.sku} stok`} aria-invalid={error ? true : undefined} title={error || (drafted !== undefined ? `Kaydedilmedi · kayıtlı stok: ${shown} · ${identity}` : identity)} value={drafted ?? String(shown)} type="number" min="0" step="1"
+        onChange={event => { setNotice(''); clearRowError(`s:${variant.id}`); stockDrafts.set(variant.id, event.target.value, String(shown)) }}
+        onKeyDown={event => { if (event.key === 'Escape' && drafted !== undefined) { event.preventDefault(); stockDrafts.revert(variant.id); clearRowError(`s:${variant.id}`) } }} /></span>
+    }
+    const column = activeColumn
+    if (!column) return null
+    const field = activeTab.field as 'sale' | 'list'
+    const isPanel = column.id === PANEL_PRICE_CHOICE
+    if (!isPanel && !customChannels[column.id]) {
+      // A marketplace at the panel price shows it read-only; a variant with no offer there shows a dash.
+      const listed = channelOffer(variant, column.id) != null
+      const panel = panelPrices(variant, item.product)
+      const value = field === 'list' ? panel.listPrice : panel.salePrice
+      return <span className="rr-mx-follow" title={listed ? `${column.label} ana fiyatla satılır: panel fiyatı kaydedilince bu fiyat da güncellenir. · ${identity}` : `${column.label}: bu varyantın bu pazaryerinde fiyatı yok. · ${identity}`}>{listed && value != null ? formatPriceField(value) : '—'}</span>
+    }
+    const shownPrices = quickInlinePrices(column.id, variant, item.product)
+    const original: PriceDraft = { list: priceFieldText(shownPrices.listPrice), sale: priceFieldText(shownPrices.salePrice) }
+    const key = priceKey(variant.id, column.id)
+    const draftPair = priceDrafts.get(key)?.value
+    const current = draftPair ?? original
+    const target = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, column.id, connections.length)
+    const blocked = target.kind === 'blocked' ? target.reason : ''
+    const error = cellError(`p:${key}`)
+    const fallback = isPanel && panelPriceIsFallback(variant, item.product)
+    const drafted = draftPair !== undefined && draftPair[field] !== original[field]
+    const title = error || blocked || (drafted ? `Kaydedilmedi · kayıtlı fiyat: ${original[field] || '—'} · ${identity}` : fallback ? 'Kayıtlı panel fiyatı yok; ürün düzenleyicideki gibi ilk aktif kanal fiyatı gösteriliyor. Değiştirirseniz panel fiyatı olarak kaydedilir.' : identity)
+    return <span className={`rr-mx-box${drafted ? ' rr-draft' : ''}`}><QuickPriceInput {...where} className="rr-in rr-num rr-mx-in" aria-invalid={error ? true : undefined} title={title} disabled={!!blocked} placeholder={field === 'list' ? 'Liste' : 'Satış'} aria-label={`${variant.sku} ${column.label} ${field === 'list' ? 'liste' : 'satış'} fiyatı`} value={current[field]}
+      onValue={value => { setNotice(''); clearRowError(`p:${key}`); priceDrafts.set(key, { ...current, [field]: value }, original) }}
+      onKeyDown={event => { if (event.key === 'Escape' && draftPair !== undefined) { event.preventDefault(); priceDrafts.revert(key); clearRowError(`p:${key}`) } }} /></span>
   }
-  const allGroupsOpen = colorOptions.length > 0 && colorOptions.every(color => openColorGroups.includes(color))
-  const toggleAllGroups = () => { setClosingGroups([]); setOpenColorGroups(allGroupsOpen ? [] : [...colorOptions]) }
-  // The group just opened scrolls into view (nearest: no jump when it already is).
-  useEffect(() => {
-    if (!revealPanel) return
-    document.getElementById(revealPanel)?.scrollIntoView?.({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' })
-    setRevealPanel(null)
-  }, [revealPanel])
   return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} onClose={onClose} onBeforeClose={() => { if (draftCount > 0 && !draft) { setConfirmClose(true); return false } return true }} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : <>Seçim yok: <b>{targetIds.length} varyantın</b> tümüne uygulanır</>}</span><button type="button" className="rr-btn" onClick={requestClose} disabled={saving}>{draftCount > 0 && !draft ? 'Kapat' : 'Vazgeç'}</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !targetIds.length} title={draft ? undefined : 'Değerleri tablodaki hücrelere taslak olarak yazar; kaydetmez.'}>{saving ? 'Uygulanıyor…' : draft ? 'Varyantlara Uygula' : activeSelection.length ? 'Seçilenlere Uygula' : 'Tümüne Uygula'}</button></>}>
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
-      <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><div className="rr-step-tools">
-        <button type="button" className="rr-btn rr-link" onClick={toggleAllGroups} aria-pressed={allGroupsOpen}>{allGroupsOpen ? 'Tümünü Kapat' : 'Tümünü Aç'}</button>
-        <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Renk: {variantShortcutLabel(selectedColors, colorOptions)}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" aria-label="Renk" style={{ minWidth: 240 }}>{colorOptions.map(color => <label key={color} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span className="rr-grow">{colorLabels[color] || formatCatalogOptionLabel(color)}</span><small>{groups[color].length} varyant</small></label>)}</div>}</RrAnchor>
-        <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Beden: {variantShortcutLabel(selectedSizes, sizeOptions)}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" aria-label="Beden" style={{ minWidth: 220 }}>{sizeOptions.map(size => <label key={size} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span className="rr-grow">{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>}</RrAnchor>
-      </div></header>
-                {/* Two columns of compact group rows (one on a phone); an opened group's table spans both, right under its row. */}
-        <div className="rr-vgroups rr-two">{colorOptions.map((color, index) => {
-          const items = groups[color]
-          const isOpen = openColorGroups.includes(color)
-          const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
-          const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
-          const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          const panelId = `${groupPanelId}-${index}`
-          const header = <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => {
-            // Read before the state update: React clears currentTarget once the handler returns, and the updater can
-            // run later (on render), where event.currentTarget.checked threw "Cannot read properties of null".
-            const checked = event.currentTarget.checked
-            const groupIds = items.map(item => item.variant.id)
-            clearShortcuts()
-            setSelectionDraft(current => updateVariantGroupSelection(current, groupIds, checked))
-          }} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} aria-controls={isOpen ? panelId : undefined} onClick={() => toggleColorGroup(color, panelId)}><span className="rr-vg-name"><b title={groupLabel}>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small></span><RrIcon name="chev" /></button></div></div>
-          const panel = isOpen ? <div className={`rr-vg-panel${closingGroups.includes(color) ? ' rr-closing' : ''}`} key={`${color}-panel`}><div className="rr-qtable-wrap" id={panelId} role="region" aria-label={`${groupLabel} varyantları`}>
-            <table className={`rr-qtable${showPriceColumns ? ' rr-qt-prices' : ''}${showStockColumn ? ' rr-qt-has-stock' : ''}`}>
-              <caption className="sr-only">{groupLabel} varyantları</caption>
-              <colgroup><col className="rr-qt-w-sel" /><col className="rr-qt-w-var" />{showStockColumn && <col className="rr-qt-w-stock" />}{draft && <col className="rr-qt-w-price" />}{showPriceColumns && priceColumns.flatMap(column => column.takesListPrice ? [<col key={`${column.id}-l`} className="rr-qt-w-price" />, <col key={`${column.id}-s`} className="rr-qt-w-price" />] : [<col key={column.id} className="rr-qt-w-price" />])}</colgroup>
-              <thead>
-                <tr>
-                  <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-sel rr-qt-stick"><span className="sr-only">Seç</span></th>
-                  <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-var rr-qt-stick">Varyant</th>
-                  {showStockColumn && <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-stock rr-qt-stick rr-qt-num">Stok</th>}
-                  {draft && <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-gs rr-qt-num">Maliyet</th>}
-                  {showPriceColumns && <th scope="colgroup" colSpan={2} className="rr-qt-panel rr-qt-gs">Panel Fiyatı</th>}
-                  {showPriceColumns && channelColumns.map(column => <th key={column.id} scope="colgroup" colSpan={column.takesListPrice ? 2 : 1} className={`rr-qt-ch rr-qt-gs${customChannels[column.id] ? ' rr-on' : ''}`}><span className="rr-qt-chhead"><span className="rr-qt-chname" title={column.label}>{column.label}</span><QuickEditCustomToggle column={column} custom={customChannels[column.id]} onChange={value => void setCustomChannel(column.id, value)} compact /></span></th>)}
-                </tr>
-                {showPriceColumns && <tr className="rr-qt-sub">
-                  <th scope="col" className="rr-qt-panel rr-qt-gs rr-qt-num">Liste</th><th scope="col" className="rr-qt-panel rr-qt-ps rr-qt-num">Satış</th>
-                  {channelColumns.map(column => column.takesListPrice ? [<th key={`${column.id}-l`} scope="col" className="rr-qt-gs rr-qt-num">Liste</th>, <th key={`${column.id}-s`} scope="col" className="rr-qt-num">Satış</th>] : <th key={column.id} scope="col" className="rr-qt-gs rr-qt-num">Satış</th>)}
-                </tr>}
-              </thead>
-              <tbody>{items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); return <tr className={selectedSet.has(item.variant.id) ? 'rr-on' : 'rr-off'} key={item.variant.id}>
-                <td className="rr-qt-sel rr-qt-stick"><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /></td>
-                <th scope="row" className="rr-qt-var rr-qt-stick"><span className="rr-qname"><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>{item.variant.sku}</small></span></th>
-                {draft ? <QuickEditDraftCells label={parts.length ? parts.map(part => part.value).join(' · ') : item.variant.sku} values={draftValues[item.variant.id]} onValue={(field, value) => setDraftValue(item.variant.id, field, value)} /> : <>{showStockColumn && <QuickEditStockCell variant={item.variant} shown={quickStockCellValue(item.variant.onHand, savedStocks.current.get(item.variant.id) ?? null).value} draft={stockDrafts.get(item.variant.id)?.value} error={cellError(`s:${item.variant.id}`)} onDraft={value => { setNotice(''); clearRowError(`s:${item.variant.id}`); stockDrafts.set(item.variant.id, value, String(quickStockCellValue(item.variant.onHand, savedStocks.current.get(item.variant.id) ?? null).value)) }} onRevert={() => { stockDrafts.revert(item.variant.id); clearRowError(`s:${item.variant.id}`) }} />}
-                {showPriceColumns && priceColumns.map(column => column.id === PANEL_PRICE_CHOICE || customChannels[column.id]
-                  ? <QuickEditPriceCell key={column.id} column={column} variant={item.variant} product={item.product} connectionCount={connections.length} draft={priceDrafts.get(priceKey(item.variant.id, column.id))?.value} error={cellError(`p:${priceKey(item.variant.id, column.id)}`)} onDraft={(next, original) => { setNotice(''); clearRowError(`p:${priceKey(item.variant.id, column.id)}`); priceDrafts.set(priceKey(item.variant.id, column.id), next, original) }} onRevert={() => { priceDrafts.revert(priceKey(item.variant.id, column.id)); clearRowError(`p:${priceKey(item.variant.id, column.id)}`) }} onCustom={phoneWidth && column.id !== PANEL_PRICE_CHOICE ? value => void setCustomChannel(column.id, value) : undefined} />
-                  : <QuickEditFollowCell key={column.id} column={column} variant={item.variant} product={item.product} onCustom={phoneWidth ? value => void setCustomChannel(column.id, value) : undefined} />)}</>}
-              </tr> })}</tbody>
-            </table>
-          </div></div> : null
-          return { color, header, panel }
-        }).reduce<Array<Array<{ color: string; header: ReactElement; panel: ReactElement | null }>>>((rows, entry, index) => { if (index % groupColumns === 0) rows.push([]); rows[rows.length - 1].push(entry); return rows }, []).map(row => <Fragment key={row[0].color}>{row.map(entry => entry.header)}{row.map(entry => entry.panel)}</Fragment>)}</div>
+      <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><small className="rr-lead">{valueTabs.length > 1 ? 'Düzenlenecek değeri sekmeden seçin.' : 'Satır, sütun veya hücre onay kutusuyla varyantları işaretleyin.'}</small></header>
+        {valueTabs.length > 1 && <div className="rr-mx-tabs"><div className="rr-mx-tablist" role="tablist" aria-label="Düzenlenen değer">{valueTabs.map(tab => <button key={tab.id} type="button" role="tab" className="rr-mx-tab" aria-selected={tab.id === activeTab?.id} onClick={() => setActiveTabId(tab.id)}>{tab.label}{tabHasDraft(tab) && <i aria-label="Kaydedilmemiş değişiklik var" />}</button>)}</div>
+          {activeChannel && <><QuickEditCustomToggle column={activeChannel} custom={customChannels[activeChannel.id]} onChange={value => setCustomChannel(activeChannel.id, value)} compact />{!customChannels[activeChannel.id] && <span className="rr-mx-note">Panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat'ı açın.</span>}</>}</div>}
+        <QuickEditMatrix rows={matrix.rows} sizes={matrix.sizes} cells={matrix.cells} idOf={item => item.variant.id} labelOf={itemLabel} selected={selectedSet} onSelect={selectIds} renderCell={renderCell} caption={`${contextTitle}: renk ve beden varyantları`} />
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{stepTwoTitle}<TitleHint label={stepTwoTitle}>{draft ? 'Tablodaki hücreleri tek tek değiştirebilir, buradaki değerleri işaretli varyantlara (hiçbiri işaretli değilse tümüne) verebilirsiniz. Uygula yalnız ürün düzenleyicideki varyant tablosunu değiştirir; kalıcı olması için sayfadaki Kaydet’e basın.' : 'Değer işaretli varyantlara uygulanır; hiçbir varyant işaretli değilse tümüne uygulanır.'}</TitleHint></div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : `Seçim yok: tüm ${targetIds.length} varyanta uygulanacak`}</small></header>
         {activeSelection.length ? <div className="rr-chips">{selectionChips(variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => item.variant)).map(chip => <span key={chip} className="rr-chip">{chip}</span>)}</div> : null}
@@ -393,28 +377,13 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     </form>
   </RrModal>
 }
-// One editor row's cells in the Toplu Düzenle window opened from the product editor: Stok, Maliyet and the panel
-// Liste / Satış prices, typed into the window only (nothing is saved); the window checks them when they are applied.
-function QuickEditDraftCells({ label, values, onValue }: { label: string; values: QuickEditDraftValues; onValue: (field: keyof QuickEditDraftValues, value: string) => void }) {
-  return <>
-    <td className="rr-qt-stock rr-qt-stick rr-qt-num" data-l="Stok"><input className="rr-in rr-num" aria-label={`${label} stok`} type="text" inputMode="numeric" autoComplete="off" value={values.stock} onChange={event => onValue('stock', event.target.value)} /></td>
-    <td className="rr-qt-gs rr-qt-num" data-l="Maliyet"><QuickPriceInput className="rr-in rr-num" placeholder="Maliyet" aria-label={`${label} maliyet`} value={values.costPrice} onValue={value => onValue('costPrice', value)} /></td>
-    <td className="rr-qt-gs rr-qt-num rr-qt-panel" colSpan={2} data-l="Panel Fiyatı"><div className="rr-qpair" role="group" aria-label={`${label} panel fiyatı`}><QuickPriceInput className="rr-in rr-num" placeholder="Liste" aria-label={`${label} liste fiyatı`} value={values.listPrice} onValue={value => onValue('listPrice', value)} /><QuickPriceInput className="rr-in rr-num" placeholder="Satış" aria-label={`${label} satış fiyatı`} value={values.salePrice} onValue={value => onValue('salePrice', value)} /></div></td>
-  </>
-}
-// One variant's stock in the quick edit matrix. Typing makes a draft (the window's Kaydet saves it, against the stock the
-// window opened with); Esc puts the saved value back. The field shows the draft, else the loaded (or just saved) stock.
-function QuickEditStockCell({ variant, shown, draft, error, onDraft, onRevert }: { variant: Variant; shown: number; draft?: string; error: string; onDraft: (value: string) => void; onRevert: () => void }) {
-  const drafted = draft !== undefined
-  return <td className={`rr-qt-stock rr-qt-stick rr-qt-num${drafted ? ' rr-draft' : ''}`} data-l="Stok"><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={error ? true : undefined} title={error || (drafted ? `Kaydedilmedi · kayıtlı stok: ${shown}` : undefined)} value={draft ?? String(shown)} onChange={event => onDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && drafted) { event.preventDefault(); onRevert() } }} type="number" min="0" step="1" /></td>
-}
 // "Özel Fiyat" for one marketplace, a switch: on, its own prices are edited in its cells; unticked, it sells at the panel
 // price. Shown beside the column title on one line, and above the table on a phone, where the table becomes cards.
 function QuickEditCustomToggle({ column, custom, onChange, compact = false, className }: { column: QuickPriceColumn; custom: boolean; onChange: (custom: boolean) => void; compact?: boolean; className?: string }) {
   return <label className={`rr-qt-custom${custom ? ' rr-on' : ''}${className ? ` ${className}` : ''}`} title={custom ? `${column.label}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${column.label}: ana fiyatla satılır; panel fiyatı kaydedilince bu pazaryerinin fiyatı da aynı değere güncellenir.`}><input type="checkbox" role="switch" className="rr-qt-switch" checked={custom} onChange={event => onChange(event.currentTarget.checked)} aria-label={`${column.label} özel fiyat`} />{!compact && <b>{column.label}</b>}<span>Özel Fiyat</span></label>
 }
 // A price field: the number as typed while focused, Turkish money digits ("1.249,90") otherwise.
-function QuickPriceInput({ value, onValue, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & { value: string; onValue: (value: string) => void }) {
+function QuickPriceInput({ value, onValue, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & { value: string; onValue: (value: string) => void } & Record<string, unknown>) {
   const [focused, setFocused] = useState(false)
   return <input {...props} type="text" inputMode="decimal" autoComplete="off" value={focused ? value : formatPriceField(value)} onFocus={event => { setFocused(true); props.onFocus?.(event) }} onBlur={event => { setFocused(false); props.onBlur?.(event) }} onChange={event => onValue(event.target.value)} />
 }
@@ -432,15 +401,6 @@ async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<Qu
     }
   }
   return failures
-}
-// A marketplace that follows the panel price: its cells show the panel price, read-only. A variant with no offer there
-// shows a dash: a panel save changes nothing on that marketplace (publishing creates the offer).
-function QuickEditFollowCell({ column, variant, product, onCustom }: { column: QuickPriceColumn; variant: Variant; product: Product; onCustom?: (custom: boolean) => void }) {
-  const listed = channelOffer(variant, column.id) != null
-  const panel = panelPrices(variant, product)
-  const text = (value: number | null) => listed && value != null ? formatPriceField(value) : '—'
-  const title = listed ? `${column.label} ana fiyatla satılır: panel fiyatı kaydedilince bu fiyat da güncellenir. Kendi fiyatını girmek için başlıktaki Özel Fiyat anahtarını açın.` : `${column.label}: bu varyantın bu pazaryerinde fiyatı yok; panel fiyatı kaydedilince burada bir şey değişmez.`
-  return <td className="rr-qt-follow rr-qt-gs rr-qt-num" colSpan={column.takesListPrice ? 2 : 1} data-l={`${column.label} · Ana Fiyat`} title={title}>{onCustom && <QuickEditCustomToggle column={column} custom={false} onChange={onCustom} compact className="rr-qt-cardswitch" />}<div className={`rr-qpair${column.takesListPrice ? '' : ' rr-qsale'}`}>{column.takesListPrice && <span>{text(panel.listPrice)}</span>}<span>{text(panel.salePrice)}</span></div></td>
 }
 // One price draft written: the panel price (and the offers of the marketplaces that follow it) or one "Özel Fiyat"
 // channel's offer, at the versions loaded; nothing else here decides what is saved. Returns the reason when refused.
@@ -465,22 +425,4 @@ async function writePriceCell({ column, followers, variant, connectionCount, lis
     return { ok: false, message: `kaydedilmedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`, stale: isStaleStockError(error) }
   }
   return { ok: true }
-}
-// One variant's price on one column of the quick edit table: the panel price (the product editor's variant Fiyat /
-// Liste Fiyatı) or one ticked ("Özel Fiyat") channel's offer. Typing makes a draft pair (Liste / Satış); the window's
-// Kaydet writes it (see writePriceCell), Esc puts the saved pair back. A problem is told on the field (red border, title).
-function QuickEditPriceCell({ column, variant, product, connectionCount, draft, error, onDraft, onRevert, onCustom }: { column: QuickPriceColumn; variant: Variant; product: Product; connectionCount: number; draft?: PriceDraft; error: string; onDraft: (next: PriceDraft, original: PriceDraft) => void; onRevert: () => void; onCustom?: (custom: boolean) => void }) {
-  const isPanel = column.id === PANEL_PRICE_CHOICE
-  const showListPrice = column.takesListPrice
-  const shown = quickInlinePrices(column.id, variant, product)
-  const original: PriceDraft = { list: priceFieldText(shown.listPrice), sale: priceFieldText(shown.salePrice) }
-  const current = draft ?? original
-  const priceTarget = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, column.id, connectionCount)
-  const priceBlocked = priceTarget.kind === 'blocked' ? priceTarget.reason : ''
-  // A card without a saved panel price shows its first channel price, as the product editor does; said on hover.
-  const fallback = isPanel && panelPriceIsFallback(variant, product)
-  const drafted = draft !== undefined
-  const priceTitle = error || priceBlocked || (drafted ? `Kaydedilmedi · kayıtlı fiyat: ${showListPrice ? `${original.list || '—'} / ` : ''}${original.sale || '—'}` : fallback ? 'Kayıtlı panel fiyatı yok; ürün düzenleyicideki gibi ilk aktif kanal fiyatı gösteriliyor. Değiştirirseniz panel fiyatı olarak kaydedilir.' : undefined)
-  const fieldProps = { className: 'rr-in rr-num', 'aria-invalid': error ? true : undefined, title: priceTitle, disabled: !!priceBlocked } as const
-  return <td className={`rr-qt-gs rr-qt-num${isPanel ? ' rr-qt-panel' : ' rr-qt-own'}${fallback ? ' rr-qfallback' : ''}${drafted ? ' rr-draft' : ''}`} colSpan={showListPrice ? 2 : 1} data-l={isPanel ? 'Panel Fiyatı' : `${column.label} · Özel Fiyat`} title={priceTitle} onKeyDown={event => { if (event.key === 'Escape' && drafted) { event.preventDefault(); onRevert() } }}>{onCustom && !isPanel && <QuickEditCustomToggle column={column} custom onChange={onCustom} compact className="rr-qt-cardswitch" />}<div className={`rr-qpair${showListPrice ? '' : ' rr-qsale'}`} role="group" aria-label={`${variant.sku} ${column.label}`}>{showListPrice && <QuickPriceInput {...fieldProps} placeholder="Liste" aria-label={`${variant.sku} ${column.label} liste fiyatı`} value={current.list} onValue={value => onDraft({ ...current, list: value }, original)} />}<QuickPriceInput {...fieldProps} placeholder="Satış" aria-label={`${variant.sku} ${column.label} satış fiyatı`} value={current.sale} onValue={value => onDraft({ ...current, sale: value }, original)} /></div></td>
 }
