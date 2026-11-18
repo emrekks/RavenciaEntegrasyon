@@ -210,6 +210,17 @@ public static partial class MarketplaceEndpoints
         api.MapPost("/returns/{id:guid}/received", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.MarkReturnReceivedAsync(tenant.TenantId, tenant.UserId, id, version, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
         api.MapPost("/returns/{id:guid}/actions", async (Guid id, ReturnDecisionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ProcessReturnActionInstantAsync(tenant.TenantId, tenant.UserId, id, version, command, http.Request.Headers["Idempotency-Key"].ToString(), OperationCorrelation(http), http.RequestAborted), x => x.Version) : failure! : MissingContext(http)).WithServerBudget().RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
         api.MapPost("/returns/{id:guid}/stock-dispositions", async (Guid id, ReturnDispositionCommand command, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? WithEtag(http, await service.ApplyDispositionAsync(tenant.TenantId, tenant.UserId, id, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version) : MissingContext(http)).RequireIdempotencyKey().Produces<ReturnDetailView>();
+        // Owner, 18 Nov 2026: "Değişim Onaylandı Olarak İşaretle" / "İşareti Kaldır" for a Trendyol exchange request Trendyol
+        // answered Rejected. Panel only, nothing goes to Trendyol; owners and admins only.
+        api.MapPost("/returns/{id:guid}/exchange-approved", async (Guid id, ReturnExchangeMarkCommand command, HttpContext http, IMarketplaceSalesService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            if (!RoleAuthorizationMiddleware.IsElevated(tenant.Role))
+                return Problem(http, new("PERMISSION_DENIED", "Değişim onayı işareti yalnız sahip ve yöneticiler içindir.", 403));
+            return TryIfMatch(http, out var version, out var failure)
+                ? WithEtag(http, await service.MarkExchangeApprovedAsync(tenant.TenantId, tenant.UserId, id, version, command.Marked, OperationCorrelation(http), http.RequestAborted), x => x.Version)
+                : failure!;
+        }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
         api.MapPost("/files/return-evidence", UploadReturnEvidenceAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ReturnEvidenceView>(StatusCodes.Status201Created);
 
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<InstantNotificationView>();

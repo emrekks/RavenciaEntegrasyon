@@ -6420,6 +6420,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("ResolvedWithSource")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)

@@ -64,8 +64,9 @@ internal static class AcceptedReturnPolicy
             // An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov 2026). Only the
             // stored request says so; a claim that does not say is a return as before. An exchange claim the marketplace
             // closed with a refund (raw status Refunded) is a return.
+            // ReturnCustomerRequestPolicy.CountsAsReturn: only Hepsiburada's exchanges (ExchangeNoReturnPlatform); a
+            // Trendyol exchange request counts as before (review, 18 Nov 2026).
             && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
-                // Only Hepsiburada's (ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform): a Trendyol exchange counts as before.
                 || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
                     && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform))
         select new ClaimLine { OrderId = claim.OrderId, OrderLineId = line.OrderLineId, Quantity = line.Quantity, RawStatus = line.RawStatus, ClaimStatus = claim.Status };

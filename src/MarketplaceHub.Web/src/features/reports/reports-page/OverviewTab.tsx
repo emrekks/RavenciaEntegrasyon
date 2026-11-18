@@ -556,6 +556,8 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
       delta: metric(back, 'rate').delta, invert: true, previous: formatPercent(before.returnRate),
       rows: [line(back, 'returned', 'İade Edilen Adet', formatNumber(now.returnedQuantity)),
         { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri; reddedilen ve iptal edilenler sayılmaz.' },
+        // Exchange requests on their own row, for information (owner, 18 Nov 2026).
+        ...((now.exchangeClaims ?? 0) > 0 ? [{ key: 'exchanges', label: 'Değişim Talebi', value: formatCount(now.exchangeClaims), detail: 'returns' as const, note: 'Ürün değişimi istenen talepler, bilgi için. Hepsiburada değişimi iade sayılmaz; Trendyol talebi kabul edildiyse iade olarak sayılmaya devam eder.' }] : []),
         { key: 'amount', label: 'İade Edilen Tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: 'İade edilen ürünler için müşterinin ödediği tutar; Kâr Köprüsü\'nde satıştan düşülür.' },
         line(back, 'returnCargo', 'İade Kargo Bedeli'), line(back, 'operation', 'Yurt Dışı Operasyon İade Bedeli'), line(back, 'returnCost', 'Toplam İade Maliyeti'),
         ...reasonRow('returnReason', topReturn, returnTotal, 'İade taleplerinde', 'returns')] },

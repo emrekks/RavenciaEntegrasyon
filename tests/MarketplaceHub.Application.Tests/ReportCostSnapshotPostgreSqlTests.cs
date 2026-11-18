@@ -129,6 +129,42 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
                     var summary = (await ReportAsync(seed.Tenant.Id)).Summary;
                     Assert.Equal((returned, 2m - returned, returned > 0 ? 1 : 0), (summary.ReturnedQuantity, summary.KeptQuantity, summary.ReturnClaims));
                     Assert.Equal(returned * 100m, summary.ReturnedAmount);
+                    // Owner, 18 Nov 2026: the exchange is counted apart, not lost.
+                    Assert.Equal(request == ReturnCustomerRequestPolicy.Change ? 1 : 0, summary.ExchangeClaims);
+                }
+                finally
+                {
+                    await using var db = fixture.CreateContext();
+                    await db.ReturnLines.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+                    await db.ReturnClaims.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+                }
+            });
+        }
+    }
+
+    // Review, 18 Nov 2026: on Trendyol an exchange request accepted stays a return (it may be a refund) and is also counted
+    // as an exchange request; one Trendyol answered Rejected and the owner marked made is no return and counts as an
+    // exchange (M9); a plain rejected request counts nowhere.
+    [PostgreSqlFact]
+    public async Task A_Trendyol_exchange_request_counts_as_a_return_when_accepted_and_as_an_exchange_only_when_marked_made()
+    {
+        foreach (var (status, raw, resolvedWith, returned, exchanges) in new (ReturnClaimStatus, string, string?, decimal, int)[]
+                 { (ReturnClaimStatus.Approved, "Accepted", null, 1m, 1), (ReturnClaimStatus.Rejected, "Rejected", ReturnCustomerRequestPolicy.Change, 0m, 1), (ReturnClaimStatus.Rejected, "Rejected", null, 0m, 0) })
+        {
+            var seed = Seed($"cs-ty-exch-{raw}-{resolvedWith ?? "none"}".ToLowerInvariant(), lineMatched: true, costAtSale: 40m);
+            await RunAsync(seed, async () =>
+            {
+                var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, OrderId = seed.Order.Id, ExternalClaimId = $"claim-{Guid.NewGuid():N}", Status = status, RawStatus = raw, CustomerRequest = ReturnCustomerRequestPolicy.Change, ResolvedWith = resolvedWith, ResolvedWithSource = resolvedWith is null ? null : ReturnCustomerRequestPolicy.ManualSource, CreatedAt = ReportNow, UpdatedAt = ReportNow };
+                await using (var db = fixture.CreateContext())
+                {
+                    db.ReturnClaims.Add(claim);
+                    db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = seed.Line.Id, ExternalLineId = "claim-line-1", Quantity = 1m, RawStatus = raw });
+                    await db.SaveChangesAsync();
+                }
+                try
+                {
+                    var summary = (await ReportAsync(seed.Tenant.Id)).Summary;
+                    Assert.Equal((returned, returned > 0 ? 1 : 0, exchanges), (summary.ReturnedQuantity, summary.ReturnClaims, summary.ExchangeClaims));
                 }
                 finally
                 {

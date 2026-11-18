@@ -117,6 +117,12 @@ internal sealed class ReportLineExtra
 
 internal sealed class ReportClaimRow
 {
+    // A Hepsiburada exchange not closed with a refund (ReturnCustomerRequestPolicy.CountsAsReturn): no return claim.
+    public bool Exchange { get; init; }
+    // The customer asked for an exchange (CustomerRequest CHANGE), counted apart for information.
+    public bool ExchangeRequest { get; init; }
+    // An exchange marked made (ResolvedWith CHANGE, the owner's mark on a Trendyol claim Trendyol answered Rejected).
+    public bool ExchangeMade { get; init; }
     public Guid OrderId { get; init; }
     public Guid ConnectionId { get; init; }
     public ReturnClaimStatus Status { get; init; }
@@ -357,8 +363,8 @@ internal static class ReportBuilder
     {
         var (orders, cancelled) = Facts(input);
         var (previousOrders, previousCancelled) = Facts(previous);
-        var summary = Summary(orders, cancelled);
-        var previousSummary = Summary(previousOrders, previousCancelled);
+        var summary = Summary(orders, cancelled) with { ExchangeClaims = ExchangeClaims(input, orders) };
+        var previousSummary = Summary(previousOrders, previousCancelled) with { ExchangeClaims = ExchangeClaims(previous, previousOrders) };
         var lines = orders.SelectMany(order => order.Lines.Select(line => (order, line))).ToList();
         var (products, rising, falling) = Movers(Products(orders, input.Names), Products(previousOrders, previous.Names), stock);
 
@@ -373,7 +379,7 @@ internal static class ReportBuilder
         var brands = LineGroups(lines, line => line.Row.BrandId is { } id && input.Names.Brands.TryGetValue(id, out var name) ? name : null);
         var categories = LineGroups(lines, line => line.Row.CategoryId is { } id && input.Names.Categories.TryGetValue(id, out var name) ? name : null);
 
-        var validClaims = input.Claims.Where(x => x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled)).ToList();
+        var validClaims = input.Claims.Where(x => !x.Exchange && x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled)).ToList();
         var reasons = Reasons(validClaims.Select(claim => ClaimReason(input.Channels.TryGetValue(claim.ConnectionId, out var channel) ? channel.PlatformCode : null, claim.ReasonCode, claim.ReasonText)));
 
         var stockView = StockView(products, stock, input.Period.Days);
@@ -415,13 +421,22 @@ internal static class ReportBuilder
         Groups(orders, order => order.Country, order => ReportBuckets.CountryName(order.Country), _ => false, null,
             group => Groups(group, order => order.PlatformCode, order => order.PlatformCode, _ => false, null, null));
 
+    // The exchange requests (not rejected, unless marked made, nor cancelled) of the period's non-cancelled orders, for
+    // information (owner, 18 Nov 2026): a Hepsiburada one is no return, a Trendyol one stays among the returns.
+    private static int ExchangeClaims(ReportInput input, IReadOnlyList<OrderFact> orders)
+    {
+        var ids = orders.Select(order => order.Order.Id).ToHashSet();
+        // A Trendyol exchange marked made answers Rejected (ExchangeMade): counted here, never as a refused return.
+        return input.Claims.Count(x => x.ExchangeRequest && ids.Contains(x.OrderId) && x.Status != ReturnClaimStatus.Cancelled && (x.Status != ReturnClaimStatus.Rejected || x.ExchangeMade));
+    }
+
     // The period's non-cancelled orders with their units, money and buckets, and the cancelled ones apart.
     internal static (List<OrderFact> Orders, List<CancelledFact> Cancelled) Facts(ReportInput input)
     {
         var cancelledStatuses = DashboardRevenuePolicy.CancelledStatuses;
         var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
         var linesByOrder = input.Lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
-        var claimsByOrder = input.Claims.Where(x => x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled))
+        var claimsByOrder = input.Claims.Where(x => !x.Exchange && x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled))
             .GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.Count());
         var orders = new List<OrderFact>();
         var cancelled = new List<CancelledFact>();
@@ -809,7 +824,9 @@ internal static class ReportBuilder
         ["DAMAGEDITEM"] = "Hasarlı ürün gönderildi",
         ["FAKEPRODUCT"] = "Ürün orijinal değil",
         ["LATEINTDELIVERY"] = "Yurt dışı teslimat gecikti",
-        ["OTHER"] = "Diğer"
+        ["OTHER"] = "Diğer",
+        // As Trendyol's seller panel names it (11805950639, owner's screenshot 18 Nov 2026): an exchange request.
+        ["WRONGCHANGEREQUEST"] = "Yanlış gelen ürünümü değiştirmek istiyorum"
     };
 
     internal static string Label(string? text, string? code)

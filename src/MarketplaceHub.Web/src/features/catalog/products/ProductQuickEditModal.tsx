@@ -13,7 +13,7 @@ import { formatMoney } from '../../../shared/format-money'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { applyQuickEditDraft, quickEditDraftValues, type QuickEditDraftChange, type QuickEditDraftRow, type QuickEditDraftValues } from './quick-edit-draft'
 import { PanelSelect } from '../../../shared/PanelSelect'
-import { QuickEditMatrix, buildMatrix, type MatrixLine } from './QuickEditMatrix'
+import { QuickEditColorRows, buildMatrix, type MatrixLine } from './QuickEditColorRows'
 import { DraftSaveBar, useDraftEdits, useUnsavedChangesGuard } from '../../../shared/draft-edits'
 import { MarketplaceConnection, Product, Variant, compareLabelsAlphabetically, compareOptionValues, compareVariantOptionSignatures, formatCatalogOptionLabel, isVariantOptionName, preferredColorOption, variantColorKey, variantOptionEntries } from '../shared'
 
@@ -363,7 +363,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><small className="rr-lead">{valueTabs.length > 1 ? 'Düzenlenecek değeri sekmeden seçin.' : 'Satır, sütun veya hücre onay kutusuyla varyantları işaretleyin.'}</small></header>
         {valueTabs.length > 1 && <div className="rr-mx-tabs"><div className="rr-mx-tablist" role="tablist" aria-label="Düzenlenen değer">{valueTabs.map(tab => <button key={tab.id} type="button" role="tab" className="rr-mx-tab" aria-selected={tab.id === activeTab?.id} onClick={() => setActiveTabId(tab.id)}>{tab.label}{tabHasDraft(tab) && <i aria-label="Kaydedilmemiş değişiklik var" />}</button>)}</div>
           {activeChannel && <><QuickEditCustomToggle column={activeChannel} custom={customChannels[activeChannel.id]} onChange={value => setCustomChannel(activeChannel.id, value)} compact />{!customChannels[activeChannel.id] && <span className="rr-mx-note">Panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat'ı açın.</span>}</>}</div>}
-        <QuickEditMatrix rows={matrix.rows} sizes={matrix.sizes} cells={matrix.cells} idOf={item => item.variant.id} labelOf={itemLabel} selected={selectedSet} onSelect={selectIds} renderCell={renderCell} caption={`${contextTitle}: renk ve beden varyantları`} />
+        <QuickEditColorRows rows={matrix.rows} sizes={matrix.sizes} cells={matrix.cells} idOf={item => item.variant.id} labelOf={itemLabel} selected={selectedSet} onSelect={selectIds} renderCell={renderCell} caption={`${contextTitle}: renk ve beden varyantları`} />
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{stepTwoTitle}<TitleHint label={stepTwoTitle}>{draft ? 'Tablodaki hücreleri tek tek değiştirebilir, buradaki değerleri işaretli varyantlara (hiçbiri işaretli değilse tümüne) verebilirsiniz. Uygula yalnız ürün düzenleyicideki varyant tablosunu değiştirir; kalıcı olması için sayfadaki Kaydet’e basın.' : 'Değer işaretli varyantlara uygulanır; hiçbir varyant işaretli değilse tümüne uygulanır.'}</TitleHint></div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : `Seçim yok: tüm ${targetIds.length} varyanta uygulanacak`}</small></header>
         {activeSelection.length ? <div className="rr-chips">{selectionChips(variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => item.variant)).map(chip => <span key={chip} className="rr-chip">{chip}</span>)}</div> : null}

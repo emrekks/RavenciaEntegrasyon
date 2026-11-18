@@ -5879,7 +5879,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-preview-lines { overflow-x: auto; border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
 .invoice-workspace-preview-line { display: grid; grid-template-columns: minmax(260px, 2.4fr) repeat(5, minmax(86px, .8fr)); align-items: stretch; min-width: 760px; border-top: 1px solid var(--rv-color-border); }
 .invoice-workspace-preview-line > * { display: flex; align-items: center; padding: 12px 14px; min-width: 0; }
-.invoice-workspace-preview-line > * + * { justify-content: flex-end; border-left: 1px solid var(--rv-color-border); text-align: right; }
+/* Not "> * + *": a rule ending in a universal sibling made the browser restyle ~3 500 elements of a list page whenever anything
+   was added to it (the phone menu, windows). :where keeps the old weight. */
+.invoice-workspace-preview-line > :where(:not(:first-child)) { justify-content: flex-end; border-left: 1px solid var(--rv-color-border); text-align: right; }
 .invoice-workspace-preview-line-head { border-top: 0; background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font-size: 13px; }
 .invoice-workspace-preview-line-head > * { font-weight: 600; padding-block: 10px; }
 .invoice-workspace-preview-targets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 16px; color: var(--rv-color-muted); font-size: 13px; }

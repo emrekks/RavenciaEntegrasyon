@@ -237,26 +237,66 @@ public static class ReturnCustomerRequestPolicy
     // (trendyol-api-son.md "İade Sebepleri") gives ids and names only, no codes.
     public const string TrendyolExchangeReasonCode = "WRONGCHANGEREQUEST";
 
-    // What the Trendyol customer asked for, from the claim's explicit data only: the exchange reason code, or a
-    // replacement package Trendyol sends for the claim (getClaims replacementOutboundpackageinfo, "Değişim giden paket
-    // bilgisi (değişim yoksa boş)", trendyol-api-son.md:17452). Anything else is unknown (null): getClaims names no
-    // refund request either, and the reason's text is never searched.
-    public static string? FromTrendyol(string? reasonCode, bool hasReplacementPackage) =>
-        hasReplacementPackage || string.Equals(reasonCode?.Trim(), TrendyolExchangeReasonCode, StringComparison.OrdinalIgnoreCase) ? Change : null;
+    // A Trendyol exchange request is handled in Trendyol's seller panel ("Değişim Yap"), an action its API does not
+    // document: approveClaimLineItems (PUT claims/{claimId}/items/approve) is documented for returns only
+    // (trendyol-api-son.md "İade Siparişleri Onaylama"), so what it would do to an exchange is unknown and the panel never
+    // sends it (owner's screenshot of 11805950639, 18 Nov 2026). The seller's issue (createClaimIssue) stays: Trendyol
+    // reviews it, and its reasons name exchange cases (2101).
+    public const string TrendyolExchangeApproveBlockedCode = "TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL";
+    public const string TrendyolExchangeApproveBlockedMessage = "Değişim talebi Trendyol satıcı panelinden “Değişim Yap” ile işlenir; panelden iade onayı gönderilmez.";
+
+    public static bool ApprovalBlocked(string? platformCode, string? customerRequest) =>
+        string.Equals(platformCode?.Trim(), "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+        && string.Equals(customerRequest?.Trim(), Change, StringComparison.OrdinalIgnoreCase);
+
+    // An exchange made: the customer asked for one and the claim was closed by one (ResolvedWith CHANGE). On Trendyol it
+    // comes only from the owner's mark (its claim names no exchange outcome; review, 18 Nov 2026), and Trendyol answers a
+    // made exchange Rejected, so only a rejected claim changes how it shows (EXCHANGE_APPROVED, the approved tab); stock
+    // may then still be taken in.
+    public static bool ExchangeMade(string? customerRequest, string? resolvedWith) => customerRequest == Change && resolvedWith == Change;
+
+    // The owner's own mark (ReturnClaim.ResolvedWithSource): "Değişim Onaylandı Olarak İşaretle", panel only.
+    public const string ManualSource = "MANUAL";
+    public const string ManualExchangeMarkNotAllowedCode = "RETURN_EXCHANGE_MARK_NOT_ALLOWED";
+
+    // The mark is offered for a Trendyol exchange request Trendyol answered Rejected that carries no outcome yet.
+    public static bool ManualExchangeMarkAllowed(string? platformCode, string? customerRequest, ReturnClaimStatus status, string? resolvedWith) =>
+        ApprovalBlocked(platformCode, customerRequest) && status == ReturnClaimStatus.Rejected && resolvedWith is null;
+
+    // The owner's mark stands only on a rejected claim: one Trendyol reopens or accepts loses it (the read reports it).
+    public static bool ManualMarkLapses(string? source, ReturnClaimStatus status) => source == ManualSource && status != ReturnClaimStatus.Rejected;
+
+    public static bool ShowsAsExchangeApproved(ReturnClaimStatus status, bool exchangeMade) => exchangeMade && status == ReturnClaimStatus.Rejected;
+
+    // "Stoğa Ekle" (owner, 18 Nov 2026, decision B): an exchange made takes stock even though Trendyol answers it
+    // Rejected; any other line keeps the stock rule (ReturnDecisionLinePolicy.StockDispositionAllowed). The invoice rule
+    // never reads this (AcceptedReturnPolicy keeps its own rule).
+    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus, bool exchangeMade) =>
+        ShowsAsExchangeApproved(claimStatus, exchangeMade) || ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineRawStatus);
+
+    public static bool IsTrendyolExchangeMade(string? platformCode, string? customerRequest, string? resolvedWith) =>
+        ApprovalBlocked(platformCode, customerRequest) && resolvedWith == Change;
+
+    // What the Trendyol customer asked for: the live exchange reason code only. A replacement package may cover one item of
+    // the claim, so it does not make the whole claim an exchange (review, 18 Nov 2026); anything else is unknown (null).
+    public static string? FromTrendyol(string? reasonCode) =>
+        string.Equals(reasonCode?.Trim(), TrendyolExchangeReasonCode, StringComparison.OrdinalIgnoreCase) ? Change : null;
 
     // The claim's raw status (upper case) when Hepsiburada closed it with a refund.
     public const string RefundedRawStatus = "REFUNDED";
 
-    // The marketplace whose exchange claims take no units back (AcceptedReturnPolicy, the reports): Hepsiburada says how
-    // it closed one (Refunded). Trendyol's exchange request (FromTrendyol, 18 Nov 2026) is shown only: its getClaims
-    // names no refund outcome, so its claims count as returns as before until the owner decides otherwise.
-    public const string ExchangeNoReturnPlatform = "HEPSIBURADA";
+    // Whether a claim's units count as returned (owner, 6 Nov 2026): decided by how the claim was closed, not by what was
+    // requested. A Hepsiburada exchange request closed with a refund (raw status Refunded) is a return; one closed as an
+    // exchange, or still open, changes nothing. Only Hepsiburada (ExchangeNoReturnPlatform) says how an exchange closed:
+    // a Trendyol exchange request accepted may be a refund (48-hour auto-acceptance, an approval in Trendyol's panel), so
+    // it counts as before; one Trendyol made comes back Rejected and a rejected claim never counts (review, 18 Nov 2026).
+    // The queries repeat this rule inline (they must translate to SQL).
+    public static bool CountsAsReturn(string? customerRequest, string? claimRawStatus, string? platformCode = ExchangeNoReturnPlatform) =>
+        customerRequest != Change || string.Equals(claimRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase)
+        || !string.Equals(platformCode, ExchangeNoReturnPlatform, StringComparison.OrdinalIgnoreCase);
 
-    // Whether a claim's units count as returned (owner, 6 Nov 2026): decided by how the claim was closed, not by what
-    // was requested. An exchange request closed with a refund is a return; one closed as an exchange, or still open,
-    // changes nothing. The queries repeat this rule inline (they must translate to SQL).
-    public static bool CountsAsReturn(string? customerRequest, string? claimRawStatus) =>
-        customerRequest != Change || string.Equals(claimRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase);
+    // The marketplace whose exchange claims take no units back (AcceptedReturnPolicy, the reports).
+    public const string ExchangeNoReturnPlatform = "HEPSIBURADA";
 
     // The Hepsiburada approval choice (FinalizedWith) for the customer's request; null when it is unknown.
     public static string? FinalizedWith(string? customerRequest) => customerRequest switch
@@ -353,6 +393,9 @@ public sealed class ReturnClaim
     // How the marketplace closed an approved claim (ReturnCustomerRequestPolicy: REFUND or CHANGE), from Hepsiburada's
     // finalizedWith. Null when the claim does not say (unknown, never guessed).
     public string? ResolvedWith { get; set; }
+    // Where ResolvedWith came from when it is not the marketplace's own word: MANUAL (ReturnCustomerRequestPolicy.ManualSource),
+    // the owner's "Değişim Onaylandı Olarak İşaretle" (18 Nov 2026). Null: the marketplace said it (or nothing is set).
+    public string? ResolvedWithSource { get; set; }
     // When the customer asked for the return, as the marketplace dates the claim: Trendyol claimDate, Hepsiburada
     // claimDate (Istanbul local), n11 requestDate, Pazarama refundDate, Shopify return createdAt. Null when the
     // marketplace gives none (PTT AVM) or the claim was not read again since the field came; never guessed.

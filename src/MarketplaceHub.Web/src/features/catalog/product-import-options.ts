@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 export type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY' | 'OPTIONS_ONLY'
 export type ProductImportMethod = 'BULK' | 'SINGLE'
 
@@ -145,7 +146,7 @@ export function productImportChoiceSummary(method: ProductImportMethod, choices:
 // the value the panel already holds for an existing product.
 // The price preview (GET /channel-offers/price-import-preview): sizes whose panel price may change, and their offers on other
 // marketplaces that would follow it.
-export type PriceImportPreview = { variants: number; otherOffers: number }
+export type PriceImportPreview = ApiAnswer<'getChannelOffersPriceImportPreview'>
 export function productImportOverwriteConfirmation(updatePrices: boolean, updateStock: boolean, preview?: PriceImportPreview | null): { title: string; message: string } | null {
   if (!updatePrices && !updateStock) return null
   const counts = preview ? ` En çok ${preview.variants.toLocaleString('tr-TR')} bedenin panel fiyatı değişecek; ${preview.otherOffers.toLocaleString('tr-TR')} pazaryeri kaydı panel fiyatına çekilecek.` : ''

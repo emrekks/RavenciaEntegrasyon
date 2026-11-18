@@ -1649,7 +1649,12 @@ public sealed record ReturnListView(
     // PARTIALLY_APPROVED when the order's claims together were decided both ways (OrderReturnPartialApprovalPolicy).
     string? OrderReturnStatus = null,
     // When the customer asked for the return (ReturnClaim.RequestedAt); null while the marketplace has not dated it.
-    DateTimeOffset? RequestedAt = null);
+    DateTimeOffset? RequestedAt = null,
+    // A Trendyol exchange the marketplace made (ReturnCustomerRequestPolicy.IsTrendyolExchangeMade): "Değişim Onaylandı", though Trendyol says Rejected.
+    bool ExchangeApproved = false,
+    // The owner may set the "Değişim Onaylandı" mark (ReturnCustomerRequestPolicy.ManualExchangeMarkAllowed) or remove his own.
+    bool ExchangeMarkAvailable = false,
+    bool ExchangeMarkedByOwner = false);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1730,10 +1735,17 @@ public sealed record ReturnDetailView(
     bool RejectNeedsReturnShipment = false,
     // SIPARIS-STOK-5: the decision answer only: the marketplace took the approval, but its stock choice could not be
     // written now (the rows kept changing); the decision stays SUBMITTED and the next read of the claim adds the stock.
-    bool StockPendingNextSync = false);
+    bool StockPendingNextSync = false,
+    // A Trendyol exchange the marketplace made (ReturnCustomerRequestPolicy.IsTrendyolExchangeMade): "Değişim Onaylandı".
+    bool ExchangeApproved = false,
+    // The owner may set the "Değişim Onaylandı" mark (ReturnCustomerRequestPolicy.ManualExchangeMarkAllowed) or remove his own.
+    bool ExchangeMarkAvailable = false,
+    bool ExchangeMarkedByOwner = false);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null, ReturnShipmentCommand? ReturnShipment = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
+// Marked: true sets the owner's "Değişim Onaylandı" mark, false removes it (POST /returns/{id}/exchange-approved).
+public sealed record ReturnExchangeMarkCommand(bool Marked);
 
 public interface IMarketplaceSalesService
 {
@@ -1770,6 +1782,8 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueQuestionSyncAsync(Guid tenantId, Guid connectionId, string? kind, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    // Owner, 18 Nov 2026: marks (or unmarks) a Trendyol exchange request Trendyol answered Rejected as an exchange made; panel only.
+    Task<ServiceResult<ReturnDetailView>> MarkExchangeApprovedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, bool marked, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ProcessReturnActionInstantAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
 }

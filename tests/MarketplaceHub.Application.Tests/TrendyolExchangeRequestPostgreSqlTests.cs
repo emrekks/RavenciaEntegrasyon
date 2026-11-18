@@ -10,8 +10,8 @@ namespace MarketplaceHub.Application.Tests;
 
 // Owner, 18 Nov 2026: Trendyol claim of order 11805950639 (reason code WRONGCHANGEREQUEST) is an exchange, yet the
 // panel showed it as a plain return: the Trendyol mapper never filled CustomerRequest. A later read of a claim stored
-// before the fix fills it, leaves the owner's outcome (ResolvedWith, status) alone, and the invoice's return rule still
-// counts the Trendyol claim's units as before (only Hepsiburada's exchanges take none back).
+// before the fix fills it and leaves the outcome (ResolvedWith, status) alone; the invoice's return rule counts an accepted
+// Trendyol exchange request as a return as before (only Hepsiburada's exchanges take no unit back; review 18 Nov 2026).
 [Collection("postgres-integration")]
 public sealed class TrendyolExchangeRequestPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -46,7 +46,10 @@ public sealed class TrendyolExchangeRequestPostgreSqlTests(PostgreSqlTenantIsola
             Assert.Equal(ReturnCustomerRequestPolicy.Change, claim.CustomerRequest);
             Assert.Equal(ReturnCustomerRequestPolicy.Refund, claim.ResolvedWith);
             Assert.Equal(ReturnClaimStatus.Approved, claim.Status);
-            // Invoice and stock untouched by this change: the Trendyol exchange's accepted unit still counts as returned.
+            // Review, 18 Nov 2026: a Trendyol exchange request Trendyol accepted may be a refund (its claim does not say), so
+            // its accepted unit counts as returned, as on main; only Hepsiburada's exchanges take none back.
+            Assert.True(ReturnCustomerRequestPolicy.CountsAsReturn(claim.CustomerRequest, claim.RawStatus, "TRENDYOL"));
+            await db.ReturnClaims.Where(x => x.Id == claim.Id).ExecuteUpdateAsync(x => x.SetProperty(c => c.ResolvedWith, (string?)null));
             var returned = await InvoiceSaleReturns.ApprovedClaimQuantitiesAsync(db, tenant.Id, [order.Id], CancellationToken.None);
             Assert.Equal(1m, Assert.Single(returned).Value);
         }

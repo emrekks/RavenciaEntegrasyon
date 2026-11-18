@@ -19882,6 +19882,104 @@
         }
       }
     },
+    "/api/v1/returns/{id}/exchange-approved": {
+      "post": {
+        "tags": [
+          "returns"
+        ],
+        "operationId": "postReturnsByIdExchangeApproved",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version read (\"v{version}\", the ETag of the read). Required: 428 PRECONDITION_REQUIRED without it.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnExchangeMarkCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnDetailView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/returns/{id}/received": {
       "post": {
         "tags": [
@@ -41296,7 +41394,8 @@
           "discountAmount",
           "returnedListAmount",
           "soldVariants",
-          "vatFreeNetRevenue"
+          "vatFreeNetRevenue",
+          "exchangeClaims"
         ],
         "type": "object",
         "properties": {
@@ -41394,6 +41493,11 @@
           "vatFreeNetRevenue": {
             "type": "number",
             "format": "double",
+            "default": 0
+          },
+          "exchangeClaims": {
+            "type": "integer",
+            "format": "int32",
             "default": 0
           }
         }
@@ -41677,7 +41781,10 @@
           "actionDueAtEstimated",
           "wholeClaimDecision",
           "rejectNeedsReturnShipment",
-          "stockPendingNextSync"
+          "stockPendingNextSync",
+          "exchangeApproved",
+          "exchangeMarkAvailable",
+          "exchangeMarkedByOwner"
         ],
         "type": "object",
         "properties": {
@@ -41829,6 +41936,18 @@
           "stockPendingNextSync": {
             "type": "boolean",
             "default": false
+          },
+          "exchangeApproved": {
+            "type": "boolean",
+            "default": false
+          },
+          "exchangeMarkAvailable": {
+            "type": "boolean",
+            "default": false
+          },
+          "exchangeMarkedByOwner": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -41883,6 +42002,17 @@
           },
           "sha256": {
             "type": "string"
+          }
+        }
+      },
+      "ReturnExchangeMarkCommand": {
+        "required": [
+          "marked"
+        ],
+        "type": "object",
+        "properties": {
+          "marked": {
+            "type": "boolean"
           }
         }
       },
@@ -42090,7 +42220,10 @@
           "isMicroExport",
           "platformCode",
           "platformDisplayName",
-          "actionDueAtEstimated"
+          "actionDueAtEstimated",
+          "exchangeApproved",
+          "exchangeMarkAvailable",
+          "exchangeMarkedByOwner"
         ],
         "type": "object",
         "properties": {
@@ -42302,6 +42435,18 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "exchangeApproved": {
+            "type": "boolean",
+            "default": false
+          },
+          "exchangeMarkAvailable": {
+            "type": "boolean",
+            "default": false
+          },
+          "exchangeMarkedByOwner": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

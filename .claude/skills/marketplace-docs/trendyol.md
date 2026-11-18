@@ -497,9 +497,24 @@ packages only, no claim events.
   (18 Nov 2026). It is the only one among 255 live Trendyol claims (18 Nov 2026: BIGSIZE 100, SMALLSIZE 68, DISLIKE 51,
   UNDELIVERED 9, WRONGORDER 6, ABANDON 6, WRONGITEM 6, UNDELIVEREDINT 3, OTHER 2, DAMAGEDITEM 2, FAKEPRODUCT 1).
   The claim's raw JSON is not stored, so whether live claims carry `replacementOutboundpackageinfo` is **unverified**.
-- Code: `ReturnCustomerRequestPolicy.FromTrendyol` sets `CustomerRequest` CHANGE for that code or a replacement package
-  naming `packageid` or items; anything else stays null (the reason text is never searched). Shown as the "Değişim"
-  tag on İadeler. Invoice, stock and reports are unchanged: only Hepsiburada exchanges take no units back
-  (`ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform`), since getClaims names no refund outcome for an exchange.
+- Code: `ReturnCustomerRequestPolicy.FromTrendyol` sets `CustomerRequest` CHANGE for that code only; a replacement package
+  may cover one item, so it never makes the whole claim an exchange (review, 18 Nov 2026), and the reason text is never
+  searched. Shown as the "Değişim Talebi" tag; the reason reads "Yanlış gelen ürünümü değiştirmek istiyorum" (Trendyol's
+  seller panel). Nothing infers "exchange made": `ResolvedWith` stays null on Trendyol unless the owner marks it.
+- Invoice: only Hepsiburada's exchanges take no units back (`ExchangeNoReturnPlatform`). A Trendyol exchange request
+  Trendyol accepted (48-hour auto-acceptance, an approval in its panel) may be a refund, so it counts as a return as
+  before; its detail tells the owner to check in Trendyol's panel. The reports also count exchange requests apart, for
+  information (`ReportSummaryView.ExchangeClaims`).
+- No exchange action in the API: Trendyol's seller panel handles it with "Değişim Yap" (owner's screenshot, 18 Nov
+  2026). approveClaimLineItems (trendyol-api-son.md:7044-7084, "İade Siparişleri Onaylama") is documented for returns
+  only, so the panel never approves an exchange request (`ReturnCustomerRequestPolicy.ApprovalBlocked`, error
+  TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL; no bulk selection; a queued approval is not sent). createClaimIssue stays.
+- A made exchange comes back **Rejected** (11805950639, exchanged with "Değişim Yap", live Rejected 13:55Z 18 Nov 2026);
+  a rejected claim never counts as a return. The owner (owner or admin) marks it "Değişim Onaylandı Olarak İşaretle"
+  (POST `returns/{id}/exchange-approved`, panel only): ResolvedWith CHANGE, `ResolvedWithSource` MANUAL, audit
+  RETURN_EXCHANGE_MARKED_APPROVED. It then lists in Onaylananlar (wire EXCHANGE_APPROVED, TabGroup APPROVED; one rule in
+  `ReturnQueryService.ReturnStatusWire`, repeated by `ReturnCardColumns` and the tab filters/counts), leaves the
+  refused-return cards and keeps Stoğa Ekle. "İşareti Kaldır" undoes it; a read that shows the claim no longer rejected
+  drops it and opens RETURN_EXCHANGE_MARK_LAPSED.
 - An open claim is read again by RETURN_STATUS_SYNC; a closed one only while RETURN_SYNC / RETURN_RECONCILIATION
   (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.

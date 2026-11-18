@@ -41,7 +41,7 @@ internal sealed partial class ReturnDecisionService
                 var line = await db.ReturnLines.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claimId && x.Id == command.ReturnLineId, token);
                 if (line is null) return NotFound<ReturnDetailView>();
                 // Decided per line: a line approved on its own takes stock while the claim's other lines still wait.
-                if (!ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok kararı yalnız onaylanan iade ürünlerine uygulanabilir.", 409);
+                if (!ReturnCustomerRequestPolicy.StockDispositionAllowed(claim.Status, line.RawStatus, ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith))) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok kararı yalnız onaylanan iade ürünlerine uygulanabilir.", 409);
                 var already = await ReturnPendingStock.DisposedQuantityAsync(db, tenantId, line.Id, token);
                 if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
                 var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(token);

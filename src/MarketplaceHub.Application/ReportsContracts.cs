@@ -113,7 +113,9 @@ public sealed record ReportSummaryView(
     // The distinct products (variants; a line without a variant by its SKU) of which at least one unit was sold.
     int SoldVariants = 0,
     // NetRevenue of the TRY orders without its VAT: each line's kept amount less the VAT at the line's own rate.
-    decimal VatFreeNetRevenue = 0m);
+    decimal VatFreeNetRevenue = 0m,
+    // Exchange requests, for information: a Hepsiburada one not refunded is no return; a Trendyol one stays among the returns.
+    int ExchangeClaims = 0);
 
 // Estimated from the commission the marketplace sent on each order line (Trendyol and n11 rate, Hepsiburada amount,
 // PTT AVM rate), over the kept units. CoveredRevenue: the net revenue of lines that carry one; Coverage: its share of

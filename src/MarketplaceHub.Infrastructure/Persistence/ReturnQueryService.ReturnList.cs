@@ -20,7 +20,7 @@ internal sealed partial class ReturnQueryService
     internal static readonly string[] ReturnTabs = ["ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED"];
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 
-    internal sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null, bool? CardSplit = null);
+    internal sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null, bool? CardSplit = null, bool ExchangeMade = false);
 
     // SIPARIS-STOK-9: the tenant's line raw statuses sorted by the split rule (accepted; waiting, a missing status aside),
     // and whether every claim of the tenant has its card columns (ReturnCardColumns) filled and equal to the rule right
@@ -59,7 +59,7 @@ internal sealed partial class ReturnQueryService
     // A claim approved in part (PARTIALLY_APPROVED, "Kısmen Onaylandı") is listed with the approved ones.
     internal static string ReturnTabGroup(string status) => status.Trim().ToUpperInvariant() switch
     {
-        "APPROVED" or "COMPLETED" or ReturnClaimPartialApprovalPolicy.PartiallyApproved => "APPROVED",
+        "APPROVED" or "COMPLETED" or ReturnClaimPartialApprovalPolicy.PartiallyApproved or ExchangeApprovedWire => "APPROVED",
         "REJECTED" or "CANCELLED" => "REJECTED",
         "REQUESTED" or "CREATED" => "REQUESTED",
         "ACTION_REQUIRED" or "WAITING_FOR_SELLER_ACTION" => "ACTION_REQUIRED",
@@ -162,7 +162,8 @@ internal sealed partial class ReturnQueryService
         if (columns.Fresh && !string.IsNullOrEmpty(tab) && tab != "ALL")
             query = tab == "APPROVED" ? query.Where(x => x.TabGroup == tab || x.CardSplit == true) : query.Where(x => x.TabGroup == tab);
         var rows = await query.OrderBy(x => x.Id)
-            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit))
+            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt, x.RequestedAt, x.CardSplit,
+                    x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change))
             .ToListAsync(cancellationToken);
         var claims = rows.ToDictionary(x => x.Id);
         if (rows.Count == 0) return new([], claims, null);
@@ -239,13 +240,13 @@ internal sealed partial class ReturnQueryService
             if (!lineClaims.Contains(row.Id))
             {
                 // ReturnStatusWire only asks whether some line is approved and some rejected: the distinct statuses answer it.
-                cards.Add(new(row.Id, WholeCard, ReturnStatusWire(row.Status, rawStatuses[row.Id].ToList()), platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, []));
+                cards.Add(new(row.Id, WholeCard, ReturnStatusWire(row.Status, rawStatuses[row.Id].ToList(), row.ExchangeMade), platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, []));
                 continue;
             }
             var claimLines = linesByClaim[row.Id].ToList();
             var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
                 .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
-            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
+            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList(), row.ExchangeMade);
             foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
                 cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }
@@ -613,20 +614,21 @@ internal sealed partial class ReturnQueryService
         var awaitingCargo = 0; var unknownCargo = 0;
         foreach (var card in counted.Cards)
         {
-            if (ReturnTabGroup(card.Status) != "REJECTED" || !counted.Claims.TryGetValue(card.ClaimId, out var row)) continue;
+            // An exchange Trendyol made answers Rejected but is no refused return: no package back to wait for (owner, 18 Nov 2026).
+            if (ReturnTabGroup(card.Status) != "REJECTED" || !counted.Claims.TryGetValue(card.ClaimId, out var row) || row.ExchangeMade) continue;
             var (awaiting, unknown) = RejectedCargoState(row.Status, row.RejectedPackageState);
             if (awaiting) awaitingCargo++;
             if (unknown) unknownCargo++;
         }
         var dayStart = IstanbulDayStart(timeProvider.GetUtcNow());
         var cardClaims = counted.Cards.Select(card => card.ClaimId).ToHashSet();
-        bool IsApproved(ReturnClaimRow row) => row.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+        bool IsApproved(ReturnClaimRow row) => row.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed || ReturnCustomerRequestPolicy.ShowsAsExchangeApproved(row.Status, row.ExchangeMade);
         var approved = new HashSet<Guid>(); var rejected = new HashSet<Guid>();
         foreach (var row in counted.Claims.Values)
         {
             if (!cardClaims.Contains(row.Id) || row.DecidedAt is not { } decidedAt || decidedAt < dayStart) continue;
             if (IsApproved(row)) approved.Add(row.Id);
-            else if (row.Status == ReturnClaimStatus.Rejected) rejected.Add(row.Id);
+            else if (row.Status == ReturnClaimStatus.Rejected && !row.ExchangeMade) rejected.Add(row.Id);
         }
         if (cardClaims.Count > 0)
         {
