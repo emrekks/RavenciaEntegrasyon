@@ -97,7 +97,9 @@ main .rr, .rr-layer {
    an option with none is faded but stays selectable. */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count { display: inline-flex; flex: 0 0 auto; margin-left: auto; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count.is-loading { width: 22px; height: 10px; border-radius: 7px; background: var(--rr-line); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:has(.rr-opt-count.is-zero) > :not(input) { opacity: .5; }
+/* A choice whose count is 0 is dimmed. The row carries is-zero itself: written with :has() on the row (looking for the
+   zero count inside it) the rule made the browser restyle ~5 000 elements of the page whenever anything was added to it (a window, the bell panel, a menu). */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-opt.is-zero > :not(input) { opacity: .5; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-danger { color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-radio { position: relative; flex: none; width: 16px; height: 16px; border: 1.5px solid var(--rr-line-strong); border-radius: 50%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on .rr-radio { border-color: var(--rr-violet); }

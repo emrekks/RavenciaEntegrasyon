@@ -1,4 +1,9 @@
-import { useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
+
+function useLayoutEffectProbe(effect: () => void, key: string) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(effect, [key])
+}
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '../test/render'
 import { TabSlidePanel, tabSlideDirection, useTabSlide, useTabSlideInPlace, type TabSlide } from './tab-slide'
@@ -21,6 +26,34 @@ const motion = (reduce: boolean) => vi.stubGlobal('matchMedia', (query: string) 
 // The test setup asks for reduced motion; these tests want the slide unless they say otherwise.
 beforeEach(() => { motion(false) })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); document.body.innerHTML = '' })
+
+describe('useTabSlide scroll reading', () => {
+  // A scroll position read after the new tab is in the page makes the browser lay it all out at once (~400 ms for the
+  // Siparişler table on a 4x slowed phone). The page's scroll is read while the change renders, before the commit.
+  it('reads where the page is scrolled before the new tab is committed, and scrolls only when it has to', () => {
+    let committed = false
+    const lateReads: number[] = []
+    let y = 0
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => { if (committed) lateReads.push(y); return y } })
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
+    function Page({ active }: { active: string }) {
+      useTabSlide(active, order)
+      return <Marker active={active} />
+    }
+    function Marker({ active }: { active: string }) {
+      useLayoutEffectProbe(() => { committed = true }, active)
+      return null
+    }
+    const view = render(<Page active="a" />)
+    committed = false
+    view.rerender(<Page active="b" />)
+    expect(lateReads).toEqual([])
+    expect(scrollTo).not.toHaveBeenCalled()
+    committed = false; y = 300
+    view.rerender(<Page active="c" />)
+    expect(scrollTo).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('useTabSlide', () => {
   it('does not animate on the first render', () => {

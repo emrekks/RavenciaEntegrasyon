@@ -71,7 +71,7 @@ export function PlatformFilterPop({ options, selected, onChange, title = 'Platfo
   return <div className="rr-pop pf-pop" role="dialog" aria-label={typeof title === 'string' ? title : 'Platform'} style={{ minWidth: width }}>
     <div className="rr-ph">{title}{codes.length > 0 && <button type="button" className="rr-btn rr-link" onClick={() => { if (all) pickNone(); else { setCleared(false); onChange([]) } }}>{all ? 'Tümünü Kaldır' : 'Tümünü Seç'}</button>}</div>
     {named.length === 0 && <p className="pf-empty">Bağlı pazaryeri yok.</p>}
-    {named.map(option => <label key={option.value} className="rr-opt"><input type="checkbox" className="rr-cb" checked={checked(option.value)} onChange={event => toggle(option.value, event.target.checked)} /><RrLogo code={option.value} /><span className="rr-grow">{option.label}</span>{counts !== undefined && <OptionCount value={countOf(counts, option.value)} />}</label>)}
+    {named.map(option => <label key={option.value} className={`rr-opt${counts !== undefined && countOf(counts, option.value) === 0 ? ' is-zero' : ''}`}><input type="checkbox" className="rr-cb" checked={checked(option.value)} onChange={event => toggle(option.value, event.target.checked)} /><RrLogo code={option.value} /><span className="rr-grow">{option.label}</span>{counts !== undefined && <OptionCount value={countOf(counts, option.value)} />}</label>)}
   </div>
 }
 

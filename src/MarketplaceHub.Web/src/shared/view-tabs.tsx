@@ -94,12 +94,32 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
   const moved = useMemo(() => phone ? [] : [...overflow, ...more], [phone, overflow, more])
   const main = items.filter(item => !moved.includes(item.value))
   const extra = items.filter(item => moved.includes(item.value))
+  // Reading the row's width makes the browser lay out the whole page first; on Siparişler that is ~250 ms on a 4x slowed
+  // CPU, and the row used to be read on every render and moved one tab per render (six layouts in a row while the page
+  // opened). Now the row is read only when what it shows changed (its text, the selected tab, what has moved), and all the
+  // tabs that do not fit leave at once from that one reading; the next render only checks the result (the Diğer button
+  // that may have appeared takes room too).
+  const measured = useRef('')
   useLayoutEffect(() => {
     const element = row.current
-    if (phone || !element || element.scrollWidth <= element.clientWidth + 1) return
-    const next = items.map(item => item.value).filter((candidate, index) => index > 0 && !moved.includes(candidate) && candidate !== value).pop()
-    if (next) setOverflow(current => [next, ...current])
-  }, [phone, items, moved, value])
+    if (phone || !element) { measured.current = ''; return }
+    const signature = `${value}${moved.join('')}${element.textContent}`
+    if (signature === measured.current) return
+    measured.current = signature
+    let excess = element.scrollWidth - element.clientWidth
+    if (excess <= 1) return
+    const tabs = Array.from(element.children) as HTMLElement[]
+    const widths = new Map(main.map((item, index) => [item.value, tabs[index]?.getBoundingClientRect().width ?? 0]))
+    const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0
+    const candidates = items.map(item => item.value).filter((candidate, index) => index > 0 && !moved.includes(candidate) && candidate !== value)
+    const leaving: string[] = []
+    while (excess > 1 && candidates.length > 0) {
+      const next = candidates.pop()!
+      leaving.push(next)
+      excess -= (widths.get(next) ?? 0) + gap
+    }
+    if (leaving.length > 0) setOverflow(current => [...leaving.reverse(), ...current])
+  }, [phone, value, moved, main, items])
   useEffect(() => {
     const element = row.current
     if (!element || typeof ResizeObserver === 'undefined') return

@@ -43,7 +43,7 @@ export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, e
         return <Fragment key={group.label ?? index}>
           {index > 0 && group.label && <div className="rr-sep" />}
           {group.label && <label className="rr-opt ops-opt-group"><input type="checkbox" className="rr-cb" checked={picked === values.length} ref={input => { if (input) input.indeterminate = picked > 0 && picked < values.length }} onChange={() => onChange(toggleFilterGroup(selected, values))} /><span className="rr-grow">{group.label}</span></label>}
-          {group.options.map(option => <label key={option.value} className={`rr-opt${group.label ? ' ops-opt-member' : ''}`}><input type="checkbox" className="rr-cb" checked={selected.includes(option.value)} onChange={() => toggle(option.value)} />{option.mark}<span className="rr-grow">{option.label}</span><OptionCount value={option.count} /></label>)}
+          {group.options.map(option => <label key={option.value} className={`rr-opt${group.label ? ' ops-opt-member' : ''}${option.count === 0 ? ' is-zero' : ''}`}><input type="checkbox" className="rr-cb" checked={selected.includes(option.value)} onChange={() => toggle(option.value)} />{option.mark}<span className="rr-grow">{option.label}</span><OptionCount value={option.count} /></label>)}
         </Fragment>
       })}
       {extra && <><div className="rr-sep" /><label className="rr-opt"><input type="checkbox" className="rr-cb" checked={extra.checked} onChange={event => extra.onChange(event.target.checked)} /><span className="rr-grow">{extra.label}</span></label></>}
