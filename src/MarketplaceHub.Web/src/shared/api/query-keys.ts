@@ -99,7 +99,7 @@ export const queryKeys = {
   orderLabelDetail: queryRoot('order-label-detail', []),
   orderLabelDetails: queryRoot('order-label-details', []),
   panelFactoryReset: queryRoot('panel-factory-reset', []),
-  panelPriceOffers: queryRoot('panel-price-offers', ['products']),
+  panelPriceOffers: queryRoot('panel-price-offers', []),
   pazaramaFinance: queryRoot('pazarama-finance', []),
   priceStockMonitor: queryRoot('price-stock-monitor', []),
   priceStockSendLog: queryRoot('price-stock-send-log', []),
