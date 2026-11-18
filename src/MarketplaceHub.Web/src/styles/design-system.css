@@ -1635,7 +1635,7 @@ button,
   html body .rv-overlay:has(> .rv-confirm-dialog) { place-items: center; padding: 16px; }
   html body .rv-overlay > .rv-modal.rv-confirm-dialog { width: min(calc(100vw - 32px), 420px); max-height: calc(100dvh - 32px); border-width: 1px; border-radius: 14px; }
   html body .rv-confirm-dialog > footer { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-  html body .rv-confirm-dialog > footer > button { min-height: 36px; height: auto; min-width: 0; padding-block: 6px; white-space: normal; }
+  html body .rv-modal.rv-confirm-dialog > footer > button { min-height: 36px; height: auto; min-width: 0; padding-block: 6px; white-space: normal; }
 }
 .rv-confirm-message { color: var(--rv-color-muted); line-height: 1.55; }
 .rv-prompt-form { display: grid; gap: var(--rv-space-2); }
