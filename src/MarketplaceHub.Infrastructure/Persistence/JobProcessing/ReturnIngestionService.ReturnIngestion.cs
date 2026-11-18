@@ -153,7 +153,17 @@ internal sealed partial class ReturnIngestionService
             if (remote.RequestedAt?.ToUniversalTime() is { } requestedAt && claim.RequestedAt != requestedAt) { claim.RequestedAt = requestedAt; claimChanged = true; }
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
-            if (remote.ResolvedWith is { } resolvedWith && !string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal)) { claim.ResolvedWith = resolvedWith; claimChanged = true; }
+            // How the claim was closed, as the marketplace says it (Hepsiburada's finalizedWith); a read that says nothing keeps it.
+            if (remote.ResolvedWith is { } resolvedWith && (!string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal) || claim.ResolvedWithSource is not null))
+            { claim.ResolvedWith = resolvedWith; claim.ResolvedWithSource = null; claimChanged = true; }
+            // The owner's "Değişim Onaylandı" mark stands only on a rejected claim: one the marketplace reopened or accepted
+            // loses it, and the owner is told (review, 18 Nov 2026).
+            if (ReturnCustomerRequestPolicy.ManualMarkLapses(claim.ResolvedWithSource, claim.Status))
+            {
+                claim.ResolvedWith = null; claim.ResolvedWithSource = null; claimChanged = true;
+                await RecordIssue(tenantId, $"return-exchange-mark-lapsed:{claim.Id:N}", "RETURN_EXCHANGE_MARK_LAPSED",
+                    $"{claim.ExternalClaimId} numaralı iade elle Değişim Onaylandı olarak işaretlenmişti; pazaryeri iadeyi artık reddedilmiş göstermiyor ({remote.RawStatus}). İşaret kaldırıldı.", cancellationToken);
+            }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; run.UpdatedCount++; }
         }
         if (!remoteIsFresh)

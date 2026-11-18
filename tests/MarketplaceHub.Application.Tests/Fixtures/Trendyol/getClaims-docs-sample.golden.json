@@ -48,7 +48,7 @@
       "ActionDueAtEstimated": true,
       "RejectedPackageState": null,
       "DecidedAt": null,
-      "CustomerRequest": "CHANGE",
+      "CustomerRequest": null,
       "ResolvedWith": null,
       "RequestedAt": "2018-05-09T05:36:02.827+00:00"
     },

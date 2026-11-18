@@ -161,6 +161,7 @@
           "RejectedPackageState": null,
           "RequestedAt": "T-3000.21:56:42.3240000",
           "ResolvedWith": null,
+          "ResolvedWithSource": null,
           "Status": "ActionRequired",
           "TabGroup": "ACTION_REQUIRED",
           "TenantId": "tenant",

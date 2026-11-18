@@ -14,7 +14,7 @@ const group = (key: string, label: string, values: Partial<ReportGroup> = {}): R
 const summary = (values: Partial<ReportSummary> = {}): ReportSummary => ({
   orders: 4, cancelledOrders: 1, cancelRate: 0.2, soldQuantity: 5, returnedQuantity: 1, keptQuantity: 4, returnClaims: 1, returnRate: 0.2, ordersWithAmount: 3,
   grossSales: 350, returnedAmount: 100, netRevenue: 250, averageOrderValue: 116.67, ordersWithoutCity: 1, ordersWithoutAmount: 1, otherCurrencyOrders: 0,
-  listAmount: 380, returnedListAmount: 0, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, ...values
+  listAmount: 380, returnedListAmount: 0, discountAmount: 30, soldVariants: 2, vatFreeNetRevenue: 227.27, exchangeClaims: 0, ...values
 })
 const report: ReportSales = {
   from: '2026-10-01', to: '2026-10-22', previousFrom: '2026-09-09', previousTo: '2026-09-30', granularity: 'day', includesTest: false, generatedAt: '2026-10-22T10:00:00Z', questionTimes: null, dataStartsOn: '2026-01-01',
@@ -406,6 +406,15 @@ describe('ReportsPage', () => {
     await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-segmented button')].find(button => button.textContent === 'Shopify')!.click() })
     expect(body(page)).toContain('Shopify Cari Hesap Kalemleri')
     expect(body(page)).toContain('Shopify cari hesabı henüz okunmuyor')
+  })
+
+  // Owner, 18 Nov 2026: an exchange is no return, yet the report counts it on its own row instead of losing it.
+  it('shows the exchange claims on their own row of the return card, and no row without any', async () => {
+    const page = await open('', { ...report, summary: summary({ exchangeClaims: 2 }) })
+    expect(heroTiles(page, 'returns')).toContain('Değişim Talebi 2')
+    expect(heroTiles(page, 'returns')).toContain('İade Talebi 1')
+    const none = await open('', report)
+    expect(heroTiles(none, 'returns').some(tile => tile.startsWith('Değişim Talebi'))).toBe(false)
   })
 
   it('says which cargo is a return\'s estimate and which could not be estimated', async () => {

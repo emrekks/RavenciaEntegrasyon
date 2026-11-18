@@ -103,6 +103,164 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Owner, 18 Nov 2026 (11805950639): a Trendyol exchange request is approved with "Değişim Yap" in Trendyol's seller
+    // panel; the API documents approveClaimLineItems for returns only. The detail offers no approval, a direct approval
+    // is refused with its own code and nothing reaches Trendyol; the rejection (createClaimIssue) stays.
+    [PostgreSqlFact]
+    public async Task A_Trendyol_exchange_request_is_never_approved_from_the_panel()
+    {
+        var seed = await SeedAsync("rl-exch");
+        var port = new LineReturnPort("RL-CLAIM", seed.ExternalLineIds);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.CustomerRequest, ReturnCustomerRequestPolicy.Change));
+            await using (var db = fixture.CreateContext())
+            {
+                var detail = (await Service(db, port).ReturnAsync(seed.TenantId, seed.ClaimId, CancellationToken.None)).Value!;
+                Assert.DoesNotContain("APPROVE", detail.AllowedActions);
+                Assert.Contains("REJECT", detail.AllowedActions);
+                var refused = await Service(db, port).ProcessReturnActionInstantAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, await VersionAsync(seed.ClaimId),
+                    new("APPROVE", null, null, [], null), "rl-exch:approve", "rl-exch", CancellationToken.None);
+                Assert.Equal(ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode, refused.Error!.Code);
+            }
+            Assert.Empty(port.Commands);
+            await using (var verify = fixture.CreateContext())
+            {
+                Assert.False(await verify.ReturnDecisions.AnyAsync(x => x.TenantId == seed.TenantId));
+                Assert.Equal(ReturnClaimStatus.ActionRequired, (await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).Status);
+            }
+
+            // Owner, 18 Nov 2026 ("Stoğa Ekle kalsın"): once Trendyol approves the exchange, the units can still go back
+            // to stock from the panel.
+            await using (var db = fixture.CreateContext())
+            {
+                await db.ReturnLines.Where(x => x.ClaimId == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(l => l.RawStatus, "Accepted"));
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, ReturnClaimStatus.Approved).SetProperty(c => c.RawStatus, "Accepted"));
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.True((await Service(db, port).ReturnAsync(seed.TenantId, seed.ClaimId, CancellationToken.None)).Value!.StockDispositionAvailable);
+                var stocked = await Service(db, port).ApplyDispositionAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, new(seed.LineIds[0], "PASS", 1m, "Kontrol edildi"), "rl-exch:stock", "rl-exch", CancellationToken.None);
+                Assert.Null(stocked.Error);
+            }
+            await using (var verify = fixture.CreateContext())
+                Assert.Equal([1m, 0m, 0m], await OnHandAsync(verify, seed));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
+    // Owner, 18 Nov 2026: 11805950639's exchange, made with "Değişim Yap", came back as Rejected. With Trendyol's own word
+    // that the exchange was made (ResolvedWith CHANGE) it reads "Değişim Onaylandı" and raises no refused-return count;
+    // without it, a rejected exchange request stays a rejection.
+    [PostgreSqlFact]
+    public async Task A_Trendyol_exchange_made_reads_approved_and_is_no_refused_return()
+    {
+        var seed = await SeedAsync("rl-made");
+        var port = new LineReturnPort("RL-CLAIM", seed.ExternalLineIds);
+        try
+        {
+            async Task<(ReturnListView Row, ReturnSummaryView Summary, ReturnDetailView Detail)> ReadAsync()
+            {
+                await using var db = fixture.CreateContext();
+                var service = Service(db, port);
+                var rows = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(), false, CancellationToken.None);
+                return (Assert.Single(rows.Items), await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(), CancellationToken.None),
+                    (await service.ReturnAsync(seed.TenantId, seed.ClaimId, CancellationToken.None)).Value!);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                await db.ReturnLines.Where(x => x.ClaimId == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(l => l.RawStatus, "Rejected"));
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, ReturnClaimStatus.Rejected).SetProperty(c => c.RawStatus, "Rejected")
+                    .SetProperty(c => c.CustomerRequest, ReturnCustomerRequestPolicy.Change).SetProperty(c => c.RejectedPackageState, ReturnRejectedPackageStates.AwaitingCargo)
+                    .SetProperty(c => c.DecidedAt, DateTimeOffset.UtcNow));
+            }
+            await using (var db = fixture.CreateContext())
+                await ReturnCardColumns.RepairAsync(db, CancellationToken.None);
+            var unknown = await ReadAsync();
+            Assert.False(unknown.Row.ExchangeApproved);
+            Assert.Equal("REJECTED", unknown.Row.Status);
+            Assert.Equal((0, 1), (unknown.Summary.TabCounts["APPROVED"], unknown.Summary.TabCounts["REJECTED"]));
+            Assert.Equal((1, 1), (unknown.Summary.Metrics!.RejectedAwaitingCargo, unknown.Summary.Metrics.TodayRejected));
+            // A plain rejection takes no stock; the owner may mark it (owners and admins, checked by the endpoint).
+            Assert.False(unknown.Detail.StockDispositionAvailable);
+            Assert.True(unknown.Detail.ExchangeMarkAvailable);
+
+            // Owner, 18 Nov 2026: the panel-only mark, through a tracked save (its card columns follow at once).
+            await using (var db = fixture.CreateContext())
+            {
+                var marked = await Service(db, port).MarkExchangeApprovedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, await VersionAsync(seed.ClaimId), true, "rl-made", CancellationToken.None);
+                Assert.Null(marked.Error);
+                Assert.True(marked.Value!.ExchangeMarkedByOwner);
+            }
+            Assert.Empty(port.Commands);
+            var made = await ReadAsync();
+            Assert.True(made.Row.ExchangeApproved);
+            Assert.True(made.Detail.ExchangeApproved);
+            // The approved tab, never the rejected one, on the stored card columns (fresh) and the rule alike.
+            Assert.Equal("EXCHANGE_APPROVED", made.Row.Status);
+            Assert.Equal((1, 0), (made.Summary.TabCounts["APPROVED"], made.Summary.TabCounts["REJECTED"]));
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal("APPROVED", (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).TabGroup);
+                Assert.False(await ReturnCardColumns.Stale(db, seed.TenantId, [], []).AnyAsync());
+                var approvedTab = await Service(db, port).ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Status: "APPROVED"), false, CancellationToken.None);
+                Assert.Single(approvedTab.Items);
+                Assert.Empty((await Service(db, port).ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Status: "REJECTED"), false, CancellationToken.None)).Items);
+                Assert.Equal(1, await db.AuditLogs.CountAsync(x => x.TenantId == seed.TenantId && x.Action == "RETURN_EXCHANGE_MARKED_APPROVED"));
+            }
+            Assert.Equal((0, 0), (made.Summary.Metrics!.RejectedAwaitingCargo, made.Summary.Metrics.TodayRejected));
+            // Decision B: Stoğa Ekle stays open on the exchange made, once per unit as always.
+            Assert.True(made.Detail.StockDispositionAvailable);
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Null((await Service(db, port).ApplyDispositionAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, new(seed.LineIds[0], "PASS", 2m, "Değişimde geri gelen"), "rl-made:stock", "rl-made", CancellationToken.None)).Error);
+                Assert.Equal("RETURN_QUANTITY_EXCEEDED", (await Service(db, port).ApplyDispositionAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, new(seed.LineIds[0], "PASS", 1m, "Tekrar"), "rl-made:stock-2", "rl-made", CancellationToken.None)).Error!.Code);
+            }
+
+            // A later read that names no outcome keeps the mark; the mark comes off with İşareti Kaldır.
+            await using (var db = fixture.CreateContext())
+                await new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider)
+                    .UpsertReturn(seed.TenantId, seed.ConnectionId, new RemoteReturnClaim("RL-CLAIM", "rl-made-order", "Rejected", "WRONGCHANGEREQUEST", null, null, DateTimeOffset.UtcNow,
+                        seed.ExternalLineIds.Select(id => new RemoteReturnLine(id, id.Replace("CI-", "OL-", StringComparison.Ordinal), 2m, RawStatus: "Rejected")).ToList(), "{}", CustomerRequest: ReturnCustomerRequestPolicy.Change), CancellationToken.None);
+            await using (var db = fixture.CreateContext())
+            {
+                var kept = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId);
+                Assert.Equal((ReturnCustomerRequestPolicy.Change, ReturnCustomerRequestPolicy.ManualSource), (kept.ResolvedWith, kept.ResolvedWithSource));
+                // Another tenant cannot reach the claim (M11): not found, nothing changes.
+                var foreign = await Service(db, port).MarkExchangeApprovedAsync(Guid.NewGuid(), Guid.NewGuid(), seed.ClaimId, kept.Version, false, "rl-made", CancellationToken.None);
+                Assert.Equal(404, foreign.Error!.Status);
+                Assert.Equal(ReturnCustomerRequestPolicy.ManualSource, (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).ResolvedWithSource);
+                var removed = await Service(db, port).MarkExchangeApprovedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, kept.Version, false, "rl-made", CancellationToken.None);
+                Assert.Null(removed.Error);
+                Assert.False(removed.Value!.ExchangeApproved);
+                Assert.Equal("REJECTED", (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).TabGroup);
+            }
+
+            // Ö4: the mark stands only on a rejected claim. Marked again, then read as accepted by Trendyol: it lapses and the
+            // owner is told.
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await Service(db, port).MarkExchangeApprovedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, await VersionAsync(seed.ClaimId), true, "rl-made", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+                await new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider)
+                    .UpsertReturn(seed.TenantId, seed.ConnectionId, new RemoteReturnClaim("RL-CLAIM", "rl-made-order", "Accepted", "WRONGCHANGEREQUEST", null, null, DateTimeOffset.UtcNow.AddSeconds(5),
+                        seed.ExternalLineIds.Select(id => new RemoteReturnLine(id, id.Replace("CI-", "OL-", StringComparison.Ordinal), 2m, RawStatus: "Accepted")).ToList(), "{}", CustomerRequest: ReturnCustomerRequestPolicy.Change), CancellationToken.None);
+            await using (var db = fixture.CreateContext())
+            {
+                var lapsed = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId);
+                Assert.Equal((ReturnClaimStatus.Approved, (string?)null, (string?)null), (lapsed.Status, lapsed.ResolvedWith, lapsed.ResolvedWithSource));
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.TenantId && x.Code == "RETURN_EXCHANGE_MARK_LAPSED"));
+            }
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid ClaimId, Guid[] LineIds, string[] ExternalLineIds, Guid[] InventoryItemIds);
 
     private MarketplaceSalesService Service(AppDbContext db, IReturnPort port) =>

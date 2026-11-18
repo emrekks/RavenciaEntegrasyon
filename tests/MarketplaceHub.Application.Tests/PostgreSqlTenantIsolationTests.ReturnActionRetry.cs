@@ -35,7 +35,20 @@ public sealed partial class PostgreSqlTenantIsolationTests
         Assert.False(effects);
     }
 
-    private async Task<(ReturnDecision Saved, JobExecutionResult Result, bool EffectsLeft)> RunReturnDecisionAsync(string name, AdapterError refusal)
+    // Owner, 18 Nov 2026: an approval queued for a Trendyol claim later known as an exchange request is not sent (the
+    // refusing port would answer TRENDYOL_VALIDATION if it were asked).
+    [PostgreSqlFact]
+    public async Task ReturnActionRetry_AQueuedApprovalOfATrendyolExchangeIsNotSent()
+    {
+        var (saved, result, effects) = await RunReturnDecisionAsync("return-exchange-queued", new AdapterError(AdapterErrorClass.Validation, "TRENDYOL_VALIDATION", "Talep reddedildi.", 400, null, null), ReturnCustomerRequestPolicy.Change);
+
+        Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+        Assert.Equal(ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode, result.ErrorCode);
+        Assert.Equal(("FAILED", ReturnCustomerRequestPolicy.TrendyolExchangeApproveBlockedCode), (saved.Status, saved.ErrorCode));
+        Assert.False(effects);
+    }
+
+    private async Task<(ReturnDecision Saved, JobExecutionResult Result, bool EffectsLeft)> RunReturnDecisionAsync(string name, AdapterError refusal, string? customerRequest = null)
     {
         var tenant = NewTenant(name);
         var connection = NewQuestionConnection(tenant);
@@ -45,6 +58,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var claim = NewReturnLifecycleClaim(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"{name}-claim", fixture.Now, hasCargo: false);
         claim.Status = ReturnClaimStatus.ActionRequired;
         claim.RawStatus = "WaitingInAction";
+        claim.CustomerRequest = customerRequest;
         var decision = new ReturnDecision { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, Action = "APPROVE", IdempotencyKey = $"{name}-{Guid.NewGuid():N}", Status = "PENDING", ActorUserId = Guid.CreateVersion7(), CreatedAt = fixture.Now };
         await using (var seedDb = fixture.CreateContext())
         {

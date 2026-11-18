@@ -10,6 +10,7 @@ public sealed class ReportClaimReasonTests
     [InlineData("TRENDYOL", "BIGSIZE", "3xl sipariş etmiştim 2xl geldi", "Bedeni/Ebatı Büyük Geldi")]
     [InlineData("TRENDYOL", "dislike", "Beğenmedim", "Beğenmedim")]
     [InlineData("TRENDYOL", "NEWREASON", "Alakasız bir ürün gönderildi", "NEWREASON")]
+    [InlineData("TRENDYOL", "WRONGCHANGEREQUEST", "Trendyol Oto Not: Müşteri, yanlış ürünün değişimini istiyor.", "Yanlış gelen ürünümü değiştirmek istiyorum")]
     // Hepsiburada and n11 send the option's own name as the code.
     [InlineData("HEPSIBURADA", "Bedeni / boyutu uymadı", "Kısa geldi", "Bedeni / boyutu uymadı")]
     [InlineData("N11", "Vazgeçtim", null, "Vazgeçtim")]

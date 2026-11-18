@@ -51,6 +51,8 @@ const statusLabels: Record<string, string> = {
   PARTIALLY_CANCELLED: 'Kısmi İptal',
   // A return whose lines were decided both ways (one approved, another rejected): ReturnClaimPartialApprovalPolicy.
   PARTIALLY_APPROVED: 'Kısmen Onaylandı',
+  // A Trendyol exchange made (Trendyol answers it Rejected), shown among the approved returns (owner, 18 Nov 2026).
+  EXCHANGE_APPROVED: 'Değişim Onaylandı',
   PAYMENT_PENDING: 'Ödeme Onayı Bekliyor',
   ON_HOLD: 'Beklemede',
   PENDING: 'Bekliyor',
