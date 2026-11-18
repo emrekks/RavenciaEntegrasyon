@@ -70,8 +70,8 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
-    # Pools: API 25 (app_db_connection.txt), Worker 45 (Database:MaxPoolSize in its
-    # appsettings.json overrides the file), each shared rate limiter 5. About 82 in
+    # Pools: API 25 (app_db_connection.txt), Worker 55 (Database:MaxPoolSize in its
+    # appsettings.json overrides the file), each shared rate limiter 5. About 92 in
     # total, so 150 leaves room for LISTEN, migrate, backup and psql sessions.
     # Sized for the 16 GiB host (Hostinger KVM 4, since 3 Nov 2026): a 6 GiB container limit with 1.5 GiB of
     # shared_buffers leaves room for query memory (on the 8 GiB host a 1 GiB limit got PostgreSQL killed by the

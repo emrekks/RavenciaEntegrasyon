@@ -58,7 +58,18 @@ public class DatabaseConnectionOptionsTests
     public void Worker_pool_covers_every_default_lane_slot()
     {
         var totalSlots = MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All().Sum(lane => lane.DefaultSlots);
+        var settings = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "MarketplaceHub.Worker", "appsettings.json")));
+        var workerPool = settings.RootElement.GetProperty("Database").GetProperty("MaxPoolSize").GetInt32();
 
-        Assert.True(MarketplaceHub.Infrastructure.Jobs.WorkerLanes.RequiredPoolSize(totalSlots) <= 45);
+        Assert.True(MarketplaceHub.Infrastructure.Jobs.WorkerLanes.RequiredPoolSize(totalSlots) <= workerPool);
+        // API 25 + Worker + two shared rate limiters of 5 + LISTEN and maintenance sessions stay under max_connections=150.
+        Assert.True(25 + workerPool + (2 * DependencyInjection.SharedRateLimiterMaxPoolSize) + 10 <= 150);
+    }
+
+    private static string RepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            if (File.Exists(Path.Combine(directory.FullName, "MarketplaceHub.sln"))) return directory.FullName;
+        throw new InvalidOperationException("MarketplaceHub.sln not found above the test output.");
     }
 }

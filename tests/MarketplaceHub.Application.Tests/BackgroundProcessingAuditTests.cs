@@ -445,8 +445,25 @@ public sealed class BackgroundProcessingAuditTests
     {
         var defaultSlots = WorkerLanes.All().Sum(lane => lane.DefaultSlots);
 
-        Assert.Equal(16, defaultSlots);
-        Assert.Equal(42, WorkerLanes.RequiredPoolSize(defaultSlots));
+        Assert.Equal(20, defaultSlots);
+        Assert.Equal(50, WorkerLanes.RequiredPoolSize(defaultSlots));
         Assert.True(WorkerLanes.RequiredPoolSize(defaultSlots) > 25);
+    }
+
+    // 18 Nov 2026 lane measurement: a "pull every store's products" request and the activation of several stores each
+    // queue one job per store in a single lane. With one slot they ran one after another (the last catalog read waited
+    // 6.5 minutes, a store's history import up to 27). Stores have their own lock groups and quotas, so the lanes run
+    // three stores together while one store's jobs still never overlap.
+    [Fact]
+    public void CatalogAndInitialImportLanesRunSeveralStoresTogether()
+    {
+        var lanes = WorkerLanes.All().ToDictionary(lane => lane.Name);
+
+        Assert.Equal(3, lanes["product-catalog"].DefaultSlots);
+        Assert.Equal(3, lanes["initial-data-sync"].DefaultSlots);
+        // One store's catalog read and link check share a lock group, so extra slots never run them together.
+        Assert.Equal(MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ProductSync), MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ListingVerify));
+        // The order lanes keep one slot each: the week's replay showed no wait there, so a shared pool would gain nothing.
+        Assert.All(new[] { "hepsiburada-status", "hepsiburada-orders", "pazarama-orders", "pttavm-orders", "order-status" }, name => Assert.Equal(1, lanes[name].DefaultSlots));
     }
 }

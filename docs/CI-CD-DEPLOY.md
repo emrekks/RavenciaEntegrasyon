@@ -168,14 +168,14 @@ durmamalıdır. Argümansız `install-ci-deploy.sh` yalnız `/usr/local/bin/rave
 ## Veritabanı bağlantısı ve PostgreSQL
 
 - `app_db_connection.txt`: `...;Maximum Pool Size=25;Timeout=15;Command Timeout=120`.
-  API ve Worker aynı dosyayı okur; dosyadaki 25 **API'nin** havuzudur. Worker 15 şerit yuvası çalıştırır ve
-  `2 × yuva + 10 = 40` bağlantıya ihtiyaç duyar (`WorkerLanes.RequiredPoolSize`); bu yüzden Worker'ın
-  `appsettings.json`'undaki `Database:MaxPoolSize=45` yalnız Worker sürecinde dosyadaki değerin yerine geçer
+  API ve Worker aynı dosyayı okur; dosyadaki 25 **API'nin** havuzudur. Worker 20 şerit yuvası çalıştırır ve
+  `2 × yuva + 10 = 50` bağlantıya ihtiyaç duyar (`WorkerLanes.RequiredPoolSize`); bu yüzden Worker'ın
+  `appsettings.json`'undaki `Database:MaxPoolSize=55` yalnız Worker sürecinde dosyadaki değerin yerine geçer
   (ortam değişkeni `Database__MaxPoolSize` ile değiştirilebilir). Paylaşılan hız sınırlayıcının ayrı
-  `NpgsqlDataSource`'u kodda 5 bağlantıyla sınırlıdır. Toplam ≈ 25 + 5 + 45 + 5 + LISTEN ≈ 82;
+  `NpgsqlDataSource`'u kodda 5 bağlantıyla sınırlıdır. Toplam ≈ 25 + 5 + 55 + 5 + LISTEN ≈ 92;
   `max_connections=150` altında migrate/yedek/psql için pay kalır. Gizli dosyada değişiklik gerekmez;
   mevcut sunucular yeni değerleri bir sonraki deploy'la alır. Worker açılışta havuzu loglar
-  (`database pool of 45 (needs at least 40)`), küçükse uyarır. Yeni kurulumda `initialize-deployment.sh`
+  (`database pool of 55 (needs at least 50)`), küçükse uyarır. Yeni kurulumda `initialize-deployment.sh`
   dosyayı yazar; **havuz sınırı hiç olmayan eski sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy
   betikleri uyarı basar.
 - PostgreSQL (`compose.yaml`, 16 GB sunucuya göre): `max_connections=150`, `shared_buffers=1536MB`,
