@@ -160,6 +160,12 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 .ToArrayAsync(cancellationToken);
             if (connectionIds.Length == 0) return null;
         }
+        // One connection (an iş detayı's own store): within the platform filter when both are given.
+        if (request.ConnectionId is { } connectionId)
+        {
+            if (connectionIds is not null && !connectionIds.Contains(connectionId)) return null;
+            connectionIds = [connectionId];
+        }
         string? pattern = null;
         var term = request.Search?.Trim();
         if (!string.IsNullOrEmpty(term))

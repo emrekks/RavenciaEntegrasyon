@@ -58,6 +58,13 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
     {
         var query = db.PriceStockSendLogs.AsNoTracking().Where(x => x.TenantId == tenantId);
         if (request.ConnectionId is { } connectionId) query = query.Where(x => x.ConnectionId == connectionId);
+        // A job's own rows (İşlem Takibi › İş detayı); an empty list names no job, so nothing matches.
+        if (request.JobIds is { } jobIds)
+        {
+            var ids = jobIds.Distinct().Take(JobChangesQuery.MaximumSpawnedJobs + 1).ToArray();
+            if (ids.Length == 0) return null;
+            query = query.Where(x => ids.Contains(x.JobId));
+        }
         var platforms = Codes(request.Platforms, null);
         if (platforms is not null) query = query.Where(x => platforms.Contains(x.PlatformCode));
         if (includeResults)
@@ -123,7 +130,7 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
         var variants = await (from variant in db.ProductVariants.AsNoTracking()
                               join product in EffectiveCatalog.Products(db) on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
                               where variant.TenantId == tenantId && variantIds.Contains(variant.Id)
-                              select new { variant.Id, variant.ProductId, variant.ModelCode, product.Title })
+                              select new { variant.Id, variant.ProductId, variant.ModelCode, variant.OptionSignature, product.Title })
             .ToDictionaryAsync(x => x.Id, cancellationToken);
         var productIds = variants.Values.Select(x => x.ProductId).Distinct().ToArray();
         var media = await (from item in db.ProductMedia.AsNoTracking()
@@ -145,11 +152,13 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
         return rows.Select(row =>
         {
             var variant = variants.GetValueOrDefault(row.VariantId);
+            var options = variant?.OptionSignature?.Trim();
             return new PriceStockSendLogView(row.Id, row.CreatedAt, row.CompletedAt, row.ConnectionId, row.PlatformCode, stores.GetValueOrDefault(row.ConnectionId),
                 row.JobId, row.VariantId, variant?.ProductId, variant?.Title, variant is null ? null : Image(row.VariantId, variant.ProductId),
                 row.Barcode, row.StockCode, variant?.ModelCode,
                 row.PreviousQuantity, row.NewQuantity, row.PreviousSalePrice, row.NewSalePrice, row.PreviousListPrice, row.NewListPrice,
-                row.Currency, row.Trigger, row.Result, row.ErrorCode, row.ErrorMessage, row.ExternalRequestId);
+                row.Currency, row.Trigger, row.Result, row.ErrorCode, row.ErrorMessage, row.ExternalRequestId,
+                string.IsNullOrEmpty(options) || options == "-" ? null : options);
         }).ToList();
     }
 }
