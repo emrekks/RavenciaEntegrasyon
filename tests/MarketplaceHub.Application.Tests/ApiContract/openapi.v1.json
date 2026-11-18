@@ -2792,6 +2792,47 @@
         }
       }
     },
+    "/api/v1/channel-offers/price-import-preview": {
+      "get": {
+        "tags": [
+          "channel-offers"
+        ],
+        "operationId": "getChannelOffersPriceImportPreview",
+        "parameters": [
+          {
+            "name": "connectionIds",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/channel-offers/{id}": {
       "get": {
         "tags": [
@@ -34894,6 +34935,23 @@
             "items": {
               "$ref": "#/components/schemas/PriceAssumptionStoreView"
             }
+          }
+        }
+      },
+      "PriceImportPreview": {
+        "required": [
+          "variants",
+          "otherOffers"
+        ],
+        "type": "object",
+        "properties": {
+          "variants": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "otherOffers": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

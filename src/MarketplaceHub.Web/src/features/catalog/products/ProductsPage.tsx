@@ -20,7 +20,7 @@ import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOpti
 import { productSyncLabel, productSyncPercent } from '../product-sync-progress'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
 import { productImportConnection, singleProductLookupHint, singleProductLookupLabel } from '../product-import-platforms'
-import { productImportChoiceSummary, productImportModeDescription, productImportNeedsChoice, productImportOptionVisibility as getProductImportOptionVisibility, productImportWritesContent, productImportWritesPriceStock, productImportOverwriteConfirmation, productImportStartedMessage, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
+import { productImportChoiceSummary, productImportModeDescription, productImportNeedsChoice, productImportOptionVisibility as getProductImportOptionVisibility, productImportWritesContent, type PriceImportPreview, productImportWritesPriceStock, productImportOverwriteConfirmation, productImportStartedMessage, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { allPlatformsFilterGroup, productPlatformFilterGroups } from '../product-platform-filter'
 import { QUICK_EDIT_SYNC_KEYS } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
@@ -525,7 +525,12 @@ export function ProductsPage() {
     if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast('Ürün Bilgisi Gerekli', `Tek ürün aktarımı için ${singleLookupLabel} girin.`, 'error'); return }
     // Decision D: the panel is the stock master; taking the marketplace's prices and stock over the panel's is a
     // deliberate step, confirmed here.
-    const overwriteConfirmation = productImportMethod === 'SINGLE' || productImportMode === 'EXISTING_ONLY' ? productImportOverwriteConfirmation(productImportChoices.updatePrices, productImportChoices.updateStock) : null
+    const overwrites = productImportMethod === 'SINGLE' || productImportMode === 'EXISTING_ONLY'
+    // How many sizes' panel prices may change, from the server (read only); the dialog goes without the count if it fails.
+    const pricePreview = overwrites && productImportChoices.updatePrices
+      ? await hubApi<PriceImportPreview>(`/channel-offers/price-import-preview?connectionIds=${productImportConnectionIds.join(',')}`).catch(() => null)
+      : null
+    const overwriteConfirmation = overwrites ? productImportOverwriteConfirmation(productImportChoices.updatePrices, productImportChoices.updateStock, pricePreview) : null
     if (overwriteConfirmation) {
       const accepted = await confirmImport({ ...overwriteConfirmation, confirmLabel: 'Pazaryeri Değerlerini Al', destructive: true })
       if (!accepted) return

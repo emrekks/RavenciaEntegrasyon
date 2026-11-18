@@ -120,11 +120,11 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
             seed.PlatformConnections.Add(connection);
             await seed.SaveChangesAsync();
         }
-        async Task ImportAsync()
+        async Task ImportAsync(string payload = """{"full":true,"includeArchived":true,"includeDrafts":true}""")
         {
             await using var db = fixture.CreateContext();
             var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferences(), new CatalogPage(products), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
-            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, """{"full":true,"includeArchived":true,"includeDrafts":true}""", $"panel-price-{Guid.NewGuid():N}", CancellationToken.None);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, payload, $"panel-price-{Guid.NewGuid():N}", CancellationToken.None);
             Assert.True(result.Kind is JobCompletionKind.Succeeded or JobCompletionKind.ManualReview, $"{result.Kind} {result.ErrorCode} {result.ErrorSummary}");
         }
         await ImportAsync();
@@ -153,6 +153,10 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
             await check.ProductVariants.Where(x => x.Id == cleared).ExecuteUpdateAsync(set => set.SetProperty(x => x.DefaultSalePrice, (decimal?)null).SetProperty(x => x.DefaultListPrice, (decimal?)null));
         }
         await ImportAsync();
+        // The paths that walk existing variants without updatePrices (existing products updated with stock only, and the
+        // focused stock pull) leave every panel price as it is (review A10).
+        await ImportAsync("""{"existingOnly":true,"updateExistingProducts":true,"updatePrices":false,"updateStock":true}""");
+        await ImportAsync("""{"existingOnly":true,"updateExistingProducts":false,"updatePrices":false,"updateStock":true}""");
         await using var after = fixture.CreateContext();
         var kept = await after.ProductVariants.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DefaultSalePrice == 1.5m);
         Assert.Equal(2.5m, kept.DefaultListPrice);

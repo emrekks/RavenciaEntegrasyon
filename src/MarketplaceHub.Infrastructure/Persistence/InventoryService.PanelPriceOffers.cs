@@ -188,6 +188,21 @@ public sealed partial class InventoryService
         return ServiceResult<PanelPriceFillApplied>.Ok(new(filled, repriced.Count));
     }
 
+    public async Task<PriceImportPreview> PriceImportPreviewAsync(Guid tenantId, IReadOnlyCollection<Guid> connectionIds, CancellationToken cancellationToken)
+    {
+        var ids = connectionIds.Distinct().ToArray();
+        if (ids.Length == 0) return new(0, 0);
+        var variantIds = await (from link in db.MarketplaceVariantLinks.AsNoTracking()
+                                join variant in db.ProductVariants.AsNoTracking() on new { link.TenantId, link.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
+                                where link.TenantId == tenantId && ids.Contains(link.ConnectionId) && variant.Status == ProductStatus.Active
+                                    && !db.ChannelOffers.Any(offer => offer.TenantId == tenantId && offer.ConnectionId == link.ConnectionId && offer.VariantId == link.VariantId && offer.FollowsPanelPrice == false)
+                                select link.VariantId).Distinct().ToListAsync(cancellationToken);
+        var otherOffers = 0;
+        foreach (var chunk in variantIds.Chunk(2_000))
+            otherOffers += await db.ChannelOffers.AsNoTracking().CountAsync(offer => offer.TenantId == tenantId && chunk.Contains(offer.VariantId) && !ids.Contains(offer.ConnectionId) && offer.Status == "ACTIVE" && offer.FollowsPanelPrice != false, cancellationToken);
+        return new(variantIds.Count, otherOffers);
+    }
+
     internal const string PanelPriceFillLoadTag = "panel-price-fill-load";
     private const string PanelPriceFillNote = "İlk pazaryeri fiyatından dolduruldu (pazaryerine gönderilmedi).";
 }

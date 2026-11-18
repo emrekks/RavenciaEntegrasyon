@@ -339,17 +339,8 @@ internal sealed partial class CatalogImportService
                 db.ProductChangeEntries.Add(priceEntry);
             (variant.DefaultListPrice, variant.DefaultSalePrice) = (marketplacePanel.ListPrice, marketplacePanel.SalePrice);
             variant.UpdatedAt = now;
-            run.OtherFollowerOffers ??= (await db.ChannelOffers.AsNoTracking()
-                    .Where(x => x.TenantId == tenantId && x.ConnectionId != connectionId && x.Status == "ACTIVE" && x.FollowsPanelPrice != false)
-                    .Select(x => new { x.Id, x.VariantId }).ToListAsync(cancellationToken))
-                .GroupBy(x => x.VariantId).ToDictionary(group => group.Key, group => group.Select(x => x.Id).ToList());
-            if (run.OtherFollowerOffers.TryGetValue(variant.Id, out var otherOffers))
-            {
-                run.TenantPlatforms ??= await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
-                await PanelPriceOffers.RepriceFollowersAsync(db, tenantId,
-                    new Dictionary<Guid, PanelPriceOffers.PanelPriceChange> { [variant.Id] = new(marketplacePanel.SalePrice, null, marketplacePanel.ListPrice, null, true) },
-                    new HashSet<Guid>(), $"{observationSource}_CATALOG_IMPORT", $"SYSTEM:{observationSource}", now, cancellationToken, keepSendMarks: true, offerIds: otherOffers, knownPlatforms: run.TenantPlatforms);
-            }
+            // The other connections' offers follow once per product (FlushPanelRepricesAsync), not once per variant.
+            run.PendingPanelReprices[variant.Id] = new(marketplacePanel.SalePrice, null, marketplacePanel.ListPrice, null, true);
         }
         // One rule (owner decision of 18 Nov 2026): an offer without Özel Fiyat on a variant with a saved panel price keeps
         // the panel price as its stored price, so the price on screen is the price that goes. The price read here is what the
@@ -470,6 +461,21 @@ internal sealed partial class CatalogImportService
     // still empty, the model's VAT reaching it only at the save, ModelMirror) its brand's model of its code (a model is its
     // brand and its code; a card without a brand yet: the code's one branded model, as the reconcile links it). Before, such a colour
     // of a model with a VAT got a %0 offer and an OFFER_VAT_UNKNOWN warning.
+    // The panel prices the product's variants took (Fiyat ve Stokları Güncelle) reach the offers without Özel Fiyat on the
+    // other connections in one query: their previous price stays known, their send marks move, nothing is queued.
+    private async Task FlushPanelRepricesAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (run.PendingPanelReprices.Count == 0) return;
+        run.TenantPlatforms ??= await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
+        // A store with no other connection has no other offer to pull: no query.
+        if (!run.TenantPlatforms.Keys.Any(id => id != connectionId)) { run.PendingPanelReprices.Clear(); return; }
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+        var source = CatalogImportSource(platformCode, false);
+        await PanelPriceOffers.RepriceFollowersAsync(db, tenantId, new Dictionary<Guid, PanelPriceOffers.PanelPriceChange>(run.PendingPanelReprices), new HashSet<Guid>(),
+            $"{source}_CATALOG_IMPORT", $"SYSTEM:{source}", now, cancellationToken, keepSendMarks: true, knownPlatforms: run.TenantPlatforms, exceptConnectionId: connectionId);
+        run.PendingPanelReprices.Clear();
+    }
+
     // The saved panel price of a variant (its own, else its card's) as the platform takes it; null without one.
     private async Task<(decimal ListPrice, decimal SalePrice)?> SavedPanelPriceAsync(Guid tenantId, ProductVariant variant, string? platformCode, CancellationToken cancellationToken)
     {

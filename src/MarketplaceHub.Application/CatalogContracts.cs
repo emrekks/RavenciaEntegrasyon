@@ -416,6 +416,10 @@ public sealed record PanelPriceFillOfferChange(string PlatformCode, int Offers, 
 public sealed record PanelPriceFillPreview(int WithoutPanelPrice, int Fillable, int ZeroPrice, int WithoutOffer, IReadOnlyDictionary<string, int> FillableBySource, IReadOnlyList<PanelPriceFillRow> Sample, IReadOnlyList<PanelPriceFillOfferChange> OfferChanges);
 // The fill itself: ExpectedCount is the preview's Fillable; a different count now stops it (409) with nothing written.
 public sealed record PanelPriceFillCommand(int ExpectedCount);
+// "Fiyat ve Stokları Güncelle" confirmation (read only): Variants, the active sizes linked to the chosen connections whose
+// panel price may take the marketplace's price (their offer there keeps no own price); OtherOffers, those sizes' offers
+// without Özel Fiyat on other connections that would follow it. Upper bounds: a size whose price is already equal stays.
+public sealed record PriceImportPreview(int Variants, int OtherOffers);
 public sealed record PanelPriceFillApplied(int Filled, int OffersRepriced);
 public sealed record PanelPriceOffersOpened(Guid ConnectionId, int Opened, int MissingPanelPrice, int MissingVat);
 public sealed record ChannelOfferPanelFollowView(int UpdatedCount);
@@ -434,6 +438,7 @@ public interface IInventoryService
     Task<ServiceResult<PanelPriceOfferPreview>> PanelPriceOfferPreviewAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<PanelPriceOffersOpened>> OpenPanelPriceOffersAsync(Guid tenantId, Guid userId, Guid connectionId, CancellationToken cancellationToken);
     Task<PanelPriceFillPreview> PanelPriceFillPreviewAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<PriceImportPreview> PriceImportPreviewAsync(Guid tenantId, IReadOnlyCollection<Guid> connectionIds, CancellationToken cancellationToken);
     Task<ServiceResult<PanelPriceFillApplied>> ApplyPanelPriceFillAsync(Guid tenantId, Guid userId, PanelPriceFillCommand command, string correlationId, CancellationToken cancellationToken);
 }
 

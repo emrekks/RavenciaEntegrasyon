@@ -414,6 +414,25 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
             var row = Assert.Single(db.PriceStockSendLogs.Local);
             Assert.Equal((999m, 120m), (row.PreviousSalePrice, row.NewSalePrice));
         }
+        // Third review of 18 Nov 2026: Pazarama refuses the price and takes the stock (or the price part was never sent).
+        // The stock mark moves, the price mark does not, and the price Pazarama holds stays known: the next stock change
+        // carries the price again.
+        await using (var db = fixture.CreateContext())
+        {
+            var offer = await db.ChannelOffers.SingleAsync(x => x.Id == pazaramaOffer);
+            offer.LastStockProjectionVersion = line.ProjectionVersion;
+            PriceInventorySendPolicy.RecordSent(offer, line with { PriceOmitted = true }, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync();
+            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 8));
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var offer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == pazaramaOffer);
+            Assert.Equal((999m, "8690000000999"), (offer.LastSentSalePrice, offer.LastSentCode));
+            var build = await new PriceInventoryComposer(db).BuildAsync(seed.Tenant.Id, pazarama.Id, CancellationToken.None, automatic: true);
+            line = Assert.Single(build.Value!.Lines);
+            Assert.Equal((false, 120m), (line.PriceOmitted, line.SalePrice));
+        }
         // Pazarama confirms the line; the next stock change sends no price again.
         await using (var db = fixture.CreateContext())
         {
@@ -422,7 +441,7 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
             offer.LastStockProjectionVersion = line.ProjectionVersion;
             PriceInventorySendPolicy.RecordSent(offer, line, DateTimeOffset.UtcNow);
             await db.SaveChangesAsync();
-            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 8));
+            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 9));
         }
         await using (var db = fixture.CreateContext())
         {
@@ -507,6 +526,26 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
             }
             return result;
         }
+    }
+
+    // The "Fiyat ve Stokları Güncelle" confirmation counts (read only): the active sizes linked to the chosen connection whose
+    // offer there keeps no own price, and those sizes' offers without Özel Fiyat on other connections.
+    [PostgreSqlFact]
+    public async Task ThePriceImportPreview_CountsTheSizesAndTheOffersThatFollow()
+    {
+        var seed = await SeedAsync("TRENDYOL");
+        var n11 = await AddConnectionAsync(seed.Tenant, "N11", writesOpen: false);
+        await using (var db = fixture.CreateContext())
+        {
+            AddOffer(db, seed.Tenant, n11, seed.Priced, 250m, 200m, null);
+            AddOffer(db, seed.Tenant, n11, seed.NoVat, 250m, 200m, false);
+            AddOffer(db, seed.Tenant, seed.Connection, seed.ZeroPanelPrice, 300m, 300m, false);
+            await db.SaveChangesAsync();
+        }
+        await using var read = fixture.CreateContext();
+        // Linked and active: PRICED, NOPANEL, ZERO (Özel Fiyat on Trendyol: left out), LISTBELOW, NOVAT, WITHOFFER.
+        Assert.Equal(new PriceImportPreview(5, 1), await Inventory(read).PriceImportPreviewAsync(seed.Tenant.Id, [seed.Connection.Id], CancellationToken.None));
+        Assert.Equal(new PriceImportPreview(0, 0), await Inventory(read).PriceImportPreviewAsync(Guid.CreateVersion7(), [seed.Connection.Id], CancellationToken.None));
     }
 
     private sealed record Seed(Tenant Tenant, PlatformConnection Connection, ProductVariant Priced, ProductVariant NoPanelPrice, ProductVariant ZeroPanelPrice, ProductVariant ListBelowSale, ProductVariant NoVat, ProductVariant Unlinked, ProductVariant Archived, ProductVariant WithOffer);
