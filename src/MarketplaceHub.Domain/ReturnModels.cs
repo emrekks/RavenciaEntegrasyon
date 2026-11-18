@@ -265,6 +265,40 @@ public static class ReturnCustomerRequestPolicy
 
     // A Trendyol exchange the marketplace made (ResolvedWith CHANGE): the panel shows it as "Değişim Onaylandı" whatever
     // the claim's own word (Trendyol says Rejected), and it raises no rejected-return warning.
+    // An exchange made: the customer asked for one and the claim was closed by one (ResolvedWith CHANGE, from Trendyol's
+    // explicit data or the owner's mark). Only Trendyol closes an exchange as Rejected, so only a rejected claim changes
+    // how it shows (EXCHANGE_APPROVED, the approved tab); stock may then still be taken in.
+    public static bool ExchangeMade(string? customerRequest, string? resolvedWith) => customerRequest == Change && resolvedWith == Change;
+
+    // The owner's own mark (ReturnClaim.ResolvedWithSource): "Değişim Onaylandı Olarak İşaretle", panel only.
+    public const string ManualSource = "MANUAL";
+    public const string ManualExchangeMarkNotAllowedCode = "RETURN_EXCHANGE_MARK_NOT_ALLOWED";
+
+    // The mark is offered for a Trendyol exchange request Trendyol answered Rejected whose outcome its claim did not
+    // name (no ResolvedWith yet).
+    public static bool ManualExchangeMarkAllowed(string? platformCode, string? customerRequest, ReturnClaimStatus status, string? resolvedWith) =>
+        ApprovalBlocked(platformCode, customerRequest) && status == ReturnClaimStatus.Rejected && resolvedWith is null;
+
+    // What a marketplace read does to a claim's outcome. A read that names none keeps what is there (also the owner's
+    // mark). A read that names one replaces it and the mark's source goes; Refunded / REFUND over the owner's mark is
+    // reported (MarkOverriddenByRefund) so the owner sees the exchange became a refund.
+    public static (string? ResolvedWith, string? Source, bool MarkOverriddenByRefund) AfterRead(string? storedResolvedWith, string? storedSource, string? remoteResolvedWith, string? remoteRawStatus)
+    {
+        // The raw status Refunded speaks only over the owner's mark; elsewhere ResolvedWith stays the marketplace's own field.
+        var rawRefunded = storedSource == ManualSource && string.Equals(remoteRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase);
+        var next = remoteResolvedWith ?? (rawRefunded ? Refund : null);
+        if (next is null) return (storedResolvedWith, storedSource, false);
+        return (next, null, next == Refund && storedSource == ManualSource);
+    }
+
+    public static bool ShowsAsExchangeApproved(ReturnClaimStatus status, bool exchangeMade) => exchangeMade && status == ReturnClaimStatus.Rejected;
+
+    // "Stoğa Ekle" (owner, 18 Nov 2026, decision B): an exchange made takes stock even though Trendyol answers it
+    // Rejected; any other line keeps the stock rule (ReturnDecisionLinePolicy.StockDispositionAllowed). The invoice rule
+    // never reads this (AcceptedReturnPolicy keeps the plain rule and leaves exchanges out).
+    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus, bool exchangeMade) =>
+        ShowsAsExchangeApproved(claimStatus, exchangeMade) || ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineRawStatus);
+
     public static bool IsTrendyolExchangeMade(string? platformCode, string? customerRequest, string? resolvedWith) =>
         ApprovalBlocked(platformCode, customerRequest) && resolvedWith == Change;
 
@@ -378,6 +412,9 @@ public sealed class ReturnClaim
     // How the marketplace closed an approved claim (ReturnCustomerRequestPolicy: REFUND or CHANGE), from Hepsiburada's
     // finalizedWith. Null when the claim does not say (unknown, never guessed).
     public string? ResolvedWith { get; set; }
+    // Where ResolvedWith came from when it is not the marketplace's own word: MANUAL (ReturnCustomerRequestPolicy.ManualSource),
+    // the owner's "Değişim Onaylandı Olarak İşaretle" (18 Nov 2026). Null: the marketplace said it (or nothing is set).
+    public string? ResolvedWithSource { get; set; }
     // When the customer asked for the return, as the marketplace dates the claim: Trendyol claimDate, Hepsiburada
     // claimDate (Istanbul local), n11 requestDate, Pazarama refundDate, Shopify return createdAt. Null when the
     // marketplace gives none (PTT AVM) or the claim was not read again since the field came; never guessed.

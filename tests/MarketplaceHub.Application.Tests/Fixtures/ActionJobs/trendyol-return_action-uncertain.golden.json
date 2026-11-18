@@ -358,6 +358,7 @@
           "RejectedPackageState": null,
           "RequestedAt": "T-4255.03:23:57.1730000",
           "ResolvedWith": null,
+          "ResolvedWithSource": null,
           "Status": "InTransit",
           "TabGroup": "SHIPPING",
           "TenantId": "tenant",

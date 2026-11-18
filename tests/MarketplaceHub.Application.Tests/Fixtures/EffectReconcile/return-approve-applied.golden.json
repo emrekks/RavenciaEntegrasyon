@@ -340,6 +340,7 @@
           "RejectedPackageState": null,
           "RequestedAt": "T-4255.03:23:57.1730000",
           "ResolvedWith": "CHANGE",
+          "ResolvedWithSource": null,
           "Status": "Approved",
           "TabGroup": "APPROVED",
           "TenantId": "tenant",

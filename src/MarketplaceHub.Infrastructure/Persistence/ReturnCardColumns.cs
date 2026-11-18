@@ -26,8 +26,8 @@ public static class ReturnCardColumns
     private const string ApproveAction = "APPROVE";
     private const string Succeeded = "SUCCEEDED";
 
-    public static string TabGroup(ReturnClaimStatus status, IReadOnlyCollection<string?> lineRawStatuses) =>
-        ReturnQueryService.ReturnTabGroup(ReturnQueryService.ReturnStatusWire(status, lineRawStatuses));
+    public static string TabGroup(ReturnClaimStatus status, IReadOnlyCollection<string?> lineRawStatuses, bool exchangeMade = false) =>
+        ReturnQueryService.ReturnTabGroup(ReturnQueryService.ReturnStatusWire(status, lineRawStatuses, exchangeMade));
 
     public static bool CardSplit(IEnumerable<string?> lineRawStatuses) => ReturnQueryService.MaySplitReturnClaim(lineRawStatuses);
 
@@ -35,8 +35,8 @@ public static class ReturnCardColumns
     public static DateTimeOffset? ApprovedAt(ReturnClaimStatus status, DateTimeOffset? lastApproval, DateTimeOffset? lastRemoteModifiedAt) =>
         status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed ? (lastApproval ?? lastRemoteModifiedAt)?.ToUniversalTime() : null;
 
-    public static (string TabGroup, bool CardSplit, DateTimeOffset? ApprovedAt) Values(ReturnClaimStatus status, DateTimeOffset? lastRemoteModifiedAt, IReadOnlyCollection<string?> lineRawStatuses, DateTimeOffset? lastApproval) =>
-        (TabGroup(status, lineRawStatuses), CardSplit(lineRawStatuses), ApprovedAt(status, lastApproval, lastRemoteModifiedAt));
+    public static (string TabGroup, bool CardSplit, DateTimeOffset? ApprovedAt) Values(ReturnClaimStatus status, DateTimeOffset? lastRemoteModifiedAt, IReadOnlyCollection<string?> lineRawStatuses, DateTimeOffset? lastApproval, bool exchangeMade = false) =>
+        (TabGroup(status, lineRawStatuses, exchangeMade), CardSplit(lineRawStatuses), ApprovedAt(status, lastApproval, lastRemoteModifiedAt));
 
     // Before the save (after the context detected its changes): the claims the save itself adds or changes take their
     // columns through the tracker, from the database rows overlaid with the lines and decisions this save adds, changes or
@@ -87,7 +87,7 @@ public static class ReturnCardColumns
             foreach (var (key, entry) in claims)
             {
                 var claim = entry.Entity;
-                var values = Values(claim.Status, claim.LastRemoteModifiedAt, linesByClaim[key].ToList(), approvalsByClaim[key].Max());
+                var values = Values(claim.Status, claim.LastRemoteModifiedAt, linesByClaim[key].ToList(), approvalsByClaim[key].Max(), ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith));
                 Set(entry, x => x.TabGroup, values.TabGroup);
                 Set(entry, x => x.CardSplit, values.CardSplit);
                 Set(entry, x => x.ApprovedAt, values.ApprovedAt);
@@ -155,7 +155,7 @@ public static class ReturnCardColumns
     // on condition that its status, last change and columns are still as read.
     private static async Task<(int Seen, int Written, int Lost, Guid? Last)> RefreshAsync(AppDbContext db, IQueryable<ReturnClaim> claims, CancellationToken cancellationToken)
     {
-        var batch = await claims.Select(x => new { x.Id, x.TenantId, x.Status, x.LastRemoteModifiedAt, x.TabGroup, x.CardSplit, x.ApprovedAt }).ToListAsync(cancellationToken);
+        var batch = await claims.Select(x => new { x.Id, x.TenantId, x.Status, x.LastRemoteModifiedAt, x.TabGroup, x.CardSplit, x.ApprovedAt, x.CustomerRequest, x.ResolvedWith }).ToListAsync(cancellationToken);
         if (batch.Count == 0) return (0, 0, 0, null);
         var tenantIds = batch.Select(x => x.TenantId).Distinct().ToArray();
         var claimIds = batch.Select(x => x.Id).ToArray();
@@ -169,12 +169,12 @@ public static class ReturnCardColumns
         var (written, lost) = (0, 0);
         foreach (var row in batch)
         {
-            var (tabGroup, cardSplit, approvedAt) = Values(row.Status, row.LastRemoteModifiedAt, lines[row.Id].ToList(), approvals.GetValueOrDefault(row.Id));
+            var (tabGroup, cardSplit, approvedAt) = Values(row.Status, row.LastRemoteModifiedAt, lines[row.Id].ToList(), approvals.GetValueOrDefault(row.Id), ReturnCustomerRequestPolicy.ExchangeMade(row.CustomerRequest, row.ResolvedWith));
             if (row.TabGroup == tabGroup && row.CardSplit == cardSplit && row.ApprovedAt == approvedAt) continue;
-            var (status, remoteModifiedAt, oldTab, oldSplit, oldApproved) = (row.Status, row.LastRemoteModifiedAt, row.TabGroup, row.CardSplit, row.ApprovedAt);
+            var (status, remoteModifiedAt, oldTab, oldSplit, oldApproved, request, resolved) = (row.Status, row.LastRemoteModifiedAt, row.TabGroup, row.CardSplit, row.ApprovedAt, row.CustomerRequest, row.ResolvedWith);
             var updated = await db.ReturnClaims
                 .Where(x => x.TenantId == row.TenantId && x.Id == row.Id && x.Status == status && x.LastRemoteModifiedAt == remoteModifiedAt
-                    && x.TabGroup == oldTab && x.CardSplit == oldSplit && x.ApprovedAt == oldApproved)
+                    && x.TabGroup == oldTab && x.CardSplit == oldSplit && x.ApprovedAt == oldApproved && x.CustomerRequest == request && x.ResolvedWith == resolved)
                 .ExecuteUpdateAsync(set => set.SetProperty(x => x.TabGroup, tabGroup).SetProperty(x => x.CardSplit, cardSplit).SetProperty(x => x.ApprovedAt, approvedAt), cancellationToken);
             if (updated > 0) written += updated; else lost++;
         }
@@ -197,7 +197,7 @@ public static class ReturnCardColumns
     }
 
     // The claims of the tenant whose columns are missing or differ from the rule, as the database computes the rule:
-    // TabGroup follows the claim's status alone (ReturnStatusWire only turns an approved or completed claim into
+    // TabGroup follows the claim's status, and a rejected exchange made goes to the approved tab (ReturnStatusWire only turns an approved or completed claim into
     // PARTIALLY_APPROVED, the same tab), CardSplit is "a line with an accepted raw status beside one waiting or without
     // a status" (the tenant's raw statuses sorted into accepted and waiting by the C# rule), ApprovedAt as above.
     public static IQueryable<ReturnClaim> Stale(AppDbContext db, Guid tenantId, string?[] acceptedRawStatuses, string?[] waitingRawStatuses)
@@ -223,6 +223,13 @@ public static class ReturnCardColumns
         Expression expected = Expression.Constant(TabGroup(statuses[^1], []));
         foreach (var value in statuses[..^1].Reverse())
             expected = Expression.Condition(Expression.Equal(status, Expression.Constant(value)), Expression.Constant(TabGroup(value, [])), expected);
+        // An exchange made that the marketplace answered Rejected goes to the approved tab (ReturnStatusWire, owner 18 Nov
+        // 2026): CASE WHEN status = Rejected AND customer_request = CHANGE AND resolved_with = CHANGE THEN … ELSE … END.
+        var change = Expression.Constant(ReturnCustomerRequestPolicy.Change, typeof(string));
+        var exchangeMade = Expression.AndAlso(Expression.Equal(status, Expression.Constant(ReturnClaimStatus.Rejected)),
+            Expression.AndAlso(Expression.Equal(Expression.Property(claim, nameof(ReturnClaim.CustomerRequest)), change),
+                Expression.Equal(Expression.Property(claim, nameof(ReturnClaim.ResolvedWith)), change)));
+        expected = Expression.Condition(exchangeMade, Expression.Constant(TabGroup(ReturnClaimStatus.Rejected, [], exchangeMade: true)), expected);
         var tabGroup = Expression.Property(claim, nameof(ReturnClaim.TabGroup));
         return Expression.OrElse(Expression.Equal(tabGroup, Expression.Constant(null, typeof(string))), Expression.NotEqual(tabGroup, expected));
     }

@@ -176,7 +176,7 @@ internal sealed partial class ReturnQueryService
                     FallbackImageUrl: images.FallbackImageUrl,
                     ReturnAmounts: ReturnMarketplaceAmounts.Line(platformCode, line.SourceSnapshotJson, returnLine.Quantity, claim.ExternalClaimId));
             }).Where(line => line is not null).Select(line => line!).ToList();
-            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", ReturnStatusWire(claim.Status, claimLines.Select(x => x.RawStatus).ToList()), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
+            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", ReturnStatusWire(claim.Status, claimLines.Select(x => x.RawStatus).ToList(), ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith)), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, lineViews.FirstOrDefault()?.ImageUrl, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabelPolicy.ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
@@ -188,15 +188,23 @@ internal sealed partial class ReturnQueryService
                 CustomerRequest: claim.CustomerRequest,
                 OrderReturnStatus: partiallyApprovedOrders.Contains(claim.OrderId) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : null,
                 RequestedAt: claim.RequestedAt,
-                ExchangeApproved: ReturnCustomerRequestPolicy.IsTrendyolExchangeMade(platformCode, claim.CustomerRequest, claim.ResolvedWith));
+                ExchangeApproved: ReturnCustomerRequestPolicy.IsTrendyolExchangeMade(platformCode, claim.CustomerRequest, claim.ResolvedWith),
+                ExchangeMarkAvailable: ReturnCustomerRequestPolicy.ManualExchangeMarkAllowed(platformCode, claim.CustomerRequest, claim.Status, claim.ResolvedWith),
+                ExchangeMarkedByOwner: claim.ResolvedWithSource == ReturnCustomerRequestPolicy.ManualSource);
         }).ToList();
         return rows;
     }
 
     // The status the return screens show: PARTIALLY_APPROVED ("Kısmen Onaylandı") for an approved claim whose lines
     // were decided both ways (ReturnClaimPartialApprovalPolicy), otherwise the stored status.
-    internal static string ReturnStatusWire(ReturnClaimStatus status, IReadOnlyCollection<string?> lineStatuses) =>
-        ReturnClaimPartialApprovalPolicy.IsPartiallyApproved(status, lineStatuses) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : Wire(status);
+    // exchangeMade: the claim is an exchange the marketplace (or the owner's mark) says was made
+    // (ReturnCustomerRequestPolicy.ExchangeMade); Trendyol answers it Rejected, the page lists it as EXCHANGE_APPROVED among
+    // the approved ones (owner, 18 Nov 2026). The one rule for the tab: ReturnCardColumns.TabGroup and its SQL repeat it.
+    internal static string ReturnStatusWire(ReturnClaimStatus status, IReadOnlyCollection<string?> lineStatuses, bool exchangeMade = false) =>
+        ReturnCustomerRequestPolicy.ShowsAsExchangeApproved(status, exchangeMade) ? ExchangeApprovedWire
+        : ReturnClaimPartialApprovalPolicy.IsPartiallyApproved(status, lineStatuses) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : Wire(status);
+
+    internal const string ExchangeApprovedWire = "EXCHANGE_APPROVED";
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
         string.IsNullOrWhiteSpace(variant?.ModelCode) ? sourceModelCode : variant.ModelCode;
@@ -232,8 +240,11 @@ internal sealed partial class ReturnQueryService
                 "SHIPPING" => query.Where(x => x.Status == ReturnClaimStatus.AwaitingShipment || x.Status == ReturnClaimStatus.InTransit),
                 "ACTION_REQUIRED" => query.Where(x => x.Status == ReturnClaimStatus.ActionRequired),
                 "APPROVED" => query.Where(x => x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
-                    || (x.Status == ReturnClaimStatus.ActionRequired && db.ReturnLines.Any(line => line.TenantId == x.TenantId && line.ClaimId == x.Id && line.RawStatus != null && line.RawStatus.ToUpper() == "ACCEPTED"))),
-                "REJECTED" => query.Where(x => x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled),
+                    || (x.Status == ReturnClaimStatus.ActionRequired && db.ReturnLines.Any(line => line.TenantId == x.TenantId && line.ClaimId == x.Id && line.RawStatus != null && line.RawStatus.ToUpper() == "ACCEPTED"))
+                    // A rejected exchange made is listed with the approved ones (ReturnStatusWire, owner 18 Nov 2026).
+                    || (x.Status == ReturnClaimStatus.Rejected && x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
+                "REJECTED" => query.Where(x => (x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled)
+                    && !(x.Status == ReturnClaimStatus.Rejected && x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
                 "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
                 // The UI's Analysis tab is reserved for explicitly submitted
                 // analysis cases. ActionRequired claims belong only to their

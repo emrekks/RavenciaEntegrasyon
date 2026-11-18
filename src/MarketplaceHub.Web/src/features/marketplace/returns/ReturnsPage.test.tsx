@@ -194,6 +194,36 @@ describe('returns page', () => {
     }
   })
 
+  // Owner, 18 Nov 2026: the panel-only mark for a Trendyol exchange request Trendyol answered Rejected, and its removal.
+  it('offers the Değişim Onaylandı mark on a rejected Trendyol exchange request with the panel-only wording, and its removal once set', async () => {
+    const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
+    const original = hubApi.getMockImplementation()!
+    hubApi.mockImplementation(async (path: string) => {
+      if (!path.startsWith('/returns?')) return original(path)
+      return { items: [claim('3', { customerRequest: 'CHANGE', status: 'REJECTED', rawStatus: 'Rejected', exchangeMarkAvailable: true }), claim('4', { customerRequest: 'CHANGE', status: 'EXCHANGE_APPROVED', rawStatus: 'Rejected', exchangeApproved: true, exchangeMarkedByOwner: true }), claim('5', { status: 'REJECTED', rawStatus: 'Rejected' })], nextCursor: null, hasMore: false, totalCount: 3 }
+    })
+    try {
+      const { host } = renderPage('/returns?status=ALL')
+      await waitFor(() => host.textContent!.includes('#5'))
+      const rows = [...host.querySelectorAll<HTMLTableRowElement>('tbody tr')]
+      const items = (row: HTMLElement) => {
+        act(() => { byText<HTMLButtonElement>(row, 'button.rr-trigger', 'İşlemler').click() })
+        const texts = [...host.ownerDocument.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].map(item => item.textContent)
+        act(() => { byText<HTMLButtonElement>(row, 'button.rr-trigger', 'İşlemler').click() })
+        return texts
+      }
+      expect(items(rows[0])).toContain('Değişim Onaylandı Olarak İşaretle')
+      expect(items(rows[1])).toContain('İşareti Kaldır')
+      expect(items(rows[2]).some(text => text?.includes('Değişim Onaylandı') || text === 'İşareti Kaldır')).toBe(false)
+      act(() => { byText<HTMLButtonElement>(rows[0], 'button.rr-trigger', 'İşlemler').click() })
+      act(() => { byText<HTMLButtonElement>(host.ownerDocument.body, '[role="menuitem"]', 'Değişim Onaylandı Olarak İşaretle').click() })
+      expect(host.ownerDocument.body.textContent).toContain('Bu işlem Trendyol\'a hiçbir şey göndermez; kaydı panelde Değişim Onaylandı olarak gösterir ve fatura işlemlerinden çıkarır.')
+      expect(rows[1].querySelector('[data-l="Durum"] b')?.textContent).toBe('Değişim Onaylandı')
+    } finally {
+      hubApi.mockImplementation(original)
+    }
+  })
+
   it('tags an exchange request "Değişim Talebi" in the order cell and nothing on a refund or an unknown request', async () => {
     const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
     const original = hubApi.getMockImplementation()!

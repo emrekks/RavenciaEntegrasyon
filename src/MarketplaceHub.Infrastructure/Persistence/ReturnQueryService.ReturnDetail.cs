@@ -122,19 +122,21 @@ internal sealed partial class ReturnQueryService
                 string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
                 source is null ? null : ReturnMarketplaceAmounts.Line(platformCode, source.SourceSnapshotJson, line.Quantity, claim.ExternalClaimId),
                 line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller,
-                HeldByDecision(line.Id), ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus), pendingStockLineIds.Contains(line.Id),
+                HeldByDecision(line.Id), ReturnCustomerRequestPolicy.StockDispositionAllowed(claim.Status, line.RawStatus, ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith)), pendingStockLineIds.Contains(line.Id),
                 images.FallbackImageUrl);
         }).ToList();
         var stockDispositionAvailable = sourceLines.Count == 0
-            ? ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, null)
+            ? ReturnCustomerRequestPolicy.StockDispositionAllowed(claim.Status, null, ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith))
             : lines.Any(line => line.StockDispositionAvailable);
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, ReturnStatusWire(claim.Status, sourceLines.Select(line => line.RawStatus).ToList()), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
+        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, ReturnStatusWire(claim.Status, sourceLines.Select(line => line.RawStatus).ToList(), ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith)), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, stockDispositionAvailable, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
             ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList()), claim.CustomerRequest,
             ReturnDecisionScope.IsWholeClaim(platformCode), IsN11(platformCode),
-            ExchangeApproved: ReturnCustomerRequestPolicy.IsTrendyolExchangeMade(platformCode, claim.CustomerRequest, claim.ResolvedWith)));
+            ExchangeApproved: ReturnCustomerRequestPolicy.IsTrendyolExchangeMade(platformCode, claim.CustomerRequest, claim.ResolvedWith),
+            ExchangeMarkAvailable: ReturnCustomerRequestPolicy.ManualExchangeMarkAllowed(platformCode, claim.CustomerRequest, claim.Status, claim.ResolvedWith),
+            ExchangeMarkedByOwner: claim.ResolvedWithSource == ReturnCustomerRequestPolicy.ManualSource));
     }
 
     internal static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);

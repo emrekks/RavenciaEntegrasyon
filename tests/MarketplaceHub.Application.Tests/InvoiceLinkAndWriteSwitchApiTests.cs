@@ -273,6 +273,32 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
         { "POST", $"/api/v1/invoice-workspace/manual-documents/{Guid.NewGuid():D}/delivery-jobs" }
     };
 
+    // Owner, 18 Nov 2026: the "Değişim Onaylandı" mark takes a return out of the invoice's returns, so only the owner and
+    // administrators set or remove it.
+    [PostgreSqlFact]
+    public async Task Only_the_owner_and_administrators_mark_an_exchange_approved()
+    {
+        using var host = Host();
+        var path = $"/api/v1/returns/{Guid.NewGuid():D}/exchange-approved";
+        foreach (var role in new[] { MembershipRole.Operations, MembershipRole.Accounting })
+        {
+            var (client, csrf) = await SignInAsync(host, fixture, role);
+            using (client)
+            {
+                using var refused = await client.SendAsync(Outbound("POST", path, csrf, new { marked = true }));
+                Assert.True(refused.StatusCode == HttpStatusCode.Forbidden, $"{role}: {(int)refused.StatusCode}");
+                Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(refused)).GetProperty("code").GetString());
+            }
+        }
+        var (owner, ownerCsrf) = await SignInAsync(host, fixture, MembershipRole.Owner);
+        using (owner)
+        {
+            // Past the role check: an unknown return is not found.
+            using var missing = await owner.SendAsync(Outbound("POST", path, ownerCsrf, new { marked = true }));
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        }
+    }
+
     private static HttpRequestMessage Outbound(string method, string path, string csrf, object? body = null)
     {
         var request = ApiTestHost.Json(new HttpMethod(method), path, csrf, body ?? new { confirmed = true });

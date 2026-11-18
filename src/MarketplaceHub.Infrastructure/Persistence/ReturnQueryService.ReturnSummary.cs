@@ -116,10 +116,12 @@ internal sealed partial class ReturnQueryService
     // the claims with a card.
     internal async Task<ReturnMetricCounts> CountReturnCardsAsync(Guid tenantId, ReturnCardSet set, Dictionary<string, int> counts, CancellationToken cancellationToken)
     {
-        foreach (var group in await set.First.GroupBy(x => x.Status).Select(group => new { group.Key, Count = group.Count() }).ToListAsync(cancellationToken))
+        // A rejected exchange made counts in the approved tab (ReturnStatusWire).
+        foreach (var group in await set.First.GroupBy(x => new { x.Status, Made = x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change })
+                     .Select(group => new { group.Key.Status, group.Key.Made, Count = group.Count() }).ToListAsync(cancellationToken))
         {
             counts["ALL"] += group.Count;
-            counts[ReturnTabGroup(Wire(group.Key))] += group.Count;
+            counts[ReturnTabGroup(ReturnStatusWire(group.Status, [], group.Made))] += group.Count;
         }
         foreach (var card in set.Extras)
         {
@@ -136,7 +138,8 @@ internal sealed partial class ReturnQueryService
         }).SingleOrDefaultAsync(cancellationToken);
         var today = await set.Claims.Where(set.AnyCard).GroupBy(_ => 1).Select(group => new
         {
-            ApprovedToday = group.Count(x => (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed)
+            ApprovedToday = group.Count(x => (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
+                    || x.Status == ReturnClaimStatus.Rejected && x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
                 && (x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "APPROVE" && decision.CompletedAt >= dayStart))),
             RejectedToday = group.Count(x => x.Status == ReturnClaimStatus.Rejected && !(x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
                 && (x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "REJECT" && decision.CompletedAt >= dayStart)))

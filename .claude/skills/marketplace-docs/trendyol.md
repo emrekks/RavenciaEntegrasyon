@@ -517,5 +517,9 @@ packages only, no claim events.
   package, or a claim item's `trendyolClaimItemReason.id` 1851 "Ürün değişimi yapıldı" (:7160) / 2006 "Analiz Değişim"
   (:7021). Then the panel shows "Değişim Onaylandı" and leaves it out of the refused-return cards (Kargolanmayı
   Bekleyen Red, Bugün Reddedilen) and counts it among the reports' exchanges. Whether getClaims really carries either
-  for a made exchange is **unverified** (no raw claim is stored); the card stays in the Reddedilenler tab (TabGroup
-  follows Status only).
+  for a made exchange is **unverified** (no raw claim is stored). Such a claim lists in Onaylananlar (wire status
+  EXCHANGE_APPROVED, TabGroup APPROVED, `ReturnQueryService.ReturnStatusWire` and its SQL repeats) and keeps Stoğa Ekle.
+- Without Trendyol's word the owner (owner or admin) uses "Değişim Onaylandı Olarak İşaretle" (POST
+  `returns/{id}/exchange-approved`, panel only): ResolvedWith CHANGE, `ResolvedWithSource` MANUAL, audit
+  RETURN_EXCHANGE_MARKED_APPROVED; "İşareti Kaldır" undoes it. A read naming no outcome keeps the mark; REFUND (or raw
+  Refunded) over it makes it a return again and opens RETURN_EXCHANGE_MARK_REFUNDED.

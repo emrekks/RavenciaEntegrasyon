@@ -59,7 +59,7 @@ internal sealed partial class ReturnQueryService
     // A claim approved in part (PARTIALLY_APPROVED, "Kısmen Onaylandı") is listed with the approved ones.
     internal static string ReturnTabGroup(string status) => status.Trim().ToUpperInvariant() switch
     {
-        "APPROVED" or "COMPLETED" or ReturnClaimPartialApprovalPolicy.PartiallyApproved => "APPROVED",
+        "APPROVED" or "COMPLETED" or ReturnClaimPartialApprovalPolicy.PartiallyApproved or ExchangeApprovedWire => "APPROVED",
         "REJECTED" or "CANCELLED" => "REJECTED",
         "REQUESTED" or "CREATED" => "REQUESTED",
         "ACTION_REQUIRED" or "WAITING_FOR_SELLER_ACTION" => "ACTION_REQUIRED",
@@ -240,13 +240,13 @@ internal sealed partial class ReturnQueryService
             if (!lineClaims.Contains(row.Id))
             {
                 // ReturnStatusWire only asks whether some line is approved and some rejected: the distinct statuses answer it.
-                cards.Add(new(row.Id, WholeCard, ReturnStatusWire(row.Status, rawStatuses[row.Id].ToList()), platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, []));
+                cards.Add(new(row.Id, WholeCard, ReturnStatusWire(row.Status, rawStatuses[row.Id].ToList(), row.ExchangeMade), platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, []));
                 continue;
             }
             var claimLines = linesByClaim[row.Id].ToList();
             var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
                 .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
-            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
+            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList(), row.ExchangeMade);
             foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
                 cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }
@@ -622,7 +622,7 @@ internal sealed partial class ReturnQueryService
         }
         var dayStart = IstanbulDayStart(timeProvider.GetUtcNow());
         var cardClaims = counted.Cards.Select(card => card.ClaimId).ToHashSet();
-        bool IsApproved(ReturnClaimRow row) => row.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+        bool IsApproved(ReturnClaimRow row) => row.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed || ReturnCustomerRequestPolicy.ShowsAsExchangeApproved(row.Status, row.ExchangeMade);
         var approved = new HashSet<Guid>(); var rejected = new HashSet<Guid>();
         foreach (var row in counted.Claims.Values)
         {

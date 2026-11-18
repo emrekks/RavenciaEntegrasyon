@@ -56,7 +56,9 @@ internal sealed partial class ReturnQueryService
         var tabStatuses = everyTab ? null : Enum.GetValues<ReturnClaimStatus>().Where(status => ReturnTabGroup(Wire(status)) == tab).ToArray();
         Expression<Func<ReturnClaim, bool>> firstCard = tabStatuses is null ? claim => true
             : columns.Fresh ? claim => claim.TabGroup == tab
-            : claim => tabStatuses.Contains(claim.Status);
+            // ReturnStatusWire: a rejected exchange made belongs to the approved tab, not to the rejected one.
+            : tab == "APPROVED" ? claim => tabStatuses.Contains(claim.Status) || claim.Status == ReturnClaimStatus.Rejected && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change && claim.ResolvedWith == ReturnCustomerRequestPolicy.Change
+            : claim => tabStatuses.Contains(claim.Status) && !(claim.Status == ReturnClaimStatus.Rejected && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change && claim.ResolvedWith == ReturnCustomerRequestPolicy.Change);
 
         // The claims that may split (their CardSplit, or found by the raw statuses the tenant's lines carry); only their
         // lines are read, and only those that do split keep their cards.
