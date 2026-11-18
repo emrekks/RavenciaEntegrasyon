@@ -42,7 +42,9 @@ public sealed class ActionJobGoldenPostgreSqlTests(PostgreSqlTenantIsolationFixt
         {
             var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), new FrozenClock(Start.AddMinutes(-30)));
             if (claim)
-                await processor.UpsertReturn(run.Tenant.Id, run.Connection.Id, TrendyolJsonMapper.Returns(ContractFixture.Read("Trendyol/getClaims-docs-sample.json")).Items[0], CancellationToken.None);
+                // The docs sample's first claim carries a replacement package (an exchange request, which the panel never
+                // approves); these scenarios are about a return decision, so it is read as a plain return claim.
+                await processor.UpsertReturn(run.Tenant.Id, run.Connection.Id, TrendyolJsonMapper.Returns(ContractFixture.Read("Trendyol/getClaims-docs-sample.json")).Items[0] with { CustomerRequest = null }, CancellationToken.None);
             else
                 await processor.UpsertOrders(run.Tenant.Id, run.Connection.Id, [Order("Created")], CancellationToken.None);
         }
