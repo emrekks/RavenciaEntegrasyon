@@ -154,7 +154,8 @@ internal sealed partial class ProductJobService
             return await MarkUpdateResult(tenantId, connectionId, profile, profileStatus, rejectionCode, result, cancellationToken);
         }
 
-        if (timeProvider.GetUtcNow() - payload.SubmittedAt!.Value > TimeSpan.FromHours(4))
+        var polledAt = timeProvider.GetUtcNow();
+        if (polledAt - payload.SubmittedAt!.Value > TimeSpan.FromHours(4))
             return await StopAll("MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_EXPIRED", "Ürün güncelleme batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId));
         TrackRequest();
         var operationResult = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{job.EffectIdempotencyKey}:{phase}:poll"), payload.ExternalOperationId!, cancellationToken);
@@ -208,6 +209,18 @@ internal sealed partial class ProductJobService
                     if (cardStates.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = ListingSaleStatePolicy.AfterUpdate(state.ActualStatus, "UPDATE_REJECTED"); state.LastRejectionCode = code; state.Version++; }
                 }
             }
+        }
+
+        // Each card the answer did not stop: what Trendyol accepted of its items becomes its variants' last known values (a
+        // content line by the card's own contents, a barcode line by its own barcodes).
+        for (var index = 0; index < cards.Count; index++)
+        {
+            if (outcomes[index] is not null) continue;
+            var cardListings = index == 0 ? listings : (await LoadGroupCardListingsAsync(tenantId, connectionId, cards[index].Payload.ProfileId, cancellationToken)).Listings;
+            var cardLines = part == "CONTENT"
+                ? TrendyolUpdateGroups.Assign(cards.Select(card => (IReadOnlyCollection<string>)TrendyolUpdateGroups.Keys(card.Payload.ApprovedContentPayloadJson)).ToList(), status.Lines).ByCard[index]
+                : status.Lines;
+            await RecordAcceptedListingValuesAsync(tenantId, connectionId, "TRENDYOL", phase, cards[index].Payload, cardLines, cardListings, polledAt, cancellationToken);
         }
 
         // The other cards first. Their listings' answers are saved before their payloads move on: a run cut off in

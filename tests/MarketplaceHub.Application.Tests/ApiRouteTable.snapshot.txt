@@ -213,6 +213,7 @@ POST   /api/v1/products/transfer/apply | gate=Operations | sameOrigin=no | anon=
 GET    /api/v1/products/transfer/export.xlsx | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/products/transfer/import | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 PRODUCT_TRANSFER_FORM_REQUIRED | ownerIfMatch=400 PRODUCT_TRANSFER_FORM_REQUIRED
 GET    /api/v1/products/transfer/summary | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+POST   /api/v1/products/update-preview | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=422 VALIDATION_FAILED | ownerIfMatch=422 VALIDATION_FAILED
 DELETE /api/v1/products/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/products/{id:guid} | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PATCH  /api/v1/products/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=428 PRECONDITION_REQUIRED | ownerIfMatch=500 INTERNAL_ERROR

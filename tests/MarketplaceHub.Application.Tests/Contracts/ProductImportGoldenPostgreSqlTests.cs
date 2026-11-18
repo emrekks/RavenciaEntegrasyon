@@ -64,6 +64,46 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
         ContractFixture.MatchesGolden($"{marketplace}/products-import.golden.json", summary);
     }
 
+    // The same Trendyol page through the real import job: each variant the run links gets the title, description and desi
+    // the page carried, dated with the read and marked IMPORT (MarketplaceKnownListingValueStore); the panel card's own
+    // values are not what is recorded, and the golden summary above is untouched.
+    [PostgreSqlFact]
+    public async Task ATrendyolPageImportRecordsWhatTheMarketplaceGaveForTheVariantsItLinks()
+    {
+        var (platform, products) = MappedPage("Trendyol");
+        var now = fixture.Now;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"pknown-{Guid.NewGuid():N}"[..30], DisplayName = "known", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            await seed.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferences(), new CatalogPage(products), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, """{"full":true,"includeArchived":true,"includeDrafts":true}""", $"product-known-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Kind is JobCompletionKind.Succeeded or JobCompletionKind.ManualReview, $"{result.Kind} {result.ErrorCode} {result.ErrorSummary}");
+        }
+
+        await using var check = fixture.CreateContext();
+        var links = await check.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id).ToListAsync();
+        var known = await check.MarketplaceKnownListingValues.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.NotEmpty(links);
+        var expected = products.SelectMany(product => MarketplaceKnownListingValueStore.ImportValues(platform, product)).ToDictionary(x => x.ExternalVariantId);
+        foreach (var link in links.Where(link => expected.ContainsKey(link.ExternalId)))
+        {
+            var row = Assert.Single(known, x => x.VariantId == link.VariantId);
+            var read = expected[link.ExternalId];
+            Assert.Equal((connection.Id, read.Title, read.Description, read.Desi), (row.ConnectionId, row.Title, row.Description, row.Desi is { } desi ? decimal.Round(desi, 2) : (decimal?)null));
+            Assert.Equal(read.Title is null ? null : "IMPORT", row.TitleSource);
+            Assert.True(row.TitleReadAt is null || row.TitleReadAt <= fixture.TimeProvider.GetUtcNow());
+        }
+        Assert.Contains(known, x => x.Title is not null);
+        Assert.All(known, row => Assert.Contains(links, link => link.VariantId == row.VariantId));
+    }
+
     private static (string Platform, IReadOnlyList<RemoteCatalogProduct> Products) MappedPage(string marketplace)
     {
         switch (marketplace)

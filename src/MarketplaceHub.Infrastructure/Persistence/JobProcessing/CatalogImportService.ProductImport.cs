@@ -562,6 +562,10 @@ internal sealed partial class CatalogImportService
                 // Model Kaydı Faz 2: the listing each model is on this marketplace, from the variant links just saved
                 // (MarketplaceModelLinks.ModelListings: Shopify product, Trendyol productMainId, N11 main:, Pazarama group:, PTT AVM product).
                 await MarketplaceModelLinks.RecordAsync(db, tenantId, connectionId, MarketplaceModelLinks.ModelListings(connection.PlatformCode, snapshotGroups), timeProvider.GetUtcNow(), cancellationToken);
+                // The title, description and desi the marketplace gave for each variant these reads link on the connection
+                // (every mode: a match-only, observe-only or new-sizes run reads them too), dated with the read, for the
+                // "Platformlarda Güncelle" summary (MarketplaceKnownListingValueStore). Nothing of the panel card is written.
+                await MarketplaceKnownListingValueStore.RecordImportAsync(db, tenantId, connectionId, connection.PlatformCode, snapshotGroups, () => MarketplaceStockReadAt(timeProvider.GetUtcNow()), cancellationToken);
                 if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
                 // Trendyol's waiting and refused products show as such, with the reasons it gave (ImportedApprovalStates).
                 if (connection.PlatformCode == "TRENDYOL") await RecordImportedApprovalStates(tenantId, connectionId, snapshotGroups, cancellationToken);

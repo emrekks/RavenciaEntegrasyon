@@ -10,7 +10,7 @@ import { publishCardPlan } from './publish-card-variants'
 import { isPublicationLive, isSkippedByPublish } from '../publication-status'
 import { familyCardsInPanelOrder } from '../family-card-order'
 import { holdsFamilyAsOneProduct, type MarketplaceFamilyUpdate, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type PublicationAccepted } from '../product-publication-submit'
-import { familyCardName, familyUpdatePlan } from './family-update-plan'
+import { familyCardName, familyUpdatePlanWithLinks } from './family-update-plan'
 import { AcceptedJob, Product, preferredColorOption, variantOptionEntries } from '../shared'
 import { queryKeys } from '../../../shared/api/query-keys'
 import { type ProductUpdateRequest, type PublicationStatus, type SavedListingProfile, type VariantDraft } from './editor-types'
@@ -53,7 +53,7 @@ export async function sendToMarketplaces({ publicationConnectionIds, connectionP
           // card's refusal does not stop the others.
           const informationLabel = productInformationLabel(plan.productFields)
           update.productInformationLabel = informationLabel
-          const familyPlan = familyUpdatePlan({ openedProductId: product.id, familyProductIds: productToEdit.data?.familyProductIds, variants: product.variants.map(variant => ({ ...variant, platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses ?? variant.platformStatuses })), connectionId, platformCode: updatePlatformCode })
+          const familyPlan = familyUpdatePlanWithLinks({ openedProductId: product.id, familyProductIds: productToEdit.data?.familyProductIds, variants: product.variants, linkRowsBySku, connectionId, platformCode: updatePlatformCode })
           const familyFailures = new Map<string, string[]>()
           const family: MarketplaceFamilyUpdate = { cards: familyPlan.familyCards, queuedCards: 0, queuedVariants: 0, absent: familyPlan.absent.map(familyCardName), failures: familyFailures }
           update.family = family

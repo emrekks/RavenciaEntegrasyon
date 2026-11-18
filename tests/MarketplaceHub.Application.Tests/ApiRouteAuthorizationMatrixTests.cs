@@ -248,6 +248,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/products/bulk-status Operations",
         "POST   /api/v1/products/delete-preview Operations",
         "GET    /api/v1/products/summary SignedIn",
+        "POST   /api/v1/products/update-preview Operations",
         "POST   /api/v1/products/transfer/apply Operations",
         "GET    /api/v1/products/transfer/export.xlsx SignedIn",
         "POST   /api/v1/products/transfer/import Operations",

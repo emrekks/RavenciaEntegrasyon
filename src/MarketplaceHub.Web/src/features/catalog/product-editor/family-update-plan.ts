@@ -77,6 +77,18 @@ export function familyUpdatePlan({ openedProductId, familyProductIds, variants, 
   }
 }
 
+/**
+ * The plan Gönder sends by and the "Pazaryerinde Değişecekler" summary previews by: the family's variants with each
+ * row's latest marketplace links (by stock code) laid over them, then familyUpdatePlan. One function, so the summary
+ * compares the same cards the send reaches (independent review K4, 18 Nov 2026).
+ */
+export function familyUpdatePlanWithLinks({ linkRowsBySku, variants, ...rest }: Omit<Parameters<typeof familyUpdatePlan>[0], 'variants'> & {
+  variants: readonly (FamilyVariant & { sku: string })[]
+  linkRowsBySku?: ReadonlyMap<string, { platformStatuses?: VariantPlatformStatus[] | null }>
+}): FamilyUpdatePlan {
+  return familyUpdatePlan({ ...rest, variants: variants.map(variant => ({ ...variant, platformStatuses: linkRowsBySku?.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses ?? variant.platformStatuses })) })
+}
+
 /** The colour a card is named by in the result ("Siyah"). */
 export function familyCardName(card: FamilyUpdateCard) {
   return card.colour ?? 'renksiz kart'
