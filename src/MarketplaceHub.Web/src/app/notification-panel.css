@@ -107,10 +107,14 @@
 /* Count boxes match the view tab counts exactly. */
 :is(.rv-notification-history-title b, .rv-notification-group > b) { display: inline-grid; box-sizing: border-box; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft, #22222a); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 11.5px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
 
-/* Phones: the notification panel opens across the whole screen width under the header (owner, 10 Nov: "full genişlik");
-   the panel's own script sets left and width inline, so these win with !important. */
+/* Phones (owner, 18 Nov 2026, replacing the 10 Nov full-width sheet): the panel opens as a card 12px in from both edges under the header, with its
+   frame on all four sides and its 14px corners; its height is at most min(70dvh, 560px) and the list scrolls inside. The panel's own script sets left and
+   width inline, so these win with !important. */
 @media (max-width: 760px) {
-  html body #rv-notification-history.rv-notification-history { left: 0 !important; right: 0 !important; width: 100% !important; max-width: none; box-sizing: border-box; border-inline: 0; border-radius: 0; }
-  /* While the panel is open the header above it has square corners too, so the two read as one sheet (owner, 10 Nov). */
-  html body .rv-topbar:has(.rv-topbar-notification-trigger[aria-expanded="true"]) { border-radius: 0 !important; }
+  html body #rv-notification-history.rv-notification-history { left: 12px !important; right: 12px !important; width: auto !important; max-width: none; box-sizing: border-box; max-height: min(70dvh, 560px); }
+  .rv-notification-history-empty { padding: 28px 16px; }
+  /* The head is one line: the title, then the two actions as icon buttons (their text stays the accessible name and the tip). */
+  .rv-notification-history-heading { flex-wrap: nowrap; }
+  .rv-notification-history-actions { flex: none; gap: 4px; }
+  .rv-notification-mark-all, .rv-notification-clear { width: 32px; min-width: 32px; justify-content: center; padding: 0; font-size: 0; gap: 0; }
 }

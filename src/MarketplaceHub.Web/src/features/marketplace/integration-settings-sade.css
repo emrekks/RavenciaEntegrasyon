@@ -432,3 +432,23 @@ html body .cs-workspace.cs-workspace .cs-title-switch .pm-anchor { display: inli
 .cs-workspace .cs-title-stack { display: inline-grid; justify-items: start; }
 .cs-workspace .cs-title-stack > * { grid-area: 1 / 1; }
 .cs-workspace .cs-title-stack .cs-title-ghost { visibility: hidden; height: 0; overflow: hidden; pointer-events: none; }
+
+/* Connection window head, phone (owner, 18 Nov 2026): the logo, the connection name with its switch arrow right beside it, the status tags
+   after it (they wrap under when they do not fit) and the close button, all centred; the note line under. The hidden longest-name titles that
+   keep the desktop width steady are off here, so the arrow sits next to the name instead of at the end of the longest one. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .cs-workspace .cs-title-ghost { display: none; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-head { align-items: center; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-head .cs-title-line { display: flex; flex-flow: row wrap; align-items: center; gap: 4px 8px; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-head .cs-title-switch .pm-trigger { width: max-content; max-width: 100%; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-title-switch .pm-trigger > span:first-child { flex: none; width: max-content; min-width: 0; max-width: calc(100vw - 170px); overflow: visible; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-title-switch .cs-title-stack { width: max-content; overflow: visible; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-title-switch .cs-title-stack > h2 { width: max-content; max-width: calc(100vw - 170px); overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Bağlantı Özeti, phone (owner, 18 Nov 2026): no scroll box of its own — it opens at its content's height and the window's body scrolls; the
+   rows are 32 px. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .cs-workspace .cs-summary-body { max-height: none; overflow: visible; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-facts > div { min-height: 32px; padding-block: 5px; align-items: center; }
+}

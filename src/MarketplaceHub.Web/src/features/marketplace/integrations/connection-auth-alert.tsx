@@ -1,3 +1,4 @@
+import '../cm-glyph.css'
 import { useId } from 'react'
 import { formatDateTime } from '../../../shared/format-date'
 import './connection-auth-alert.css'

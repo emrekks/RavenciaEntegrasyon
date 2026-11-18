@@ -560,11 +560,11 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Durum: the sale state ("Satışa Açık", "Satışa Kapalı") stays on one line (owner, 14 Nov 2026). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-ring b { white-space: nowrap; }
 
-/* Wide screens: every head and body cell of the table has one symmetric 10px side padding (left == right, first and last
+/* Wide screens: every head and body cell of the table has one symmetric 18px side padding (left == right, first and last
    column included); the head's filter funnel sits in the flow next to the title instead of in a reserved right gutter. */
 @media (min-width: 1025px) {
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > thead > tr > th,
-:root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > tbody > tr > td { padding-left: 10px !important; padding-right: 10px !important; }
+:root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > tbody > tr > td { padding-left: 18px !important; padding-right: 18px !important; }
 :root:root:root:root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl > thead > tr > th .rr-hf > .rr-anchor { position: static; transform: none; }
 }
 

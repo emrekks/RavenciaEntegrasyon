@@ -12,7 +12,7 @@ import { usePttAvmManualWrites } from '../use-pttavm-manual-writes'
 import { mapWithConcurrency } from '../product-editor/product-media-save'
 import { isProductUpdateConnection, productUpdateCapabilities } from '../platform-update-targets'
 import type { MarketplaceConnection, Product } from '../shared'
-import { bulkPlatformUpdateRequests, isOnMarketplace, onMarketplaceCount, productRequiredGaps, requiredGapText, type BulkUpdateRecord, type BulkUpdateRequest } from './bulk-platform-update'
+import { bulkPlatformUpdateRequests, bulkUpdateCardsOn, isOnMarketplace, onMarketplaceCount, productRequiredGaps, requiredGapText, type BulkUpdateRecord, type BulkUpdateRequest } from './bulk-platform-update'
 import { bulkPublishPlatformName } from './bulk-publish-status'
 import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
@@ -187,6 +187,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     onOpenGroupsChange={openGroups => setEditedPreferences({ ...preferences, openGroups })}
     submitting={submitting}
     sendBlocked={sendBlocked}
+    previewCards={checking ? undefined : connection => bulkUpdateCardsOn(sendable, connection).map(record => record.id)}
     onClose={close}
     onSend={fields => void send(fields)}>
     <section className="platform-update-section bulk-platform-update-products" aria-labelledby="bulk-platform-update-products-title">

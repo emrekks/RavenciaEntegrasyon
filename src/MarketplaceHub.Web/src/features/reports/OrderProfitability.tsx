@@ -114,6 +114,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
         <input type="search" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { setApplied(search); setPage(0) } }} placeholder="Sipariş no, ürün, barkod" aria-label="Sipariş ara" />
       </label>
     </header>
+    <div className="reports-order-sortbar"><label><span>Sıralama</span><select value={sort} onChange={event => { setSort(event.target.value as Sort); setDescending(true); setPage(0) }} aria-label="Sıralama ölçütü"><option value="date">Sipariş Tarihi</option><option value="amount">Sipariş Tutarı</option><option value="profit">Kâr Tutarı</option><option value="profitOnCost">Kâr Oranı</option><option value="margin">Kâr Marjı</option></select></label><button type="button" className="secondary" onClick={() => { setDescending(value => !value); setPage(0) }} aria-label={descending ? 'Azalan sıralama, artana çevir' : 'Artan sıralama, azalana çevir'}>{descending ? '↓ Azalan' : '↑ Artan'}</button></div>
     {data && <div className="reports-order-summary"><KpiStrip label="Siparişlerin özeti" items={summaryKpis(data)} long /></div>}
     {result.isLoading && <Busy />}
     {result.isError && <ErrorBox error={result.error} onRetry={() => void result.refetch()} />}
@@ -125,12 +126,12 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
           {item.microExport && <em className="reports-order-badge is-micro" title={item.storeFront ?? undefined}>Mikro</em>}
           {stateText[item.state] && <em className="reports-order-badge is-return">{stateText[item.state]}</em>}
           {(item.unreadableLines ?? 0) > 0 && <em className="reports-order-badge is-return" title={`${item.unreadableLines} ürün satırı okunamadı; sipariş yeniden okunuyor, kârı hesaplanmaz`}>Okunamayan Satır</em>}</span></th>
-        <td>{formatIstanbul(item.orderedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-        <td className="is-num">{money(item.amount)}</td>
-        <td className={`is-num ${tone(item.profit)}`}>{item.profit === null ? unknownProfit(item) : money(item.profit)}</td>
-        <td className={`is-num ${tone(item.profitOnCost)}`}>{percent(item.profitOnCost)}</td>
-        <td className={`is-num ${tone(item.margin)}`}>{percent(item.margin)}</td>
-        <td><button type="button" className="secondary reports-order-detail" onClick={() => setOpen(item)}>Detaylar</button></td>
+        <td className="reports-od-date" data-l="Sipariş Tarihi">{formatIstanbul(item.orderedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        <td className="is-num reports-od-amount" data-l="Sipariş Tutarı">{money(item.amount)}</td>
+        <td className={`is-num ${tone(item.profit)}`} data-l="Kâr Tutarı">{item.profit === null ? unknownProfit(item) : money(item.profit)}</td>
+        <td className={`is-num ${tone(item.profitOnCost)}`} data-l="Kâr Oranı">{percent(item.profitOnCost)}</td>
+        <td className={`is-num ${tone(item.margin)}`} data-l="Kâr Marjı">{percent(item.margin)}</td>
+        <td className="reports-od-act"><button type="button" className="secondary reports-order-detail" onClick={() => setOpen(item)}>Detaylar</button></td>
       </tr>)}</tbody>
     </table></div>}
     {pageCount > 1 && <div className="reports-order-pager"><Pager page={page + 1} totalPages={pageCount} onPageChange={next => setPage(next - 1)} ariaLabel="Sayfalama" /></div>}

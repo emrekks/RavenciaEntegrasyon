@@ -2,11 +2,11 @@ import { StickyActionBar } from '../../../shared/components'
 import type { DataResetGroup } from '../data-reset-groups'
 import { marketplaceResetTotal, progressText, type BulkResetProgress } from '../marketplace-bulk-reset'
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
-import { UiIcon } from '../../../shared/components/UiIcon'
+import { UiIcon, type UiIconName } from '../../../shared/components/UiIcon'
 import { PanelFactoryResetSection } from '../PanelFactoryResetSection'
 import { dataResetConfirmWord, panelResetConfirmed, type PanelFactoryResetView } from '../panel-factory-reset'
 import { ReauthInputs, reauthReady } from '../../../shared/reauth'
-import { type SettingsIconName, SettingsIcon, SettingsPaneHead } from '../settings-ui'
+import { SettingsIcon, SettingsPaneHead } from '../settings-ui'
 
 // The categories of Ayarlar › Veri come from the server (PanelFactoryResetInventory): together they are Paneli Tamamen
 // Sıfırla, so nothing of the tenant's records is left out of them.
@@ -16,7 +16,8 @@ export function resetGroupsOf(view: PanelFactoryResetView | undefined): DataRese
   return sections.map(section => ({ label: section, description: '', options: view.groups.filter(group => group.section === section).map(group => ({ scope: group.key, label: group.label, description: group.description, unit: 'kayıt' })) }))
 }
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
-const resetGroupIcons: Record<string, SettingsIconName> = { 'Satış ve Faturalar': 'barcode', Katalog: 'db', 'Pazaryeri Kayıtları': 'save', 'Sistem Kayıtları': 'bell' }
+// The panel's own menu icons (Siparişler, Ürünler, Entegrasyonlar, İşlem Takibi), not drawings of their own.
+const resetGroupIcons: Record<string, UiIconName> = { 'Satış ve Faturalar': 'orders', Katalog: 'products', 'Pazaryeri Kayıtları': 'connect', 'Sistem Kayıtları': 'jobs' }
 
 // Database cleanup: each group has one header with its own select-all and a selected/total count; each data type is
 // a whole-row tile (checkbox beside the title, count as a tag); the notes sit in one callout and the sticky bar shows
@@ -53,7 +54,7 @@ export function SettingsDataReset({ forbidden, groups, counts, countsFailed, pic
         const all = chosen === group.options.length
         return <section className="ss-dr-group" key={group.label} aria-label={group.label}>
           <header className="ss-dr-gh">
-            <span className="ss-tile is-sm ss-dr-ico"><SettingsIcon name={resetGroupIcons[group.label] ?? 'db'} /></span>
+            <span className="ss-tile is-sm ss-dr-ico"><UiIcon name={resetGroupIcons[group.label] ?? 'products'} size={16} /></span>
             <div><h3>{group.label}</h3></div>
             <span className={`ss-tag ss-dr-sel${chosen ? ' is-on' : ''}`}>{chosen}/{group.options.length} Seçili</span>
             <button type="button" className="ss-btn is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>
