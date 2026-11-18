@@ -45,6 +45,10 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { display: block; width: 76px; color: var(--rr-subtle); line-height: 36px; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 100%; }
+  /* A phone: the picker row scrolls away with the list (no sticky), and the size chips run in one line that scrolls sideways only. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sticky { position: static; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar { flex-wrap: nowrap; flex: 1 1 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar-label { flex: none; }
   /* A phone: the colour on its own line above, its sizes wrapping underneath. */
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 10px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { gap: 6px 10px; }
