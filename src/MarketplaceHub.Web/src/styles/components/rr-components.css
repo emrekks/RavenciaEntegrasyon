@@ -144,6 +144,13 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts small { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts b { font-weight: 600; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts em { color: var(--rr-muted); font-size: 12px; font-style: normal; }
+/* A long free-text fact (the return reason) leaves the short facts' row: a full-width block of plain text under them, line breaks kept,
+   scrolling inside itself past eight lines. Two short facts per row on a phone. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-facts.rr-facts > div.rr-fact-wide.rr-fact-wide.rr-fact-wide { flex: 1 1 100%; grid-column: 1 / -1; order: 99; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-fact-wide > b { display: block; max-height: 12em; overflow-y: auto; font-weight: 400; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; scrollbar-width: thin; }
+@media (max-width: 760px) {
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts.rr-facts.rr-facts > div:not(.rr-fact-wide) { flex: 1 1 calc(50% - 1px); }
+}
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 0; border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; font-size: 13px; margin: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv > * { padding: 9px 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-kv > :nth-child(-n+2) { border-top: 0; }
