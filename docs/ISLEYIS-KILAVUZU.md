@@ -631,11 +631,30 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
 - Kart ve varyantlardaki eski sütunlar şimdilik modelin **kopyası** olarak yazılmaya devam eder (geri alma güvenliği). Önceki
   sürümden kalma ad/açıklama farkı olan kartlar, sahip ürünleri silip yeniden aktarana kadar kendi metnini taşır
   (`EffectiveCatalog.cs:29-35`).
+- KDV (oran + dahil mi), kategori, garanti ve teslimat süresinin kart kopyasını hiçbir okuyucu okumaz (D5 B2a): Excel ürün
+  dosyası dışa aktarımı (KDV, marka, kategori sütunları ve marka/kategori süzgeci), editör kaydının "KDV Oranı Gerekli",
+  "KDV Dahil mi" ve zorunlu garanti/teslimat denetimi ile değer verilmeyince korunan KDV dahil/hariç bilgisi, pazaryeri
+  aktarımında yeni teklifin KDV'si modelden okunur (`ProductTransferService.ExportAsync`, `CatalogService.UpdateProductAsync`,
+  `CatalogImportService.CardOrModelVatRateAsync`). Kopyalar bayat bırakılsa da bütün pazaryeri gönderimleri, fatura KDV'si,
+  Excel ve editör aynı çıktıyı verir (`StaleCardCopyReadersPostgreSqlTests`).
 
 **Model kaydı aşamaları (KATALOG-14)**: D1–D4, D5 A ve D5 B canlıda (`a9b91498e`; model tek kaynak, kopyalar ayna). Kalanlar
 plandır, yapılmadı: **B1** kartta `FamilyId` NOT NULL (migration hazır, derlenmiyor:
 `Persistence/MigrationsPrepared/ProductFamilyRequired.cs.txt`), **B2** kopyaların yazılmasını durdurmak, **C** kart
 sütunlarını düşürmek. C geri alınamaz ve sahibin ayrı onayını ister.
+**B2 sırası**: B2a (okuyucular modele, yukarıda) önce tek başına canlıya çıkar; B2b (yazmayı bırakmak) ancak B2a canlıda
+oturduktan sonra gelir, çünkü B2b geri alınırsa dönülen sürüm kopyalardan okumamalıdır. B2b'nin işi: bugün kart sütunu
+modele giden **yazma kanalıdır** (yazıcı kart sütununu değiştirir, `ProductModelLinks` kaydetme kancası değişikliği okuyup
+`ModelMirror` ile modele ve bütün renklere yazar; editörün `WriteFieldsAsync` geçişi ve kardeş renk yayılımı, Toplu Değer
+Ata ve Excel yüklemesinin "değişti mi" karşılaştırmaları, Ürün Hareketleri kaydı da kart sütunundan okur). B2b bu kanalı
+modele göre kurar (yazıcı değeri modele verir, karşılaştırma modelin değeriyle yapılır, geçmiş model değişikliğinden
+yazılır), uzlaştırmanın yeni model açarken kartın değerini değil bulunduğu modelin değerini almasını sağlar ve yalnız
+kopya farkını ölçen denetimleri (`ModelMirror.ReportGapsAsync`, model yenilemesinin renkler arası KDV farkı) emekliye
+ayırır. **Marka** kopya değildir: kartın `BrandId` alanı modele bağlanma anahtarıdır (uzlaştırma, `ProductFamilyScope`),
+yazılmaya devam eder. **Ad, açıklama, desi** okuyucuları bilerek kart/varyant sütununu okur (rengin adı model adından renk
+sözcüğüyle türetilir ve SQL'de arama/sıralama bu sütunla yapılır; 85 modelde eski metin farkı var): bunlar için B2, sahibin
+kararını (ad/desi sütununu türetilmiş kalıcı değer olarak tutmak ya da okuyucuları çevirmek, eski metin farklarını
+düzleştirmek) bekler. Canlı doğrulama: `.local-docs/d5b2-verify.sql` (B2 sonrası; kopya farkı artık hata değil, bilgi).
 
 **Yeni renk eklenirse** aynı kayıtta o renge yeni renk kartı açılır; açılan kartın alanları kopyalanır, başlıktaki renk
 kelimesi yeni renkle değişir (yoksa sona eklenir), Trendyol Web Color kopyalanmaz (`ProductFamilyNewColorCard.cs:6-13`).

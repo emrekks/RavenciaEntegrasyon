@@ -1520,9 +1520,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (!TryParseEditorStatus(command.Status, out var requestedStatus)) return Invalid<ProductView>("status", StatusInvalidMessage);
         var keepsDraft = requestedStatus == ProductStatus.Draft;
         if (keepsDraft && !ProductDraftPolicy.MayBecomeDraft(product.Status)) return Conflict<ProductView>(ProductDraftPolicy.DraftNotAllowedCode, ProductDraftPolicy.DraftNotAllowedMessage);
+        // KATALOG-14 phase D5 B2: what the card holds today (VAT, warranty, delivery days) is its model's, read through
+        // EffectiveCatalog as every reader; the tracked card's copy columns are not read for a check or a kept value.
+        var modelShared = await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == id)
+            .Select(x => new { x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays }).SingleAsync(cancellationToken);
         // A card with no VAT yet must get one on this save; a card that has one keeps it when the rate is left out.
-        if (command.VatRate is null && product.VatRate is null && !keepsDraft) return Invalid<ProductView>("vatRate", VatRateRequired);
-        if (command.VatRate is not null && string.IsNullOrWhiteSpace(command.VatInclusion) && string.IsNullOrWhiteSpace(product.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
+        if (command.VatRate is null && modelShared.VatRate is null && !keepsDraft) return Invalid<ProductView>("vatRate", VatRateRequired);
+        if (command.VatRate is not null && string.IsNullOrWhiteSpace(command.VatInclusion) && string.IsNullOrWhiteSpace(modelShared.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
         if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
         if (effectiveListPrice is decimal listPrice && effectiveSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
@@ -1582,7 +1586,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (requiredRows.Count == 0)
                 requiredRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && !variantIdsToDelete.Contains(x.Id))
                     .Select(x => new ProductRequiredFields.Row(x.Sku, x.Barcode, x.ModelCode, x.Desi, x.DefaultListPrice, x.DefaultSalePrice)).ToListAsync(cancellationToken);
-            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: WarrantyAfterSave(command, product.WarrantyMonths) is not null, DeliveryDaysGiven: (command.DeliveryDays ?? product.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
+            var updateGaps = ProductRequiredFields.Missing(new ProductRequiredFields.Card(command.Title, command.BrandId, command.CategoryId, WarrantyGiven: WarrantyAfterSave(command, modelShared.WarrantyMonths) is not null, DeliveryDaysGiven: (command.DeliveryDays ?? modelShared.DeliveryDays) is not null, cardListPrice, cardSalePrice, requiredRows));
             if (updateGaps.Count > 0) return ProductRequiredFields.Refusal<ProductView>(updateGaps);
         }
         // KATALOG-1: the model code is the model's, not a row's. A save that writes a row's code (or adds rows) leaves every
@@ -1929,13 +1933,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (statusChanged && ProductChangeLog.Status(tenantId, id, null, previousStatus, productStatus, ProductChangeSources.Editor, actorUserId, null, correlation, changedAt) is { } statusChange)
             db.ProductChangeEntries.Add(statusChange);
         // Garanti Süresi: 0 ("no warranty") is kept as 0; a caller that leaves it out keeps the card's.
-        product.WarrantyMonths = WarrantyAfterSave(command, product.WarrantyMonths);
+        if (command.WarrantyMonths is not null || command.ClearWarrantyMonths) product.WarrantyMonths = WarrantyAfterSave(command, null);
         // Teslimat Süresi: a caller that leaves it out keeps the card's days.
         if (command.DeliveryDays is int deliveryDaysValue) product.DeliveryDays = deliveryDaysValue;
         // Sent only by the editor: Guid.Empty = automatic (each variant's own Renk), a value = that colour on Trendyol.
         if (command.TrendyolWebColorValueId is Guid trendyolWebColor) product.TrendyolWebColorValueId = trendyolWebColor == Guid.Empty ? null : trendyolWebColor;
         // Sent only by the editor (KDV Oranı / KDV Dahil mi): a caller that leaves the rate out keeps the card's VAT.
-        if (command.VatRate is decimal vatRate) { product.VatRate = vatRate; product.VatInclusion = NormalizeVatInclusion(command.VatInclusion ?? product.VatInclusion); }
+        if (command.VatRate is decimal vatRate) { product.VatRate = vatRate; product.VatInclusion = NormalizeVatInclusion(command.VatInclusion ?? modelShared.VatInclusion); }
         product.Version++; product.UpdatedAt = timeProvider.GetUtcNow();
         if (command.Status != null)
         {

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // The settings window of every marketplace has the same common sections (Genel Bakış, Pazaryerine Yazma with Automatic
 // and Manual, Faturalama); only Veri Eşitleme and Mağaza ve Kimlik differ per platform.
-const apiState = vi.hoisted(() => ({ platformCode: 'TRENDYOL', invoiceCreationEnabled: false, externalWritesEnabled: true, calls: [] as Array<{ path: string; method: string; body?: string }> }))
+const apiState = vi.hoisted(() => ({ platformCode: 'TRENDYOL', invoiceCreationEnabled: false, externalWritesEnabled: true, groupConflict: false, calls: [] as Array<{ path: string; method: string; body?: string }> }))
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
@@ -22,6 +22,10 @@ vi.mock('../../../shared/api', async importOriginal => {
       return connection()
     }
     if (path === '/connections/c1') return connection()
+    if (path === '/connections/c1/external-write-group' && method === 'PUT') {
+      if (apiState.groupConflict) throw new original.ApiRequestError('Kayıt başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.', 409, 'CONCURRENCY_CONFLICT')
+      return []
+    }
     if (path.endsWith('/sync-policies')) return policies()
     if (path.endsWith('/capabilities')) return ['PRICE_WRITE', 'INVENTORY_WRITE', 'SHIPMENT_WRITE', 'RETURN_READ', 'RETURN_WRITE'].map(code => ({ code, supportLevel: 'SUPPORTED', verifiedForConnection: true, verifiedAt: '2026-10-28T10:00:00Z' }))
     if (path.endsWith('/instant-notifications')) return { state: 'OFF', endpoint: null, registeredAt: null, lastReceivedAt: null, receivedLast24Hours: 0, message: null }
@@ -45,6 +49,7 @@ beforeEach(() => {
   apiState.calls = []
   apiState.invoiceCreationEnabled = false
   apiState.externalWritesEnabled = true
+  apiState.groupConflict = false
   Element.prototype.scrollIntoView = vi.fn()
   container = document.createElement('div')
   document.body.append(container)
@@ -127,9 +132,9 @@ describe('integration settings parity', () => {
     expect(automatic.querySelector('input[type="checkbox"]')).not.toBeNull()
     await act(async () => { toggle.click() })
     await settle()
-    const saves = apiState.calls.filter(call => call.method === 'PUT' && call.path.includes('/sync-policies/'))
-    expect(saves.map(call => call.path)).toEqual(['/connections/c1/sync-policies/MANUAL_WRITE'])
-    expect(JSON.parse(saves[0].body!)).toMatchObject({ enabled: false })
+    const saves = apiState.calls.filter(call => call.method === 'PUT')
+    expect(saves.map(call => call.path)).toEqual(['/connections/c1/external-write-group'])
+    expect(JSON.parse(saves[0].body!)).toEqual({ enabled: false, policies: [{ resourceType: 'MANUAL_WRITE', version: 1 }] })
   })
 
   it.each(['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'])('%s manual group stays on SHIPMENT_WRITE and RETURN_WRITE', async platformCode => {
@@ -138,8 +143,54 @@ describe('integration settings parity', () => {
     const toggle = container.querySelector<HTMLInputElement>('[data-external-write-group="manual-external-writes"] input[type="checkbox"]')!
     await act(async () => { toggle.click() })
     await settle()
-    const saved = apiState.calls.filter(call => call.method === 'PUT' && call.path.includes('/sync-policies/')).map(call => call.path.split('/').pop())
-    expect(saved.sort()).toEqual(['RETURN_WRITE', 'SHIPMENT_WRITE'])
+    const saves = apiState.calls.filter(call => call.method === 'PUT')
+    expect(saves.map(call => call.path)).toEqual(['/connections/c1/external-write-group'])
+    expect((JSON.parse(saves[0].body!) as { policies: Array<{ resourceType: string }> }).policies.map(policy => policy.resourceType).sort()).toEqual(['RETURN_WRITE', 'SHIPMENT_WRITE'])
+  })
+
+  // 18 Nov: the price/stock pair went as two parallel PUTs; one failed with 409 and PttAVM stayed half open.
+  async function confirmAutomaticWrites() {
+    const accept = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Aç ve Sonrakileri Gönder')!
+    expect(accept).toBeDefined()
+    await act(async () => { accept.click() })
+    await settle()
+  }
+
+  it('switches the automatic price/stock pair in one request with both versions', async () => {
+    await renderFor('PTTAVM')
+    openSection('Pazaryerine Yazma')
+    const toggle = container.querySelector<HTMLInputElement>('[data-external-write-group="automatic-external-writes"] input[type="checkbox"]')!
+    await act(async () => { toggle.click() })
+    await settle()
+    await confirmAutomaticWrites()
+    const saves = apiState.calls.filter(call => call.method === 'PUT')
+    expect(saves.map(call => call.path)).toEqual(['/connections/c1/external-write-group'])
+    expect(JSON.parse(saves[0].body!)).toEqual({ enabled: true, policies: [{ resourceType: 'PRICE_WRITE', version: 1 }, { resourceType: 'STOCK_WRITE', version: 1 }] })
+  })
+
+  it('a double click on a write switch sends one request', async () => {
+    await renderFor('TRENDYOL')
+    openSection('Pazaryerine Yazma')
+    const toggle = container.querySelector<HTMLInputElement>('[data-external-write-group="manual-external-writes"] input[type="checkbox"]')!
+    await act(async () => { toggle.click(); toggle.click() })
+    await settle()
+    expect(apiState.calls.filter(call => call.method === 'PUT')).toHaveLength(1)
+  })
+
+  it('a conflict reloads the policies so the page shows what the server holds', async () => {
+    apiState.groupConflict = true
+    await renderFor('N11')
+    openSection('Pazaryerine Yazma')
+    const reads = () => apiState.calls.filter(call => call.method === 'GET' && call.path.endsWith('/sync-policies')).length
+    const before = reads()
+    const toggle = container.querySelector<HTMLInputElement>('[data-external-write-group="automatic-external-writes"] input[type="checkbox"]')!
+    await act(async () => { toggle.click() })
+    await settle()
+    await confirmAutomaticWrites()
+    await settle()
+    expect(apiState.calls.filter(call => call.method === 'PUT')).toHaveLength(1)
+    expect(reads()).toBeGreaterThan(before)
+    expect(toggle.disabled).toBe(false)
   })
 
   it('Hepsiburada invoicing turns on from its own Faturalama section', async () => {

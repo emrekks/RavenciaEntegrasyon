@@ -101,6 +101,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/connections/{id:guid}/capabilities SignedIn",
         "PUT    /api/v1/connections/{id:guid}/credential Elevated",
         "POST   /api/v1/connections/{id:guid}/deep-delete Elevated",
+        "PUT    /api/v1/connections/{id:guid}/external-write-group Elevated",
         "GET    /api/v1/connections/{id:guid}/full-reset Elevated",
         "POST   /api/v1/connections/{id:guid}/full-reset Elevated",
         "POST   /api/v1/connections/{id:guid}/initial-data-sync-jobs Operations",

@@ -146,8 +146,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 // Credentials, stage test orders, deleting or emptying a connection's data, and registering the
                 // marketplace's notifications (a setting on the store's side) are for administrators.
                 // A write switch (PUT /connections/{id}/sync-policies/PRICE_WRITE, STOCK_WRITE, ...) is a permission like
-                // the master external-write switch, and as elevated (YENİ-03).
-                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "instant-notifications"
+                // the master external-write switch, and as elevated (YENİ-03); so is the pair switched together (external-write-group).
+                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "instant-notifications" or "external-write-group"
                         || segments.Length == 6 && segments[4].Equals("sync-policies", StringComparison.OrdinalIgnoreCase) && MarketplaceExternalWritePolicies.IsPermissionPolicy(last)
                     ? ElevatedRoles
                     : OperationalRoles;
