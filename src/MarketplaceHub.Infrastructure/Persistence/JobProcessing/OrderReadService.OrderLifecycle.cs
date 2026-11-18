@@ -31,6 +31,18 @@ internal sealed partial class OrderReadService
         packages.Where(package => package.TenantId == tenantId
             && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
 
+    // OpenOrderReadTally's rule A (the connection's failure): the position goes back to where the run found it
+    // (startOpaque), the issues the run recorded are kept, and the job fails with the first error; the processor records
+    // a failed run, so the watermark and the last success stay. Any other run goes on exactly as before.
+    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, CancellationToken cancellationToken)
+    {
+        if (tally.HadReadFailure) run.OpenOrderReadFailed = true;
+        if (tally.ConnectionFailure() is not { } failure) return;
+        cursor.OpaqueCursor = startOpaque;
+        await db.SaveChangesAsync(cancellationToken);
+        throw JobProcessingException.FromAdapter(failure);
+    }
+
     internal async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
@@ -42,6 +54,8 @@ internal sealed partial class OrderReadService
             configuration.GetValue("MarketplaceSync:OrderLifecycle:BatchSize", 25),
             configuration.GetValue("MarketplaceSync:OrderLifecycle:TrendyolBatchSize", 1));
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
+        var startPosition = cursor.OpaqueCursor;
+        var tally = new OpenOrderReadTally();
         List<string> externalOrderIds;
         var hepsiburadaListedCancellations = new List<RemoteCancelledOrderLine>();
         if (isHepsiburada)
@@ -95,11 +109,11 @@ internal sealed partial class OrderReadService
                 ? HepsiburadaLifecycleCursor(externalOrderIds[^1])
                 : null;
             // Orders Hepsiburada lists as cancelled but the panel does not are read again now.
-            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, hepsiburadaListedCancellations, cancellationToken))
+            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, hepsiburadaListedCancellations, cancellationToken, tally))
                 if (!externalOrderIds.Contains(cancelled, StringComparer.Ordinal)) externalOrderIds.Add(cancelled);
         }
-        else if (platformCode == "PAZARAMA" && await SyncPazaramaOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cancellationToken)
-            || platformCode == "PTTAVM" && await SyncPttAvmOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cancellationToken))
+        else if (platformCode == "PAZARAMA" && await SyncPazaramaOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cursor, cancellationToken)
+            || platformCode == "PTTAVM" && await SyncPttAvmOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cursor, cancellationToken))
         {
             cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
             cursor.Version++;
@@ -143,6 +157,7 @@ internal sealed partial class OrderReadService
             {
                 if (result.Error?.Class == AdapterErrorClass.NotFound)
                 {
+                    tally.Answered();
                     // ISLEYICI-5: the owner sees an open order the marketplace no longer finds; its state is left as it
                     // is (a missing answer says nothing about the order). Hepsiburada keeps its own checks for this.
                     if (!isHepsiburada)
@@ -155,6 +170,7 @@ internal sealed partial class OrderReadService
                     continue;
                 }
                 TrackResultFailure(result.Error);
+                tally.Failed(result.Error);
                 var error = result.Error!;
                 await RecordIssue(
                     tenantId,
@@ -165,10 +181,12 @@ internal sealed partial class OrderReadService
                 continue;
             }
             TrackReceived();
+            tally.Answered();
             recoveredOrders.Add(WithHepsiburadaListedCancelTimes(result.Value!, hepsiburadaListedCancellations));
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
             if (!isHepsiburada) await ResolveIssue(tenantId, OpenOrderMissingIssueKey(connectionId, externalOrderId), cancellationToken);
         }
+        await FailWhenNothingRead(tally, cursor, startPosition, cancellationToken);
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
         if (isHepsiburada)
             await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
@@ -243,10 +261,13 @@ internal sealed partial class OrderReadService
                           select new { package.ExternalPackageId, order.ExternalOrderId, order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode })
             .ToListAsync(cancellationToken);
         var v2Cutoff = now - TrendyolLookupPolicy.V2History;
+        var tally = new OpenOrderReadTally();
 
         // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
         async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
         {
+            // A slice whose failure is the connection's (OpenOrderReadTally) keeps the stored position.
+            await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
             if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
             cursor.OpaqueCursor = TrendyolOpenScanCursor(next);
             cursor.Version++;
@@ -271,12 +292,14 @@ internal sealed partial class OrderReadService
                     if (batch.IsSuccess)
                     {
                         foreach (var _ in batch.Value!) TrackReceived();
+                        tally.Answered();
                         received.AddRange(batch.Value!);
                         await ResolveIssue(tenantId, $"order-lifecycle-batch:{connectionId}", cancellationToken);
                         continue;
                     }
                     if (batch.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(batch.Error); throw JobProcessingException.FromAdapter(batch.Error); }
                     TrackResultFailure(batch.Error);
+                    tally.Failed(batch.Error);
                     await RecordIssue(tenantId, $"order-lifecycle-batch:{connectionId}", batch.Error!.Code,
                         $"Açık Trendyol paketleri toplu okunamadı; sonraki taramada tekrar denenecek. {batch.Error.SafeMessage}", cancellationToken);
                 }
@@ -301,13 +324,15 @@ internal sealed partial class OrderReadService
                     if (result.IsSuccess)
                     {
                         TrackReceived();
+                        tally.Answered();
                         received.Add(result.Value!);
                         await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", cancellationToken);
                         continue;
                     }
-                    if (result.Error?.Class == AdapterErrorClass.NotFound) continue;
+                    if (result.Error?.Class == AdapterErrorClass.NotFound) { tally.Answered(); continue; }
                     if (result.Error?.Class == AdapterErrorClass.RateLimit) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error); }
                     TrackResultFailure(result.Error);
+                    tally.Failed(result.Error);
                     await RecordIssue(tenantId, $"order-lifecycle:{connectionId}:{order.ExternalOrderId}", result.Error!.Code,
                         $"Sipariş yaşam döngüsü yenilenemedi; sonraki otomatik taramada tekrar denenecek. {result.Error.SafeMessage}", cancellationToken);
                 }

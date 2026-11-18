@@ -36,7 +36,7 @@ internal sealed partial class OrderReadService
     // Open PTT AVM orders are read again through the date windows that hold them: a single request per window
     // brings every order of it with its current line statuses. Open orders older than three months are read one by
     // one from the day their number names. Returns false when no order is open.
-    private async Task<bool> SyncPttAvmOpenOrdersByWindow(Guid tenantId, Guid connectionId, string correlationId, int batchSize, CancellationToken cancellationToken)
+    private async Task<bool> SyncPttAvmOpenOrdersByWindow(Guid tenantId, Guid connectionId, string correlationId, int batchSize, SyncCursor cursor, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var open = await (from package in db.ShipmentPackages.AsNoTracking()
@@ -48,8 +48,13 @@ internal sealed partial class OrderReadService
             .ToListAsync(cancellationToken);
         if (open.Count == 0) return false;
 
+        // The windows throw on a failure, so windows that were read are an answer for OpenOrderReadTally.
+        var tally = new OpenOrderReadTally();
         if (PttAvmOrderHistoryPolicy.OpenOrderStartDay(open.Select(x => x.OrderedAt).ToArray(), now) is { } startDay)
+        {
             await ReadPttAvmOrderWindows(tenantId, connectionId, correlationId, "pttavm-open-orders", startDay, now, cancellationToken);
+            tally.Answered();
+        }
 
         var floor = now.AddMonths(-PttAvmOrderHistoryPolicy.InitialLookbackMonths);
         var older = open.Where(x => x.OrderedAt < floor)
@@ -63,10 +68,17 @@ internal sealed partial class OrderReadService
         {
             TrackRequest();
             var result = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-lifecycle:{externalOrderId}"), externalOrderId, cancellationToken);
-            if (!result.IsSuccess) { if (result.Error?.Class != AdapterErrorClass.NotFound) TrackResultFailure(result.Error); continue; }
+            if (!result.IsSuccess)
+            {
+                if (result.Error?.Class == AdapterErrorClass.NotFound) tally.Answered();
+                else { TrackResultFailure(result.Error); tally.Failed(result.Error); }
+                continue;
+            }
             TrackReceived();
+            tally.Answered();
             received.Add(result.Value!);
         }
+        await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
         if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
         return true;
     }

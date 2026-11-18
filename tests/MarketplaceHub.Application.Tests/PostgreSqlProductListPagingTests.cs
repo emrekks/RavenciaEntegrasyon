@@ -382,7 +382,7 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         Assert.True(await service.FamilyIdMatchesModelCodeRuleCachedAsync(seed.TenantId, CancellationToken.None));
         // Behind the tracker's back: the cached answer stands.
         var gri = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId && x.Title == "Kadın Gri Etek");
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {gri.Id}""");
+        await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.TenantId, gri.Id);
         Assert.True(await service.FamilyIdMatchesModelCodeRuleCachedAsync(seed.TenantId, CancellationToken.None));
         // A tracked save of a card of the tenant drops it.
         var card = await db.Products.SingleAsync(x => x.TenantId == seed.TenantId && x.Title == "Kodsuz Gömlek");
@@ -401,7 +401,7 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         var service = Service(db, codec);
         // A link that failed after its save: the card is its own row in SQL, one of MZ100 in memory.
         var gri = await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == seed.TenantId && x.Title == "Kadın Gri Etek");
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {gri.Id}""");
+        await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.TenantId, gri.Id);
         Assert.False(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         await AssertSameListsAsync(db, seed.TenantId);
 

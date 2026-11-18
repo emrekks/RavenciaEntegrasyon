@@ -659,7 +659,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
             VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, {ProductModelLinks.AmbiguousDedupeKey("KENE01")}, {ProductModelLinks.AmbiguousCode}, 'iki marka', 'Open', {at}, {at}, 1)
             """);
         var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == siyah.Id)).FamilyId;
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {bordo.Id}""");
+        await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.Tenant.Id, bordo.Id);
         var versions = await db.Products.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Version);
 
         var result = await ProductModelScan.RunTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
@@ -740,7 +740,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == linked.Id)).FamilyId);
         // A card left without its model (its link still to come) is found by its variants.
         Assert.NotNull((await db.Products.AsNoTracking().SingleAsync(x => x.Id == unlinked.Id)).FamilyId);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {unlinked.Id}""");
+        await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.Tenant.Id, unlinked.Id);
 
         Assert.Equal(linked.Id, (await ModelCodeOwnership.FindAsync(db, seed.Tenant.Id, seed.Ravencia, ["mz500"], CancellationToken.None))?.ProductId);
         // A model is its brand and its code (owner, 17 Nov 2026): another brand finds no holder of the code.
@@ -1025,7 +1025,7 @@ public sealed class PostgreSqlProductModelValuesTests(PostgreSqlTenantIsolationF
         var card = AddCard(db, seed, seed.Ravencia, "MZ900", "Siyah", "Kadın Siyah Etek", 0);
         await db.SaveChangesAsync();
         var stale = await ModelOfAsync(db, card.Id);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {card.Id}""");
+        await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.Tenant.Id, card.Id);
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "VatRate" = 99, "BrandId" = {seed.Lavian} WHERE "Id" = {stale.Id}""");
 
         await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);

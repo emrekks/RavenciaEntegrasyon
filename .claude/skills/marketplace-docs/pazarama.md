@@ -22,7 +22,28 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   asked again after 2 s and 5 s inside the single token flight, the failure held 30 s per credential, then the job is
   requeued (`PazaramaHttpClient.IssueWithRetriesAsync`, `PazaramaTokenCache.FailureHold`). A 2xx with fields but no token
   stays `PAZARAMA_TOKEN_INVALID` (contract, manual review). Each failed token answer is logged with status, OAuth
-  `error`, field names, content type and length (never values). Source: worker logs and `integration.jobs`, 17 Nov 2026.
+  `error`, field names, content type and length in bytes (never values). Source: worker logs and `integration.jobs`, 17 Nov 2026.
+- Token answer rules since the 18 Nov review (no official source; our own conservative reading): a 200 HTML page or
+  `[]` is the same passing remote error, and so is the token service's own 5xx (`PAZARAMA_TOKEN_REMOTE_ERROR`, a token
+  code); `success:false` with the busy words (`SaysTryLater`, as the order service says them) is a passing remote
+  error, not a refused key. A refused key is only OAuth `invalid_client` / `unauthorized_client`, 401/403, or a
+  `success:false` that plainly says so: one clause names the key as a phrase (client id, client secret, istemci
+  kimliği, api key, api anahtarı, kimlik bilgisi, kullanıcı adı, şifre, parola, secret, credential) and refuses it
+  (geçersiz, hatalı, yanlış, invalid, wrong, incorrect, reddedildi, eşleşmiyor), or the text says "bad credentials",
+  "yetkisiz" or "unauthorized" (Turkish İ/ı matched). A text naming a service fault (servis, service, gateway,
+  unreachable, ulaşılamıyor, zaman aşımı, timeout, in progress, yakında) is never a refused key. Everything else
+  ("Access denied", "Erişim reddedildi", a lone "client"/"anahtar", "Oturum bilgileriniz alınamadı", a 400 with no
+  body) stays `PAZARAMA_TOKEN_INVALID` (unknown): a wrong "refused" holds the connection, a wrong "unknown" only waits
+  for a review. A held token failure counts from when it was stored, so a clock set back does not keep it.
+- Open-order status scans (`PAZARAMA_ORDER_STATUS_SYNC` and the other marketplaces' status scans), `OpenOrderReadTally`:
+  rule A only. A run that got no answer (an answer is a read or a "not found"), every failure the connection's (token
+  or session code, a refused sign-in, the network, a quota), fails with that error (retry, hold or, for
+  `PAZARAMA_TOKEN_INVALID`, manual review); its position and watermark stay. This is the 17 Nov live case: the scan
+  ended SUCCEEDED every two minutes while no token could be had. Every other run goes on exactly as before (position,
+  watermark, older-pass stamp, last success), with "· bazı siparişler okunamadı" in its label when an order or package read failed with a passing or connection error (no count: one Trendyol request carries up to 50 packages and a "not found" is an answer, so no request count is an order count).
+  **Known limit:** while the order service answers 5xx only (however many requests), the scan still looks successful;
+  only the label note shows that some orders were not read. Telling a 5xx outage from orders that always answer 5xx was tried
+  and dropped (review of 18 Nov).
 
 ## Limits
 - Price/stock and product create: documented 10 s between requests per seller; code keeps 12.5 s, price and stock

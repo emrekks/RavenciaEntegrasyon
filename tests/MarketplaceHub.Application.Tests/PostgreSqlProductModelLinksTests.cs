@@ -55,8 +55,11 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
     private static UpdateProductCommand Command(ProductView shown, IReadOnlyList<ProductAttributeCommand>? attributes = null) =>
         new(shown.Title, shown.Description, shown.BrandId, shown.CategoryId, WarrantyMonths: shown.WarrantyMonths ?? 0, VatRate: shown.VatRate, VatInclusion: shown.VatInclusion, DeliveryDays: shown.DeliveryDays, Attributes: attributes, FamilySharedFields: ProductFamilySharedFields.All);
 
+    // Raw SQL: a test that makes the state before the backfill reads NULL links, which the model (FamilyId required) cannot.
     private static Task<Dictionary<Guid, Guid?>> LinksAsync(AppDbContext db, Guid tenantId) =>
-        db.Products.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.FamilyId);
+        db.Database.SqlQuery<LinkRow>($"""SELECT "Id", "FamilyId" FROM catalog.products WHERE "TenantId" = {tenantId}""").ToDictionaryAsync(x => x.Id, x => x.FamilyId);
+
+    private sealed record LinkRow(Guid Id, Guid? FamilyId);
 
     // A code two brands share: the card's code set by SQL, then the whole tenant's reconcile (each brand its own model).
     private static async Task SharedCodeFromBeforeAsync(AppDbContext db, Seed seed, Product card, string code)
@@ -268,6 +271,8 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "Title" = 'Kadın Lacivert Bluz' WHERE "Id" = {a3.Id}""");
         // KENE01 under two brands, as only a release before KATALOG-14 phase D5b could leave it.
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE01' WHERE "ProductId" = {ravencia.Id}""");
+        // KATALOG-14 D5 B1: the column is NOT NULL now; the state before the backfill is made in this transaction only.
+        await db.Database.ExecuteSqlRawAsync("""ALTER TABLE catalog.products ALTER COLUMN "FamilyId" DROP NOT NULL""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "TenantId" = {seed.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_models WHERE "TenantId" = {seed.Tenant.Id}""");
         await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM ops.operational_issues WHERE "TenantId" = {seed.Tenant.Id}""");
@@ -307,6 +312,8 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
 
         // The application agrees with the backfill and links the cards SQL left: the code it cannot key, and (KATALOG-14
         // phase D5b) KENE01's model, of the oldest card's brand, with the Ravencia card on a model of its own.
+        // KATALOG-14 D5 B1: since NOT NULL a card left by SQL waits on a model of its own (no NULL link any more).
+        await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.Tenant.Id, [.. links.Where(x => x.Value is null).Select(x => x.Key)]);
         await ProductModelLinks.ReconcileTenantAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         var reconciled = await LinksAsync(db, seed.Tenant.Id);
         Assert.All(links.Where(x => x.Key != other.Id && x.Key != lavian.Id && x.Key != ravencia.Id), pair => Assert.Equal(pair.Value, reconciled[pair.Key]));
@@ -341,7 +348,7 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         foreach (var card in new[] { same, other })
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_variants SET "ModelCode" = 'KENE05' WHERE "ProductId" = {card.Id}""");
-            await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.products SET "FamilyId" = NULL WHERE "Id" = {card.Id}""");
+            await ModelLinkTestStates.PutOnOwnModelAsync(db, seed.Tenant.Id, card.Id);
         }
         await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM catalog.product_models WHERE "TenantId" = {seed.Tenant.Id} AND "ModelCodeKey" LIKE 'TEMP%'""");
         await ProductModelLinks.EnsureOwnModelsAsync(db, seed.Tenant.Id, [same.Id, other.Id], DateTimeOffset.UtcNow, CancellationToken.None);
@@ -452,8 +459,9 @@ public sealed class PostgreSqlProductModelLinksTests(PostgreSqlTenantIsolationFi
         {
             await using (var reset = fixture.CreateContext())
             {
-                await reset.Products.Where(x => x.TenantId == seed.Tenant.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.FamilyId, (Guid?)null));
-                await reset.ProductModels.Where(x => x.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+                // KATALOG-14 D5 B1: no NULL link any more; the cards wait on models of their own.
+                await ModelLinkTestStates.PutOnOwnModelAsync(reset, seed.Tenant.Id, [.. await reset.Products.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync()]);
+                await reset.ProductModels.Where(x => x.TenantId == seed.Tenant.Id && !x.ModelCodeKey.StartsWith("#")).ExecuteDeleteAsync();
             }
             await using var first = fixture.CreateContext();
             await using var second = fixture.CreateContext();
