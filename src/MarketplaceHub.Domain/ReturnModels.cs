@@ -232,8 +232,25 @@ public static class ReturnCustomerRequestPolicy
         };
     }
 
+    // Trendyol's claim reason code (customerClaimItemReason.code) for "Müşteri, yanlış ürünün değişimini istiyor": live
+    // claim of order 11805950639 (12 Nov 2026), which the owner named an exchange (18 Nov 2026). The official reason list
+    // (trendyol-api-son.md "İade Sebepleri") gives ids and names only, no codes.
+    public const string TrendyolExchangeReasonCode = "WRONGCHANGEREQUEST";
+
+    // What the Trendyol customer asked for, from the claim's explicit data only: the exchange reason code, or a
+    // replacement package Trendyol sends for the claim (getClaims replacementOutboundpackageinfo, "Değişim giden paket
+    // bilgisi (değişim yoksa boş)", trendyol-api-son.md:17452). Anything else is unknown (null): getClaims names no
+    // refund request either, and the reason's text is never searched.
+    public static string? FromTrendyol(string? reasonCode, bool hasReplacementPackage) =>
+        hasReplacementPackage || string.Equals(reasonCode?.Trim(), TrendyolExchangeReasonCode, StringComparison.OrdinalIgnoreCase) ? Change : null;
+
     // The claim's raw status (upper case) when Hepsiburada closed it with a refund.
     public const string RefundedRawStatus = "REFUNDED";
+
+    // The marketplace whose exchange claims take no units back (AcceptedReturnPolicy, the reports): Hepsiburada says how
+    // it closed one (Refunded). Trendyol's exchange request (FromTrendyol, 18 Nov 2026) is shown only: its getClaims
+    // names no refund outcome, so its claims count as returns as before until the owner decides otherwise.
+    public const string ExchangeNoReturnPlatform = "HEPSIBURADA";
 
     // Whether a claim's units count as returned (owner, 6 Nov 2026): decided by how the claim was closed, not by what
     // was requested. An exchange request closed with a refund is a return; one closed as an exchange, or still open,

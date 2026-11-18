@@ -465,6 +465,44 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("https://tracking.example.test/7330037747126806", claim.CargoTrackingLink);
     }
 
+    // Owner, 18 Nov 2026 (11805950639): the exchange request comes from the claim's explicit data only, the reason code
+    // WRONGCHANGEREQUEST or a replacement package (replacementOutboundpackageinfo); any other reason, an unknown code or an
+    // empty replacement block is no known request (null), never a refund.
+    [Theory]
+    [InlineData("WRONGCHANGEREQUEST", null, "CHANGE")]
+    [InlineData("wrongChangeRequest", null, "CHANGE")]
+    [InlineData("BIGSIZE", null, null)]
+    [InlineData("WRONGITEM", null, null)]
+    [InlineData("SOMETHINGNEW", null, null)]
+    [InlineData(null, null, null)]
+    [InlineData("BIGSIZE", """{ "packageid": 28717254, "items": [] }""", "CHANGE")]
+    [InlineData("BIGSIZE", """{ "items": ["b71461e3-d1a0-4c1d-9a6d-18ecbcb5432d"] }""", "CHANGE")]
+    [InlineData("BIGSIZE", "{}", null)]
+    [InlineData("BIGSIZE", """{ "packageid": null, "items": [] }""", null)]
+    [InlineData("BIGSIZE", """{ "packageid": 0 }""", null)]
+    [InlineData("BIGSIZE", "null", null)]
+    public void ReturnClaim_ReadsTheExchangeRequestFromItsCodeOrReplacementPackageOnly(string? reasonCode, string? replacement, string? expected)
+    {
+        var reason = reasonCode is null ? "" : ", \"customerClaimItemReason\": { \"id\": \"1\", \"name\": \"Sebep\", \"code\": \"" + reasonCode + "\" }";
+        var replacementField = replacement is null ? "" : "\"replacementOutboundpackageinfo\": " + replacement + ",";
+        var json = $$"""
+        {
+          "content": [
+            {
+              "claimId": "claim-exchange-1", "orderNumber": "11805950639", "orderDate": 1782998302000, {{replacementField}}
+              "items": [ { "orderLine": { "id": 1, "price": 10 }, "claimItems": [ { "id": "ci-1", "claimItemStatus": { "name": "WaitingInAction" }{{reason}}, "customerNote": "Trendyol Oto Not: değişim" } ] } ]
+            }
+          ],
+          "page": 0, "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(expected, claim.CustomerRequest);
+        Assert.Null(claim.ResolvedWith);
+    }
+
     [Fact]
     public void ReturnClaim_ReadsNestedReturnPackageCargoProviderObject()
     {

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using ReturnCustomerRequestPolicy = MarketplaceHub.Domain.ReturnCustomerRequestPolicy;
 using ReturnRejectedPackageStates = MarketplaceHub.Domain.ReturnRejectedPackageStates;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -27,7 +28,8 @@ public static partial class TrendyolJsonMapper
             rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink"),
                 ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null, RejectedPackageState: RejectedPackageState(claim, status),
                 // The request date is the documented claimDate only (GMT epoch milliseconds); no other field stands in.
-                RequestedAt: FlexibleInstant(claim, "claimDate")));
+                RequestedAt: FlexibleInstant(claim, "claimDate"),
+                CustomerRequest: ReturnCustomerRequestPolicy.FromTrendyol(ClaimReasonCode(claim), HasReplacementPackage(claim))));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
@@ -45,6 +47,17 @@ public static partial class TrendyolJsonMapper
         if (package.ValueKind != JsonValueKind.Object) return null;
         if (package.TryGetProperty("dontShipBack", out var dontShipBack) && dontShipBack.ValueKind == JsonValueKind.True) return ReturnRejectedPackageStates.DontShipBack;
         return string.IsNullOrWhiteSpace(NullText(package, "cargoTrackingLink")) ? ReturnRejectedPackageStates.AwaitingCargo : ReturnRejectedPackageStates.Shipped;
+    }
+
+    // getClaims replacementOutboundpackageinfo ("değişim yoksa boş"): a replacement package only when it names its package
+    // (packageid) or the claim items it carries; a missing, null or empty object is no exchange.
+    internal static bool HasReplacementPackage(JsonElement claim)
+    {
+        if (!claim.TryGetProperty("replacementOutboundpackageinfo", out var package) && !claim.TryGetProperty("replacementOutboundPackageInfo", out package)) return false;
+        if (package.ValueKind != JsonValueKind.Object) return false;
+        if (NullText(package, "packageid", "packageId")?.Trim() is { Length: > 0 } packageId && packageId != "0") return true;
+        return package.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
+            && items.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()));
     }
 
     public static IReadOnlyList<RemoteReturnLine> ReturnLines(string json)
