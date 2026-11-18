@@ -720,7 +720,7 @@
 
 /* A group band above a table head reads as one block with it: same head colour, one divider between them. */
 .ss-page .ss-sess-sub { background: var(--rv-color-table-head); }
-.ss-page .ss-sess-sub:has(+ .ss-users, + .rr-qtable, + table), .ss-page .ss-body.is-flush > .ss-sess-sub:first-child { border-bottom: 1px solid var(--rv-color-border); }
+.ss-page .ss-sess-sub:has(+ .ss-users, + table), .ss-page .ss-body.is-flush > .ss-sess-sub:first-child { border-bottom: 1px solid var(--rv-color-border); }
 
 /* Tam Sıfırlama, phone: "Kalanlar" is a small heading with the three things that stay as plain rows, each with its tick (owner, 18 Nov 2026). */
 @media (max-width: 760px) {

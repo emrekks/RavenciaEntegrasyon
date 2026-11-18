@@ -81,9 +81,8 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     await type(field('Liste Fiyatı'), '180')
     await type(field('Maliyet'), '70')
     await type(field('Miktar'), '8')
-    // A hand-typed cell in an open group is applied too.
-    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t')).find(item => item.textContent?.includes('Siyah'))!)
-    expect(Array.from(document.body.querySelectorAll('th')).some(item => item.textContent === 'Maliyet')).toBe(true)
+    // A hand-typed cell is applied too; the tabs name the editable values.
+    expect(Array.from(document.body.querySelectorAll('button[role="tab"]')).map(item => item.textContent)).toEqual(['Stok', 'Maliyet', 'Liste Fiyatı', 'Satış Fiyatı'])
     await type(document.body.querySelector<HTMLInputElement>('input[aria-label="Siyah · S stok"]')!, '11')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
 
