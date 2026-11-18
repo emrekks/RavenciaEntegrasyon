@@ -4,6 +4,8 @@ export const dashboardOperationalLinks = {
   lateOrders: '/orders?status=LATE',
   // The low-stock list opens with its window (missing variants by model) already open.
   lowStock: '/products?stock=LOW&details=low-stock',
+  // The Yeniden Gönderimler tab: the resends waiting for the carrier.
+  resentOrders: '/orders?status=RESENT',
   pendingReturns: '/returns?status=ACTION_REQUIRED',
   pendingInvoices: '/invoices?tab=UNINVOICED',
   dueInvoices: '/invoices?tab=DUE_SOON'

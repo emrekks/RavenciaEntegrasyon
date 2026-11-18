@@ -13,7 +13,7 @@ vi.mock('../../shared/api', async importOriginal => {
     const route = path.split('?')[0]
     if (apiState.failing.has(route)) throw new Error(`${route} failed`)
     // The worker's snapshot is a step behind (9 against 4): the Bekleyen card reads the menu badge's /orders/summary instead.
-    if (route === '/orders/summary') return { new: 3, processing: 1, pending: 4, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units }
+    if (route === '/orders/summary') return { new: 3, processing: 1, pending: 4, resent: 2, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units }
     if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 9, lateOrders: 1, pendingReturns: 2, pendingByConnection: { ty: 9 }, pendingUnitsByConnection: { ty: 90 } }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
     if (route === '/dashboard/cancellations') return { stores: [
       { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
@@ -90,8 +90,17 @@ describe('DashboardPage', () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
       'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Faturalar',
-      'İptal', 'Düşük Stok',
+      'İptal', 'Yeniden Gönderim',
     ])
+  })
+
+  it('the Yeniden Gönderim card shows the waiting resends, opens the Yeniden Gönderimler tab and turns orange while any wait', async () => {
+    await render()
+    const link = Array.from(container.querySelectorAll('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Yeniden Gönderim')!
+    expect(link.getAttribute('href')).toBe('/orders?status=RESENT')
+    expect(link.querySelector('strong')?.textContent).toBe('2Paket')
+    expect(link.classList.contains('rr-warn')).toBe(true)
+    expect(container.querySelector('button.rr-opcard')).toBeNull()
   })
 
   it("counts today's cancellations, whole and partial, and shows the partial ones beside the number, and lists unknown times apart", async () => {
@@ -163,7 +172,7 @@ describe('DashboardPage', () => {
     expect(card('Faturalar')).toBe('—')
     expect(card('Bekleyen Siparişler')).toBe('—')
     expect(card('Geciken Siparişler')).toBe('—')
-    expect(card('Düşük Stok')).toBe('2')
+    expect(card('Yeniden Gönderim')).toBe('—')
     expect(container.querySelector('.rr-callout.rr-warn')?.textContent).toContain('Bazı rapor verileri alınamadı')
   })
 
