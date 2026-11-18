@@ -84,7 +84,8 @@ public static class ModelCodeOwnership
     // callers compare the key in memory as before; only the catalog's other codes are no longer read into memory.
     // KATALOG-14 phase D3: the model code lives on the model (product_models.ModelCodeKey, written by the application's own
     // key rule): a card linked to a model is found by its model's key, the one place that holds it; only a card linked to
-    // no model (a code several brands share, a card whose link is still to come) is found by its variants' codes.
+    // no model of a code (a card whose link is still to come: before KATALOG-14 D5 B1 a NULL link, since then a coded card
+    // left on a model of its own "#<card id>", e.g. after a Marka Listesi reset until the reconcile) is found by its variants' codes.
     internal static IQueryable<Guid> ProductIdsWithKeys(AppDbContext db, Guid tenantId, IReadOnlyCollection<string> keys)
     {
         // Only constant SQL is put together here (the key expressions); the tenant and keys are parameters.
@@ -96,7 +97,9 @@ public static class ModelCodeOwnership
             UNION
             SELECT v."ProductId" AS "Value" FROM catalog.product_variants v
             JOIN catalog.products p ON p."TenantId" = v."TenantId" AND p."Id" = v."ProductId"
-            WHERE v."TenantId" = @key_tenant AND p."FamilyId" IS NULL AND v."ModelCode" IS NOT NULL AND v."ModelCode" ~ '[^[:space:]]'
+            WHERE v."TenantId" = @key_tenant
+              AND (p."FamilyId" IS NULL OR EXISTS (SELECT 1 FROM catalog.product_models o WHERE o."TenantId" = p."TenantId" AND o."Id" = p."FamilyId" AND o."ModelCodeKey" LIKE '#%'))
+              AND v."ModelCode" IS NOT NULL AND v."ModelCode" ~ '[^[:space:]]'
               AND (NOT {ProductModelLinks.SqlKeySafe(code)} OR {ProductModelLinks.SqlKey(code)} = ANY(@key_keys))
             """;
         return db.Database.SqlQueryRaw<Guid>(sql, new Npgsql.NpgsqlParameter("key_tenant", tenantId), new Npgsql.NpgsqlParameter("key_keys", keys.ToArray()));

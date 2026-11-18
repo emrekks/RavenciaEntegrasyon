@@ -44,8 +44,10 @@ public static class ProductModelScan
         return new(1, before, await UnlinkedCodedCardsAsync(db, tenantId, cancellationToken), values.Written, values.Differing.Count, values.AttributesSpread);
     }
 
-    // Cards that hold a model code but are linked to no model: the ambiguous groups (KENE01) stay here by design.
+    // Cards that hold a model code but are linked to no model of a code: no model (before KATALOG-14 D5 B1) or a model of
+    // their own ("#<card id>", since products.FamilyId is NOT NULL).
     private static Task<int> UnlinkedCodedCardsAsync(AppDbContext db, Guid tenantId, CancellationToken cancellationToken) =>
-        db.Products.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.FamilyId == null
+        db.Products.AsNoTracking().CountAsync(x => x.TenantId == tenantId
+            && (x.FamilyId == null || db.ProductModels.Any(m => m.TenantId == tenantId && m.Id == x.FamilyId && m.ModelCodeKey.StartsWith(ProductModelLinks.OwnModelKeyPrefix)))
             && db.ProductVariants.Any(v => v.TenantId == tenantId && v.ProductId == x.Id && v.ModelCode != null && v.ModelCode.Trim() != ""), cancellationToken);
 }

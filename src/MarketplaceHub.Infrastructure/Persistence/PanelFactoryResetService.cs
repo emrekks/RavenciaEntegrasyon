@@ -173,6 +173,10 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
                     await db.Database.ExecuteSqlInterpolatedAsync($"""DELETE FROM iam.tenant_settings WHERE "TenantId" = {tenantId} AND "Key" = ANY({PanelFactoryResetInventory.HistorySettingKeys})""", cancellationToken);
             }
 
+            // KATALOG-14 D5 step B1: the Marka Listesi reset alone left the cards of a code on models of their own (the Detaches);
+            // the reconcile puts them on one model of the code again right away instead of at the nightly scan.
+            if (chosenKeys.Contains(PanelFactoryResetInventory.Brands.Key) && !chosenKeys.Contains(PanelFactoryResetInventory.Products.Key))
+                await ProductModelLinks.ReconcileTenantAsync(db, tenantId, timeProvider.GetUtcNow(), cancellationToken);
             await ReportAsync(tenantId, jobId, steps, steps.Count - 2, cancellationToken);
             await DropUnusedFilesAsync(tenantId, full ? null : files, cancellationToken);
             // A full reset leaves this session signed in and ends the others.

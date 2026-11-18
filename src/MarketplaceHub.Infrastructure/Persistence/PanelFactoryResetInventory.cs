@@ -202,8 +202,8 @@ public static class PanelFactoryResetInventory
         // (products.FamilyId NOT NULL, ON DELETE RESTRICT). Before the brands go, a one-card model ("#<card id>") just drops its
         // brand, and every card of a branded model with a code moves to a model of its own without a brand (the card's values,
         // as ProductModelLinks.EnsureOwnModelsAsync opens one); the branded models are then cardless and go with their brand.
-        // The next reconcile (the nightly scan) links the cards of a code to one model again, as it linked the unlinked
-        // cards before. The pictures follow their card's model.
+        // The reset then reconciles the tenant (PanelFactoryResetService), so the cards of a code are on one model again at
+        // once. The pictures follow their card's model.
         new("catalog.products", "catalog.brands", """
             UPDATE catalog.products SET "BrandId" = NULL WHERE "TenantId" = @tenant AND "BrandId" IS NOT NULL;
             UPDATE catalog.product_models m SET "BrandId" = NULL, "UpdatedAt" = now(), "Version" = m."Version" + 1
