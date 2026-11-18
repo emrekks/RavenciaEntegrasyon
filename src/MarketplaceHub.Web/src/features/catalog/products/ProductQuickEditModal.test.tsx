@@ -75,9 +75,9 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(errors).toEqual([])
   })
 
-  it('ticks a column, a single cell and the corner; a half-ticked row or column shows the mixed state', async () => {
+  it('ticks a size in every colour, a single variant and all of them; a half-ticked row shows the mixed state', async () => {
     await render()
-    const columnBox = (size: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
+    const columnBox = (size: string) => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
     const cellBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} varyantını seç"]`)!
     const corner = document.body.querySelector<HTMLInputElement>('input[aria-label="Tüm varyantları seç"]')!
     await click(columnBox('XL'))
@@ -96,20 +96,34 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(errors).toEqual([])
   })
 
-  it('draws a row per colour and a column per size in size order, with one box in every cell', async () => {
+  it('draws one line per colour with its sizes side by side in size order, a box beside each size label', async () => {
     await render()
-    expect(Array.from(document.body.querySelectorAll('.rr-mx thead th.rr-mx-size b')).map(item => item.textContent)).toEqual(['S', 'XL'])
-    expect(Array.from(document.body.querySelectorAll('.rr-mx tbody th.rr-mx-color b')).map(item => item.textContent)).toEqual(['Bej', 'Siyah'])
-    expect(document.body.querySelectorAll('.rr-mx tbody input.rr-mx-in')).toHaveLength(4)
-    expect(document.body.querySelector('.rr-vgroup, .rr-vg-t, .rr-qtable')).toBeNull()
+    expect(Array.from(document.body.querySelectorAll('.rr-cr-row .rr-cr-color b')).map(item => item.textContent)).toEqual(['Bej', 'Siyah'])
+    const sizesOf = (color: string) => Array.from(groupBox(color).closest('.rr-cr-row')!.querySelectorAll('.rr-cr-size span')).map(item => item.textContent)
+    expect(sizesOf('Bej')).toEqual(['S', 'XL'])
+    expect(sizesOf('Siyah')).toEqual(['S', 'XL'])
+    expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(4)
+    // No table, no opening groups, no shared header row far from the boxes.
+    expect(document.body.querySelector('table.rr-mx, th.rr-mx-size, .rr-vgroup, .rr-vg-t, .rr-qtable')).toBeNull()
+    expect(groupBox('Bej').classList.contains('rr-cr-round')).toBe(true)
   })
 
-  it('shows a dimmed dash where a colour has no variant in a size', async () => {
+  it('draws no cell at all for a size a colour does not have', async () => {
     const missing: Product = { ...product, variants: product.variants.filter(item => item.id !== 's-xl') }
     await render([missing])
-    expect(document.body.querySelectorAll('.rr-mx td.rr-mx-none')).toHaveLength(1)
-    expect(document.body.querySelector('.rr-mx td.rr-mx-none')?.textContent).toBe('—')
-    expect(document.body.querySelectorAll('.rr-mx tbody input.rr-mx-in')).toHaveLength(3)
+    expect(groupBox('Siyah').closest('.rr-cr-row')!.querySelectorAll('.rr-cr-pair')).toHaveLength(1)
+    expect(groupBox('Bej').closest('.rr-cr-row')!.querySelectorAll('.rr-cr-pair')).toHaveLength(2)
+    expect(document.body.querySelector('.rr-mx-none')).toBeNull()
+    expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(3)
+  })
+
+  it('a size label ticks its variant and turns the pair purple', async () => {
+    await render()
+    const pair = document.body.querySelector('.rr-cr-pair')!
+    expect(pair.classList.contains('rr-on')).toBe(false)
+    await click(pair.querySelector<HTMLInputElement>('input.rr-cr-tick')!)
+    expect(pair.classList.contains('rr-on')).toBe(true)
+    expect(note()).toContain('1 varyant seçildi')
   })
 
   it('moves between the boxes with the arrow keys and Enter, skipping dashes', async () => {
@@ -148,9 +162,9 @@ describe('ProductQuickEditModal price mode tabs', () => {
     expect(labels[1]).toBe('Panel Liste Fiyatı')
     expect(labels.some(label => label?.startsWith('Trendyol'))).toBe(true)
     expect(labels.some(label => label?.startsWith('N11'))).toBe(true)
-    expect(document.body.querySelector('table.rr-mx')).not.toBeNull()
+    expect(document.body.querySelector('.rr-cr')).not.toBeNull()
     // One box per variant, whatever the tab.
-    expect(document.body.querySelectorAll('.rr-mx tbody input.rr-mx-in')).toHaveLength(4)
+    expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(4)
   })
 
   it('puts the Özel Fiyat switch beside a marketplace tab only', async () => {
@@ -172,10 +186,10 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
 
   it('shows each variant once, under its own colour', async () => {
     await render(cards)
-    for (const color of colors) expect(groupBox(color).closest('tr')!.querySelectorAll('input.rr-mx-in')).toHaveLength(1)
+    for (const color of colors) expect(groupBox(color).closest('.rr-cr-row')!.querySelectorAll('input.rr-mx-in')).toHaveLength(1)
     expect(note()).toContain('3 varyant')
     // One row per colour, each with its own variant in the one size column.
-    const rowsOf = (color: string) => Array.from(document.body.querySelectorAll('.rr-mx tbody tr')).filter(row => row.querySelector('th b')?.textContent === color).flatMap(row => Array.from(row.querySelectorAll('input.rr-mx-in')).map(input => input.getAttribute('aria-label')))
+    const rowsOf = (color: string) => Array.from(document.body.querySelectorAll('.rr-cr-row')).filter(row => row.querySelector('.rr-cr-color b')?.textContent === color).flatMap(row => Array.from(row.querySelectorAll('input.rr-mx-in')).map(input => input.getAttribute('aria-label')))
     expect(rowsOf('Bordo')).toEqual(['SKU-v0 stok'])
     expect(rowsOf('Füme')).toEqual(['SKU-v1 stok'])
     expect(rowsOf('Gri')).toEqual(['SKU-v2 stok'])

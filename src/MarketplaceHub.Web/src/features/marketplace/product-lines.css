@@ -1,0 +1,9 @@
+/* Many products in one row (see product-lines.ts): the list and the unit prices beside it keep the height of four products
+   and scroll together; a phone card shows three and opens the rest with a button. */
+@media (min-width: 761px) {
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-plines.rr-plines-scroll { max-height: 592px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--rr-ink) 28%, transparent) transparent; }
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-prices.rr-prices-scroll { max-height: 592px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-plines.rr-plines-scroll::after { content: attr(data-more); position: sticky; bottom: 0; display: block; padding: 18px 0 2px; color: var(--rr-muted); background: linear-gradient(to bottom, transparent, var(--rr-surface) 62%); font-size: 12px; font-weight: 500; text-align: center; pointer-events: none; }
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-plines.rr-plines-scroll[data-more=""]::after { content: none; }
+}
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-more-lines { justify-self: start; min-height: 0; height: 32px; margin-top: 8px; padding: 0 4px; font-size: 13px; }
