@@ -420,7 +420,9 @@ internal sealed partial class CatalogImportService
     private async Task<decimal?> CardOrModelVatRateAsync(Guid tenantId, Guid productId, string? modelCode, CancellationToken cancellationToken)
     {
         var local = db.Products.Local.FirstOrDefault(x => x.Id == productId);
-        if (local?.VatRate is { } localRate) return localRate;
+        // KATALOG-14 phase D5 B2: only a card this import is adding has a VAT of its own yet (the listing's); a stored card's
+        // VAT is its model's (EffectiveCatalog below), never its copy column.
+        if (local is not null && db.Entry(local).State == EntityState.Added && local.VatRate is { } localRate) return localRate;
         if (await EffectiveCatalog.Products(db).Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.VatRate).SingleOrDefaultAsync(cancellationToken) is { } stored) return stored;
         if (ProductFamilyKeyPolicy.ModelCodeKey(modelCode) is not { } key) return null;
         var brandId = local is not null ? local.BrandId : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => x.BrandId).SingleOrDefaultAsync(cancellationToken);

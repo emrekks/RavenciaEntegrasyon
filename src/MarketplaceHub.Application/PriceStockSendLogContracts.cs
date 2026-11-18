@@ -128,7 +128,7 @@ public static class PriceStockSendLogPolicy
 // NextCursor of the previous page in the same order.
 public sealed record PriceStockSendLogQuery(int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, Guid? ConnectionId = null,
     DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null, IReadOnlyList<string>? Results = null, IReadOnlyList<string>? Triggers = null,
-    bool OldestFirst = false)
+    bool OldestFirst = false, IReadOnlyList<Guid>? JobIds = null)
 {
     public const int DefaultLimit = 50;
     public const int MaximumLimit = 100;
@@ -162,7 +162,9 @@ public sealed record PriceStockSendLogView(
     string Result,
     string? ErrorCode,
     string? ErrorMessage,
-    string? ExternalRequestId);
+    string? ExternalRequestId,
+    // The variant's options as the card holds them now (renk / beden); null when it has none.
+    string? OptionText = null);
 
 // One result's row count for the summary above the log.
 public sealed record PriceStockSendLogCount(string Result, int Count);

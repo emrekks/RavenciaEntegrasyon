@@ -371,7 +371,8 @@ public static class OpeningStockLedger
 // Movements narrows to the movement types the page names (ProductActivityMovements codes); a first price (no price before
 // it) is left out unless IncludeInitialPrices.
 public sealed record ProductActivityQuery(int? Limit = null, string? After = null, IReadOnlyList<string>? Kinds = null, IReadOnlyList<string>? Platforms = null,
-    DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null, IReadOnlyList<string>? Movements = null, bool IncludeInitialPrices = false)
+    DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null, IReadOnlyList<string>? Movements = null, bool IncludeInitialPrices = false,
+    Guid? ConnectionId = null)
 {
     public const int DefaultLimit = 50;
     public const int MaximumLimit = 100;

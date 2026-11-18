@@ -78,6 +78,7 @@ PUT    /api/v1/connections/{id:guid}/active | gate=Operations | sameOrigin=no | 
 GET    /api/v1/connections/{id:guid}/capabilities | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/connections/{id:guid}/credential | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/connections/{id:guid}/deep-delete | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+PUT    /api/v1/connections/{id:guid}/external-write-group | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=422 VALIDATION_FAILED | ownerIfMatch=422 VALIDATION_FAILED
 GET    /api/v1/connections/{id:guid}/full-reset | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/connections/{id:guid}/full-reset | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/connections/{id:guid}/initial-data-sync-jobs | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
@@ -155,6 +156,8 @@ GET    /api/v1/jobs/metrics/quota | gate=SignedIn | sameOrigin=no | anon=401 AUT
 GET    /api/v1/jobs/page | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/jobs/{id:guid} | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/jobs/{id:guid}/cancel | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+GET    /api/v1/jobs/{id:guid}/changes | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/jobs/{id:guid}/changes/summary | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/jobs/{id:guid}/invoice-delivery-once | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/jobs/{id:guid}/retry | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/mappings/attribute-name-hints | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

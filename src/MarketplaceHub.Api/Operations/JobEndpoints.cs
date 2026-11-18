@@ -63,6 +63,18 @@ public static class JobEndpoints
             Tenant(http) is { } tenant
                 ? Result(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted))
                 : Unauthorized(http)).Produces<JobDetailView>();
+        // Gidenler ve Değişenler: what a price/stock job sent line by line (its send log, or the send jobs a stock scan or
+        // dispatch queued) and what a product import changed. Read-only. The lines: { items, nextCursor, hasMore }, newest
+        // first, limit 1-50 (default 50), search names a barcode, stock code, model code or title. The summary: the
+        // list's mode, why it is empty when the job recorded why, its counts and the send jobs it queued.
+        api.MapGet("/{id:guid}/changes", async (Guid id, HttpContext http, IJobChangesService service, int? limit, string? after, string? search) =>
+            Tenant(http) is { } tenant
+                ? Result(http, await service.PageAsync(tenant.TenantId, id, new JobChangesQuery(limit, after, search), http.RequestAborted))
+                : Unauthorized(http)).Produces<PageResult<JobChangeLineView>>();
+        api.MapGet("/{id:guid}/changes/summary", async (Guid id, HttpContext http, IJobChangesService service) =>
+            Tenant(http) is { } tenant
+                ? Result(http, await service.SummaryAsync(tenant.TenantId, id, http.RequestAborted))
+                : Unauthorized(http)).Produces<JobChangesSummaryView>();
         api.MapPost("/{id:guid}/retry", async (Guid id, HttpContext http, IJobOperationsService service) =>
             Tenant(http) is { } tenant
                 ? RequireIdempotency(http) ?? Result(http, await service.RetryAsync(tenant.TenantId, id, http.RequestAborted))
