@@ -45,9 +45,10 @@ const valueOptions = () => Array.from(document.body.querySelectorAll<HTMLElement
 // Opens the "Düzenlenen Değer" list and picks a row: 'Stok', or a marketplace group and the row under it ('Satış' / 'Liste' / none for a single row).
 async function pickValue(group: string, row?: string) {
   await act(async () => { valueTrigger().click() })
-  const options = valueOptions()
-  const at = options.findIndex(option => option.textContent?.startsWith(group))
-  const target = row === undefined ? options[at + (options[at]?.getAttribute('aria-disabled') === 'true' || options[at]?.hasAttribute('disabled') ? 1 : 0)] : options.slice(at + 1).find(option => option.textContent?.startsWith(row))
+  const children = Array.from(document.body.querySelectorAll<HTMLElement>('.pm-pop > *'))
+  const at = children.findIndex(item => item.textContent?.startsWith(group))
+  // Stok is an option of its own; a marketplace is a heading, its rows follow it.
+  const target = children[at].getAttribute('role') === 'option' ? children[at] : row === undefined ? children[at + 1] : children.slice(at + 1).find(item => item.getAttribute('role') === 'option' && item.textContent?.startsWith(row))
   await act(async () => { target!.click() })
 }
 
@@ -183,9 +184,14 @@ describe('ProductQuickEditModal price mode tabs', () => {
     expect(valueTrigger().textContent).toContain('Panel Satış Fiyatı')
     expect(document.body.querySelector('[role="tab"], .rr-mx-tablist')).toBeNull()
     await act(async () => { valueTrigger().click() })
+    const headings = Array.from(document.body.querySelectorAll('.pm-pop > .rr-opt-group')).map(item => item.textContent)
+    expect(headings).toEqual(expect.arrayContaining(['Panel', 'Trendyol', 'N11']))
+    // A heading is not an option: no circle, no option role, so the arrow keys skip it.
+    expect(document.body.querySelector('.pm-pop > .rr-opt-group .rr-radio')).toBeNull()
+    expect(document.body.querySelector('.pm-pop > .rr-opt-group[role="option"], .pm-pop > button.rr-opt-group')).toBeNull()
     const texts = valueOptions().map(option => option.textContent)
     expect(texts[0]).toBe('Stok')
-    expect(texts.filter(text => text === 'Panel' || text === 'Trendyol' || text === 'N11')).toEqual(['Panel', 'Trendyol', 'N11'])
+    expect(texts).not.toContain('Panel')
     expect(texts).toContain('Liste Fiyatı')
     // One box per variant, whatever the value.
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(4)
@@ -204,7 +210,7 @@ describe('ProductQuickEditModal price mode tabs', () => {
     await render()
     expect(valueTrigger().textContent).toContain('Stok')
     await act(async () => { valueTrigger().click() })
-    expect(valueOptions().some(option => option.textContent === 'Panel')).toBe(true)
+    expect(Array.from(document.body.querySelectorAll('.pm-pop > .rr-opt-group')).some(item => item.textContent === 'Panel')).toBe(true)
   })
 })
 

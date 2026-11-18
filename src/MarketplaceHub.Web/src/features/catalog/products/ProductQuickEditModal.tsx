@@ -329,7 +329,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       if (tab.kind === 'stock') { out.push({ value: tab.id, text: tab.label, label: <span className="rr-mx-opt">{tab.label}{dot(tab)}</span> }); continue }
       const column = priceColumns.find(candidate => candidate.id === tab.columnId)
       const name = column?.id === PANEL_PRICE_CHOICE ? 'Panel' : column?.label ?? ''
-      if (!out.some(option => option.value === `group:${tab.columnId}`)) out.push({ value: `group:${tab.columnId}`, text: name, disabled: true, label: <span className="rr-mx-group">{column && column.id !== PANEL_PRICE_CHOICE && <PlatformSquareMark code={channelCodeOf(column.id)} name={name} size="sm" />}{name}</span> })
+      if (!out.some(option => option.value === `__group:${tab.columnId}`)) out.push({ value: `__group:${tab.columnId}`, text: name, label: <span className="rr-mx-group">{column && column.id !== PANEL_PRICE_CHOICE && <PlatformSquareMark code={channelCodeOf(column.id)} name={name} size="sm" />}{name}</span> })
       const short = tab.field === 'list' ? 'Liste Fiyatı' : column?.takesListPrice ? 'Satış Fiyatı' : 'Fiyatı'
       out.push({ value: tab.id, text: `${name} ${short}`, label: <span className="rr-mx-opt rr-mx-sub">{short}{dot(tab)}</span> })
     }

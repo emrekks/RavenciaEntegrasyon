@@ -39,13 +39,13 @@ async function render(mode: 'stock' | 'price' = 'stock', connections: unknown[] 
 
 async function click(element: HTMLElement) { await act(async () => { element.click() }) }
 const valueTrigger = () => document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!
-const valueOptions = () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
 // Opens the "Düzenlenen Değer" list and picks a row: 'Stok', or a marketplace group and the row under it ('Satış' / 'Liste' / none for a single row).
 async function pickValue(group: string, row?: string) {
   await act(async () => { valueTrigger().click() })
-  const options = valueOptions()
-  const at = options.findIndex(option => option.textContent?.startsWith(group))
-  const target = row === undefined ? options[at + (options[at]?.getAttribute('aria-disabled') === 'true' || options[at]?.hasAttribute('disabled') ? 1 : 0)] : options.slice(at + 1).find(option => option.textContent?.startsWith(row))
+  const children = Array.from(document.body.querySelectorAll<HTMLElement>('.pm-pop > *'))
+  const at = children.findIndex(item => item.textContent?.startsWith(group))
+  // Stok is an option of its own; a marketplace is a heading, its rows follow it.
+  const target = children[at].getAttribute('role') === 'option' ? children[at] : row === undefined ? children[at + 1] : children.slice(at + 1).find(item => item.getAttribute('role') === 'option' && item.textContent?.startsWith(row))
   await act(async () => { target!.click() })
 }
 
