@@ -183,11 +183,11 @@ public static class PttAvmProductUpdateRules
             if (variant.Quantity is { } quantity && quantity == decimal.Truncate(quantity) && quantity is >= 0 and <= PttAvmPriceInventoryRules.MaxQuantity)
             {
                 if (variant is { Barcode: { Length: > 0 and <= PttAvmPriceInventoryRules.MaxBarcodeLength } barcode, Color: { Length: > 0 and <= PttAvmProductPayloadRules.MaxVariantValueLength } color, Size: { Length: > 0 and <= PttAvmProductPayloadRules.MaxVariantValueLength } size })
-                    draft = new(barcode, color, size, (int)quantity);
+                    draft = new(barcode, color, size, (int)quantity, variant.PriceIsDifference != false ? variant.Price ?? 0m : 0m);
                 else if (variant.Barcode is null && variant.Name is { } name
                     && name.Split('/', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) is [var nameColor, var nameSize]
                     && panelByLabel.TryGetValue(PttAvmProductPayloadRules.VariantLabel(nameColor, nameSize), out var matches) && matches.Count == 1)
-                    draft = new(matches[0].Barcode, matches[0].Color, matches[0].Size, (int)quantity);
+                    draft = new(matches[0].Barcode, matches[0].Color, matches[0].Size, (int)quantity, variant.PriceIsDifference != false ? variant.Price ?? 0m : 0m);
             }
             if (draft is null || !held.Add(draft.Barcode))
             {
@@ -196,10 +196,10 @@ public static class PttAvmProductUpdateRules
             }
             carried.Add(draft);
             var reasons = new List<string>();
-            if (variant.Price is { } price && price != 0)
-                reasons.Add(variant.PriceIsDifference == false
-                    ? $"kendi fiyatı {price.ToString("0.##", CultureInfo.InvariantCulture)} TL"
-                    : $"{price.ToString("0.##", CultureInfo.InvariantCulture)} TL fiyat farkı");
+            // Owner decision of 18 Nov 2026: a price difference is carried as PTT AVM holds it (VariantV3.Price); only a
+            // variant PTT AVM prices on its own (not a difference) would be lost.
+            if (variant.Price is { } price && price != 0 && variant.PriceIsDifference == false)
+                reasons.Add($"kendi fiyatı {price.ToString("0.##", CultureInfo.InvariantCulture)} TL");
             if (variant.Active == false) reasons.Add("pasif");
             if (reasons.Count > 0) notCarriable.Add(new(variant, string.Join(", ", reasons)));
         }
@@ -236,6 +236,7 @@ public static class PttAvmProductUpdateRules
                 foreach (var (definition, value) in new[] { ("Renk", variant.Color), ("Beden", variant.Size) })
                     xml.Append("<ept:VariantAttrV3><ept:Definition>").Append(definition).Append("</ept:Definition><ept:Value>").Append(SecurityElement.Escape(value)).Append("</ept:Value></ept:VariantAttrV3>");
                 xml.Append("</ept:Attributes>");
+                if (variant.PriceDifference != 0) Field("Price", variant.PriceDifference.ToString("0.00", CultureInfo.InvariantCulture));
                 Field("Quantity", variant.Quantity.ToString(CultureInfo.InvariantCulture));
                 Field("VariantBarcode", variant.Barcode);
                 xml.Append("</ept:VariantV3>");

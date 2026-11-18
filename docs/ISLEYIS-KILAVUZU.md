@@ -460,22 +460,30 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   son onayladığı değerle aynı olsa da gider (pazaryerinde elle değiştirilmiş olabilir; panel kaynaktır). Geçerli fiyat
   boş, 0 ya da liste < satış ise fiyat gitmez: Trendyol, Hepsiburada, Shopify, N11 ve Pazarama'da stok tek başına gider
   ve günlük satırı "Fiyat gönderilmedi…" notunu taşır; PttAVM fiyatsız stok almadığı için satır gönderilmez ve sayılır.
-  Trendyol'un 0 TL teklif kuralı aynen. Gönderilmiş işaretleri kayıtlı teklif fiyatından hesaplanır: yalnız panel fiyatı
-  değişince kendiliğinden gönderim olmaz, fiyat bir sonraki stok ya da fiyat gönderimiyle gider. Gönderim günlüğünde önceki
-  değerler: aynı kod için onaylanan → yoksa günlükteki son kabul edilen → fiyat için yoksa teklifin kayıtlı fiyatı;
-  önceki stok bilinmiyorsa boş. Risk: pazaryerinde kampanya için elle değiştirilmiş fiyat, o bedenin ilk stok hareketinde
+  Trendyol'un 0 TL kuralı geçerli fiyata göre işler: kayıtlı fiyatı 0 olan teklif, kayıtlı panel fiyatı varsa o fiyatla
+  gider; yoksa eskisi gibi gönderilmez. **Pazarama istisnası**: Pazarama elindeki değere eşit fiyatı reddeder (bir satır
+  bütün partiyi elle incelemeye düşürür), bu yüzden fiyat yalnız son onaylanan (yoksa kayıtlı) değerden farklıysa stokla
+  birlikte gider. Shopify fiyatı reddederse stok yine yazılır (`SHOPIFY_STOCK_ONLY_APPLIED`), fiyat sonraki gönderimde
+  yeniden denenir. Gönderilmiş işaretleri kayıtlı teklif fiyatından hesaplanır: yalnız panel fiyatı değişince
+  kendiliğinden gönderim olmaz, fiyat bir sonraki stok ya da fiyat gönderimiyle gider. Gönderim günlüğünde önceki
+  değerler: aynı kod için onaylanan → yoksa günlükteki son kabul edilen → bilinmiyorsa boş (yanlış göstermek boş
+  göstermekten kötü). Yazma açılırken onay penceresi, kapalıyken fiyatı değişmiş ve ilk stok hareketinde fiyatı gidecek
+  teklif sayısını gösterir. Risk: pazaryerinde kampanya için elle değiştirilmiş fiyat, o bedenin ilk stok hareketinde
   panelin fiyatıyla ezilir (`PanelPriceOfferPolicy.InForce`, `PriceInventoryComposer`).
 - **Panel fiyatı ilk pazaryerinden** (sahip kararı, 18 Kas 2026): bir varyant ilk kez bir pazaryerinden içe aktarılırken
   panel liste ve satış fiyatı o pazaryerinin fiyatıyla kaydedilir (fiyat boş ya da 0 ise yazılmaz); sonraki aktarımlar
   mevcut panel fiyatını değiştirmez (`PanelPriceOfferPolicy.ImportedPanelPrices`). Kayıtlı panel fiyatı olmayan mevcut
-  bedenler kendiliğinden doldurulmaz; "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" için salt okunur önizleme var
-  (`GET /channel-offers/panel-price-fill-preview`: her bedenin en eski teklifinin fiyatı; 0 TL olanlar boş kalır).
-  Onaylı uygulaması henüz yok; uygulandığında pazaryerine hiçbir şey göndermeyecek.
+  bedenler kendiliğinden doldurulmaz. **Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur** (Ürünler › Ürünleri İçe /
+  Dışa Aktar; yalnız sahip/yönetici): önizleme kaç bedenin hangi pazaryerinden dolacağını, kaçının boş kalacağını (0 TL,
+  teklifsiz) ve pazaryeri başına kaç teklifin kayıtlı fiyatının değişeceğini (toplam/ortanca/en büyük fark) gösterir;
+  onayda önizlemedeki sayı tutmazsa hiçbir şey yazılmaz. Yalnız boş panel fiyatlarını doldurur, Özel Fiyat'ı kapalı
+  teklifleri panel fiyatına çeker (fiyat geçmişi, gönderilmiş işaretleriyle birlikte), pazaryerine hiçbir şey göndermez ve iş
+  açmaz; ikinci çalıştırma 0 değişiklik yapar; denetim kaydı `PANEL_PRICES_FILLED_FROM_FIRST_MARKETPLACE`. İçe aktarmanın
+  yazdığı panel fiyatı Ürün Hareketleri'ne düşer.
 - **Panel fiyatını izleyen teklif**: panel fiyatı sahip tarafından değişince (ürün düzenleyici, Hızlı/Toplu fiyat, Ürün
   Excel'i) Özel Fiyat'ı kapalı tekliflerin fiyatı panel fiyatına çekilir ve yazması açık bağlantıya gider. Özel Fiyat açık
-  (`false`) teklif değişmez. Seçimi hiç kaydedilmemiş (`NULL`) teklif, bedenin **kayıtlı** panel fiyatı varsa izler;
-  kayıtlı panel fiyatı yokken (ekranda ilk teklifin fiyatı görünür) ilk kaydedilen panel fiyatı mevcut teklifleri toplu
-  değiştirmez. Deploy, açılış, stok değişimi ve taramalar hiçbir teklif fiyatını değiştirmez. Entegrasyonlar'daki satır
+  (`false`) teklif değişmez. Tek kural (sahip kararı, 18 Kas 2026): seçimi hiç kaydedilmemiş (`NULL`) teklif de panel
+  fiyatını izler; panel fiyatı ilk kez kaydedildiğinde de çekilir, böylece ekranda görünen = gönderilecek olan. Deploy, açılış, stok değişimi ve taramalar hiçbir teklif fiyatını değiştirmez. Entegrasyonlar'daki satır
   "panel fiyatından farklı N teklif" sayısını gösterir (`GET /connections/{id}/panel-price-offers`).
 - **Elle gönderim kapalı değildir**: Yayınla, **Hızlı Güncelle**, **Platformlarda Güncelle** ve toplu **Platformlara
   Güncelle** elle yazma sayılır; yalnız 1. ve 2. kapıya bakar (sahip, 9 Kas 2026; `SynchronizationPolicies.cs:643-666`).

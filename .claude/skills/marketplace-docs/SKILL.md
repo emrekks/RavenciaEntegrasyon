@@ -87,7 +87,10 @@ Shared across all of them:
 
 Every stock send, on every marketplace, carries the price in force: "Özel Fiyat" on (`FollowsPanelPrice = false`) → the
 offer's own price; else the saved panel price; without one → the offer's stored price (`PanelPriceOfferPolicy.InForce`).
-Trendyol: the price goes even when it equals the last confirmed value (the stock keeps the "only what differs" rule).
+Trendyol: the price goes even when it equals the last confirmed value (the stock keeps the "only what differs" rule);
+its 0 TL rule is judged on the price in force. Pazarama is the documented exception: it refuses a price equal to the
+value it holds, so its price rides along only when it differs from the confirmed (else stored) value. Shopify writes the
+stock when it refuses the price (SHOPIFY_STOCK_ONLY_APPLIED).
 Hepsiburada's listing upload and n11's price-stock task take both in one line; Pazarama sends its price request beside
 the stock request in the same job; Shopify writes the price (productVariantsBulkUpdate) then the stock in the same job
 (a cut after the price leaves the line PRICE_ONLY_APPLIED and it goes again); PTT AVM's UpdateProductsStockPrice always
