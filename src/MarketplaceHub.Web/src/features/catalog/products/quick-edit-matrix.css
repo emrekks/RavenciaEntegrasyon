@@ -10,20 +10,10 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--rr-primary); }
 /* Tümünü Seç and the size shortcuts, on one line. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr { display: grid; gap: 8px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-all { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar-label { margin-right: 4px; color: var(--rr-muted); font-size: 12px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip { min-height: 0; height: 28px; min-width: 36px; padding: 0 10px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 7px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip:hover { color: var(--rr-ink); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-on { color: var(--rr-ink); background: color-mix(in srgb, var(--rr-primary-soft) 60%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-mixed { border-style: dashed; border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
 /* One scroll in the window: the list runs its full height and the window body scrolls; the value picker and the ticks stay
    at the top of the body. Each colour is one row, a thin line between colours. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sticky { position: sticky; top: 0; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: -8px 0 0; padding: 8px 0; background: var(--rr-surface); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-mx-tabs, .rr-cr-bar) { display: contents; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-all { order: 1; min-height: 36px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar { order: 2; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tabs { display: contents; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-switchrow { order: 3; margin-left: auto; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-trigk { margin-right: 6px; color: var(--rr-muted); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { overflow: clip; border: 1px solid var(--rr-line); border-radius: 12px; }
@@ -47,10 +37,16 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 100%; }
   /* A phone: the picker row scrolls away with the list (no sticky), and the size chips run in one line that scrolls sideways only. */
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sticky { position: static; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar { flex-wrap: nowrap; flex: 1 1 100%; width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar-label { flex: none; }
   /* A phone: the colour on its own line above, its sizes wrapping underneath. */
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 10px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { gap: 6px 10px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { padding: 0 6px; }
+}
+/* The header row of the list frame: a lightly darker band like a table head, 36 px, on the rows' own grid. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow { position: sticky; top: var(--cr-stick, 0px); z-index: 3; min-height: 36px; background: var(--rr-raised); border-bottom: 1px solid var(--rr-line); font-size: 12px; font-weight: 600; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hcolor { cursor: default; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hcolor label { cursor: pointer; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hpair .rr-cr-size { color: var(--rr-ink); }
+@media (max-width: 760px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow { position: static; }
 }

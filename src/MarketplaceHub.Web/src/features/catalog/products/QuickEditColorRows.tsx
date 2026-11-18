@@ -57,6 +57,17 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
   const all = state(allIds)
   const allId = useId()
   const list = useRef<HTMLDivElement>(null)
+  const stick = useRef<HTMLDivElement>(null)
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const bar = stick.current; const host = root.current
+    if (!bar || !host || typeof ResizeObserver === 'undefined') return
+    const apply = () => host.style.setProperty('--cr-stick', `${bar.offsetHeight}px`)
+    apply()
+    const observer = new ResizeObserver(apply)
+    observer.observe(bar)
+    return () => observer.disconnect()
+  }, [])
   // Native listener: the list is not a control, so a React handler on it would only be a lint error.
   const rowCount = rows.length; const sizeCount = sizes.length
   useEffect(() => {
@@ -86,19 +97,21 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
     return () => element.removeEventListener('keydown', move)
   }, [rowCount, sizeCount])
   const layout = colorRowsLayout(rows, sizes)
-  return <div className="rr-cr" style={{ '--cr-color': `${layout.colorPx}px`, '--cr-label': `${layout.labelPx}px`, '--cr-cell': `${layout.cellPx}px` } as CSSProperties}>
-    <div className="rr-cr-sticky">
+  return <div className="rr-cr" ref={root} style={{ '--cr-color': `${layout.colorPx}px`, '--cr-label': `${layout.labelPx}px`, '--cr-cell': `${layout.cellPx}px` } as CSSProperties}>
+    <div className="rr-cr-sticky" ref={stick}>
     {head}
-    <div className="rr-cr-bar">
-      <div className="rr-cr-all"><Tick id={allId} checked={all.checked} mixed={all.indeterminate} round label="Tüm varyantları seç" disabled={!allIds.length} onChange={checked => onSelect(allIds, checked)} /><label htmlFor={allId}>Tümünü Seç</label></div>
-      {sizes.length > 1 && <div className="rr-cr-sizebar" role="group" aria-label="Beden kısayolu"><span className="rr-cr-sizebar-label">Beden</span>{sizes.map(size => {
-        const ids = idsIn((_, candidate) => candidate === size)
-        const chip = state(ids)
-        return <button key={size} type="button" className={`rr-cr-chip${chip.checked ? ' rr-on' : chip.indeterminate ? ' rr-mixed' : ''}`} aria-pressed={chip.checked ? true : chip.indeterminate ? 'mixed' : false} aria-label={`${size} bedenindeki tüm varyantları seç`} onClick={() => onSelect(ids, !chip.checked)}>{size}</button>
-      })}</div>}
-    </div>
     </div>
     <div className="rr-cr-list" ref={list} role="region" aria-label={caption}>
+      {/* The header row of the list: the corner ticks everything, each size head ticks its column; it uses the rows' own grid, so
+          the colour column and every size column line up with the ticks below. */}
+      <div className="rr-cr-row rr-cr-hrow">
+        <div className="rr-cr-color rr-cr-hcolor"><Tick id={allId} checked={all.checked} mixed={all.indeterminate} round label="Tüm varyantları seç" disabled={!allIds.length} onChange={checked => onSelect(allIds, checked)} /><label htmlFor={allId}>Tümünü Seç</label></div>
+        <div className="rr-cr-sizes">{sizes.map(size => {
+          const ids = idsIn((_, candidate) => candidate === size)
+          const head = state(ids)
+          return <div className="rr-cr-pair rr-cr-hpair" key={size}><label className="rr-cr-size"><Tick checked={head.checked} mixed={head.indeterminate} round tick label={`${size} bedenindeki tüm varyantları seç`} disabled={!ids.length} onChange={checked => onSelect(ids, checked)} /><span>{size}</span></label><span aria-hidden="true" /></div>
+        })}</div>
+      </div>
       {rows.map((row, rowIndex) => {
         const rowIds = idsIn(color => color === row.key)
         const rowState = state(rowIds)
@@ -117,8 +130,8 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
   </div>
 }
 
-function Tick({ id, checked, mixed = false, round = false, label, disabled = false, onChange }: { id?: string; checked: boolean; mixed?: boolean; round?: boolean; label: string; disabled?: boolean; onChange: (checked: boolean) => void }) {
+function Tick({ id, checked, mixed = false, round = false, tick = false, label, disabled = false, onChange }: { id?: string; checked: boolean; mixed?: boolean; round?: boolean; tick?: boolean; label: string; disabled?: boolean; onChange: (checked: boolean) => void }) {
   const ref = useRef<HTMLInputElement>(null)
   useEffect(() => { if (ref.current) ref.current.indeterminate = mixed }, [mixed])
-  return <input ref={ref} id={id} type="checkbox" className={`rr-cb${round ? ' rr-cr-round' : ''}`} checked={checked} data-mixed={mixed ? '' : undefined} disabled={disabled} aria-label={label} onChange={event => onChange(event.currentTarget.checked)} />
+  return <input ref={ref} id={id} type="checkbox" className={`rr-cb${round ? ' rr-cr-round' : ''}${tick ? ' rr-cr-tick' : ''}`} checked={checked} data-mixed={mixed ? '' : undefined} disabled={disabled} aria-label={label} onChange={event => onChange(event.currentTarget.checked)} />
 }

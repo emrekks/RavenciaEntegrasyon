@@ -86,7 +86,7 @@ describe('ProductQuickEditModal variant selection', () => {
 
   it('ticks a size in every colour, a single variant and all of them; a half-ticked row shows the mixed state', async () => {
     await render()
-    const columnBox = (size: string) => document.body.querySelector<HTMLButtonElement>(`button[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
+    const columnBox = (size: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
     const cellBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} varyantını seç"]`)!
     const corner = document.body.querySelector<HTMLInputElement>('input[aria-label="Tüm varyantları seç"]')!
     await click(columnBox('XL'))
@@ -131,9 +131,18 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(3)
   })
 
+  it('the list frame starts with a header row on the rows' own grid: a corner tick and one tick per size', async () => {
+    await render()
+    const head = document.body.querySelector('.rr-cr-list > .rr-cr-hrow')!
+    expect(head.querySelector('.rr-cr-hcolor')?.textContent).toBe('Tümünü Seç')
+    expect(Array.from(head.querySelectorAll('.rr-cr-hpair .rr-cr-size span')).map(item => item.textContent)).toEqual(['S', 'XL'])
+    expect(head.querySelectorAll('.rr-cr-hpair input.rr-cr-tick')).toHaveLength(2)
+    expect(document.body.querySelector('.rr-cr-bar, .rr-cr-chip, .rr-cr-sizebar')).toBeNull()
+  })
+
   it('a size label ticks its variant and turns the pair purple', async () => {
     await render()
-    const pair = document.body.querySelector('.rr-cr-pair')!
+    const pair = document.body.querySelector('.rr-cr-row:not(.rr-cr-hrow) .rr-cr-pair')!
     expect(pair.classList.contains('rr-on')).toBe(false)
     await click(pair.querySelector<HTMLInputElement>('input.rr-cr-tick')!)
     expect(pair.classList.contains('rr-on')).toBe(true)
