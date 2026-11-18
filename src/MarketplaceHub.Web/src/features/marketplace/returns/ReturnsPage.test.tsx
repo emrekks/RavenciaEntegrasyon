@@ -217,7 +217,7 @@ describe('returns page', () => {
       expect(items(rows[2]).some(text => text?.includes('Değişim Onaylandı') || text === 'İşareti Kaldır')).toBe(false)
       act(() => { byText<HTMLButtonElement>(rows[0], 'button.rr-trigger', 'İşlemler').click() })
       act(() => { byText<HTMLButtonElement>(host.ownerDocument.body, '[role="menuitem"]', 'Değişim Onaylandı Olarak İşaretle').click() })
-      expect(host.ownerDocument.body.textContent).toContain('Bu işlem Trendyol\'a hiçbir şey göndermez; kaydı panelde Değişim Onaylandı olarak gösterir ve fatura işlemlerinden çıkarır.')
+      expect(host.ownerDocument.body.textContent).toContain('Bu işlem Trendyol\'a hiçbir şey göndermez; kaydı panelde Değişim Onaylandı olarak gösterir ve Onaylananlar\'a taşır. Reddedilmiş iade zaten fatura işlemi gerektirmez.')
       expect(rows[1].querySelector('[data-l="Durum"] b')?.textContent).toBe('Değişim Onaylandı')
     } finally {
       hubApi.mockImplementation(original)

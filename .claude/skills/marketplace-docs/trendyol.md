@@ -497,29 +497,24 @@ packages only, no claim events.
   (18 Nov 2026). It is the only one among 255 live Trendyol claims (18 Nov 2026: BIGSIZE 100, SMALLSIZE 68, DISLIKE 51,
   UNDELIVERED 9, WRONGORDER 6, ABANDON 6, WRONGITEM 6, UNDELIVEREDINT 3, OTHER 2, DAMAGEDITEM 2, FAKEPRODUCT 1).
   The claim's raw JSON is not stored, so whether live claims carry `replacementOutboundpackageinfo` is **unverified**.
-- Code: `ReturnCustomerRequestPolicy.FromTrendyol` sets `CustomerRequest` CHANGE for that code or a replacement package
-  naming `packageid` or items; anything else stays null (the reason text is never searched). Shown as the "Değişim"
-  tag on İadeler. Owner, 18 Nov 2026 ("Değişim onaylanırsa fatura işlemlerine gerek yok"): an approved exchange takes
-  no units back on the invoice and in the reports, as Hepsiburada's (`ReturnCustomerRequestPolicy.CountsAsReturn`);
-  the reports count it apart (`ReportSummaryView.ExchangeClaims`). getClaims names no refund outcome, so a Trendyol
-  exchange turned into a refund is not seen: it becomes a return only if the claim's ResolvedWith says REFUND or its
-  raw status Refunded (never on Trendyol today); the detail tells the owner to check the invoice by hand. Stoğa Ekle
-  stays open ("durumdan duruma").
+- Code: `ReturnCustomerRequestPolicy.FromTrendyol` sets `CustomerRequest` CHANGE for that code only; a replacement package
+  may cover one item, so it never makes the whole claim an exchange (review, 18 Nov 2026), and the reason text is never
+  searched. Shown as the "Değişim Talebi" tag; the reason reads "Yanlış gelen ürünümü değiştirmek istiyorum" (Trendyol's
+  seller panel). Nothing infers "exchange made": `ResolvedWith` stays null on Trendyol unless the owner marks it.
+- Invoice: only Hepsiburada's exchanges take no units back (`ExchangeNoReturnPlatform`). A Trendyol exchange request
+  Trendyol accepted (48-hour auto-acceptance, an approval in its panel) may be a refund, so it counts as a return as
+  before; its detail tells the owner to check in Trendyol's panel. The reports also count exchange requests apart, for
+  information (`ReportSummaryView.ExchangeClaims`).
 - No exchange action in the API: Trendyol's seller panel handles it with "Değişim Yap" (owner's screenshot, 18 Nov
   2026). approveClaimLineItems (trendyol-api-son.md:7044-7084, "İade Siparişleri Onaylama") is documented for returns
   only, so the panel never approves an exchange request (`ReturnCustomerRequestPolicy.ApprovalBlocked`, error
   TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL; no bulk selection; a queued approval is not sent). createClaimIssue stays.
+- A made exchange comes back **Rejected** (11805950639, exchanged with "Değişim Yap", live Rejected 13:55Z 18 Nov 2026);
+  a rejected claim never counts as a return. The owner (owner or admin) marks it "Değişim Onaylandı Olarak İşaretle"
+  (POST `returns/{id}/exchange-approved`, panel only): ResolvedWith CHANGE, `ResolvedWithSource` MANUAL, audit
+  RETURN_EXCHANGE_MARKED_APPROVED. It then lists in Onaylananlar (wire EXCHANGE_APPROVED, TabGroup APPROVED; one rule in
+  `ReturnQueryService.ReturnStatusWire`, repeated by `ReturnCardColumns` and the tab filters/counts), leaves the
+  refused-return cards and keeps Stoğa Ekle. "İşareti Kaldır" undoes it; a read that shows the claim no longer rejected
+  drops it and opens RETURN_EXCHANGE_MARK_LAPSED.
 - An open claim is read again by RETURN_STATUS_SYNC; a closed one only while RETURN_SYNC / RETURN_RECONCILIATION
   (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.
-- A made exchange comes back as **Rejected** (owner, 18 Nov 2026: 11805950639 exchanged with "Değişim Yap", live
-  Status/RawStatus Rejected, RejectedPackageState AWAITING_CARGO, 13:55Z). Read as closed by exchange
-  (`ResolvedWith` CHANGE, `ReturnCustomerRequestPolicy.ResolvedWithFromTrendyol`) only from explicit data: a replacement
-  package, or a claim item's `trendyolClaimItemReason.id` 1851 "Ürün değişimi yapıldı" (:7160) / 2006 "Analiz Değişim"
-  (:7021). Then the panel shows "Değişim Onaylandı" and leaves it out of the refused-return cards (Kargolanmayı
-  Bekleyen Red, Bugün Reddedilen) and counts it among the reports' exchanges. Whether getClaims really carries either
-  for a made exchange is **unverified** (no raw claim is stored). Such a claim lists in Onaylananlar (wire status
-  EXCHANGE_APPROVED, TabGroup APPROVED, `ReturnQueryService.ReturnStatusWire` and its SQL repeats) and keeps Stoğa Ekle.
-- Without Trendyol's word the owner (owner or admin) uses "Değişim Onaylandı Olarak İşaretle" (POST
-  `returns/{id}/exchange-approved`, panel only): ResolvedWith CHANGE, `ResolvedWithSource` MANUAL, audit
-  RETURN_EXCHANGE_MARKED_APPROVED; "İşareti Kaldır" undoes it. A read naming no outcome keeps the mark; REFUND (or raw
-  Refunded) over it makes it a return again and opens RETURN_EXCHANGE_MARK_REFUNDED.

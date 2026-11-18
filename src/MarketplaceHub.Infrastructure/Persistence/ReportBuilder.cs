@@ -117,9 +117,11 @@ internal sealed class ReportLineExtra
 
 internal sealed class ReportClaimRow
 {
-    // An exchange not closed with a refund (ReturnCustomerRequestPolicy.IsKeptExchange): no return claim, counted apart.
+    // A Hepsiburada exchange not closed with a refund (ReturnCustomerRequestPolicy.CountsAsReturn): no return claim.
     public bool Exchange { get; init; }
-    // An exchange the marketplace says it made (ResolvedWith CHANGE), Trendyol answering Rejected for it.
+    // The customer asked for an exchange (CustomerRequest CHANGE), counted apart for information.
+    public bool ExchangeRequest { get; init; }
+    // An exchange marked made (ResolvedWith CHANGE, the owner's mark on a Trendyol claim Trendyol answered Rejected).
     public bool ExchangeMade { get; init; }
     public Guid OrderId { get; init; }
     public Guid ConnectionId { get; init; }
@@ -419,13 +421,13 @@ internal static class ReportBuilder
         Groups(orders, order => order.Country, order => ReportBuckets.CountryName(order.Country), _ => false, null,
             group => Groups(group, order => order.PlatformCode, order => order.PlatformCode, _ => false, null, null));
 
-    // The exchange claims (not rejected or cancelled) of the period's non-cancelled orders: no return, shown apart so they
-    // do not vanish from the report (owner, 18 Nov 2026).
+    // The exchange requests (not rejected, unless marked made, nor cancelled) of the period's non-cancelled orders, for
+    // information (owner, 18 Nov 2026): a Hepsiburada one is no return, a Trendyol one stays among the returns.
     private static int ExchangeClaims(ReportInput input, IReadOnlyList<OrderFact> orders)
     {
         var ids = orders.Select(order => order.Order.Id).ToHashSet();
-        // A Trendyol exchange the marketplace made answers Rejected (ExchangeMade): counted here, never as a refused return.
-        return input.Claims.Count(x => x.Exchange && ids.Contains(x.OrderId) && x.Status != ReturnClaimStatus.Cancelled && (x.Status != ReturnClaimStatus.Rejected || x.ExchangeMade));
+        // A Trendyol exchange marked made answers Rejected (ExchangeMade): counted here, never as a refused return.
+        return input.Claims.Count(x => x.ExchangeRequest && ids.Contains(x.OrderId) && x.Status != ReturnClaimStatus.Cancelled && (x.Status != ReturnClaimStatus.Rejected || x.ExchangeMade));
     }
 
     // The period's non-cancelled orders with their units, money and buckets, and the cancelled ones apart.

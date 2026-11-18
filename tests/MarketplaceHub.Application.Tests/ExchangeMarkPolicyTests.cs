@@ -16,18 +16,15 @@ public sealed class ExchangeMarkPolicyTests
         Assert.Equal(allowed, ReturnCustomerRequestPolicy.ManualExchangeMarkAllowed(platform, request, status, resolvedWith));
 
     [Fact]
-    public void A_read_keeps_the_mark_unless_it_names_an_outcome_and_a_refund_over_it_is_reported()
+    public void The_mark_lapses_once_the_claim_is_no_longer_rejected_and_only_a_Hepsiburada_exchange_is_no_return()
     {
-        // Nothing named: the owner's mark stays.
-        Assert.Equal(("CHANGE", "MANUAL", false), ReturnCustomerRequestPolicy.AfterRead("CHANGE", "MANUAL", null, "Rejected"));
-        // The marketplace confirms the exchange: its own word, no longer the owner's.
-        Assert.Equal(("CHANGE", null, false), ReturnCustomerRequestPolicy.AfterRead("CHANGE", "MANUAL", "CHANGE", "Rejected"));
-        // A refund over the mark: a return again, reported.
-        Assert.Equal(("REFUND", null, true), ReturnCustomerRequestPolicy.AfterRead("CHANGE", "MANUAL", "REFUND", "Rejected"));
-        Assert.Equal(("REFUND", null, true), ReturnCustomerRequestPolicy.AfterRead("CHANGE", "MANUAL", null, "Refunded"));
-        // Without a mark the raw status Refunded writes nothing (ResolvedWith stays the marketplace's own field).
-        Assert.Equal((null, null, false), ReturnCustomerRequestPolicy.AfterRead(null, null, null, "Refunded"));
-        Assert.True(ReturnCustomerRequestPolicy.CountsAsReturn("CHANGE", "Rejected", "REFUND"));
+        Assert.False(ReturnCustomerRequestPolicy.ManualMarkLapses("MANUAL", ReturnClaimStatus.Rejected));
+        Assert.True(ReturnCustomerRequestPolicy.ManualMarkLapses("MANUAL", ReturnClaimStatus.Approved));
+        Assert.False(ReturnCustomerRequestPolicy.ManualMarkLapses(null, ReturnClaimStatus.Approved));
+        // Review, 18 Nov 2026: a Trendyol exchange request accepted counts as a return (it may be a refund).
+        Assert.True(ReturnCustomerRequestPolicy.CountsAsReturn("CHANGE", "Accepted", "TRENDYOL"));
+        Assert.False(ReturnCustomerRequestPolicy.CountsAsReturn("CHANGE", "Accepted", "HEPSIBURADA"));
+        Assert.True(ReturnCustomerRequestPolicy.CountsAsReturn("CHANGE", "Refunded", "HEPSIBURADA"));
     }
 
     [Theory]

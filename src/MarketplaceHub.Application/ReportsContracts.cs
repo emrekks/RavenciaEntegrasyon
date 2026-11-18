@@ -114,7 +114,7 @@ public sealed record ReportSummaryView(
     int SoldVariants = 0,
     // NetRevenue of the TRY orders without its VAT: each line's kept amount less the VAT at the line's own rate.
     decimal VatFreeNetRevenue = 0m,
-    // Exchange claims not closed with a refund (Hepsiburada and Trendyol): no return claim and no unit back, counted apart.
+    // Exchange requests, for information: a Hepsiburada one not refunded is no return; a Trendyol one stays among the returns.
     int ExchangeClaims = 0);
 
 // Estimated from the commission the marketplace sent on each order line (Trendyol and n11 rate, Hepsiburada amount,

@@ -5,7 +5,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { notificationError } from '../../../shared/notifications'
 import { RrModal } from '../../../shared/ui/rr-components'
 
-export const EXCHANGE_MARK_TEXT = 'Bu işlem Trendyol\'a hiçbir şey göndermez; kaydı panelde Değişim Onaylandı olarak gösterir ve fatura işlemlerinden çıkarır.'
+export const EXCHANGE_MARK_TEXT = 'Bu işlem Trendyol\'a hiçbir şey göndermez; kaydı panelde Değişim Onaylandı olarak gösterir ve Onaylananlar\'a taşır. Reddedilmiş iade zaten fatura işlemi gerektirmez.'
 export const EXCHANGE_UNMARK_TEXT = 'Bu işlem Trendyol\'a hiçbir şey göndermez; elle konan Değişim Onaylandı işaretini kaldırır ve kaydı Trendyol\'un bildirdiği gibi gösterir.'
 
 /**

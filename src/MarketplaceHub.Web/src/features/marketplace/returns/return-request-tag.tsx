@@ -18,10 +18,13 @@ export function isExchangeRequest(customerRequest: string | null | undefined) {
 export const TRENDYOL_EXCHANGE_NOTE = 'Değişim talebi Trendyol satıcı panelinden “Değişim Yap” ile işlenir; panelden iade onayı gönderilmez.'
 
 /**
- * An approved Trendyol exchange is no return (owner, 18 Nov 2026: no invoice work). Trendyol's claim names no refund, so
- * one it turned into a refund is not seen here: the owner checks the invoice by hand.
+ * A Trendyol exchange request Trendyol accepted (its 48-hour auto-acceptance, or an approval in its panel) may be a refund
+ * or an exchange; its claim does not say, so it counts as a return as before and the owner checks (review, 18 Nov 2026).
  */
-export const TRENDYOL_EXCHANGE_KEPT_NOTE = 'Değişim olarak işlendi: faturada ve raporlarda iade sayılmaz. Trendyol para iadesine çevirdiyse panel bunu göremez; faturayı elle kontrol edin.'
+export const TRENDYOL_EXCHANGE_ACCEPTED_NOTE = 'Değişim talebi Trendyol\'da iade olarak kabul edilmiş görünüyor; para iadesi mi değişim mi yapıldığını Trendyol panelinden kontrol edin.'
+
+/** The owner's own "Değişim Onaylandı" mark on a request Trendyol answered Rejected. */
+export const TRENDYOL_EXCHANGE_MARKED_NOTE = 'Değişim Onaylandı olarak elle işaretlendi; Trendyol\'a bir şey gönderilmedi. İşareti İşlemler menüsünden kaldırabilirsiniz.'
 
 export function isPanelApprovalBlocked(item: { platformCode?: string | null; customerRequest?: string | null }) {
   return item.platformCode?.trim().toUpperCase() === 'TRENDYOL' && isExchangeRequest(item.customerRequest)

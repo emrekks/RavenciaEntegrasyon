@@ -9,8 +9,8 @@ internal sealed partial class ReturnDecisionService
 {
     // Owner, 18 Nov 2026 ("Değişim Onaylandı Olarak İşaretle"): a Trendyol exchange request that Trendyol answered Rejected
     // after the owner made the exchange in its seller panel, where its claim does not say so. Panel only: nothing is sent
-    // to Trendyol. ResolvedWith CHANGE with its source MANUAL moves it to the approved tab as "Değişim Onaylandı" and out
-    // of the invoice's returns; removing the mark puts back what was there. The caller checks the role (owner or admin).
+    // to Trendyol. ResolvedWith CHANGE with its source MANUAL shows it as "Değişim Onaylandı" in the approved
+    // tab; a rejected claim needs no invoice work anyway. Removing the mark puts back what was there. Owners and admins only.
     public async Task<ServiceResult<ReturnDetailView>> MarkExchangeApprovedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, bool marked, string correlationId, CancellationToken cancellationToken)
     {
         var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
@@ -43,7 +43,7 @@ internal sealed partial class ReturnDecisionService
             TargetType = "ReturnClaim",
             TargetId = claimId.ToString("D"),
             Reason = marked
-                ? "Değişim Onaylandı olarak elle işaretlendi; Trendyol'a bir şey gönderilmedi, iade fatura işlemlerinden çıkarıldı."
+                ? "Değişim Onaylandı olarak elle işaretlendi ve Onaylananlar'a taşındı; Trendyol'a bir şey gönderilmedi."
                 : "Elle konan Değişim Onaylandı işareti kaldırıldı; Trendyol'a bir şey gönderilmedi.",
             CorrelationId = correlationId,
             CreatedAt = now

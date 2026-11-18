@@ -230,10 +230,29 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
             {
                 var kept = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId);
                 Assert.Equal((ReturnCustomerRequestPolicy.Change, ReturnCustomerRequestPolicy.ManualSource), (kept.ResolvedWith, kept.ResolvedWithSource));
+                // Another tenant cannot reach the claim (M11): not found, nothing changes.
+                var foreign = await Service(db, port).MarkExchangeApprovedAsync(Guid.NewGuid(), Guid.NewGuid(), seed.ClaimId, kept.Version, false, "rl-made", CancellationToken.None);
+                Assert.Equal(404, foreign.Error!.Status);
+                Assert.Equal(ReturnCustomerRequestPolicy.ManualSource, (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).ResolvedWithSource);
                 var removed = await Service(db, port).MarkExchangeApprovedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, kept.Version, false, "rl-made", CancellationToken.None);
                 Assert.Null(removed.Error);
                 Assert.False(removed.Value!.ExchangeApproved);
                 Assert.Equal("REJECTED", (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).TabGroup);
+            }
+
+            // Ö4: the mark stands only on a rejected claim. Marked again, then read as accepted by Trendyol: it lapses and the
+            // owner is told.
+            await using (var db = fixture.CreateContext())
+                Assert.Null((await Service(db, port).MarkExchangeApprovedAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, await VersionAsync(seed.ClaimId), true, "rl-made", CancellationToken.None)).Error);
+            await using (var db = fixture.CreateContext())
+                await new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider)
+                    .UpsertReturn(seed.TenantId, seed.ConnectionId, new RemoteReturnClaim("RL-CLAIM", "rl-made-order", "Accepted", "WRONGCHANGEREQUEST", null, null, DateTimeOffset.UtcNow.AddSeconds(5),
+                        seed.ExternalLineIds.Select(id => new RemoteReturnLine(id, id.Replace("CI-", "OL-", StringComparison.Ordinal), 2m, RawStatus: "Accepted")).ToList(), "{}", CustomerRequest: ReturnCustomerRequestPolicy.Change), CancellationToken.None);
+            await using (var db = fixture.CreateContext())
+            {
+                var lapsed = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId);
+                Assert.Equal((ReturnClaimStatus.Approved, (string?)null, (string?)null), (lapsed.Status, lapsed.ResolvedWith, lapsed.ResolvedWithSource));
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == seed.TenantId && x.Code == "RETURN_EXCHANGE_MARK_LAPSED"));
             }
         }
         finally

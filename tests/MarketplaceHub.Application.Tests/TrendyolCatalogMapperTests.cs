@@ -466,8 +466,8 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     // Owner, 18 Nov 2026 (11805950639): the exchange request comes from the claim's explicit data only, the reason code
-    // WRONGCHANGEREQUEST or a replacement package (replacementOutboundpackageinfo); any other reason, an unknown code or an
-    // empty replacement block is no known request (null), never a refund.
+    // WRONGCHANGEREQUEST only (review, 18 Nov 2026: a replacement package may cover one item, so it makes no whole claim an
+    // exchange); any other reason, an unknown code or a replacement block is no known request (null), never a refund.
     [Theory]
     [InlineData("WRONGCHANGEREQUEST", null, "CHANGE")]
     [InlineData("wrongChangeRequest", null, "CHANGE")]
@@ -475,8 +475,8 @@ public sealed class TrendyolCatalogMapperTests
     [InlineData("WRONGITEM", null, null)]
     [InlineData("SOMETHINGNEW", null, null)]
     [InlineData(null, null, null)]
-    [InlineData("BIGSIZE", """{ "packageid": 28717254, "items": [] }""", "CHANGE")]
-    [InlineData("BIGSIZE", """{ "items": ["b71461e3-d1a0-4c1d-9a6d-18ecbcb5432d"] }""", "CHANGE")]
+    [InlineData("BIGSIZE", """{ "packageid": 28717254, "items": [] }""", null)]
+    [InlineData("BIGSIZE", """{ "items": ["b71461e3-d1a0-4c1d-9a6d-18ecbcb5432d"] }""", null)]
     [InlineData("BIGSIZE", "{}", null)]
     [InlineData("BIGSIZE", """{ "packageid": null, "items": [] }""", null)]
     [InlineData("BIGSIZE", """{ "packageid": 0 }""", null)]
@@ -500,21 +500,21 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal(expected, claim.CustomerRequest);
-        // A replacement package also says the exchange was made (ResolvedWith); the reason code alone does not.
-        Assert.Equal(expected == "CHANGE" && replacement is not null ? "CHANGE" : null, claim.ResolvedWith);
+        // The claim names no outcome: Trendyol's ResolvedWith comes only from the owner's mark.
+        Assert.Null(claim.ResolvedWith);
     }
 
-    // Owner, 18 Nov 2026: Trendyol answers a made exchange as Rejected. It is read as closed by exchange (ResolvedWith
-    // CHANGE) only from explicit data: a replacement package, or a Trendyol reason 1851 "Ürün değişimi yapıldı" or 2006
-    // "Analiz Değişim"; any other reason leaves it unknown, never a refund.
+    // Review, 18 Nov 2026: no "exchange made" is inferred from a claim: a replacement package, Trendyol reason 1851 (from the
+    // seller's issue list) or 2006 (Trendyol's analysis) leaves ResolvedWith unknown; only the owner's mark sets it.
+    // (The request stays CHANGE from its reason code.)
     [Theory]
-    [InlineData("1851", null, "CHANGE")]
-    [InlineData("2006", null, "CHANGE")]
+    [InlineData("1851", null, null)]
+    [InlineData("2006", null, null)]
     [InlineData("451", null, null)]
     [InlineData(null, null, null)]
-    [InlineData("451", """{ "packageid": 28717254 }""", "CHANGE")]
+    [InlineData("451", """{ "packageid": 28717254 }""", null)]
     [InlineData("451", "{}", null)]
-    public void ReturnClaim_ReadsAMadeExchangeFromExplicitDataOnly(string? trendyolReasonId, string? replacement, string? expected)
+    public void ReturnClaim_NeverInfersAMadeExchange(string? trendyolReasonId, string? replacement, string? expected)
     {
         var reason = trendyolReasonId is null ? "" : ", \"trendyolClaimItemReason\": { \"id\": \"" + trendyolReasonId + "\", \"name\": \"Sebep\", \"code\": \"X\" }";
         var replacementField = replacement is null ? "" : "\"replacementOutboundpackageinfo\": " + replacement + ",";
