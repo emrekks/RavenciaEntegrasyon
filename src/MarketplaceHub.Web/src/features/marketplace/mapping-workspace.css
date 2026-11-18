@@ -616,14 +616,14 @@
 /* Phones: a saved brand mapping is one compact row: the platform logo, the panel brand over the platform's brand, the
    status as its icon, then edit and delete (the platform name, the status word and the empty space are gone). */
 @media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) { grid-template-columns: 24px minmax(0, 1fr) auto auto; grid-template-areas: "logo panel status actions" "logo target status actions"; align-items: center; gap: 0 10px; padding: 8px 8px 8px 12px; margin-bottom: 6px; }
+  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) { grid-template-columns: 16px minmax(0, 1fr) auto; grid-template-areas: "status panel actions" "status target actions"; align-items: center; gap: 0 10px; padding: 6px 8px 6px 12px; margin-bottom: 0; border-radius: 0; border-width: 1px 0 0; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td { padding: 0 !important; border: 0 !important; min-width: 0; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td::before { display: none !important; }
-  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(1) { grid-area: panel; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(2) { grid-area: logo; }
+  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(1) { grid-area: panel; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; white-space: normal; }
+  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(2) { display: none; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(2) .ms-platform { display: block; width: 22px; height: 22px; overflow: hidden; font-size: 0; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(2) img { width: 22px; height: 22px; border-radius: 6px; }
-  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td.brand-mapping-inline-editor { grid-area: target; overflow: hidden; color: var(--rv-color-muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+  html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td.brand-mapping-inline-editor { grid-area: target; color: var(--rv-color-ink); font-size: 13px; overflow-wrap: anywhere; white-space: normal; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(4) { grid-area: status; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(4) .mapping-table-status { font-size: 0; gap: 0; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) > td:nth-child(4) .cm-glyph { width: 16px; height: 16px; }
@@ -685,15 +685,15 @@
 
   /* Saved mappings, one card each: the panel category and its state on the first line, the platform path under them,
      then the platform (logo and name) on the left and Kategori Özellikleri with the × on the right. */
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto !important; grid-template-areas: "panel panel status" "target target target" "platform actions actions" !important; align-items: center; gap: 8px 12px; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td { width: auto !important; max-width: none !important; white-space: normal; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(1) { grid-area: panel !important; font-size: 15px; line-height: 1.3; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(4) { grid-area: status !important; justify-self: end; white-space: nowrap; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(3) { grid-area: target !important; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(2) { grid-area: platform !important; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; font-size: 0; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) { grid-area: actions !important; justify-self: end; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) .mapping-row-actions > button { height: 36px; min-height: 0; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto !important; grid-template-areas: "panel panel status" "target target target" "platform actions actions" !important; align-items: center; gap: 8px 12px; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td { width: auto !important; max-width: none !important; white-space: normal; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(1) { grid-area: panel !important; font-size: 15px; line-height: 1.3; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(4) { grid-area: status !important; justify-self: end; white-space: nowrap; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(3) { grid-area: target !important; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(2) { grid-area: platform !important; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; font-size: 0; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(5) { grid-area: actions !important; justify-self: end; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr:not(:has(> td.brand-mapping-inline-editor)) > td:nth-child(5) .mapping-row-actions > button { height: 36px; min-height: 0; }
 
   /* Category cards: the platform chip (logo and full name) and the actions (Kategori Özellikleri, ×) share the last line
      while they fit; when they do not (295 px card, long platform name) the actions drop to their own right-aligned

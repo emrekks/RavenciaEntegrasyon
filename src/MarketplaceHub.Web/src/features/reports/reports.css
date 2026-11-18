@@ -1265,3 +1265,9 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l^="Kâr"] { text-align: center; font-variant-numeric: tabular-nums; }
   .app-shell.stitch-shell main .reports-page .reports-order-table td[data-l^="Kâr"]::before { content: attr(data-l); display: block; margin-bottom: 1px; color: var(--rv-color-muted); font-size: 11px; font-weight: 400; }
 }
+
+/* Raporlar on a phone, every tab: the blocks of a tab are one 12 px step apart (owner, 18 Nov 2026). Measured at 375 px before: Genel Bakış 14,
+   Sipariş Kârlılığı 16 and every other tab 20 (the desktop step); the Hakediş list's own rule above uses the same variable. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-summary, .reports-order-profit) { gap: var(--reports-gap-m, 12px); }
+}

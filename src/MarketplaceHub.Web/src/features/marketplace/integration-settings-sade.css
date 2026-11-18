@@ -452,3 +452,8 @@ html body .cs-workspace.cs-workspace .cs-title-switch .pm-anchor { display: inli
   html body .app-shell.stitch-shell main .cs-workspace .cs-summary-body { max-height: none; overflow: visible; }
   html body .app-shell.stitch-shell main .cs-workspace .cs-facts > div { min-height: 32px; padding-block: 5px; align-items: center; }
 }
+
+/* Phone: the note line of the connection head ("Canlı · Mağaza …") is one line cut with an ellipsis (a long store id made it two, 115 px head on Hepsiburada). */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .cs-workspace .cs-head .cs-head-copy > p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

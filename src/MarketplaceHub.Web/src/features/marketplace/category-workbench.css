@@ -587,4 +587,4 @@
 .cm-card { --cm-lead-w: 168px; }
 .cm-card .cm-context > label.cm-field { width: var(--cm-lead-w); }
 .cm-card .cm-context > label.cm-field .pm-trigger { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; min-height: 0; }
-.cm-card .cm-actions > button:first-child { flex: 0 0 var(--cm-lead-w); min-width: 0; }
+.app-shell .panel.mapping-step.cm-card .cm-actions > button:first-child { flex: 0 0 var(--cm-lead-w); min-width: 0; }
