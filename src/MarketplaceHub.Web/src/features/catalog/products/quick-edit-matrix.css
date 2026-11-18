@@ -1,5 +1,4 @@
-/* The colour x size matrix of the quick edit windows: one compact table, the first column and the header row stay in view,
-   the body scrolls inside its own box only when the model has many colours or sizes. */
+/* The quick edit windows' variant list: a value tab strip, then one line per colour with its sizes side by side. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tabs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tablist { display: flex; gap: 6px; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab { position: relative; flex: none; min-height: 0; height: 32px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
@@ -7,31 +6,36 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab[aria-selected="true"] { color: var(--rr-ink); font-weight: 600; background: color-mix(in srgb, var(--rr-primary-soft) 55%, var(--rr-raised)); border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab i { display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; border-radius: 50%; background: var(--rr-primary); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-note { color: var(--rr-muted); font-size: 12px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-wrap { max-height: min(60dvh, 560px); overflow: auto; border: 1px solid var(--rr-line); border-radius: 12px; overscroll-behavior: contain; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx th, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx td { padding: 4px 6px; background: var(--rr-surface); border-bottom: 1px solid var(--rr-line); text-align: center; vertical-align: middle; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx tbody tr:last-child > * { border-bottom: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx thead th { position: sticky; top: 0; z-index: 2; background: var(--rr-raised); font-weight: 600; white-space: nowrap; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-size { display: table-cell; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-size > * { vertical-align: middle; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-size .rr-cb { margin-right: 8px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx :is(.rr-mx-corner, .rr-mx-color) { position: sticky; left: 0; z-index: 3; width: 168px; min-width: 168px; max-width: 168px; padding-left: 12px; text-align: left; background: var(--rr-raised); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx tbody .rr-mx-color { z-index: 1; display: table-cell; font-weight: 600; white-space: nowrap; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-color > b { display: inline-block; max-width: 118px; margin-left: 10px; overflow: hidden; vertical-align: middle; text-overflow: ellipsis; font-weight: 600; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx tbody td { min-width: 84px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx td.rr-mx-on { background: color-mix(in srgb, var(--rr-primary-soft) 60%, var(--rr-surface)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx td.rr-mx-none { color: var(--rr-subtle); opacity: .6; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-cell { position: relative; display: flex; align-items: center; justify-content: center; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-cell + .rr-mx-cell { margin-top: 4px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pick { position: absolute; top: 0; left: 0; opacity: 0; transition: opacity .12s; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-cell:hover .rr-mx-pick, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-cell:focus-within .rr-mx-pick, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pick:checked { opacity: 1; }
+/* Tümünü Seç and the size shortcuts, on one line. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr { display: grid; gap: 8px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-all { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizebar-label { margin-right: 4px; color: var(--rr-muted); font-size: 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip { min-height: 0; height: 28px; min-width: 36px; padding: 0 10px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 7px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip:hover { color: var(--rr-ink); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-on { color: var(--rr-ink); background: color-mix(in srgb, var(--rr-primary-soft) 60%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-chip.rr-mixed { border-style: dashed; border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
+/* The list scrolls inside itself; each colour is one row, a thin line between colours. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { max-height: min(60dvh, 560px); overflow-y: auto; overflow-x: hidden; border: 1px solid var(--rr-line); border-radius: 12px; overscroll-behavior: contain; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { display: grid; grid-template-columns: 168px minmax(0, 1fr); align-items: center; gap: 8px 18px; padding: 6px 14px 6px 12px; background: var(--rr-surface); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; cursor: pointer; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color > b { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { display: flex; flex-wrap: wrap; gap: 6px 18px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { display: inline-flex; align-items: center; gap: 6px; padding: 2px 2px 2px 8px; border-radius: 9px; transition: background-color .12s; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on { background: color-mix(in srgb, var(--rr-primary-soft) 70%, var(--rr-surface)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { min-width: 24px; color: var(--rr-muted); font-size: 12px; font-weight: 600; cursor: pointer; text-align: right; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on .rr-cr-size { color: var(--rr-ink); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair:focus-within .rr-cr-size { color: var(--rr-primary); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-round { border-radius: 50%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-box { display: block; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in { width: 72px; height: 32px; min-height: 0; padding: 0 8px; text-align: right; font-variant-numeric: tabular-nums; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { display: block; width: 72px; color: var(--rr-subtle); line-height: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in { width: 72px; height: 36px; min-height: 0; padding: 0 8px; text-align: right; font-variant-numeric: tabular-nums; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { display: block; width: 72px; color: var(--rr-subtle); line-height: 36px; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx :is(.rr-mx-corner, .rr-mx-color) { width: 88px; min-width: 88px; max-width: 88px; padding-left: 6px; font-size: 12px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx .rr-mx-color > b { max-width: 50px; margin-left: 4px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx tbody td { min-width: 52px; padding: 4px 2px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 48px; padding: 0 4px; font-size: 12px; }
+  /* A phone: the colour on its own line above, its sizes wrapping underneath. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px 10px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { gap: 6px 10px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 64px; padding: 0 6px; }
 }
