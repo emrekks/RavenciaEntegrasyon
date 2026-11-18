@@ -362,12 +362,12 @@ html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-
    filter button follows its label, and the Alıcı column is wide enough for a typical full name on one line. */
 @media (min-width: 1025px) {
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 206fr) minmax(0, 151fr) minmax(0, 156fr) minmax(0, 136fr) minmax(0, 157fr) minmax(0, 124fr) minmax(0, 128fr); }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: 18px; }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :first-child { padding-left: 12px; }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :last-child { padding-right: 12px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: var(--ir-pl, 18px) var(--ir-pr, 18px); }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :first-child { --ir-pl: 12px; }
+.app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) > :last-child { --ir-pr: 12px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(.order-column-filter, .invoice-reference-platform-heading) { gap: 4px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { position: static; transform: none; }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: 18px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: var(--ir-pl, 18px) var(--ir-pr, 18px); }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > input.invoice-reference-select { left: 12px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > :not(input) { margin-left: 28px; }
 }
