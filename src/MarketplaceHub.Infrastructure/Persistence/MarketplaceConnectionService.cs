@@ -683,19 +683,71 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
 
     public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true)
     {
+        var staged = await StageSyncPolicyAsync(tenantId, id, resourceType, expectedVersion, command, cancellationToken, elevated);
+        if (staged.Error is { } error) return new(null, error);
+        var (policy, connection, switchedOn, _) = staged.Value!;
+        // B: an automatic price or stock write switched on never sends what changed while it was off; every offer of
+        // the connection counts as sent at its current values, committed with the switch.
+        await AutomaticPriceStockWrites.SaveWithBaselineAsync(db, tenantId, id, connection.PlatformCode, switchedOn && AutomaticPriceStockWrites.IsAutomaticWritePolicy(policy.ResourceType), cancellationToken);
+        return ServiceResult<SyncPolicyView>.Ok(await StagedViewAsync(staged.Value!, cancellationToken));
+    }
+
+    // The automatic price/stock pair (or any other set of write switches of one connection) switched together: every
+    // If-Match is checked and every policy saved in one transaction, so either all change or none does (18 Nov: two
+    // parallel PUTs each took the baseline over the same offers and one failed, leaving the pair half open).
+    public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> UpdateExternalWriteGroupAsync(Guid tenantId, Guid id, UpdateExternalWriteGroupCommand command, CancellationToken cancellationToken, bool elevated = true)
+    {
+        var items = command.Policies ?? [];
+        var resourceTypes = items.Select(x => x.ResourceType?.Trim().ToUpperInvariant() ?? string.Empty).ToArray();
+        if (items.Count == 0 || items.Count > 4 || resourceTypes.Distinct(StringComparer.Ordinal).Count() != resourceTypes.Length || !resourceTypes.All(MarketplaceExternalWritePolicies.IsPermissionPolicy))
+            return Invalid<IReadOnlyList<SyncPolicyView>>("policies", "Grup yalnız bu bağlantının dış yazma akışlarını, her birini bir kez içermelidir.");
+        if (!elevated)
+            return ServiceResult<IReadOnlyList<SyncPolicyView>>.Fail("PERMISSION_DENIED", "Dış yazma akışlarını yalnız sahip veya yönetici değiştirebilir.", 403);
+        var staged = new List<StagedSyncPolicy>(items.Count);
+        foreach (var (item, resourceType) in items.Zip(resourceTypes))
+        {
+            // A switch keeps the cadence it has; a group change only turns the flows on or off.
+            var current = await db.ConnectionSyncPolicies.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == resourceType)
+                .Select(x => new { x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds }).SingleOrDefaultAsync(cancellationToken);
+            if (current is null) { db.ChangeTracker.Clear(); return NotFound<IReadOnlyList<SyncPolicyView>>(); }
+            var result = await StageSyncPolicyAsync(tenantId, id, resourceType, item.Version, new UpdateSyncPolicyCommand(current.IntervalSeconds, current.OverlapSeconds, current.JitterSeconds, command.Enabled), cancellationToken, elevated);
+            if (result.Error is { } error) { db.ChangeTracker.Clear(); return new(null, error); }
+            staged.Add(result.Value!);
+        }
+        var connection = staged[0].Connection;
+        await AutomaticPriceStockWrites.SaveWithBaselineAsync(db, tenantId, id, connection.PlatformCode, staged.Any(x => x.SwitchedOn && AutomaticPriceStockWrites.IsAutomaticWritePolicy(x.Policy.ResourceType)), cancellationToken);
+        var views = new List<SyncPolicyView>(staged.Count);
+        foreach (var value in staged) views.Add(await StagedViewAsync(value, cancellationToken));
+        return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(views);
+    }
+
+    private sealed record StagedSyncPolicy(ConnectionSyncPolicy Policy, PlatformConnection Connection, bool SwitchedOn, string? IdleKind);
+
+    private async Task<SyncPolicyView> StagedViewAsync(StagedSyncPolicy staged, CancellationToken cancellationToken)
+    {
+        var (policy, connection, _, idleKind) = staged;
+        var now = timeProvider.GetUtcNow();
+        var webhookHealthy = idleKind is SyncCadencePolicy.IdleWebhook or SyncCadencePolicy.IdleReturns && await ScheduledJobProducer.WebhookHealthyAsync(db, policy.TenantId, policy.ConnectionId, now, cancellationToken);
+        var inputs = await CadenceInputsAsync(policy.TenantId, policy.ConnectionId, connection.PlatformCode, connection.SettingsJson, [policy.ResourceType], webhookHealthy, cancellationToken);
+        return Map(policy) with { Cadence = CadenceView(policy, connection.PlatformCode, connection.Environment, inputs, now) };
+    }
+
+    // Checks one policy change and applies it to the tracked entity without saving.
+    private async Task<ServiceResult<StagedSyncPolicy>> StageSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated)
+    {
         var normalized = resourceType.Trim().ToUpperInvariant();
         // A write switch (price, stock, shipment, return, PTT AVM manual) is a permission like the master external-write
         // switch, so it is the owner's or an administrator's to change (YENİ-03), in either direction.
         if (!elevated && MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized))
-            return ServiceResult<SyncPolicyView>.Fail("PERMISSION_DENIED", "Dış yazma akışlarını yalnız sahip veya yönetici değiştirebilir.", 403);
-        if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
+            return ServiceResult<StagedSyncPolicy>.Fail("PERMISSION_DENIED", "Dış yazma akışlarını yalnız sahip veya yönetici değiştirebilir.", 403);
+        if (normalized == "PRODUCTS") return ServiceResult<StagedSyncPolicy>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<StagedSyncPolicy>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
         var minimumInterval = MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? 0 : 30;
         var maximumInterval = MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
-        if (!command.ResetToDefault && (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600)) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken); if (connection is null) return NotFound<SyncPolicyView>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<SyncPolicyView>();
-        if (normalized == MarketplaceExternalWritePolicies.Manual && connection.PlatformCode != "PTTAVM") return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
+        if (!command.ResetToDefault && (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600)) return Invalid<StagedSyncPolicy>("interval", MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");
+        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken); if (connection is null) return NotFound<StagedSyncPolicy>(); if (!ActiveIntegrationScope.Contains(connection.PlatformCode)) return Deferred<StagedSyncPolicy>();
+        if (normalized == MarketplaceExternalWritePolicies.Manual && connection.PlatformCode != "PTTAVM") return Invalid<StagedSyncPolicy>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
         if (command.Enabled && MarketplaceSyncPolicyRules.RequiresExternalWrites(normalized) && !WritesEnabled(connection.SettingsJson))
-            return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
+            return ServiceResult<StagedSyncPolicy>.Fail("EXTERNAL_WRITES_DISABLED", "Dış yazma kapalıyken bu otomatik akış açılamaz.", 422);
         if (command.Enabled && connection.PlatformCode == "HEPSIBURADA")
         {
             var requiredCapability = normalized switch
@@ -707,7 +759,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 _ => null
             };
             if (requiredCapability is not null && !await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, requiredCapability))
-                return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", "Bu pazaryerine yazma açılamadı: bu mağaza için yazmanın pazaryerinin test ortamında doğrulanmış olması gerekir.", 422);
+                return ServiceResult<StagedSyncPolicy>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", "Bu pazaryerine yazma açılamadı: bu mağaza için yazmanın pazaryerinin test ortamında doğrulanmış olması gerekir.", 422);
         }
         var defaults = ScheduledJobProducer.DefaultPolicyValues(configuration, connection.PlatformCode, normalized);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
@@ -717,16 +769,16 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var bounds = SyncCadencePolicy.For(connection.PlatformCode, normalized);
         if (!command.ResetToDefault && bounds is not null && (isNew || policy!.IntervalSeconds != command.IntervalSeconds)
             && (command.IntervalSeconds < bounds.MinimumSeconds || command.IntervalSeconds > bounds.MaximumSeconds))
-            return Invalid<SyncPolicyView>("intervalSeconds", $"Bu akışın sıklığı {CadenceText(bounds.MinimumSeconds)} ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır. {bounds.Basis}");
+            return Invalid<StagedSyncPolicy>("intervalSeconds", $"Bu akışın sıklığı {CadenceText(bounds.MinimumSeconds)} ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır. {bounds.Basis}");
         var idleKind = SyncCadencePolicy.IdleKind(connection.PlatformCode, normalized);
         if (!command.ResetToDefault && command.IdleIntervalSeconds is > 0 and var idle)
         {
-            if (idleKind is null || bounds is null) return Invalid<SyncPolicyView>("idleIntervalSeconds", "Bu akışta seyrekleşme yok.");
+            if (idleKind is null || bounds is null) return Invalid<StagedSyncPolicy>("idleIntervalSeconds", "Bu akışta seyrekleşme yok.");
             if (idle < command.IntervalSeconds || idle > bounds.MaximumSeconds)
-                return Invalid<SyncPolicyView>("idleIntervalSeconds", $"Seyrek sıklık, akışın sıklığı ({CadenceText(command.IntervalSeconds)}) ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır.");
+                return Invalid<StagedSyncPolicy>("idleIntervalSeconds", $"Seyrek sıklık, akışın sıklığı ({CadenceText(command.IntervalSeconds)}) ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır.");
         }
-        if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
-        else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Senkronizasyon ayarının sürümü gönderilmedi; sayfayı yenileyip yeniden deneyin.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
+        if (policy is null) { if (expectedVersion is not null) return NotFound<StagedSyncPolicy>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
+        else { if (expectedVersion is null) return ServiceResult<StagedSyncPolicy>.Fail("PRECONDITION_REQUIRED", "Senkronizasyon ayarının sürümü gönderilmedi; sayfayı yenileyip yeniden deneyin.", 428); if (policy.Version != expectedVersion) return Precondition<StagedSyncPolicy>(policy.Version); policy.Version++; }
         // Only a save that changes the cadence makes the policy the user's own (the scheduler then never upgrades it
         // to a newer default); a reset puts the default back and lets later defaults reach it again.
         var saved = command.ResetToDefault && defaults is { } reset ? reset : (command.IntervalSeconds, command.OverlapSeconds, command.JitterSeconds);
@@ -740,15 +792,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         }
         var switchedOn = command.Enabled && (isNew || !policy.Enabled);
         policy.IntervalSeconds = saved.Item1; policy.OverlapSeconds = saved.Item2; policy.JitterSeconds = saved.Item3; policy.Enabled = command.Enabled;
-        // B: an automatic price or stock write switched on never sends what changed while it was off; every offer of
-        // the connection counts as sent at its current values, committed with the switch.
-        if (switchedOn && (normalized is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock))
-            await AutomaticPriceStockWrites.MarkCurrentValuesSentAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        var now = timeProvider.GetUtcNow();
-        var webhookHealthy = idleKind is SyncCadencePolicy.IdleWebhook or SyncCadencePolicy.IdleReturns && await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
-        var inputs = await CadenceInputsAsync(tenantId, id, connection.PlatformCode, connection.SettingsJson, [normalized], webhookHealthy, cancellationToken);
-        return ServiceResult<SyncPolicyView>.Ok(Map(policy) with { Cadence = CadenceView(policy, connection.PlatformCode, connection.Environment, inputs, now) });
+        return ServiceResult<StagedSyncPolicy>.Ok(new(policy, connection, switchedOn, idleKind));
     }
 
     // What the scheduler looks at besides the policy: notification health, the last question, open returns and the

@@ -1138,6 +1138,10 @@ public sealed record SyncCadenceView(
 // default changes reach the policy again. Null idle fields keep what the policy has; an idle interval of 0 puts the
 // application's back.
 public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, bool ResetToDefault = false, bool? IdleBackoffEnabled = null, int? IdleIntervalSeconds = null);
+// The external write switches of one connection changed together (the automatic price/stock pair): each policy with
+// the version the panel holds; all change or none does.
+public sealed record UpdateExternalWriteGroupCommand(bool Enabled, IReadOnlyList<ExternalWriteGroupPolicy> Policies);
+public sealed record ExternalWriteGroupPolicy(string ResourceType, long Version);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
 
@@ -1314,6 +1318,7 @@ public interface IMarketplaceConnectionService
     Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true);
+    Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> UpdateExternalWriteGroupAsync(Guid tenantId, Guid id, UpdateExternalWriteGroupCommand command, CancellationToken cancellationToken, bool elevated = true);
     Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<WebhookSubscriptionView>> RevokeWebhookAsync(Guid tenantId, Guid id, Guid subscriptionId, CancellationToken cancellationToken);
 }

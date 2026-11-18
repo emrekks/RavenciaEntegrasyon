@@ -99,6 +99,15 @@ public static partial class MarketplaceEndpoints
             if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
             return Result(result, value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
         }).Produces<SyncPolicyView>().IfMatch(required: false).Idempotent(WriteReasons.Replaces);
+        // The automatic price/stock pair switched as one: both policies' versions are checked and both saved in one
+        // transaction (two parallel PUTs left a pair half open on 18 Nov). The single-policy PUT above stays for older panels.
+        api.MapPut("/connections/{id:guid}/external-write-group", async (Guid id, UpdateExternalWriteGroupCommand command, HttpContext http, IMarketplaceConnectionService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var result = await service.UpdateExternalWriteGroupAsync(tenant.TenantId, id, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
+            if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
+            return Result(result, Results.Ok);
+        }).RequireGate(ApiGate.Elevated).Produces<IReadOnlyList<SyncPolicyView>>().Idempotent(WriteReasons.Replaces);
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant

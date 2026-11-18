@@ -18,6 +18,7 @@ import { webhookSetupText, type WebhookSetup } from '../webhook-setup'
 import { instantNotificationsQueryKey, instantNotificationStateLabel, routeOnlyWebhookMessage, type InstantNotificationStatus } from '../instant-notification-status'
 import { RrModal, titleTr } from '../../../shared/ui/rr-components'
 import { externalWriteEvidenceState, externalWriteGroupState } from '../external-write-group-state'
+import { saveExternalWriteGroup as saveExternalWriteGroupRequest } from '../external-write-group-save'
 import { lockPageScroll } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, failureNotice, inferNotificationTarget, notificationError, notificationPlatformName } from '../../../shared/notifications'
 import { isOrderMarketplacePlatform, supportsSyncPolicy, supportsSyncPolicyManagement, syncIntervalText, syncPolicyIntervalChoices } from '../marketplace-platform-support'
@@ -627,7 +628,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
      onError: reason => setFeedback(failureNotice(reason, 'Akış başlatılamadı.'))
    })
    const saveFlowGroup = useMutation({ mutationFn: (request: { policies: SyncPolicy[]; enabled: boolean; label: string }) => Promise.all(request.policies.map(policy => hubApi<SyncPolicy>('/connections/' + id + '/sync-policies/' + policy.resourceType, { method: 'PUT', headers: { 'If-Match': '"v' + policy.version + '"' }, body: JSON.stringify({ intervalSeconds: policy.intervalSeconds, overlapSeconds: policy.overlapSeconds, jitterSeconds: policy.jitterSeconds, enabled: request.enabled }) }))), onSuccess: async (_, request) => { setFeedback({ kind: 'success', message: `${request.label} ${request.enabled ? 'açıldı' : 'kapatıldı'}.` }); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.syncPolicies(id) }), invalidatePriceStockMonitor()]) }, onError: async reason => { setFeedback(failureNotice(reason, 'Akışlar güncellenemedi.')); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.syncPolicies(id) }), invalidatePriceStockMonitor()]) } })
-   const saveExternalWriteGroup = useMutation({ mutationFn: (request: { policies: SyncPolicy[]; enabled: boolean }) => Promise.all(request.policies.map(policy => hubApi<SyncPolicy>('/connections/' + id + '/sync-policies/' + policy.resourceType, { method: 'PUT', headers: { 'If-Match': '"v' + policy.version + '"' }, body: JSON.stringify({ intervalSeconds: policy.intervalSeconds, overlapSeconds: policy.overlapSeconds, jitterSeconds: policy.jitterSeconds, enabled: request.enabled }) }))), onSuccess: async (_, request) => { setFeedback({ kind: 'success', message: `${connection.data?.displayName ?? 'Entegrasyon'} için dış yazma grubu ${request.enabled ? 'açıldı' : 'kapatıldı'}.`, details: [{ label: 'Entegrasyon', value: `${connection.data?.platformCode ?? ''} · ${connection.data?.displayName ?? id}` }, { label: 'Grup', value: request.policies.map(policy => policy.resourceType).join(', ') }], target: { href: `/integrations/${id}`, label: 'Entegrasyona Git' } }); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.syncPolicies(id) }), invalidatePriceStockMonitor()]) }, onError: reason => setFeedback(failureNotice(reason, 'Dış yazma grubu güncellenemedi.')) })
+   const saveExternalWriteGroup = useMutation({ mutationFn: (request: { policies: SyncPolicy[]; enabled: boolean }) => saveExternalWriteGroupRequest(id, request.policies, request.enabled), onSuccess: async (_, request) => { setFeedback({ kind: 'success', message: `${connection.data?.displayName ?? 'Entegrasyon'} için dış yazma grubu ${request.enabled ? 'açıldı' : 'kapatıldı'}.`, details: [{ label: 'Entegrasyon', value: `${connection.data?.platformCode ?? ''} · ${connection.data?.displayName ?? id}` }, { label: 'Grup', value: request.policies.map(policy => policy.resourceType).join(', ') }], target: { href: `/integrations/${id}`, label: 'Entegrasyona Git' } }); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.syncPolicies(id) }), invalidatePriceStockMonitor()]) }, onError: async reason => { setFeedback(failureNotice(reason, 'Dış yazma grubu güncellenemedi.')); await Promise.all([client.invalidateQueries({ queryKey: queryKeys.syncPolicies(id) }), invalidatePriceStockMonitor()]) } })
   // Saving credentials has its own pending state (the test and other actions keep theirs). The save bumps the
   // connection's version, so both the card list and this connection are re-read; otherwise the next change on the card
   // would send the old version and get 412 (W10). The secret fields are cleared once the server took them.
@@ -650,6 +651,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
   // "Kapalı" switch shown first).
   const [externalWritesEnabled, setExternalWritesEnabled] = useState(() => connection.data?.externalWritesEnabled ?? false)
   const [confirm, confirmDialog] = useConfirmDialog()
+  const externalWriteGroupBusy = useRef(false)
    const [displayName, setDisplayName] = useState(() => connection.data?.displayName ?? '')
   const [settingsSection, setSettingsSection] = useState('genel')
   // Phones: the summary above the tabs is folded to one row until it is opened.
@@ -749,12 +751,22 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
     saveExternalWrites.mutate(enabled)
   }
   // Owner decision B: switching the automatic price/stock writes on never sends what changed while they were off.
+  // One switch at a time, from the first click until the save answers (its confirmation included): a second click or
+  // change event never starts a second save with the same versions. The versions are the latest the page read, taken
+  // after the confirmation, so a refresh while it was open does not send a stale one.
   const toggleExternalWriteGroup = async (groupKey: string, policies: SyncPolicy[], enabled: boolean) => {
-    if (enabled && groupKey === 'automatic-external-writes') {
-      const accepted = await confirm({ title: 'Otomatik Fiyat-Stok Gönderimi Açılsın mı?', message: automaticWritesBaselineMessage(externalWriteTo), confirmLabel: 'Aç ve Sonrakileri Gönder' })
-      if (!accepted) return
+    if (externalWriteGroupBusy.current) return
+    externalWriteGroupBusy.current = true
+    try {
+      if (enabled && groupKey === 'automatic-external-writes') {
+        const accepted = await confirm({ title: 'Otomatik Fiyat-Stok Gönderimi Açılsın mı?', message: automaticWritesBaselineMessage(externalWriteTo), confirmLabel: 'Aç ve Sonrakileri Gönder' })
+        if (!accepted) return
+      }
+      const latest = client.getQueryData<SyncPolicy[]>(queryKeys.syncPolicies(id))
+      await saveExternalWriteGroup.mutateAsync({ policies: policies.map(policy => latest?.find(value => value.resourceType === policy.resourceType) ?? policy), enabled }).catch(() => undefined)
+    } finally {
+      externalWriteGroupBusy.current = false
     }
-    saveExternalWriteGroup.mutate({ policies, enabled })
   }
   const renderExternalWriteGroup = (externalGroup: typeof externalWriteGroups[number]) => {
     const { policies, evidence, state } = externalWriteGroupStatus(externalGroup)

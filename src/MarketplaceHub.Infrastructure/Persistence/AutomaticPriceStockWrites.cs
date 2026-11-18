@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -47,6 +48,31 @@ internal static class AutomaticPriceStockWrites
 
     public static async Task<bool> IsOpenAsync(AppDbContext db, Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         (await OpenConnectionIdsAsync(db, tenantId, [connectionId], cancellationToken)).Contains(connectionId);
+
+    public static bool IsAutomaticWritePolicy(string resourceType) =>
+        resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock;
+
+    // Saves the caller's changes, with the baseline of B taken over the connection's offers when markBaseline is set.
+    // The offers carry a concurrency token, and anything else saving them at the same moment (the other switch of the
+    // pair from an older panel, a send, an import) made the whole save fail with CONCURRENCY_CONFLICT (18 Nov). An offer
+    // conflict is not the user's: the offers are read again and the baseline taken again, a few times; a conflict on
+    // anything else (the policy itself) still fails, so a stale If-Match never slips through.
+    public static async Task SaveWithBaselineAsync(AppDbContext db, Guid tenantId, Guid connectionId, string platformCode, bool markBaseline, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            if (markBaseline) await MarkCurrentValuesSentAsync(db, tenantId, connectionId, platformCode, cancellationToken);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                return;
+            }
+            catch (DbUpdateConcurrencyException conflict) when (markBaseline && attempt < 3 && conflict.Entries.Count > 0 && conflict.Entries.All(entry => entry.Entity is ChannelOffer))
+            {
+                foreach (var entry in db.ChangeTracker.Entries<ChannelOffer>().ToList()) entry.State = EntityState.Detached;
+            }
+        }
+    }
 
     // B: every offer of the connection counts as sent at its current values (the price mark each platform's build
     // computes and the variant's current stock version), so the changes made while the writes were off are never sent;
