@@ -26,25 +26,24 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
 - Token answer rules since the 18 Nov review (no official source; our own conservative reading): a 200 HTML page or
   `[]` is the same passing remote error, and so is the token service's own 5xx (`PAZARAMA_TOKEN_REMOTE_ERROR`, a token
   code); `success:false` with the busy words (`SaysTryLater`, as the order service says them) is a passing remote
-  error, not a refused key; a refused key is only OAuth `invalid_client` / `unauthorized_client`, 401/403, or
-  `success:false` that names the key as a phrase (client id, client secret, istemci kimliği, api key, api anahtarı,
-  kimlik bilgisi, kullanıcı adı, şifre, parola, secret, credential) with a refusal (geçersiz, hatalı, yanlış, invalid,
-  wrong, bad, reddedildi...), or says yetkisiz / unauthorized; Turkish İ/ı matched. A lone "client", "istemci" or
-  "anahtar" ("İstemci isteği hatalı biçimde", "Anahtar kelime bulunamadı"), "Access denied" / "Erişim reddedildi",
-  "Oturum bilgileriniz alınamadı" and a 400 with no body stay `PAZARAMA_TOKEN_INVALID` (unknown). A held token failure
-  counts from when it was stored, so a clock set back does not keep it.
-- Open-order status scans (`PAZARAMA_ORDER_STATUS_SYNC` and the other marketplaces' status scans; an answer is a read or
-  a "not found"), `OpenOrderReadTally`:
-  A. no answer, every failure token / session / sign-in / network / quota (a `*_TOKEN_*` contract code makes it a
-     manual review): the job fails with that error; position and watermark stay.
-  B. no answer, 5xx only from two requests up (a batch that always answers 5xx cannot be told from a 5xx outage): the
-     run is unread, ended blocked in one attempt (no retry chain, no hold on the connection, closed by the next
-     successful run); last success and watermark stay and the failure streak grows, so a real outage warns after
-     three scheduled runs; the position moves to the next batch, so such a batch never holds the orders behind it.
-  C/D. at least one answer, or one request with one 5xx, or anything else: a success whose label says
-     "· N sipariş okunamadı" (not counted in Okunan or Hatalı).
-  The cursor keeps the text it always had (no prefix). Live 17 Nov: the scan ended SUCCEEDED every two minutes while
-  no token could be had.
+  error, not a refused key. A refused key is only OAuth `invalid_client` / `unauthorized_client`, 401/403, or a
+  `success:false` that plainly says so: one clause names the key as a phrase (client id, client secret, istemci
+  kimliği, api key, api anahtarı, kimlik bilgisi, kullanıcı adı, şifre, parola, secret, credential) and refuses it
+  (geçersiz, hatalı, yanlış, invalid, wrong, incorrect, reddedildi, eşleşmiyor), or the text says "bad credentials",
+  "yetkisiz" or "unauthorized" (Turkish İ/ı matched). A text naming a service fault (servis, service, gateway,
+  unreachable, ulaşılamıyor, zaman aşımı, timeout, in progress, yakında) is never a refused key. Everything else
+  ("Access denied", "Erişim reddedildi", a lone "client"/"anahtar", "Oturum bilgileriniz alınamadı", a 400 with no
+  body) stays `PAZARAMA_TOKEN_INVALID` (unknown): a wrong "refused" holds the connection, a wrong "unknown" only waits
+  for a review. A held token failure counts from when it was stored, so a clock set back does not keep it.
+- Open-order status scans (`PAZARAMA_ORDER_STATUS_SYNC` and the other marketplaces' status scans), `OpenOrderReadTally`:
+  rule A only. A run that got no answer (an answer is a read or a "not found"), every failure the connection's (token
+  or session code, a refused sign-in, the network, a quota), fails with that error (retry, hold or, for
+  `PAZARAMA_TOKEN_INVALID`, manual review); its position and watermark stay. This is the 17 Nov live case: the scan
+  ended SUCCEEDED every two minutes while no token could be had. Every other run goes on exactly as before (position,
+  watermark, older-pass stamp, last success), with "· N sipariş okunamadı" in its label.
+  **Known limit:** while the order service answers 5xx only (however many requests), the scan still looks successful;
+  only the label's count shows the orders not read. Telling a 5xx outage from orders that always answer 5xx was tried
+  and dropped (review of 18 Nov).
 
 ## Limits
 - Price/stock and product create: documented 10 s between requests per seller; code keeps 12.5 s, price and stock

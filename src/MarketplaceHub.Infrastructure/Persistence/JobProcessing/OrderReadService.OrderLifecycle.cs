@@ -31,20 +31,15 @@ internal sealed partial class OrderReadService
         packages.Where(package => package.TenantId == tenantId
             && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
 
-    // OpenOrderReadTally's rules A and B. A (the connection's failure): the position goes back to where the run found it
-    // (startOpaque), the issues it recorded are kept, and the job fails with the first error. B (unread): the position
-    // moves on (nextOpaque) and the job ends blocked in one attempt; in both the watermark and the last success stay
-    // (the processor records a failed run). C and D: the scan goes on as a success.
-    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, string? nextOpaque, CancellationToken cancellationToken)
+    // OpenOrderReadTally's rule A (the connection's failure): the position goes back to where the run found it
+    // (startOpaque), the issues the run recorded are kept, and the job fails with the first error; the processor records
+    // a failed run, so the watermark and the last success stay. Any other run goes on exactly as before.
+    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, CancellationToken cancellationToken)
     {
-        var verdict = tally.Verdict();
-        if (verdict == OpenOrderScanVerdict.Proceed) return;
-        cursor.OpaqueCursor = verdict == OpenOrderScanVerdict.ConnectionFailed ? startOpaque : nextOpaque;
-        if (verdict == OpenOrderScanVerdict.Unread) cursor.Version++;
+        if (tally.ConnectionFailure() is not { } failure) return;
+        cursor.OpaqueCursor = startOpaque;
         await db.SaveChangesAsync(cancellationToken);
-        throw verdict == OpenOrderScanVerdict.ConnectionFailed
-            ? JobProcessingException.FromAdapter(tally.FirstFailure!)
-            : new JobProcessingException(tally.UnreadResult());
+        throw JobProcessingException.FromAdapter(failure);
     }
 
     internal async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -190,7 +185,7 @@ internal sealed partial class OrderReadService
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
             if (!isHepsiburada) await ResolveIssue(tenantId, OpenOrderMissingIssueKey(connectionId, externalOrderId), cancellationToken);
         }
-        await FailWhenNothingRead(tally, cursor, startPosition, cursor.OpaqueCursor, cancellationToken);
+        await FailWhenNothingRead(tally, cursor, startPosition, cancellationToken);
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
         if (isHepsiburada)
             await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
@@ -270,8 +265,8 @@ internal sealed partial class OrderReadService
         // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
         async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
         {
-            // A slice that heard nothing back (OpenOrderReadTally): A keeps the stored position, B moves to the next one.
-            await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, TrendyolOpenScanCursor(next), cancellationToken);
+            // A slice whose failure is the connection's (OpenOrderReadTally) keeps the stored position.
+            await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
             if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
             cursor.OpaqueCursor = TrendyolOpenScanCursor(next);
             cursor.Version++;

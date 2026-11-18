@@ -208,8 +208,8 @@ public sealed class PazaramaTokenRecoveryTests
         Assert.Equal(AdapterErrorClass.Remote5xx, token.Error.Class);
     }
 
-    // The review's cases: a refusal word, or a lone "client" / "istemci" / "anahtar", is no refused key; the key named
-    // as a phrase and refused, or "yetkisiz" / "unauthorized", is. "Access denied" stays unknown (the safe side).
+    // The review's 25 cases. A refused key only when a clause names the key and refuses it, or the text says "bad
+    // credentials" / "yetkisiz" / "unauthorized", and never when it names a service fault. In doubt, unknown.
     [Theory]
     [InlineData("Sistem hatalı çalışıyor", false)]
     [InlineData("Invalid request format", false)]
@@ -220,6 +220,15 @@ public sealed class PazaramaTokenRecoveryTests
     [InlineData("Geçersiz anahtar", false)]
     [InlineData("Access denied", false)]
     [InlineData("Erişim reddedildi", false)]
+    [InlineData("Bad request", false)]
+    [InlineData("Bad gateway, credential service unreachable", false)]
+    [InlineData("Kimlik bilgisi doğrulama servisi hatalı yanıt verdi", false)]
+    [InlineData("Secret rotation in progress, invalid cache entries purged", false)]
+    [InlineData("Şifreniz yakında sona erecek. Süresi dolmuş, geçersiz oturumlar kapatıldı", false)]
+    [InlineData("Credentials expired", false)]
+    // The key named in one clause, a refusal in another: not a refusal of the key.
+    [InlineData("Client id alındı, geçersiz işlem tekrarlanmayacak", false)]
+    [InlineData("Kimlik doğrulama zaman aşımı; client id geçersiz olabilir", false)]
     [InlineData("GEÇERSİZ İSTEMCİ KİMLİĞİ", true)]
     [InlineData("YETKİSİZ", true)]
     [InlineData("Unauthorized", true)]
@@ -228,6 +237,7 @@ public sealed class PazaramaTokenRecoveryTests
     [InlineData("Kullanıcı adı veya şifre hatalı", true)]
     [InlineData("Geçersiz API anahtarı", true)]
     [InlineData("INVALID CLIENT ID", true)]
+    [InlineData("Client secret eşleşmiyor", true)]
     public void OnlyARefusalThatNamesTheKeyIsARefusedKey(string message, bool refused)
     {
         var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, $$"""{"success":false,"userMessage":"{{message}}"}""");

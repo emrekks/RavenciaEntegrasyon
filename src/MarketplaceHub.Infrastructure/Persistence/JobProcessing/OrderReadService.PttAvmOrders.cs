@@ -78,7 +78,7 @@ internal sealed partial class OrderReadService
             tally.Answered();
             received.Add(result.Value!);
         }
-        await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cursor.OpaqueCursor, cancellationToken);
+        await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
         if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
         return true;
     }

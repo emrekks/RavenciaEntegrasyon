@@ -4,7 +4,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// OpenOrderReadTally's rules A–D.
+// OpenOrderReadTally: rule A only; everything else goes on as before.
 public sealed class OpenOrderReadTallyTests
 {
     private static AdapterError Error(AdapterErrorClass @class, string code) => new(@class, code, code, null, null, null);
@@ -16,7 +16,7 @@ public sealed class OpenOrderReadTallyTests
         return tally;
     }
 
-    // A: the connection's failure, one request is enough; kinds may differ (a token error then a network one).
+    // Rule A: no answer and every failure the connection's; one request is enough and the kinds may differ.
     [Theory]
     [InlineData(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR")]
     [InlineData(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED")]
@@ -25,52 +25,45 @@ public sealed class OpenOrderReadTallyTests
     [InlineData(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID")]
     public void RuleA_AConnectionLevelFailureFailsTheJob(AdapterErrorClass @class, string code)
     {
-        var tally = Failing(Error(@class, code), Error(AdapterErrorClass.TransientNetwork, "PAZARAMA_NETWORK_ERROR"));
-
-        Assert.Equal(OpenOrderScanVerdict.ConnectionFailed, tally.Verdict());
-        Assert.Equal(code, tally.FirstFailure!.Code);
+        Assert.Equal(code, Failing(Error(@class, code)).ConnectionFailure()!.Code);
+        Assert.Equal(code, Failing(Error(@class, code), Error(AdapterErrorClass.TransientNetwork, "PAZARAMA_NETWORK_ERROR")).ConnectionFailure()!.Code);
     }
 
     [Fact]
     public void RuleA_AnUnclearTokenAnswerOnEveryOrderIsAManualReview()
     {
         var token = Error(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID");
-        var tally = Failing(token, token, token);
 
-        Assert.Equal(JobCompletionKind.ManualReview, JobExecutionResult.FromAdapterError(tally.FirstFailure!).Kind);
+        Assert.Equal(JobCompletionKind.ManualReview, JobExecutionResult.FromAdapterError(Failing(token, token, token).ConnectionFailure()!).Kind);
     }
 
-    // B: 5xx only, from two requests up: unread, ended blocked in one attempt (no retry chain, no hold on the connection).
+    // Everything else goes on: server errors however many, one answer, a mix with a non-connection error, an order's own
+    // contract error, nothing asked.
     [Fact]
-    public void RuleB_ServerErrorsFromTwoRequestsAreAnUnreadRun()
+    public void AnythingElseGoesOn()
     {
-        var error = Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR");
-        var tally = Failing(error, error, Error(AdapterErrorClass.Remote5xx, "N11_OTHER_5XX"));
-
-        Assert.Equal(OpenOrderScanVerdict.Unread, tally.Verdict());
-        var result = tally.UnreadResult();
-        Assert.Equal(JobCompletionKind.Blocked, result.Kind);
-        Assert.Equal("N11_REMOTE_ERROR", result.ErrorCode);
-        Assert.False(result.BackOffConnection);
-        Assert.Null(result.RetryAfter);
-        Assert.Contains("3 istek", result.ErrorSummary);
-    }
-
-    // C: one answer makes it a success. D: one request with one 5xx, a mix of kinds, an order's own contract error.
-    [Fact]
-    public void RulesCAndD_AreASuccess()
-    {
-        var answered = Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR"), Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR"));
+        var serverError = Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR");
+        var answered = Failing(Error(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR"), Error(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR"));
         answered.Answered();
         var contract = Error(AdapterErrorClass.ContractViolation, "PAZARAMA_ORDER_CONTRACT_INVALID");
 
-        Assert.Equal(OpenOrderScanVerdict.Proceed, answered.Verdict());
+        Assert.Null(Failing(serverError).ConnectionFailure());
+        Assert.Null(Failing(serverError, serverError, serverError).ConnectionFailure());
+        Assert.Null(answered.ConnectionFailure());
         Assert.Equal(2, answered.Failures);
-        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR")).Verdict());
-        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR"), Error(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR")).Verdict());
-        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(contract, contract).Verdict());
-        Assert.Equal(OpenOrderScanVerdict.Proceed, new OpenOrderReadTally().Verdict());
+        Assert.Null(Failing(Error(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR"), serverError).ConnectionFailure());
+        Assert.Null(Failing(contract, contract).ConnectionFailure());
+        Assert.Null(new OpenOrderReadTally().ConnectionFailure());
     }
+
+    // Every *CREDENTIAL* code the adapters raise is an Authentication error, so the class alone covers them.
+    [Theory]
+    [InlineData("PAZARAMA_CREDENTIAL_INVALID")]
+    [InlineData("N11_CREDENTIAL_INVALID")]
+    [InlineData("SHOPIFY_CREDENTIAL_INVALID")]
+    [InlineData("HEPSIBURADA_QUESTION_CREDENTIALS")]
+    public void CredentialCodesAreAuthenticationErrors(string code) =>
+        Assert.True(OpenOrderReadTally.IsConnectionLevel(Error(AdapterErrorClass.Authentication, code)));
 
     [Fact]
     public void ThePartlyFailedNoteIsOnlyOnOpenOrderScans()

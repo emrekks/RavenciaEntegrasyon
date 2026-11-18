@@ -7,9 +7,10 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // 17 Nov 2026: Pazarama's token service answered empty for every request, yet the order status scan ended SUCCEEDED every
-// two minutes and moved its ORDER_LIFECYCLE watermark and last success. OpenOrderReadTally's rules: A, the connection's
-// failure, fails the job and keeps the position; B, 5xx only from two requests up, ends the run unread (blocked, no last
-// success, the failure streak grows) and moves the position on; C and D are a success naming the orders not read.
+// two minutes and moved its ORDER_LIFECYCLE watermark and last success. Rule A (OpenOrderReadTally): an open-order scan
+// that got no answer, every failure the connection's (token or session, sign-in, network, quota), fails with that error
+// and keeps its position and watermark. Server errors only and mixed runs go on exactly as before; their label names
+// the orders not read (the tests below pin that behaviour, position, older-pass stamp and job result as before).
 public sealed partial class PostgreSqlTenantIsolationTests
 {
     [PostgreSqlTheory]
@@ -17,7 +18,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
     [InlineData("PAZARAMA", MarketplaceJobTypes.PazaramaOrderStatusSync)]
     [InlineData("N11", MarketplaceJobTypes.OrderStatusSync)]
     [InlineData("TRENDYOL", MarketplaceJobTypes.OrderStatusSync)]
-    public async Task OpenOrderScanWithNoTokenFailsAndKeepsItsCursor(string platform, string jobType)
+    public async Task RuleA_OpenOrderScanWithNoTokenFailsAndKeepsItsCursor(string platform, string jobType)
     {
         var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync($"tally-none-{platform.ToLowerInvariant()}", platform, 3);
         var port = new TallyOrderPort(_ => Remote("PAZARAMA_TOKEN_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
@@ -37,9 +38,9 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Ö1: an unclear token answer (PAZARAMA_TOKEN_INVALID, a contract code) on every order is a manual review, not a success.
+    // An unclear token answer (PAZARAMA_TOKEN_INVALID, a contract code) on every order is a manual review, not a success.
     [PostgreSqlFact]
-    public async Task OpenOrderScanWithAnUnclearTokenAnswerIsAManualReview()
+    public async Task RuleA_OpenOrderScanWithAnUnclearTokenAnswerIsAManualReview()
     {
         var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-token-invalid", "PAZARAMA", 3);
         var port = new TallyOrderPort(_ => Remote("PAZARAMA_TOKEN_INVALID", AdapterErrorClass.ContractViolation));
@@ -54,25 +55,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Per-order contract errors (single broken records) keep the scan a success.
     [PostgreSqlFact]
-    public async Task OpenOrderScanWithPerOrderContractErrorsSucceeds()
-    {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-contract", "PAZARAMA", 3);
-        var port = new TallyOrderPort(_ => Remote("PAZARAMA_ORDER_CONTRACT_INVALID", AdapterErrorClass.ContractViolation));
-        try
-        {
-            var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PazaramaOrderStatusSync, port, jobId);
-
-            Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
-            await using var check = fixture.CreateContext();
-            Assert.True((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE")).LastModifiedWatermark > watermark);
-        }
-        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
-    }
-
-    [PostgreSqlFact]
-    public async Task OpenOrderScanRefusedSignInIsHeldNotSucceeded()
+    public async Task RuleA_OpenOrderScanRefusedSignInIsHeldNotSucceeded()
     {
         var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-auth", "SHOPIFY", 2);
         var port = new TallyOrderPort(_ => Remote("SHOPIFY_CREDENTIALS_REJECTED", AdapterErrorClass.Authentication));
@@ -86,8 +70,91 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // K1: a partly failed scan succeeds, names the orders it could not ask in its label, and keeps them out of Okunan and
-    // out of the records' Hatalı.
+    // A real network outage keeps failing however many runs it lasts, the watermark in place.
+    [PostgreSqlFact]
+    public async Task RuleA_ANetworkOutageKeepsFailingWithTheWatermarkInPlace()
+    {
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-outage", "SHOPIFY", 3);
+        var port = new TallyOrderPort(_ => Remote("SHOPIFY_NETWORK_ERROR", AdapterErrorClass.TransientNetwork));
+        try
+        {
+            for (var run = 0; run < 4; run++)
+                Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
+            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // With a full batch the scan moves its position before asking; a connection failure puts it back.
+    [PostgreSqlFact]
+    public async Task RuleA_AConnectionFailurePutsAFullBatchsPositionBack()
+    {
+        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-revert", "SHOPIFY", 27);
+        var port = new TallyOrderPort(_ => Remote("SHOPIFY_NETWORK_ERROR", AdapterErrorClass.TransientNetwork));
+        try
+        {
+            Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
+            Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
+            port.Requested.Clear();
+            await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId);
+            Assert.Equal("tally-revert-00", port.Requested[0]);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // Rule A on PttAVM's older-order loop (open orders older than its windows).
+    [PostgreSqlFact]
+    public async Task RuleA_PttAvmOlderOrdersWithoutNetworkFailTheScan()
+    {
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-ptt", "PTTAVM", 3, orderedAt: fixture.Now.AddYears(-1));
+        var port = new TallyOrderPort(_ => Remote("PTTAVM_NETWORK_ERROR", AdapterErrorClass.TransientNetwork));
+        try
+        {
+            Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PttAvmOrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(3, port.Calls);
+            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // K3: Hepsiburada's cancelled-order list, read, is an answer: its orders' network errors do not fail the scan.
+    [PostgreSqlFact]
+    public async Task HepsiburadaCancelledListReadCountsAsAnAnswer()
+    {
+        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-hb", "HEPSIBURADA", 3);
+        await using (var seedDb = fixture.CreateContext())
+        {
+            // The package status reconciliation has just run, so it does not run here.
+            seedDb.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = HepsiburadaPackageStatusReconciliationPolicy.CursorResourceType, LastSuccessAt = fixture.Now, Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+        var port = new TallyOrderPort(_ => Remote("HEPSIBURADA_NETWORK_ERROR", AdapterErrorClass.TransientNetwork));
+        var cancelled = new EmptyCancelledListPort();
+        try
+        {
+            var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaOrderStatusSync, port, jobId, cancelled);
+
+            Assert.True(cancelled.Calls > 0);
+            Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // Per-order contract errors (single broken records) keep the scan a success.
+    [PostgreSqlFact]
+    public async Task OpenOrderScanWithPerOrderContractErrorsSucceeds()
+    {
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-contract", "PAZARAMA", 3);
+        var port = new TallyOrderPort(_ => Remote("PAZARAMA_ORDER_CONTRACT_INVALID", AdapterErrorClass.ContractViolation));
+        try
+        {
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PazaramaOrderStatusSync, port, jobId)).Kind);
+            await AssertLifecycleMovedAsync(tenant.Id, watermark);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // A partly failed scan succeeds and names the orders it could not ask, out of Okunan and out of the records' Hatalı.
     [PostgreSqlFact]
     public async Task OpenOrderScanWithOneAnswerSucceedsAndNamesTheUnreadOrders()
     {
@@ -97,13 +164,10 @@ public sealed partial class PostgreSqlTenantIsolationTests
             : Remote("PAZARAMA_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
         try
         {
-            var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PazaramaOrderStatusSync, port, jobId);
-
-            Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PazaramaOrderStatusSync, port, jobId)).Kind);
+            await AssertLifecycleMovedAsync(tenant.Id, watermark);
             await using var check = fixture.CreateContext();
-            var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE");
-            Assert.True(cursor.LastModifiedWatermark > watermark);
-            Assert.Equal(2, cursor.LastFailedCount);
+            Assert.Equal(2, (await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE")).LastFailedCount);
             var job = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId);
             Assert.Contains("2 sipariş okunamadı", job.ProgressLabel);
             Assert.Equal(0, job.ProgressFailed);
@@ -119,128 +183,54 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var port = new TallyOrderPort(_ => Remote("NOT_FOUND", AdapterErrorClass.NotFound));
         try
         {
-            var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId);
-
-            Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
-            await using var check = fixture.CreateContext();
-            Assert.True((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE")).LastModifiedWatermark > watermark);
-            var job = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId);
-            Assert.Equal(0, job.ProgressFailed);
-            Assert.DoesNotContain("okunamadı", job.ProgressLabel ?? "");
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
+            await AssertLifecycleMovedAsync(tenant.Id, watermark);
+            Assert.DoesNotContain("okunamadı", await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Rule B, review scenario 1: n11, three open orders always answering the same 5xx, six scheduled runs. No run is a
-    // success, the last success stays, the failure streak reaches the threshold and the owner gets the notice.
+    // Server errors only: as before. n11, three open orders all answering 5xx: a success, watermark and last success move,
+    // the label names the three orders.
     [PostgreSqlFact]
-    public async Task RuleB_A5xxOutageIsNeverASuccessAndWarnsAfterThreeRuns()
+    public async Task ServerErrorsOnly_N11ScanGoesOnAsBefore()
     {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-n11-outage", "N11", 3);
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-n11-5xx", "N11", 3);
         var port = new TallyOrderPort(_ => Remote("N11_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
         try
         {
-            for (var run = 0; run < 6; run++)
-            {
-                var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId);
-                Assert.Equal(JobCompletionKind.Blocked, result.Kind);
-                Assert.Equal("N11_REMOTE_ERROR", result.ErrorCode);
-            }
-            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-            await using var check = fixture.CreateContext();
-            var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE");
-            Assert.Equal(6, cursor.ConsecutiveFailureCount);
-            var notices = await new AttentionNoticeService(check, fixture.TimeProvider).ListAsync(tenant.Id, CancellationToken.None);
-            Assert.Contains(notices, notice => notice.ResourceType == "ORDER_LIFECYCLE" && notice.ConnectionId == connection.Id);
-        }
-        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
-    }
-
-    // Review scenario 2: a 20-second wobble (one run of 5xx, the next answered) warns nobody; the second run is a success.
-    [PostgreSqlFact]
-    public async Task RuleB_AWobbleIsForgottenOnTheNextAnsweredRun()
-    {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-wobble", "N11", 3);
-        var down = true;
-        var port = new TallyOrderPort(_ => down ? Remote("N11_REMOTE_ERROR", AdapterErrorClass.Remote5xx) : Remote("NOT_FOUND", AdapterErrorClass.NotFound));
-        try
-        {
-            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
-            down = false;
             Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
-            await using var check = fixture.CreateContext();
-            var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE");
-            Assert.Equal(0, cursor.ConsecutiveFailureCount);
-            Assert.True(cursor.LastSuccessAt > watermark);
-            Assert.Empty(await new AttentionNoticeService(check, fixture.TimeProvider).ListAsync(tenant.Id, CancellationToken.None));
+            Assert.Equal(3, port.Calls);
+            await AssertLifecycleMovedAsync(tenant.Id, watermark);
+            Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
+            Assert.Contains("3 sipariş okunamadı", await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Rule B, review scenario 3a: 27 open orders, the first 25 always answer 5xx. The run is unread but its position moves
-    // on, in the cursor text the scan always wrote (no prefix: a deploy overlap reads it as before), so the next run asks
-    // the 26th and the 27th and is a success.
+    // Server errors only, 27 open orders: the keyset position moves past the first 25 as before; the next run asks the rest.
     [PostgreSqlFact]
-    public async Task RuleB_TheScanGoesPastABatchThatAlwaysAnswers5xx()
+    public async Task ServerErrorsOnly_TheKeysetPositionMovesAsBefore()
     {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-poison", "SHOPIFY", 27);
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-keyset", "SHOPIFY", 27);
         var port = new TallyOrderPort(id => int.Parse(id[^2..], System.Globalization.CultureInfo.InvariantCulture) < 25
             ? Remote("SHOPIFY_REMOTE_ERROR", AdapterErrorClass.Remote5xx)
             : Remote("NOT_FOUND", AdapterErrorClass.NotFound));
         try
         {
-            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
-            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-            Assert.Equal("after:tally-poison-24", await LifecycleOpaqueCursorAsync(tenant.Id));
-
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
+            await AssertLifecycleMovedAsync(tenant.Id, watermark);
+            Assert.Equal("after:tally-keyset-24", await LifecycleOpaqueCursorAsync(tenant.Id));
             port.Requested.Clear();
             Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
-            Assert.Equal(["tally-poison-25", "tally-poison-26"], port.Requested);
+            Assert.Equal(["tally-keyset-25", "tally-keyset-26"], port.Requested);
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Rule B, review scenario 3b: Trendyol's open-package queue always answers 5xx; the position moves past it in the
-    // scan's own cursor text, and the next run reaches the daily pass over older packages.
+    // One open order that answers 5xx for good: a success each run, as before, with the note.
     [PostgreSqlFact]
-    public async Task RuleB_TrendyolOpenPackageScanGoesPastAQueueThatAlwaysAnswers5xx()
-    {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-ty-poison", "TRENDYOL", 3, storefronts: true);
-        var port = new TallyOrderPort(_ => Remote("TRENDYOL_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
-        try
-        {
-            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
-            Assert.Equal(3, port.Calls);
-            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-            Assert.StartsWith(OrderReadService.TrendyolOpenScanCursorPrefix + "recent:", await LifecycleOpaqueCursorAsync(tenant.Id));
-
-            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
-            Assert.Equal(3, port.Calls);
-            await using var check = fixture.CreateContext();
-            Assert.NotNull((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE_OLDER")).LastSuccessAt);
-            Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
-        }
-        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
-    }
-
-    // Rule B on PttAVM's older-order loop (open orders older than its windows): unread, the last success stays.
-    [PostgreSqlFact]
-    public async Task RuleB_PttAvmOlderOrdersAnswering5xxAreAnUnreadRun()
-    {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-ptt", "PTTAVM", 3, orderedAt: fixture.Now.AddYears(-1));
-        var port = new TallyOrderPort(_ => Remote("PTTAVM_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
-        try
-        {
-            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PttAvmOrderStatusSync, port, jobId)).Kind);
-            Assert.Equal(3, port.Calls);
-            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-        }
-        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
-    }
-
-    // Review scenario 3c: one open order that answers 5xx for good does not make a failing job each run (rule D).
-    [PostgreSqlFact]
-    public async Task RuleD_OneOrderThatAlwaysAnswers5xxDoesNotFailTheScan()
+    public async Task ServerErrorsOnly_OneOrderThatAlwaysAnswers5xxGoesOnAsBefore()
     {
         var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-single", "SHOPIFY", 1);
         var port = new TallyOrderPort(_ => Remote("SHOPIFY_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
@@ -248,63 +238,32 @@ public sealed partial class PostgreSqlTenantIsolationTests
         {
             for (var run = 0; run < 3; run++)
                 Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
-            await using var check = fixture.CreateContext();
-            Assert.Contains("1 sipariş okunamadı", (await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId)).ProgressLabel);
+            Assert.Contains("1 sipariş okunamadı", await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Rule A: a real network outage keeps failing however many runs it lasts, the watermark in place.
-    [PostgreSqlFact]
-    public async Task ARealOutageKeepsFailingWithTheWatermarkInPlace()
+    // Trendyol, server errors only: one request for all packages (one storefront) or one per storefront, recent packages or
+    // the daily pass over older ones. As before: a success, the scan position cleared, the older pass stamped, the
+    // watermark moved; the label names the packages' orders not read.
+    [PostgreSqlTheory]
+    [InlineData(false, false, 1)]
+    [InlineData(true, false, 3)]
+    [InlineData(false, true, 3)]
+    public async Task ServerErrorsOnly_TrendyolScanGoesOnAsBefore(bool storefronts, bool older, int requests)
     {
-        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-outage", "SHOPIFY", 3);
-        var port = new TallyOrderPort(_ => Remote("SHOPIFY_NETWORK_ERROR", AdapterErrorClass.TransientNetwork));
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync($"tally-ty-{storefronts}-{older}".ToLowerInvariant(), "TRENDYOL", 3,
+            storefronts: storefronts, orderedAt: older ? fixture.Now.AddDays(-120) : null);
+        var port = new TallyOrderPort(_ => Remote("TRENDYOL_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
         try
         {
-            for (var run = 0; run < 4; run++)
-                Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
-            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-        }
-        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
-    }
-
-    // K2: with a full batch the scan moves its position before asking; a connection failure puts it back.
-    [PostgreSqlFact]
-    public async Task AConnectionFailurePutsAFullBatchsPositionBack()
-    {
-        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-revert", "SHOPIFY", 27);
-        var port = new TallyOrderPort(_ => Remote("SHOPIFY_NETWORK_ERROR", AdapterErrorClass.TransientNetwork));
-        try
-        {
-            Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(requests, port.Calls);
+            await AssertLifecycleMovedAsync(tenant.Id, watermark);
             Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
-            port.Requested.Clear();
-            await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId);
-            Assert.Equal("tally-revert-00", port.Requested[0]);
-        }
-        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
-    }
-
-    // K3: Hepsiburada's cancelled-order list, read, is an answer: the scan is not failed for its orders' 5xx.
-    [PostgreSqlFact]
-    public async Task HepsiburadaCancelledListReadCountsAsAnAnswer()
-    {
-        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-hb", "HEPSIBURADA", 3);
-        await using (var seedDb = fixture.CreateContext())
-        {
-            // The package status reconciliation has just run, so it does not run here.
-            seedDb.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = HepsiburadaPackageStatusReconciliationPolicy.CursorResourceType, LastSuccessAt = fixture.Now, Version = 1 });
-            await seedDb.SaveChangesAsync();
-        }
-        var port = new TallyOrderPort(_ => Remote("HEPSIBURADA_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
-        var cancelled = new EmptyCancelledListPort();
-        try
-        {
-            var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaOrderStatusSync, port, jobId, cancelled);
-
-            Assert.True(cancelled.Calls > 0);
-            Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+            await using var check = fixture.CreateContext();
+            Assert.NotNull((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE_OLDER")).LastSuccessAt);
+            Assert.Contains($"{requests} sipariş okunamadı", await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
@@ -315,6 +274,21 @@ public sealed partial class PostgreSqlTenantIsolationTests
     {
         await using var check = fixture.CreateContext();
         return (await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ResourceType == "ORDER_LIFECYCLE")).OpaqueCursor;
+    }
+
+    private async Task AssertLifecycleMovedAsync(Guid tenantId, DateTimeOffset watermark)
+    {
+        await using var check = fixture.CreateContext();
+        var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ResourceType == "ORDER_LIFECYCLE");
+        Assert.True(cursor.LastModifiedWatermark > watermark);
+        Assert.True(cursor.LastSuccessAt > watermark);
+        Assert.Equal(0, cursor.ConsecutiveFailureCount);
+    }
+
+    private async Task<string> JobLabelAsync(Guid jobId)
+    {
+        await using var check = fixture.CreateContext();
+        return (await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId)).ProgressLabel ?? "";
     }
 
     private async Task<(Tenant Tenant, PlatformConnection Connection, DateTimeOffset Watermark, Guid JobId)> SeedOpenOrderTallyAsync(string name, string platform, int openOrders, bool storefronts = false, DateTimeOffset? orderedAt = null)

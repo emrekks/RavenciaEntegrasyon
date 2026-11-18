@@ -340,24 +340,31 @@ public sealed partial class PazaramaHttpClient(
         return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", $"Pazarama oturum servisi beklenen token yanıtını vermedi (yanıt alanları: {ShapeOf(body)}).", (int)status, null, null));
     }
 
-    // A success:false token answer is a refused key only when it names the key as a phrase (client id, client secret,
-    // istemci kimliği, api key, api anahtarı, kimlik bilgisi, kullanıcı adı, şifre, parola, secret, credential) and
-    // refuses it (geçersiz, hatalı, yanlış, invalid, wrong, bad, incorrect, reddedildi, eşleşmedi, bulunamadı), or says
-    // yetkisiz / unauthorized. A lone "client", "istemci" or "anahtar" names no key ("İstemci isteği hatalı biçimde",
-    // "Client error, invalid request body", "Anahtar kelime bulunamadı"), and neither does "Access denied" / "erişim
-    // reddedildi": they stay unknown (PAZARAMA_TOKEN_INVALID) instead of holding the connection as a refused key.
+    // A success:false token answer is a refused key only when it plainly says so; in doubt it stays unknown
+    // (PAZARAMA_TOKEN_INVALID), because a wrong "refused" holds the connection while a wrong "unknown" only waits for a
+    // review. It says so when one clause (text between . , ; : ! ? or a line break) names the key as a phrase (client
+    // id, client secret, istemci kimliği, api key, api anahtarı, kimlik bilgi, kullanıcı adı, şifre, parola, secret,
+    // credential) and refuses it (geçersiz, hatalı, yanlış, invalid, wrong, incorrect, reddedildi, eşleşmiyor), or the
+    // text says "bad credentials", "yetkisiz" or "unauthorized". A text that names a service fault anywhere (servis,
+    // service, gateway, unreachable, ulaşılamıyor, zaman aşımı, timeout, in progress, yakında) is never a refused key:
+    // "Bad gateway, credential service unreachable", "Kimlik bilgisi doğrulama servisi hatalı yanıt verdi". A lone
+    // "client", "istemci" or "anahtar", "Access denied" and "Erişim reddedildi" stay unknown too.
     // Matched in Turkish (İ/ı: "GEÇERSİZ İSTEMCİ KİMLİĞİ", "YETKİSİZ") and invariant lower case ("INVALID CLIENT ID").
     private static readonly string[] CredentialPhrases = ["client id", "client_id", "clientid", "client secret", "client_secret", "clientsecret", "istemci kimliği", "istemci kimligi", "istemci id", "istemci anahtarı", "api key", "apikey", "api anahtar", "kimlik bilgi", "credential", "kullanıcı adı", "username", "şifre", "parola", "password", "secret"];
-    private static readonly string[] RefusalWords = ["geçersiz", "hatalı", "yanlış", "invalid", "wrong", "bad", "incorrect", "reddedil", "eşleşme", "bulunamadı"];
-    private static readonly string[] AccessRefusalWords = ["yetkisiz", "unauthorized"];
+    private static readonly string[] RefusalWords = ["geçersiz", "hatalı", "yanlış", "invalid", "wrong", "incorrect", "reddedildi", "eşleşmiyor"];
+    private static readonly string[] PlainRefusals = ["bad credentials", "yetkisiz", "unauthorized"];
+    private static readonly string[] ServiceFaultWords = ["servis", "service", "gateway", "unreachable", "ulaşılamıyor", "zaman aşımı", "timeout", "in progress", "yakında"];
+    private static readonly char[] ClauseBreaks = ['.', ',', ';', ':', '!', '?', '\n', '…'];
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
     internal static bool SaysCredentialsRefused(string? message)
     {
         if (string.IsNullOrWhiteSpace(message)) return false;
         string[] forms = [message.ToLower(Turkish), message.ToLowerInvariant()];
-        bool Has(string[] words) => words.Any(word => forms.Any(form => form.Contains(word, StringComparison.Ordinal)));
-        return Has(AccessRefusalWords) || Has(CredentialPhrases) && Has(RefusalWords);
+        static bool Has(string text, string[] words) => words.Any(word => text.Contains(word, StringComparison.Ordinal));
+        if (forms.Any(form => Has(form, ServiceFaultWords))) return false;
+        if (forms.Any(form => Has(form, PlainRefusals))) return true;
+        return forms.Any(form => form.Split(ClauseBreaks).Any(clause => Has(clause, CredentialPhrases) && Has(clause, RefusalWords)));
     }
 
     private static void ReadToken(JsonElement element, ref string? accessToken, ref TimeSpan expiresIn)
