@@ -1,4 +1,5 @@
 import { Fragment, createContext, useContext, useEffect, useId, useState, type ReactNode } from 'react'
+import { isTouchOnly } from '../../../shared/touch-tips'
 import { CardBackgroundIcon, EmptyState, UiIcon, type CardIconName, type UiIconName } from '../../../shared/components'
 import { ChangePill } from '../../../shared/components/ChangePill'
 import { ViewTabsWithMore } from '../../../shared/view-tabs'
@@ -271,7 +272,7 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
   const hide = () => setOpen(null)
   // On a touch screen a tip opens only from the (i) mark itself (a tap on the card, the label or a figure never opens it); a tap on the mark
   // again, a tap anywhere else, a scroll or Esc closes it, and only one is ever open.
-  const touch = () => typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches === true
+  const touch = isTouchOnly
   useEffect(() => {
     if (!open) return
     const away = (event: Event) => { if (!(event.target instanceof Element) || !event.target.closest('.reports-qmark')) setOpen(null) }
