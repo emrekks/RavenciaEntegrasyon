@@ -27,9 +27,9 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .variant-row-number, .app-shell.stitch-shell main .variant-row-number > b, .app-shell.stitch-shell main .variant-row-number > .variant-row-grip { transition: none; }
 }
-/* The lead column is 46 px: 12 before the badge, 10 after it; the "#" of the head sits over the badge. */
-html body .app-shell.stitch-shell main .product-add-page .variant-table-row > .variant-row-lead { justify-content: flex-start; padding-inline: 12px 10px; }
-html body .app-shell.stitch-shell main .product-add-page .variant-table-head > :first-child { display: grid; place-items: center; padding-inline: 12px 10px; }
+/* The lead column is 40 px: 12 before the badge, then 4 and the option cell's own 6 make 10 up to the status dot; the "#" of the head sits over the badge. */
+html body .app-shell.stitch-shell main .product-add-page .variant-table-row > .variant-row-lead.variant-row-lead.variant-row-lead { justify-content: flex-start; padding-inline: 12px 4px; }
+html body .app-shell.stitch-shell main .product-add-page .variant-table-head > :first-child:first-child:first-child { display: grid; place-items: center; padding-inline: 12px 4px; }
 /* Every head title with its pencil: one pair, 6 px apart, the pencil right after the text (never pushed to the column's end), 16 px icon in a 24 px target, the pair's left edge on the box below. */
 html body .app-shell.stitch-shell main .product-add-page .variant-table-head .variant-table-header-with-action { justify-content: flex-start; gap: 6px; padding-left: 0; margin-left: 0; }
 html body .app-shell.stitch-shell main .product-add-page .variant-table-head .variant-table-header-with-action > span:first-child { flex: 0 0 auto; white-space: nowrap; }
