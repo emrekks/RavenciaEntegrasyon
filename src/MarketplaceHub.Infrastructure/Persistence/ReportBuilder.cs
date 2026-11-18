@@ -819,7 +819,9 @@ internal static class ReportBuilder
         ["DAMAGEDITEM"] = "Hasarlı ürün gönderildi",
         ["FAKEPRODUCT"] = "Ürün orijinal değil",
         ["LATEINTDELIVERY"] = "Yurt dışı teslimat gecikti",
-        ["OTHER"] = "Diğer"
+        ["OTHER"] = "Diğer",
+        // As Trendyol's seller panel names it (11805950639, owner's screenshot 18 Nov 2026): an exchange request.
+        ["WRONGCHANGEREQUEST"] = "Yanlış gelen ürünümü değiştirmek istiyorum"
     };
 
     internal static string Label(string? text, string? code)

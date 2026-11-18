@@ -158,7 +158,7 @@ describe('returns page', () => {
     expect(cargoCell.querySelector('a')).toBeNull()
   })
 
-  // Owner, 18 Nov 2026 (Trendyol 11805950639, reason WRONGCHANGEREQUEST): an exchange request reads "Değişim" beside the
+  // Owner, 18 Nov 2026 (Trendyol 11805950639, reason WRONGCHANGEREQUEST): an exchange request reads "Değişim Talebi" beside the
   // order number; a refund or an unknown request shows no tag.
   // Owner, 18 Nov 2026: Trendyol handles an exchange request with "Değişim Yap" in its seller panel, an action its API
   // does not document; the panel offers no approval for it and keeps it out of the bulk decision. Hepsiburada's exchange
@@ -194,21 +194,28 @@ describe('returns page', () => {
     }
   })
 
-  it('tags an exchange request "Değişim" in the order cell and nothing on a refund or an unknown request', async () => {
+  it('tags an exchange request "Değişim Talebi" in the order cell and nothing on a refund or an unknown request', async () => {
     const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementation(fn: (path: string) => Promise<unknown>): void }
     const original = hubApi.getMockImplementation()!
     hubApi.mockImplementation(async (path: string) => {
       if (!path.startsWith('/returns?')) return original(path)
-      return { items: [claim('7', { customerRequest: 'CHANGE', reasonCode: 'WRONGCHANGEREQUEST' }), claim('8', { customerRequest: 'REFUND' }), claim('9', { customerRequest: null })], nextCursor: null, hasMore: false, totalCount: 3 }
+      return { items: [claim('7', { customerRequest: 'CHANGE', reasonCode: 'WRONGCHANGEREQUEST', reasonText: 'Trendyol Oto Not: değişim', actionDueAt: new Date(Date.now() + 30 * 3_600_000).toISOString(), actionDueAtEstimated: true }), claim('8', { customerRequest: 'REFUND' }), claim('9', { customerRequest: null })], nextCursor: null, hasMore: false, totalCount: 3 }
     })
     try {
       const { host } = renderPage()
       await waitFor(() => host.textContent!.includes('#9'))
       const cells = [...host.querySelectorAll<HTMLElement>('.rr-ordercell')]
       expect(cells).toHaveLength(3)
-      expect(cells[0].querySelector('.rr-return-exchange')?.textContent).toBe('Değişim')
+      expect(cells[0].querySelector('.rr-return-exchange')?.textContent).toBe('Değişim Talebi')
       expect(cells[1].querySelector('.rr-return-exchange')).toBeNull()
       expect(cells[2].querySelector('.rr-return-exchange')).toBeNull()
+      // The reason as Trendyol's seller panel names it, the customer note beside it; the countdown says it is Trendyol's own
+      // automatic acceptance (48 h after WaitingInAction), the status stays Aksiyon Bekliyor.
+      const row = cells[0].closest('tr')!
+      expect(row.querySelector('.rr-reasoncell b')?.textContent).toBe('Yanlış gelen ürünümü değiştirmek istiyorum')
+      expect(row.querySelector('.rr-reasoncell small')?.textContent).toContain('Trendyol Oto Not: değişim')
+      expect(row.querySelector('[data-l="Durum"] small')?.getAttribute('title')).toMatch(/^Trendyol otomatik onayına kalan süre: .+ \(tahmini\)$/u)
+      expect(row.querySelector('[data-l="Durum"] b')?.textContent).toBe('Aksiyon Bekliyor')
     } finally {
       hubApi.mockImplementation(original)
     }

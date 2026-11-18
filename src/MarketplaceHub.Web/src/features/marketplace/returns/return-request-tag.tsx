@@ -2,7 +2,8 @@ import '../orders/order-row-marks.css'
 import './return-request-tag.css'
 
 /**
- * "Değişim" when the claim says the customer asked for an exchange (customerRequest CHANGE, ReturnCustomerRequestPolicy:
+ * "Değişim Talebi" (as Trendyol's seller panel writes it) when the claim says the customer asked for an exchange
+ * (customerRequest CHANGE, ReturnCustomerRequestPolicy:
  * Hepsiburada's claim type, Trendyol's exchange reason code or replacement package). A refund or an unknown request shows
  * nothing: an unknown one is never guessed.
  */
@@ -26,7 +27,16 @@ export function isPanelApprovalBlocked(item: { platformCode?: string | null; cus
   return item.platformCode?.trim().toUpperCase() === 'TRENDYOL' && isExchangeRequest(item.customerRequest)
 }
 
+/**
+ * A Trendyol claim waiting for the seller (WaitingInAction) is accepted by Trendyol itself 48 hours later
+ * (trendyol-api-son.md getClaims: autoAccepted, "48 saat beklemede kalan iadeler sistem tarafından otomatik olarak kabul
+ * edilir"); its deadline (actionDueAt) is that moment, the "Otomatik Onaya Kalan Süre" of Trendyol's seller panel.
+ */
+export function trendyolAutoAccept(item: { platformCode?: string | null; rawStatus?: string | null }) {
+  return item.platformCode?.trim().toUpperCase() === 'TRENDYOL' && item.rawStatus?.replace(/[_\s-]/gu, '').toUpperCase() === 'WAITINGINACTION'
+}
+
 export function ReturnRequestTag({ customerRequest }: { customerRequest: string | null | undefined }) {
   if (!isExchangeRequest(customerRequest)) return null
-  return <span className="rr-buyer-tag rr-return-exchange" title="Müşteri ürünün değişimini istedi">Değişim</span>
+  return <span className="rr-buyer-tag rr-return-exchange" title="Müşteri ürünün değişimini istedi">Değişim Talebi</span>
 }
