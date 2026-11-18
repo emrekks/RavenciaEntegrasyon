@@ -130,10 +130,12 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"in-force-{Guid.NewGuid():N}", DisplayName = "price in force", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
-        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = platform, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{\"ExternalWritesEnabled\":true}", Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = platform, ExternalStoreId = "store-in-force", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{\"ExternalWritesEnabled\":true}", Version = 1 };
         var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Fiyat stok", Description = "geçerli fiyat", Status = ProductStatus.Active, VatRate = 20m, CreatedAt = now, UpdatedAt = now };
-        var barcode = $"869{Random.Shared.NextInt64(1_000_000_000, 9_999_999_999)}";
-        var sku = $"SKU-{Guid.NewGuid():N}"[..16];
+        // Codes drawn from digits that cannot spell a price checked in the payload (no 0, 2, 3 or 5).
+        static string Digits(int count) => string.Concat(Enumerable.Range(0, count).Select(_ => "146789"[Random.Shared.Next(6)]));
+        var barcode = $"869{Digits(10)}";
+        var sku = $"SKU-{Digits(12)}";
         var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), Barcode = barcode, BarcodeNormalized = barcode, OptionSignature = "Beden=M", DefaultListPrice = panel?.List, DefaultSalePrice = panel?.Sale, CreatedAt = now, UpdatedAt = now };
         var inventory = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = variant.Id, LocationCode = "MAIN", OnHand = 7m, Available = 7m, ProjectionVersion = 6, Version = 1 };
         var link = new MarketplaceVariantLink
