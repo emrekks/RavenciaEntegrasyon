@@ -108,6 +108,11 @@ public static class PagingContract
         ["/api/v1/questions"] = Format(PagePageSizeWithCursor, ("page", new(1, null, 1, Refused: false)), ("pageSize", new(1, 100, 50, Refused: false)), ("limit", new(1, 100, 50, Refused: false))),
         ["/api/v1/reports/order-profitability"] = WithCursor(PagePageSizeWithCursor, ["page", "pageSize"], ("page", new(0, 100_000, 0)), ("pageSize", new(1, 200, 50)), ("limit", new(1, 200, 50))),
         ["/api/v1/connections/{connectionId}/commission-tariffs/{tariffId}/rows"] = Format(PagePageSizeWithCursor, ("page", new(0, 100_000, 0)), ("pageSize", new(1, 200, 50)), ("limit", new(1, 200, 50))),
+        // 2b. NumberedPage only (page + pageSize, NumberedPageRequest): the detail lists behind the monitor's numbers.
+        ["/api/v1/price-stock-monitor/{connectionId}/invalid-offers"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
+        ["/api/v1/price-stock-monitor/{connectionId}/failed-pushes"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
+        ["/api/v1/price-stock-monitor/{connectionId}/lost-links"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
+        ["/api/v1/api-health-signals/{connectionId}/attempts"] = Format(PagePageSize, ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)), ("pageSize", CheckedLimit)),
         // 3. pageNumber + pageSize, also the cursor (limit read as pageSize is).
         ["/api/v1/invoice-workspace/page"] = WithCursor(PageNumberPageSizeWithCursor, ["pageNumber", "pageSize"],
             ("pageNumber", new(1, null, 1, Refused: false)),

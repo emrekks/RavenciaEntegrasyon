@@ -1307,9 +1307,64 @@ public sealed record PriceStockLostListingView(Guid ProductId, string Title, str
 public sealed record PriceStockMonitorView(DateTimeOffset GeneratedAt, IReadOnlyList<PriceStockConnectionMonitorView> Connections);
 public sealed record PriceStockEmergencyStopView(int ConnectionsStopped, int PoliciesDisabled, int JobsCancelled);
 
+// The reasons an automatic price/stock send leaves an offer out (PriceInventoryComposer refusals). Every one of them is
+// listed in each invalid-offers answer (ReasonCodes) so the panel can put each in words; ReasonSummary is the sentence
+// the composer wrote for that offer.
+public static class PriceStockOfferIssueCodes
+{
+    public const string ChannelOfferInvalid = "CHANNEL_OFFER_INVALID";
+    public const string HepsiburadaListingLinkRequired = "HEPSIBURADA_LISTING_LINK_REQUIRED";
+    public const string PazaramaBarcodeInvalid = "PAZARAMA_BARCODE_INVALID";
+    public static IReadOnlyList<string> All { get; } = [ChannelOfferInvalid, HepsiburadaListingLinkRequired, PazaramaBarcodeInvalid];
+    public static bool IsOfferProblem(string? code) => code is not null && All.Contains(code);
+}
+
+// One offer the automatic send leaves out (an open offer issue of the connection): the panel variant, its product, the
+// panel and offer prices and the composer's reason. A variant with no offer row has no offer id or offer prices.
+public sealed record PriceStockInvalidOfferView(
+    Guid? OfferId,
+    Guid VariantId,
+    Guid? ProductId,
+    string? Sku,
+    string? Barcode,
+    string? ProductTitle,
+    string? VariantLabel,
+    string ReasonCode,
+    string ReasonSummary,
+    decimal? PanelListPrice,
+    decimal? PanelSalePrice,
+    decimal? OfferListPrice,
+    decimal? OfferSalePrice,
+    string? Currency,
+    DateTimeOffset LastSeenAt);
+public sealed record PriceStockReasonCountView(string Code, int Count);
+// TotalCount is the monitor's InvalidOffers for the connection (every open offer issue, same rule); FilteredCount is what
+// search and reason leave, which the pages cover. Reasons counts every open issue by code, before the filters.
+public sealed record PriceStockInvalidOffersView(
+    IReadOnlyList<PriceStockInvalidOfferView> Items,
+    int Page,
+    int PageSize,
+    int TotalCount,
+    int FilteredCount,
+    IReadOnlyList<PriceStockReasonCountView> Reasons,
+    IReadOnlyList<string> ReasonCodes);
+// The monitor's FailedPushes7d (kind "failed": blocked or dead in the last 7 days) or ManualReviewPushes (kind
+// "manual-review"), newest first; TotalCount is that monitor number.
+public sealed record PriceStockFailedPushesView(IReadOnlyList<PriceStockPushFailureView> Items, int Page, int PageSize, int TotalCount);
+// One variant link the marketplace no longer holds (NOT_FOUND) or refused (REJECTED); product fields are null when the
+// variant or its card is gone.
+public sealed record PriceStockLostLinkView(Guid VariantId, Guid? ProductId, string? Sku, string? Barcode, string? ProductTitle, string? VariantLabel, string HealthStatus, DateTimeOffset? Since);
+// TotalCount is the monitor's NotFoundLinks or RejectedLinks (both when no health is asked).
+public sealed record PriceStockLostLinksView(IReadOnlyList<PriceStockLostLinkView> Items, int Page, int PageSize, int TotalCount);
+
 public interface IPriceStockMonitorService
 {
     Task<PriceStockMonitorView> MonitorAsync(Guid tenantId, CancellationToken cancellationToken);
+    // The detail lists behind the monitor's numbers for one connection, read-only, page 1-based. CONNECTION_NOT_FOUND
+    // (404) for a connection the monitor does not show (another tenant's, deleted, not a marketplace).
+    Task<ServiceResult<PriceStockInvalidOffersView>> InvalidOffersAsync(Guid tenantId, Guid connectionId, string? search, string? reason, int page, int pageSize, CancellationToken cancellationToken);
+    Task<ServiceResult<PriceStockFailedPushesView>> FailedPushesAsync(Guid tenantId, Guid connectionId, string? kind, int page, int pageSize, CancellationToken cancellationToken);
+    Task<ServiceResult<PriceStockLostLinksView>> LostLinksAsync(Guid tenantId, Guid connectionId, string? health, int page, int pageSize, CancellationToken cancellationToken);
     // "Tüm Otomatik Yazmaları Durdur": every connection's PRICE_WRITE and STOCK_WRITE off and every queued price/stock
     // job cancelled, in one save. Switching them on again takes a new baseline (decision B).
     Task<PriceStockEmergencyStopView> StopAllAutomaticWritesAsync(Guid tenantId, Guid actorUserId, string correlationId, CancellationToken cancellationToken);

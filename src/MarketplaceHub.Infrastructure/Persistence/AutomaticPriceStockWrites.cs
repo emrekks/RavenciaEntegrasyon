@@ -14,8 +14,15 @@ internal static class PriceInventoryOfferIssues
 
     public static string ConnectionPrefix(Guid connectionId) => $"{KeyPrefix}{connectionId:N}:";
 
-    public static bool IsOfferProblem(string? code) =>
-        code is "CHANNEL_OFFER_INVALID" or "HEPSIBURADA_LISTING_LINK_REQUIRED" or "PAZARAMA_BARCODE_INVALID";
+    public static bool IsOfferProblem(string? code) => PriceStockOfferIssueCodes.IsOfferProblem(code);
+
+    // The open offer issues of one connection: the monitor's InvalidOffers and the invalid-offers list count the same rows.
+    public static IQueryable<OperationalIssue> Open(AppDbContext db, Guid tenantId, string prefix) =>
+        db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix));
+
+    // The variant of a key written by Key(); null for a key that does not end in one.
+    public static Guid? VariantOf(string dedupeKey) =>
+        Guid.TryParseExact(dedupeKey[(dedupeKey.LastIndexOf(':') + 1)..], "N", out var variantId) ? variantId : null;
 }
 
 // Owner decisions A and B: the gate of the automatic price/stock writes and the baseline taken when it opens.
