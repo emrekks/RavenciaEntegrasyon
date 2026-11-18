@@ -73,13 +73,13 @@ describe('ProductQuickEditModal variant selection', () => {
     for (let round = 0; round < 3; round++) {
       await click(groupBox('Bej'))
       expect(groupBox('Bej').checked).toBe(true)
-      expect(note()).toContain('2 varyant')
+      expect(note()).toContain('2 seçili varyanta')
       await click(groupBox('Siyah'))
-      expect(note()).toContain('4 varyant')
+      expect(note()).toContain('4 seçili varyanta')
       await click(groupBox('Bej'))
       expect(groupBox('Bej').checked).toBe(false)
       await click(groupBox('Siyah'))
-      expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
+      expect(note()).toContain('Seçim yok: 4 varyantın tümüne')
     }
     expect(errors).toEqual([])
   })
@@ -90,18 +90,18 @@ describe('ProductQuickEditModal variant selection', () => {
     const cellBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} varyantını seç"]`)!
     const corner = document.body.querySelector<HTMLInputElement>('input[aria-label="Tüm varyantları seç"]')!
     await click(columnBox('XL'))
-    expect(note()).toContain('2 varyant seçildi')
+    expect(note()).toContain('2 seçili varyanta')
     expect(groupBox('Bej').indeterminate).toBe(true)
     expect(groupBox('Bej').checked).toBe(false)
     await click(cellBox('Bej · S'))
     expect(groupBox('Bej').checked).toBe(true)
-    expect(note()).toContain('3 varyant seçildi')
+    expect(note()).toContain('3 seçili varyanta')
     await click(corner)
-    expect(note()).toContain('4 varyant seçildi')
+    expect(note()).toContain('4 seçili varyanta')
     expect(corner.checked).toBe(true)
     await click(corner)
-    expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
-    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).map(button => button.textContent)).toEqual(['Tümüne Uygula'])
+    expect(note()).toContain('Seçim yok: 4 varyantın tümüne')
+    expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).map(button => button.textContent)).toEqual(['Uygula'])
     expect(errors).toEqual([])
   })
 
@@ -131,7 +131,7 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(document.body.querySelectorAll('.rr-cr-row input.rr-mx-in')).toHaveLength(3)
   })
 
-  it('the list frame starts with a header row on the rows' own grid: a corner tick and one tick per size', async () => {
+  it('the list frame starts with a header row on the rows own grid: a corner tick and one tick per size', async () => {
     await render()
     const head = document.body.querySelector('.rr-cr-list > .rr-cr-hrow')!
     expect(head.querySelector('.rr-cr-hcolor')?.textContent).toBe('Tümünü Seç')
@@ -146,7 +146,7 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(pair.classList.contains('rr-on')).toBe(false)
     await click(pair.querySelector<HTMLInputElement>('input.rr-cr-tick')!)
     expect(pair.classList.contains('rr-on')).toBe(true)
-    expect(note()).toContain('1 varyant seçildi')
+    expect(note()).toContain('1 seçili varyanta')
   })
 
   it('moves between the boxes with the arrow keys and Enter, skipping dashes', async () => {
@@ -243,7 +243,7 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
     })
     await act(async () => { document.body.querySelector<HTMLFormElement>('#product-quick-edit-form')!.requestSubmit() })
     expect(calls).toEqual([])
-    const bar = () => document.body.querySelector('.rv-draftbar')!
+    const bar = () => document.body.querySelector('.rr-m-foot')!
     expect(bar().textContent).toContain('3 Değişiklik')
     await click(Array.from(bar().querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Kaydet')!)
     expect(calls).toEqual([])

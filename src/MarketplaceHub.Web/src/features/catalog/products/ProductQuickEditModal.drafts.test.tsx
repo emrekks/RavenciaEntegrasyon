@@ -56,7 +56,7 @@ async function type(input: HTMLInputElement, value: string) {
   })
 }
 const stockBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} stok"]`)!
-const bar = () => document.body.querySelector('.rv-draftbar')
+const bar = () => document.body.querySelector('.rr-m-foot')
 const barButton = (label: string) => Array.from(bar()!.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === label)!
 const footButton = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(button => button.textContent === label)!
 
@@ -80,7 +80,9 @@ afterEach(() => {
 describe('ProductQuickEditModal drafts', () => {
   it('writing in a stock box and leaving it sends nothing and shows an unsaved bar', async () => {
     await render()
-    expect(bar()).toBeNull()
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
+    expect(document.body.querySelectorAll('button.rv-draftbar-save')).toHaveLength(1)
+    expect(bar()?.querySelector<HTMLButtonElement>('button.rv-draftbar-save')?.disabled).toBe(true)
     const box = stockBox('SKU-1')
     await act(async () => { box.focus() })
     await type(box, '9')
@@ -102,7 +104,7 @@ describe('ProductQuickEditModal drafts', () => {
     expect(bar()?.textContent).toContain('Otomatik dış yazması açık pazaryerlerine gönderilir')
     await click(barButton('Onayla ve Kaydet'))
     expect(sent.map(call => [call.path, call.method, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 'PUT', 9, 3]])
-    expect(bar()).toBeNull()
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
   })
 
   it('Vazgeç puts the saved value back and sends nothing', async () => {
@@ -114,7 +116,7 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent).toEqual([])
     expect(stockBox('SKU-1').value).toBe('3')
     expect(stockBox('SKU-2').value).toBe('3')
-    expect(bar()).toBeNull()
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
   })
 
   it('Esc in one box takes back that box only', async () => {
@@ -157,12 +159,12 @@ describe('ProductQuickEditModal drafts', () => {
   it('closing with a draft asks first; staying keeps it, leaving drops it', async () => {
     await render()
     await type(stockBox('SKU-1'), '9')
-    await click(footButton('Kapat'))
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
     expect(closed).toBe(0)
     expect(bar()?.textContent).toContain('Kaydedilmemiş değişiklikler var')
     await click(barButton('Düzenlemeye Dön'))
     expect(bar()?.textContent).toContain('1 Değişiklik')
-    await click(footButton('Kapat'))
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
     await click(barButton('Değişiklikleri Sil ve Kapat'))
     expect(closed).toBe(1)
     expect(sent).toEqual([])
@@ -199,7 +201,7 @@ describe('ProductQuickEditModal drafts', () => {
     await click(barButton('Onayla ve Kaydet'))
     expect(sent.map(call => [call.path, call.method])).toEqual([['/channel-offers/panel-price-follow', 'PUT']])
     expect(toggle.checked).toBe(false)
-    expect(bar()).toBeNull()
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
   })
 
   it('keeps a draft when the edited value changes, marking the dropdown that holds it', async () => {
@@ -214,9 +216,25 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent).toEqual([])
   })
 
+  it('Uygula sits at the end of the value row, is off while the boxes are empty and only writes drafts; there is one Kaydet', async () => {
+    await render()
+    const apply = document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!
+    expect(apply.textContent).toBe('Uygula')
+    expect(apply.closest('.rr-qe-applyrow')).not.toBeNull()
+    expect(apply.disabled).toBe(true)
+    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '7')
+    expect(apply.disabled).toBe(false)
+    await click(apply)
+    expect(sent).toEqual([])
+    expect(bar()?.textContent).toContain('2 Değişiklik')
+    expect(document.body.querySelectorAll('button.rv-draftbar-save')).toHaveLength(1)
+    expect(document.body.textContent).not.toContain('Tümüne Uygula')
+    expect(document.body.querySelector('.rv-draftbar')).toBeNull()
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
-    await click(footButton('Vazgeç'))
+    await click(footButton('Kapat'))
     expect(closed).toBe(1)
   })
 })

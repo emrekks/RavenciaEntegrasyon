@@ -17,7 +17,8 @@ describe('quick edit colour list styles', () => {
     expect(list).not.toMatch(/overscroll-behavior/)
   })
 
-  it('keeps the value picker and ticks at the top of the window body', () => {
-    expect(rule('.rr-cr-sticky')).toMatch(/position:\s*sticky/)
+  it('has nothing that sticks: the picker row and the header row flow with the list (only the window foot is fixed)', () => {
+    expect(css).not.toMatch(/position:\s*sticky/)
+    expect(css).not.toContain('rr-cr-sticky')
   })
 })

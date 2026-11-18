@@ -57,17 +57,6 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
   const all = state(allIds)
   const allId = useId()
   const list = useRef<HTMLDivElement>(null)
-  const stick = useRef<HTMLDivElement>(null)
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const bar = stick.current; const host = root.current
-    if (!bar || !host || typeof ResizeObserver === 'undefined') return
-    const apply = () => host.style.setProperty('--cr-stick', `${bar.offsetHeight}px`)
-    apply()
-    const observer = new ResizeObserver(apply)
-    observer.observe(bar)
-    return () => observer.disconnect()
-  }, [])
   // Native listener: the list is not a control, so a React handler on it would only be a lint error.
   const rowCount = rows.length; const sizeCount = sizes.length
   useEffect(() => {
@@ -97,8 +86,8 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
     return () => element.removeEventListener('keydown', move)
   }, [rowCount, sizeCount])
   const layout = colorRowsLayout(rows, sizes)
-  return <div className="rr-cr" ref={root} style={{ '--cr-color': `${layout.colorPx}px`, '--cr-label': `${layout.labelPx}px`, '--cr-cell': `${layout.cellPx}px` } as CSSProperties}>
-    <div className="rr-cr-sticky" ref={stick}>
+  return <div className="rr-cr" style={{ '--cr-color': `${layout.colorPx}px`, '--cr-label': `${layout.labelPx}px`, '--cr-cell': `${layout.cellPx}px` } as CSSProperties}>
+    <div className="rr-cr-picker">
     {head}
     </div>
     <div className="rr-cr-list" ref={list} role="region" aria-label={caption}>

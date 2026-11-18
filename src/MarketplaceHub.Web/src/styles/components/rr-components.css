@@ -139,6 +139,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 24px 16px; background: var(--rr-raised); border-top: 1px solid var(--rr-line); border-radius: 0 0 14px 14px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot .rr-note { flex: 1 1 0; min-width: 0; color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-m-foot .rr-note b { color: var(--rr-ink); font-weight: 600; }
+/* A window title is one line: cut with an ellipsis (the full title is its tooltip), never pushing the close cross. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-m-head > div { min-width: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-m-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts > div { display: grid; gap: 4px; align-content: start; justify-items: start; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--rr-line); box-shadow: 0 -1px 0 var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts small { color: var(--rr-subtle); font-size: 12px; }
