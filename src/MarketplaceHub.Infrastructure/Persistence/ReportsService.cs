@@ -487,10 +487,19 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                       join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
                       // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
                       // An exchange is no return: the sale goes on (owner, 6 Nov 2026).
-                      where !unbookedReturns.Contains(row.Order.Id) && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
-                          || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
-                              && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform))
-                      select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
+                      // ReturnCustomerRequestPolicy.CountsAsReturn: an exchange not closed with a refund is no return claim; it is
+                      // read with its mark and counted apart (ReportSummaryView.ExchangeClaims, owner 18 Nov 2026).
+                      where !unbookedReturns.Contains(row.Order.Id)
+                      select new ReportClaimRow
+                      {
+                          Exchange = !(claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
+                          || claim.ResolvedWith == ReturnCustomerRequestPolicy.Refund),
+                          OrderId = claim.OrderId,
+                          ConnectionId = claim.ConnectionId,
+                          Status = claim.Status,
+                          ReasonCode = claim.ReasonCode,
+                          ReasonText = claim.ReasonText
+                      })
             .ToListAsync(cancellationToken);
     }
 

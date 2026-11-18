@@ -40730,7 +40730,8 @@
           "discountAmount",
           "returnedListAmount",
           "soldVariants",
-          "vatFreeNetRevenue"
+          "vatFreeNetRevenue",
+          "exchangeClaims"
         ],
         "type": "object",
         "properties": {
@@ -40828,6 +40829,11 @@
           "vatFreeNetRevenue": {
             "type": "number",
             "format": "double",
+            "default": 0
+          },
+          "exchangeClaims": {
+            "type": "integer",
+            "format": "int32",
             "default": 0
           }
         }

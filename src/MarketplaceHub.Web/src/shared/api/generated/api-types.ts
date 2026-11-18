@@ -3825,6 +3825,7 @@ export type ReportSummaryView = {
   returnedListAmount: number
   soldVariants: number
   vatFreeNetRevenue: number
+  exchangeClaims: number
 }
 
 export type ReportTimePointView = {

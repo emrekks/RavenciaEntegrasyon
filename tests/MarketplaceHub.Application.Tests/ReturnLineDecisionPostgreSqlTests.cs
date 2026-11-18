@@ -130,6 +130,22 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
                 Assert.False(await verify.ReturnDecisions.AnyAsync(x => x.TenantId == seed.TenantId));
                 Assert.Equal(ReturnClaimStatus.ActionRequired, (await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimId)).Status);
             }
+
+            // Owner, 18 Nov 2026 ("Stoğa Ekle kalsın"): once Trendyol approves the exchange, the units can still go back
+            // to stock from the panel.
+            await using (var db = fixture.CreateContext())
+            {
+                await db.ReturnLines.Where(x => x.ClaimId == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(l => l.RawStatus, "Accepted"));
+                await db.ReturnClaims.Where(x => x.Id == seed.ClaimId).ExecuteUpdateAsync(x => x.SetProperty(c => c.Status, ReturnClaimStatus.Approved).SetProperty(c => c.RawStatus, "Accepted"));
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.True((await Service(db, port).ReturnAsync(seed.TenantId, seed.ClaimId, CancellationToken.None)).Value!.StockDispositionAvailable);
+                var stocked = await Service(db, port).ApplyDispositionAsync(seed.TenantId, Guid.NewGuid(), seed.ClaimId, new(seed.LineIds[0], "PASS", 1m, "Kontrol edildi"), "rl-exch:stock", "rl-exch", CancellationToken.None);
+                Assert.Null(stocked.Error);
+            }
+            await using (var verify = fixture.CreateContext())
+                Assert.Equal([1m, 0m, 0m], await OnHandAsync(verify, seed));
         }
         finally
         {

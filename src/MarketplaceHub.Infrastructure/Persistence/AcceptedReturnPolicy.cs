@@ -64,10 +64,10 @@ internal static class AcceptedReturnPolicy
             // An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov 2026). Only the
             // stored request says so; a claim that does not say is a return as before. An exchange claim the marketplace
             // closed with a refund (raw status Refunded) is a return.
+            // ReturnCustomerRequestPolicy.CountsAsReturn: Hepsiburada and Trendyol alike (owner, 18 Nov 2026); a refund the
+            // claim names (Refunded, or ResolvedWith REFUND) makes the exchange a return.
             && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
-                // Only Hepsiburada's (ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform): a Trendyol exchange counts as before.
-                || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
-                    && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform))
+                || claim.ResolvedWith == ReturnCustomerRequestPolicy.Refund)
         select new ClaimLine { OrderId = claim.OrderId, OrderLineId = line.OrderLineId, Quantity = line.Quantity, RawStatus = line.RawStatus, ClaimStatus = claim.Status };
 
     /// <summary>Whether a claim line takes its units back: the invoice's rule.</summary>

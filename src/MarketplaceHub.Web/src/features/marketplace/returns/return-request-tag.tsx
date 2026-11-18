@@ -16,6 +16,12 @@ export function isExchangeRequest(customerRequest: string | null | undefined) {
  */
 export const TRENDYOL_EXCHANGE_NOTE = 'Değişim talebi Trendyol satıcı panelinden “Değişim Yap” ile işlenir; panelden iade onayı gönderilmez.'
 
+/**
+ * An approved Trendyol exchange is no return (owner, 18 Nov 2026: no invoice work). Trendyol's claim names no refund, so
+ * one it turned into a refund is not seen here: the owner checks the invoice by hand.
+ */
+export const TRENDYOL_EXCHANGE_KEPT_NOTE = 'Değişim olarak işlendi: faturada ve raporlarda iade sayılmaz, Stoğa Ekle açık kalır. Trendyol para iadesine çevirdiyse panel bunu göremez; faturayı elle kontrol edin.'
+
 export function isPanelApprovalBlocked(item: { platformCode?: string | null; customerRequest?: string | null }) {
   return item.platformCode?.trim().toUpperCase() === 'TRENDYOL' && isExchangeRequest(item.customerRequest)
 }

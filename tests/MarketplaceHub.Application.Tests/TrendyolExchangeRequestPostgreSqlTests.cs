@@ -10,8 +10,8 @@ namespace MarketplaceHub.Application.Tests;
 
 // Owner, 18 Nov 2026: Trendyol claim of order 11805950639 (reason code WRONGCHANGEREQUEST) is an exchange, yet the
 // panel showed it as a plain return: the Trendyol mapper never filled CustomerRequest. A later read of a claim stored
-// before the fix fills it, leaves the owner's outcome (ResolvedWith, status) alone, and the invoice's return rule still
-// counts the Trendyol claim's units as before (only Hepsiburada's exchanges take none back).
+// before the fix fills it and leaves the outcome (ResolvedWith, status) alone; the invoice's return rule then takes no
+// unit back for an approved exchange unless the claim names a refund (Hepsiburada and Trendyol alike, owner 18 Nov 2026).
 [Collection("postgres-integration")]
 public sealed class TrendyolExchangeRequestPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -45,10 +45,16 @@ public sealed class TrendyolExchangeRequestPostgreSqlTests(PostgreSqlTenantIsola
             var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
             Assert.Equal(ReturnCustomerRequestPolicy.Change, claim.CustomerRequest);
             Assert.Equal(ReturnCustomerRequestPolicy.Refund, claim.ResolvedWith);
+            Assert.True(ReturnCustomerRequestPolicy.CountsAsReturn(claim.CustomerRequest, claim.RawStatus, claim.ResolvedWith));
+            Assert.False(ReturnCustomerRequestPolicy.CountsAsReturn(claim.CustomerRequest, claim.RawStatus, null));
             Assert.Equal(ReturnClaimStatus.Approved, claim.Status);
-            // Invoice and stock untouched by this change: the Trendyol exchange's accepted unit still counts as returned.
+            // A refund the claim names (ResolvedWith REFUND) makes the exchange a return: its accepted unit counts.
             var returned = await InvoiceSaleReturns.ApprovedClaimQuantitiesAsync(db, tenant.Id, [order.Id], CancellationToken.None);
             Assert.Equal(1m, Assert.Single(returned).Value);
+            // Owner, 18 Nov 2026 ("Değişim onaylanırsa fatura işlemlerine gerek yok"): without it, the approved Trendyol
+            // exchange takes no unit back, as Hepsiburada's.
+            await db.ReturnClaims.Where(x => x.Id == claim.Id).ExecuteUpdateAsync(x => x.SetProperty(c => c.ResolvedWith, (string?)null));
+            Assert.Empty(await InvoiceSaleReturns.ApprovedClaimQuantitiesAsync(db, tenant.Id, [order.Id], CancellationToken.None));
         }
 
         // A read that does not say it (another reason) leaves the known request as it is.

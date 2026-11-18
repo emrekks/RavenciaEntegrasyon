@@ -499,7 +499,15 @@ packages only, no claim events.
   The claim's raw JSON is not stored, so whether live claims carry `replacementOutboundpackageinfo` is **unverified**.
 - Code: `ReturnCustomerRequestPolicy.FromTrendyol` sets `CustomerRequest` CHANGE for that code or a replacement package
   naming `packageid` or items; anything else stays null (the reason text is never searched). Shown as the "Değişim"
-  tag on İadeler. Invoice, stock and reports are unchanged: only Hepsiburada exchanges take no units back
-  (`ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform`), since getClaims names no refund outcome for an exchange.
+  tag on İadeler. Owner, 18 Nov 2026 ("Değişim onaylanırsa fatura işlemlerine gerek yok"): an approved exchange takes
+  no units back on the invoice and in the reports, as Hepsiburada's (`ReturnCustomerRequestPolicy.CountsAsReturn`);
+  the reports count it apart (`ReportSummaryView.ExchangeClaims`). getClaims names no refund outcome, so a Trendyol
+  exchange turned into a refund is not seen: it becomes a return only if the claim's ResolvedWith says REFUND or its
+  raw status Refunded (never on Trendyol today); the detail tells the owner to check the invoice by hand. Stoğa Ekle
+  stays open ("durumdan duruma").
+- No exchange action in the API: Trendyol's seller panel handles it with "Değişim Yap" (owner's screenshot, 18 Nov
+  2026). approveClaimLineItems (trendyol-api-son.md:7044-7084, "İade Siparişleri Onaylama") is documented for returns
+  only, so the panel never approves an exchange request (`ReturnCustomerRequestPolicy.ApprovalBlocked`, error
+  TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL; no bulk selection; a queued approval is not sent). createClaimIssue stays.
 - An open claim is read again by RETURN_STATUS_SYNC; a closed one only while RETURN_SYNC / RETURN_RECONCILIATION
   (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.

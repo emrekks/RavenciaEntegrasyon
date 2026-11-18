@@ -259,16 +259,14 @@ public static class ReturnCustomerRequestPolicy
     // The claim's raw status (upper case) when Hepsiburada closed it with a refund.
     public const string RefundedRawStatus = "REFUNDED";
 
-    // The marketplace whose exchange claims take no units back (AcceptedReturnPolicy, the reports): Hepsiburada says how
-    // it closed one (Refunded). Trendyol's exchange request (FromTrendyol, 18 Nov 2026) is shown only: its getClaims
-    // names no refund outcome, so its claims count as returns as before until the owner decides otherwise.
-    public const string ExchangeNoReturnPlatform = "HEPSIBURADA";
-
-    // Whether a claim's units count as returned (owner, 6 Nov 2026): decided by how the claim was closed, not by what
-    // was requested. An exchange request closed with a refund is a return; one closed as an exchange, or still open,
-    // changes nothing. The queries repeat this rule inline (they must translate to SQL).
-    public static bool CountsAsReturn(string? customerRequest, string? claimRawStatus) =>
-        customerRequest != Change || string.Equals(claimRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase);
+    // Whether a claim's units count as returned (owner, 6 Nov 2026; Trendyol too, 18 Nov 2026: "Değişim onaylanırsa
+    // fatura işlemlerine gerek yok"): decided by how the claim was closed, not by what was requested. An exchange request
+    // closed with a refund, as the claim says it (raw status Refunded, or finalizedWith Refund in ResolvedWith), is a
+    // return; one closed as an exchange, or still open, changes nothing. Trendyol's getClaims names no refund outcome, so
+    // a Trendyol exchange stays one until such data comes (its detail tells the owner to correct a refunded one by hand).
+    // The queries repeat this rule inline (they must translate to SQL).
+    public static bool CountsAsReturn(string? customerRequest, string? claimRawStatus, string? resolvedWith = null) =>
+        customerRequest != Change || string.Equals(claimRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase) || resolvedWith == Refund;
 
     // The Hepsiburada approval choice (FinalizedWith) for the customer's request; null when it is unknown.
     public static string? FinalizedWith(string? customerRequest) => customerRequest switch

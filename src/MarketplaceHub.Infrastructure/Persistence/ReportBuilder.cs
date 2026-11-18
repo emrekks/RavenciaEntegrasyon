@@ -117,6 +117,8 @@ internal sealed class ReportLineExtra
 
 internal sealed class ReportClaimRow
 {
+    // An exchange not closed with a refund (ReturnCustomerRequestPolicy.IsKeptExchange): no return claim, counted apart.
+    public bool Exchange { get; init; }
     public Guid OrderId { get; init; }
     public Guid ConnectionId { get; init; }
     public ReturnClaimStatus Status { get; init; }
@@ -357,8 +359,8 @@ internal static class ReportBuilder
     {
         var (orders, cancelled) = Facts(input);
         var (previousOrders, previousCancelled) = Facts(previous);
-        var summary = Summary(orders, cancelled);
-        var previousSummary = Summary(previousOrders, previousCancelled);
+        var summary = Summary(orders, cancelled) with { ExchangeClaims = ExchangeClaims(input, orders) };
+        var previousSummary = Summary(previousOrders, previousCancelled) with { ExchangeClaims = ExchangeClaims(previous, previousOrders) };
         var lines = orders.SelectMany(order => order.Lines.Select(line => (order, line))).ToList();
         var (products, rising, falling) = Movers(Products(orders, input.Names), Products(previousOrders, previous.Names), stock);
 
@@ -373,7 +375,7 @@ internal static class ReportBuilder
         var brands = LineGroups(lines, line => line.Row.BrandId is { } id && input.Names.Brands.TryGetValue(id, out var name) ? name : null);
         var categories = LineGroups(lines, line => line.Row.CategoryId is { } id && input.Names.Categories.TryGetValue(id, out var name) ? name : null);
 
-        var validClaims = input.Claims.Where(x => x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled)).ToList();
+        var validClaims = input.Claims.Where(x => !x.Exchange && x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled)).ToList();
         var reasons = Reasons(validClaims.Select(claim => ClaimReason(input.Channels.TryGetValue(claim.ConnectionId, out var channel) ? channel.PlatformCode : null, claim.ReasonCode, claim.ReasonText)));
 
         var stockView = StockView(products, stock, input.Period.Days);
@@ -415,13 +417,21 @@ internal static class ReportBuilder
         Groups(orders, order => order.Country, order => ReportBuckets.CountryName(order.Country), _ => false, null,
             group => Groups(group, order => order.PlatformCode, order => order.PlatformCode, _ => false, null, null));
 
+    // The exchange claims (not rejected or cancelled) of the period's non-cancelled orders: no return, shown apart so they
+    // do not vanish from the report (owner, 18 Nov 2026).
+    private static int ExchangeClaims(ReportInput input, IReadOnlyList<OrderFact> orders)
+    {
+        var ids = orders.Select(order => order.Order.Id).ToHashSet();
+        return input.Claims.Count(x => x.Exchange && ids.Contains(x.OrderId) && x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled));
+    }
+
     // The period's non-cancelled orders with their units, money and buckets, and the cancelled ones apart.
     internal static (List<OrderFact> Orders, List<CancelledFact> Cancelled) Facts(ReportInput input)
     {
         var cancelledStatuses = DashboardRevenuePolicy.CancelledStatuses;
         var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
         var linesByOrder = input.Lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
-        var claimsByOrder = input.Claims.Where(x => x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled))
+        var claimsByOrder = input.Claims.Where(x => !x.Exchange && x.Status is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled))
             .GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.Count());
         var orders = new List<OrderFact>();
         var cancelled = new List<CancelledFact>();

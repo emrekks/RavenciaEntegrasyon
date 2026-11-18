@@ -246,8 +246,6 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
     public async Task AnApprovedExchangeClaimIsNoReturnForTheInvoice()
     {
         var seed = NewSeed("nov6-exchange", gross: 300m, discount: 0m);
-        // Only Hepsiburada's exchanges take no units back (ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform, 18 Nov 2026).
-        seed.Marketplace.PlatformCode = ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform;
         var line = NewLine(seed, "Değişim ürünü", 3m, 100m);
         var exchange = NewClaim(seed, ReturnClaimStatus.Approved, "Accepted");
         exchange.CustomerRequest = ReturnCustomerRequestPolicy.Change;

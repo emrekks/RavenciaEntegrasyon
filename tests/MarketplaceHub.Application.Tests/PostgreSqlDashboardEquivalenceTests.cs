@@ -157,8 +157,7 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
         var tenant = NewTenant("acc-ret");
         try
         {
-            // Hepsiburada: only its exchanges take no units back (ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform, 18 Nov 2026).
-            var store = NewConnection(tenant.Id, "HEPSIBURADA", "ACTIVE");
+            var store = NewConnection(tenant.Id, "TRENDYOL", "ACTIVE");
             var order = NewOrder(tenant.Id, store.Id, "matrix", Now, 100m, "DELIVERED");
             var expectedOld = new Dictionary<Guid, bool>();
             var expectedNew = new Dictionary<Guid, bool>();
@@ -384,8 +383,7 @@ public sealed class PostgreSqlDashboardEquivalenceTests(PostgreSqlTenantIsolatio
             Claim(liveCombinations, Line(liveCombinations, 400m, 1m), 1m, ReturnClaimStatus.Requested, lineStatus: "Created", raw: "Created");
 
             // Returned quantities on the line only, an exchange not refunded and one refunded.
-            // On Hepsiburada: only its exchanges take no units back (ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform).
-            var exchanged = Add(hepsiburada, 777.77m);
+            var exchanged = Add(trendyol, 777.77m);
             var exchangeLine = Line(exchanged, 259.259m, 3m, returned: 1m);
             Package(exchanged, $"p{++ordinal}", 777.77m, 800m, ShipmentPackageStatus.Delivered);
             Claim(exchanged, exchangeLine, 1m, ReturnClaimStatus.Approved, request: ReturnCustomerRequestPolicy.Change, raw: "Approved");
