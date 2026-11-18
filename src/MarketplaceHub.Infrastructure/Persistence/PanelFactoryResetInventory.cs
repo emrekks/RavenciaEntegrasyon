@@ -206,7 +206,7 @@ public static class PanelFactoryResetInventory
         // - the cards of a code several models hold (several brands, or a model without a brand beside them) move to models of
         //   their own without a brand, and the branded models go with their brand. The reset then reconciles the tenant
         //   (PanelFactoryResetService): the code's model without a brand stays and takes them, else one opens from the cards
-        //   (the first brought in, its colour word), as the nightly reconcile did before B1 (an own model is never re-keyed).
+        //   (the first brought in, its colour word, its own model re-keyed), as the nightly reconcile did before B1.
         // The pictures follow their card's model.
         new("catalog.products", "catalog.brands", """
             UPDATE catalog.products SET "BrandId" = NULL WHERE "TenantId" = @tenant AND "BrandId" IS NOT NULL;

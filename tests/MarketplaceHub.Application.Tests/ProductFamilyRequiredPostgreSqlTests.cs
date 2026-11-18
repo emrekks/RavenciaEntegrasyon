@@ -261,27 +261,99 @@ public sealed class ProductFamilyRequiredPostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
-    // A card without a code (a model of its own) that is given a code joins or opens the code's model, which takes its name
-    // and colour word; the own model goes (it is never re-keyed into the code).
+    // Gives a card's model what the owner and the marketplaces build on it: saved fields and attributes, a size chart and a
+    // marketplace model link (with the variant link that keeps it).
+    private static async Task<Guid> DecorateModelAsync(AppDbContext db, Seed seed, Product card)
+    {
+        var modelId = (await db.Products.AsNoTracking().SingleAsync(x => x.Id == card.Id)).FamilyId!.Value;
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        db.PlatformConnections.Add(connection);
+        var fabric = new AttributeDefinition { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Code = $"FABRIC-{Guid.NewGuid():N}", Name = "Kumaş", DataType = AttributeDataType.Text, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow, Version = 1 };
+        db.AttributeDefinitions.Add(fabric);
+        await db.SaveChangesAsync();
+        var variant = await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == card.Id).OrderBy(x => x.SortOrder).FirstAsync();
+        db.MarketplaceModelLinks.Add(new MarketplaceModelLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, ModelId = modelId, ExternalId = "TY-1", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+        db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = variant.Barcode!, Version = 1 });
+        db.ProductAttributeAssignments.Add(new ProductAttributeAssignment { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProductId = card.Id, AttributeId = fabric.Id, TextValue = "Pamuk", Version = 1 });
+        await db.SaveChangesAsync();
+        await ProductModelValues.RefreshAsync(db, seed.Tenant.Id, [modelId], DateTimeOffset.UtcNow, CancellationToken.None);
+        var later = DateTimeOffset.UtcNow.AddMinutes(5);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""UPDATE catalog.product_models SET "FieldsSavedAt" = {later}, "AttributesSavedAt" = {later} WHERE "Id" = {modelId}""");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""INSERT INTO catalog.product_model_size_charts ("Id", "TenantId", "ModelId", "MeasurementsJson", "UpdatedAt") VALUES ({Guid.CreateVersion7()}, {seed.Tenant.Id}, {modelId}, '[]', now())""");
+        db.ChangeTracker.Clear();
+        return modelId;
+    }
+
+    // Review round 2 (18 Nov 2026): a card without a code whose own model holds saved fields, attributes, a size chart and a
+    // marketplace model link is given a code no model holds yet (the editor, an Excel row): its model takes the code (same
+    // id, everything kept, as before B1) and the name and colour word the code's model opens with.
     [PostgreSqlFact]
-    public async Task ACodelessCardGivenACode_OpensTheCodesModelWithItsColourWord()
+    public async Task ASavedOwnModelGivenANewCode_IsReKeyed_KeepingEverything_WithItsColourWord()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        AddSeed(db, seed);
+        var siyah = AddCard(db, seed, seed.Ravencia, null, "Siyah", "Kadın Siyah Etek");
+        await db.SaveChangesAsync();
+        var own = await DecorateModelAsync(db, seed, siyah);
+        Assert.Null((await db.ProductModels.AsNoTracking().SingleAsync(x => x.Id == own)).TitleColor);
+
+        foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ060";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var model = (await ModelsAsync(db, seed.Tenant.Id)).Single();
+        Assert.Equal((own, "MZ060", (Guid?)seed.Ravencia, "Kadın Siyah Etek", "Siyah"), (model.Id, model.ModelCodeKey, model.BrandId, model.Title, model.TitleColor));
+        Assert.NotNull(model.FieldsSavedAt);
+        Assert.NotNull(model.AttributesSavedAt);
+        Assert.Equal(1, await db.MarketplaceModelLinks.CountAsync(x => x.ModelId == own));
+        Assert.Equal(1, await db.ProductModelSizeCharts.CountAsync(x => x.ModelId == own));
+        Assert.True(await db.ProductModelAttributes.AnyAsync(x => x.ModelId == own));
+        Assert.Equal(own, (await LinksAsync(db, seed.Tenant.Id))[siyah.Id]);
+    }
+
+    // The same card given a code that already has its model joins that model (the code's model wins); its own model goes.
+    [PostgreSqlFact]
+    public async Task ASavedOwnModelGivenACodeWithAModel_JoinsThatModel()
+    {
+        var seed = NewSeed();
+        await using var db = fixture.CreateContext();
+        AddSeed(db, seed);
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ060", "Mavi", "Kadın Mavi Etek", 0);
+        var siyah = AddCard(db, seed, seed.Ravencia, null, "Siyah", "Kadın Siyah Etek", 1);
+        await db.SaveChangesAsync();
+        var code = (await LinksAsync(db, seed.Tenant.Id))[mavi.Id];
+        var own = await DecorateModelAsync(db, seed, siyah);
+
+        foreach (var variant in await db.ProductVariants.Where(x => x.ProductId == siyah.Id).ToListAsync()) variant.ModelCode = "MZ060";
+        await db.SaveChangesAsync();
+
+        Assert.Equal(code, (await LinksAsync(db, seed.Tenant.Id))[siyah.Id]);
+        Assert.False(await db.ProductModels.AnyAsync(x => x.Id == own));
+        var model = (await ModelsAsync(db, seed.Tenant.Id)).Single();
+        Assert.Equal((code!.Value, "Kadın Mavi Etek", "Mavi"), (model.Id, model.Title, model.TitleColor));
+    }
+
+    // New cards that bring a new code in one save open the code's model from the first card brought in (each field from
+    // it, else from the oldest card that knows it): the own models the save gave them before their insert are no model to
+    // re-key (SaveScope.FreshModels), so the first card's empty delivery days are taken from the next card.
+    [PostgreSqlFact]
+    public async Task NewCardsOfANewCode_OpenItsModelFromTheFirstCardBroughtIn_NotFromAnInsertModel()
     {
         var seed = NewSeed();
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         await RequireModelsInThisTransactionAsync(db);
         AddSeed(db, seed);
-        var siyah = AddCard(db, seed, seed.Ravencia, null, "Siyah", "Kadın Siyah Etek");
         await db.SaveChangesAsync();
-        var own = (await LinksAsync(db, seed.Tenant.Id))[siyah.Id];
-
-        foreach (var variant in db.ChangeTracker.Entries<ProductVariant>().Where(x => x.Entity.ProductId == siyah.Id)) variant.Entity.ModelCode = "MZ060";
+        var siyah = AddCard(db, seed, seed.Ravencia, "MZ070", "Siyah", "Kadın Siyah Etek", 0);
+        siyah.DeliveryDays = null;
+        var mavi = AddCard(db, seed, seed.Ravencia, "MZ070", "Mavi", "Kadın Mavi Etek", 1);
+        mavi.DeliveryDays = 3;
         await db.SaveChangesAsync();
 
         var model = (await ModelsAsync(db, seed.Tenant.Id)).Single();
-        Assert.Equal(("MZ060", (Guid?)seed.Ravencia, "Kadın Siyah Etek", "Siyah"), (model.ModelCodeKey, model.BrandId, model.Title, model.TitleColor));
-        Assert.NotEqual(own, model.Id);
-        Assert.Equal(model.Id, (await LinksAsync(db, seed.Tenant.Id))[siyah.Id]);
+        Assert.Equal(("MZ070", "Kadın Siyah Etek", "Siyah", (int?)3), (model.ModelCodeKey, model.Title, model.TitleColor, model.DeliveryDays));
         await transaction.RollbackAsync();
     }
 
