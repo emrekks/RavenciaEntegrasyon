@@ -29,7 +29,7 @@ let root: Root
 let closed = 0
 const sent: Array<{ path: string; method?: string; body: { onHand?: number; expectedOnHand?: number } }> = []
 
-async function render(mode: 'stock' | 'price' | 'both' = 'stock', connections: unknown[] = [], products: Product[] = [product]) {
+async function render(mode: 'stock' | 'price' = 'stock', connections: unknown[] = [], products: Product[] = [product]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   root = createRoot(container)
   await act(async () => {
@@ -203,7 +203,7 @@ describe('ProductQuickEditModal drafts', () => {
   })
 
   it('keeps a draft when the edited value changes, marking the dropdown that holds it', async () => {
-    await render('both')
+    await render()
     await type(stockBox('SKU-1'), '9')
     expect(valueTrigger().querySelector('.rr-mx-dot')).not.toBeNull()
     await pickValue('Panel', 'Satış')

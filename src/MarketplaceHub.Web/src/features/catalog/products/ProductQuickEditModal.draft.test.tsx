@@ -72,7 +72,7 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     const onApply = vi.fn<(changes: QuickEditDraftChange[]) => void>()
     const onClose = vi.fn()
     root = createRoot(container)
-    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal mode="both" onClose={onClose} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
+    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={onClose} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
 
     expect(document.body.textContent).toContain('Model Kodu: MZ070')
     expect(document.body.textContent).not.toContain('Fiyat Kanalı')
@@ -100,7 +100,7 @@ describe('ProductQuickEditModal opened from the product editor', () => {
   it('applies the values to every row when no variant is ticked', async () => {
     const onApply = vi.fn()
     root = createRoot(container)
-    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal mode="both" onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
+    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
     expect(document.body.querySelector('.rr-note')?.textContent).toContain('Seçim yok: 3 varyantın tümüne uygulanır')
     await type(field('Maliyet'), '55')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
@@ -110,7 +110,7 @@ describe('ProductQuickEditModal opened from the product editor', () => {
   it('keeps the window open and applies nothing when a value breaks a rule', async () => {
     const onApply = vi.fn()
     root = createRoot(container)
-    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal mode="both" onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
+    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
     await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Bej rengindeki tüm varyantları seç"]')!)
     await type(field('Satış Fiyatı'), '500')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
