@@ -14,7 +14,7 @@ describe('a variant price typed in the price table of a new product', () => {
 
   it('so a later panel price save leaves the typed price alone', () => {
     const variant = { defaultListPrice: 100, defaultSalePrice: 100, platformStatuses: [{ connectionId: 'n11', platformCode: 'N11', offerId: 'oB', offerVersion: 1, listPrice: written.listPrice, salePrice: written.salePrice, followsPanelPrice: written.followsPanelPrice }] }
-    expect(offerFollowsPanel(variant.platformStatuses[0], panel, true)).toBe(false)
+    expect(offerFollowsPanel(variant.platformStatuses[0])).toBe(false)
     const columns = quickPriceColumns([{ id: 'n11', displayName: 'N11', platformCode: 'N11' }])
     const custom = initialCustomChannels([{ variant, product: {} }], columns)
     expect(custom).toEqual({ n11: true })

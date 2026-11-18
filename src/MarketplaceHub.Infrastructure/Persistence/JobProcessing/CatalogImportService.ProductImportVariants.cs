@@ -110,7 +110,13 @@ internal sealed partial class CatalogImportService
             // Owner rule of 18 Nov 2026: a variant first read from a marketplace takes that marketplace's price as its panel
             // price (list and sale); a later import never changes it. No price (empty or 0) writes none.
             if (PanelPriceOfferPolicy.ImportedPanelPrices(remote.SalePrice, remote.ListPrice) is { } panelPrice)
+            {
                 (variant.DefaultListPrice, variant.DefaultSalePrice) = (panelPrice.ListPrice, panelPrice.SalePrice);
+                // Ürün Hareketleri: the panel price the import gave the new variant, with its marketplace.
+                if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (null, null), (panelPrice.ListPrice, panelPrice.SalePrice), ProductChangeSources.MarketplaceImport, null,
+                        $"product-import:{connectionId:N}", now, "İlk içe aktarıldığı pazaryerinin fiyatı panel fiyatı olarak kaydedildi.") is { } priceEntry)
+                    db.ProductChangeEntries.Add(priceEntry);
+            }
             db.ProductVariants.Add(variant);
             run.InsertedCount++;
         }

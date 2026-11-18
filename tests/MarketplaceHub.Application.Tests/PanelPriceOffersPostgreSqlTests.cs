@@ -119,7 +119,8 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         Assert.Equal((199m, 199m, 1L), (offers[ozelFiyat].ListPrice, offers[ozelFiyat].SalePrice, offers[ozelFiyat].PriceVersion));
         var withOfferOffer = offers.Values.Single(x => x.VariantId == unstored);
         Assert.Equal((350m, 320m), (withOfferOffer.ListPrice, withOfferOffer.SalePrice));
-        Assert.Equal((150m, 140m, 1L), (offers[firstPanelOffer].ListPrice, offers[firstPanelOffer].SalePrice, offers[firstPanelOffer].PriceVersion));
+        // One rule (owner decision of 18 Nov 2026): the first panel price saved pulls a choice never stored too.
+        Assert.Equal((165m, 155m, 2L), (offers[firstPanelOffer].ListPrice, offers[firstPanelOffer].SalePrice, offers[firstPanelOffer].PriceVersion));
         var jobs = await read.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToListAsync();
         Assert.All(jobs, job => Assert.Equal(seed.Connection.Id, job.ConnectionId));
         Assert.Equal(2, jobs.Count(x => x.JobType == MarketplaceJobTypes.StockProjectionDispatch));
@@ -261,7 +262,96 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         var row = Assert.Single(preview.Sample);
         Assert.Equal((seed.NoPanelPrice.Id, "TRENDYOL", 130m, 120m), (row.VariantId, row.PlatformCode, row.ListPrice, row.SalePrice));
         Assert.Equal(1, preview.FillableBySource["TRENDYOL"]);
+        // The N11 offer (999) the fill would pull to the new panel price (130/120); the Trendyol one already holds it.
+        var change = Assert.Single(preview.OfferChanges);
+        Assert.Equal(("N11", 1, 879m, 879m, 879m), (change.PlatformCode, change.Offers, change.TotalDifference, change.MedianDifference, change.LargestDifference));
         Assert.Null((await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id)).DefaultSalePrice);
+    }
+
+    // Owner decision of 18 Nov 2026: the fill writes only the empty panel prices, pulls the offers with Özel Fiyat off to
+    // them (price history, send marks moved), sends nothing and queues nothing; the counted preview must still hold; a
+    // second run fills nothing; another tenant is untouched. The price reaches the marketplace with the next stock send.
+    [PostgreSqlFact]
+    public async Task ThePanelPriceFill_WritesOnlyEmptyPanelPrices_PullsTheFollowers_AndSendsNothing()
+    {
+        var seed = await SeedAsync("TRENDYOL");
+        var other = await SeedAsync("TRENDYOL");
+        var n11 = await AddConnectionAsync(seed.Tenant, "N11", writesOpen: true);
+        Guid trendyolOffer, n11Offer, customOffer;
+        await using (var db = fixture.CreateContext())
+        {
+            trendyolOffer = AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 130m, 120m, null);
+            await db.SaveChangesAsync();
+            n11Offer = AddOffer(db, seed.Tenant, n11, seed.NoPanelPrice, 999m, 999m, null);
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = n11.Id, VariantId = seed.NoPanelPrice.Id, ExternalId = $"N11-{Guid.NewGuid():N}", Version = 1 });
+            customOffer = AddOffer(db, seed.Tenant, n11, seed.ZeroPanelPrice, 500m, 500m, false);
+            AddOffer(db, other.Tenant, other.Connection, other.NoPanelPrice, 130m, 120m, null);
+            await db.SaveChangesAsync();
+            // Both connections' writes are open and every offer counts as sent at its values (decision B).
+            await db.ConnectionSyncPolicies.Where(x => x.ConnectionId == seed.Connection.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.Enabled, true));
+            foreach (var offer in await db.ChannelOffers.Where(x => x.TenantId == seed.Tenant.Id).ToListAsync())
+            {
+                offer.LastPriceHash = PriceInventoryComposer.CurrentPriceHash(offer.ConnectionId == n11.Id ? "N11" : "TRENDYOL", offer);
+                offer.LastStockProjectionVersion = 5;
+            }
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var stale = await Inventory(db).ApplyPanelPriceFillAsync(seed.Tenant.Id, Owner, new PanelPriceFillCommand(7), "fill-stale", CancellationToken.None);
+            Assert.Equal(("PANEL_PRICE_FILL_CHANGED", 409), (stale.Error?.Code, stale.Error?.Status));
+        }
+        await using (var db = fixture.CreateContext())
+            Assert.Null((await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id)).DefaultSalePrice);
+
+        int expected;
+        await using (var db = fixture.CreateContext())
+            expected = (await Inventory(db).PanelPriceFillPreviewAsync(seed.Tenant.Id, CancellationToken.None)).Fillable;
+        // NOPANEL from Trendyol (its oldest offer, 120) and ZERO from its only offer, the N11 one with Özel Fiyat (500).
+        Assert.Equal(2, expected);
+        await using (var db = fixture.CreateContext())
+        {
+            var applied = await Inventory(db).ApplyPanelPriceFillAsync(seed.Tenant.Id, Owner, new PanelPriceFillCommand(expected), "fill", CancellationToken.None);
+            Assert.True(applied.Succeeded, applied.Error?.Message);
+            Assert.Equal((2, 1), (applied.Value!.Filled, applied.Value.OffersRepriced));
+        }
+
+        await using (var read = fixture.CreateContext())
+        {
+            var variant = await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id);
+            Assert.Equal((130m, 120m), (variant.DefaultListPrice, variant.DefaultSalePrice));
+            // A variant with a panel price already is untouched.
+            Assert.Equal(200m, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.Priced.Id)).DefaultSalePrice);
+            var offers = await read.ChannelOffers.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id).ToDictionaryAsync(x => x.Id);
+            Assert.Equal((120m, 1L), (offers[trendyolOffer].SalePrice, offers[trendyolOffer].PriceVersion));
+            Assert.Equal((130m, 120m, 2L), (offers[n11Offer].ListPrice, offers[n11Offer].SalePrice, offers[n11Offer].PriceVersion));
+            Assert.Equal(PriceInventoryComposer.CurrentPriceHash("N11", offers[n11Offer]), offers[n11Offer].LastPriceHash);
+            Assert.Equal((500m, 1L), (offers[customOffer].SalePrice, offers[customOffer].PriceVersion));
+            Assert.Single(await read.ChannelPriceHistory.AsNoTracking().Where(x => x.OfferId == n11Offer).ToListAsync());
+            Assert.Equal(0, await read.IntegrationJobs.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            foreach (var connectionId in new[] { seed.Connection.Id, n11.Id })
+            {
+                var build = await new PriceInventoryComposer(read).BuildAsync(seed.Tenant.Id, connectionId, CancellationToken.None, automatic: true);
+                Assert.False(build.Succeeded && build.Value!.Lines.Count > 0);
+            }
+            Assert.Single(await read.AuditLogs.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.Action == "PANEL_PRICES_FILLED_FROM_FIRST_MARKETPLACE" && x.ActorUserId == Owner).ToListAsync());
+            Assert.Null((await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == other.NoPanelPrice.Id)).DefaultSalePrice);
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var again = await Inventory(db).ApplyPanelPriceFillAsync(seed.Tenant.Id, Owner, new PanelPriceFillCommand(0), "fill-again", CancellationToken.None);
+            Assert.Equal(0, again.Value!.Filled);
+        }
+        // The next stock send of the variant carries the new panel price (n11 sends stock and price together).
+        await using (var db = fixture.CreateContext())
+            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 6));
+        await using (var read = fixture.CreateContext())
+        {
+            var build = await new PriceInventoryComposer(read).BuildAsync(seed.Tenant.Id, n11.Id, CancellationToken.None, automatic: true);
+            var line = Assert.Single(build.Value!.Lines);
+            Assert.Equal((false, 120m, 130m), (line.PriceOmitted, line.SalePrice, line.ListPrice));
+        }
     }
 
     private sealed record Seed(Tenant Tenant, PlatformConnection Connection, ProductVariant Priced, ProductVariant NoPanelPrice, ProductVariant ZeroPanelPrice, ProductVariant ListBelowSale, ProductVariant NoVat, ProductVariant Unlinked, ProductVariant Archived, ProductVariant WithOffer);

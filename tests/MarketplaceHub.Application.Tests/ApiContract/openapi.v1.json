@@ -2619,6 +2619,77 @@
         }
       }
     },
+    "/api/v1/channel-offers/panel-price-fill": {
+      "post": {
+        "tags": [
+          "channel-offers"
+        ],
+        "operationId": "postChannelOffersPanelPriceFill",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PanelPriceFillCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelPriceFillApplied"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/channel-offers/panel-price-fill-preview": {
       "get": {
         "tags": [
@@ -33710,6 +33781,70 @@
           }
         }
       },
+      "PanelPriceFillApplied": {
+        "required": [
+          "filled",
+          "offersRepriced"
+        ],
+        "type": "object",
+        "properties": {
+          "filled": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "offersRepriced": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PanelPriceFillCommand": {
+        "required": [
+          "expectedCount"
+        ],
+        "type": "object",
+        "properties": {
+          "expectedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PanelPriceFillOfferChange": {
+        "required": [
+          "platformCode",
+          "offers",
+          "totalDifference",
+          "medianDifference",
+          "largestDifference"
+        ],
+        "type": "object",
+        "properties": {
+          "platformCode": {
+            "type": "string"
+          },
+          "offers": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalDifference": {
+            "type": "number",
+            "format": "double"
+          },
+          "medianDifference": {
+            "type": "number",
+            "format": "double"
+          },
+          "largestDifference": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "PanelPriceFillPreview": {
         "required": [
           "withoutPanelPrice",
@@ -33717,7 +33852,8 @@
           "zeroPrice",
           "withoutOffer",
           "fillableBySource",
-          "sample"
+          "sample",
+          "offerChanges"
         ],
         "type": "object",
         "properties": {
@@ -33748,6 +33884,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PanelPriceFillRow"
+            }
+          },
+          "offerChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PanelPriceFillOfferChange"
             }
           }
         }

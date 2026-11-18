@@ -66,6 +66,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/channel-offers Operations",
         "GET    /api/v1/channel-offers/{id:guid} SignedIn",
         "PATCH  /api/v1/channel-offers/{id:guid} Operations",
+        "POST   /api/v1/channel-offers/panel-price-fill Elevated",
         "GET    /api/v1/channel-offers/panel-price-fill-preview SignedIn",
         "PUT    /api/v1/channel-offers/panel-price-follow Operations",
         "GET    /api/v1/connections SignedIn",

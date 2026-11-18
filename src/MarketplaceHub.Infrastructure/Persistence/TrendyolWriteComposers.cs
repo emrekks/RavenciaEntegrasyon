@@ -379,8 +379,11 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             if (row.Inventory is not { } inventory) continue;
             var salePrice = OutboundSalePrice(row.Offer);
             var listPrice = OutboundListPrice(row.Offer);
-            // Trendyol's 0 TL offers stay out as before; Hepsiburada and Shopify take the stock alone (below).
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || isTrendyol && (salePrice <= 0 || row.Offer.ListPrice < row.Offer.SalePrice))
+            // Trendyol's 0 TL rule (owner, 18 Nov 2026: "0 TL'liler fiyatsız kalsın") is judged on the price in force: an offer
+            // stored at 0 with a saved panel price goes at the panel price; without a price in force it stays out as before.
+            // Hepsiburada and Shopify take the stock alone (below).
+            var (sendList, sendSale, priceKnown) = OutboundInForce(connection.PlatformCode, row.Offer, row.Variant, cards, listPrice, salePrice);
+            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || isTrendyol && !priceKnown)
             {
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.") is { } refused) return refused;
                 continue;
@@ -399,7 +402,6 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var priceHash = StandardPriceHash(listPrice, salePrice, row.Offer.PriceVersion);
             if (row.Offer.LastPriceHash == priceHash && row.Offer.LastStockProjectionVersion == inventory.ProjectionVersion) continue;
             var barcode = row.Barcode.Trim();
-            var (sendList, sendSale, priceKnown) = OutboundInForce(connection.PlatformCode, row.Offer, row.Variant, cards, listPrice, salePrice);
             var quantityOmitted = false;
             var priceOmitted = false;
             if (isTrendyol)
@@ -678,15 +680,23 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var stockChanged = row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion;
             if (!priceChanged && !stockChanged) continue;
             // Owner rule of 18 Nov 2026: the price in force goes with every stock change (Pazarama's price request beside
-            // its stock request, from the same line); without a price in force the stock goes alone.
-            var sendsPrice = priceKnown;
+            // its stock request, from the same line), with one documented exception: Pazarama refuses a price equal to the
+            // value it holds ("A price or stock equal to the current value is refused", marketplace-docs/pazarama.md), and one
+            // such line sends a whole batch to manual review. So the price rides along only when it differs from the value
+            // Pazarama last confirmed for this barcode, or, with none confirmed, from the offer's stored price (the value read
+            // from Pazarama). A price change of the offer itself still goes as before.
+            var confirmed = row.Offer.LastSentCode is not null && string.Equals(row.Offer.LastSentCode, barcode, StringComparison.Ordinal) && row.Offer.LastSentSalePrice is not null
+                ? (row.Offer.LastSentListPrice ?? row.Offer.LastSentSalePrice!.Value, row.Offer.LastSentSalePrice!.Value)
+                : (storedList, storedSale);
+            var differs = salePrice != confirmed.Item2 || listPrice != confirmed.Item1;
+            var sendsPrice = priceKnown && (priceChanged || differs);
             if (!sendsPrice && !stockChanged)
             {
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
                 continue;
             }
             lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: !stockChanged, PriceOmitted: !sendsPrice, SafetyStock: row.Offer.SafetyStock,
-                PriceNote: !sendsPrice ? PanelPriceOfferPolicy.PriceNotSentNote : null), sendsPrice, stockChanged));
+                PriceNote: !priceKnown ? PanelPriceOfferPolicy.PriceNotSentNote : null), sendsPrice, stockChanged));
         }
         if (lines.Count == 0) return NoChanges(missingInventory);
         // A barcode may be linked to two variants only by mistake; one request must not carry it twice.

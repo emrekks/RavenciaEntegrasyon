@@ -303,6 +303,9 @@ public static partial class CatalogEndpoints
         // Owner rule of 18 Nov 2026: what "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" would write (read only).
         api.MapGet("/channel-offers/panel-price-fill-preview", async (HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.PanelPriceFillPreviewAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<PanelPriceFillPreview>();
+        api.MapPost("/channel-offers/panel-price-fill", async (PanelPriceFillCommand command, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.ApplyPanelPriceFillAsync(tenant.TenantId, tenant.UserId, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : MissingContext(http))
+            .RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<PanelPriceFillApplied>();
         api.MapPut("/channel-offers/panel-price-follow", async (SetChannelOfferPanelFollowCommand command, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ChannelOfferPanelFollowView>().Idempotent(WriteReasons.Replaces);
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>

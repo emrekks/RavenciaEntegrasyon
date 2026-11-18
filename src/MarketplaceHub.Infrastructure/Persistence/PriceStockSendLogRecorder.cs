@@ -20,12 +20,12 @@ internal static class PriceStockSendLogRecorder
         var offerIds = payload.Lines.Select(line => line.OfferId).Distinct().ToArray();
         var offers = await db.ChannelOffers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && offerIds.Contains(x.Id))
-            .Select(x => new { x.Id, Values = new PriceStockConfirmedValues(x.LastSentCode, x.LastSentQuantity, x.LastSentSalePrice, x.LastSentListPrice), x.SalePrice, x.ListPrice })
+            .Select(x => new { x.Id, Values = new PriceStockConfirmedValues(x.LastSentCode, x.LastSentQuantity, x.LastSentSalePrice, x.LastSentListPrice) })
             .ToDictionaryAsync(x => x.Id, cancellationToken);
         // Owner rule of 18 Nov 2026: the previous values are filled whenever they are known. The confirmed values of the
         // same code first (cleared when the writes were switched on, which left every first send empty on live); else the
-        // last values the marketplace took for the same code in this log; the price else the offer's stored price (the
-        // value read from the marketplace or set in the panel); the quantity else unknown (null).
+        // last values the marketplace took for the same code in this log; else unknown (null). The offer's stored price is
+        // not a previous value: it is what the line sends (review of 18 Nov: "750 → 750"), and a wrong value is worse than none.
         var earlier = (await db.PriceStockSendLogs.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && offerIds.Contains(x.OfferId)
                     && (x.Result == PriceStockSendResults.Applied || x.Result == PriceStockSendResults.Unchanged))
@@ -45,8 +45,8 @@ internal static class PriceStockSendLogRecorder
             var logged = earlier.GetValueOrDefault((line.OfferId, line.Barcode));
             return new(line.Barcode,
                 confirmed?.Quantity ?? logged?.Quantity,
-                confirmed?.SalePrice ?? logged?.SalePrice ?? offer.SalePrice,
-                confirmed?.ListPrice ?? logged?.ListPrice ?? offer.ListPrice);
+                confirmed?.SalePrice ?? logged?.SalePrice,
+                confirmed?.ListPrice ?? logged?.ListPrice);
         }
         var trigger = Trigger(job, payload);
         db.PriceStockSendLogs.AddRange(payload.Lines.Select(line => PriceStockSendLogPolicy.Row(tenantId, connectionId, platformCode, job.Id, line,

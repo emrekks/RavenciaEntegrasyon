@@ -54,10 +54,9 @@ public static class PanelPriceOfferPolicy
 
     public const string PriceNotSentNote = "Fiyat gönderilmedi: geçerli panel fiyatı yok (boş, 0 ya da liste fiyatı satış fiyatından küçük); yalnız stok gitti.";
 
-    // Whether an offer follows the panel price when the panel price changes. "Özel Fiyat" on (false) keeps its own price.
-    // A choice never stored (null) follows only a panel price that was already saved: before that the panel had no price
-    // of its own (the screens show the first offer's), so the first panel price saved never reprices the offers at once;
-    // "Fiyatları Panel Fiyatına Eşitle" aligns them on purpose, after a preview.
+    // Whether an offer's stored price is pulled to the panel price when a panel price is saved (owner decision of 18 Nov
+    // 2026, one rule: the price on screen is the price that goes). Özel Fiyat on (false) keeps its own; any other offer, a
+    // choice never stored (null) included, takes the panel price, also when the panel price is saved for the first time.
     public static bool FollowsOnPanelChange(bool? followsPanelPrice, bool panelPriceWasSaved) =>
-        followsPanelPrice ?? panelPriceWasSaved;
+        followsPanelPrice != false;
 }

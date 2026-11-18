@@ -22,7 +22,9 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
     {
         var seed = await SeedAsync(platform, panel: null, follows: null);
         var line = await SingleLineAsync(seed);
-        Assert.Equal((7m, false, false, 300m), (line.Quantity, line.QuantityOmitted, line.PriceOmitted, line.SalePrice));
+        // Pazarama refuses a price equal to the one it holds (the offer's stored price was read from it): the documented
+        // exception, the stock goes alone without a note.
+        Assert.Equal((7m, false, platform == "PAZARAMA", 300m), (line.Quantity, line.QuantityOmitted, line.PriceOmitted, line.SalePrice));
         Assert.Null(line.PriceNote);
     }
 
@@ -45,8 +47,10 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
     {
         var seed = await SeedAsync(platform, panel: (280m, 250m), follows: false);
         var (line, payload) = await SingleLineWithPayloadAsync(seed);
-        Assert.Equal((false, 300m), (line.PriceOmitted, line.SalePrice));
-        Assert.Contains("300", payload);
+        // Pazarama: the own price equals the stored (and held) one, so it stays out (documented exception).
+        Assert.Equal((platform == "PAZARAMA", 300m), (line.PriceOmitted, line.SalePrice));
+        if (platform != "PAZARAMA") Assert.Contains("300", payload);
+        Assert.DoesNotContain("250", payload);
     }
 
     // A saved panel price that cannot be sent (list below sale): the stock goes alone with a note; PTT AVM takes no stock
@@ -59,7 +63,8 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
         await using var db = fixture.CreateContext();
         var composer = new PriceInventoryComposer(db);
         var build = await composer.BuildAsync(seed.TenantId, seed.ConnectionId, CancellationToken.None, automatic: true);
-        if (platform == "PTTAVM")
+        // PTT AVM takes no stock without a price; Trendyol's 0 TL rule, judged on the price in force, keeps such a line out.
+        if (platform is "PTTAVM" or "TRENDYOL")
         {
             Assert.False(build.Succeeded && build.Value!.Lines.Count > 0);
             Assert.Equal("CHANNEL_OFFER_INVALID", Assert.Single(composer.InvalidOffers).Code);
@@ -83,6 +88,30 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.False(build.Succeeded && build.Value!.Lines.Count > 0);
     }
 
+    // Owner decision of 18 Nov 2026: Trendyol's 0 TL offers stay without a price, judged on the price in force: an offer
+    // stored at 0 goes at the saved panel price; without one it stays out (no stock either), as before.
+    [PostgreSqlFact]
+    public async Task TrendyolZeroTlOffer_GoesAtASavedPanelPrice_ElseStaysOut()
+    {
+        foreach (var (panel, sends) in new[] { ((decimal List, decimal Sale)?)(280m, 250m), null }.Select(panel => (panel, panel is not null)))
+        {
+            var seed = await SeedAsync("TRENDYOL", panel, follows: null, storedSale: 0m);
+            await using var db = fixture.CreateContext();
+            var composer = new PriceInventoryComposer(db);
+            var build = await composer.BuildAsync(seed.TenantId, seed.ConnectionId, CancellationToken.None, automatic: true);
+            if (sends)
+            {
+                var line = Assert.Single(build.Value!.Lines);
+                Assert.Equal((false, 250m), (line.PriceOmitted, line.SalePrice));
+            }
+            else
+            {
+                Assert.False(build.Succeeded && build.Value!.Lines.Count > 0);
+                Assert.Equal("CHANNEL_OFFER_INVALID", Assert.Single(composer.InvalidOffers).Code);
+            }
+        }
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid VariantId);
 
     private async Task<PriceInventoryPushLine> SingleLineAsync(Seed seed) => (await SingleLineWithPayloadAsync(seed)).Line;
@@ -97,7 +126,7 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
         return (line, build.Value.PayloadJson);
     }
 
-    private async Task<Seed> SeedAsync(string platform, (decimal List, decimal Sale)? panel, bool? follows, bool stockChanged = true)
+    private async Task<Seed> SeedAsync(string platform, (decimal List, decimal Sale)? panel, bool? follows, bool stockChanged = true, decimal storedSale = 300m)
     {
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"in-force-{Guid.NewGuid():N}", DisplayName = "price in force", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
@@ -118,7 +147,7 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
             ExternalBarcode = barcode,
             ExternalSku = platform == "HEPSIBURADA" ? sku : null
         };
-        var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = 330m, SalePrice = 300m, Currency = "TRY", VatRate = 20m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE", FollowsPanelPrice = follows, PriceVersion = 1, Version = 1 };
+        var offer = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ListPrice = storedSale == 0m ? 0m : 330m, SalePrice = storedSale, Currency = "TRY", VatRate = 20m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE", FollowsPanelPrice = follows, PriceVersion = 1, Version = 1 };
         // Decision B: the offer counts as sent at its stored price; the stock changed since (or not).
         offer.LastPriceHash = PriceInventoryComposer.CurrentPriceHash(platform, offer);
         offer.LastStockProjectionVersion = stockChanged ? 5 : 6;

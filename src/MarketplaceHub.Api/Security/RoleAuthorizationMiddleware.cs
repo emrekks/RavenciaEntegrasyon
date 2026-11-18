@@ -165,6 +165,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // The Hızlı Güncelle choice (fields and stores) is kept by whoever sends product updates.
             case "settings" when segments.Length == 4 && last == "platform-update":
                 return OperationalRoles;
+            // "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" writes the panel price of the whole catalogue at once.
+            case "channel-offers" when last == "panel-price-fill":
+                return ElevatedRoles;
             case "catalog" or "products" or "variants" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
                 return OperationalRoles;
             default:

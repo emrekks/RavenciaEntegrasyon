@@ -140,6 +140,8 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
             foreach (var row in rows)
                 if (row.SalePrice > 0) Assert.Equal((row.ListPrice, row.SalePrice), (row.DefaultListPrice!.Value, row.DefaultSalePrice!.Value));
                 else Assert.Null(row.DefaultSalePrice);
+            // Ürün Hareketleri records each panel price the import wrote.
+            Assert.Equal(rows.Count(row => row.SalePrice > 0), await check.ProductChangeEntries.CountAsync(x => x.TenantId == tenant.Id && x.Source == ProductChangeSources.MarketplaceImport && x.Kind == ProductChangeKinds.DefaultPrice));
             // The owner changes a panel price; the next import leaves it.
             await check.ProductVariants.Where(x => x.Id == rows[0].Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.DefaultSalePrice, 1.5m).SetProperty(x => x.DefaultListPrice, 2.5m));
         }

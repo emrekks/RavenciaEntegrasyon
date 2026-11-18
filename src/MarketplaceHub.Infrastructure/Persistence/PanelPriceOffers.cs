@@ -127,7 +127,7 @@ internal static class PanelPriceOffers
     // offers (StockProjectionOutbox.EnqueuePriceChangesAsync: only to a connection whose automatic writes are open). An
     // offer the same change prices itself (skipOfferIds) and one with Özel Fiyat on keep theirs; without a panel price
     // (0, empty, list below sale) nothing changes.
-    public static async Task<List<ChannelOffer>> RepriceFollowersAsync(AppDbContext db, Guid tenantId, IReadOnlyDictionary<Guid, PanelPriceChange> changes, IReadOnlySet<Guid> skipOfferIds, string reason, string actorSource, DateTimeOffset now, CancellationToken cancellationToken)
+    public static async Task<List<ChannelOffer>> RepriceFollowersAsync(AppDbContext db, Guid tenantId, IReadOnlyDictionary<Guid, PanelPriceChange> changes, IReadOnlySet<Guid> skipOfferIds, string reason, string actorSource, DateTimeOffset now, CancellationToken cancellationToken, bool keepSendMarks = false)
     {
         var repriced = new List<ChannelOffer>();
         if (changes.Count == 0) return repriced;
@@ -142,10 +142,14 @@ internal static class PanelPriceOffers
                 var platformCode = platforms.GetValueOrDefault(offer.ConnectionId);
                 if (PanelPriceOfferPolicy.PanelPrices(platformCode, change.VariantSalePrice, change.ProductSalePrice, change.VariantListPrice, change.ProductListPrice) is not { } panel) continue;
                 if (offer.SalePrice == panel.SalePrice && offer.ListPrice == panel.ListPrice) continue;
+                // keepSendMarks ("Doldur"): an offer marked as sent at its old price stays marked at its new one, so the pull
+                // queues nothing and no reconcile scan sends it; the price goes with the variant's next stock send.
+                var markedAsSent = keepSendMarks && platformCode is not null && offer.LastPriceHash == PriceInventoryComposer.CurrentPriceHash(platformCode, offer);
                 offer.SalePrice = panel.SalePrice;
                 offer.ListPrice = panel.ListPrice;
                 offer.PriceVersion++;
                 offer.Version++;
+                if (markedAsSent) offer.LastPriceHash = PriceInventoryComposer.CurrentPriceHash(platformCode!, offer);
                 db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OfferId = offer.Id, PriceVersion = offer.PriceVersion, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = reason, ActorSource = actorSource, EffectiveAt = now });
                 repriced.Add(offer);
             }

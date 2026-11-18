@@ -109,12 +109,11 @@ export function quickPriceColumns(connections: ReadonlyArray<{ id: string; displ
 
 // "Özel Fiyat" per marketplace, in the quick edit's columns and the product editor's "Pazaryerlerine Özel Fiyat": an
 // unticked marketplace sells at the panel (main) price, so a panel price saved in the panel is written to its offers
-// too; a ticked one keeps its own prices. The choice is stored per offer (followsPanelPrice). An offer whose choice was
-// never stored (null) follows the panel once the variant has a saved panel price (owner, 18 Nov 2026: "Özel Fiyat açık
-// değilse paneli kullanacak"; the server's PanelPriceOfferPolicy.FollowsOnPanelChange). Before that the panel shown is
-// the first offer's price, not a price of its own: the offer follows it only at that price and otherwise keeps its own,
-// so the first panel price saved never overwrites a price set apart. A variant with no offer on a marketplace follows
-// the panel. offerFollowsPanel is that rule; every screen reads it from here.
+// too; a ticked one keeps its own prices. The choice is stored per offer (followsPanelPrice). One rule (owner decision of
+// 18 Nov 2026, "Özel Fiyat açık değilse paneli kullanacak"; the server's PanelPriceOfferPolicy.FollowsOnPanelChange):
+// every offer whose Özel Fiyat is not on, a choice never stored (null) included, follows the panel price, so the price
+// on screen is the price that goes. A variant with no offer on a marketplace follows the panel. offerFollowsPanel is that
+// rule; every screen reads it from here.
 type FollowItem = { variant: QuickPriceVariant & VariantOfferPriceSource; product: PanelPriceSource }
 // Whether the variant (or its card) has a panel sale price of its own saved, not the first offer's shown in its place.
 export function panelPriceSaved(variant: PanelPriceSource, product: PanelPriceSource): boolean {
@@ -125,30 +124,26 @@ export function offerMatchesPanel(offer: Pick<QuickPriceOffer, 'listPrice' | 'sa
   if (!takesListPrice) return true
   return panel.listPrice != null && offer.listPrice != null && samePrice(offer.listPrice, panel.listPrice)
 }
-export function offerFollowsPanel(offer: (Pick<QuickPriceOffer, 'listPrice' | 'salePrice' | 'followsPanelPrice'>) | null | undefined, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean, panelSaved = false): boolean {
-  if (offer == null) return true
-  if (offer.followsPanelPrice != null) return offer.followsPanelPrice
-  if (panelSaved) return true
-  return offerMatchesPanel(offer, panel, takesListPrice)
+export function offerFollowsPanel(offer: (Pick<QuickPriceOffer, 'followsPanelPrice'>) | null | undefined): boolean {
+  return offer?.followsPanelPrice !== false
 }
 // One marketplace's choice over several variants (a card's variants, a quick edit's products): its own price as soon as
 // one variant's offer there keeps its own, so no variant's own price is overwritten by a panel save.
-export function channelKeepsOwnPrice(items: ReadonlyArray<FollowItem>, connectionId: string, takesListPrice: boolean): boolean {
-  return items.some(item => !offerFollowsPanel(channelOffer(item.variant, connectionId), panelPrices(item.variant, item.product), takesListPrice, panelPriceSaved(item.variant, item.product)))
+export function channelKeepsOwnPrice(items: ReadonlyArray<FollowItem>, connectionId: string): boolean {
+  return items.some(item => !offerFollowsPanel(channelOffer(item.variant, connectionId)))
 }
 export function initialCustomChannels(items: ReadonlyArray<FollowItem>, columns: ReadonlyArray<QuickPriceColumn>): Record<string, boolean> {
-  return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, channelKeepsOwnPrice(items, column.id, column.takesListPrice)]))
+  return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, channelKeepsOwnPrice(items, column.id)]))
 }
 
 // The product editor's "Pazaryerlerine Özel Fiyat" cards as an existing product opens: every marketplace whose choice
 // (channelKeepsOwnPrice over the card's variants) is its own price, with the prices of the first variant (in the order
 // given) whose offer there keeps its own. Marketplaces that follow the panel are left out (their switch is off).
-export function editorCustomChannelPrices(variants: ReadonlyArray<QuickPriceVariant & VariantOfferPriceSource>, product: PanelPriceSource): Record<string, { listPrice: string; salePrice: string }> {
+export function editorCustomChannelPrices(variants: ReadonlyArray<QuickPriceVariant & VariantOfferPriceSource>, _product: PanelPriceSource): Record<string, { listPrice: string; salePrice: string }> {
   const connections = new Map<string, string | null>()
   for (const variant of variants) for (const status of variant.platformStatuses ?? []) if (status.connectionId && !connections.has(status.connectionId)) connections.set(status.connectionId, status.platformCode ?? null)
-  return Object.fromEntries([...connections].flatMap(([connectionId, platformCode]) => {
-    const takesListPrice = channelTakesListPrice(platformCode)
-    const own = variants.map(variant => channelOffer(variant, connectionId)).find((offer, index) => offer != null && !offerFollowsPanel(offer, panelPrices(variants[index], product), takesListPrice, panelPriceSaved(variants[index], product)))
+  return Object.fromEntries([...connections].flatMap(([connectionId]) => {
+    const own = variants.map(variant => channelOffer(variant, connectionId)).find(offer => offer != null && !offerFollowsPanel(offer))
     if (!own) return []
     const salePrice = own.salePrice ?? own.listPrice ?? 0
     return [[connectionId, { listPrice: String(own.listPrice ?? salePrice), salePrice: String(salePrice) }]]

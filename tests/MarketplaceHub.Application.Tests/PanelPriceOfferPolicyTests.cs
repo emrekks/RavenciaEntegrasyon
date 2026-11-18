@@ -40,9 +40,9 @@ public sealed class PanelPriceOfferPolicyTests
     // Özel Fiyat on keeps its own price.
     [InlineData(false, true, false)]
     [InlineData(false, false, false)]
-    // A choice never stored follows a panel price that was saved before; the first panel price saved reprices nothing.
+    // One rule (owner decision of 18 Nov 2026): a choice never stored follows the panel price, also the first one saved.
     [InlineData(null, true, true)]
-    [InlineData(null, false, false)]
+    [InlineData(null, false, true)]
     public void WhoFollowsAPanelPriceChange(bool? followsPanelPrice, bool panelPriceWasSaved, bool follows) =>
         Assert.Equal(follows, PanelPriceOfferPolicy.FollowsOnPanelChange(followsPanelPrice, panelPriceWasSaved));
 
