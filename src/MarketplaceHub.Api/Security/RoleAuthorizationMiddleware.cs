@@ -115,6 +115,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         var last = segments.Length > 3 ? segments[^1].ToLowerInvariant() : string.Empty;
         switch (area)
         {
+            // The panel-only "Değişim Onaylandı" mark of a return takes it out of the invoice's returns (owner, 18 Nov 2026).
+            case "returns" when last == "exchange-approved":
+                return ElevatedRoles;
             // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,
             // previews, uploads and status reads stay invoice work.
