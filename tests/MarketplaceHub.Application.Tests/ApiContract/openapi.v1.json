@@ -32151,6 +32151,12 @@
           },
           "shipped": {
             "type": "boolean"
+          },
+          "cargoTrackingLink": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

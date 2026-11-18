@@ -89,6 +89,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop.rr-static { position: static; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop .rr-ph { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 8px; color: var(--rr-muted); font-size: 12px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px; color: var(--rr-ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 13px; }
+/* A group heading of a grouped list: small, semi-bold, secondary text; a thin line above it (not the first); no circle, no hover. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt-group { display: flex; align-items: center; gap: 8px; margin-top: 4px; padding: 10px 10px 4px; color: var(--rr-muted); border-top: 1px solid var(--rr-line); font-size: 12px; font-weight: 600; cursor: default; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt-group:first-child, :is(main .rr.rr, .rr-layer.rr-layer) .rr-ph + .rr-opt-group { margin-top: 0; border-top: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:hover { background: var(--rv-hover, var(--rr-soft)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: var(--rr-primary-soft); color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-grow { flex: 1; }

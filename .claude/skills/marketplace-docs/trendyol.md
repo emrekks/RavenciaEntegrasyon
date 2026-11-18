@@ -535,3 +535,11 @@ packages only, no claim events.
   the owner marked it "Değişim Onaylandı"; it waits for the carrier until the package's tracking link is known. The
   row reads "Değişim". Whether live claims carry the block is **unverified**: the worker logs one Information line per
   exchange claim read ("replacementOutboundpackageinfo present=…, package id=…", no content).
+- Exchange package as an order package (18 Nov 2026): the 11 Nov diagnostic asked v2 `shipmentPackageIds=<resend>,<first>`
+  with a date window and got only the first package; whether an exchange package (11805950639 → 4360616611) comes back
+  is **unverified**. After a Trendyol recovery read each exchange package is read once read-only
+  (`OrderReadService.RunExchangePackageDiagnosticOnce`, same queries as the 11 Nov one) and an Information line says per
+  query whether the answer holds the package id ("Exchange package … diagnostic: …=200:package/none"); answers, buyer
+  fields removed, are kept as a resolved TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC issue. Nothing is written to orders or
+  packages; until it is known, the Yeniden Gönderimler row shows the claim's package data (no label print, no invoice
+  actions on it).

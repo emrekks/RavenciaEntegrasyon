@@ -40,6 +40,7 @@ internal sealed partial class OrderReadService
         if (synced && !run.OrderRereadRan && !cancellationToken.IsCancellationRequested) await RereadOrders(tenantId, connectionId, correlationId, cancellationToken);
         if (synced) await RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken);
         if (synced && cursorResourceType == "ORDERS_RECOVERY") await RunResendDiagnosticOnce(tenantId, connectionId, correlationId, cancellationToken);
+        if (synced && cursorResourceType == "ORDERS_RECOVERY") await RunExchangePackageDiagnosticOnce(tenantId, connectionId, correlationId, cancellationToken);
         return synced;
     }
 

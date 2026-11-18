@@ -126,7 +126,7 @@ internal sealed partial class OrderQueryService
                 .ToListAsync(cancellationToken))
             .GroupBy(claim => claim.OrderId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(claim => claim.ReplacementPackageId != null).Select(claim =>
-                new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink != null)).First());
+                new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink != null, claim.ReplacementCargoTrackingLink)).First());
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {

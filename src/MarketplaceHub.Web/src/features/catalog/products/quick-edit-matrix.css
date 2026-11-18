@@ -42,10 +42,10 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { padding: 0 6px; }
 }
 /* The header row of the list frame: a lightly darker band like a table head, 36 px, on the rows' own grid. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow { min-height: 36px; background: var(--rr-raised); border-bottom: 1px solid var(--rr-line); font-size: 12px; font-weight: 600; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow { min-height: 36px; color: var(--rr-muted); background: var(--rv-color-table-head); border-bottom: 1px solid var(--rr-line); font-size: 12px; font-weight: 500; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hcolor { cursor: default; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hcolor label { cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hpair .rr-cr-size { color: var(--rr-ink); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hpair .rr-cr-size { color: inherit; font-weight: inherit; }
 /* Step 2: the value boxes are short and the one Uygula button sits at the right end of the same row. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-fld { flex: none; }
