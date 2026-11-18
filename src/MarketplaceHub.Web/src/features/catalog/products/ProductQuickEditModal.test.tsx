@@ -181,14 +181,28 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
     }
     expect(note()).toContain('3 varyant')
     await click(groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
-    // A stock window opens the groups of one row together (Bordo and Füme here): each shows its own variant only.
+    // Each group opens on its own (Bordo only; its row mate Füme stays closed) and shows its own variant only.
     const rowsOf = (color: string) => Array.from(document.body.querySelectorAll(`[aria-label="${color} varyantları"] tbody tr`)).map(row => row.querySelector('.rr-qname small')?.textContent)
     expect(rowsOf('Bordo')).toEqual(['SKU-v0'])
+    expect(rowsOf('Füme')).toEqual([])
+    // The opened group's table sits in a panel that spans the whole grid row; the chain mark and pairing are gone.
+    const panel = document.body.querySelector('[aria-label="Bordo varyantları"]')!.closest('.rr-vg-panel')!
+    expect(panel.parentElement?.classList.contains('rr-vgroups')).toBe(true)
+    expect(document.body.querySelector('.rr-vg-link, .rr-paired')).toBeNull()
+    expect(groupBox('Bordo').closest('.rr-vgroup')!.classList.contains('rr-open')).toBe(true)
+    expect(groupBox('Füme').closest('.rr-vgroup')!.classList.contains('rr-open')).toBe(false)
+    const bordoButton = groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!
+    expect(bordoButton.getAttribute('aria-expanded')).toBe('true')
+    expect(document.getElementById(bordoButton.getAttribute('aria-controls')!)).not.toBeNull()
+    // Tümünü Aç opens every group; Tümünü Kapat closes them.
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-step-tools button')).find(button => button.textContent === 'Tümünü Aç')!)
     expect(rowsOf('Füme')).toEqual(['SKU-v1'])
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-step-tools button')).find(button => button.textContent === 'Tümünü Kapat')!)
+    expect(rowsOf('Füme')).toEqual([])
     expect(errors).toEqual([])
   })
 
-  it('writes the stock of each selected variant once, by its own id', async () => {
+  it('Tümüne Uygula only fills drafts; Kaydet then writes the stock of each variant once, by its own id', async () => {
     const calls: Array<{ path: string; body: { onHand: number; expectedOnHand: number } }> = []
     vi.mocked(hubApi).mockImplementation(async (path: string, init?: RequestInit) => {
       if (init?.method === 'PUT' && path.startsWith('/inventory/')) calls.push({ path, body: JSON.parse(String(init.body)) })
@@ -204,6 +218,12 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
       amount.dispatchEvent(new Event('input', { bubbles: true }))
     })
     await act(async () => { document.body.querySelector<HTMLFormElement>('#product-quick-edit-form')!.requestSubmit() })
+    expect(calls).toEqual([])
+    const bar = () => document.body.querySelector('.rv-draftbar')!
+    expect(bar().textContent).toContain('3 Değişiklik')
+    await click(Array.from(bar().querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Kaydet')!)
+    expect(calls).toEqual([])
+    await click(Array.from(bar().querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Onayla ve Kaydet')!)
     expect(calls.map(call => call.path).sort()).toEqual(['/inventory/v0/on-hand', '/inventory/v1/on-hand', '/inventory/v2/on-hand'])
     expect(Object.fromEntries(calls.map(call => [call.path, call.body.onHand]))).toEqual({ '/inventory/v0/on-hand': 6, '/inventory/v1/on-hand': 7, '/inventory/v2/on-hand': 8 })
     expect(calls.every(call => call.body.onHand - call.body.expectedOnHand === 5)).toBe(true)

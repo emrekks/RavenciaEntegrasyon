@@ -1,5 +1,5 @@
 {
-  "totalJs": 3094470,
+  "totalJs": 3100470,
   "chunks": {
     "ApiHealthView.css": [
       3494
@@ -209,7 +209,7 @@
       309874
     ],
     "ProductQuickEditModal.js": [
-      29053
+      33783
     ],
     "ProductsPage.css": [
       6856
