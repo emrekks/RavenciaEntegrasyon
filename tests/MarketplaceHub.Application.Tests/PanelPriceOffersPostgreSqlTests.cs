@@ -252,6 +252,8 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         {
             // NOPANEL: first read from Trendyol (its oldest offer, 120), N11 later (999). ZERO: a 0 TL first offer.
             AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 130m, 120m, null);
+            // Offer ids are time ordered to the millisecond; the later offer is created a few milliseconds after.
+            await Task.Delay(5);
             AddOffer(db, seed.Tenant, seed.Connection, seed.ZeroPanelPrice, 0m, 0m, null);
             await db.SaveChangesAsync();
             AddOffer(db, seed.Tenant, later, seed.NoPanelPrice, 999m, 999m, null);
@@ -283,6 +285,8 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         await using (var db = fixture.CreateContext())
         {
             trendyolOffer = AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 130m, 120m, null);
+            // Offer ids are time ordered to the millisecond; the later offer is created a few milliseconds after.
+            await Task.Delay(5);
             await db.SaveChangesAsync();
             n11Offer = AddOffer(db, seed.Tenant, n11, seed.NoPanelPrice, 999m, 999m, null);
             db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = n11.Id, VariantId = seed.NoPanelPrice.Id, ExternalId = $"N11-{Guid.NewGuid():N}", Version = 1 });
