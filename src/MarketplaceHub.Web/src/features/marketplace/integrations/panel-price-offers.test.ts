@@ -3,7 +3,7 @@ import { panelPriceOfferNotice, panelPriceOfferSummary, type PanelPriceOfferPrev
 
 const preview = (values: Partial<PanelPriceOfferPreview>): PanelPriceOfferPreview => ({
   connectionId: 'c-hb', platformCode: 'HEPSIBURADA', opensOffers: true, automaticWritesOpen: false, linkedWithoutOffer: 0, openable: 0, missingPanelPrice: 0, missingVat: 0,
-  following: 0, followingAtOtherPrice: 0, followingWithoutPanelPrice: 0, customPrice: 0, differences: [], ...values
+  following: 0, followingAtOtherPrice: 0, followingWithoutPanelPrice: 0, customPrice: 0, differences: [], priceChangesOnFirstStockSend: 0, ...values
 })
 
 describe('panel price offers (owner rule, 18 Nov 2026)', () => {
@@ -23,6 +23,10 @@ describe('panel price offers (owner rule, 18 Nov 2026)', () => {
     expect(panelPriceOfferNotice(preview({ platformCode: 'TRENDYOL_EFATURAM', opensOffers: false, linkedWithoutOffer: 12, openable: 0, missingPanelPrice: 2 }))).toEqual([
       '12 bağlı bedenin bu bağlantıda teklifi yok; bu bağlantıda panel fiyatıyla teklif açılmaz.'
     ])
+  })
+
+  it('names the offers whose changed price goes with their first stock send', () => {
+    expect(panelPriceOfferNotice(preview({ priceChangesOnFirstStockSend: 12 }))).toEqual(['Kapalıyken fiyatı değişmiş 12 teklifin yeni fiyatı, bedenin ilk stok hareketinde gidecek.'])
   })
 
   it('offers "Eksik Teklifleri Aç" only when something can open', () => {

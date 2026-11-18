@@ -402,9 +402,10 @@ public sealed record SetChannelOfferPanelFollowCommand(Guid ConnectionId, IReadO
 // list price below it) and MissingVat do not. Following: offers that follow the panel price on its next change (Özel Fiyat
 // off, or a choice never stored on a variant with a saved panel price); FollowingAtOtherPrice of them hold another price
 // now ("Fiyatları Panel Fiyatına Eşitle" would change them), FollowingWithoutPanelPrice have no panel price to follow.
-// CustomPrice: Özel Fiyat on. Differences: up to 50 of FollowingAtOtherPrice with both prices.
+// CustomPrice: Özel Fiyat on. Differences: up to 50 of FollowingAtOtherPrice with both prices. PriceChangesOnFirstStockSend:
+// active offers whose price in force differs from the value last confirmed (else stored): it goes with their next stock send.
 public sealed record PanelPriceOfferDifference(Guid VariantId, string Sku, decimal SalePrice, decimal ListPrice, decimal PanelSalePrice, decimal PanelListPrice, bool? FollowsPanelPrice);
-public sealed record PanelPriceOfferPreview(Guid ConnectionId, string PlatformCode, bool OpensOffers, bool AutomaticWritesOpen, int LinkedWithoutOffer, int Openable, int MissingPanelPrice, int MissingVat, int Following, int FollowingAtOtherPrice, int FollowingWithoutPanelPrice, int CustomPrice, IReadOnlyList<PanelPriceOfferDifference> Differences);
+public sealed record PanelPriceOfferPreview(Guid ConnectionId, string PlatformCode, bool OpensOffers, bool AutomaticWritesOpen, int LinkedWithoutOffer, int Openable, int MissingPanelPrice, int MissingVat, int Following, int FollowingAtOtherPrice, int FollowingWithoutPanelPrice, int CustomPrice, IReadOnlyList<PanelPriceOfferDifference> Differences, int PriceChangesOnFirstStockSend);
 // Owner rule of 18 Nov 2026 ("panel fiyatları ilk çekilen pazaryerinden"): the read-only preview of the one-off fill of the
 // variants without a saved panel price, from the offer of the marketplace each was first read from (its oldest offer).
 // Fillable: that offer has a sale price above zero; ZeroPrice: it has none (left empty); WithoutOffer: no offer at all.

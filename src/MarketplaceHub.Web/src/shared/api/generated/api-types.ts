@@ -2382,6 +2382,7 @@ export type PanelPriceOfferPreview = {
   followingWithoutPanelPrice: number
   customPrice: number
   differences: PanelPriceOfferDifference[]
+  priceChangesOnFirstStockSend: number
 }
 
 export type PanelPriceOffersOpened = {

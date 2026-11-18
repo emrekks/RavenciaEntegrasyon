@@ -24,11 +24,18 @@ public sealed partial class InventoryService
                             join card in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { card.TenantId, ProductId = card.Id }
                             where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
                             orderby variant.Sku, variant.Id
-                            select new { offer.VariantId, variant.Sku, offer.SalePrice, offer.ListPrice, offer.FollowsPanelPrice, VariantSale = variant.DefaultSalePrice, CardSale = card.DefaultSalePrice, VariantList = variant.DefaultListPrice, CardList = card.DefaultListPrice })
+                            select new { offer.VariantId, variant.Sku, offer.SalePrice, offer.ListPrice, offer.FollowsPanelPrice, offer.LastSentSalePrice, VariantSale = variant.DefaultSalePrice, CardSale = card.DefaultSalePrice, VariantList = variant.DefaultListPrice, CardList = card.DefaultListPrice })
             .ToListAsync(cancellationToken);
         int following = 0, atOtherPrice = 0, withoutPanelPrice = 0, custom = 0;
         var differences = new List<PanelPriceOfferDifference>();
         var takesList = PanelPriceOfferPolicy.TakesListPrice(connection.PlatformCode);
+        // Review of 18 Nov 2026: the offers whose price in force differs from what the marketplace last confirmed (or, with
+        // none confirmed, from the stored price): the price each of them carries with its first stock send after the writes open.
+        var priceGoesFirst = 0;
+        foreach (var offer in offers)
+            if (PanelPriceOfferPolicy.InForce(connection.PlatformCode, offer.FollowsPanelPrice, offer.ListPrice, offer.SalePrice, offer.VariantSale, offer.CardSale, offer.VariantList, offer.CardList) is { } inForce
+                && inForce.SalePrice != (offer.LastSentSalePrice ?? offer.SalePrice))
+                priceGoesFirst++;
         foreach (var offer in offers)
         {
             if (offer.FollowsPanelPrice == false) { custom++; continue; }
@@ -42,7 +49,7 @@ public sealed partial class InventoryService
         var open = await AutomaticPriceStockWrites.IsOpenAsync(db, tenantId, connectionId, cancellationToken);
         return ServiceResult<PanelPriceOfferPreview>.Ok(new(connectionId, connection.PlatformCode, opensOffers, open,
             counts.LinkedWithoutOffer, opensOffers ? counts.Openable : 0, counts.MissingPanelPrice, counts.MissingVat,
-            following, atOtherPrice, withoutPanelPrice, custom, differences));
+            following, atOtherPrice, withoutPanelPrice, custom, differences, priceGoesFirst));
     }
 
     public async Task<ServiceResult<PanelPriceOffersOpened>> OpenPanelPriceOffersAsync(Guid tenantId, Guid userId, Guid connectionId, CancellationToken cancellationToken)
@@ -157,9 +164,17 @@ public sealed partial class InventoryService
         var repriced = await PanelPriceOffers.RepriceFollowersAsync(db, tenantId,
             plan.Prices.ToDictionary(x => x.Key, x => new PanelPriceOffers.PanelPriceChange(x.Value.SalePrice, null, x.Value.ListPrice, null, false)),
             new HashSet<Guid>(), PanelPriceFillNote, $"USER:{userId:D}", now, cancellationToken, keepSendMarks: true);
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "PANEL_PRICES_FILLED_FROM_FIRST_MARKETPLACE", TargetType = "ProductVariant", TargetId = null,
+        db.AuditLogs.Add(new AuditLog
+        {
+            TenantId = tenantId,
+            ActorUserId = userId,
+            Action = "PANEL_PRICES_FILLED_FROM_FIRST_MARKETPLACE",
+            TargetType = "ProductVariant",
+            TargetId = null,
             Reason = $"Panel fiyatı ilk pazaryeri fiyatından dolduruldu: {filled} beden ({string.Join(", ", plan.Preview.FillableBySource.Select(x => $"{x.Key} {x.Value}"))}); 0 TL olduğu için boş kalan {plan.Preview.ZeroPrice}, teklifi olmayan {plan.Preview.WithoutOffer}; panel fiyatına çekilen teklif {repriced.Count}. Pazaryerine bir şey gönderilmedi.",
-            CorrelationId = correlationId, CreatedAt = now });
+            CorrelationId = correlationId,
+            CreatedAt = now
+        });
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<PanelPriceFillApplied>.Ok(new(filled, repriced.Count));

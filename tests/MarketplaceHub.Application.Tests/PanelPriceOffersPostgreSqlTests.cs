@@ -231,6 +231,8 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         // the panel and holds another price now.
         Assert.Equal((1, 1, 0), (preview.Following, preview.FollowingAtOtherPrice, preview.CustomPrice));
         Assert.Equal(300m, Assert.Single(preview.Differences).SalePrice);
+        // Its price in force (310) differs from the stored one: it goes with the first stock send after the writes open.
+        Assert.Equal(1, preview.PriceChangesOnFirstStockSend);
         // Another tenant's connection is not found, and opening from this tenant leaves the other untouched.
         Assert.Equal(404, (await Inventory(db).PanelPriceOfferPreviewAsync(seed.Tenant.Id, other.Connection.Id, CancellationToken.None)).Error?.Status);
         Assert.Equal(404, (await Inventory(db).OpenPanelPriceOffersAsync(seed.Tenant.Id, Owner, other.Connection.Id, CancellationToken.None)).Error?.Status);

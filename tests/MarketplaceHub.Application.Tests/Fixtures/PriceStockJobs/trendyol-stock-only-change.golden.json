@@ -1,0 +1,23 @@
+{
+  "Request": {
+    "items": [
+      {
+        "barcode": "8690000000017",
+        "quantity": 7,
+        "salePrice": 250.00,
+        "listPrice": 280.00
+      }
+    ]
+  },
+  "Lines": [
+    {
+      "Barcode": "8690000000017",
+      "Quantity": 7,
+      "ListPrice": 280.00,
+      "SalePrice": 250.00,
+      "QuantityOmitted": false,
+      "PriceOmitted": false,
+      "PriceNote": null
+    }
+  ]
+}

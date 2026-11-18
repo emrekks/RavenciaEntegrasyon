@@ -128,6 +128,6 @@ describe('price/stock monitor helpers', () => {
 
   it('warns that changes made while writes were off are not sent', () => {
     expect(automaticWritesBaselineMessage('N11’e')).toContain(automaticWritesBaselineWarning)
-    expect(automaticWritesBaselineWarning).toBe('Kapalıyken yapılan değişiklikler pazaryerine gönderilmedi. Açmadan önce pazaryerlerindeki stok ve fiyatları güncellemenizi öneririz.')
+    expect(automaticWritesBaselineWarning).toBe('Açıldığı anda hiçbir şey gönderilmez. Kapalıyken değişen fiyatlar kendiliğinden gönderilmez; bir bedenin geçerli fiyatı, açıldıktan sonraki ilk stok hareketinde stokla birlikte gider.')
   })
 })

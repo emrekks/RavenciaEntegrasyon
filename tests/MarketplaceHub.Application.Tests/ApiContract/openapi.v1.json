@@ -33980,7 +33980,8 @@
           "followingAtOtherPrice",
           "followingWithoutPanelPrice",
           "customPrice",
-          "differences"
+          "differences",
+          "priceChangesOnFirstStockSend"
         ],
         "type": "object",
         "properties": {
@@ -34034,6 +34035,10 @@
             "items": {
               "$ref": "#/components/schemas/PanelPriceOfferDifference"
             }
+          },
+          "priceChangesOnFirstStockSend": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
