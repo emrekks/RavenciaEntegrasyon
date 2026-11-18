@@ -23,26 +23,35 @@ export function tabSlideDirection(from: string, to: string, orderedKeys: readonl
 }
 
 // The page's scroller: the content area on a laptop (styles/design-system.css, min-width 701px), the window on a phone.
+const pageScrollers = () => document.querySelectorAll<HTMLElement>('.app-shell > main > :is(.content, .rv-page)')
 export function scrollPageToTop() {
   if (typeof window === 'undefined') return
-  document.querySelectorAll<HTMLElement>('.app-shell > main > :is(.content, .rv-page)').forEach(scroller => { if (scroller.scrollTop > 0) scroller.scrollTop = 0 })
+  pageScrollers().forEach(scroller => { if (scroller.scrollTop > 0) scroller.scrollTop = 0 })
   if (window.scrollY > 0) window.scrollTo({ top: 0, left: window.scrollX, behavior: 'instant' })
+}
+
+// Read while the tab change renders, before the new tab is in the page: reading a scroll position after it is (in the
+// layout effect) made the browser lay out the whole new tab at once (~400 ms for the Siparişler table on a 4x slowed
+// phone), even when the page was already at its top and nothing had to move.
+function pageIsScrolled() {
+  if (typeof window === 'undefined') return false
+  return window.scrollY > 0 || Array.from(pageScrollers()).some(scroller => scroller.scrollTop > 0)
 }
 
 // className goes on the content wrapper and key on the same element: the key changes only when the tab does (and the
 // change animates), so the wrapper remounts and its animation plays once.
 export function useTabSlide(activeKey: string, orderedKeys: readonly string[], { scrollToTop = true } = {}): TabSlide {
-  const [state, setState] = useState<{ active: string; className: TabSlideClass; seq: number; changes: number }>({ active: activeKey, className: '', seq: 0, changes: 0 })
+  const [state, setState] = useState<{ active: string; className: TabSlideClass; seq: number; changes: number; scrolled: boolean }>({ active: activeKey, className: '', seq: 0, changes: 0, scrolled: false })
   let current = state
   if (state.active !== activeKey) {
     const className = reducedMotion() ? '' : tabSlideDirection(state.active, activeKey, orderedKeys)
-    current = { active: activeKey, className, seq: className ? state.seq + 1 : state.seq, changes: state.changes + 1 }
+    current = { active: activeKey, className, seq: className ? state.seq + 1 : state.seq, changes: state.changes + 1, scrolled: scrollToTop && pageIsScrolled() }
     // Adjusting state while rendering (React's "storing information from previous renders"): the new tab's first paint
     // already carries its slide.
     setState(current)
   }
-  const { changes } = current
-  useLayoutEffect(() => { if (changes > 0 && scrollToTop) scrollPageToTop() }, [changes, scrollToTop])
+  const { changes, scrolled } = current
+  useLayoutEffect(() => { if (changes > 0 && scrollToTop && scrolled) scrollPageToTop() }, [changes, scrollToTop, scrolled])
   return { className: current.className, key: `tab-slide-${current.seq}`, sliding: Boolean(current.className) }
 }
 

@@ -94,7 +94,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-stepn { display: grid; place-items: center; width: 22px; height: 22px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line-strong); border-radius: 7px; font-size: 12px; font-weight: 600; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { display: flex; gap: 8px; margin-left: auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools > .rr-btn.rr-link { flex: none; width: auto; height: 28px; min-height: 0; padding: 0 4px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-trigger.rr-sm { width: auto; height: 36px; font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup { border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup + .rr-vgroup { margin-top: 8px; }
@@ -530,6 +531,7 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Phones, quick edit: the colour and size pickers of "Varyantları Seç" share the row half and half. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-btn.rr-link { grid-column: 1 / -1; justify-self: end; width: auto; min-height: 0; height: 28px; }
   .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor { display: block; min-width: 0; }
   .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger { width: 100%; min-width: 0; justify-content: space-between; }
   .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -23,6 +23,8 @@ describe('PlatformFilter', () => {
     expect(rows().map(row => row.querySelector('.rr-grow')!.textContent)).toEqual(['Trendyol', 'N11', 'PttAVM'])
     expect(rows().every(row => row.querySelector('input')!.checked)).toBe(true)
     expect(rows().map(row => row.querySelector('.rr-opt-count')?.textContent ?? '')).toEqual(['4', '0', '0'])
+    // The row itself says its count is 0 (dimmed by rr-components.css without a :has() rule).
+    expect(rows().map(row => row.classList.contains('is-zero'))).toEqual([false, true, true])
     expect(headButton().textContent).toBe('Tümünü Kaldır')
   })
 
