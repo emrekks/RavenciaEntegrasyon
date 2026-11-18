@@ -1235,9 +1235,9 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 12px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 12px; }
 /* owner, 18 Nov: status labels and the remaining time stay on one line; the reason and its customer note take two lines each */
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(td.rr-mid, .rr-invcell) .rr-ring > span > b { white-space: nowrap; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td.rr-mid .rr-ring > span > small { white-space: nowrap; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-reasoncell > small { -webkit-line-clamp: 2; line-clamp: 2; }
+main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl :is(td.rr-mid, .rr-invcell) .rr-ring > span > b { white-space: nowrap; }
+main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl td.rr-mid .rr-ring > span > small { white-space: nowrap; }
+main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl .rr-reasoncell > small { -webkit-line-clamp: 2; line-clamp: 2; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 /* owner, 14 Nov: İadeler follows the Siparişler one-line rules - order lines, tracking number, Bilgiler lines and buyer words never break inside */
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
