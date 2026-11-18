@@ -1629,6 +1629,14 @@ button,
 .rv-confirm-dialog { width: min(460px, calc(100vw - 32px)); }
 /* A confirmation asked from inside another window stands over it (the windows are layer 1000, the toasts above). */
 .rv-overlay:has(> .rv-confirm-dialog) { z-index: calc(var(--rv-z-modal) + 10); }
+/* Phones (owner, 18 Nov 2026): every confirmation is a card 16px in from the edges with four 14px corners, centred, not the bottom sheet the other windows are:
+   at most 420px wide, its body scrolls, the two buttons share the width (36px) and stack when a label needs the room. */
+@media (max-width: 760px) {
+  html body .rv-overlay:has(> .rv-confirm-dialog) { place-items: center; padding: 16px; }
+  html body .rv-overlay > .rv-modal.rv-confirm-dialog { width: min(calc(100vw - 32px), 420px); max-height: calc(100dvh - 32px); border-width: 1px; border-radius: 14px; }
+  html body .rv-confirm-dialog > footer { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  html body .rv-confirm-dialog > footer > button { min-height: 36px; height: auto; min-width: 0; padding-block: 6px; white-space: normal; }
+}
 .rv-confirm-message { color: var(--rv-color-muted); line-height: 1.55; }
 .rv-prompt-form { display: grid; gap: var(--rv-space-2); }
 @keyframes rv-splash-progress { 0% { transform: translateX(-120%); } 50%, 70% { transform: translateX(170%); } 100% { transform: translateX(300%); } }

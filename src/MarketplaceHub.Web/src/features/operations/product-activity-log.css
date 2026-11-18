@@ -3,7 +3,7 @@
 .app-shell.stitch-shell main .jobs-reference-page .pal-table { min-width: 980px; }
 
 /* Kind summary: Stok, Fiyat, Durum, İade toggles, each a filter of its kind. */
-.app-shell.stitch-shell main .jobs-reference-page .pal-kind { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--rv-color-muted); border: 1px solid transparent; border-radius: 7px; cursor: pointer; user-select: none; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-kind { display: inline-flex; flex: none; align-items: center; gap: 6px; box-sizing: border-box; height: 32px; padding: 0 10px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; white-space: nowrap; cursor: pointer; user-select: none; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-kind strong { color: var(--rv-color-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-kind:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .jobs-reference-page .pal-kind:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
@@ -48,24 +48,27 @@
 .app-shell.stitch-shell main .jobs-reference-page .pal-actor { max-width: 160px; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-muted { color: var(--rv-color-subtle); }
 
-/* Phones: each change is a card — product on top, change and source, then time and user, then the platform. */
+/* Phones: each change is a card of three lines (owner, 18 Nov 2026) — the product; the change with the time beside it; the source, the user and the
+   platform. The Değişiklik / Kaynak labels stay for screen readers only. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .jobs-reference-page .pal-view-segment { width: 100%; }
   .app-shell.stitch-shell main .jobs-reference-page .pal-view-segment > button { flex: 1 1 0; min-width: 0; }
   .app-shell.stitch-shell main .jobs-reference-page .pal-table { min-width: 0; }
   .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr {
     grid-template-areas:
-      "product product"
-      "change source"
-      "time actor"
-      "platform platform";
+      "product product product"
+      "change change time"
+      "source actor platform";
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px 10px;
   }
   .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-change-td { grid-area: change; }
   .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-source-td { grid-area: source; }
-  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-actor { grid-area: actor; max-width: none; padding-top: 8px; border-top: 1px solid var(--rv-color-border); text-align: right; }
-  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-time { grid-area: time; }
-  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-platform { grid-area: platform; padding-top: 0; border-top: 0; text-align: left; }
-  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td:is(.pal-change-td, .pal-source-td)::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-actor { grid-area: actor; max-width: none; align-self: center; padding-top: 0; border-top: 0; text-align: right; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-time { grid-area: time; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; text-align: right; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-platform { grid-area: platform; align-self: center; justify-self: end; padding-top: 0; border-top: 0; text-align: left; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td:is(.pal-change-td, .pal-source-td)::before { content: attr(data-label); position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-source-td { align-self: center; }
   .app-shell.stitch-shell main .jobs-reference-page .pal-source { max-width: none; }
 }
 /* Phones: the source never runs past the card (a long return number is cut with an ellipsis); a product's options and
@@ -81,23 +84,9 @@
    content and pushed the cards past the screen); the kind chips stay a sideways slider with Yenile beside it. */
 .app-shell.stitch-shell main .jobs-reference-page .psl { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar { flex-direction: row; align-items: flex-start; gap: 8px; }
-  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar > .jobs-reference-status-summary { display: grid; flex: 1 1 0; grid-template-columns: repeat(2, minmax(0, 1fr)); width: auto; min-width: 0; padding-bottom: 0; overflow: visible; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar { flex-direction: row; align-items: center; gap: 8px; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar > .jobs-reference-status-summary { display: flex; flex: 1 1 0; flex-wrap: nowrap; width: auto; min-width: 0; padding-bottom: 0; overflow: auto hidden; scrollbar-width: none; }
   html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar > .jobs-reference-toolbar-actions { flex: none; width: auto; }
-}
-/* Narrow phones: change and source stack, so neither is cut. */
-@media (max-width: 420px) {
-  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr {
-    grid-template-areas:
-      "product"
-      "change"
-      "source"
-      "time"
-      "actor"
-      "platform";
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-actor { text-align: left; }
 }
 /* Narrow phones: the product column gives up its desktop minimum width; the log switch is two equal columns (label
    cut with an ellipsis only when it cannot fit) and the page's tab strip fits the screen instead of being cut. */

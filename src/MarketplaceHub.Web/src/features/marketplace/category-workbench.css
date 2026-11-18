@@ -39,7 +39,7 @@
 .cm-card .cm-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm-card .cm-meta { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-.cm-glyph { display: inline-block; flex: none; width: 16px; height: 16px; color: var(--rv-color-muted); vertical-align: -3px; }
+.cm-glyph { color: var(--rv-color-muted); }
 .cm-glyph.is-done { color: var(--rv-color-accent); }
 .cm-glyph.is-partial { color: var(--rv-color-warning); }
 .cm-glyph.is-required { color: var(--rv-color-danger); }

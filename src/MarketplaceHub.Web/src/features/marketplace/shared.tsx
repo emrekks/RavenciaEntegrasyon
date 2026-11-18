@@ -1,5 +1,6 @@
 // Code the marketplace routes share (orders, shipments, returns, integrations, mappings): types, helpers and the
 // windows several screens open. Each route lives in its own module so it loads as its own chunk.
+import './cm-glyph.css'
 import { handSetInvoiceStatusNote } from '../invoicing/manual-invoice-status'
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
 import { Fragment, type ReactNode } from 'react'

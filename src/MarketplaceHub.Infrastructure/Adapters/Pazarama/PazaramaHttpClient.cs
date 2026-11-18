@@ -185,8 +185,32 @@ public sealed partial class PazaramaHttpClient(
     // copy had, transport errors PAZARAMA_*).
     internal static readonly MarketplaceTransport Transport = new(ClientName, "PAZARAMA", "Pazarama", PazaramaRateLimitHandler.QuotaAcquiredKey);
 
+    // A passing answer of the token service is asked again twice, a few seconds apart, inside the single token flight
+    // (17 Nov 2026 from 22:27Z: an empty 200 and 504s for every token request, right after the order service answered
+    // "İşleminiz şu anda gerçekleştirilemiyor"); then the job goes back to the queue (Remote5xx is a Retry).
+    internal static readonly TimeSpan[] DefaultTokenRetryDelays = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5)];
+    internal IReadOnlyList<TimeSpan> TokenRetryDelays { get; init; } = DefaultTokenRetryDelays;
+
+    private Task<PazaramaToken> IssueTokenAsync(PazaramaRequestContext account, CancellationToken cancellationToken) =>
+        IssueWithRetriesAsync(attempt => IssueTokenOnceAsync(account, attempt, cancellationToken), delay => Task.Delay(delay, timeProvider, cancellationToken), TokenRetryDelays);
+
+    internal static async Task<PazaramaToken> IssueWithRetriesAsync(Func<int, Task<PazaramaToken>> once, Func<TimeSpan, Task> wait, IReadOnlyList<TimeSpan> delays)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            var token = await once(attempt + 1);
+            if (token.IsSuccess || attempt >= delays.Count || !IsRetriedTokenFailure(token.Error)) return token;
+            await wait(delays[attempt]);
+        }
+    }
+
+    // Asked again at once: a 5xx or an empty answer, and a connection that failed. A timeout already waited its full
+    // time and a quota or gateway refusal names its own wait, so they go straight back to the job.
+    internal static bool IsRetriedTokenFailure(AdapterError? error) =>
+        error is not null && (error.Class == AdapterErrorClass.Remote5xx || error.Class == AdapterErrorClass.TransientNetwork && error.Code != "PAZARAMA_TIMEOUT");
+
     // OAuth2 client credentials: Basic clientId:clientSecret, form grant_type and scope.
-    private async Task<PazaramaToken> IssueTokenAsync(PazaramaRequestContext account, CancellationToken cancellationToken)
+    private async Task<PazaramaToken> IssueTokenOnceAsync(PazaramaRequestContext account, int attempt, CancellationToken cancellationToken)
     {
         if (N11CredentialFormat.Normalize(account.ClientId) is null || N11CredentialFormat.Normalize(account.ClientSecret) is null)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIAL_FORMAT_INVALID", "Kayıtlı Pazarama Client Id veya Client Secret değerinde geçersiz karakter var. Değerleri Pazarama satıcı panelindeki Hesabım → Entegrasyon Bilgileri ekranından yeniden kopyalayıp kaydedin.", 422, null, null));
@@ -203,19 +227,49 @@ public sealed partial class PazaramaHttpClient(
             // The token call waits for no quota token, so a cancellation the caller did not ask for is a timeout.
             CallerCancellation.Mark(request, cancellationToken);
             using var response = await clients.CreateBoundedClient(ClientName).SendAsync(request, timeout.Token);
-            var token = TokenResponse(response.StatusCode, await response.Content.ReadAsStringAsync(timeout.Token));
-            if (!token.IsSuccess) logger.LogWarning("Pazarama token alınamadı. ConnectionId: {ConnectionId}, Status: {Status}, Code: {Code}", account.Connection.Id, (int)response.StatusCode, token.Error?.Code);
+            var text = await response.Content.ReadAsStringAsync(timeout.Token);
+            var token = TokenResponse(response.StatusCode, text);
+            // The answer's outline (field names, the OAuth error code, its type and size; never a value that could be a
+            // token) tells an empty answer from an unknown envelope or a refusal.
+            if (!token.IsSuccess)
+                logger.LogWarning("Pazarama token alınamadı. ConnectionId: {ConnectionId}, Attempt: {Attempt}, Status: {Status}, Code: {Code}, OAuthError: {OAuthError}, Message: {Message}, Body: {BodyShape} ({ContentType}, {BodyLength} bayt)",
+                    account.Connection.Id, attempt, (int)response.StatusCode, token.Error?.Code, OAuthError(text) ?? "yok", token.Error?.SafeMessage, ShapeOf(text), response.Content.Headers.ContentType?.MediaType ?? "içerik tipi yok", text.Length);
             return token;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            logger.LogWarning("Pazarama token isteği zaman aşımına uğradı. ConnectionId: {ConnectionId}, Attempt: {Attempt}", account.Connection.Id, attempt);
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.TransientNetwork, "PAZARAMA_TIMEOUT", "Pazarama oturum servisi zaman aşımına uğradı.", null, TimeSpan.FromSeconds(15), null));
         }
         catch (HttpRequestException exception)
         {
-            logger.LogWarning(exception, "Pazarama token isteği başarısız. ConnectionId: {ConnectionId}", account.Connection.Id);
+            logger.LogWarning(exception, "Pazarama token isteği başarısız. ConnectionId: {ConnectionId}, Attempt: {Attempt}", account.Connection.Id, attempt);
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.TransientNetwork, "PAZARAMA_NETWORK_ERROR", "Pazarama oturum servisine bağlanılamadı.", null, TimeSpan.FromSeconds(15), null));
         }
+    }
+
+    // The OAuth error code of a refused token request (invalid_client, invalid_scope…): a fixed word, never a secret.
+    internal static string? OAuthError(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+            return Member(document.RootElement, "error") is { ValueKind: JsonValueKind.String } code ? code.GetString() is { Length: > 0 and <= 64 } value ? value : null : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    // A 2xx with nothing in it: no body, "{}" or "null". The token service said nothing about the credentials.
+    internal static bool IsEmptyAnswer(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return true;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Null || root.ValueKind == JsonValueKind.Object && !root.EnumerateObject().Any();
+        }
+        catch (JsonException) { return false; }
     }
 
     // Standard OAuth answers {access_token, expires_in, token_type}; Pazarama's token service wraps
@@ -255,6 +309,10 @@ public sealed partial class PazaramaHttpClient(
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama oturum servisi istek sınırına ulaştı; biraz sonra yeniden denenecek.", 429, TimeSpan.FromSeconds(60), null));
         if ((int)status >= 500)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama oturum servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(30), null));
+        // An empty 2xx says nothing about the credentials or the contract: it came with 504s during a Pazarama outage
+        // (17 Nov 2026) and is retried like a 5xx. An answer with fields but no token stays a contract question below.
+        if ((int)status is >= 200 and < 300 && IsEmptyAnswer(body))
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_TOKEN_REMOTE_ERROR", "Pazarama oturum servisi boş yanıt verdi (token yok); geçici bir Pazarama arızası sayılır, işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(60), null));
         return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", $"Pazarama oturum servisi beklenen token yanıtını vermedi (yanıt alanları: {ShapeOf(body)}).", (int)status, null, null));
     }
 
