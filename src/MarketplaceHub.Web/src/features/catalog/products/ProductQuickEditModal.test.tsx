@@ -115,6 +115,11 @@ describe('ProductQuickEditModal variant selection', () => {
     // No table, no opening groups, no shared header row far from the boxes.
     expect(document.body.querySelector('table.rr-mx, th.rr-mx-size, .rr-vgroup, .rr-vg-t, .rr-qtable')).toBeNull()
     expect(groupBox('Bej').classList.contains('rr-cr-round')).toBe(true)
+    // The single-variant tick is a drawn circle inside its pair (it was a screen-reader-only input that the global checkbox look
+    // drew outside the pair, on top of the previous box).
+    const tick = document.body.querySelector('.rr-cr-pair .rr-cr-tick')!
+    expect(tick.classList.contains('sr-only')).toBe(false)
+    expect(tick.closest('label.rr-cr-size')).not.toBeNull()
   })
 
   it('draws no cell at all for a size a colour does not have', async () => {

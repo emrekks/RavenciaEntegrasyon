@@ -27,11 +27,11 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 13px; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color > b { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { display: grid; grid-template-columns: repeat(auto-fill, var(--cr-cell, 120px)); justify-content: start; gap: 6px 12px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { display: grid; grid-template-columns: repeat(auto-fill, var(--cr-cell, 120px)); justify-content: start; gap: 6px 16px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-gap { display: block; height: 36px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { display: grid; grid-template-columns: var(--cr-label, 30px) 76px; align-items: center; gap: 6px; padding: 1px 2px 1px 0; border-radius: 9px; transition: background-color .12s; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { display: grid; grid-template-columns: calc(var(--cr-label, 30px) + 22px) 76px; align-items: center; gap: 6px; padding: 1px 0; border-radius: 9px; transition: background-color .12s; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on { background: color-mix(in srgb, var(--rr-primary-soft) 70%, var(--rr-surface)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; color: var(--rr-muted); font-size: 12px; font-weight: 600; cursor: pointer; text-align: right; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; white-space: nowrap; color: var(--rr-muted); font-size: 12px; font-weight: 600; cursor: pointer; text-align: right; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on .rr-cr-size { color: var(--rr-ink); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair:focus-within .rr-cr-size { color: var(--rr-primary); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-round { border-radius: 50%; }

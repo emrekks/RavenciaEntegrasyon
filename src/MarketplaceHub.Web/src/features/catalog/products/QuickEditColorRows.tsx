@@ -32,9 +32,9 @@ export function buildMatrix<T>(items: readonly T[], colorKeyOf: (item: T) => str
 export function colorRowsLayout(rows: readonly MatrixLine[], sizes: readonly string[]) {
   const colorPx = Math.min(168, Math.max(96, Math.max(0, ...rows.map(row => row.label.length)) * 7.5 + 46))
   const labelPx = Math.max(24, Math.max(0, ...sizes.map(size => size.length)) * 8 + 6)
-  const cellPx = labelPx + 6 + 76
+  const cellPx = labelPx + 22 + 6 + 76
   // colour column + 18 gap + cells with 12 gaps + the row, list, section and body paddings
-  const windowPx = Math.ceil(colorPx + 18 + sizes.length * cellPx + Math.max(0, sizes.length - 1) * 12 + 140)
+  const windowPx = Math.ceil(colorPx + 18 + sizes.length * cellPx + Math.max(0, sizes.length - 1) * 16 + 140)
   return { colorPx, labelPx, cellPx, windowPx }
 }
 
@@ -107,7 +107,7 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
           <div className="rr-cr-sizes">{sizes.map((size, colIndex) => { const here = cells.get(matrixCellKey(row.key, size)) ?? []; return here.length ? here.map(item => {
             const on = selected.has(idOf(item))
             return <div className={`rr-cr-pair${on ? ' rr-on' : ''}`} key={idOf(item)}>
-              <label className="rr-cr-size" title={`${labelOf(item)} varyantını seç`}><input type="checkbox" className="rr-cr-tick sr-only" tabIndex={-1} checked={on} aria-label={`${labelOf(item)} varyantını seç`} onChange={event => onSelect([idOf(item)], event.currentTarget.checked)} /><span>{size}</span></label>
+              <label className="rr-cr-size" title={`${labelOf(item)} varyantını seç`}><input type="checkbox" className="rr-cb rr-cr-tick" tabIndex={-1} checked={on} aria-label={`${labelOf(item)} varyantını seç`} onChange={event => onSelect([idOf(item)], event.currentTarget.checked)} /><span>{size}</span></label>
               {renderCell(item, { row: rowIndex, col: colIndex })}
             </div>
           }) : [<span className="rr-cr-gap" key={`gap-${size}`} aria-hidden="true" />] })}</div>
