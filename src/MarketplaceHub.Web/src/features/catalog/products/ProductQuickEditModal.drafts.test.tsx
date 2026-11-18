@@ -29,13 +29,12 @@ let root: Root
 let closed = 0
 const sent: Array<{ path: string; method?: string; body: { onHand?: number; expectedOnHand?: number } }> = []
 
-async function render(mode: 'stock' | 'price' = 'stock', connections: unknown[] = [], products: Product[] = [product]) {
+async function render(mode: 'stock' | 'price' | 'both' = 'stock', connections: unknown[] = [], products: Product[] = [product]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   root = createRoot(container)
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode={mode} products={products} connections={connections as never} onChanged={async () => undefined} onClose={() => { closed += 1 }} /></MemoryRouter></QueryClientProvider>)
   })
-  for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
 }
 
 async function click(element: HTMLElement) { await act(async () => { element.click() }) }
@@ -79,7 +78,7 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent).toEqual([])
     expect(box.value).toBe('9')
     expect(bar()?.textContent).toContain('1 Değişiklik')
-    expect(box.closest('td')?.classList.contains('rr-draft')).toBe(true)
+    expect(box.closest('.rr-draft')).not.toBeNull()
     expect(box.title).toContain('kayıtlı stok: 3')
   })
 
@@ -176,6 +175,7 @@ describe('ProductQuickEditModal drafts', () => {
   it('the Özel Fiyat switch is a draft too: saved only with Kaydet, and named in the confirmation', async () => {
     const withOffers: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice: false })] })) }
     await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [withOffers])
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]')).find(item => item.textContent?.startsWith('Trendyol'))!)
     const toggle = document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!
     expect(toggle.checked).toBe(true)
     await click(toggle)
@@ -191,15 +191,18 @@ describe('ProductQuickEditModal drafts', () => {
     expect(bar()).toBeNull()
   })
 
-  it('a group header counts its ticked variants and each group opens on its own', async () => {
-    await render()
-    expect(document.body.querySelector('.rr-vg-name small')?.textContent).toBe('2 varyant')
-    const box = document.body.querySelector<HTMLInputElement>('.rr-vg-h input[type=checkbox]')!
-    await click(box)
-    expect(document.body.querySelector('.rr-vg-name small')?.textContent).toBe('2/2 seçili')
-    expect(document.body.querySelectorAll('.rr-vg-panel')).toHaveLength(1)
-    await click(document.body.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
-    expect(document.body.querySelectorAll('.rr-vg-panel')).toHaveLength(0)
+  it('keeps a draft when the edited value (tab) changes, marking the tab that holds it', async () => {
+    await render('both')
+    await type(stockBox('SKU-1'), '9')
+    const tabs = () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]'))
+    expect(tabs()[0].textContent).toContain('Stok')
+    expect(tabs()[0].querySelector('i')).not.toBeNull()
+    await click(tabs().find(item => item.textContent?.startsWith('Panel Satış'))!)
+    expect(document.body.querySelector('input[aria-label$="stok"]')).toBeNull()
+    expect(bar()?.textContent).toContain('1 Değişiklik')
+    await click(tabs()[0])
+    expect(stockBox('SKU-1').value).toBe('9')
+    expect(sent).toEqual([])
   })
 
   it('closing without a draft closes at once', async () => {
