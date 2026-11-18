@@ -310,6 +310,7 @@ describe('order summary cards', () => {
     expect(card(host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('.rr-reminder-gear')!.disabled).toBe(false)
     const busy = render(<OrderMetricCards {...props()} />)
     expect(card(busy.host, 'Yeniden Gönderim').classList.contains('rr-metric-idle')).toBe(false)
+    expect(card(busy.host, 'Yeniden Gönderim').classList.contains('rr-warn')).toBe(true)
     expect(card(busy.host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(false)
     const on = render(<OrderMetricCards {...props({ microExport: metric(0), activeCard: 'micro' })} />)
     expect(card(on.host, 'Mikro İhracat Sipariş').querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(false)

@@ -2,8 +2,9 @@ import type { ApiAnswer } from '../../shared/api/api-answer'
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
-import { readProductListPage, type ProductListItem } from '../catalog/product-list-item'
+import { backgroundPollHeaders, hubApi, hubPoll } from '../../shared/api'
+import { resentPendingParams } from '../marketplace/orders/daily-cards'
+import { useResendReminder } from '../marketplace/orders/resend-reminder'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
@@ -142,7 +143,6 @@ function dailyStats(values: number[], format: (value: number) => string, average
 
 
 // The products page's low stock window, loaded only when the card is opened.
-const LowStockDetailsModal = lazy(() => import('../catalog/products/ProductsPage').then(module => ({ default: module.LowStockDetailsModal })))
 // A product picture opens enlarged over the page, as on Ürünler (it opened in a new tab).
 const ImageLightboxModal = lazy(() => import('../catalog/shared').then(module => ({ default: module.ImageLightboxModal })))
 
@@ -154,7 +154,6 @@ export function DashboardPage() {
   const [custom, setCustom] = useState({ from: today, to: today })
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')
-  const [lowStockOpen, setLowStockOpen] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string; modelCode?: string } | null>(null)
   // Touch screens: the operation card whose store breakdown is open from its "?" (a tap on the card itself opens its list).
   const [breakdownOpen, setBreakdownOpen] = useState<string | null>(null)
@@ -165,7 +164,10 @@ export function DashboardPage() {
     window.addEventListener('scroll', close, { passive: true })
     return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', close) }
   }, [breakdownOpen])
-  const lowStock = useQuery({ queryKey: queryKeys.products('low-stock-details'), queryFn: ({ signal }) => loadAllPages<ProductListItem>('/products?stock=LOW', { limit: 200, signal }).then(readProductListPage), enabled: lowStockOpen, staleTime: 15_000 })
+  // The Yeniden Gönderim card: the same query and the same figure as the Siparişler page's card (resends not handed to the carrier + the typed reminder).
+  const resentSummary = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>(`/orders/summary?${resentPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
+  const resendReminder = useResendReminder()
+  const resentWaiting = resentSummary.isError || resentSummary.data === undefined ? undefined : (resentSummary.data.resent ?? 0) + resendReminder.count
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -280,8 +282,8 @@ export function DashboardPage() {
     ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-part"><span className="rr-op-x-word rr-op-unit">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span></>}</span>{dueSoon !== null && <>{' '}<span className="rr-op-x-part">{count(dueSoon)} Yaklaşan</span></>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
     ['packageX', 'İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders + row.partialOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows, cancelled ? <><span className="rr-op-unit">Sipariş</span>{partialCancels ? <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}<span className="rr-op-partial">{count(partialCancels)} Kısmi İptal</span></> : null}</> : undefined],
-    // The same count as the product list's low-stock filter it opens.
-    ['alertTriangle', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
+    // Resends waiting for the carrier (exchanges included): the Siparişler card's count; it opens the Yeniden Gönderimler tab and turns orange while any wait.
+    ['refresh', 'Yeniden Gönderim', knownCount(resentSummary.isPending, resentWaiting), (resentWaiting ?? 0) > 0 ? 'warn' : '', dashboardOperationalLinks.resentOrders, undefined, <span className="rr-op-unit">Paket</span>],
   ]
   const ops = noSource ? opsRead.map(row => { const next = [...row] as typeof row; next[2] = null; next[6] = undefined; return next }) : opsRead
   // The file is made from the data on screen only once it belongs to the chosen period and store.
@@ -311,10 +313,7 @@ export function DashboardPage() {
       const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}{mark}</small><strong className={value == null ? 'rr-num rr-op-empty' : 'rr-num'}>{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows} /></>
       // The İptal card is red when it counts any, but its pulsing dot only marks orders cancelled in part.
       const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}${breakdownOpen === kind ? ' rr-bd-open' : ''}`
-      // Low stock opens its window here instead of taking the user to the products page.
-      return kind === 'alertTriangle'
-        ? <button key={kind} type="button" className={className} aria-haspopup="dialog" onClick={() => setLowStockOpen(true)}>{body}</button>
-        : <Link key={kind} className={className} to={to}>{body}</Link>
+      return <Link key={kind} className={className} to={to}>{body}</Link>
     })}</div></section>
     <section className="rr-panel rr-pf" style={selected ? { ['--pf-accent' as string]: platformColor(selected.platformCode, 0) } : undefined}>
       <div className="rr-pf-h"><div><h2>Performans</h2><p>{periodText} · {channel === 'ALL' ? 'Tüm Platformlar' : selectedName}</p></div><div className="rr-pf-tools">
@@ -350,8 +349,6 @@ export function DashboardPage() {
     </section>
     <IntegrationStatusPanel integration={integration} />
     {toast && <NoticeToast kind="success" title="Rapor İndirildi" message={toast} onClose={() => setToast(null)} durationMs={6000} />}
-    {lowStockOpen && <Suspense fallback={null}><LowStockDetailsModal products={lowStock.data?.items ?? []} loading={lowStock.isLoading} error={lowStock.error}
-      onClose={() => setLowStockOpen(false)} onImageClick={(url, title, modelCode) => setLightboxImage({ url, title, modelCode })} /></Suspense>}
     {lightboxImage && <Suspense fallback={null}><ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} /></Suspense>}
   </section>
 }

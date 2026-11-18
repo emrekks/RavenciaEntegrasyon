@@ -144,7 +144,7 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
   return <div ref={row} className={['rv-tabs', 'rv-view-tabs', phone ? 'is-strip' : '', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
     {main.map(tab)}
     {extra.length > 0 && <button ref={trigger} type="button" role="tab" aria-selected={Boolean(selectedExtra)} aria-haspopup="menu" aria-expanded={open} tabIndex={selectedExtra ? 0 : -1} className={`rv-view-tabs-more${selectedExtra ? ' is-active' : ''}`} onClick={() => setOpen(current => !current)}>
-      {selectedExtra ? <><span className="rv-tab-label">{selectedExtra.label}</span>{selectedExtra.count !== undefined && <span className="rv-tab-count">{selectedExtra.count}</span>}</> : <span className="rv-tab-label"><ViewTabIcon name="more" />Diğer</span>}
+      {selectedExtra ? <><span className="rv-tab-label">{selectedExtra.label}</span>{selectedExtra.count !== undefined && <span className="rv-tab-count">{selectedExtra.count}</span>}</> : <span className="rv-tab-label"><ViewTabIcon name="more" />Diğer{extra.some(item => item.countTone === 'warn') && <i className="rv-view-tabs-dot" role="img" aria-label="Dikkat gerektiren sekme var" />}</span>}
       <svg className="rv-view-tabs-chevron" viewBox="0 0 16 16" aria-hidden="true">{line('m4.5 6.5 3.5 3.5 3.5-3.5')}</svg>
     </button>}
     {open && position && createPortal(<div ref={menu} className="rv-view-tabs-menu" role="menu" aria-label={`${ariaLabel}: diğer`} style={{ top: position.top, right: position.right }}>

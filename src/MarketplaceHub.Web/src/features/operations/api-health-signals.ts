@@ -94,3 +94,51 @@ export function signalCells(row: ConnectionSignals, now = Date.now()) {
     webhook: webhookCell(row.webhook, now)
   }
 }
+
+// The detail window of a warning or fault cell: label-value rows from the data the cell is made of (nothing invented).
+export type SignalKind = 'auth' | 'lag' | 'errorRate' | 'rateLimit' | 'queue' | 'webhook'
+export type SignalDetail = { title: string; lead?: string; facts: Array<[string, string]> }
+export const SIGNAL_LABELS: Record<SignalKind, string> = { auth: 'Anahtar / Yetki', lag: 'Geride Kalma', errorRate: 'Hata Oranı', rateLimit: 'Hız Sınırı', queue: 'Kuyruk Yaşı', webhook: 'Webhook' }
+
+export function signalDetail(kind: SignalKind, row: ConnectionSignals, now = Date.now()): SignalDetail {
+  const title = `${SIGNAL_LABELS[kind]} · ${row.displayName}${kind === 'errorRate' ? ' (son 24 saat)' : ''}`
+  const count = (value: number) => value.toLocaleString('tr-TR')
+  if (kind === 'auth') {
+    const auth = row.auth
+    return { title, lead: auth.state === 'rejected' ? 'Pazaryeri anahtarı reddetti; sonrasında başarılı istek yok.' : undefined, facts: [
+      ['Durum', auth.state === 'valid' ? 'Geçerli' : auth.state === 'rejected' ? 'Reddedildi' : 'Bilinmiyor'],
+      ['Son reddedilme', exact(auth.lastRejectedAt ?? null)], ['Son ret kodu', auth.lastRejectedCode ?? 'bilinmiyor'], ['Son başarılı istek', exact(auth.lastOkAt ?? null)]
+    ] }
+  }
+  if (kind === 'lag') {
+    const lag = row.lag
+    if (!lag) return { title, facts: [['Durum', 'Okuma kaydı yok']] }
+    return { title, lead: 'Uyarı beklenen sürenin 3 katından, arıza 10 katından sonra başlar.', facts: [
+      ['Akış', STREAM_NAMES[lag.stream] ?? lag.stream], ['Son başarılı okuma', `${durationText(lag.lagSeconds)} önce`], ['Zamanlama', everyText(lag.expectedSeconds)], ['Seviye', lag.level === 'ok' ? 'Güncel' : lag.level === 'warn' ? 'Uyarı' : 'Arıza']
+    ] }
+  }
+  if (kind === 'errorRate') {
+    const rate = row.errorRate
+    const value = failureRate(rate)
+    return { title, lead: 'Oran = (pazaryeri tarafı + bizim taraf + kota sınırı) ÷ toplam deneme; iş akışı beklemesi orana katılmaz.', facts: [
+      ['Toplam deneme', count(rate.attempts)], ['Pazaryeri tarafı (sunucu hatası, zaman aşımı, ağ)', count(rate.remoteSide)], ['Bizim taraf (ret)', count(rate.ourSide)], ['Kota sınırı', count(rate.rateLimited)], ['İş akışı beklemesi / diğer', count(rate.workflowWait ?? 0)],
+      ['Hata oranı', value === null ? '—' : `%${(value * 100).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`]
+    ] }
+  }
+  if (kind === 'rateLimit') {
+    const limit = row.rateLimit
+    const paused = limit.pausedUntil && new Date(limit.pausedUntil).getTime() > now
+    return { title, facts: [
+      ['Kotaya takılan deneme (24 sa)', count(limit.refused24h)], ['Kota bekleyen iş', count(limit.waitingJobs)], ['Son okumalarda bildirilen ret', count(limit.lastRunRefusals)], ['Kota duraklaması', paused ? `${formatDateTime(limit.pausedUntil!)} saatine kadar` : 'Yok']
+    ] }
+  }
+  if (kind === 'queue') {
+    const queue = row.queue
+    if (!queue) return { title, facts: [['Durum', 'Çalışmayı bekleyen iş yok']] }
+    return { title, lead: 'Bir saati aşan bekleme uyarı sayılır.', facts: [['En eski çalışabilir iş', queue.jobType], ['Bekleme süresi', durationText(queue.ageSeconds)], ['Çalışmayı bekleyen toplam iş', count(queue.pending)]] }
+  }
+  const webhook = row.webhook
+  return { title, lead: webhook.used ? undefined : 'Bu bağlantıda anlık bildirim yok; siparişler zamanlanmış okumayla gelir.', facts: webhook.used ? [
+    ['Bildirim durumu', webhook.healthy ? 'Sağlıklı' : 'Sağlıksız'], ['Son bildirim', exact(webhook.lastReceivedAt ?? null)], ['Son sipariş okuması', exact(webhook.lastOrderReadAt ?? null)], ['Yedek okuma', webhook.fallbackReadSeconds ? everyText(webhook.fallbackReadSeconds) : 'yok']
+  ] : [['Durum', 'Kullanılmıyor']] }
+}
