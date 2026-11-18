@@ -41,7 +41,9 @@ internal static class PriceStockSendLogRecorder
         PriceStockConfirmedValues? Previous(PriceInventoryPushLine line)
         {
             if (!offers.TryGetValue(line.OfferId, out var offer)) return null;
-            var confirmed = offer.Values.Code is not null && string.Equals(offer.Values.Code, line.Barcode, StringComparison.Ordinal) ? offer.Values : null;
+            var confirmed = offer.Values.Code is not null && string.Equals(offer.Values.Code, line.Barcode, StringComparison.Ordinal) ? offer.Values
+                // A price known without a code (read from the marketplace, or held before a panel price pulled the stored one).
+                : offer.Values.Code is null && offer.Values.SalePrice is not null ? offer.Values with { Quantity = null } : null;
             var logged = earlier.GetValueOrDefault((line.OfferId, line.Barcode));
             return new(line.Barcode,
                 confirmed?.Quantity ?? logged?.Quantity,

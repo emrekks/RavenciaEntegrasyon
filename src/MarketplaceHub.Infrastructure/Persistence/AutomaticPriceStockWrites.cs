@@ -118,7 +118,11 @@ internal static class AutomaticPriceStockWrites
             // not a confirmation. Cleared, the first change after enabling is sent for every field it changed (Trendyol
             // compares a changed field with the confirmed value, PriceInventorySendPolicy.TrendyolFields), and a value
             // equal to an old confirmation is never taken as already held by the marketplace.
+            // A value known without a code (read from the marketplace, or held before a panel price pulled the stored price)
+            // is no confirmation and stays: Pazarama compares with it.
+            var known = row.Offer.LastSentCode is null ? (row.Offer.LastSentSalePrice, row.Offer.LastSentListPrice) : (null, null);
             PriceInventorySendPolicy.ClearSent(row.Offer);
+            (row.Offer.LastSentSalePrice, row.Offer.LastSentListPrice) = known;
             row.Offer.Version++;
             changed++;
         }

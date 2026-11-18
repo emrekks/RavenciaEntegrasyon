@@ -324,7 +324,13 @@ internal sealed partial class CatalogImportService
             ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
         var cardVatRate = offer is null && remote.VatRate is null ? await CardOrModelVatRateAsync(tenantId, variant.ProductId, variant.ModelCode, cancellationToken) : null;
         var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
-        var observationSource = CatalogImportSource(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), observeOnly);
+        var importPlatformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+        var observationSource = CatalogImportSource(importPlatformCode, observeOnly);
+        // One rule (owner decision of 18 Nov 2026): an offer without Özel Fiyat on a variant with a saved panel price keeps
+        // the panel price as its stored price, so the price on screen is the price that goes. The price read here is what the
+        // marketplace holds: it is kept as the known value (LastSent* without a code), so the difference goes with the next
+        // stock send and the send log shows it as the previous price. Özel Fiyat on: the offer takes the marketplace price.
+        var panel = offer?.FollowsPanelPrice == false ? null : await SavedPanelPriceAsync(tenantId, variant, importPlatformCode, cancellationToken);
         if (offer is null)
         {
             if (vatUnknown) await RecordOfferVatUnknownAsync(tenantId, connectionId, cancellationToken);
@@ -334,8 +340,8 @@ internal sealed partial class CatalogImportService
                 TenantId = tenantId,
                 ConnectionId = connectionId,
                 VariantId = variant.Id,
-                ListPrice = listPrice,
-                SalePrice = salePrice,
+                ListPrice = panel?.ListPrice ?? listPrice,
+                SalePrice = panel?.SalePrice ?? salePrice,
                 Currency = currency,
                 VatRate = vatRate,
                 VatInclusion = "INCLUDED",
@@ -345,8 +351,10 @@ internal sealed partial class CatalogImportService
                 PriceVersion = 1,
                 Version = 1
             };
-            // The price came from the marketplace, so it counts as already sent there.
+            // The price came from the marketplace, so it counts as already sent there (at the panel price, the difference
+            // rides with the next stock send: the marketplace's value is the known one).
             offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
+            if (panel is not null) (offer.LastSentSalePrice, offer.LastSentListPrice) = (salePrice, listPrice);
             db.ChannelOffers.Add(offer);
             run.PriceChangedVariantIds.Add(variant.Id);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
@@ -367,8 +375,18 @@ internal sealed partial class CatalogImportService
 
         // The marketplace reports VAT-inclusive prices; an offer kept without VAT stores the net
         // amount that grosses up to the same price again.
-        salePrice = ChannelOfferPricePolicy.StoredFromGross(salePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
-        listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(listPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
+        if (panel is { } panelPrice)
+        {
+            // The marketplace's (gross) price is the known one; the stored price stays (or becomes) the panel price.
+            (offer.LastSentSalePrice, offer.LastSentListPrice) = (salePrice, listPrice);
+            salePrice = ChannelOfferPricePolicy.StoredFromGross(panelPrice.SalePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
+            listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(panelPrice.ListPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
+        }
+        else
+        {
+            salePrice = ChannelOfferPricePolicy.StoredFromGross(salePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
+            listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(listPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
+        }
         var priceChanged = offer.ListPrice != listPrice || offer.SalePrice != salePrice || !string.Equals(offer.Currency, currency, StringComparison.OrdinalIgnoreCase) || offer.VatRate != vatRate;
         var statusChanged = offer.Status != status;
         if (!priceChanged && !statusChanged) return;
@@ -427,6 +445,15 @@ internal sealed partial class CatalogImportService
     // still empty, the model's VAT reaching it only at the save, ModelMirror) its brand's model of its code (a model is its
     // brand and its code; a card without a brand yet: the code's one branded model, as the reconcile links it). Before, such a colour
     // of a model with a VAT got a %0 offer and an OFFER_VAT_UNKNOWN warning.
+    // The saved panel price of a variant (its own, else its card's) as the platform takes it; null without one.
+    private async Task<(decimal ListPrice, decimal SalePrice)?> SavedPanelPriceAsync(Guid tenantId, ProductVariant variant, string? platformCode, CancellationToken cancellationToken)
+    {
+        if (variant.DefaultSalePrice is > 0) return PanelPriceOfferPolicy.PanelPrices(platformCode, variant.DefaultSalePrice, null, variant.DefaultListPrice, null);
+        var card = db.Products.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == variant.ProductId) is { } local ? (local.DefaultSalePrice, local.DefaultListPrice)
+            : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variant.ProductId).Select(x => new ValueTuple<decimal?, decimal?>(x.DefaultSalePrice, x.DefaultListPrice)).FirstOrDefaultAsync(cancellationToken);
+        return PanelPriceOfferPolicy.PanelPrices(platformCode, variant.DefaultSalePrice, card.Item1, variant.DefaultListPrice, card.Item2);
+    }
+
     private async Task<decimal?> CardOrModelVatRateAsync(Guid tenantId, Guid productId, string? modelCode, CancellationToken cancellationToken)
     {
         var local = db.Products.Local.FirstOrDefault(x => x.Id == productId);

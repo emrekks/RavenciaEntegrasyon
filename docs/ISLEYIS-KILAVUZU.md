@@ -463,7 +463,13 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   Trendyol'un 0 TL kuralı geçerli fiyata göre işler: kayıtlı fiyatı 0 olan teklif, kayıtlı panel fiyatı varsa o fiyatla
   gider; yoksa eskisi gibi gönderilmez. **Pazarama istisnası**: Pazarama elindeki değere eşit fiyatı reddeder (bir satır
   bütün partiyi elle incelemeye düşürür), bu yüzden fiyat yalnız son onaylanan (yoksa kayıtlı) değerden farklıysa stokla
-  birlikte gider. Shopify fiyatı reddederse stok yine yazılır (`SHOPIFY_STOCK_ONLY_APPLIED`), fiyat sonraki gönderimde
+  birlikte gider. "Bilinen değer": son onaylanan; yoksa pazaryerinden okunan ya da panel fiyatı kayıtlı fiyatı çekmeden
+  önceki fiyat (Doldur ve içe aktarma bunu saklar, yazma açılırken silinmez); böylece Doldur'dan sonraki ilk stok
+  hareketinde yeni fiyat Pazarama'ya gider, sonra aynı değer tekrar gönderilmez; günlükte önceki fiyat olarak görünür.
+  İçe aktarma, panel fiyatı kayıtlı bedende Özel Fiyat'ı kapalı teklifin kayıtlı fiyatını panel fiyatı tutar, okunan
+  fiyatı bilinen değer olarak saklar (fark bir sonraki stok hareketinde gider); Özel Fiyat açıksa teklif pazaryerinin
+  fiyatını alır. PttAVM yayını ve fiyat-stok gönderimi taban/farkı aynı geçerli fiyat fonksiyonundan hesaplar.
+  Shopify fiyatı reddederse stok yine yazılır (`SHOPIFY_STOCK_ONLY_APPLIED`), fiyat sonraki gönderimde
   yeniden denenir. Gönderilmiş işaretleri kayıtlı teklif fiyatından hesaplanır: yalnız panel fiyatı değişince
   kendiliğinden gönderim olmaz, fiyat bir sonraki stok ya da fiyat gönderimiyle gider. Gönderim günlüğünde önceki
   değerler: aynı kod için onaylanan → yoksa günlükteki son kabul edilen → bilinmiyorsa boş (yanlış göstermek boş

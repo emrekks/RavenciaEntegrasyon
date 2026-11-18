@@ -145,10 +145,70 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
             // The owner changes a panel price; the next import leaves it.
             await check.ProductVariants.Where(x => x.Id == rows[0].Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.DefaultSalePrice, 1.5m).SetProperty(x => x.DefaultListPrice, 2.5m));
         }
+        // An existing variant whose panel price was cleared is not filled by a later import either (review A10).
+        Guid cleared;
+        await using (var check = fixture.CreateContext())
+        {
+            cleared = await check.ProductVariants.Where(x => x.TenantId == tenant.Id && x.DefaultSalePrice > 1.5m).Select(x => x.Id).FirstAsync();
+            await check.ProductVariants.Where(x => x.Id == cleared).ExecuteUpdateAsync(set => set.SetProperty(x => x.DefaultSalePrice, (decimal?)null).SetProperty(x => x.DefaultListPrice, (decimal?)null));
+        }
         await ImportAsync();
         await using var after = fixture.CreateContext();
         var kept = await after.ProductVariants.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DefaultSalePrice == 1.5m);
         Assert.Equal(2.5m, kept.DefaultListPrice);
+        Assert.Null((await after.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == cleared)).DefaultSalePrice);
+    }
+
+    // Second review of 18 Nov 2026, one rule on import: an offer without Özel Fiyat on a variant with a saved panel price
+    // stores the panel price, whether the import updates it or opens it (a second marketplace), and keeps the marketplace's
+    // price as the known one; an offer with Özel Fiyat on takes the marketplace's price as before.
+    [PostgreSqlFact]
+    public async Task AnImportKeepsThePanelPriceAsTheStoredPrice_AndTheMarketplacePriceAsTheKnownOne()
+    {
+        var (platform, products) = MappedPage("Trendyol");
+        var now = fixture.Now;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ponerule-{Guid.NewGuid():N}"[..30], DisplayName = "one rule", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            await seed.SaveChangesAsync();
+        }
+        async Task ImportAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferences(), new CatalogPage(products), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, """{"full":true,"includeArchived":true,"includeDrafts":true,"updatePrices":true}""", $"one-rule-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Kind is JobCompletionKind.Succeeded or JobCompletionKind.ManualReview, $"{result.Kind} {result.ErrorCode} {result.ErrorSummary}");
+        }
+        await ImportAsync();
+        Guid followerId, customId, reopenedVariant;
+        decimal followerRemote, customRemote;
+        await using (var db = fixture.CreateContext())
+        {
+            var offers = await db.ChannelOffers.Where(x => x.TenantId == tenant.Id && x.SalePrice > 0).OrderBy(x => x.Id).Take(3).ToListAsync();
+            Assert.Equal(3, offers.Count);
+            (followerId, followerRemote) = (offers[0].Id, offers[0].SalePrice);
+            (customId, customRemote) = (offers[1].Id, offers[1].SalePrice);
+            reopenedVariant = offers[2].VariantId;
+            offers[1].FollowsPanelPrice = false;
+            await db.SaveChangesAsync();
+            // The owner saves panel prices (5 TL above the marketplace's) and the third offer is gone (a second marketplace opens it).
+            foreach (var offer in offers)
+                await db.ProductVariants.Where(x => x.Id == offer.VariantId).ExecuteUpdateAsync(set => set.SetProperty(x => x.DefaultSalePrice, offer.SalePrice + 5m).SetProperty(x => x.DefaultListPrice, offer.SalePrice + 5m));
+            await db.ChannelPriceHistory.Where(x => x.OfferId == offers[2].Id).ExecuteDeleteAsync();
+            await db.ChannelOffers.Where(x => x.Id == offers[2].Id).ExecuteDeleteAsync();
+        }
+        await ImportAsync();
+        await using var read = fixture.CreateContext();
+        var follower = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == followerId);
+        Assert.Equal((followerRemote + 5m, followerRemote), (follower.SalePrice, follower.LastSentSalePrice));
+        var custom = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == customId);
+        Assert.Equal(customRemote, custom.SalePrice);
+        var reopened = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.VariantId == reopenedVariant);
+        var panel = (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == reopenedVariant)).DefaultSalePrice;
+        Assert.Equal((panel, panel - 5m), (reopened.SalePrice, reopened.LastSentSalePrice));
     }
 
     private static (string Platform, IReadOnlyList<RemoteCatalogProduct> Products) MappedPage(string marketplace)

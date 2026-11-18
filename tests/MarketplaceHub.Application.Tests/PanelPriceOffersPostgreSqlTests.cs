@@ -360,6 +360,117 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         }
     }
 
+    // Second review of 18 Nov 2026: Trendyol 120, Pazarama 999, both marked as sent. The fill pulls Pazarama to 120 and
+    // keeps 999 as the price Pazarama is known to hold, so the next stock send carries 120 (Pazarama refuses only an equal
+    // price), once: after it is confirmed, an unchanged price stays out. The send log shows 999 as the previous price.
+    [PostgreSqlFact]
+    public async Task AfterTheFill_PazaramasNextStockSendCarriesThePanelPriceOnce()
+    {
+        var seed = await SeedAsync("TRENDYOL");
+        var pazarama = await AddConnectionAsync(seed.Tenant, "PAZARAMA", writesOpen: false);
+        Guid pazaramaOffer;
+        await using (var db = fixture.CreateContext())
+        {
+            AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 120m, 120m, null);
+            await Task.Delay(5);
+            pazaramaOffer = AddOffer(db, seed.Tenant, pazarama, seed.NoPanelPrice, 999m, 999m, null);
+            db.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = pazarama.Id, VariantId = seed.NoPanelPrice.Id, ExternalId = "8690000000999", Version = 1 });
+            await db.SaveChangesAsync();
+            foreach (var offer in await db.ChannelOffers.Where(x => x.TenantId == seed.Tenant.Id).ToListAsync())
+            {
+                offer.LastPriceHash = PriceInventoryComposer.CurrentPriceHash(offer.ConnectionId == pazarama.Id ? "PAZARAMA" : "TRENDYOL", offer);
+                offer.LastStockProjectionVersion = 5;
+            }
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var preview = await Inventory(db).PanelPriceFillPreviewAsync(seed.Tenant.Id, CancellationToken.None);
+            Assert.True((await Inventory(db).ApplyPanelPriceFillAsync(seed.Tenant.Id, Owner, new PanelPriceFillCommand(preview.Fillable), "fill", CancellationToken.None)).Succeeded);
+        }
+        // The stock changed while the writes were off; the owner opens them after the fill: the baseline (which marks the
+        // offer anew) keeps the known price. Then the stock changes again.
+        await using (var db = fixture.CreateContext())
+            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 6));
+        await using (var db = fixture.CreateContext())
+            Assert.True((await Connections(db).UpdateExternalWriteGroupAsync(seed.Tenant.Id, pazarama.Id, Group(true), CancellationToken.None)).Succeeded);
+        await using (var db = fixture.CreateContext())
+            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 7));
+
+        PriceInventoryPushLine line;
+        await using (var db = fixture.CreateContext())
+        {
+            var offer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == pazaramaOffer);
+            Assert.Equal((120m, 999m), (offer.SalePrice, offer.LastSentSalePrice));
+            var build = await new PriceInventoryComposer(db).BuildAsync(seed.Tenant.Id, pazarama.Id, CancellationToken.None, automatic: true);
+            line = Assert.Single(build.Value!.Lines);
+            Assert.Equal((false, 120m), (line.PriceOmitted, line.SalePrice));
+            Assert.Contains("\"salePrice\":120", build.Value.PayloadJson);
+            // The send log's previous price is the one Pazarama held.
+            var jobId = Guid.CreateVersion7();
+            var job = new IntegrationJob { Id = jobId, TenantId = seed.Tenant.Id, ConnectionId = pazarama.Id, JobType = MarketplaceJobTypes.PriceInventorySync, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"log:{jobId:N}", EffectIdempotencyKey = $"log:{jobId:N}", Status = JobStatus.Leased, AvailableAt = DateTimeOffset.UtcNow, CorrelationId = "log", CreatedAt = DateTimeOffset.UtcNow, Version = 1 };
+            var payload = new PriceInventoryJobPayload(jobId, pazarama.Id, "SUBMIT", "h", build.Value.PayloadJson, build.Value.Lines, null, null);
+            await PriceStockSendLogRecorder.AddAsync(db, seed.Tenant.Id, pazarama.Id, "PAZARAMA", job, payload, "batch", DateTimeOffset.UtcNow, PriceStockSendResults.Submitted, null, null, CancellationToken.None);
+            var row = Assert.Single(db.PriceStockSendLogs.Local);
+            Assert.Equal((999m, 120m), (row.PreviousSalePrice, row.NewSalePrice));
+        }
+        // Pazarama confirms the line; the next stock change sends no price again.
+        await using (var db = fixture.CreateContext())
+        {
+            var offer = await db.ChannelOffers.SingleAsync(x => x.Id == pazaramaOffer);
+            offer.LastPriceHash = line.PriceHash;
+            offer.LastStockProjectionVersion = line.ProjectionVersion;
+            PriceInventorySendPolicy.RecordSent(offer, line, DateTimeOffset.UtcNow);
+            await db.SaveChangesAsync();
+            await db.InventoryItems.Where(x => x.VariantId == seed.NoPanelPrice.Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.ProjectionVersion, 8));
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var build = await new PriceInventoryComposer(db).BuildAsync(seed.Tenant.Id, pazarama.Id, CancellationToken.None, automatic: true);
+            Assert.True(Assert.Single(build.Value!.Lines).PriceOmitted);
+        }
+    }
+
+    // The fill's second line (review A6): a panel price saved between the plan and the write is never overwritten.
+    [PostgreSqlFact]
+    public async Task ThePanelPriceFill_SkipsAPanelPriceSavedAfterItsPlan()
+    {
+        var seed = await SeedAsync("TRENDYOL");
+        await using (var db = fixture.CreateContext())
+        {
+            AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 130m, 120m, null);
+            await db.SaveChangesAsync();
+        }
+        var interceptor = new PanelPriceSavedMeanwhile(seed.NoPanelPrice.Id);
+        var connectionString = fixture.CreateContext().Database.GetConnectionString();
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).AddInterceptors(interceptor).Options))
+        {
+            var result = await Inventory(db).ApplyPanelPriceFillAsync(seed.Tenant.Id, Owner, new PanelPriceFillCommand(1), "fill-race", CancellationToken.None);
+            Assert.True(interceptor.Fired);
+            Assert.Equal(0, result.Value!.Filled);
+        }
+        await using var read = fixture.CreateContext();
+        Assert.Equal(777m, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id)).DefaultSalePrice);
+    }
+
+    private sealed class PanelPriceSavedMeanwhile(Guid variantId) : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public bool Fired { get; private set; }
+
+        public override async ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(System.Data.Common.DbCommand command, Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (!Fired && command.CommandText.Contains(InventoryService.PanelPriceFillLoadTag, StringComparison.Ordinal))
+            {
+                Fired = true;
+                await using var update = command.Connection!.CreateCommand();
+                update.Transaction = command.Transaction;
+                update.CommandText = $"UPDATE catalog.product_variants SET \"DefaultSalePrice\" = 777, \"DefaultListPrice\" = 777 WHERE \"Id\" = '{variantId}'";
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
     private sealed record Seed(Tenant Tenant, PlatformConnection Connection, ProductVariant Priced, ProductVariant NoPanelPrice, ProductVariant ZeroPanelPrice, ProductVariant ListBelowSale, ProductVariant NoVat, ProductVariant Unlinked, ProductVariant Archived, ProductVariant WithOffer);
 
     private async Task<Seed> SeedAsync(string platformCode)

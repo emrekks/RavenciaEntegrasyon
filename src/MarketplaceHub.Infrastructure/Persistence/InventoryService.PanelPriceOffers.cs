@@ -133,7 +133,14 @@ public sealed partial class InventoryService
     // one is never touched. The offers with Özel Fiyat off take the new panel price as their stored price (one rule: the
     // price on screen is the price that goes), their send marks moving with them. Nothing goes to a marketplace and no job
     // is queued: the price reaches a marketplace only with the variant's next stock or price send. The previewed count must still hold, else nothing is written; a second run finds nothing to fill.
-    public async Task<ServiceResult<PanelPriceFillApplied>> ApplyPanelPriceFillAsync(Guid tenantId, Guid userId, PanelPriceFillCommand command, string correlationId, CancellationToken cancellationToken)
+    public Task<ServiceResult<PanelPriceFillApplied>> ApplyPanelPriceFillAsync(Guid tenantId, Guid userId, PanelPriceFillCommand command, string correlationId, CancellationToken cancellationToken) =>
+        // A worker saving an offer meanwhile breaks the serializable fill (40001): it is run again a few times, the
+        // previewed count checked again on every attempt.
+        SerializableWriteRetry.RunAsync(db, token => ApplyPanelPriceFillOnceAsync(tenantId, userId, command, correlationId, token),
+            () => ServiceResult<PanelPriceFillApplied>.Fail("PANEL_PRICE_FILL_BUSY", "Panel fiyatları bu sırada başka bir işlemle değişti; hiçbir şey yazılmadı. Birazdan tekrar deneyin.", 409),
+            cancellationToken);
+
+    private async Task<ServiceResult<PanelPriceFillApplied>> ApplyPanelPriceFillOnceAsync(Guid tenantId, Guid userId, PanelPriceFillCommand command, string correlationId, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         var plan = await PanelPriceFillPlanAsync(tenantId, cancellationToken);
@@ -144,7 +151,8 @@ public sealed partial class InventoryService
         var filled = 0;
         foreach (var chunk in plan.Prices.Keys.Chunk(2_000))
         {
-            var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && chunk.Contains(x.Id)).ToListAsync(cancellationToken);
+            // Tagged so a test can change a panel price between the plan and this read (the skip below is the second line).
+            var variants = await db.ProductVariants.TagWith(PanelPriceFillLoadTag).Where(x => x.TenantId == tenantId && chunk.Contains(x.Id)).ToListAsync(cancellationToken);
             foreach (var variant in variants)
             {
                 if (variant.DefaultSalePrice is > 0) continue;
@@ -180,5 +188,6 @@ public sealed partial class InventoryService
         return ServiceResult<PanelPriceFillApplied>.Ok(new(filled, repriced.Count));
     }
 
+    internal const string PanelPriceFillLoadTag = "panel-price-fill-load";
     private const string PanelPriceFillNote = "İlk pazaryeri fiyatından dolduruldu (pazaryerine gönderilmedi).";
 }

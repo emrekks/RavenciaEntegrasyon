@@ -685,8 +685,10 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // such line sends a whole batch to manual review. So the price rides along only when it differs from the value
             // Pazarama last confirmed for this barcode, or, with none confirmed, from the offer's stored price (the value read
             // from Pazarama). A price change of the offer itself still goes as before.
-            var confirmed = row.Offer.LastSentCode is not null && string.Equals(row.Offer.LastSentCode, barcode, StringComparison.Ordinal) && row.Offer.LastSentSalePrice is not null
-                ? (row.Offer.LastSentListPrice ?? row.Offer.LastSentSalePrice!.Value, row.Offer.LastSentSalePrice!.Value)
+            // The value Pazarama holds as far as the panel knows: the one it last confirmed for this barcode, else the one last
+            // read from it or held before a panel price pulled the stored price (LastSent* without a code), else the stored price.
+            var confirmed = row.Offer.LastSentSalePrice is not null && (row.Offer.LastSentCode is null || string.Equals(row.Offer.LastSentCode, barcode, StringComparison.Ordinal))
+                ? (PazaramaPriceInventoryRules.Price(row.Offer.LastSentListPrice ?? row.Offer.LastSentSalePrice!.Value), PazaramaPriceInventoryRules.Price(row.Offer.LastSentSalePrice!.Value))
                 : (storedList, storedSale);
             var differs = salePrice != confirmed.Item2 || listPrice != confirmed.Item1;
             var sendsPrice = priceKnown && (priceChanged || differs);
@@ -792,8 +794,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             {
                 // Owner rule of 18 Nov 2026: the price in force (Özel Fiyat: the offer's; else the saved panel price; else
                 // the offer's stored price). PTT AVM takes no stock without a price, so a line without one is refused.
-                var inForce = PricedInForce("PTTAVM", row.Offer, row.Variant, cards);
-                var salePrice = inForce is null ? 0m : PttAvmPriceInventoryRules.Price(OutboundSalePrice(inForce));
+                var salePrice = PttAvmPriceInForce(row.Offer, row.Variant, cards);
                 // PTT AVM refuses a price of 1 or less.
                 if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
                 {
@@ -886,7 +887,10 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     }
 
     // The saved panel prices of the cards the given variants belong to (the variant's own are on the variant row).
-    private async Task<Dictionary<Guid, (decimal? Sale, decimal? List)>> CardPanelPricesAsync(Guid tenantId, IEnumerable<Guid> productIds, CancellationToken cancellationToken)
+    private Task<Dictionary<Guid, (decimal? Sale, decimal? List)>> CardPanelPricesAsync(Guid tenantId, IEnumerable<Guid> productIds, CancellationToken cancellationToken) =>
+        CardPanelPricesAsync(db, tenantId, productIds, cancellationToken);
+
+    internal static async Task<Dictionary<Guid, (decimal? Sale, decimal? List)>> CardPanelPricesAsync(AppDbContext db, Guid tenantId, IEnumerable<Guid> productIds, CancellationToken cancellationToken)
     {
         var ids = productIds.Distinct().ToArray();
         if (ids.Length == 0) return [];
@@ -927,6 +931,11 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             Version = offer.Version
         };
     }
+
+    // The PTT AVM price of an offer (VAT inclusive, two decimals) as both the price-stock send and the product publication
+    // price it, so the product price and each variant's difference come from one function (review of 18 Nov 2026). 0: none.
+    internal static decimal PttAvmPriceInForce(ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards) =>
+        PricedInForce("PTTAVM", offer, variant, cards) is { } inForce ? PttAvmPriceInventoryRules.Price(OutboundSalePrice(inForce)) : 0m;
 
     // The outbound prices in force of a Trendyol, Hepsiburada or Shopify line, with whether they can be sent; without a
     // price in force, the stored outbound prices (left out of the request).

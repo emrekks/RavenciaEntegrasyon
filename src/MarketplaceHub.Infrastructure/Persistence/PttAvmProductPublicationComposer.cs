@@ -91,7 +91,8 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var inventory = await db.InventoryItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN", cancellationToken);
         if (offer is null) return Fail("CHANNEL_OFFER_REQUIRED", "Varyant için etkin PttAVM fiyat teklifi gerekir.");
         if (inventory is null) return Fail("INVENTORY_REQUIRED", "Varyant için MAIN stok kaydı gerekir.");
-        var salePrice = PttAvmPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
+        // The price in force, from the function the price-stock send uses (review of 18 Nov 2026).
+        var salePrice = PriceInventoryComposer.PttAvmPriceInForce(offer, variant, await PriceInventoryComposer.CardPanelPricesAsync(db, tenantId, [variant.ProductId], cancellationToken));
         if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
             return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve 1'den büyük satış fiyatı gerekir.");
         if (PttAvmPriceInventoryRules.VatRate(offer.VatRate) is not { } vatRate)
@@ -162,6 +163,8 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken) is { ExternalCode: { } modelBarcode } && !string.IsNullOrWhiteSpace(modelBarcode))
             externalCodes.Add(modelBarcode);
         var titles = members.ToDictionary(x => x.Id, x => x.Title);
+        // The product price and each variant's difference from the price in force, as the price-stock send computes them.
+        var cardPrices = await PriceInventoryComposer.CardPanelPricesAsync(db, tenantId, familyVariants.Select(x => x.ProductId), cancellationToken);
         var rows = familyVariants.Select(variant =>
         {
             var offer = offers.GetValueOrDefault(variant.Id);
@@ -169,7 +172,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             var attributes = PriceInventoryComposer.PttAvmVariantAttributes(variant.OptionSignature);
             return new FamilyVariantRow(variant.Id, titles[variant.ProductId], variant.Sku, variant.Barcode, variant.ModelCode,
                 attributes.FirstOrDefault(x => x.Definition == "Renk")?.Value, attributes.FirstOrDefault(x => x.Definition == "Beden")?.Value, variant.Desi,
-                offer is null ? null : PttAvmPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer)), offer?.Currency, offer?.VatRate,
+                offer is null ? null : PriceInventoryComposer.PttAvmPriceInForce(offer, variant, cardPrices), offer?.Currency, offer?.VatRate,
                 offer is null || inventory is null ? null : PttAvmPriceInventoryRules.Quantity(inventory.Available - offer.SafetyStock), inventory is not null);
         }).ToList();
         var planned = PlanFamily(rows, externalCodes);

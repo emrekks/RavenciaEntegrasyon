@@ -145,6 +145,11 @@ internal static class PanelPriceOffers
                 // keepSendMarks ("Doldur"): an offer marked as sent at its old price stays marked at its new one, so the pull
                 // queues nothing and no reconcile scan sends it; the price goes with the variant's next stock send.
                 var markedAsSent = keepSendMarks && platformCode is not null && offer.LastPriceHash == PriceInventoryComposer.CurrentPriceHash(platformCode, offer);
+                // The price the marketplace was known to hold before the pull (nothing confirmed, so the stored price read
+                // from it) is kept as the known one (LastSent* without a code): Pazarama, which refuses an equal price,
+                // compares with it, so the new price goes with the next stock send; the send log shows it as previous.
+                if (keepSendMarks && offer.LastSentSalePrice is null)
+                    (offer.LastSentSalePrice, offer.LastSentListPrice) = (PriceInventoryComposer.OutboundSalePrice(offer), PriceInventoryComposer.OutboundListPrice(offer));
                 offer.SalePrice = panel.SalePrice;
                 offer.ListPrice = panel.ListPrice;
                 offer.PriceVersion++;

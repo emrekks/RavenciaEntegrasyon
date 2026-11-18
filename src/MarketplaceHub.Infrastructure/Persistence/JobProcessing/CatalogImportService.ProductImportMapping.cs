@@ -414,14 +414,21 @@ internal sealed partial class CatalogImportService
         }
         if (salePrice <= 0) return;
         var vatRate = await NewImportedOfferVatRateAsync(tenantId, connectionId, variantId, remote.VatRate, cancellationToken);
+        // One rule (owner decision of 18 Nov 2026): on a variant with a saved panel price the new offer stores the panel price
+        // and keeps the marketplace's price as the known one, so the difference goes with the next stock send.
+        var seededVariant = db.ProductVariants.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == variantId)
+            ?? await db.ProductVariants.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Id == variantId, cancellationToken);
+        var panel = seededVariant is null ? null : await SavedPanelPriceAsync(tenantId, seededVariant, source, cancellationToken);
         var offer = new ChannelOffer
         {
             Id = Guid.CreateVersion7(),
             TenantId = tenantId,
             ConnectionId = connectionId,
             VariantId = variantId,
-            ListPrice = listPrice,
-            SalePrice = salePrice,
+            ListPrice = panel?.ListPrice ?? listPrice,
+            SalePrice = panel?.SalePrice ?? salePrice,
+            LastSentListPrice = panel is null ? null : listPrice,
+            LastSentSalePrice = panel is null ? null : salePrice,
             Currency = NormalizeCurrency(remote.Currency),
             VatRate = vatRate,
             VatInclusion = "INCLUDED",
