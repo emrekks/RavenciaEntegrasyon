@@ -116,7 +116,9 @@ internal sealed partial class ProductJobService
         if (!phase.StartsWith("POLL_", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(payload.ExternalOperationId) || payload.SubmittedAt is null)
             return JobExecutionResult.Blocked("PRODUCT_UPDATE_PHASE_INVALID", "Ürün güncelleme işi bilinmeyen bir fazda.");
         if (groupedTrendyol && payload.GroupLeaderJobId is not null) return await PollTrendyolGroupAsync(tenantId, connectionId, job, payload, profile, listings, states, phase, correlationId, cancellationToken);
-        if (timeProvider.GetUtcNow() - payload.SubmittedAt.Value > TimeSpan.FromHours(4))
+        // When the answer is asked for: the date an accepted value is known from.
+        var polledAt = timeProvider.GetUtcNow();
+        if (polledAt - payload.SubmittedAt.Value > TimeSpan.FromHours(4))
             return await MarkUpdateResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_EXPIRED", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_EXPIRED", "Ürün güncelleme batch sonucu dört saatlik pencerede alınamadı.", payload.ExternalOperationId), cancellationToken);
 
         TrackRequest();
@@ -186,12 +188,24 @@ internal sealed partial class ProductJobService
             }
         }
 
+        // What the marketplace accepted of this request becomes the last known value of each variant whose line came back
+        // accepted (the "Platformlarda Güncelle" summary); a refused or missing line writes nothing.
+        await RecordAcceptedListingValuesAsync(tenantId, connectionId, platformCode, phase, payload, status.Lines, listings, polledAt, cancellationToken);
         var next = AdvanceUpdate(payload, phase);
         if (next is null) return await CompleteProductUpdate(tenantId, connectionId, payload, profile, listings, states, correlationId, cancellationToken);
         job.PayloadJson = JsonSerializer.Serialize(next); job.PayloadHash = Hash(job.PayloadJson);
         profile.ActualStatus = "UPDATE_IN_PROGRESS"; profile.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Retry("PRODUCT_UPDATE_NEXT_PHASE", $"{ProductUpdatePlatformName(isHepsiburada, isN11)} ürün güncellemesinin sonraki batch fazı hazırlanıyor.", TimeSpan.FromSeconds(1));
+    }
+
+    // The fields of one polled request the marketplace accepted for this card's variants (MarketplaceKnownListingValueStore):
+    // Trendyol and Hepsiburada only, each variant by its own accepted batch line.
+    private async Task RecordAcceptedListingValuesAsync(Guid tenantId, Guid connectionId, string? platformCode, string phase, ProductUpdateJobPayload payload, IEnumerable<RemoteOperationLine> lines, IReadOnlyList<ChannelListingVariant> listings, DateTimeOffset acceptedAt, CancellationToken cancellationToken)
+    {
+        var writes = MarketplaceKnownListingValueStore.Accepted(platformCode, TrendyolUpdateGroups.Part(phase), UpdatePayload(payload, phase), lines,
+            [.. listings.Select(listing => new MarketplaceKnownListingValueStore.Listing(listing.VariantId, listing.ExternalBarcode, listing.ExternalSku))], payload.ContentNotFoundBarcodes);
+        if (writes.Count > 0) await MarketplaceKnownListingValueStore.TryRecordAcceptedAsync(db, tenantId, connectionId, writes, acceptedAt, cancellationToken);
     }
 
     private static string ProductUpdatePlatformName(bool isHepsiburada, bool isN11) => isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : "Trendyol";

@@ -242,3 +242,16 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
   refuses an unknown one; it is stored with change time UnixEpoch, so the later order read always replaces it. A claim
   inside a replacement-package notification (`ClaimPackageOrder`) keeps the older lenient reading. Live 15 Nov 2026:
   2 Hepsiburada orders hold ClaimCreated lines, both with packages and amounts (none left half-built).
+
+## Product update status, field by field (18 Nov 2026)
+- `GET /ticket-api/api/integrator/status/{trackingId}` answers per item (`IntegratorImportStatusItemDto`): `hbSku`,
+  `message`, `productStatus` (`COMPLETED` | `UNCOMPLETED` in the schema; live answers also carry review states the mapper
+  knows, e.g. `WAITING_APPROVAL`, `IN_REVIEW`) and `updateResults[]` (`IntegratorUpdateResultsDto`): `fieldName`
+  (`NAME`, `DESCRIPTION`, `KDV`, `BARCODE`, `IS_CUSTOMIZABLE`, `BRAND`, `DESI`, `WARRANTY_PERIOD`, `MEDIA`, `ATTRIBUTE`),
+  `fieldResult` (`APPROVED`, `REJECTED`, `IN_PROGRESS`, `PARTIAL_APPROVED`), `rejectReason`, `attributes[]`.
+  Source: offline `hepsiburada-api-son.md` ~3140-3250.
+- `HepsiburadaJsonMapper.ProductImportStatus` counts a review state as `Succeeded` (the job goes on); the fields with
+  `fieldResult = APPROVED` travel separately as `RemoteOperationLine.ApprovedFields`. Only those are recorded as the
+  listing's last known values (`MarketplaceKnownListingValueStore`); a line still in review records nothing.
+- The listing read (`listings/merchantid/{m}`) is a price/stock service: a listing that carries no `productName` /
+  `description` leaves the title and description unknown (the mapper's stock-code fallback title is not Hepsiburada's).

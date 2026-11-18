@@ -467,6 +467,29 @@ public sealed class MarketplaceModelLink
     public long Version { get; set; } = 1;
 }
 
+// The marketplace values of one listed variant the panel last knew (catalog.marketplace_known_listing_values), for the
+// "Platformlarda Güncelle" summary: per field the value, where it came from (IMPORT: a product read of the marketplace
+// carried it; SENT: the marketplace accepted an update carrying it) and when (the read, or the acceptance). A null value
+// is not known: never read, the read did not carry it, or a send left it unclear. Data, not a setting: it goes with the
+// variant, the connection data and every reset that removes listing links.
+public sealed class MarketplaceKnownListingValue
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ConnectionId { get; set; }
+    public Guid VariantId { get; set; }
+    public string? Title { get; set; }
+    public string? TitleSource { get; set; }
+    public DateTimeOffset? TitleReadAt { get; set; }
+    public string? Description { get; set; }
+    public string? DescriptionSource { get; set; }
+    public DateTimeOffset? DescriptionReadAt { get; set; }
+    public decimal? Desi { get; set; }
+    public string? DesiSource { get; set; }
+    public DateTimeOffset? DesiReadAt { get; set; }
+    public long Version { get; set; } = 1;
+}
+
 public sealed class MarketplaceVariantLink
 {
     public Guid Id { get; set; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Product, Variant } from '../shared'
-import { bulkPlatformUpdateMenuState, bulkPlatformUpdateRequests, bulkUpdateGroupSize, productRequiredGaps, type BulkUpdateRecord } from './bulk-platform-update'
+import { bulkPlatformUpdateMenuState, bulkPlatformUpdateRequests, bulkUpdateCardsOn, bulkUpdateGroupSize, productRequiredGaps, type BulkUpdateRecord } from './bulk-platform-update'
 
 const trendyol = { id: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol' }
 const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Ravencia HB' }
@@ -46,6 +46,20 @@ describe('bulkPlatformUpdateRequests', () => {
       { kind: 'product', productId: 'a', connectionId: 'hb', fields: ['IMAGES'] },
       { kind: 'priceInventory', productId: 'a', connectionId: 'hb', price: true, stock: false }
     ])
+  })
+
+  // The "Pazaryerinde Değişecekler" summary asks per store for the cards the product information goes to there: the same
+  // list the requests above are made of.
+  it('names per store the cards the product information goes to, as the requests do', () => {
+    const records = [
+      record('a', [live('Ravencia Trendyol', 'TRENDYOL'), live('Ravencia HB', 'HEPSIBURADA')]),
+      record('b', [live('Ravencia Trendyol', 'TRENDYOL'), unlinked('Ravencia HB', 'HEPSIBURADA')]),
+      record('c', [live('Ravencia Trendyol', 'TRENDYOL')], { gaps: ['desi'] })
+    ]
+    expect(bulkUpdateCardsOn(records, trendyol).map(item => item.id)).toEqual(['a', 'b'])
+    expect(bulkUpdateCardsOn(records, hepsiburada).map(item => item.id)).toEqual(['a'])
+    const sent = bulkPlatformUpdateRequests(records, [trendyol, hepsiburada], ['ty', 'hb'], ['TITLE'], () => 'g')
+    expect(sent.filter(request => request.connectionId === 'hb').map(request => request.productId)).toEqual(['a'])
   })
 
   it('sends nothing to a store that was not picked, and price and stock alone make no product job', () => {

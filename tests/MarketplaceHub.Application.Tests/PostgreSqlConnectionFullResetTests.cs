@@ -130,7 +130,7 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
         "sales.orders", "sales.shipment_packages", "sales.return_claims", "sales.marketplace_invoice_reference_history", "sales.marketplace_questions",
         "sales.marketplace_finance_transactions", "sales.marketplace_cargo_invoice_items",
         "billing.marketplace_delivery_states", "billing.manual_order_invoice_documents", "billing.manual_order_invoice_delivery_states",
-        "catalog.marketplace_product_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states", "catalog.external_identifier_aliases",
+        "catalog.marketplace_product_links", "catalog.marketplace_variant_links", "catalog.marketplace_listing_states", "catalog.marketplace_known_listing_values", "catalog.external_identifier_aliases",
         "catalog.category_mappings", "catalog.brand_mappings", "catalog.commission_tariffs", "catalog.promotion_offer_files", "catalog.ad_report_files",
         "catalog.import_sessions", "catalog.product_import_sessions", "catalog.product_import_staging_records", "catalog.catalog_structure_runs",
         "inventory.channel_offers", "integration.jobs", "integration.external_effect_records", "integration.reconciliation_runs",
@@ -212,6 +212,10 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
             new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, VariantId = panelVariant.Id, ExternalId = "fr-panel-variant" },
             new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Other.Id, VariantId = otherVariant.Id, ExternalId = "fr-other-variant" });
         db.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, VariantId = panelVariant.Id, DesiredStatus = "ACTIVE", ActualStatus = "ACTIVE" });
+        // The marketplace's last known values on both stores: the reset store's go (its panel product stays), the other's stay.
+        db.MarketplaceKnownListingValues.AddRange(
+            new MarketplaceKnownListingValue { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, VariantId = panelVariant.Id, Title = "Bluz", TitleSource = "IMPORT", TitleReadAt = fixture.Now },
+            new MarketplaceKnownListingValue { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Other.Id, VariantId = otherVariant.Id, Title = "Bluz", TitleSource = "IMPORT", TitleReadAt = fixture.Now });
         db.ExternalIdentifierAliases.Add(new ExternalIdentifierAlias { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = seed.Reset.Id, EntityType = "PRODUCT", LocalId = seed.PanelProduct.Id, ExternalId = "fr-alias", CreatedAt = fixture.Now });
         foreach (var (connection, variant) in new[] { (seed.Reset, panelVariant), (seed.Other, otherVariant) })
         {

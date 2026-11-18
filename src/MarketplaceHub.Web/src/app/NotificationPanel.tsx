@@ -133,7 +133,7 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
       <span className="rv-notification-history-title"><strong>Bildirimler</strong>{unread.length > 0 && <b aria-label={`${unread.length} okunmamış bildirim`}>{unread.length}</b>}</span>
       <div className="rv-notification-history-actions">
         <button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unread.length === 0} title="Tüm bildirimleri okundu olarak işaretle"><UiIcon name="check" size={14} />Tümünü Okundu Yap</button>
-        <button type="button" className="rv-notification-clear" onClick={() => { clearNotificationHistory(); onCleared() }} disabled={notifications.length === 0}><UiIcon name="trash" size={14} />Temizle</button>
+        <button type="button" className="rv-notification-clear" title="Bildirim geçmişini temizle" onClick={() => { clearNotificationHistory(); onCleared() }} disabled={notifications.length === 0}><UiIcon name="trash" size={14} />Temizle</button>
       </div>
     </div>
     <div className="rv-notification-filters rv-tabs rv-view-tabs" role="tablist" aria-label="Bildirim filtresi">

@@ -161,7 +161,7 @@
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row:hover { background: var(--rv-hover, var(--rv-color-surface)); }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-reference-row:hover td { background: none; }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar { flex-wrap: nowrap; gap: 12px; padding: 12px; }
-  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar-actions { flex: none; width: 100%; max-width: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-toolbar-actions { flex: none; justify-content: space-between; width: 100%; max-width: none; }
 }
 
 /* Attempt history: the box clips the shaded head row to its rounded corners, and the column titles stay whole on one
