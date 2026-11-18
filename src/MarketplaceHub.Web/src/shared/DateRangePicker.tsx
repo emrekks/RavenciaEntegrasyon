@@ -61,7 +61,8 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     showSelectedMonth()
     // The popover is fixed to the viewport, so it follows its field whenever the page scrolls or resizes.
     let frame = 0
-    const follow = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { const position = computePosition(); if (position) setPopoverPosition(position) }) }
+    // Only a real move re-renders the picker: every scroll frame used to set a new (equal) position and draw it again.
+    const follow = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { const position = computePosition(); if (position) setPopoverPosition(current => current && current.left === position.left && current.top === position.top && current.maxHeight === position.maxHeight && current.width === position.width ? current : position) }) }
     window.addEventListener('scroll', follow, true)
     window.addEventListener('resize', follow)
     return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow) }
