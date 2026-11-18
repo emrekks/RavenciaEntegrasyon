@@ -54,8 +54,7 @@ public static class ProductModelLinks
         // new code and every colour's copy follows (PropagateCodeChangesAsync).
         public Dictionary<Guid, Dictionary<Guid, (string? Before, string? After)>> CodeChanges { get; } = [];
         // KATALOG-14 D5 step B1 (expand): the own models ("#<card id>") given to the save's new cards before their insert
-        // (GiveNewCardsModels), per tenant, and the tracked pairs to undo when the save fails.
-        public Dictionary<Guid, HashSet<Guid>> FreshModels { get; } = [];
+        // (GiveNewCardsModels) with their cards, to settle after the save or undo when it fails.
         internal List<(ProductModel Model, Product Card)> FreshPairs { get; } = [];
 
         internal void AddCodeChange(Guid tenantId, Guid productId, string? before, string? after)
@@ -225,9 +224,9 @@ public static class ProductModelLinks
     // KATALOG-14 D5 step B1 (expand-contract phase 1): a card is never written without its model, so products.FamilyId can
     // become NOT NULL. Every card the save adds without a model gets, before its insert and in the save itself, a model of
     // its own ("#<card id>", the card's brand and values: what EnsureOwnModelsAsync gave it after the save until now); EF
-    // inserts the model before the card. The reconcile after the save treats such a fresh model as no link at all: a coded
-    // card joins (or opens) its brand's model of the code exactly as before and the fresh model, left without a card, goes;
-    // a card without a code keeps it as its own model.
+    // inserts the model before the card. The reconcile after the save never re-keys a model of its own into a code, so a
+    // coded card joins (or opens) its brand's model of the code exactly as an unlinked card did and the fresh model, left
+    // without a card, goes; a card without a code keeps it as its own model.
     internal static void GiveNewCardsModels(AppDbContext db, Pending pending, DateTimeOffset now)
     {
         foreach (var entry in db.ChangeTracker.Entries<Product>().Where(x => x.State == EntityState.Added && x.Entity.FamilyId is null).ToList())
@@ -255,7 +254,6 @@ public static class ProductModelLinks
             };
             db.ProductModels.Add(model);
             card.FamilyId = model.Id;
-            Pending.SetOf(pending.FreshModels, card.TenantId).Add(model.Id);
             pending.FreshPairs.Add((model, card));
         }
     }
@@ -343,7 +341,7 @@ public static class ProductModelLinks
             if (keys.Count > 0)
             {
                 // The save's cards and the brands it gave.
-                await ReconcileAsync(db, tenantId, keys, now, cancellationToken, new SaveScope(new HashSet<Guid>([.. productIds ?? [], .. brandChanges.Keys]), brandChanges, pending.FreshModels.GetValueOrDefault(tenantId)));
+                await ReconcileAsync(db, tenantId, keys, now, cancellationToken, new SaveScope(new HashSet<Guid>([.. productIds ?? [], .. brandChanges.Keys]), brandChanges));
             }
             // KATALOG-14 phase D5a: a card the model-code rule links to no model (no code) gets a model of its own.
             if (productIds is { Count: > 0 })
@@ -460,8 +458,7 @@ public static class ProductModelLinks
     // (shared tenant lock, exclusive for the whole tenant), so such reconciles take turns and a failure leaves nothing
     // half done. Inside a caller's transaction it runs as before (no lock, so a long import holds nothing for others).
     // save: a save's reconcile (KATALOG-14 phase D5b): a card of the save joining a code under another brand fails the save.
-    // FreshModels: the own models the save gave its new cards before their insert (GiveNewCardsModels), read as no link.
-    public sealed record SaveScope(IReadOnlySet<Guid> Products, IReadOnlyDictionary<Guid, Guid?> BrandChanges, IReadOnlySet<Guid>? FreshModels = null);
+    public sealed record SaveScope(IReadOnlySet<Guid> Products, IReadOnlyDictionary<Guid, Guid?> BrandChanges);
 
     // The one rule of which brand's model of a code a card joins when it is not linked to one of the code yet: the reconcile
     // below and every "is this code in use" check (ModelCodeOwnership) ask it. A card of a brand joins its brand's model. A
@@ -528,20 +525,13 @@ public static class ProductModelLinks
                 .Where(x => x.StartsWith(AmbiguousKeyPrefix, StringComparison.Ordinal)).Select(x => x[AmbiguousKeyPrefix.Length..]));
         }
         cardKeys = cardKeys.Where(card => targetKeys.Contains(card.Key!)).ToList();
-        // KATALOG-14 D5 step B1: a fresh own model the save gave a new card before its insert counts as no link (the card
-        // joins its code's model as an unlinked card did); the card's real link stays in actualFamilies, so the fresh model is
-        // among the models cards leave and goes once cardless.
-        var fresh = save?.FreshModels ?? new HashSet<Guid>();
-        var freshIds = fresh.ToArray();
         var cardIds = cardKeys.Select(x => x.ProductId).ToArray();
-        var productRows = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.Id))
+        var products = (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.Id))
                 .Select(x => new { x.Id, x.BrandId, x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
-                .ToListAsync(cancellationToken);
-        var actualFamilies = productRows.ToDictionary(x => x.Id, x => x.FamilyId);
-        var products = productRows.Select(x => new { x.Id, x.BrandId, FamilyId = x.FamilyId is Guid family && fresh.Contains(family) ? null : x.FamilyId, x.CreatedAt, x.Title, x.Description, x.CategoryId, x.VatRate, x.VatInclusion, x.WarrantyMonths, x.DeliveryDays })
+                .ToListAsync(cancellationToken))
             .ToDictionary(x => x.Id);
         var targetKeyArray = targetKeys.ToArray();
-        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && targetKeyArray.Contains(x.ModelCodeKey) && !freshIds.Contains(x.Id))
+        var models = await db.ProductModels.AsNoTracking().Where(x => x.TenantId == tenantId && targetKeyArray.Contains(x.ModelCodeKey))
             .Select(x => new { x.Id, x.BrandId, x.ModelCodeKey }).ToListAsync(cancellationToken);
         var modelIds = models.Select(x => x.Id).ToArray();
         var linkedElsewhere = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.FamilyId != null && modelIds.Contains(x.FamilyId.Value))
@@ -605,8 +595,12 @@ public static class ProductModelLinks
                 // under the new code: when every card linked to it now holds this key (none stays behind on the old code, and no
                 // card of another key was given it in this run), it takes the new code, so its marketplace model links and
                 // saved attributes stay. Cards of another model or of none may join it.
+                // KATALOG-14 D5 step B1 (review, 18 Nov 2026): a model of its own ("#<card id>") is never re-keyed into a code: the
+                // code's model opens from the cards (NewModelValues, the first card brought in, its colour word in TitleColor), as
+                // for cards of no model, and the own models go once cardless. Re-keying one gave the code the name of whichever own
+                // model came first by id and no colour word, which every later colour then took.
                 if (target is null
-                    && models.Where(model => model.ModelCodeKey != key && model.BrandId == brand && !rekeyed.Contains(model.Id) && cards.Any(x => x.Card.FamilyId == model.Id))
+                    && models.Where(model => model.ModelCodeKey != key && model.BrandId == brand && !rekeyed.Contains(model.Id) && !IsOwnModelKey(model.ModelCodeKey) && cards.Any(x => x.Card.FamilyId == model.Id))
                         .OrderByDescending(model => cards.Count(x => x.Card.FamilyId == model.Id)).ThenBy(model => model.Id).FirstOrDefault() is { } recoding
                     && linkedElsewhere.Where(x => x.FamilyId == recoding.Id).All(x => cards.Any(card => card.Card.Id == x.Id))
                     && !desired.Any(pair => pair.Value == recoding.Id)
@@ -675,7 +669,7 @@ public static class ProductModelLinks
         await ResolveWarningsOfMissingModelsAsync(db, tenantId, now, cancellationToken);
 
         Guid? CurrentFamily(Guid productId) =>
-            actualFamilies.TryGetValue(productId, out var family) ? family : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
+            products.TryGetValue(productId, out var card) ? card.FamilyId : linkedElsewhere.FirstOrDefault(x => x.Id == productId)?.FamilyId;
     }
 
     // KATALOG-14 phase D5b (owner, 17 Nov 2026: "ilk çekilen"): the cards of a model in the order they were brought in, the
@@ -734,8 +728,8 @@ public static class ProductModelLinks
 
     // KATALOG-14 phase D5a: a card the model-code rule gives no model (it has no model code) is a model of its own, keyed
     // "#<card id>" (a model-code key never holds '#', CatalogKeyNormalizer), with the card's brand, code-less, and its
-    // values. Nothing is merged: one card, one model. When the card gets a code its model takes that code (the reconcile's
-    // re-key, KATALOG-2). productIds null: every card of the tenant without a model.
+    // values. Nothing is merged: one card, one model. When the card gets a code it joins or opens the code's model and its own
+    // model goes (KATALOG-14 D5 B1: an own model is never re-keyed). productIds null: every card of the tenant without a model.
     public const string OwnModelKeyPrefix = "#";
 
 
