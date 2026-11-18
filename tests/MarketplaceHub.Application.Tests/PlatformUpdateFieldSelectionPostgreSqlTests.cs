@@ -71,7 +71,8 @@ public sealed class PlatformUpdateFieldSelectionPostgreSqlTests(PostgreSqlTenant
             var full = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, connection.Id, CancellationToken.None, productId: product.Id);
             var line = Assert.Single(full.Value!.Lines);
             Assert.False(line.QuantityOmitted);
-            Assert.True(line.PriceOmitted);
+            // Owner rule of 18 Nov 2026: the stock goes with the price in force, even one Trendyol already confirmed.
+            Assert.False(line.PriceOmitted);
             Assert.False(line.StockHeld);
         }
     }

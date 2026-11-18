@@ -32,6 +32,10 @@ internal sealed class JobRunContext
     // "Yeni Ürünleri Aktar" added, what "Ürün Eşleme" linked.
     public MarketplaceJobProcessor.ImportSummaryMode ImportSummaryMode;
     public readonly HashSet<Guid> PriceChangedVariantIds = [];
+    // "Fiyat ve Stokları Güncelle": the panel prices a product's variants took, applied to the other connections' offers in
+    // one query per product (CatalogImportService.FlushPanelRepricesAsync), and the connections' platforms, read once.
+    public readonly Dictionary<Guid, PanelPriceOffers.PanelPriceChange> PendingPanelReprices = [];
+    public Dictionary<Guid, string>? TenantPlatforms;
     public readonly HashSet<Guid> StockChangedVariantIds = [];
     public int UnchangedVariantCount;
     public int NewProductCount;

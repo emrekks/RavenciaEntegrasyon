@@ -681,21 +681,21 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(rows);
     }
 
-    public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true)
+    public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true, Guid? actorUserId = null)
     {
         var staged = await StageSyncPolicyAsync(tenantId, id, resourceType, expectedVersion, command, cancellationToken, elevated);
         if (staged.Error is { } error) return new(null, error);
         var (policy, connection, switchedOn, _) = staged.Value!;
         // B: an automatic price or stock write switched on never sends what changed while it was off; every offer of
         // the connection counts as sent at its current values, committed with the switch.
-        await AutomaticPriceStockWrites.SaveWithBaselineAsync(db, tenantId, id, connection.PlatformCode, switchedOn && AutomaticPriceStockWrites.IsAutomaticWritePolicy(policy.ResourceType), cancellationToken);
+        await AutomaticPriceStockWrites.SaveWithBaselineAsync(db, tenantId, id, connection.PlatformCode, switchedOn && AutomaticPriceStockWrites.IsAutomaticWritePolicy(policy.ResourceType), cancellationToken, actorUserId, timeProvider.GetUtcNow());
         return ServiceResult<SyncPolicyView>.Ok(await StagedViewAsync(staged.Value!, cancellationToken));
     }
 
     // The automatic price/stock pair (or any other set of write switches of one connection) switched together: every
     // If-Match is checked and every policy saved in one transaction, so either all change or none does (18 Nov: two
     // parallel PUTs each took the baseline over the same offers and one failed, leaving the pair half open).
-    public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> UpdateExternalWriteGroupAsync(Guid tenantId, Guid id, UpdateExternalWriteGroupCommand command, CancellationToken cancellationToken, bool elevated = true)
+    public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> UpdateExternalWriteGroupAsync(Guid tenantId, Guid id, UpdateExternalWriteGroupCommand command, CancellationToken cancellationToken, bool elevated = true, Guid? actorUserId = null)
     {
         var items = command.Policies ?? [];
         var resourceTypes = items.Select(x => x.ResourceType?.Trim().ToUpperInvariant() ?? string.Empty).ToArray();
@@ -715,7 +715,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             staged.Add(result.Value!);
         }
         var connection = staged[0].Connection;
-        await AutomaticPriceStockWrites.SaveWithBaselineAsync(db, tenantId, id, connection.PlatformCode, staged.Any(x => x.SwitchedOn && AutomaticPriceStockWrites.IsAutomaticWritePolicy(x.Policy.ResourceType)), cancellationToken);
+        await AutomaticPriceStockWrites.SaveWithBaselineAsync(db, tenantId, id, connection.PlatformCode, staged.Any(x => x.SwitchedOn && AutomaticPriceStockWrites.IsAutomaticWritePolicy(x.Policy.ResourceType)), cancellationToken, actorUserId, timeProvider.GetUtcNow());
         var views = new List<SyncPolicyView>(staged.Count);
         foreach (var value in staged) views.Add(await StagedViewAsync(value, cancellationToken));
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(views);

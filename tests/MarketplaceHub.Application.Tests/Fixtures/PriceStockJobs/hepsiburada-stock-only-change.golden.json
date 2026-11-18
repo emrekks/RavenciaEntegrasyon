@@ -1,0 +1,24 @@
+{
+  "Request": {
+    "merchantId": "store-golden",
+    "items": [
+      {
+        "hepsiburadaSku": "HBCV0000GOLD1",
+        "merchantSku": "GOLD-STOCK-M",
+        "price": 250.00,
+        "availableStock": 7
+      }
+    ]
+  },
+  "Lines": [
+    {
+      "Barcode": "8690000000017",
+      "Quantity": 7,
+      "ListPrice": 250.00,
+      "SalePrice": 250.00,
+      "QuantityOmitted": false,
+      "PriceOmitted": false,
+      "PriceNote": null
+    }
+  ]
+}

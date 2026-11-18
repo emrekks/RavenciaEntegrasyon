@@ -14,6 +14,7 @@ import { TitleHint } from '../../../shared/components'
 import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import './product-transfer.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
+import { PanelPriceFillPanel } from './PanelPriceFillPanel'
 import { queryKeys } from '../../../shared/api/query-keys'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
@@ -210,6 +211,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
       <strong>{appliedTotal(done) === 0 ? 'Değerler zaten güncel' : 'Değişiklikler kaydedildi'}</strong>
       <p>{appliedTotal(done) === 0 ? 'Dosyadaki değerler panelde zaten aynıydı; hiçbir şey değişmedi.' : appliedText(done)}</p>
     </div> : result ? <PreviewView preview={result} picker={picker} problemCount={problemCount} pending={preview.isPending} error={apply.error ?? preview.error} /> : <>
+      <PanelPriceFillPanel />
       <ol className="pci-steps">
         <li className="pci-step">
           <span className="pci-step-n" aria-hidden="true">1</span>

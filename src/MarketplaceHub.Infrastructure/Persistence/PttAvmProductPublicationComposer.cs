@@ -91,7 +91,8 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var inventory = await db.InventoryItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN", cancellationToken);
         if (offer is null) return Fail("CHANNEL_OFFER_REQUIRED", "Varyant için etkin PttAVM fiyat teklifi gerekir.");
         if (inventory is null) return Fail("INVENTORY_REQUIRED", "Varyant için MAIN stok kaydı gerekir.");
-        var salePrice = PttAvmPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer));
+        // The price in force, from the function the price-stock send uses (review of 18 Nov 2026).
+        var salePrice = PriceInventoryComposer.PttAvmPriceInForce(offer, variant, await PriceInventoryComposer.CardPanelPricesAsync(db, tenantId, [variant.ProductId], cancellationToken));
         if (!string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
             return Fail("CHANNEL_OFFER_INVALID", $"'{variant.Sku}' için TRY para birimi ve 1'den büyük satış fiyatı gerekir.");
         if (PttAvmPriceInventoryRules.VatRate(offer.VatRate) is not { } vatRate)
@@ -162,6 +163,8 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         if (await MarketplaceModelLinks.ForCardAsync(db, tenantId, connectionId, product.FamilyId, cancellationToken) is { ExternalCode: { } modelBarcode } && !string.IsNullOrWhiteSpace(modelBarcode))
             externalCodes.Add(modelBarcode);
         var titles = members.ToDictionary(x => x.Id, x => x.Title);
+        // The product price and each variant's difference from the price in force, as the price-stock send computes them.
+        var cardPrices = await PriceInventoryComposer.CardPanelPricesAsync(db, tenantId, familyVariants.Select(x => x.ProductId), cancellationToken);
         var rows = familyVariants.Select(variant =>
         {
             var offer = offers.GetValueOrDefault(variant.Id);
@@ -169,7 +172,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             var attributes = PriceInventoryComposer.PttAvmVariantAttributes(variant.OptionSignature);
             return new FamilyVariantRow(variant.Id, titles[variant.ProductId], variant.Sku, variant.Barcode, variant.ModelCode,
                 attributes.FirstOrDefault(x => x.Definition == "Renk")?.Value, attributes.FirstOrDefault(x => x.Definition == "Beden")?.Value, variant.Desi,
-                offer is null ? null : PttAvmPriceInventoryRules.Price(PriceInventoryComposer.OutboundSalePrice(offer)), offer?.Currency, offer?.VatRate,
+                offer is null ? null : PriceInventoryComposer.PttAvmPriceInForce(offer, variant, cardPrices), offer?.Currency, offer?.VatRate,
                 offer is null || inventory is null ? null : PttAvmPriceInventoryRules.Quantity(inventory.Available - offer.SafetyStock), inventory is not null);
         }).ToList();
         var planned = PlanFamily(rows, externalCodes);
@@ -299,17 +302,20 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
             return Refuse("BARCODE_DUPLICATE", $"Model ailesinde '{sameBarcode.Key}' barkodu birden fazla varyantta var; PttAVM'de her varyantın barkodu ayrı olmalıdır.", 409);
         if (rows.GroupBy(row => $"{row.Color!.Trim().ToUpperInvariant()}/{row.Size!.Trim().ToUpperInvariant()}", StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1) is { } sameOptions)
             return Refuse("PTTAVM_VARIANT_OPTIONS_DUPLICATE", $"{string.Join(" ve ", sameOptions.Select(Name))} aynı renk ve bedeni taşıyor ({sameOptions.First().Color!.Trim()} / {sameOptions.First().Size!.Trim()}); PttAVM bunları ayrı varyant olarak tutamaz.");
-        // PTT AVM's variants of a product share its price (the price difference is 0 on every variant it holds).
-        if (rows.Select(row => row.SalePrice!.Value).Distinct().Count() > 1)
-            return Refuse("PTTAVM_VARIANT_PRICE_DIFFERS", $"PttAVM'de bir ürünün varyantları aynı fiyatla satılır; model ailesinde farklı satış fiyatları var ({string.Join(", ", rows.Select(row => row.SalePrice!.Value).Distinct().Order().Select(x => x.ToString("0.00", CultureInfo.InvariantCulture)))} TL). Fiyatları eşitleyin.");
         if (rows.Select(row => row.VatRate!.Value).Distinct().Count() > 1)
             return Refuse("PTTAVM_VARIANT_VAT_DIFFERS", "PttAVM'de bir ürünün tek KDV oranı vardır; model ailesinin varyantlarında farklı KDV oranları var.");
         var total = rows.Sum(row => row.Quantity!.Value);
         if (total > PttAvmPriceInventoryRules.MaxQuantity)
             return Refuse("PTTAVM_STOCK_TOTAL_TOO_HIGH", $"PttAVM bir ürünün stoğunu en fazla {PttAvmPriceInventoryRules.MaxQuantity} tutar; model ailesinin varyantlarında toplam {total} adet var.");
 
-        var variants = rows.Select(row => new PttAvmProductPayloadRules.VariantDraft(row.Barcode!.Trim(), row.Color!.Trim(), row.Size!.Trim(), row.Quantity!.Value)).ToList();
-        return (new FamilyPlan(parent, rows[0].SalePrice!.Value, rows[0].VatRate!.Value, Math.Ceiling(rows.Max(row => row.Desi!.Value)), variants), null);
+        // Owner decision of 18 Nov 2026 ("normal beden 100 TL ise büyük beden 150 ise farkı 50 olarak sistem hesaplasın"):
+        // PTT AVM keeps one product price and, per variant, a VAT-inclusive price difference added to it (UpdateProductsV3
+        // VariantV3.Price; product price + difference must not be below 0). The product price is the family's lowest
+        // price, so every difference is 0 or more; each variant carries its own price less it, as the price-stock send does.
+        var basePrice = PttAvmPriceInventoryRules.Price(rows.Min(row => row.SalePrice!.Value));
+        var variants = rows.Select(row => new PttAvmProductPayloadRules.VariantDraft(row.Barcode!.Trim(), row.Color!.Trim(), row.Size!.Trim(), row.Quantity!.Value,
+            PttAvmPriceInventoryRules.Price(row.SalePrice!.Value) - basePrice)).ToList();
+        return (new FamilyPlan(parent, basePrice, rows[0].VatRate!.Value, Math.Ceiling(rows.Max(row => row.Desi!.Value)), variants), null);
     }
 
     // The panel brand's name for PTT AVM's optional Brand field (the family shares one brand); null without one.

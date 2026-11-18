@@ -1,0 +1,28 @@
+{
+  "Request": {
+    "price": [
+      {
+        "code": "8690000000017",
+        "listPrice": 280.00,
+        "salePrice": 250.00
+      }
+    ],
+    "stock": [
+      {
+        "code": "8690000000017",
+        "stockCount": 7
+      }
+    ]
+  },
+  "Lines": [
+    {
+      "Barcode": "8690000000017",
+      "Quantity": 7,
+      "ListPrice": 280.00,
+      "SalePrice": 250.00,
+      "QuantityOmitted": false,
+      "PriceOmitted": false,
+      "PriceNote": null
+    }
+  ]
+}

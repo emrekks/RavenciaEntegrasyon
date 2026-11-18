@@ -653,7 +653,9 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         var changed = Colours.Select(entry => Spec(entry.Colour) with { Stock = 9, SalePrice = 555m, ListPrice = 820m, Title = "Trendyol Yeni Başlık", Pictures = [.. ContentPictures(entry.Key, entry.Pictures).Reverse()] }).ToList();
         var prices = await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), FocusedPrices, references);
         var afterPrices = await RowsAsync(seed);
-        AssertTablesEqual(before, afterPrices, nameof(ChannelOffer), nameof(ChannelPriceHistory));
+        // "Fiyat ve Stokları Güncelle" (owner decision of 18 Nov 2026) writes Trendyol's price as the panel price too.
+        AssertTablesEqual(before, afterPrices, nameof(ChannelOffer), nameof(ChannelPriceHistory), nameof(ProductVariant));
+        Assert.All(afterPrices[nameof(ProductVariant)].Values, json => Assert.Contains("\"DefaultSalePrice\":555", json, StringComparison.Ordinal));
         Assert.Equal(linksBefore, await VariantLinkRowsAsync(seed));
         Assert.All(afterPrices[nameof(ChannelOffer)].Values, json => Assert.Contains("\"SalePrice\":555", json, StringComparison.Ordinal));
         Assert.Equal(before[nameof(ChannelPriceHistory)].Count + Colours.Length * Sizes.Length, afterPrices[nameof(ChannelPriceHistory)].Count);

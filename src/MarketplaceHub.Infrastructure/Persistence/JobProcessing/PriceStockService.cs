@@ -284,6 +284,20 @@ internal sealed class PriceStockService(
                 sendLog.Settle(line, PriceStockSendResults.Failed, PriceOnlyAppliedCode, "Fiyat yazıldı, stok gönderilmedi; stok sonraki gönderimde yeniden gidecek.");
                 continue;
             }
+            // Shopify wrote the stock and refused the price (review of 18 Nov 2026: a price never holds the stock back): the
+            // stock mark moves on, the price mark stays, so the price is tried again with the next send.
+            if (found.Found && string.Equals(found.Remote!.ErrorCode, StockOnlyAppliedCode, StringComparison.Ordinal))
+            {
+                failed++;
+                if (StockCurrent(line) && !line.StockHeld && !line.QuantityOmitted)
+                {
+                    offer.LastStockProjectionVersion = line.ProjectionVersion;
+                    PriceInventorySendPolicy.RecordSent(offer, line with { PriceOmitted = true }, payload.SubmittedAt ?? timeProvider.GetUtcNow());
+                    offer.Version++;
+                }
+                sendLog.Settle(line, PriceStockSendResults.Failed, StockOnlyAppliedCode, $"Stok yazıldı, fiyat reddedildi: {found.Remote.Status}. Fiyat sonraki gönderimde yeniden denenecek.");
+                continue;
+            }
             // Trendyol refuses a line it took with the same values within 15 minutes; values it last confirmed are held.
             var repeatOfConfirmed = found.Found && !found.Remote!.Succeeded && isTrendyol
                 && (TrendyolStockRules.IsRepeatRequestRefusal(found.Remote.ErrorCode) || TrendyolStockRules.IsRepeatRequestRefusal(found.Remote.Status))
@@ -335,6 +349,7 @@ internal sealed class PriceStockService(
     // ADAPTOR-DIGER-1: the line answers of a send cut off part-way (ShopifyHttpClient.InterruptedPriceInventory).
     internal const string NotSentLineStatus = "NOT_SENT";
     internal const string PriceOnlyAppliedCode = "SHOPIFY_PRICE_ONLY_APPLIED";
+    internal const string StockOnlyAppliedCode = "SHOPIFY_STOCK_ONLY_APPLIED";
 
     // A send cut off part-way: done for what it sent, with a note naming what goes again with the next send.
     private static JobExecutionResult? NotSentNote(int notSent) => notSent == 0 ? null

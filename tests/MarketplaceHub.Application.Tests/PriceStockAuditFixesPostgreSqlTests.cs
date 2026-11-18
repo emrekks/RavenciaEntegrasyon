@@ -76,11 +76,12 @@ public sealed class PriceStockAuditFixesPostgreSqlTests(PostgreSqlTenantIsolatio
             Assert.True(draft.Succeeded, draft.Error?.Message);
             var line = Assert.Single(draft.Value!.Lines);
             Assert.Equal(2m, line.Quantity);
-            Assert.True(line.PriceOmitted);
+            // Owner rule of 18 Nov 2026: the price in force goes with every stock send.
+            Assert.False(line.PriceOmitted);
             Assert.Equal(1m, line.SafetyStock);
             var sku = JsonNode.Parse(draft.Value.PayloadJson)!["payload"]!["skus"]![0]!.AsObject();
             Assert.Equal(2, sku["quantity"]!.GetValue<int>());
-            Assert.False(sku.ContainsKey("salePrice"));
+            Assert.True(sku.ContainsKey("salePrice"));
         }
     }
 

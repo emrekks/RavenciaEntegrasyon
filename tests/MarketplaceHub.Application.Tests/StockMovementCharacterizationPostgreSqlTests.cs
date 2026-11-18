@@ -399,7 +399,7 @@ public sealed class StockMovementCharacterizationPostgreSqlTests(PostgreSqlTenan
         var variant = await db.ProductVariants.SingleAsync(x => x.Id == variantId);
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
         var upsert = typeof(CatalogImportService).GetMethod("UpsertCatalogOfferAndInventory", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        await (Task)upsert.Invoke(processor.CatalogImport, [seed.TenantId, seed.ConnectionId, variant, remote, null, DateTimeOffset.UtcNow, CancellationToken.None, false, false, true, true])!;
+        await (Task)upsert.Invoke(processor.CatalogImport, [seed.TenantId, seed.ConnectionId, variant, remote, null, DateTimeOffset.UtcNow, CancellationToken.None, false, false, true, true, false])!;
         await db.SaveChangesAsync();
     }
 

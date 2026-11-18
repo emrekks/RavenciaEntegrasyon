@@ -60,6 +60,13 @@ Package status: an active line of unknown status makes the package ManualReview 
 least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
 
 ## Quirks
+- Variant prices (owner decision 18 Nov 2026; offline doc `pttavm-api-son.md` "Ürün Ekleme Güncelleme" and "Fiyat Stok
+  Güncelle"): a product keeps one price and each variant a VAT-inclusive `Price` difference added to it (product price
+  + difference must not be below 0). The panel computes it: product price = the family's lowest price, difference =
+  variant price − that (100 and 150 → 50), on the price-stock send and, since 18 Nov, on the product upsert too
+  (`VariantV3.Price`, left out at 0); a difference PTT AVM holds is carried, a variant priced on its own is not. Live 18
+  Nov: 13 models had size-based prices on Trendyol (e.g. 799 normal, 899 big) but one price on PTT AVM (447 of the 468
+  differing sizes), because the publication refused differing prices before.
 - A model with variants is one product under its model code; the family goes whole and the adapter adds only the
   variants the product lacks (`PttAvmVariants`), so a new colour is a new variant of that product.
 - No return service: returns come from "iade" lines, already completed; return actions are refused. RETURN_SYNC reads
