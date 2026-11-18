@@ -536,6 +536,41 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("CHANGE", claim.CustomerRequest);
     }
 
+    // Owner, 18 Nov 2026: the exchange package getClaims names (replacementOutboundpackageinfo) is read with its package id
+    // and carrier; a block without a package id, an empty one or none is no known package. Whether the claim carried the
+    // block at all is reported for the read log.
+    [Theory]
+    [InlineData("""{ "packageid": 28717254, "cargoProviderName": "Aras Kargo Marketplace", "cargoTrackingNumber": 7260242, "cargoTrackingLink": "https://tracking.example.test/x", "items": ["ci-1"] }""", "28717254", true)]
+    [InlineData("""{ "packageid": 0 }""", null, true)]
+    [InlineData("""{ "items": ["ci-1"] }""", null, true)]
+    [InlineData("{}", null, true)]
+    [InlineData("null", null, true)]
+    [InlineData(null, null, false)]
+    public void ReturnClaim_ReadsTheExchangePackageItNames(string? replacement, string? packageId, bool present)
+    {
+        var replacementField = replacement is null ? "" : "\"replacementOutboundpackageinfo\": " + replacement + ",";
+        var json = $$"""
+        {
+          "content": [
+            {
+              "claimId": "claim-pkg-1", "orderNumber": "11805950639", "orderDate": 1782998302000, {{replacementField}}
+              "items": [ { "orderLine": { "id": 1, "price": 10 }, "claimItems": [ { "id": "ci-1", "claimItemStatus": { "name": "Rejected" }, "customerClaimItemReason": { "id": "1", "name": "Sebep", "code": "WRONGCHANGEREQUEST" } } ] } ]
+            }
+          ],
+          "page": 0, "totalPages": 1
+        }
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(packageId, claim.ReplacementPackage?.PackageId);
+        Assert.Equal(present, claim.ReplacementInfoPresent);
+        if (packageId is not null)
+            Assert.Equal(("Aras Kargo Marketplace", "7260242", "https://tracking.example.test/x"), (claim.ReplacementPackage!.CargoProviderName, claim.ReplacementPackage.CargoTrackingNumber, claim.ReplacementPackage.CargoTrackingLink));
+        // The request still comes from the reason code alone; no outcome is inferred.
+        Assert.Equal(("CHANGE", (string?)null), (claim.CustomerRequest, claim.ResolvedWith));
+    }
+
     [Fact]
     public void ReturnClaim_ReadsNestedReturnPackageCargoProviderObject()
     {

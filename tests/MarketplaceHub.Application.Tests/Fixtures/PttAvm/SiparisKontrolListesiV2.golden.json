@@ -381,7 +381,9 @@
         "DecidedAt": null,
         "CustomerRequest": null,
         "ResolvedWith": null,
-        "RequestedAt": null
+        "RequestedAt": null,
+        "ReplacementPackage": null,
+        "ReplacementInfoPresent": null
       }
     },
     {

@@ -116,6 +116,17 @@ internal sealed partial class OrderQueryService
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var connectionByOrder = orders.ToDictionary(order => order.Id, order => order.ConnectionId);
         var catalog = await OrderLineCatalog.LoadAsync(db, tenantId, lines, line => connectionByOrder.TryGetValue(line.OrderId, out var lineConnectionId) ? lineConnectionId : null, cancellationToken);
+        // The orders' exchange resends (ExchangeResendClaims: the Yeniden Gönderimler tab's rule), one per order.
+        var pageOrderIds = orders.Select(order => order.Id).ToArray();
+        var exchangeResends = (await db.ReturnClaims.AsNoTracking()
+                .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
+                    && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
+                    && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
+                .Select(claim => new { claim.OrderId, claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink })
+                .ToListAsync(cancellationToken))
+            .GroupBy(claim => claim.OrderId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(claim => claim.ReplacementPackageId != null).Select(claim =>
+                new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink != null)).First());
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
@@ -182,7 +193,8 @@ internal sealed partial class OrderQueryService
                 RowMarks(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
                 UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []),
                 AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? [])),
-                buyer.BuyerType);
+                buyer.BuyerType,
+                exchangeResends.GetValueOrDefault(order.Id));
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -408,7 +420,14 @@ internal sealed partial class OrderQueryService
                     // originPackageIds is also present for split/cancel packages;
                     // only Trendyol's explicit creator marker identifies a resend.
                     "RESENT" => x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy)
-                        && (!resentNotShipped || ResentNotShippedStatuses.Contains(package.Status))),
+                        && (!resentNotShipped || ResentNotShippedStatuses.Contains(package.Status)))
+                        // An exchange (owner, 18 Nov 2026): Trendyol's order reads never return its new package, so an order
+                        // is a resend too when its exchange claim names the package (getClaims replacementOutboundpackageinfo)
+                        // or the owner marked the exchange made; it waits for the carrier until the package's tracking link comes.
+                        || db.ReturnClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
+                            && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
+                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
+                            && (!resentNotShipped || claim.ReplacementCargoTrackingLink == null)),
                     // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
                     _ => x => x.DerivedStatus == status
                 };

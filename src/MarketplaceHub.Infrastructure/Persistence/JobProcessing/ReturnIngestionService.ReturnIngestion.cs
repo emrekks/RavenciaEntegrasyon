@@ -5,7 +5,10 @@ using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
@@ -77,6 +80,11 @@ internal sealed partial class ReturnIngestionService
         var remoteCargoTracking = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim();
         // Freshness is decided once for the whole read: an older snapshot than the one stored changes neither the
         // claim's status, its lines, its open decisions nor a pending "Stoğa Ekle"; only non-empty cargo facts merge.
+        // Review, 18 Nov 2026: whether a Trendyol exchange claim carries the exchange package block at all (no content, no
+        // customer data), so its live shape can be checked in the worker's log.
+        if (remote.ReplacementInfoPresent is { } replacementPresent && remote.CustomerRequest == ReturnCustomerRequestPolicy.Change)
+            (db.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance).CreateLogger<ReturnIngestionService>()
+                .LogInformation("Exchange claim {ExternalClaimId} read: replacementOutboundpackageinfo present={Present}, package id={HasPackageId}", remote.ExternalClaimId, replacementPresent, remote.ReplacementPackage is not null);
         var remoteIsFresh = claim is null || !IsStaleReturnObservation(claim.LastRemoteModifiedAt, remote.LastModifiedAt);
         if (claim is null) { claim = NewReturnClaim(tenantId, connectionId, order.Id, remote, target, now); db.ReturnClaims.Add(claim); run.InsertedCount++; }
         else
@@ -153,6 +161,9 @@ internal sealed partial class ReturnIngestionService
             if (remote.RequestedAt?.ToUniversalTime() is { } requestedAt && claim.RequestedAt != requestedAt) { claim.RequestedAt = requestedAt; claimChanged = true; }
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
+            // The exchange package Trendyol names (getClaims replacementOutboundpackageinfo) is kept once read; a read without
+            // it leaves what is known (unknown is never "no package").
+            if (remote.ReplacementPackage is { } replacement && ApplyReplacementPackage(claim, replacement)) claimChanged = true;
             // How the claim was closed, as the marketplace says it (Hepsiburada's finalizedWith); a read that says nothing keeps it.
             if (remote.ResolvedWith is { } resolvedWith && (!string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal) || claim.ResolvedWithSource is not null))
             { claim.ResolvedWith = resolvedWith; claim.ResolvedWithSource = null; claimChanged = true; }
@@ -342,6 +353,10 @@ internal sealed partial class ReturnIngestionService
         RejectedPackageState = status == ReturnClaimStatus.Rejected ? remote.RejectedPackageState : null,
         DecidedAt = status is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected ? remote.DecidedAt?.ToUniversalTime() : null,
         CustomerRequest = remote.CustomerRequest,
+        ReplacementPackageId = remote.ReplacementPackage?.PackageId,
+        ReplacementCargoProviderName = remote.ReplacementPackage?.CargoProviderName,
+        ReplacementCargoTrackingNumber = remote.ReplacementPackage?.CargoTrackingNumber,
+        ReplacementCargoTrackingLink = SafeReturnTrackingLink(remote.ReplacementPackage?.CargoTrackingLink),
         ResolvedWith = remote.ResolvedWith,
         RequestedAt = remote.RequestedAt?.ToUniversalTime(),
         CreatedAt = now,
@@ -363,5 +378,19 @@ internal sealed partial class ReturnIngestionService
             : previousStatus == status ? currentDecidedAt
             : null;
         return (packageState, decidedAt);
+    }
+
+    // Writes the exchange package a read names; true when something changed. A carrier field the read leaves out keeps
+    // its stored value.
+    internal static bool ApplyReplacementPackage(ReturnClaim claim, RemoteReplacementPackage replacement)
+    {
+        var link = SafeReturnTrackingLink(replacement.CargoTrackingLink);
+        var (provider, tracking) = (replacement.CargoProviderName?.Trim(), replacement.CargoTrackingNumber?.Trim());
+        var changed = false;
+        if (claim.ReplacementPackageId != replacement.PackageId) { claim.ReplacementPackageId = replacement.PackageId; changed = true; }
+        if (!string.IsNullOrEmpty(provider) && claim.ReplacementCargoProviderName != provider) { claim.ReplacementCargoProviderName = provider; changed = true; }
+        if (!string.IsNullOrEmpty(tracking) && claim.ReplacementCargoTrackingNumber != tracking) { claim.ReplacementCargoTrackingNumber = tracking; changed = true; }
+        if (link is not null && claim.ReplacementCargoTrackingLink != link) { claim.ReplacementCargoTrackingLink = link; changed = true; }
+        return changed;
     }
 }

@@ -29,7 +29,8 @@ public static partial class TrendyolJsonMapper
                 ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null, RejectedPackageState: RejectedPackageState(claim, status),
                 // The request date is the documented claimDate only (GMT epoch milliseconds); no other field stands in.
                 RequestedAt: FlexibleInstant(claim, "claimDate"),
-                CustomerRequest: ReturnCustomerRequestPolicy.FromTrendyol(ClaimReasonCode(claim))));
+                CustomerRequest: ReturnCustomerRequestPolicy.FromTrendyol(ClaimReasonCode(claim)),
+                ReplacementPackage: ReplacementPackage(claim), ReplacementInfoPresent: ReplacementInfo(claim) is not null));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
@@ -48,6 +49,20 @@ public static partial class TrendyolJsonMapper
         if (package.TryGetProperty("dontShipBack", out var dontShipBack) && dontShipBack.ValueKind == JsonValueKind.True) return ReturnRejectedPackageStates.DontShipBack;
         return string.IsNullOrWhiteSpace(NullText(package, "cargoTrackingLink")) ? ReturnRejectedPackageStates.AwaitingCargo : ReturnRejectedPackageStates.Shipped;
     }
+
+    // getClaims replacementOutboundpackageinfo ("Değişim giden paket bilgisi (değişim yoksa boş)", trendyol-api-son.md:6850,
+    // :17450): the exchange package when it names its package id (packageid, not 0); its carrier fields as given. A
+    // missing, empty or id-less block is no known package (null), never "no exchange".
+    internal static RemoteReplacementPackage? ReplacementPackage(JsonElement claim)
+    {
+        if (ReplacementInfo(claim) is not { ValueKind: JsonValueKind.Object } package) return null;
+        if (NullText(package, "packageid", "packageId")?.Trim() is not { Length: > 0 } packageId || packageId == "0") return null;
+        return new(Clip(packageId, 64)!, Clip(NullText(package, "cargoProviderName"), 128), Clip(NullText(package, "cargoTrackingNumber", "cargoSenderNumber"), 128), Clip(NullText(package, "cargoTrackingLink"), 2048));
+    }
+
+    // The block as the claim carries it (any value), or null when the claim has no such field.
+    private static JsonElement? ReplacementInfo(JsonElement claim) =>
+        claim.TryGetProperty("replacementOutboundpackageinfo", out var package) || claim.TryGetProperty("replacementOutboundPackageInfo", out package) ? package : null;
 
     public static IReadOnlyList<RemoteReturnLine> ReturnLines(string json)
     {

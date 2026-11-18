@@ -518,3 +518,11 @@ packages only, no claim events.
   drops it and opens RETURN_EXCHANGE_MARK_LAPSED.
 - An open claim is read again by RETURN_STATUS_SYNC; a closed one only while RETURN_SYNC / RETURN_RECONCILIATION
   (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.
+- Exchange resend (owner, 18 Nov 2026): Siparişler › Yeniden Gönderimler listed only packages with `createdBy`
+  transfer/resend/replacement and an origin package (`OrderQueryService.OrderList` RESENT, `ShipmentPackageClassification`),
+  which Trendyol's order reads never return (11 Nov diagnostic above), so 11805950639's exchange was not there. Now the
+  claim's `replacementOutboundpackageinfo` (package id not 0, carrier, tracking number and link) is stored on the claim
+  (`ReturnClaim.Replacement*`, kept once read) and an order is in that tab when its exchange claim names the package or
+  the owner marked it "Değişim Onaylandı"; it waits for the carrier until the package's tracking link is known. The
+  row reads "Değişim". Whether live claims carry the block is **unverified**: the worker logs one Information line per
+  exchange claim read ("replacementOutboundpackageinfo present=…, package id=…", no content).
