@@ -42,12 +42,20 @@ public static class WorkerLanes
         // Jobs a user waits for (JobPriorityPolicy.UserAction) never queue behind syncs; bulk user work
         // (JobPriorityPolicy.BulkUserAction) shares the lane but is leased after them.
         new("user", 2, JobPriorityPolicy.BulkUserAction, null, [], []),
-        new("initial-data-sync", 1, JobPriorityPolicy.InitialDataSync, JobPriorityPolicy.InitialDataSync, [], []),
+        // Three slots: activating several stores at once queues each one's full history and reference reads here, and with
+        // one slot a store waited for every other store's import (14 Nov 2026: up to 27 minutes). Jobs of one connection
+        // still run one at a time per lock group, and each platform's quota is its own, so the slots never add requests
+        // to one marketplace.
+        new("initial-data-sync", 3, JobPriorityPolicy.InitialDataSync, JobPriorityPolicy.InitialDataSync, [], []),
         new("order-status", 1, hotPriorityCeiling, 0, OrderStatusJobTypes, []),
         // Return reads and product-catalog syncs have dedicated lanes and are kept out of the shared
         // hot/background lanes so long reads cannot occupy their slots.
         new("returns-read", 2, null, null, ReturnReadJobTypes, []),
-        new("product-catalog", 1, null, null, [.. JobTypeRegistry.ProductCatalogSyncJobTypes, .. JobTypeRegistry.ListingVerificationJobTypes], []),
+        // Three slots: "pull every store's products" queues one catalog read per store, and with one slot they ran one after
+        // the other (17 Nov 2026: the last waited 6.5 minutes; a Trendyol read of up to 50 minutes held the nightly link
+        // checks of the other stores). A replay of the live week gives p95 wait 320 s with one slot, 57 s with two, 20 s
+        // with three. A connection's catalog reads and link check still share its "products" lock group.
+        new("product-catalog", 3, null, null, [.. JobTypeRegistry.ProductCatalogSyncJobTypes, .. JobTypeRegistry.ListingVerificationJobTypes], []),
         new("hepsiburada-status", 1, hotPriorityCeiling, 0, HepsiburadaStatusJobTypes, []),
         new("hepsiburada-orders", 1, hotPriorityCeiling, 0, HepsiburadaOrderJobTypes, []),
         new("pazarama-orders", 1, hotPriorityCeiling, 0, PazaramaOrderJobTypes, []),

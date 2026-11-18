@@ -1927,15 +1927,15 @@ kurtarma 6.
 | Şerit | Yuva | Ne alır |
 |---|---|---|
 | user | 2 | Kullanıcının beklediği işler (öncelik ≤ −2) |
-| initial-data-sync | 1 | İlk veri çekimi |
+| initial-data-sync | 3 | İlk veri çekimi (bağlantı başına kilit grubu sırayı korur) |
 | order-status | 1 | Trendyol/Shopify açık sipariş durumu |
 | returns-read | 2 | İade okumaları |
-| product-catalog | 1 | Ürün/katalog okumaları, Günlük Yayın Doğrulaması |
+| product-catalog | 3 | Ürün/katalog okumaları, Günlük Yayın Doğrulaması |
 | hepsiburada-status, hepsiburada-orders, pazarama-orders, pttavm-orders | 1'er | O pazaryerinin sipariş akışları |
 | hot | 3 | Öncelik 0–2 diğer işler (webhook, yeni sipariş, yazmalar) |
 | background | 2 | Öncelik ≥3 diğer işler |
 
-Toplam 16 yuva, veritabanı havuzu 45. Yeni iş eklenince boştaki şeritler hemen uyanır (`Worker.cs:691-720`).
+Toplam 20 yuva, veritabanı havuzu 55 (18 Kas 2026 ölçümü: katalog ve ilk aktarım 1→3). Yeni iş eklenince boştaki şeritler hemen uyanır (`Worker.cs:691-720`).
 
 **Elle müdahale** (İşlem Takibi › iş ayrıntısı; yalnız Sahip ve Yönetici görür ve yapabilir; `operations/pages.tsx:341`):
 
