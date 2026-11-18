@@ -468,7 +468,10 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   hareketinde yeni fiyat Pazarama'ya gider, sonra aynı değer tekrar gönderilmez; günlükte önceki fiyat olarak görünür.
   İçe aktarma, panel fiyatı kayıtlı bedende Özel Fiyat'ı kapalı teklifin kayıtlı fiyatını panel fiyatı tutar, okunan
   fiyatı bilinen değer olarak saklar (fark bir sonraki stok hareketinde gider); Özel Fiyat açıksa teklif pazaryerinin
-  fiyatını alır. PttAVM yayını ve fiyat-stok gönderimi taban/farkı aynı geçerli fiyat fonksiyonundan hesaplar.
+  fiyatını alır. **Fiyat ve Stokları Güncelle** (onaylı üzerine yazma) ise mevcut bedenin panel fiyatını o pazaryerinin
+  okunan fiyatıyla günceller (0/boş okunan fiyat güncellemez); Özel Fiyat'ı kapalı öbür teklifler yeni panel fiyatına
+  çekilir, eski fiyatları bilinen değer olarak kalır, fark her bedenin bir sonraki stok hareketinde gider; aktarım fiyat işi
+  açmaz. Özel Fiyat açık teklifte yalnız o teklif güncellenir, panel fiyatı değişmez. Onay penceresi bunu söyler. PttAVM yayını ve fiyat-stok gönderimi taban/farkı aynı geçerli fiyat fonksiyonundan hesaplar.
   Shopify fiyatı reddederse stok yine yazılır (`SHOPIFY_STOCK_ONLY_APPLIED`), fiyat sonraki gönderimde
   yeniden denenir. Gönderilmiş işaretleri kayıtlı teklif fiyatından hesaplanır: yalnız panel fiyatı değişince
   kendiliğinden gönderim olmaz, fiyat bir sonraki stok ya da fiyat gönderimiyle gider. Gönderim günlüğünde önceki

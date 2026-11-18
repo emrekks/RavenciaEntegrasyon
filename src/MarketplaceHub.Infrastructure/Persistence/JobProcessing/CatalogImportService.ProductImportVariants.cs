@@ -192,7 +192,7 @@ internal sealed partial class CatalogImportService
             await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
         if ((!observeOnly || isNewVariant) && categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, connectionId, product, variant, remote.Options, categoryContext, cancellationToken);
-        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updatePrices, observeOnly: observeOnly, updateStock: isNewVariant || updateStock, forceStockUpdate: !isNewVariant && updateStock);
+        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updatePrices, observeOnly: observeOnly, updateStock: isNewVariant || updateStock, forceStockUpdate: !isNewVariant && updateStock, updatePanelPrice: updatePrices && !isNewVariant);
         if ((!observeOnly || isNewVariant) && remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
         // A Trendyol size added to a card the panel already holds, without a list of its own from Trendyol (any size after
@@ -246,7 +246,7 @@ internal sealed partial class CatalogImportService
             ? $"id:{variant.ExternalVariantId}"
             : $"sku:{NormalizeCatalogKey(variant.Sku, 160)}";
 
-    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true, bool observeOnly = false, bool updateStock = true, bool forceStockUpdate = false)
+    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true, bool observeOnly = false, bool updateStock = true, bool forceStockUpdate = false, bool updatePanelPrice = false)
     {
         if (observeOnly)
         {
@@ -326,6 +326,31 @@ internal sealed partial class CatalogImportService
         var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
         var importPlatformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
         var observationSource = CatalogImportSource(importPlatformCode, observeOnly);
+        // "Fiyat ve Stokları Güncelle" (owner decision of 18 Nov 2026, the confirmed overwrite): the marketplace's price becomes
+        // the panel price of an existing variant (a price of 0 or none changes nothing), unless this offer keeps its own
+        // price (Özel Fiyat on: only the offer takes it, below). One rule: the other offers without Özel Fiyat are pulled to
+        // the new panel price with their previous price kept as the known one and their send marks moved, so nothing is
+        // queued here; the difference goes with each variant's next stock send.
+        if (updatePanelPrice && offer?.FollowsPanelPrice != false && PanelPriceOfferPolicy.ImportedPanelPrices(remote.SalePrice ?? remote.ListPrice, remote.ListPrice) is { } marketplacePanel
+            && (variant.DefaultSalePrice != marketplacePanel.SalePrice || variant.DefaultListPrice != marketplacePanel.ListPrice))
+        {
+            if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (variant.DefaultListPrice, variant.DefaultSalePrice), (marketplacePanel.ListPrice, marketplacePanel.SalePrice),
+                    ProductChangeSources.MarketplaceImport, null, $"product-import:{connectionId:N}", now, $"Fiyat ve Stokları Güncelle: {importPlatformCode} fiyatı panel fiyatı olarak kaydedildi.") is { } priceEntry)
+                db.ProductChangeEntries.Add(priceEntry);
+            (variant.DefaultListPrice, variant.DefaultSalePrice) = (marketplacePanel.ListPrice, marketplacePanel.SalePrice);
+            variant.UpdatedAt = now;
+            run.OtherFollowerOffers ??= (await db.ChannelOffers.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId != connectionId && x.Status == "ACTIVE" && x.FollowsPanelPrice != false)
+                    .Select(x => new { x.Id, x.VariantId }).ToListAsync(cancellationToken))
+                .GroupBy(x => x.VariantId).ToDictionary(group => group.Key, group => group.Select(x => x.Id).ToList());
+            if (run.OtherFollowerOffers.TryGetValue(variant.Id, out var otherOffers))
+            {
+                run.TenantPlatforms ??= await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
+                await PanelPriceOffers.RepriceFollowersAsync(db, tenantId,
+                    new Dictionary<Guid, PanelPriceOffers.PanelPriceChange> { [variant.Id] = new(marketplacePanel.SalePrice, null, marketplacePanel.ListPrice, null, true) },
+                    new HashSet<Guid>(), $"{observationSource}_CATALOG_IMPORT", $"SYSTEM:{observationSource}", now, cancellationToken, keepSendMarks: true, offerIds: otherOffers, knownPlatforms: run.TenantPlatforms);
+            }
+        }
         // One rule (owner decision of 18 Nov 2026): an offer without Özel Fiyat on a variant with a saved panel price keeps
         // the panel price as its stored price, so the price on screen is the price that goes. The price read here is what the
         // marketplace holds: it is kept as the known value (LastSent* without a code), so the difference goes with the next

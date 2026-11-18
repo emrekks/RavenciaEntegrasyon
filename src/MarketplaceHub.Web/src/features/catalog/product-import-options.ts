@@ -146,16 +146,17 @@ export function productImportChoiceSummary(method: ProductImportMethod, choices:
 export function productImportOverwriteConfirmation(updatePrices: boolean, updateStock: boolean): { title: string; message: string } | null {
   if (!updatePrices && !updateStock) return null
   const stockNote = ' Değişen stoklar, otomatik gönderimi açık olan diğer pazaryerlerine de gönderilir.'
+  const priceNote = ' Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine bir sonraki stok hareketinde bu fiyatla gider.'
   if (updatePrices && updateStock) {
     return {
       title: 'Panel Fiyat ve Stokları Değiştirilsin mi?',
-      message: `Mevcut ürünlerin panel fiyatı ve stoğu pazaryerindeki değerlerle değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki değerlerin doğru olduğundan eminseniz yapın.${stockNote}`
+      message: `Mevcut ürünlerin panel fiyatı ve stoğu pazaryerindeki değerlerle değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki değerlerin doğru olduğundan eminseniz yapın.${stockNote}${priceNote}`
     }
   }
   if (updatePrices) {
     return {
       title: 'Panel Fiyatları Değiştirilsin mi?',
-      message: 'Mevcut ürünlerin panel fiyatları pazaryerindeki fiyatlarla değiştirilecek. Bunu yalnız pazaryerindeki fiyatların doğru olduğundan eminseniz yapın.'
+      message: `Mevcut ürünlerin panel fiyatları pazaryerindeki fiyatlarla değiştirilecek. Bunu yalnız pazaryerindeki fiyatların doğru olduğundan eminseniz yapın.${priceNote}`
     }
   }
   return {

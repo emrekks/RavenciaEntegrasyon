@@ -631,9 +631,8 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         var written = await PriceStockAsync(focused);
         Assert.Equal(await PriceStockAsync(full), written);
         Assert.Equal(0, references.Calls);
-        // Every variant took the new stock (through the ledger, MARKETPLACE_STOCK_IMPORT). One rule (owner decision of 18 Nov
-        // 2026): the first import saved the panel prices, so the offers keep them; Trendyol's new price is the known one.
-        Assert.Equal(0, written.Split('\n').Count(line => line.StartsWith("offer ", StringComparison.Ordinal) && line.Contains(" 820 555 ", StringComparison.Ordinal)));
+        // Every variant took the new prices and stock (through the ledger, MARKETPLACE_STOCK_IMPORT).
+        Assert.Equal(Colours.Length * Sizes.Length, written.Split('\n').Count(line => line.StartsWith("offer ", StringComparison.Ordinal) && line.Contains(" 820 555 ", StringComparison.Ordinal)));
         Assert.Equal(Colours.Length * Sizes.Length, written.Split('\n').Count(line => line.StartsWith("stock ", StringComparison.Ordinal) && line.Contains(" 9 0 9 9 ", StringComparison.Ordinal) && line.Contains(MarketplaceStockImportPolicy.MovementType + ":5:", StringComparison.Ordinal)));
     }
 
@@ -654,13 +653,12 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         var changed = Colours.Select(entry => Spec(entry.Colour) with { Stock = 9, SalePrice = 555m, ListPrice = 820m, Title = "Trendyol Yeni Başlık", Pictures = [.. ContentPictures(entry.Key, entry.Pictures).Reverse()] }).ToList();
         var prices = await RunAsync(seed, new TrendyolCatalogPort(Read(changed)), FocusedPrices, references);
         var afterPrices = await RowsAsync(seed);
-        AssertTablesEqual(before, afterPrices, nameof(ChannelOffer), nameof(ChannelPriceHistory));
+        // "Fiyat ve Stokları Güncelle" (owner decision of 18 Nov 2026) writes Trendyol's price as the panel price too.
+        AssertTablesEqual(before, afterPrices, nameof(ChannelOffer), nameof(ChannelPriceHistory), nameof(ProductVariant));
+        Assert.All(afterPrices[nameof(ProductVariant)].Values, json => Assert.Contains("\"DefaultSalePrice\":555", json, StringComparison.Ordinal));
         Assert.Equal(linksBefore, await VariantLinkRowsAsync(seed));
-        // One rule (owner decision of 18 Nov 2026): the offers keep the panel price the first import saved; Trendyol's 555 is
-        // the known price; no new price version, so no price history.
-        Assert.All(afterPrices[nameof(ChannelOffer)].Values, json => Assert.Contains("\"LastSentSalePrice\":555", json, StringComparison.Ordinal));
-        Assert.All(afterPrices[nameof(ChannelOffer)].Values, json => Assert.DoesNotContain("\"SalePrice\":555", json, StringComparison.Ordinal));
-        Assert.Equal(before[nameof(ChannelPriceHistory)].Count, afterPrices[nameof(ChannelPriceHistory)].Count);
+        Assert.All(afterPrices[nameof(ChannelOffer)].Values, json => Assert.Contains("\"SalePrice\":555", json, StringComparison.Ordinal));
+        Assert.Equal(before[nameof(ChannelPriceHistory)].Count + Colours.Length * Sizes.Length, afterPrices[nameof(ChannelPriceHistory)].Count);
         Assert.Equal(0, prices.AttributeReads);
 
         // Stock only: the prices Trendyol now sends differ again and stay as they were.

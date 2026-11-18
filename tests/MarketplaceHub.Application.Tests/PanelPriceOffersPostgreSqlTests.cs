@@ -453,6 +453,44 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         Assert.Equal(777m, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id)).DefaultSalePrice);
     }
 
+    // A worker saving an offer meanwhile breaks the serializable fill (40001): the fill runs again, checks the previewed
+    // count again and writes once.
+    [PostgreSqlFact]
+    public async Task ThePanelPriceFill_RunsAgainAfterASerializationFailure()
+    {
+        var seed = await SeedAsync("TRENDYOL");
+        await using (var db = fixture.CreateContext())
+        {
+            AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 130m, 120m, null);
+            await db.SaveChangesAsync();
+        }
+        var interceptor = new SerializationFailureOnce();
+        var connectionString = fixture.CreateContext().Database.GetConnectionString();
+        await using (var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).AddInterceptors(interceptor).Options))
+        {
+            var result = await Inventory(db).ApplyPanelPriceFillAsync(seed.Tenant.Id, Owner, new PanelPriceFillCommand(1), "fill-retry", CancellationToken.None);
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal(1, result.Value!.Filled);
+        }
+        // The first attempt failed at its first save; the second saved twice (the panel prices, then the offers pulled).
+        Assert.Equal(3, interceptor.Saves);
+        await using var read = fixture.CreateContext();
+        Assert.Equal(120m, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id)).DefaultSalePrice);
+        Assert.Single(await read.AuditLogs.AsNoTracking().Where(x => x.TenantId == seed.Tenant.Id && x.Action == "PANEL_PRICES_FILLED_FROM_FIRST_MARKETPLACE").ToListAsync());
+    }
+
+    private sealed class SerializationFailureOnce : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        public int Saves { get; private set; }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData, Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Saves++;
+            if (Saves == 1) throw new Npgsql.PostgresException("could not serialize access", "ERROR", "ERROR", Npgsql.PostgresErrorCodes.SerializationFailure);
+            return ValueTask.FromResult(result);
+        }
+    }
+
     private sealed class PanelPriceSavedMeanwhile(Guid variantId) : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
     {
         public bool Fired { get; private set; }

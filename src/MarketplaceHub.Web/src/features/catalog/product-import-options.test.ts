@@ -13,7 +13,10 @@ describe('product import price and stock choices', () => {
   it('asks for confirmation only when something is overwritten, and names what', () => {
     expect(productImportOverwriteConfirmation(false, false)).toBeNull()
     expect(productImportOverwriteConfirmation(true, false)?.title).toBe('Panel Fiyatları Değiştirilsin mi?')
-    expect(productImportOverwriteConfirmation(true, false)?.message).not.toContain('stok')
+    // Prices only: no word of overwriting the stock; the new panel price goes to the other marketplaces with the next stock move.
+    expect(productImportOverwriteConfirmation(true, false)?.message).not.toContain('stoğu')
+    expect(productImportOverwriteConfirmation(true, false)?.message).toContain('Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine bir sonraki stok hareketinde bu fiyatla gider.')
+    expect(productImportOverwriteConfirmation(true, true)?.message).toContain('bir sonraki stok hareketinde bu fiyatla gider.')
     expect(productImportOverwriteConfirmation(false, true)?.title).toBe('Panel Stokları Değiştirilsin mi?')
     expect(productImportOverwriteConfirmation(true, true)?.title).toBe('Panel Fiyat ve Stokları Değiştirilsin mi?')
   })

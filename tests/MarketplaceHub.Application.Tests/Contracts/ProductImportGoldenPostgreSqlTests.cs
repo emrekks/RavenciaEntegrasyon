@@ -159,9 +159,9 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Null((await after.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == cleared)).DefaultSalePrice);
     }
 
-    // Second review of 18 Nov 2026, one rule on import: an offer without Özel Fiyat on a variant with a saved panel price
-    // stores the panel price, whether the import updates it or opens it (a second marketplace), and keeps the marketplace's
-    // price as the known one; an offer with Özel Fiyat on takes the marketplace's price as before.
+    // One rule on import (owner decisions of 18 Nov 2026): "Fiyat ve Stokları Güncelle" makes the marketplace's price the
+    // panel price; the offer without Özel Fiyat stores it, whether the import updates it or opens it again, with the
+    // marketplace's price as the known one; an offer with Özel Fiyat on takes the marketplace's price and leaves the panel.
     [PostgreSqlFact]
     public async Task AnImportKeepsThePanelPriceAsTheStoredPrice_AndTheMarketplacePriceAsTheKnownOne()
     {
@@ -203,12 +203,82 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
         await ImportAsync();
         await using var read = fixture.CreateContext();
         var follower = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == followerId);
-        Assert.Equal((followerRemote + 5m, followerRemote), (follower.SalePrice, follower.LastSentSalePrice));
+        Assert.Equal((followerRemote, followerRemote), (follower.SalePrice, follower.LastSentSalePrice));
+        Assert.Equal(followerRemote, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == follower.VariantId)).DefaultSalePrice);
         var custom = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == customId);
         Assert.Equal(customRemote, custom.SalePrice);
+        Assert.Equal(customRemote + 5m, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == custom.VariantId)).DefaultSalePrice);
         var reopened = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.VariantId == reopenedVariant);
         var panel = (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == reopenedVariant)).DefaultSalePrice;
-        Assert.Equal((panel, panel - 5m), (reopened.SalePrice, reopened.LastSentSalePrice));
+        Assert.Equal((panel, panel), (reopened.SalePrice, reopened.LastSentSalePrice));
+    }
+
+    // Owner decision of 18 Nov 2026: "Fiyat ve Stokları Güncelle" (updatePrices, confirmed in the panel) takes the marketplace
+    // price as the panel price of an existing variant too; the offers without Özel Fiyat on other marketplaces follow it,
+    // keeping their previous price as the known one, with no job queued; an offer with Özel Fiyat on takes the price itself
+    // and leaves the panel price. An import without updatePrices leaves the panel price.
+    [PostgreSqlFact]
+    public async Task UpdatePricesImport_SetsThePanelPrice_PullsTheFollowers_AndQueuesNothing()
+    {
+        var (platform, products) = MappedPage("Trendyol");
+        var now = fixture.Now;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"pupdate-{Guid.NewGuid():N}"[..30], DisplayName = "update prices", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        var n11 = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "N11", Environment = "PRODUCTION", DisplayName = "N11", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(connection, n11);
+            await seed.SaveChangesAsync();
+        }
+        async Task ImportAsync(IReadOnlyList<RemoteCatalogProduct> page, string payload)
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferences(), new CatalogPage(page), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, payload, $"update-prices-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Kind is JobCompletionKind.Succeeded or JobCompletionKind.ManualReview, $"{result.Kind} {result.ErrorCode} {result.ErrorSummary}");
+        }
+        await ImportAsync(products, """{"full":true,"includeArchived":true,"includeDrafts":true}""");
+
+        Guid follower, custom, n11Offer;
+        decimal followerPanel, customPanel;
+        await using (var db = fixture.CreateContext())
+        {
+            var offers = await db.ChannelOffers.Where(x => x.TenantId == tenant.Id && x.SalePrice > 0).OrderBy(x => x.Id).Take(2).ToListAsync();
+            Assert.Equal(2, offers.Count);
+            (follower, custom) = (offers[0].VariantId, offers[1].VariantId);
+            offers[1].FollowsPanelPrice = false;
+            followerPanel = (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == follower)).DefaultSalePrice!.Value;
+            customPanel = (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == custom)).DefaultSalePrice!.Value;
+            var n11Row = new ChannelOffer { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = follower, ListPrice = followerPanel, SalePrice = followerPanel, Currency = "TRY", VatRate = 20m, VatInclusion = "INCLUDED", RoundingMode = "HALF_EVEN", Status = "ACTIVE", PriceVersion = 1, Version = 1 };
+            n11Row.LastPriceHash = PriceInventoryComposer.CurrentPriceHash("N11", n11Row);
+            db.ChannelOffers.Add(n11Row);
+            n11Offer = n11Row.Id;
+            await db.SaveChangesAsync();
+        }
+        var raised = products.Select(product => product with { Variants = [.. product.Variants.Select(variant => variant with { SalePrice = variant.SalePrice + 10m, ListPrice = (variant.ListPrice ?? variant.SalePrice) + 10m })] }).ToList();
+
+        // Without updatePrices (stock only): the panel price stays.
+        await ImportAsync(raised, """{"existingOnly":true,"updateExistingProducts":false,"updatePrices":false,"updateStock":true}""");
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(followerPanel, (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == follower)).DefaultSalePrice);
+
+        await using (var db = fixture.CreateContext())
+            await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+        await ImportAsync(raised, """{"existingOnly":true,"updateExistingProducts":false,"updatePrices":true,"updateStock":false}""");
+
+        await using var read = fixture.CreateContext();
+        Assert.Equal(followerPanel + 10m, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == follower)).DefaultSalePrice);
+        var pulled = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == n11Offer);
+        Assert.Equal((followerPanel + 10m, followerPanel, 2L), (pulled.SalePrice, pulled.LastSentSalePrice, pulled.PriceVersion));
+        Assert.Equal(PriceInventoryComposer.CurrentPriceHash("N11", pulled), pulled.LastPriceHash);
+        Assert.Single(await read.ChannelPriceHistory.AsNoTracking().Where(x => x.OfferId == n11Offer).ToListAsync());
+        // Özel Fiyat on: the offer took Trendyol's price, the panel price stayed.
+        Assert.Equal(customPanel, (await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == custom)).DefaultSalePrice);
+        Assert.Equal(customPanel + 10m, (await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.ConnectionId == connection.Id && x.VariantId == custom)).SalePrice);
+        Assert.Contains(await read.ProductChangeEntries.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.VariantId == follower && x.Kind == ProductChangeKinds.DefaultPrice).Select(x => x.Source).ToListAsync(), source => source == ProductChangeSources.MarketplaceImport);
+        // No price job: the difference goes with the next stock send.
+        Assert.Equal(0, await read.IntegrationJobs.CountAsync(x => x.TenantId == tenant.Id && (x.JobType == MarketplaceJobTypes.StockProjectionDispatch || x.JobType == MarketplaceJobTypes.PriceInventorySync)));
     }
 
     private static (string Platform, IReadOnlyList<RemoteCatalogProduct> Products) MappedPage(string marketplace)

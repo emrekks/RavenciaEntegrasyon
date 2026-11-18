@@ -127,14 +127,15 @@ internal static class PanelPriceOffers
     // offers (StockProjectionOutbox.EnqueuePriceChangesAsync: only to a connection whose automatic writes are open). An
     // offer the same change prices itself (skipOfferIds) and one with Özel Fiyat on keep theirs; without a panel price
     // (0, empty, list below sale) nothing changes.
-    public static async Task<List<ChannelOffer>> RepriceFollowersAsync(AppDbContext db, Guid tenantId, IReadOnlyDictionary<Guid, PanelPriceChange> changes, IReadOnlySet<Guid> skipOfferIds, string reason, string actorSource, DateTimeOffset now, CancellationToken cancellationToken, bool keepSendMarks = false)
+    public static async Task<List<ChannelOffer>> RepriceFollowersAsync(AppDbContext db, Guid tenantId, IReadOnlyDictionary<Guid, PanelPriceChange> changes, IReadOnlySet<Guid> skipOfferIds, string reason, string actorSource, DateTimeOffset now, CancellationToken cancellationToken, bool keepSendMarks = false, IReadOnlyCollection<Guid>? offerIds = null, IReadOnlyDictionary<Guid, string>? knownPlatforms = null)
     {
         var repriced = new List<ChannelOffer>();
         if (changes.Count == 0) return repriced;
-        var platforms = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => new { x.Id, x.PlatformCode }).ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
+        var platforms = knownPlatforms ?? await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => new { x.Id, x.PlatformCode }).ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
+        var only = offerIds?.ToArray();
         foreach (var chunk in changes.Keys.Chunk(2_000))
         {
-            var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && chunk.Contains(x.VariantId) && x.Status == "ACTIVE" && x.FollowsPanelPrice != false).ToListAsync(cancellationToken);
+            var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && chunk.Contains(x.VariantId) && x.Status == "ACTIVE" && x.FollowsPanelPrice != false && (only == null || only.Contains(x.Id))).ToListAsync(cancellationToken);
             foreach (var offer in offers.OrderBy(x => x.Id))
             {
                 var change = changes[offer.VariantId];
