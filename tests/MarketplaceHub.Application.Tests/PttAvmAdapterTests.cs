@@ -1581,26 +1581,30 @@ public sealed class PttAvmAdapterTests
     }
 
     [Fact]
-    public async Task AModelFamilyWhosePttAvmVariantHasAPriceDifferenceIsNotSent()
+    public async Task AModelFamilyWhosePttAvmVariantHasAPriceDifferenceKeepsIt()
     {
         var handler = new CapturingHandler(request => Operation(request) switch
         {
             "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
             "GetProductsWithVariants" => Respond(HttpStatusCode.OK, VariantsAnswer),
-            _ => throw new InvalidOperationException("No write may leave the panel.")
+            PttAvmHttpClient.ProductUpsert => Respond(HttpStatusCode.OK, ProductUpsertAnswer),
+            _ => throw new InvalidOperationException("Unexpected operation.")
         });
-        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("FK453003", "Bordo", "L", 4)] };
+        var draft = ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530", Variants = [new("FK453003", "Bordo", "L", 4, 10m)] };
 
         var result = await Client(handler, globalWrites: true).CreateVariantProductAsync(Account(status: "ACTIVE", connectionWrites: true), draft, CancellationToken.None);
 
-        Assert.Equal(PttAvmProductPayloadRules.RemoteVariantNotCarriableCode, result.Error!.Code);
-        Assert.Contains("FK453001: 25 TL fiyat farkı", result.Error.SafeMessage);
-        Assert.DoesNotContain("FK453002", result.Error.SafeMessage);
-        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+        // Owner decision of 18 Nov 2026: the difference PTT AVM holds for a variant not in the panel is written back as it
+        // is, the panel's new variant carries its own; nothing is lost, so the send goes.
+        Assert.True(result.IsSuccess);
+        var sent = Assert.Single(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+        XNamespace ept = PttAvmHttpClient.RequestsNamespace;
+        var variants = XDocument.Parse(sent.Body!).Descendants(ept + "VariantV3").ToDictionary(x => x.Element(ept + "VariantBarcode")!.Value, x => x.Element(ept + "Price")?.Value);
+        Assert.Equal(("25.00", null, "10.00"), (variants["FK453001"], variants["FK453002"], variants["FK453003"]));
     }
 
     [Fact]
-    public void APttAvmVariantPricedApartOrPassiveCannotBeCarriedButUnknownFieldsPass()
+    public void APttAvmVariantWithItsOwnPriceOrPassiveCannotBeCarriedButADifferenceAndUnknownFieldsPass()
     {
         PttAvmProductPayloadRules.RemoteVariant[] remote =
         [
@@ -1615,8 +1619,9 @@ public sealed class PttAvmAdapterTests
         var merge = PttAvmProductPayloadRules.MergeVariants(FamilyDraft().Variants!, remote);
 
         Assert.Empty(merge.Unreadable);
-        Assert.Equal(["mzdb003a: 25 TL fiyat farkı", "mzdb003b: kendi fiyatı 300 TL", "mzdb003c: pasif", "mzdb003d: -10 TL fiyat farkı, pasif"], merge.NotCarriable.Select(x => $"{x.Variant.Barcode}: {x.Reason}"));
-        Assert.Contains("mzdb003a: 25 TL fiyat farkı; mzdb003b", PttAvmProductPayloadRules.RemoteVariantNotCarriableMessage(merge.NotCarriable));
+        // A price difference is carried (owner decision of 18 Nov 2026); a price of its own or a passive variant is not.
+        Assert.Equal(["mzdb003b: kendi fiyatı 300 TL", "mzdb003c: pasif", "mzdb003d: pasif"], merge.NotCarriable.Select(x => $"{x.Variant.Barcode}: {x.Reason}"));
+        Assert.Contains("mzdb003b: kendi fiyatı 300 TL; mzdb003c", PttAvmProductPayloadRules.RemoteVariantNotCarriableMessage(merge.NotCarriable));
     }
 
     [Fact]

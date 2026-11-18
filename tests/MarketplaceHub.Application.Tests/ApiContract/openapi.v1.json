@@ -2619,6 +2619,109 @@
         }
       }
     },
+    "/api/v1/channel-offers/panel-price-fill": {
+      "post": {
+        "tags": [
+          "channel-offers"
+        ],
+        "operationId": "postChannelOffersPanelPriceFill",
+        "parameters": [
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PanelPriceFillCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelPriceFillApplied"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/channel-offers/panel-price-fill-preview": {
+      "get": {
+        "tags": [
+          "channel-offers"
+        ],
+        "operationId": "getChannelOffersPanelPriceFillPreview",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelPriceFillPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/channel-offers/panel-price-follow": {
       "put": {
         "tags": [
@@ -2679,6 +2782,47 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/channel-offers/price-import-preview": {
+      "get": {
+        "tags": [
+          "channel-offers"
+        ],
+        "operationId": "getChannelOffersPriceImportPreview",
+        "parameters": [
+          {
+            "name": "connectionIds",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceImportPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -6198,6 +6342,123 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/connections/{id}/panel-price-offers": {
+      "get": {
+        "tags": [
+          "connections"
+        ],
+        "operationId": "getConnectionsByIdPanelPriceOffers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelPriceOfferPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "connections"
+        ],
+        "operationId": "postConnectionsByIdPanelPriceOffers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-CSRF-TOKEN",
+            "in": "header",
+            "description": "The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelPriceOffersOpened"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableContent"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -33698,6 +33959,294 @@
           }
         }
       },
+      "PanelPriceFillApplied": {
+        "required": [
+          "filled",
+          "offersRepriced"
+        ],
+        "type": "object",
+        "properties": {
+          "filled": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "offersRepriced": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PanelPriceFillCommand": {
+        "required": [
+          "expectedCount"
+        ],
+        "type": "object",
+        "properties": {
+          "expectedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PanelPriceFillOfferChange": {
+        "required": [
+          "platformCode",
+          "offers",
+          "totalDifference",
+          "medianDifference",
+          "largestDifference"
+        ],
+        "type": "object",
+        "properties": {
+          "platformCode": {
+            "type": "string"
+          },
+          "offers": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalDifference": {
+            "type": "number",
+            "format": "double"
+          },
+          "medianDifference": {
+            "type": "number",
+            "format": "double"
+          },
+          "largestDifference": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PanelPriceFillPreview": {
+        "required": [
+          "withoutPanelPrice",
+          "fillable",
+          "zeroPrice",
+          "withoutOffer",
+          "fillableBySource",
+          "sample",
+          "offerChanges"
+        ],
+        "type": "object",
+        "properties": {
+          "withoutPanelPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fillable": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "zeroPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "withoutOffer": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fillableBySource": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PanelPriceFillRow"
+            }
+          },
+          "offerChanges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PanelPriceFillOfferChange"
+            }
+          }
+        }
+      },
+      "PanelPriceFillRow": {
+        "required": [
+          "variantId",
+          "sku",
+          "platformCode",
+          "listPrice",
+          "salePrice"
+        ],
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "salePrice": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PanelPriceOfferDifference": {
+        "required": [
+          "variantId",
+          "sku",
+          "salePrice",
+          "listPrice",
+          "panelSalePrice",
+          "panelListPrice"
+        ],
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "salePrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "panelSalePrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "panelListPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "followsPanelPrice": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "PanelPriceOfferPreview": {
+        "required": [
+          "connectionId",
+          "platformCode",
+          "opensOffers",
+          "automaticWritesOpen",
+          "linkedWithoutOffer",
+          "openable",
+          "missingPanelPrice",
+          "missingVat",
+          "following",
+          "followingAtOtherPrice",
+          "followingWithoutPanelPrice",
+          "customPrice",
+          "differences",
+          "priceChangesOnFirstStockSend"
+        ],
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "opensOffers": {
+            "type": "boolean"
+          },
+          "automaticWritesOpen": {
+            "type": "boolean"
+          },
+          "linkedWithoutOffer": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "openable": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missingPanelPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missingVat": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "following": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "followingAtOtherPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "followingWithoutPanelPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "customPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "differences": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PanelPriceOfferDifference"
+            }
+          },
+          "priceChangesOnFirstStockSend": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PanelPriceOffersOpened": {
+        "required": [
+          "connectionId",
+          "opened",
+          "missingPanelPrice",
+          "missingVat"
+        ],
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "opened": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missingPanelPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "missingVat": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "PayoutCoverageView": {
         "required": [
           "connectionId",
@@ -34523,6 +35072,23 @@
             "items": {
               "$ref": "#/components/schemas/PriceAssumptionStoreView"
             }
+          }
+        }
+      },
+      "PriceImportPreview": {
+        "required": [
+          "variants",
+          "otherOffers"
+        ],
+        "type": "object",
+        "properties": {
+          "variants": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "otherOffers": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

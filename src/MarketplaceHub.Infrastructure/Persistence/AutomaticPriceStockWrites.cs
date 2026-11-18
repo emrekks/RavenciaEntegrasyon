@@ -57,21 +57,41 @@ internal static class AutomaticPriceStockWrites
     // pair from an older panel, a send, an import) made the whole save fail with CONCURRENCY_CONFLICT (18 Nov). An offer
     // conflict is not the user's: the offers are read again and the baseline taken again, a few times; a conflict on
     // anything else (the policy itself) still fails, so a stale If-Match never slips through.
-    public static async Task SaveWithBaselineAsync(AppDbContext db, Guid tenantId, Guid connectionId, string platformCode, bool markBaseline, CancellationToken cancellationToken)
+    // Owner rule of 18 Nov: switching the writes on also opens the connection's missing offers at the panel price
+    // (PanelPriceOffers), marked as sent like every other offer, in the same save: nothing goes out when it opens. An
+    // offer another request opened meanwhile (the unique index refuses the second) is read as there on the next attempt.
+    public static async Task<PanelPriceOffers.Counts?> SaveWithBaselineAsync(AppDbContext db, Guid tenantId, Guid connectionId, string platformCode, bool markBaseline, CancellationToken cancellationToken, Guid? actorUserId = null, DateTimeOffset? now = null)
     {
         for (var attempt = 1; ; attempt++)
         {
-            if (markBaseline) await MarkCurrentValuesSentAsync(db, tenantId, connectionId, platformCode, cancellationToken);
+            PanelPriceOffers.Counts? opened = null;
+            if (markBaseline)
+            {
+                opened = await PanelPriceOffers.OpenAsync(db, tenantId, connectionId, platformCode, actorUserId, now ?? DateTimeOffset.UtcNow, cancellationToken);
+                await MarkCurrentValuesSentAsync(db, tenantId, connectionId, platformCode, cancellationToken);
+            }
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
-                return;
+                return opened;
             }
             catch (DbUpdateConcurrencyException conflict) when (markBaseline && attempt < 3 && conflict.Entries.Count > 0 && conflict.Entries.All(entry => entry.Entity is ChannelOffer))
             {
-                foreach (var entry in db.ChangeTracker.Entries<ChannelOffer>().ToList()) entry.State = EntityState.Detached;
+                DetachOfferWork(db);
+            }
+            catch (DbUpdateException conflict) when (markBaseline && attempt < 3 && PanelPriceOffers.IsOfferUniqueViolation(conflict))
+            {
+                DetachOfferWork(db);
             }
         }
+    }
+
+    // The offers (and what an opening added beside them) are read and opened again on the next attempt.
+    private static void DetachOfferWork(AppDbContext db)
+    {
+        foreach (var entry in db.ChangeTracker.Entries<ChannelOffer>().ToList()) entry.State = EntityState.Detached;
+        foreach (var entry in db.ChangeTracker.Entries<ChannelPriceHistory>().Where(entry => entry.State == EntityState.Added).ToList()) entry.State = EntityState.Detached;
+        foreach (var entry in db.ChangeTracker.Entries<AuditLog>().Where(entry => entry.State == EntityState.Added && entry.Entity.Action == PanelPriceOffers.AuditAction).ToList()) entry.State = EntityState.Detached;
     }
 
     // B: every offer of the connection counts as sent at its current values (the price mark each platform's build
@@ -98,7 +118,11 @@ internal static class AutomaticPriceStockWrites
             // not a confirmation. Cleared, the first change after enabling is sent for every field it changed (Trendyol
             // compares a changed field with the confirmed value, PriceInventorySendPolicy.TrendyolFields), and a value
             // equal to an old confirmation is never taken as already held by the marketplace.
+            // A value known without a code (read from the marketplace, or held before a panel price pulled the stored price)
+            // is no confirmation and stays: Pazarama compares with it.
+            var known = row.Offer.LastSentCode is null ? (row.Offer.LastSentSalePrice, row.Offer.LastSentListPrice) : (null, null);
             PriceInventorySendPolicy.ClearSent(row.Offer);
+            (row.Offer.LastSentSalePrice, row.Offer.LastSentListPrice) = known;
             row.Offer.Version++;
             changed++;
         }

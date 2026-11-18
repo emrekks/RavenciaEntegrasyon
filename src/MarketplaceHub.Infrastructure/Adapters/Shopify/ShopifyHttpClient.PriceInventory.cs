@@ -124,15 +124,15 @@ public sealed partial class ShopifyHttpClient
                 var productId = variant.GetProperty("product").GetProperty("id").GetString()!;
                 var inventoryItemId = inventoryItem.GetProperty("id").GetString()!;
                 var locationId = activeLevels[0].GetProperty("location").GetProperty("id").GetString()!;
+                // Review of 18 Nov 2026: a refused price does not hold the stock back (the price now rides along every stock
+                // send); the stock is written and the line says the price was refused (STOCK_ONLY_APPLIED).
+                string? priceRefusal = null;
                 if (priced)
                 {
                     var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice!.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice!.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
                     if (!priceMutation.IsSuccess) return Interrupted(index, priceMutation.Error!, priceMutation.RateLimit);
                     if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
-                    {
-                        results.Add(new(barcode, false, null, "SHOPIFY_PRICE_REJECTED", false, priceError));
-                        continue;
-                    }
+                        priceRefusal = priceError;
                 }
                 var stockMutation = await SetAvailableQuantityAsync(shop, context, barcode, inventoryItemId, locationId, (int)quantity.Value, compareQuantity, cancellationToken);
                 if (!stockMutation.IsSuccess)
@@ -143,7 +143,9 @@ public sealed partial class ShopifyHttpClient
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_REJECTED", false, stockError));
                     continue;
                 }
-                results.Add(new(barcode, true, variantId, null, false, "COMPLETED"));
+                results.Add(priceRefusal is null
+                    ? new(barcode, true, variantId, null, false, "COMPLETED")
+                    : new(barcode, false, variantId, StockOnlyAppliedCode, false, priceRefusal));
             }
             var operationId = EncodeCompletedOperation(results);
             return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRICE_INVENTORY", timeProvider.GetUtcNow()));
@@ -155,6 +157,8 @@ public sealed partial class ShopifyHttpClient
     // A line whose price was written before its stock write was cut off: the price is Shopify's, the stock goes again.
     internal const string PriceOnlyAppliedCode = "SHOPIFY_PRICE_ONLY_APPLIED";
     internal const string PriceOnlyAppliedStatus = "PRICE_ONLY_APPLIED";
+    // A line whose stock was written while Shopify refused its price: the stock is Shopify's, the price goes again.
+    internal const string StockOnlyAppliedCode = "SHOPIFY_STOCK_ONLY_APPLIED";
 
     // The answer of a price-stock send cut off by an error after `results` (ADAPTOR-DIGER-1, see PushPriceAndInventoryAsync).
     // Whatever the error's class: a line Shopify applied stays applied, so a lasting error (Authentication, Validation)

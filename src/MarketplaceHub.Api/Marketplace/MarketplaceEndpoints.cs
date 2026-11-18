@@ -95,7 +95,7 @@ public static partial class MarketplaceEndpoints
         api.MapPut("/connections/{id:guid}/sync-policies/{resourceType}", async (Guid id, string resourceType, UpdateSyncPolicyCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
-            var result = await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
+            var result = await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role), tenant.UserId);
             if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
             return Result(result, value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
         }).Produces<SyncPolicyView>().IfMatch(required: false).Idempotent(WriteReasons.Replaces);
@@ -105,10 +105,17 @@ public static partial class MarketplaceEndpoints
         api.MapPut("/connections/{id:guid}/external-write-group", async (Guid id, UpdateExternalWriteGroupCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var result = await service.UpdateExternalWriteGroupAsync(tenant.TenantId, id, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
+            var result = await service.UpdateExternalWriteGroupAsync(tenant.TenantId, id, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role), tenant.UserId);
             if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
             return Result(result, Results.Ok);
         }).RequireGate(ApiGate.Elevated).Produces<IReadOnlyList<SyncPolicyView>>().Idempotent(WriteReasons.VersionGuarded);
+        // Owner rule of 18 Nov 2026: a linked variant without an offer goes at the panel price. The read-only counts the
+        // switch's confirmation shows, and the owner's opening of the missing offers (marked as sent: nothing goes out).
+        api.MapGet("/connections/{id:guid}/panel-price-offers", async (Guid id, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant ? Result(await service.PanelPriceOfferPreviewAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<PanelPriceOfferPreview>();
+        api.MapPost("/connections/{id:guid}/panel-price-offers", async (Guid id, HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.OpenPanelPriceOffersAsync(tenant.TenantId, tenant.UserId, id, http.RequestAborted), Results.Ok) : MissingContext(http))
+            .RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<PanelPriceOffersOpened>();
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant

@@ -1,0 +1,27 @@
+{
+  "Request": {
+    "payload": {
+      "integrator": "Ravencia",
+      "skus": [
+        {
+          "stockCode": "GOLD-STOCK-M",
+          "listPrice": 280.00,
+          "salePrice": 250.00,
+          "quantity": 7,
+          "currencyType": "TL"
+        }
+      ]
+    }
+  },
+  "Lines": [
+    {
+      "Barcode": "GOLD-STOCK-M",
+      "Quantity": 7,
+      "ListPrice": 280.00,
+      "SalePrice": 250.00,
+      "QuantityOmitted": false,
+      "PriceOmitted": false,
+      "PriceNote": null
+    }
+  ]
+}

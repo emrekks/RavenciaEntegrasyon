@@ -1,11 +1,14 @@
 /* The quick edit windows' variant list: a value tab strip, then one line per colour with its sizes side by side. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tabs { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tablist { display: flex; gap: 6px; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab { position: relative; flex: none; min-height: 0; height: 32px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab:hover { color: var(--rr-ink); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab[aria-selected="true"] { color: var(--rr-ink); font-weight: 600; background: color-mix(in srgb, var(--rr-primary-soft) 55%, var(--rr-raised)); border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tab i { display: inline-block; width: 6px; height: 6px; margin-left: 6px; vertical-align: 2px; border-radius: 50%; background: var(--rr-primary); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-tabs { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 16px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-note { color: var(--rr-muted); font-size: 12px; }
+/* "Düzenlenen Değer": one dropdown (grouped by marketplace), the Özel Fiyat switch beside it. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 280px; max-width: 360px; min-width: 240px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld .pm-select, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld .pm-trigger { width: 100%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-switchrow { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 36px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-trig, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-opt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-sub { padding-left: 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-group { display: inline-flex; align-items: center; gap: 8px; color: var(--rr-muted); font-size: 12px; font-weight: 600; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--rr-primary); }
 /* Tümünü Seç and the size shortcuts, on one line. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr { display: grid; gap: 8px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-width: 0; }

@@ -100,6 +100,8 @@ public static class PriceStockSendLogPolicy
             Trigger = trigger,
             ExternalRequestId = Cut(externalRequestId, 256),
             Result = PriceStockSendResults.Submitted,
+            // Why the line carried no price (PriceInventoryPushLine.PriceNote); an outcome message of its own replaces it.
+            ErrorMessage = Cut(line.PriceNote, MaxMessageLength),
             CreatedAt = now.ToUniversalTime()
         };
         if (result != PriceStockSendResults.Submitted) Settle(row, result, errorCode, errorMessage, now);
@@ -112,7 +114,7 @@ public static class PriceStockSendLogPolicy
         if (row.Result != PriceStockSendResults.Submitted) return;
         row.Result = result;
         row.ErrorCode = Cut(errorCode, MaxCodeLength);
-        row.ErrorMessage = Cut(errorMessage, MaxMessageLength);
+        row.ErrorMessage = Cut(errorMessage, MaxMessageLength) ?? row.ErrorMessage;
         row.CompletedAt = now.ToUniversalTime();
     }
 

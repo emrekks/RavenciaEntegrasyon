@@ -135,9 +135,11 @@ public sealed class PttAvmProductUpdateTests
         Assert.Single(PttAvmProductUpdateRules.CarryVariants([new(null, null, null, "Kırmızı / S", 3)], panel).Unreadable);
         Assert.Single(PttAvmProductUpdateRules.CarryVariants([new("mzdb003lacs", "Lacivert", "S", null)], panel).Unreadable);
         Assert.Single(PttAvmProductUpdateRules.CarryVariants([new("mzdb003lacs", "Lacivert", "S", null, 1), new(null, null, null, "lacivert / s", 1)], panel).Unreadable);
-        // A price difference or a passive variant would be lost by the request.
-        var priced = PttAvmProductUpdateRules.CarryVariants([new("mzdb003lacs", "Lacivert", "S", null, 1, Price: 20m), new("mzdb003lacm", "Lacivert", "M", null, 1, Active: false)], panel);
+        // A price difference is carried as PTT AVM holds it (owner decision of 18 Nov 2026); a passive variant or one PTT AVM
+        // prices on its own would be lost by the request.
+        var priced = PttAvmProductUpdateRules.CarryVariants([new("mzdb003lacs", "Lacivert", "S", null, 1, Price: 20m), new("mzdb003lacm", "Lacivert", "M", null, 1, Active: false), new("mzdb003lacl", "Lacivert", "L", null, 1, Price: 300m, PriceIsDifference: false)], panel);
         Assert.Equal(2, priced.NotCarriable.Count);
+        Assert.Equal(20m, priced.Variants.Single(x => x.Barcode == "mzdb003lacs").PriceDifference);
     }
 
     [Fact]

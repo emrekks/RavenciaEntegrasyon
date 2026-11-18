@@ -1,3 +1,4 @@
+import type { ApiAnswer } from '../../shared/api/api-answer'
 export type ProductImportMode = 'FULL' | 'NEW_ONLY' | 'EXISTING_ONLY' | 'MAPPING_ONLY' | 'OPTIONS_ONLY'
 export type ProductImportMethod = 'BULK' | 'SINGLE'
 
@@ -143,19 +144,24 @@ export function productImportChoiceSummary(method: ProductImportMethod, choices:
 
 // Prices and stock are two separate choices; each one only decides whether the marketplace value overwrites
 // the value the panel already holds for an existing product.
-export function productImportOverwriteConfirmation(updatePrices: boolean, updateStock: boolean): { title: string; message: string } | null {
+// The price preview (GET /channel-offers/price-import-preview): sizes whose panel price may change, and their offers on other
+// marketplaces that would follow it.
+export type PriceImportPreview = ApiAnswer<'getChannelOffersPriceImportPreview'>
+export function productImportOverwriteConfirmation(updatePrices: boolean, updateStock: boolean, preview?: PriceImportPreview | null): { title: string; message: string } | null {
   if (!updatePrices && !updateStock) return null
+  const counts = preview ? ` En çok ${preview.variants.toLocaleString('tr-TR')} bedenin panel fiyatı değişecek; ${preview.otherOffers.toLocaleString('tr-TR')} pazaryeri kaydı panel fiyatına çekilecek.` : ''
   const stockNote = ' Değişen stoklar, otomatik gönderimi açık olan diğer pazaryerlerine de gönderilir.'
+  const priceNote = ' Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine stokla birlikte bu fiyatla gider (bu aktarım stoğu da değiştiriyorsa hemen).'
   if (updatePrices && updateStock) {
     return {
       title: 'Panel Fiyat ve Stokları Değiştirilsin mi?',
-      message: `Mevcut ürünlerin panel fiyatı ve stoğu pazaryerindeki değerlerle değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki değerlerin doğru olduğundan eminseniz yapın.${stockNote}`
+      message: `Mevcut ürünlerin panel fiyatı ve stoğu pazaryerindeki değerlerle değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki değerlerin doğru olduğundan eminseniz yapın.${counts}${stockNote}${priceNote}`
     }
   }
   if (updatePrices) {
     return {
       title: 'Panel Fiyatları Değiştirilsin mi?',
-      message: 'Mevcut ürünlerin panel fiyatları pazaryerindeki fiyatlarla değiştirilecek. Bunu yalnız pazaryerindeki fiyatların doğru olduğundan eminseniz yapın.'
+      message: `Mevcut ürünlerin panel fiyatları pazaryerindeki fiyatlarla değiştirilecek. Bunu yalnız pazaryerindeki fiyatların doğru olduğundan eminseniz yapın.${counts}${priceNote}`
     }
   }
   return {

@@ -83,6 +83,23 @@ Shared across all of them:
   `vendor`, no brand list; PTT AVM no brand), so a product the import opens takes the same-named panel brand, or a new
   one, and no mapping is written (a mapping needs the marketplace's brand id). Details in trendyol.md.
 
+## The price goes with every stock send (owner rule, 18 Nov 2026)
+
+Every stock send, on every marketplace, carries the price in force: "Özel Fiyat" on (`FollowsPanelPrice = false`) → the
+offer's own price; else the saved panel price; without one → the offer's stored price (`PanelPriceOfferPolicy.InForce`).
+Trendyol: the price goes even when it equals the last confirmed value (the stock keeps the "only what differs" rule);
+its 0 TL rule is judged on the price in force. Pazarama is the documented exception: it refuses a price equal to the
+value it holds, so its price rides along only when it differs from the confirmed (else stored) value. Shopify writes the
+stock when it refuses the price (SHOPIFY_STOCK_ONLY_APPLIED).
+Hepsiburada's listing upload and n11's price-stock task take both in one line; Pazarama sends its price request beside
+the stock request in the same job; Shopify writes the price (productVariantsBulkUpdate) then the stock in the same job
+(a cut after the price leaves the line PRICE_ONLY_APPLIED and it goes again); PTT AVM's UpdateProductsStockPrice always
+needed a price and now gets the price in force for every variant of the product, not the last confirmed one. Without a
+price in force the stock goes alone with a note (PTT AVM: refused). Missing offers are opened at the panel price on all
+six marketplaces (marked as sent: nothing goes out then). Load: no extra request on Trendyol, Hepsiburada, n11 and PTT AVM
+(same request, still ≤ 1000 items); Shopify one extra mutation per line; Pazarama one price request per batch. Hepsiburada
+and PTT AVM take a sale price only: list = sale. Hepsiburada's current marketplace price is not stored in the panel.
+
 ## Official docs, offline (search these first)
 
 Full copies of the official developer docs, downloaded 2026-11-01, are kept outside the repository (this repository

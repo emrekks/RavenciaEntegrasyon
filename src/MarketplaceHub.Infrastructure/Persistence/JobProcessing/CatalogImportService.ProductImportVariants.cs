@@ -107,6 +107,16 @@ internal sealed partial class CatalogImportService
         if (variant is null)
         {
             variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = sortOrder, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            // Owner rule of 18 Nov 2026: a variant first read from a marketplace takes that marketplace's price as its panel
+            // price (list and sale); a later import never changes it. No price (empty or 0) writes none.
+            if (PanelPriceOfferPolicy.ImportedPanelPrices(remote.SalePrice, remote.ListPrice) is { } panelPrice)
+            {
+                (variant.DefaultListPrice, variant.DefaultSalePrice) = (panelPrice.ListPrice, panelPrice.SalePrice);
+                // Ürün Hareketleri: the panel price the import gave the new variant, with its marketplace.
+                if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (null, null), (panelPrice.ListPrice, panelPrice.SalePrice), ProductChangeSources.MarketplaceImport, null,
+                        $"product-import:{connectionId:N}", now, "İlk içe aktarıldığı pazaryerinin fiyatı panel fiyatı olarak kaydedildi.") is { } priceEntry)
+                    db.ProductChangeEntries.Add(priceEntry);
+            }
             db.ProductVariants.Add(variant);
             run.InsertedCount++;
         }
@@ -182,7 +192,7 @@ internal sealed partial class CatalogImportService
             await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
         if ((!observeOnly || isNewVariant) && categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, connectionId, product, variant, remote.Options, categoryContext, cancellationToken);
-        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updatePrices, observeOnly: observeOnly, updateStock: isNewVariant || updateStock, forceStockUpdate: !isNewVariant && updateStock);
+        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updatePrices, observeOnly: observeOnly, updateStock: isNewVariant || updateStock, forceStockUpdate: !isNewVariant && updateStock, updatePanelPrice: updatePrices && !isNewVariant);
         if ((!observeOnly || isNewVariant) && remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
         // A Trendyol size added to a card the panel already holds, without a list of its own from Trendyol (any size after
@@ -236,7 +246,7 @@ internal sealed partial class CatalogImportService
             ? $"id:{variant.ExternalVariantId}"
             : $"sku:{NormalizeCatalogKey(variant.Sku, 160)}";
 
-    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true, bool observeOnly = false, bool updateStock = true, bool forceStockUpdate = false)
+    private async Task UpsertCatalogOfferAndInventory(Guid tenantId, Guid connectionId, ProductVariant variant, RemoteCatalogVariant remote, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool updateOffer = true, bool observeOnly = false, bool updateStock = true, bool forceStockUpdate = false, bool updatePanelPrice = false)
     {
         if (observeOnly)
         {
@@ -314,7 +324,29 @@ internal sealed partial class CatalogImportService
             ?? await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variant.Id, cancellationToken);
         var cardVatRate = offer is null && remote.VatRate is null ? await CardOrModelVatRateAsync(tenantId, variant.ProductId, variant.ModelCode, cancellationToken) : null;
         var (vatRate, vatUnknown) = CatalogOfferVatRate(remote.VatRate, offer?.VatRate, cardVatRate);
-        var observationSource = CatalogImportSource(await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), observeOnly);
+        var importPlatformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+        var observationSource = CatalogImportSource(importPlatformCode, observeOnly);
+        // "Fiyat ve Stokları Güncelle" (owner decision of 18 Nov 2026, the confirmed overwrite): the marketplace's price becomes
+        // the panel price of an existing variant (a price of 0 or none changes nothing), unless this offer keeps its own
+        // price (Özel Fiyat on: only the offer takes it, below). One rule: the other offers without Özel Fiyat are pulled to
+        // the new panel price with their previous price kept as the known one and their send marks moved, so nothing is
+        // queued here; the difference goes with each variant's next stock send.
+        if (updatePanelPrice && offer?.FollowsPanelPrice != false && PanelPriceOfferPolicy.ImportedPanelPrices(remote.SalePrice ?? remote.ListPrice, remote.ListPrice) is { } marketplacePanel
+            && (variant.DefaultSalePrice != marketplacePanel.SalePrice || variant.DefaultListPrice != marketplacePanel.ListPrice))
+        {
+            if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (variant.DefaultListPrice, variant.DefaultSalePrice), (marketplacePanel.ListPrice, marketplacePanel.SalePrice),
+                    ProductChangeSources.MarketplaceImport, null, $"product-import:{connectionId:N}", now, $"Fiyat ve Stokları Güncelle: {importPlatformCode} fiyatı panel fiyatı olarak kaydedildi.") is { } priceEntry)
+                db.ProductChangeEntries.Add(priceEntry);
+            (variant.DefaultListPrice, variant.DefaultSalePrice) = (marketplacePanel.ListPrice, marketplacePanel.SalePrice);
+            variant.UpdatedAt = now;
+            // The other connections' offers follow once per product (FlushPanelRepricesAsync), not once per variant.
+            run.PendingPanelReprices[variant.Id] = new(marketplacePanel.SalePrice, null, marketplacePanel.ListPrice, null, true);
+        }
+        // One rule (owner decision of 18 Nov 2026): an offer without Özel Fiyat on a variant with a saved panel price keeps
+        // the panel price as its stored price, so the price on screen is the price that goes. The price read here is what the
+        // marketplace holds: it is kept as the known value (LastSent* without a code), so the difference goes with the next
+        // stock send and the send log shows it as the previous price. Özel Fiyat on: the offer takes the marketplace price.
+        var panel = offer?.FollowsPanelPrice == false ? null : await SavedPanelPriceAsync(tenantId, variant, importPlatformCode, cancellationToken);
         if (offer is null)
         {
             if (vatUnknown) await RecordOfferVatUnknownAsync(tenantId, connectionId, cancellationToken);
@@ -324,8 +356,8 @@ internal sealed partial class CatalogImportService
                 TenantId = tenantId,
                 ConnectionId = connectionId,
                 VariantId = variant.Id,
-                ListPrice = listPrice,
-                SalePrice = salePrice,
+                ListPrice = panel?.ListPrice ?? listPrice,
+                SalePrice = panel?.SalePrice ?? salePrice,
                 Currency = currency,
                 VatRate = vatRate,
                 VatInclusion = "INCLUDED",
@@ -335,8 +367,10 @@ internal sealed partial class CatalogImportService
                 PriceVersion = 1,
                 Version = 1
             };
-            // The price came from the marketplace, so it counts as already sent there.
+            // The price came from the marketplace, so it counts as already sent there (at the panel price, the difference
+            // rides with the next stock send: the marketplace's value is the known one).
             offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
+            if (panel is not null) (offer.LastSentSalePrice, offer.LastSentListPrice) = (salePrice, listPrice);
             db.ChannelOffers.Add(offer);
             run.PriceChangedVariantIds.Add(variant.Id);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
@@ -357,8 +391,18 @@ internal sealed partial class CatalogImportService
 
         // The marketplace reports VAT-inclusive prices; an offer kept without VAT stores the net
         // amount that grosses up to the same price again.
-        salePrice = ChannelOfferPricePolicy.StoredFromGross(salePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
-        listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(listPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
+        if (panel is { } panelPrice)
+        {
+            // The marketplace's (gross) price is the known one; the stored price stays (or becomes) the panel price.
+            (offer.LastSentSalePrice, offer.LastSentListPrice) = (salePrice, listPrice);
+            salePrice = ChannelOfferPricePolicy.StoredFromGross(panelPrice.SalePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
+            listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(panelPrice.ListPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
+        }
+        else
+        {
+            salePrice = ChannelOfferPricePolicy.StoredFromGross(salePrice, vatRate, offer.VatInclusion, offer.RoundingMode);
+            listPrice = Math.Max(salePrice, ChannelOfferPricePolicy.StoredFromGross(listPrice, vatRate, offer.VatInclusion, offer.RoundingMode));
+        }
         var priceChanged = offer.ListPrice != listPrice || offer.SalePrice != salePrice || !string.Equals(offer.Currency, currency, StringComparison.OrdinalIgnoreCase) || offer.VatRate != vatRate;
         var statusChanged = offer.Status != status;
         if (!priceChanged && !statusChanged) return;
@@ -417,6 +461,30 @@ internal sealed partial class CatalogImportService
     // still empty, the model's VAT reaching it only at the save, ModelMirror) its brand's model of its code (a model is its
     // brand and its code; a card without a brand yet: the code's one branded model, as the reconcile links it). Before, such a colour
     // of a model with a VAT got a %0 offer and an OFFER_VAT_UNKNOWN warning.
+    // The panel prices the product's variants took (Fiyat ve Stokları Güncelle) reach the offers without Özel Fiyat on the
+    // other connections in one query: their previous price stays known, their send marks move, nothing is queued.
+    private async Task FlushPanelRepricesAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (run.PendingPanelReprices.Count == 0) return;
+        run.TenantPlatforms ??= await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
+        // A store with no other connection has no other offer to pull: no query.
+        if (!run.TenantPlatforms.Keys.Any(id => id != connectionId)) { run.PendingPanelReprices.Clear(); return; }
+        var platformCode = await ConnectionPlatformCode(tenantId, connectionId, cancellationToken);
+        var source = CatalogImportSource(platformCode, false);
+        await PanelPriceOffers.RepriceFollowersAsync(db, tenantId, new Dictionary<Guid, PanelPriceOffers.PanelPriceChange>(run.PendingPanelReprices), new HashSet<Guid>(),
+            $"{source}_CATALOG_IMPORT", $"SYSTEM:{source}", now, cancellationToken, keepSendMarks: true, knownPlatforms: run.TenantPlatforms, exceptConnectionId: connectionId);
+        run.PendingPanelReprices.Clear();
+    }
+
+    // The saved panel price of a variant (its own, else its card's) as the platform takes it; null without one.
+    private async Task<(decimal ListPrice, decimal SalePrice)?> SavedPanelPriceAsync(Guid tenantId, ProductVariant variant, string? platformCode, CancellationToken cancellationToken)
+    {
+        if (variant.DefaultSalePrice is > 0) return PanelPriceOfferPolicy.PanelPrices(platformCode, variant.DefaultSalePrice, null, variant.DefaultListPrice, null);
+        var card = db.Products.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == variant.ProductId) is { } local ? (local.DefaultSalePrice, local.DefaultListPrice)
+            : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variant.ProductId).Select(x => new ValueTuple<decimal?, decimal?>(x.DefaultSalePrice, x.DefaultListPrice)).FirstOrDefaultAsync(cancellationToken);
+        return PanelPriceOfferPolicy.PanelPrices(platformCode, variant.DefaultSalePrice, card.Item1, variant.DefaultListPrice, card.Item2);
+    }
+
     private async Task<decimal?> CardOrModelVatRateAsync(Guid tenantId, Guid productId, string? modelCode, CancellationToken cancellationToken)
     {
         var local = db.Products.Local.FirstOrDefault(x => x.Id == productId);
