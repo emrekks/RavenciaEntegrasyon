@@ -92,11 +92,11 @@ export function titleTr(value: string) {
 
 // Progress ring: how far the return (or its invoice) has come, coloured by its state.
 export type RingTone = 'prog' | 'move' | 'wait' | 'ok' | 'bad' | 'off'
-export function RrRing({ tone, progress, label, detail, detailClass }: { tone: RingTone; progress: number; label: string; detail?: ReactNode; detailClass?: string }) {
+export function RrRing({ tone, progress, label, detail, detailClass, detailTitle }: { tone: RingTone; progress: number; label: string; detail?: ReactNode; detailClass?: string; detailTitle?: string }) {
   const value = Math.round(Math.max(0, Math.min(1, progress)) * 100)
   return <span className={`rr-ring rr-tone-${tone}`}>
     <svg viewBox="0 0 20 20" aria-hidden="true"><circle className="rr-trk" cx="10" cy="10" r="7.5" />{value > 0 && <circle className="rr-val" cx="10" cy="10" r="7.5" pathLength={100} strokeDasharray={`${value} 100`} />}</svg>
-    <span><b>{label}</b>{detail ? <small className={detailClass ? `rr-${detailClass}` : undefined}>{detail}</small> : null}</span>
+    <span><b>{label}</b>{detail ? <small className={detailClass ? `rr-${detailClass}` : undefined} title={detailTitle} aria-label={detailTitle}>{detail}</small> : null}</span>
   </span>
 }
 

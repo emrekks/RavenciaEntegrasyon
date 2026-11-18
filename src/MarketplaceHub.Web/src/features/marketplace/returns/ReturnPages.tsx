@@ -10,6 +10,7 @@ import { hubApi, hubPoll } from '../../../shared/api'
 import { CardBackgroundIcon, cargoCarrier, cargoFilterOptions, cargoLabel, CountUp, StickyActionBar, TitleHint } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
+import { shortRemaining } from './return-remaining'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
@@ -199,7 +200,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   const cargoIcon = cargoCarrier(cargoProvider)?.iconUrl
   const reasonNote = returnReasonSummary(item)?.note ?? null
   const closeDialog = () => setDialogMode(null)
-  const statusRing = <RrRing tone={ringTone} progress={ringProgress} label={titleTr(statusLabel(item.status))} detail={activeCountdown ? `${returnRemaining(item.actionDueAt)}${item.actionDueAtEstimated ? ' (tahmini)' : ''}` : orderPartiallyApproved(item) ? 'Sipariş: Kısmen Onaylandı' : undefined} detailClass={activeCountdown && urgentDeadline ? 'crit' : undefined} />
+  const statusRing = <RrRing tone={ringTone} progress={ringProgress} label={titleTr(statusLabel(item.status))} detail={activeCountdown ? shortRemaining(returnRemaining(item.actionDueAt)) : orderPartiallyApproved(item) ? 'Sipariş: Kısmen Onaylandı' : undefined} detailClass={activeCountdown && urgentDeadline ? 'crit' : undefined} detailTitle={activeCountdown ? `${returnRemaining(item.actionDueAt)}${item.actionDueAtEstimated ? ' (tahmini)' : ''}` : undefined} />
   return <><tr ref={rowRef} className={[selection?.checked ? 'rr-sel' : '', urgentDeadline && actionRequired ? 'rr-due' : ''].filter(Boolean).join(' ') || undefined}>
     <td className="rr-wide"><div className="rr-ordercell">{selectColumn && (selection ? <input type="checkbox" className="rr-cb" checked={selection.checked} onChange={selection.onChange} aria-label={`${displayOrderNumber(item.orderNumber)} iadesini toplu onaya dahil et`} /> : <span style={{ width: 16, flex: 'none' }} />)}<div><RrWordmark code={item.platformCode} name={item.platformDisplayName || returnPlatformName(item.platformCode)} /><span className={`rr-on-no${urgentDeadline && actionRequired ? ' rr-crit' : ''}`}>{displayOrderNumber(item.orderNumber)}<button type="button" className="rr-icon-btn" title={copiedOrderNumber ? 'Kopyalandı' : 'Kopyala'} aria-label={copiedOrderNumber ? `Sipariş numarası ${item.orderNumber} kopyalandı` : `Sipariş numarası ${item.orderNumber} kopyala`} onClick={() => void copyReturnOrderNumber()}><RrIcon name={copiedOrderNumber ? 'check' : 'copy'} size={14} /></button><ReturnRequestTag customerRequest={item.customerRequest} /></span>{noBuyer && <small className="rr-buyer-inline"><b>Alıcı:</b> {customer}</small>}<small className="rr-num"><b>Sipariş Tarihi:</b> {returnDateText(order?.orderedAt ?? item.orderedAt)}</small><small className="rr-num"><b>Paket No:</b> {formatPackageLabel(orderShipment?.externalPackageId ?? item.packageNumber) ?? '—'}</small></div></div></td>
     {!noBuyer && <td className="rr-mid" data-l="Alıcı"><div className="rr-cust"><b title={personName(customer)}>{personName(customer).replace(/-/g, '‑')}</b></div></td>}

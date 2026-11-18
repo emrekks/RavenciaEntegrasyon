@@ -1166,12 +1166,12 @@ main .rr.rr .rr-tbl.rr-tbl td.rr-empty-row.rr-empty-row { padding: 0; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 244px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 112px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod { width: 196px; }
-main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 92px; }
-main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 104px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 162px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 112px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 128px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 164px; }
-main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 112px; }
+main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 130px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 270px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 170px; }
 main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1196px; }
@@ -1198,14 +1198,14 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
    column visible (text wraps instead of the table scrolling). Narrower screens scroll inside the card; the first column
    stays pinned so the order is always in view. */
 @media (min-width: 1025px) {
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1158px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 250px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 142px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 282px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 90px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 142px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 104px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl { min-width: 1271px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-order { width: 261px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-buyer { width: 132px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: 312px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-price { width: 122px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 160px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 160px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 124px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 18px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { overflow-wrap: break-word; word-break: normal; }
@@ -1217,23 +1217,27 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 /* owner, 14 Nov: a buyer name never breaks inside a word, and each Bilgiler "Label: value" line stays on one line */
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow-wrap: normal; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1278px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1420px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1292px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1434px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 218px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 232px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1544px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1686px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1558px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select:has(col.rr-c-buyer) { min-width: 1700px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-order { width: 234px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-order { width: 248px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-buyer { width: 142px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-prod,
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 284px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 92px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 142px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 130px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 152px; }
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 112px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select col.rr-c-prod { width: 314px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-price { width: 104px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-cargo { width: 162px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-inv { width: 216px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-reason { width: 216px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-status { width: 168px; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl col.rr-c-act { width: 130px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td { padding-inline: 12px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl th { padding-inline: 12px; }
+/* owner, 18 Nov: status labels and the remaining time stay on one line; the reason and its customer note take two lines each */
+main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl :is(td.rr-mid, .rr-invcell) .rr-ring > span > b { white-space: nowrap; }
+main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl td.rr-mid .rr-ring > span > small { white-space: nowrap; }
+main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl .rr-reasoncell > small { -webkit-line-clamp: 2; line-clamp: 2; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 /* owner, 14 Nov: İadeler follows the Siparişler one-line rules - order lines, tracking number, Bilgiler lines and buyer words never break inside */
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
