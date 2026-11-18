@@ -94,42 +94,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-stepn { display: grid; place-items: center; width: 22px; height: 22px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line-strong); border-radius: 7px; font-size: 12px; font-weight: 600; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools > .rr-btn.rr-link { flex: none; width: auto; height: 28px; min-height: 0; padding: 0 4px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-trigger.rr-sm { width: auto; height: 36px; font-size: 13px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup { border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup + .rr-vgroup { margin-top: 8px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-h { display: flex; align-items: center; gap: 10px; padding: 0 0 0 12px; background: var(--rr-raised); font-size: 14px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 40px; padding: 0 12px 0 0; color: var(--rr-ink); text-align: left; background: none; border: 0; cursor: pointer; font: inherit; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t:hover small { color: var(--rr-ink); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t b { font-weight: 600; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t small { color: var(--rr-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t .rr-ico { margin-left: auto; color: var(--rr-muted); transition: transform .15s; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-vg-t .rr-ico { transform: rotate(180deg); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t:focus-visible { outline: 2px solid color-mix(in srgb, var(--rr-primary) 70%, transparent); outline-offset: -2px; border-radius: 7px; }
-/* The colour name and its count share a baseline, and every count starts at the same column (a long name is cut). */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-name { display: flex; flex: 1; align-items: baseline; gap: 10px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-name b { flex: 0 1 10em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-name small { flex: none; white-space: nowrap; }
-/* Colour groups open on their own: the opened one is framed and its table takes the full width under its row (the panel
-   grows in 150 ms; reduced motion shows it at once). */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup { transition: border-color .15s, box-shadow .15s; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open { border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rr-primary) 35%, transparent); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-vg-h { background: color-mix(in srgb, var(--rr-primary-soft) 55%, var(--rr-raised)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-vg-t .rr-ico { color: var(--rr-primary); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel { display: grid; grid-column: 1 / -1; grid-template-rows: 1fr; min-width: 0; animation: rr-vg-grow .15s ease-out; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel > .rr-qtable-wrap { min-height: 0; min-width: 0; border: 1px solid var(--rr-line); border-radius: 12px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel.rr-closing { grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .15s ease-in, opacity .15s ease-in; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel.rr-closing > .rr-qtable-wrap { border-width: 0; }
-@keyframes rr-vg-grow { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel { animation: none; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel.rr-closing { transition: none; }
-}
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-h { transition: background-color .18s, box-shadow .18s; }
-@keyframes rr-vg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) {
-}
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src:hover { background: var(--rv-hover, var(--rr-hover)); }
@@ -188,7 +153,6 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-radios { grid-template-columns: 1fr; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools { grid-template-columns: 1fr 1fr; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools > :first-child { grid-column: 1 / -1; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { margin-left: 0; width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 22px; }
 }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th .rr-hf { gap: 6px; }
@@ -384,95 +348,14 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 @media (min-width: 761px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-dgrid.rr-qe-row { grid-template-columns: repeat(var(--qe-cols, 2), minmax(0, 1fr)); }
 }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups.rr-two { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups .rr-vgroup { min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups .rr-vgroup + .rr-vgroup { margin-top: 0; }
-/* An open group is a table: Varyant (and Stok) and the panel price stay on the left while the marketplaces scroll
-   under a two-level header, each marketplace's name over its Liste / Satış, with its "Özel Fiyat" box. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable-wrap { overflow-x: auto; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices { width: max-content; min-width: 100%; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-sel { width: 40px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-stock { width: 88px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-prices .rr-qt-w-var { width: 190px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-price { width: 108px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(th, td) { padding: 6px 8px; vertical-align: middle; background: var(--rr-surface); border-bottom: 1px solid var(--rr-line); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:last-child > * { border-bottom: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:hover > * { background-color: var(--rv-hover-solid, color-mix(in srgb, var(--rr-raised) 60%, var(--rr-surface))); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead th { color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; background: var(--rr-raised); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead .rr-qt-sub th { padding-block: 3px 5px; color: var(--rr-subtle); font-size: 11px; font-weight: 500; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-num { text-align: right; }
-/* The stock column is centred: its title, its field and the number in it (prices stay right-aligned). */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stock.rr-qt-num { text-align: center; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable td.rr-qt-stock .rr-in { display: block; margin-inline: auto; text-align: center; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { padding-inline: 12px 4px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody th.rr-qt-var { font-weight: 400; text-align: left; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname { display: grid; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname b { overflow: hidden; color: var(--rr-ink); font-weight: 400; white-space: nowrap; text-overflow: ellipsis; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname small { overflow: hidden; color: var(--rr-subtle); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tr.rr-off .rr-qname b { color: var(--rr-muted); }
-/* Column groups: a line before the panel price and each marketplace; only the selection and variant columns stay put. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-gs { border-left: 1px solid var(--rr-line); }
-/* The selection and variant columns (and Stok beside them) stay put and opaque over the scrolling prices, with a line
-   and a soft shadow on their right edge; a hovered row takes a solid fill so nothing shows through. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stick { position: sticky; z-index: 2; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-qtable.rr-qt-prices:not(.rr-qt-has-stock) .rr-qt-var, .rr-qtable.rr-qt-prices .rr-qt-stock) { box-shadow: inset -1px 0 0 var(--rr-line-strong), 6px 0 8px -6px color-mix(in srgb, var(--rr-ink) 22%, transparent); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { left: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-var { left: 40px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-stock { left: 230px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(.rr-in, .rr-qpair span) { font-size: 13px; font-variant-numeric: tabular-nums; }
-/* One header
-   height across the groups now that each title is a single line. */
-@media (min-width: 761px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead tr:first-child th { height: 40px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody :is(td, th) { height: 52px; }
-}
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-ch { padding-block: 6px 4px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-chname { display: block; min-width: 0; overflow: hidden; color: var(--rr-muted); text-overflow: ellipsis; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-custom { display: inline-flex; align-items: center; gap: 6px; height: 24px; color: var(--rr-muted); font-size: 12px; font-weight: 500; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-custom.rr-on { color: var(--rr-primary); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-custom b { color: var(--rr-ink); font-weight: 600; }
-/* The marketplace name and its "Özel Fiyat" switch share one line in the column title. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-chhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-chhead .rr-qt-custom { flex: none; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-switch { position: relative; flex: none; width: 28px; height: 16px; min-height: 0; margin: 0; background: var(--rr-line-strong); border: 0; border-radius: 999px; appearance: none; cursor: pointer; transition: background .15s; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--rr-ink); border-radius: 50%; transition: left .15s; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-switch:checked { background: var(--rr-primary); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-switch:checked::after { left: 14px; background: #fff; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-switch:focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; }
-/* Fields: 36 px, numbers to the right; a pair (Liste, Satış) shares its marketplace's cell. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-in { width: 100%; height: 36px; min-width: 0; padding: 0 8px; text-align: right; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair.rr-qsale { grid-template-columns: minmax(0, 1fr); }
-/* A marketplace at the panel price shows it read-only and muted; a panel price taken from a channel (none saved yet)
-   is muted until changed. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-follow .rr-qpair span { padding-right: 9px; color: var(--rr-subtle); line-height: 36px; font-variant-numeric: tabular-nums; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qfallback .rr-in { color: var(--rr-muted); font-style: italic; }
-@media (max-width: 760px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups.rr-two { grid-template-columns: minmax(0, 1fr); }
-  /* A phone shows each variant as a card: its name, then each field under a title. A marketplace's "Özel Fiyat" switch sits
-     on its own caption line, right-aligned ("Trendyol · Ana Fiyat ...... [switch] Özel Fiyat"). */
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]:has(> .rr-qt-cardswitch) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l] > .rr-qt-cardswitch { grid-column: 2; grid-row: 1; justify-self: end; height: 36px; min-height: 36px; gap: 8px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]:has(> .rr-qt-cardswitch) > .rr-qpair { grid-column: 1 / -1; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices { display: block; width: 100%; min-width: 0; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(thead, colgroup) { display: none; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody { display: block; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--rr-line); }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:last-child { border-bottom: 0; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr > * { position: static; padding: 0; background: none; border: 0; box-shadow: none; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l] { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]::before { content: attr(data-l); overflow: hidden; color: var(--rr-subtle); font-size: 12px; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td.rr-qt-stock { grid-template-columns: minmax(0, 1fr) 120px; align-items: center; }
-  /* Stock alone (no price fields): one row per variant, the box beside the name, no "Stok" caption. */
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) { grid-template-columns: auto minmax(0, 1fr) 104px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) > td.rr-qt-stock { display: block; grid-column: auto; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) > td.rr-qt-stock::before { content: none; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:not(:has(> td[data-l]:not(.rr-qt-stock))) > td.rr-qt-stock .rr-in { width: 100%; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair { gap: 8px; }
-}
 
 /* The delete confirmation names the records it removes: name and model code, the first ten, then a count. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list { display: grid; gap: 4px; max-height: 240px; margin: 0; padding: 8px 10px; overflow-y: auto; list-style: none; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 7px; }
@@ -527,14 +410,6 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { transition: none !important; animation: none !important; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn { display: inline-flex; width: fit-content; max-width: 100%; justify-self: start; align-self: start; }
-}
-/* Phones, quick edit: the colour and size pickers of "Varyantları Seç" share the row half and half. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
-  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-btn.rr-link { grid-column: 1 / -1; justify-self: end; width: auto; min-height: 0; height: 28px; }
-  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor { display: block; min-width: 0; }
-  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger { width: 100%; min-width: 0; justify-content: space-between; }
-  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 /* Düşük Stoklu lifts under the pointer like the other summary cards; the button's own transition would drop the lift. */
 @media (hover: hover) {

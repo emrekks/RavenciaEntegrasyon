@@ -39,14 +39,8 @@ async function render(products: Product[] = [product]) {
 
 const groupBox = (color: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${color} rengindeki tüm varyantları seç"]`)!
 const note = () => document.body.querySelector('.rr-note')?.textContent ?? ''
-const trigger = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-trigger')).find(item => item.textContent?.startsWith(label))!
 async function click(element: HTMLElement) { await act(async () => { element.click() }) }
-async function pick(label: string, option: string) {
-  await click(trigger(label))
-  const row = Array.from(document.body.querySelectorAll('.rr-pop label.rr-opt')).find(item => item.querySelector('.rr-grow')?.textContent === option)!
-  await click(row.querySelector('input')!)
-  await click(trigger(label))
-}
+const tab = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]')).find(item => item.textContent?.startsWith(label))!
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -81,89 +75,92 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(errors).toEqual([])
   })
 
-  it('does not open or close the group when its checkbox is clicked', async () => {
+  it('ticks a column, a single cell and the corner; a half-ticked row or column shows the mixed state', async () => {
     await render()
-    const header = groupBox('Bej').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!
-    expect(header.getAttribute('aria-expanded')).toBe('false')
-    await click(groupBox('Bej'))
-    expect(header.getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('starts the colour and size pickers at Seçiniz and uses them as selection shortcuts', async () => {
-    await render()
-    expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
-    expect(trigger('Beden').textContent).toBe('Beden: Seçiniz')
-    // Nothing ticked: the action goes to every variant.
-    expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
-
-    await pick('Renk', 'Bej')
-    expect(note()).toContain('2 varyant')
-    await pick('Beden', 'XL')
-    // Bej + XL: the intersection only.
-    expect(note()).toContain('1 varyant')
-    expect(groupBox('Bej').checked).toBe(false)
-
-    // No "Tümü" option: an empty Renk narrows nothing, so XL alone ticks XL in every colour.
-    await click(trigger('Renk'))
-    expect(Array.from(document.body.querySelectorAll('.rr-pop label.rr-opt .rr-grow')).map(item => item.textContent)).toEqual(['Bej', 'Siyah'])
-    await click(trigger('Renk'))
-    await pick('Renk', 'Bej')
-    expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
+    const columnBox = (size: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${size} bedenindeki tüm varyantları seç"]`)!
+    const cellBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} varyantını seç"]`)!
+    const corner = document.body.querySelector<HTMLInputElement>('input[aria-label="Tüm varyantları seç"]')!
+    await click(columnBox('XL'))
     expect(note()).toContain('2 varyant seçildi')
-    expect(groupBox('Bej').checked || groupBox('Siyah').checked).toBe(false)
-
-    // Both empty: nothing ticked, the action goes to all of them.
-    await pick('Beden', 'XL')
-    expect(trigger('Beden').textContent).toBe('Beden: Seçiniz')
+    expect(groupBox('Bej').indeterminate).toBe(true)
+    expect(groupBox('Bej').checked).toBe(false)
+    await click(cellBox('Bej · S'))
+    expect(groupBox('Bej').checked).toBe(true)
+    expect(note()).toContain('3 varyant seçildi')
+    await click(corner)
+    expect(note()).toContain('4 varyant seçildi')
+    expect(corner.checked).toBe(true)
+    await click(corner)
     expect(note()).toContain('Seçim yok: 4 varyantın tümüne uygulanır')
     expect(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).map(button => button.textContent)).toEqual(['Tümüne Uygula'])
     expect(errors).toEqual([])
   })
 
-  it('clears the shortcuts once a checkbox is changed by hand', async () => {
+  it('draws a row per colour and a column per size in size order, with one box in every cell', async () => {
     await render()
-    await pick('Renk', 'Bej')
-    await click(groupBox('Siyah'))
-    expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
-    expect(note()).toContain('4 varyant seçildi')
-    expect(groupBox('Bej').checked).toBe(true)
+    expect(Array.from(document.body.querySelectorAll('.rr-mx thead th.rr-mx-size b')).map(item => item.textContent)).toEqual(['S', 'XL'])
+    expect(Array.from(document.body.querySelectorAll('.rr-mx tbody th.rr-mx-color b')).map(item => item.textContent)).toEqual(['Bej', 'Siyah'])
+    expect(document.body.querySelectorAll('.rr-mx tbody input.rr-mx-in')).toHaveLength(4)
+    expect(document.body.querySelector('.rr-vgroup, .rr-vg-t, .rr-qtable')).toBeNull()
+  })
+
+  it('shows a dimmed dash where a colour has no variant in a size', async () => {
+    const missing: Product = { ...product, variants: product.variants.filter(item => item.id !== 's-xl') }
+    await render([missing])
+    expect(document.body.querySelectorAll('.rr-mx td.rr-mx-none')).toHaveLength(1)
+    expect(document.body.querySelector('.rr-mx td.rr-mx-none')?.textContent).toBe('—')
+    expect(document.body.querySelectorAll('.rr-mx tbody input.rr-mx-in')).toHaveLength(3)
+  })
+
+  it('moves between the boxes with the arrow keys and Enter, skipping dashes', async () => {
+    await render()
+    const box = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} stok"]`)!
+    const press = async (element: HTMLElement, key: string) => { await act(async () => { element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })) }) }
+    box('SKU-b-s').focus()
+    await press(box('SKU-b-s'), 'ArrowRight')
+    expect(document.activeElement).toBe(box('SKU-b-xl'))
+    await press(box('SKU-b-xl'), 'ArrowDown')
+    expect(document.activeElement).toBe(box('SKU-s-xl'))
+    await press(box('SKU-s-xl'), 'ArrowLeft')
+    expect(document.activeElement).toBe(box('SKU-s-s'))
+    await press(box('SKU-s-s'), 'ArrowUp')
+    expect(document.activeElement).toBe(box('SKU-b-s'))
+    await press(box('SKU-b-s'), 'Enter')
+    expect(document.activeElement).toBe(box('SKU-s-s'))
   })
 })
 
 // Live MZ028IH (6 Nov 2026): ten colour cards of one variant each. The window reads every card by id, and a card read by
 // id lists the whole family's variants, so each colour showed ten rows of the same variant ("1 varyant varken 10").
-describe('ProductQuickEditModal price mode switches', () => {
-  async function renderPrices(phone: boolean) {
-    const original = window.matchMedia
-    window.matchMedia = ((query: string) => ({ ...original(query), matches: phone && query === '(max-width: 760px)' })) as typeof window.matchMedia
+describe('ProductQuickEditModal price mode tabs', () => {
+  async function renderPrices() {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     root = createRoot(container, { onUncaughtError: error => { errors.push(error) } })
     await act(async () => {
       root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="price" products={[product]} connections={[{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }, { id: 'c2', displayName: 'N11', platformCode: 'N11' }] as never} onChanged={async () => undefined} onClose={() => undefined} /></MemoryRouter></QueryClientProvider>)
     })
-    window.matchMedia = original
   }
 
-  it('on a phone puts each marketplace switch on its own caption line, with no separate block above the cards', async () => {
-    await renderPrices(true)
-    expect(document.body.querySelector('.rr-qt-customs')).toBeNull()
-    // Open the colour group so its variant rows are drawn.
-    for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
-    const row = document.body.querySelector('table.rr-qtable tbody tr')!
-    for (const name of ['Trendyol', 'N11']) {
-      const cell = Array.from(row.querySelectorAll('td[data-l]')).find(item => item.getAttribute('data-l')?.startsWith(`${name} ·`))!
-      const toggle = cell.querySelector(':scope > label.rr-qt-cardswitch')!
-      expect(toggle.querySelector('input[role="switch"]')?.getAttribute('aria-label')).toBe(`${name} özel fiyat`)
-      expect(toggle.textContent).toBe('Özel Fiyat')
-    }
+  it('picks the edited value with a tab strip: the panel prices, then each marketplace', async () => {
+    await renderPrices()
+    const labels = Array.from(document.body.querySelectorAll('button[role="tab"]')).map(item => item.textContent)
+    expect(labels[0]).toBe('Panel Satış Fiyatı')
+    expect(labels[1]).toBe('Panel Liste Fiyatı')
+    expect(labels.some(label => label?.startsWith('Trendyol'))).toBe(true)
+    expect(labels.some(label => label?.startsWith('N11'))).toBe(true)
+    expect(document.body.querySelector('table.rr-mx')).not.toBeNull()
+    // One box per variant, whatever the tab.
+    expect(document.body.querySelectorAll('.rr-mx tbody input.rr-mx-in')).toHaveLength(4)
   })
 
-  it('on desktop keeps the switches in the column titles only', async () => {
-    await renderPrices(false)
-    for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
-    expect(document.body.querySelector('.rr-qt-cardswitch')).toBeNull()
-    // One title switch per marketplace in each colour group's table (two groups, two marketplaces).
-    expect(document.body.querySelectorAll('th .rr-qt-custom').length).toBe(4)
+  it('puts the Özel Fiyat switch beside a marketplace tab only', async () => {
+    await renderPrices()
+    expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')).toBeNull()
+    await click(tab('Trendyol'))
+    const toggle = document.body.querySelector('.rr-mx-tabs input[role="switch"]')!
+    expect(toggle.getAttribute('aria-label')).toBe('Trendyol özel fiyat')
+    await click(tab('N11'))
+    expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')?.getAttribute('aria-label')).toBe('N11 özel fiyat')
   })
 })
 
@@ -175,30 +172,13 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
 
   it('shows each variant once, under its own colour', async () => {
     await render(cards)
-    for (const color of colors) {
-      const group = groupBox(color).closest('.rr-vgroup')!
-      expect(group.querySelector('.rr-vg-name small')?.textContent).toBe('1 varyant')
-    }
+    for (const color of colors) expect(groupBox(color).closest('tr')!.querySelectorAll('input.rr-mx-in')).toHaveLength(1)
     expect(note()).toContain('3 varyant')
-    await click(groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
-    // Each group opens on its own (Bordo only; its row mate Füme stays closed) and shows its own variant only.
-    const rowsOf = (color: string) => Array.from(document.body.querySelectorAll(`[aria-label="${color} varyantları"] tbody tr`)).map(row => row.querySelector('.rr-qname small')?.textContent)
-    expect(rowsOf('Bordo')).toEqual(['SKU-v0'])
-    expect(rowsOf('Füme')).toEqual([])
-    // The opened group's table sits in a panel that spans the whole grid row; the chain mark and pairing are gone.
-    const panel = document.body.querySelector('[aria-label="Bordo varyantları"]')!.closest('.rr-vg-panel')!
-    expect(panel.parentElement?.classList.contains('rr-vgroups')).toBe(true)
-    expect(document.body.querySelector('.rr-vg-link, .rr-paired')).toBeNull()
-    expect(groupBox('Bordo').closest('.rr-vgroup')!.classList.contains('rr-open')).toBe(true)
-    expect(groupBox('Füme').closest('.rr-vgroup')!.classList.contains('rr-open')).toBe(false)
-    const bordoButton = groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!
-    expect(bordoButton.getAttribute('aria-expanded')).toBe('true')
-    expect(document.getElementById(bordoButton.getAttribute('aria-controls')!)).not.toBeNull()
-    // Tümünü Aç opens every group; Tümünü Kapat closes them.
-    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-step-tools button')).find(button => button.textContent === 'Tümünü Aç')!)
-    expect(rowsOf('Füme')).toEqual(['SKU-v1'])
-    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-step-tools button')).find(button => button.textContent === 'Tümünü Kapat')!)
-    expect(rowsOf('Füme')).toEqual([])
+    // One row per colour, each with its own variant in the one size column.
+    const rowsOf = (color: string) => Array.from(document.body.querySelectorAll('.rr-mx tbody tr')).filter(row => row.querySelector('th b')?.textContent === color).flatMap(row => Array.from(row.querySelectorAll('input.rr-mx-in')).map(input => input.getAttribute('aria-label')))
+    expect(rowsOf('Bordo')).toEqual(['SKU-v0 stok'])
+    expect(rowsOf('Füme')).toEqual(['SKU-v1 stok'])
+    expect(rowsOf('Gri')).toEqual(['SKU-v2 stok'])
     expect(errors).toEqual([])
   })
 
@@ -243,8 +223,8 @@ describe('ProductQuickEditModal with the products list copies', () => {
     root = createRoot(container, { onUncaughtError: error => { errors.push(error) } })
     for (const [index, products] of steps.entries()) {
       await act(async () => { root.render(view(products)) })
-      // Open the colour groups so their tables (and the switches in their column titles) are drawn.
-      if (index === 0) for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
+      // The switch sits beside a marketplace tab: open it.
+      if (index === 0) await click(tab('Trendyol'))
     }
   }
 
