@@ -362,10 +362,10 @@ html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-
    filter button follows its label, and the Alıcı column is wide enough for a typical full name on one line. */
 @media (min-width: 1025px) {
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-head, .invoice-reference-row) { grid-template-columns: minmax(0, 192fr) minmax(0, 146fr) minmax(0, 150fr) minmax(0, 150fr) minmax(0, 150fr) minmax(0, 117fr) minmax(0, 128fr); }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: 12px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head > * { padding-inline: 18px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head :is(.order-column-filter, .invoice-reference-platform-heading) { gap: 4px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .order-column-filter-trigger { position: static; transform: none; }
-:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: 12px; }
+:root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > div { padding-inline: 18px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > input.invoice-reference-select { left: 12px; }
 :root:root:root body .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-row > .invoice-reference-order > :not(input) { margin-left: 28px; }
 }

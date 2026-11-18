@@ -1206,7 +1206,7 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-cargo { width: 148px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-inv { width: 142px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-act { width: 104px; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 12px; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { padding-inline: 18px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td { overflow-wrap: break-word; word-break: normal; }
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-num { overflow-wrap: anywhere; }
@@ -1246,9 +1246,9 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr:hover td:first-child { background: linear-gradient(var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent)), var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent))), var(--rr-surface); }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl tbody tr.rr-sel td:first-child { background: linear-gradient(var(--rr-primary-soft), var(--rr-primary-soft)), var(--rr-surface); }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl thead th:first-child { z-index: 3; }
-/* owner, 14 Nov evening: every head and body cell has the same 12px gap on its left and right; a head's filter button
+/* owner, 14 Nov evening: every head and body cell has the same 18px gap on its left and right (owner, 18 Nov: "hepsini 18 px yap"); a head's filter button
    follows its label instead of holding 26-38px free on the right. */
-:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(th, td, th:first-child, td:first-child, th:last-child, td:last-child) { padding-inline: 12px; }
+:root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl :is(th, td, th:first-child, td:first-child, th:last-child, td:last-child) { padding-inline: 18px; }
 :root:root:root:root main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl th .rr-hf > .rr-anchor { position: relative; top: auto; right: auto; transform: none; }
 /* the pinned first column is never drawn over or seen through: the shared row hover (design-system.css) sets a
    see-through background-color with !important on every cell, so the pinned cell keeps its solid surface under the hover
