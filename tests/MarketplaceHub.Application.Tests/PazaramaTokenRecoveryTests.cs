@@ -207,8 +207,30 @@ public sealed class PazaramaTokenRecoveryTests
         Assert.Equal("PAZARAMA_CREDENTIALS_REJECTED", PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, $$"""{"success":false,"userMessage":"{{message}}"}""").Error!.Code);
 
     [Fact]
-    public void A5xxWithAnUnclearEnvelopeStaysAServerError() =>
-        Assert.Equal("PAZARAMA_REMOTE_ERROR", PazaramaHttpClient.TokenResponse(HttpStatusCode.ServiceUnavailable, """{"success":false,"userMessage":"Sistem hatası"}""").Error!.Code);
+    public void A5xxWithAnUnclearEnvelopeIsTheTokenServicesServerError()
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.ServiceUnavailable, """{"success":false,"userMessage":"Sistem hatası"}""");
+
+        Assert.Equal("PAZARAMA_TOKEN_REMOTE_ERROR", token.Error!.Code);
+        Assert.Equal(AdapterErrorClass.Remote5xx, token.Error.Class);
+    }
+
+    // The review's seven cases: a refusal word alone is no refused key; the key named and refused, or "yetkisiz", is.
+    [Theory]
+    [InlineData("Sistem hatalı çalışıyor", false)]
+    [InlineData("Invalid request format", false)]
+    [InlineData("Geçersiz işlem", false)]
+    [InlineData("GEÇERSİZ İSTEMCİ", true)]
+    [InlineData("YETKİSİZ", true)]
+    [InlineData("Invalid client credentials", true)]
+    [InlineData("Kullanıcı adı veya şifre hatalı", true)]
+    public void OnlyARefusalThatNamesTheKeyIsARefusedKey(string message, bool refused)
+    {
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, $$"""{"success":false,"userMessage":"{{message}}"}""");
+
+        Assert.Equal(refused, PazaramaHttpClient.SaysCredentialsRefused(message));
+        Assert.Equal(refused ? "PAZARAMA_CREDENTIALS_REJECTED" : "PAZARAMA_TOKEN_INVALID", token.Error!.Code);
+    }
 
     [Theory]
     [InlineData("<!DOCTYPE html><html><body>Bakım</body></html>")]

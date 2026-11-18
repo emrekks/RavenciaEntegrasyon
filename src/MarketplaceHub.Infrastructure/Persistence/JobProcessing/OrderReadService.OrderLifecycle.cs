@@ -31,14 +31,31 @@ internal sealed partial class OrderReadService
         packages.Where(package => package.TenantId == tenantId
             && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
 
-    // OpenOrderReadTally: a scan that read nothing because of passing failures fails with the first one. Its position stays
-    // where the run found it and the issues it recorded are kept; its watermark and last success do not move.
-    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor? cursor, string? startPosition, CancellationToken cancellationToken)
+    // OpenOrderReadTally: a scan whose failure is the connection's fails with its first error. Its position stays where
+    // the run found it (startOpaque, as stored) and the issues it recorded are kept; its watermark and last success do not
+    // move. A batch failing with server errors only is failed PoisonAfter - 1 times, counted in the cursor
+    // (OpenScanStrikes); the next time the scan goes on past it as a success, with the failed orders counted on the job.
+    // Going on, the cursor keeps the position the scan set (or startOpaque's position) without strikes.
+    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, CancellationToken cancellationToken)
     {
-        if (tally.NothingRead() is not { } failure) return;
-        if (cursor is not null) cursor.OpaqueCursor = startPosition;
-        await db.SaveChangesAsync(cancellationToken);
-        throw JobProcessingException.FromAdapter(failure);
+        var verdict = tally.Verdict();
+        if (verdict == OpenOrderScanVerdict.FailUntilPoisoned)
+        {
+            var (strikes, startPosition) = OpenScanStrikes.Split(startOpaque);
+            if (strikes + 1 < OpenScanStrikes.PoisonAfter)
+            {
+                cursor.OpaqueCursor = OpenScanStrikes.Join(strikes + 1, startPosition);
+                await db.SaveChangesAsync(cancellationToken);
+                throw JobProcessingException.FromAdapter(tally.FirstFailure!);
+            }
+        }
+        else if (verdict == OpenOrderScanVerdict.Fail)
+        {
+            cursor.OpaqueCursor = startOpaque;
+            await db.SaveChangesAsync(cancellationToken);
+            throw JobProcessingException.FromAdapter(tally.FirstFailure!);
+        }
+        cursor.OpaqueCursor = OpenScanStrikes.Position(cursor.OpaqueCursor);
     }
 
     internal async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -53,6 +70,7 @@ internal sealed partial class OrderReadService
             configuration.GetValue("MarketplaceSync:OrderLifecycle:TrendyolBatchSize", 1));
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         var startPosition = cursor.OpaqueCursor;
+        var tally = new OpenOrderReadTally();
         List<string> externalOrderIds;
         var hepsiburadaListedCancellations = new List<RemoteCancelledOrderLine>();
         if (isHepsiburada)
@@ -83,7 +101,7 @@ internal sealed partial class OrderReadService
 
             // Keyset paging: the set shrinks as packages are delivered, so an offset would skip the orders
             // that slid into the pages already read. The cursor keeps the last order id read instead.
-            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(cursor.OpaqueCursor);
+            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(OpenScanStrikes.Position(cursor.OpaqueCursor));
             var lifecyclePage = lastSeenOrderId is null
                 ? lifecycleOrders
                 : lifecycleOrders.Where(order => string.Compare(order.ExternalOrderId, lastSeenOrderId) > 0);
@@ -106,11 +124,11 @@ internal sealed partial class OrderReadService
                 ? HepsiburadaLifecycleCursor(externalOrderIds[^1])
                 : null;
             // Orders Hepsiburada lists as cancelled but the panel does not are read again now.
-            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, hepsiburadaListedCancellations, cancellationToken))
+            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, hepsiburadaListedCancellations, cancellationToken, tally))
                 if (!externalOrderIds.Contains(cancelled, StringComparer.Ordinal)) externalOrderIds.Add(cancelled);
         }
-        else if (platformCode == "PAZARAMA" && await SyncPazaramaOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cancellationToken)
-            || platformCode == "PTTAVM" && await SyncPttAvmOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cancellationToken))
+        else if (platformCode == "PAZARAMA" && await SyncPazaramaOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cursor, cancellationToken)
+            || platformCode == "PTTAVM" && await SyncPttAvmOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cursor, cancellationToken))
         {
             cursor.LastModifiedWatermark = timeProvider.GetUtcNow();
             cursor.Version++;
@@ -133,7 +151,7 @@ internal sealed partial class OrderReadService
                         && package.Status != ShipmentPackageStatus.Returned))
                 .Select(order => order.ExternalOrderId)
                 .Distinct();
-            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(cursor.OpaqueCursor);
+            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(OpenScanStrikes.Position(cursor.OpaqueCursor));
             var lifecyclePage = lastSeenOrderId is null
                 ? openOrderIds
                 : openOrderIds.Where(id => string.Compare(id, lastSeenOrderId) > 0);
@@ -146,7 +164,6 @@ internal sealed partial class OrderReadService
         }
 
         var recoveredOrders = new List<RemoteOrder>();
-        var tally = new OpenOrderReadTally();
         foreach (var externalOrderId in externalOrderIds)
         {
             TrackRequest();
@@ -247,7 +264,7 @@ internal sealed partial class OrderReadService
         var sliceStarted = Stopwatch.StartNew();
         var budget = TrendyolOpenScanSliceBudget();
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
-        var position = ReadTrendyolOpenScanCursor(cursor.OpaqueCursor);
+        var position = ReadTrendyolOpenScanCursor(OpenScanStrikes.Position(cursor.OpaqueCursor));
         var open = await (from package in db.ShipmentPackages.AsNoTracking()
                           join order in db.Orders.AsNoTracking()
                               on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
@@ -264,8 +281,8 @@ internal sealed partial class OrderReadService
         // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
         async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
         {
-            // A slice that heard nothing back keeps its position (OpenOrderReadTally).
-            await FailWhenNothingRead(tally, null, null, cancellationToken);
+            // A slice whose failure is the connection's keeps its stored position (OpenOrderReadTally, OpenScanStrikes).
+            await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
             if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
             cursor.OpaqueCursor = TrendyolOpenScanCursor(next);
             cursor.Version++;

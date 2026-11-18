@@ -63,7 +63,7 @@ public sealed class PazaramaAdapterTests
     [InlineData(HttpStatusCode.Unauthorized, "", "PAZARAMA_CREDENTIALS_REJECTED")]
     [InlineData(HttpStatusCode.BadRequest, """{"error":"invalid_scope"}""", "PAZARAMA_SCOPE_DENIED")]
     [InlineData(HttpStatusCode.TooManyRequests, "", "PAZARAMA_RATE_LIMITED")]
-    [InlineData(HttpStatusCode.BadGateway, "", "PAZARAMA_REMOTE_ERROR")]
+    [InlineData(HttpStatusCode.BadGateway, "", "PAZARAMA_TOKEN_REMOTE_ERROR")]
     [InlineData(HttpStatusCode.OK, """{"token_type":"Bearer"}""", "PAZARAMA_TOKEN_INVALID")]
     public void TokenFailuresAreClassified(HttpStatusCode status, string body, string code)
     {

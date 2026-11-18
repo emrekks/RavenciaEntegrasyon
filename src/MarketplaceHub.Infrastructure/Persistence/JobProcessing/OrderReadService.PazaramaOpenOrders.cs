@@ -12,7 +12,7 @@ internal sealed partial class OrderReadService
     // When more Pazarama orders are open than one run reads by order number, the order-date
     // windows that hold them are read whole instead: a few list requests bring every open order
     // with its current item statuses. Returns false when the per-order read is enough.
-    private async Task<bool> SyncPazaramaOpenOrdersByWindow(Guid tenantId, Guid connectionId, string correlationId, int batchSize, CancellationToken cancellationToken)
+    private async Task<bool> SyncPazaramaOpenOrdersByWindow(Guid tenantId, Guid connectionId, string correlationId, int batchSize, SyncCursor cursor, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var openOrderedAt = await (from package in db.ShipmentPackages.AsNoTracking()
@@ -87,7 +87,7 @@ internal sealed partial class OrderReadService
             tally.Answered();
             received.Add(result.Value!);
         }
-        await FailWhenNothingRead(tally, null, null, cancellationToken);
+        await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
         if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
         return true;
     }

@@ -14,7 +14,7 @@ internal sealed partial class OrderReadService
     // line the list names is already cancelled in the panel: a partly cancelled order stays open for good, and
     // reading it again each run filled the per-run reads so that real full cancellations were never reached.
     // The listed lines (with their cancelDate) are added to listedLines, so the orders read again carry the time.
-    private async Task<IReadOnlyList<string>> HepsiburadaCancelledOrdersToRead(Guid tenantId, Guid connectionId, string correlationId, List<RemoteCancelledOrderLine> listedLines, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> HepsiburadaCancelledOrdersToRead(Guid tenantId, Guid connectionId, string correlationId, List<RemoteCancelledOrderLine> listedLines, CancellationToken cancellationToken, OpenOrderReadTally? tally = null)
     {
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, HepsiburadaCancellationPolicy.CursorResource, cancellationToken);
@@ -40,6 +40,8 @@ internal sealed partial class OrderReadService
                 return null;
             }
             TrackReceived();
+            // A list Hepsiburada answered is an answer for the open-order scan (OpenOrderReadTally).
+            tally?.Answered();
             cancelledLines.AddRange(result.Value!.Items);
             return new PageStep(!result.Value.HasMore || string.IsNullOrWhiteSpace(result.Value.NextCursor) ? null : result.Value.NextCursor);
         }, cancellationToken);

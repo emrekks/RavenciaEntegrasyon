@@ -315,8 +315,10 @@ public sealed partial class PazaramaHttpClient(
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.Authentication, "PAZARAMA_SCOPE_DENIED", "Pazarama bu API hesabına entegrasyon (merchantgatewayapi.fullaccess) yetkisi vermiyor. Pazarama destekle API erişimini açtırın.", (int)status, null, null));
         if ((int)status == 429)
             return new(null, TimeSpan.Zero, new(AdapterErrorClass.RateLimit, "PAZARAMA_RATE_LIMITED", "Pazarama oturum servisi istek sınırına ulaştı; biraz sonra yeniden denenecek.", 429, TimeSpan.FromSeconds(60), null));
+        // The token service's own server error keeps a token code: OpenOrderReadTally counts a token that could not be had
+        // as the connection's failure, unlike one order's 5xx (seen 17 Nov: 504s between the empty answers).
         if ((int)status >= 500)
-            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_ERROR", "Pazarama oturum servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(30), null));
+            return new(null, TimeSpan.Zero, new(AdapterErrorClass.Remote5xx, "PAZARAMA_TOKEN_REMOTE_ERROR", "Pazarama oturum servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(30), null));
         // success:false whose words are neither busy nor a refusal ("Oturum bilgileriniz alınamadı", or no message) does
         // not say the key is wrong: unknown stays unknown. Not a credentials refusal (that would hold the connection and
         // show the key as rejected) but the token contract question (manual review that a later successful read of the
@@ -338,11 +340,24 @@ public sealed partial class PazaramaHttpClient(
         return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", $"Pazarama oturum servisi beklenen token yanıtını vermedi (yanıt alanları: {ShapeOf(body)}).", (int)status, null, null));
     }
 
-    // Words of a success:false token answer that say the key itself was refused.
-    private static readonly string[] CredentialRefusalWords = ["geçersiz", "hatalı", "yanlış", "yetkisiz", "invalid", "unauthorized", "reddedildi"];
+    // A success:false token answer is a refused key only with the key named and refused: a word of the credentials
+    // (client id/secret, istemci, api key, anahtar, kimlik bilgisi, kullanıcı adı, şifre) together with a refusal
+    // (geçersiz, hatalı, yanlış, invalid, wrong, incorrect, reddedildi, eşleşmedi, bulunamadı), or a word that is a refusal
+    // of access by itself (yetkisiz, unauthorized). "Sistem hatalı çalışıyor" or "Invalid request format" name no
+    // credential: they stay unknown (PAZARAMA_TOKEN_INVALID) instead of holding the connection as a refused key.
+    // Matched in Turkish (İ/ı: "GEÇERSİZ İSTEMCİ", "YETKİSİZ") and invariant lower case ("INVALID CLIENT").
+    private static readonly string[] CredentialWords = ["client", "istemci", "api key", "apikey", "api anahtar", "anahtar", "kimlik bilgi", "credential", "kullanıcı adı", "username", "şifre", "parola", "password", "secret"];
+    private static readonly string[] RefusalWords = ["geçersiz", "hatalı", "yanlış", "invalid", "wrong", "incorrect", "reddedil", "eşleşme", "bulunamadı"];
+    private static readonly string[] AccessRefusalWords = ["yetkisiz", "unauthorized"];
+    private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
-    internal static bool SaysCredentialsRefused(string? message) =>
-        message is not null && CredentialRefusalWords.Any(word => message.Contains(word, StringComparison.OrdinalIgnoreCase));
+    internal static bool SaysCredentialsRefused(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return false;
+        string[] forms = [message.ToLower(Turkish), message.ToLowerInvariant()];
+        bool Has(string[] words) => words.Any(word => forms.Any(form => form.Contains(word, StringComparison.Ordinal)));
+        return Has(AccessRefusalWords) || Has(CredentialWords) && Has(RefusalWords);
+    }
 
     private static void ReadToken(JsonElement element, ref string? accessToken, ref TimeSpan expiresIn)
     {

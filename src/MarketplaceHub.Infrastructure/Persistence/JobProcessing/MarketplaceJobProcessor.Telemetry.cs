@@ -136,16 +136,20 @@ public sealed partial class MarketplaceJobProcessor
             ? "Pazaryerinden yeni kayıt gelmedi"
             : $"{counts.Received} kayıt okundu · {counts.Inserted} yeni · {counts.Updated} güncellendi · {counts.Unchanged} değişmedi" + (counts.Skipped > 0 ? $" · {counts.Skipped} atlandı" : "") + (counts.Failed > 0 ? $" · {counts.Failed} hatalı" : "");
 
+    // An open-order status scan that succeeded in part (OpenOrderReadTally) names the orders it could not ask. They were
+    // not read, so they are not in Okunan nor in the records' Hatalı (which counts records read but not processed): the
+    // counters keep adding up and the label's "hatalı" stays the counters' number. Other reads keep their label.
+    internal static string OpenOrderScanNote(string jobType, int failedRequests) =>
+        failedRequests > 0 && OrderReadRunHandler.StatusTypes.Contains(jobType) ? $" · {failedRequests} sipariş okunamadı" : "";
+
     private async Task RecordReadProgressAsync(Guid tenantId, Guid? jobId, string jobType, CancellationToken cancellationToken)
     {
         if (jobId is not { } id || !RecordsReadProgress(jobType)) return;
         var received = run.ReceivedCount;
         var processed = run.InsertedCount + run.UpdatedCount;
         var skipped = run.SkippedCount;
-        // A read that succeeded in part (an open-order scan where some orders could not be asked, OpenOrderReadTally)
-        // says how many failed on the job instead of a plain success.
-        var failed = run.FailedCount > 0 ? run.FailedCount : (int?)null;
-        var label = ReadProgressLabel(received, run.InsertedCount, run.UpdatedCount) + (run.FailedCount > 0 ? $" · {run.FailedCount} hatalı" : "");
+        var failed = (int?)null;
+        var label = ReadProgressLabel(received, run.InsertedCount, run.UpdatedCount);
         // What the run recorded record by record wins: each record counts once, so Okunan = Yeni + Güncellenen +
         // Değişmeyen + Atlanan + Hatalı (an unchanged record counts with the skipped ones instead of vanishing).
         if (await FlushReadRecordsAsync(tenantId, id, cancellationToken, final: true) is { } counts)
@@ -155,13 +159,8 @@ public sealed partial class MarketplaceJobProcessor
             skipped = counts.Unchanged + counts.Skipped;
             failed = counts.Failed;
             label = ReadRecordLabel(counts);
-            // The records name no failure, but requests failed (an open order that could not be asked has no record).
-            if (counts.Failed == 0 && run.FailedCount > 0)
-            {
-                failed = run.FailedCount;
-                label += $" · {run.FailedCount} hatalı";
-            }
         }
+        label += OpenOrderScanNote(jobType, run.FailedCount);
         try
         {
             await db.IntegrationJobs
