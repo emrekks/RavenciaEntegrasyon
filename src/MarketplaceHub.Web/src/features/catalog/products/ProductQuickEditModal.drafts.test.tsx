@@ -38,6 +38,17 @@ async function render(mode: 'stock' | 'price' | 'both' = 'stock', connections: u
 }
 
 async function click(element: HTMLElement) { await act(async () => { element.click() }) }
+const valueTrigger = () => document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!
+const valueOptions = () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+// Opens the "Düzenlenen Değer" list and picks a row: 'Stok', or a marketplace group and the row under it ('Satış' / 'Liste' / none for a single row).
+async function pickValue(group: string, row?: string) {
+  await act(async () => { valueTrigger().click() })
+  const options = valueOptions()
+  const at = options.findIndex(option => option.textContent?.startsWith(group))
+  const target = row === undefined ? options[at + (options[at]?.getAttribute('aria-disabled') === 'true' || options[at]?.hasAttribute('disabled') ? 1 : 0)] : options.slice(at + 1).find(option => option.textContent?.startsWith(row))
+  await act(async () => { target!.click() })
+}
+
 async function type(input: HTMLInputElement, value: string) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
@@ -175,7 +186,7 @@ describe('ProductQuickEditModal drafts', () => {
   it('the Özel Fiyat switch is a draft too: saved only with Kaydet, and named in the confirmation', async () => {
     const withOffers: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice: false })] })) }
     await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [withOffers])
-    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]')).find(item => item.textContent?.startsWith('Trendyol'))!)
+    await pickValue('Trendyol', 'Satış')
     const toggle = document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!
     expect(toggle.checked).toBe(true)
     await click(toggle)
@@ -191,16 +202,14 @@ describe('ProductQuickEditModal drafts', () => {
     expect(bar()).toBeNull()
   })
 
-  it('keeps a draft when the edited value (tab) changes, marking the tab that holds it', async () => {
+  it('keeps a draft when the edited value changes, marking the dropdown that holds it', async () => {
     await render('both')
     await type(stockBox('SKU-1'), '9')
-    const tabs = () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[role="tab"]'))
-    expect(tabs()[0].textContent).toContain('Stok')
-    expect(tabs()[0].querySelector('i')).not.toBeNull()
-    await click(tabs().find(item => item.textContent?.startsWith('Panel Satış'))!)
+    expect(valueTrigger().querySelector('.rr-mx-dot')).not.toBeNull()
+    await pickValue('Panel', 'Satış')
     expect(document.body.querySelector('input[aria-label$="stok"]')).toBeNull()
     expect(bar()?.textContent).toContain('1 Değişiklik')
-    await click(tabs()[0])
+    await pickValue('Stok')
     expect(stockBox('SKU-1').value).toBe('9')
     expect(sent).toEqual([])
   })
