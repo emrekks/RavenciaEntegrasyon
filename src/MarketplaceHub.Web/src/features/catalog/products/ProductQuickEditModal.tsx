@@ -1,13 +1,13 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type InputHTMLAttributes, type ReactElement } from 'react'
 import { variantOptionParts } from '../variant-option-label'
 import { colourFirstOptions } from '../variant-option-matching'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
-import { TitleHint, UiIcon } from '../../../shared/components'
+import { TitleHint } from '../../../shared/components'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { RrAnchor, RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import { type NotificationContext } from '../../../shared/notifications'
-import { toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantGroupSelectionState, variantShortcutLabel, variantShortcutSelection } from '../variant-bulk-edit'
+import { updateVariantGroupSelection, variantGroupSelectionState, variantShortcutLabel, variantShortcutSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
@@ -70,10 +70,11 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // the person presses Kaydet in the bar and confirms. Tümüne Uygula fills drafts too.
   const stockDrafts = useDraftEdits<string>()
   const priceDrafts = useDraftEdits<PriceDraft>(samePriceDraft)
+  const followDrafts = useDraftEdits<boolean>()
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const savedStocks = useRef(new Map<string, SavedStock>())
   const [confirmClose, setConfirmClose] = useState(false)
-  const draftCount = stockDrafts.count + priceDrafts.count
+  const draftCount = stockDrafts.count + priceDrafts.count + followDrafts.count
   useUnsavedChangesGuard(draftCount > 0 && !draft)
   useEffect(() => { if (!draftCount) setConfirmClose(false) }, [draftCount])
   const clearRowError = (key: string) => setRowErrors(current => { if (!(key in current)) return current; const next = { ...current }; delete next[key]; return next })
@@ -103,8 +104,10 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
   // The groups in one grid row open and close together (two columns in a stock window, one on a phone or for prices).
   const phoneWidth = useMediaQuery('(max-width: 760px)')
-  const groupColumns = mode === 'stock' && !phoneWidth ? 2 : 1
-  const [hintedGroupRow, setHintedGroupRow] = useState<number | null>(null)
+  const groupColumns = phoneWidth ? 1 : 2
+  // Each colour group opens on its own; an open group's table takes the full width right under its row.
+  const [closingGroups, setClosingGroups] = useState<string[]>([])
+  const [revealPanel, setRevealPanel] = useState<string | null>(null)
   const groupPanelId = useId()
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
@@ -124,24 +127,16 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const offersRead = variants.length > 0 && variants.every(item => item.variant.platformStatuses)
   const [derivedCustom, setDerivedCustom] = useState<Record<string, boolean> | null>(() => offersRead ? initialCustomChannels(variants, priceColumns) : null)
   if (derivedCustom == null && offersRead) setDerivedCustom(initialCustomChannels(variants, priceColumns))
+  // The saved choices of this window's life (a saved switch keeps showing its value until the lists are read again).
   const [customOverrides, setCustomOverrides] = useState<Record<string, boolean>>({})
-  const customChannels: Record<string, boolean> = Object.fromEntries(channelColumns.map(column => [column.id, customOverrides[column.id] ?? derivedCustom?.[column.id] ?? true]))
-  // A switch is saved at once, as a price cell is: the choice goes to every offer of this window's variants on that
-  // marketplace (no price changes, nothing goes to the marketplace). A refused save puts the switch back.
-  async function setCustomChannel(connectionId: string, custom: boolean) {
-    const previous = customChannels[connectionId]
-    setCustomOverrides(current => ({ ...current, [connectionId]: custom }))
-    const variantIds = panelFollowChoiceVariantIds(variants.map(item => item.variant), connectionId, !custom)
-    if (!variantIds.length) return
-    try {
-      await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice: !custom }) })
-      await onChanged().catch(() => undefined)
-    } catch (error) {
-      setCustomOverrides(current => ({ ...current, [connectionId]: previous }))
-      const label = channelColumns.find(column => column.id === connectionId)?.label ?? 'Pazaryeri'
-      const message = `${label} Özel Fiyat seçimi kaydedilemedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`
-      setNotice(`Başarısız: ${message}`); onResult?.('Özel Fiyat Kaydedilemedi', message, 'error')
-    }
+  const customChannels: Record<string, boolean> = Object.fromEntries(channelColumns.map(column => [column.id, followDrafts.get(column.id)?.value ?? customOverrides[column.id] ?? derivedCustom?.[column.id] ?? true]))
+  // A switch only makes a draft, as a price cell does (owner, 18 Nov 2026): Kaydet writes the choice to every offer of this
+  // window's variants on that marketplace (no price changes). Turning a channel to "follows the panel price" drops the
+  // price drafts of its cells, which turn read-only.
+  function setCustomChannel(connectionId: string, custom: boolean) {
+    setNotice(''); clearRowError(`f:${connectionId}`)
+    followDrafts.set(connectionId, custom, customOverrides[connectionId] ?? derivedCustom?.[connectionId] ?? true)
+    if (!custom) priceDrafts.remove([...priceDrafts.entries.keys()].filter(key => key.endsWith(`|${connectionId}`)))
   }
   const followerColumns = panelFollowerColumns(priceColumns, customChannels)
   // A marketplace that takes no list price shows only Satış Fiyatı; its offer's list price follows the sale price.
@@ -255,8 +250,22 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     const failures: Array<{ sku: string; message: string }> = []
     const errors: Record<string, string> = {}
     let anyStale = false
-    let stockSaved = 0; let priceSaved = 0
+    let stockSaved = 0; let priceSaved = 0; let followSaved = 0
     try {
+      const followDone: string[] = []
+      for (const [connectionId, entry] of followDrafts.entries) {
+        const label = channelColumns.find(column => column.id === connectionId)?.label ?? 'Pazaryeri'
+        const variantIds = panelFollowChoiceVariantIds(variants.map(item => item.variant), connectionId, !entry.value)
+        try {
+          if (variantIds.length) await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice: !entry.value }) })
+          setCustomOverrides(current => ({ ...current, [connectionId]: entry.value }))
+          followDone.push(connectionId); followSaved += 1
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'beklenmeyen hata.'
+          errors[`f:${connectionId}`] = message; failures.push({ sku: label, message: `Özel Fiyat seçimi kaydedilemedi: ${message}` })
+        }
+      }
+      followDrafts.remove(followDone)
       const updates: VariantStockSet[] = []
       for (const [id, entry] of stockDrafts.entries) {
         const item = byId.get(id); const parsed = parseStockInput(entry.value)
@@ -276,6 +285,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         const [variantId, columnId] = key.split('|')
         const item = byId.get(variantId); const column = priceColumns.find(candidate => candidate.id === columnId)
         if (!item || !column) continue
+        if (column.id !== PANEL_PRICE_CHOICE && !customChannels[column.id]) { done.push(key); continue }
         const result = await writePriceCell({ column, followers: column.id === PANEL_PRICE_CHOICE ? followerColumns : [], variant: item.variant, connectionCount: connections.length, list: entry.value.list, sale: entry.value.sale, offerCreateKey: offerCreateKey(key) })
         if (result.ok) { done.push(key); priceSaved += 1 } else { if (result.stale) anyStale = true; errors[`p:${key}`] = result.message; failures.push({ sku: item.variant.sku, message: `${column.label} fiyatı: ${result.message}` }) }
       }
@@ -285,7 +295,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       setSaving(false)
     }
     setRowErrors(errors)
-    const saved = [stockSaved ? `${stockSaved} varyantın stoğu` : '', priceSaved ? `${priceSaved} fiyat hücresi` : ''].filter(Boolean).join(' ve ')
+    const saved = [stockSaved ? `${stockSaved} varyantın stoğu` : '', priceSaved ? `${priceSaved} fiyat hücresi` : '', followSaved ? `${followSaved} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')
     if (!failures.length) { setNotice(saved ? `${saved} kaydedildi.` : 'Kaydedilecek değişiklik kalmadı.'); onResult?.('Hızlı Düzenleme Kaydedildi', saved ? `${saved} kaydedildi.` : 'Değişiklik yoktu.', 'success'); return }
     const summary = `${saved ? `${saved} kaydedildi, ` : ''}${failures.length} değişiklik kaydedilemedi. ${failures.slice(0, 3).map(failure => `${failure.sku}: ${failure.message}`).join('; ')}`
     setNotice(`Başarısız: ${summary} Kaydedilemeyenler taslak olarak kaldı.${anyStale ? ' Değişen değerler yenilendi; kontrol edip yeniden kaydedin.' : ''}`)
@@ -300,36 +310,47 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const cellError = (key: string) => draftErrors[key] || rowErrors[key] || ''
   const firstDraftError = Object.values(draftErrors)[0] ?? ''
   const requestClose = () => { if (draftCount > 0 && !draft) setConfirmClose(true); else onClose() }
-  const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : ''].filter(Boolean).join(' ve ')} değişecek.</>
+  const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.</>
   const stepTwoTitle = mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'
-  const toggleColorGroup = (color: string) => setOpenColorGroups(current => toggleVariantGroupRow(current, colorOptions, color, groupColumns))
+  const reduceMotion = () => typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const toggleColorGroup = (color: string, panelId: string) => {
+    if (!openColorGroups.includes(color)) { setOpenColorGroups(current => [...current, color]); setRevealPanel(panelId); return }
+    if (reduceMotion()) { setOpenColorGroups(current => current.filter(item => item !== color)); return }
+    setClosingGroups(current => [...current, color])
+    window.setTimeout(() => { setOpenColorGroups(current => current.filter(item => item !== color)); setClosingGroups(current => current.filter(item => item !== color)) }, 150)
+  }
+  const allGroupsOpen = colorOptions.length > 0 && colorOptions.every(color => openColorGroups.includes(color))
+  const toggleAllGroups = () => { setClosingGroups([]); setOpenColorGroups(allGroupsOpen ? [] : [...colorOptions]) }
+  // The group just opened scrolls into view (nearest: no jump when it already is).
+  useEffect(() => {
+    if (!revealPanel) return
+    document.getElementById(revealPanel)?.scrollIntoView?.({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' })
+    setRevealPanel(null)
+  }, [revealPanel])
   return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} onClose={onClose} onBeforeClose={() => { if (draftCount > 0 && !draft) { setConfirmClose(true); return false } return true }} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : <>Seçim yok: <b>{targetIds.length} varyantın</b> tümüne uygulanır</>}</span><button type="button" className="rr-btn" onClick={requestClose} disabled={saving}>{draftCount > 0 && !draft ? 'Kapat' : 'Vazgeç'}</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !targetIds.length} title={draft ? undefined : 'Değerleri tablodaki hücrelere taslak olarak yazar; kaydetmez.'}>{saving ? 'Uygulanıyor…' : draft ? 'Varyantlara Uygula' : activeSelection.length ? 'Seçilenlere Uygula' : 'Tümüne Uygula'}</button></>}>
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><div className="rr-step-tools">
+        <button type="button" className="rr-btn rr-link" onClick={toggleAllGroups} aria-pressed={allGroupsOpen}>{allGroupsOpen ? 'Tümünü Kapat' : 'Tümünü Aç'}</button>
         <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Renk: {variantShortcutLabel(selectedColors, colorOptions)}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" aria-label="Renk" style={{ minWidth: 240 }}>{colorOptions.map(color => <label key={color} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span className="rr-grow">{colorLabels[color] || formatCatalogOptionLabel(color)}</span><small>{groups[color].length} varyant</small></label>)}</div>}</RrAnchor>
         <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Beden: {variantShortcutLabel(selectedSizes, sizeOptions)}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" aria-label="Beden" style={{ minWidth: 220 }}>{sizeOptions.map(size => <label key={size} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span className="rr-grow">{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>}</RrAnchor>
       </div></header>
-        {/* A stock window's groups sit in two columns (their rows are short); a price window keeps one column. */}
-        {groupColumns > 1 && <span id={`${groupPanelId}-pair`} className="sr-only">Aynı satırdaki renk grubuyla birlikte açılır ve kapanır.</span>}
-        <div className={`rr-vgroups${mode === 'stock' ? ' rr-two' : ''}`}>{colorOptions.map((color, index) => {
+                {/* Two columns of compact group rows (one on a phone); an opened group's table spans both, right under its row. */}
+        <div className="rr-vgroups rr-two">{colorOptions.map((color, index) => {
           const items = groups[color]
           const isOpen = openColorGroups.includes(color)
           const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          // A row of two is marked as one: both cards light up on hover, and open with a shared accent.
-          const row = Math.floor(index / groupColumns)
-          const rowMates = variantGroupRowMates(colorOptions, color, groupColumns)
-          const paired = rowMates.length > 1
-          const rowPanels = rowMates.filter(mate => openColorGroups.includes(mate)).map(mate => `${groupPanelId}-${colorOptions.indexOf(mate)}`).join(' ')
-          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}${paired ? ' rr-paired' : ''}${paired && hintedGroupRow === row ? ' rr-row-hint' : ''}`} key={color} onPointerEnter={paired ? () => setHintedGroupRow(row) : undefined} onPointerLeave={paired ? () => setHintedGroupRow(current => current === row ? null : current) : undefined}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => {
+          const panelId = `${groupPanelId}-${index}`
+          const header = <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => {
             // Read before the state update: React clears currentTarget once the handler returns, and the updater can
             // run later (on render), where event.currentTarget.checked threw "Cannot read properties of null".
             const checked = event.currentTarget.checked
             const groupIds = items.map(item => item.variant.id)
             clearShortcuts()
             setSelectionDraft(current => updateVariantGroupSelection(current, groupIds, checked))
-          }} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} aria-controls={rowPanels || undefined} aria-describedby={paired ? `${groupPanelId}-pair` : undefined} onClick={() => toggleColorGroup(color)}><span className="rr-vg-name"><b title={groupLabel}>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small></span>{paired && <span className="rr-vg-link" aria-hidden="true" title="Aynı satırdaki grupla birlikte açılır"><UiIcon name="link" /></span>}<RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qtable-wrap" id={`${groupPanelId}-${index}`} role="region" aria-label={`${groupLabel} varyantları`}>
+          }} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} aria-controls={isOpen ? panelId : undefined} onClick={() => toggleColorGroup(color, panelId)}><span className="rr-vg-name"><b title={groupLabel}>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small></span><RrIcon name="chev" /></button></div></div>
+          const panel = isOpen ? <div className={`rr-vg-panel${closingGroups.includes(color) ? ' rr-closing' : ''}`} key={`${color}-panel`}><div className="rr-qtable-wrap" id={panelId} role="region" aria-label={`${groupLabel} varyantları`}>
             <table className={`rr-qtable${showPriceColumns ? ' rr-qt-prices' : ''}${showStockColumn ? ' rr-qt-has-stock' : ''}`}>
               <caption className="sr-only">{groupLabel} varyantları</caption>
               <colgroup><col className="rr-qt-w-sel" /><col className="rr-qt-w-var" />{showStockColumn && <col className="rr-qt-w-stock" />}{draft && <col className="rr-qt-w-price" />}{showPriceColumns && priceColumns.flatMap(column => column.takesListPrice ? [<col key={`${column.id}-l`} className="rr-qt-w-price" />, <col key={`${column.id}-s`} className="rr-qt-w-price" />] : [<col key={column.id} className="rr-qt-w-price" />])}</colgroup>
@@ -356,8 +377,9 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
                   : <QuickEditFollowCell key={column.id} column={column} variant={item.variant} product={item.product} onCustom={phoneWidth ? value => void setCustomChannel(column.id, value) : undefined} />)}</>}
               </tr> })}</tbody>
             </table>
-          </div>}</div>
-        })}</div>
+          </div></div> : null
+          return { color, header, panel }
+        }).reduce<Array<Array<{ color: string; header: ReactElement; panel: ReactElement | null }>>>((rows, entry, index) => { if (index % groupColumns === 0) rows.push([]); rows[rows.length - 1].push(entry); return rows }, []).map(row => <Fragment key={row[0].color}>{row.map(entry => entry.header)}{row.map(entry => entry.panel)}</Fragment>)}</div>
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{stepTwoTitle}<TitleHint label={stepTwoTitle}>{draft ? 'Tablodaki hücreleri tek tek değiştirebilir, buradaki değerleri işaretli varyantlara (hiçbiri işaretli değilse tümüne) verebilirsiniz. Uygula yalnız ürün düzenleyicideki varyant tablosunu değiştirir; kalıcı olması için sayfadaki Kaydet’e basın.' : 'Değer işaretli varyantlara uygulanır; hiçbir varyant işaretli değilse tümüne uygulanır.'}</TitleHint></div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : `Seçim yok: tüm ${targetIds.length} varyanta uygulanacak`}</small></header>
         {activeSelection.length ? <div className="rr-chips">{selectionChips(variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => item.variant)).map(chip => <span key={chip} className="rr-chip">{chip}</span>)}</div> : null}
@@ -366,7 +388,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         {mode !== 'stock' && <div className="rr-dgrid rr-qe-row" style={{ '--qe-cols': Number(showListPrice) + 1 + Number(Boolean(draft)) } as CSSProperties}>{showListPrice && <label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label>}<label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label>{draft && <label className="rr-fld"><small>Maliyet</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={costAmount} onChange={event => setCostAmount(event.target.value)} placeholder="Değiştirme" /></label>}</div>}
         {mode !== 'price' && <div className="rr-dgrid rr-qe-row" style={{ '--qe-cols': 2 } as CSSProperties}><label className="rr-fld"><small>Stok İşlemi</small><PanelSelect ariaLabel="Stok İşlemi" value={stockAction} onChange={setStockAction} options={[{ value: 'SET', label: 'Bu Sayıya Eşitle' }, { value: 'ADD', label: 'Bu Kadar Ekle (+)' }, { value: 'SUBTRACT', label: 'Bu Kadar Çıkar (−)' }]} /></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="text" inputMode="numeric" autoComplete="off" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></div>}
       </section>
-      {!draft && <DraftSaveBar count={draftCount} busy={saving} invalid={firstDraftError} summary={saveSummary} notice="Otomatik dış yazması açık pazaryerlerine gönderilir." leaving={confirmClose} onSave={() => void saveDrafts()} onDiscard={() => { stockDrafts.revertAll(); priceDrafts.revertAll(); setRowErrors({}); setNotice('') }} onStay={() => setConfirmClose(false)} onLeave={onClose} />}
+      {!draft && <DraftSaveBar count={draftCount} busy={saving} invalid={firstDraftError} summary={saveSummary} notice="Otomatik dış yazması açık pazaryerlerine gönderilir." leaving={confirmClose} onSave={() => void saveDrafts()} onDiscard={() => { stockDrafts.revertAll(); priceDrafts.revertAll(); followDrafts.revertAll(); setRowErrors({}); setNotice('') }} onStay={() => setConfirmClose(false)} onLeave={onClose} />}
       {notice && <div className={`rr-callout${notice.startsWith('Başarısız:') ? ' rr-danger' : ''}`} role={notice.startsWith('Başarısız:') ? 'alert' : 'status'}><RrIcon name={notice.startsWith('Başarısız:') ? 'alert' : 'info'} /><span>{notice}</span></div>}
     </form>
   </RrModal>

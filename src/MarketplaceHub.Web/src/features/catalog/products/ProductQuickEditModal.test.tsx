@@ -181,10 +181,24 @@ describe('ProductQuickEditModal on a family of colour cards', () => {
     }
     expect(note()).toContain('3 varyant')
     await click(groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
-    // A stock window opens the groups of one row together (Bordo and Füme here): each shows its own variant only.
+    // Each group opens on its own (Bordo only; its row mate Füme stays closed) and shows its own variant only.
     const rowsOf = (color: string) => Array.from(document.body.querySelectorAll(`[aria-label="${color} varyantları"] tbody tr`)).map(row => row.querySelector('.rr-qname small')?.textContent)
     expect(rowsOf('Bordo')).toEqual(['SKU-v0'])
+    expect(rowsOf('Füme')).toEqual([])
+    // The opened group's table sits in a panel that spans the whole grid row; the chain mark and pairing are gone.
+    const panel = document.body.querySelector('[aria-label="Bordo varyantları"]')!.closest('.rr-vg-panel')!
+    expect(panel.parentElement?.classList.contains('rr-vgroups')).toBe(true)
+    expect(document.body.querySelector('.rr-vg-link, .rr-paired')).toBeNull()
+    expect(groupBox('Bordo').closest('.rr-vgroup')!.classList.contains('rr-open')).toBe(true)
+    expect(groupBox('Füme').closest('.rr-vgroup')!.classList.contains('rr-open')).toBe(false)
+    const bordoButton = groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!
+    expect(bordoButton.getAttribute('aria-expanded')).toBe('true')
+    expect(document.getElementById(bordoButton.getAttribute('aria-controls')!)).not.toBeNull()
+    // Tümünü Aç opens every group; Tümünü Kapat closes them.
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-step-tools button')).find(button => button.textContent === 'Tümünü Aç')!)
     expect(rowsOf('Füme')).toEqual(['SKU-v1'])
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-step-tools button')).find(button => button.textContent === 'Tümünü Kapat')!)
+    expect(rowsOf('Füme')).toEqual([])
     expect(errors).toEqual([])
   })
 

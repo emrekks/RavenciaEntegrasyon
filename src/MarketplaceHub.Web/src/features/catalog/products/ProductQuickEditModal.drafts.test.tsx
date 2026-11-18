@@ -12,7 +12,7 @@ vi.mock('../../../shared/api', async importOriginal => {
 import { hubApi } from '../../../shared/api'
 import { ProductQuickEditModal } from './ProductQuickEditModal'
 import type { Product } from '../shared'
-import { testProduct, testVariant } from '../../../test/product'
+import { testProduct, testVariant, testVariantPlatformStatus } from '../../../test/product'
 
 // Typing in the quick edit table makes drafts only (owner, 18 Nov 2026): no request goes out until Kaydet is pressed and
 // confirmed; Tümüne Uygula fills drafts too; Vazgeç and Esc put the saved values back; closing asks first.
@@ -29,11 +29,11 @@ let root: Root
 let closed = 0
 const sent: Array<{ path: string; method?: string; body: { onHand?: number; expectedOnHand?: number } }> = []
 
-async function render(mode: 'stock' | 'price' = 'stock') {
+async function render(mode: 'stock' | 'price' = 'stock', connections: unknown[] = [], products: Product[] = [product]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   root = createRoot(container)
   await act(async () => {
-    root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode={mode} products={[product]} connections={[]} onChanged={async () => undefined} onClose={() => { closed += 1 }} /></MemoryRouter></QueryClientProvider>)
+    root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode={mode} products={products} connections={connections as never} onChanged={async () => undefined} onClose={() => { closed += 1 }} /></MemoryRouter></QueryClientProvider>)
   })
   for (const toggle of Array.from(document.body.querySelectorAll<HTMLButtonElement>('button.rr-vg-t'))) await click(toggle)
 }
@@ -171,6 +171,35 @@ describe('ProductQuickEditModal drafts', () => {
     expect(bar()?.textContent).toContain('1 fiyat hücresi değişecek')
     await click(barButton('Onayla ve Kaydet'))
     expect(sent.some(call => call.path.endsWith('/default-prices') && call.method === 'PATCH')).toBe(true)
+  })
+
+  it('the Özel Fiyat switch is a draft too: saved only with Kaydet, and named in the confirmation', async () => {
+    const withOffers: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice: false })] })) }
+    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [withOffers])
+    const toggle = document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!
+    expect(toggle.checked).toBe(true)
+    await click(toggle)
+    expect(toggle.checked).toBe(false)
+    expect(sent).toEqual([])
+    expect(bar()?.textContent).toContain('1 Değişiklik')
+    await click(barButton('Kaydet'))
+    expect(sent).toEqual([])
+    expect(bar()?.textContent).toContain('1 kanalda Özel Fiyat seçimi değişecek')
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.map(call => [call.path, call.method])).toEqual([['/channel-offers/panel-price-follow', 'PUT']])
+    expect(toggle.checked).toBe(false)
+    expect(bar()).toBeNull()
+  })
+
+  it('a group header counts its ticked variants and each group opens on its own', async () => {
+    await render()
+    expect(document.body.querySelector('.rr-vg-name small')?.textContent).toBe('2 varyant')
+    const box = document.body.querySelector<HTMLInputElement>('.rr-vg-h input[type=checkbox]')!
+    await click(box)
+    expect(document.body.querySelector('.rr-vg-name small')?.textContent).toBe('2/2 seçili')
+    expect(document.body.querySelectorAll('.rr-vg-panel')).toHaveLength(1)
+    await click(document.body.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
+    expect(document.body.querySelectorAll('.rr-vg-panel')).toHaveLength(0)
   })
 
   it('closing without a draft closes at once', async () => {

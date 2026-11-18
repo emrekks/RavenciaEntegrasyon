@@ -83,18 +83,3 @@ export function applyVariantBulkModes<T extends VariantBulkEditRow>(rows: T[], r
   })
   return { rows: next, clamped }
 }
-
-// The groups sharing a grid row with `key` (row-major, `columns` per row); one column puts each group on its own row.
-export function variantGroupRowMates(keys: readonly string[], key: string, columns: number) {
-  const index = keys.indexOf(key)
-  if (index < 0) return []
-  const start = index - (index % Math.max(1, columns))
-  return keys.slice(start, start + Math.max(1, columns))
-}
-
-// Opening or closing a group does the same to its row mates, so the cards in one row stay the same height.
-export function toggleVariantGroupRow(openKeys: readonly string[], keys: readonly string[], key: string, columns: number) {
-  const row = variantGroupRowMates(keys, key, columns)
-  const rest = openKeys.filter(item => !row.includes(item))
-  return openKeys.includes(key) ? rest : [...rest, ...row]
-}
