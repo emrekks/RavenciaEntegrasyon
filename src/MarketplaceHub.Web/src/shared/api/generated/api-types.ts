@@ -1977,6 +1977,7 @@ export type OrderExchangeResendView = {
   cargoProviderName?: null | string
   cargoTrackingNumber?: null | string
   shipped: boolean
+  cargoTrackingLink?: null | string
 }
 
 export type OrderFacetsView = {

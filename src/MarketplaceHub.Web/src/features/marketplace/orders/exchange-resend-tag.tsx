@@ -1,7 +1,7 @@
 import './order-row-marks.css'
 import '../returns/return-request-tag.css'
 
-export type OrderExchangeResend = { packageId?: string | null; cargoProviderName?: string | null; cargoTrackingNumber?: string | null; shipped: boolean }
+export type OrderExchangeResend = { packageId?: string | null; cargoProviderName?: string | null; cargoTrackingNumber?: string | null; cargoTrackingLink?: string | null; shipped: boolean }
 
 /** The tag's hover: the exchange package as Trendyol named it, or that only the owner's mark lists it. */
 export function exchangeResendTitle(resend: OrderExchangeResend) {

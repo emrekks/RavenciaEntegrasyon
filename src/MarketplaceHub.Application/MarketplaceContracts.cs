@@ -1389,7 +1389,7 @@ public sealed record OrderListView(
     // marked it made. Null when it is no such exchange.
     OrderExchangeResendView? ExchangeResend = null);
 // PackageId and the carrier as Trendyol named them (null: not named); Shipped once the package's tracking link is known.
-public sealed record OrderExchangeResendView(string? PackageId, string? CargoProviderName, string? CargoTrackingNumber, bool Shipped);
+public sealed record OrderExchangeResendView(string? PackageId, string? CargoProviderName, string? CargoTrackingNumber, bool Shipped, string? CargoTrackingLink = null);
 // The buyer kind of an order, decided by the same rule the invoice uses (TrendyolEFaturamCanonicalPayload.ResolveBuyerType,
 // report item 12): Individual, Corporate, or CorporateTaxIdMissing (a corporate buyer without a tax number: the invoice
 // stops and asks the owner). Reason is a short Turkish explanation of what decided it.
