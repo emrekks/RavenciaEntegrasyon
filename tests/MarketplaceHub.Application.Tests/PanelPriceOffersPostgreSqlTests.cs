@@ -238,6 +238,32 @@ public sealed class PanelPriceOffersPostgreSqlTests(PostgreSqlTenantIsolationFix
         Assert.Equal(1, await read.ChannelOffers.CountAsync(x => x.TenantId == other.Tenant.Id));
     }
 
+    // Owner rule of 18 Nov 2026: the one-off fill of panel prices from the marketplace each variant was first read from is
+    // previewed read only: variants without a saved panel price, the oldest offer's price, 0 left empty, nothing written.
+    [PostgreSqlFact]
+    public async Task ThePanelPriceFillPreview_ReadsTheOldestOffer_AndWritesNothing()
+    {
+        var seed = await SeedAsync("TRENDYOL");
+        var later = await AddConnectionAsync(seed.Tenant, "N11", writesOpen: false);
+        await using (var db = fixture.CreateContext())
+        {
+            // NOPANEL: first read from Trendyol (its oldest offer, 120), N11 later (999). ZERO: a 0 TL first offer.
+            AddOffer(db, seed.Tenant, seed.Connection, seed.NoPanelPrice, 130m, 120m, null);
+            AddOffer(db, seed.Tenant, seed.Connection, seed.ZeroPanelPrice, 0m, 0m, null);
+            await db.SaveChangesAsync();
+            AddOffer(db, seed.Tenant, later, seed.NoPanelPrice, 999m, 999m, null);
+            await db.SaveChangesAsync();
+        }
+        await using var read = fixture.CreateContext();
+        var preview = await Inventory(read).PanelPriceFillPreviewAsync(seed.Tenant.Id, CancellationToken.None);
+        // Without a saved panel price: NOPANEL, ZERO (0 is no price). Every other seeded variant has one.
+        Assert.Equal((2, 1, 1, 0), (preview.WithoutPanelPrice, preview.Fillable, preview.ZeroPrice, preview.WithoutOffer));
+        var row = Assert.Single(preview.Sample);
+        Assert.Equal((seed.NoPanelPrice.Id, "TRENDYOL", 130m, 120m), (row.VariantId, row.PlatformCode, row.ListPrice, row.SalePrice));
+        Assert.Equal(1, preview.FillableBySource["TRENDYOL"]);
+        Assert.Null((await read.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == seed.NoPanelPrice.Id)).DefaultSalePrice);
+    }
+
     private sealed record Seed(Tenant Tenant, PlatformConnection Connection, ProductVariant Priced, ProductVariant NoPanelPrice, ProductVariant ZeroPanelPrice, ProductVariant ListBelowSale, ProductVariant NoVat, ProductVariant Unlinked, ProductVariant Archived, ProductVariant WithOffer);
 
     private async Task<Seed> SeedAsync(string platformCode)

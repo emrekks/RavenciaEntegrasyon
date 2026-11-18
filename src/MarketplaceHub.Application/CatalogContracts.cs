@@ -405,6 +405,11 @@ public sealed record SetChannelOfferPanelFollowCommand(Guid ConnectionId, IReadO
 // CustomPrice: Özel Fiyat on. Differences: up to 50 of FollowingAtOtherPrice with both prices.
 public sealed record PanelPriceOfferDifference(Guid VariantId, string Sku, decimal SalePrice, decimal ListPrice, decimal PanelSalePrice, decimal PanelListPrice, bool? FollowsPanelPrice);
 public sealed record PanelPriceOfferPreview(Guid ConnectionId, string PlatformCode, bool OpensOffers, bool AutomaticWritesOpen, int LinkedWithoutOffer, int Openable, int MissingPanelPrice, int MissingVat, int Following, int FollowingAtOtherPrice, int FollowingWithoutPanelPrice, int CustomPrice, IReadOnlyList<PanelPriceOfferDifference> Differences);
+// Owner rule of 18 Nov 2026 ("panel fiyatları ilk çekilen pazaryerinden"): the read-only preview of the one-off fill of the
+// variants without a saved panel price, from the offer of the marketplace each was first read from (its oldest offer).
+// Fillable: that offer has a sale price above zero; ZeroPrice: it has none (left empty); WithoutOffer: no offer at all.
+public sealed record PanelPriceFillRow(Guid VariantId, string Sku, string PlatformCode, decimal ListPrice, decimal SalePrice);
+public sealed record PanelPriceFillPreview(int WithoutPanelPrice, int Fillable, int ZeroPrice, int WithoutOffer, IReadOnlyDictionary<string, int> FillableBySource, IReadOnlyList<PanelPriceFillRow> Sample);
 public sealed record PanelPriceOffersOpened(Guid ConnectionId, int Opened, int MissingPanelPrice, int MissingVat);
 public sealed record ChannelOfferPanelFollowView(int UpdatedCount);
 
@@ -421,6 +426,7 @@ public interface IInventoryService
     Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, bool price = true, bool stock = true);
     Task<ServiceResult<PanelPriceOfferPreview>> PanelPriceOfferPreviewAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<PanelPriceOffersOpened>> OpenPanelPriceOffersAsync(Guid tenantId, Guid userId, Guid connectionId, CancellationToken cancellationToken);
+    Task<PanelPriceFillPreview> PanelPriceFillPreviewAsync(Guid tenantId, CancellationToken cancellationToken);
 }
 
 public interface IImportJobProcessor

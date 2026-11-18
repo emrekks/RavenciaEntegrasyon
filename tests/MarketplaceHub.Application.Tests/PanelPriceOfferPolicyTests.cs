@@ -45,4 +45,28 @@ public sealed class PanelPriceOfferPolicyTests
     [InlineData(null, false, false)]
     public void WhoFollowsAPanelPriceChange(bool? followsPanelPrice, bool panelPriceWasSaved, bool follows) =>
         Assert.Equal(follows, PanelPriceOfferPolicy.FollowsOnPanelChange(followsPanelPrice, panelPriceWasSaved));
+
+    [Fact]
+    public void AnImportedVariantsPanelPrice_IsTheMarketplacePrice_AndNoneWithoutOne()
+    {
+        Assert.Equal((150m, 120m), PanelPriceOfferPolicy.ImportedPanelPrices(120m, 150m));
+        // A list price missing or below the sale price is the sale price.
+        Assert.Equal((120m, 120m), PanelPriceOfferPolicy.ImportedPanelPrices(120m, null));
+        Assert.Equal((120m, 120m), PanelPriceOfferPolicy.ImportedPanelPrices(120m, 100m));
+        Assert.Equal((99.99m, 99.99m), PanelPriceOfferPolicy.ImportedPanelPrices(99.994m, null));
+        // No sale price above zero: nothing is written.
+        Assert.Null(PanelPriceOfferPolicy.ImportedPanelPrices(0m, 150m));
+        Assert.Null(PanelPriceOfferPolicy.ImportedPanelPrices(null, null));
+    }
+
+    [Fact]
+    public void ThePriceInForce_IsOwnWithOzelFiyat_PanelWhenSaved_ElseTheStoredPrice()
+    {
+        Assert.Equal(new PanelPriceOfferPolicy.PriceInForce(330m, 300m, false), PanelPriceOfferPolicy.InForce("TRENDYOL", false, 330m, 300m, 250m, null, 280m, null));
+        Assert.Equal(new PanelPriceOfferPolicy.PriceInForce(280m, 250m, true), PanelPriceOfferPolicy.InForce("TRENDYOL", null, 330m, 300m, 250m, null, 280m, null));
+        Assert.Equal(new PanelPriceOfferPolicy.PriceInForce(330m, 300m, false), PanelPriceOfferPolicy.InForce("TRENDYOL", null, 330m, 300m, null, null, null, null));
+        // A saved panel price that cannot be sent, or an offer price of 0 without one: no price in force.
+        Assert.Null(PanelPriceOfferPolicy.InForce("TRENDYOL", true, 330m, 300m, 250m, null, 200m, null));
+        Assert.Null(PanelPriceOfferPolicy.InForce("TRENDYOL", null, 0m, 0m, null, null, null, null));
+    }
 }

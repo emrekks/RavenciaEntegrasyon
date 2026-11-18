@@ -41,6 +41,17 @@ public static class PanelPriceOfferPolicy
         return new(offerListPrice, offerSalePrice, false);
     }
 
+    // Owner rule of 18 Nov 2026: the panel price a variant first read from a marketplace takes (that marketplace's sale and
+    // list price; a list price below the sale price or missing is the sale price). Null when the marketplace gave no
+    // sale price above zero: nothing is written.
+    public static (decimal ListPrice, decimal SalePrice)? ImportedPanelPrices(decimal? remoteSalePrice, decimal? remoteListPrice)
+    {
+        var sale = remoteSalePrice is > 0 ? remoteSalePrice.Value : remoteSalePrice is null && remoteListPrice is > 0 ? remoteListPrice.Value : 0m;
+        if (sale <= 0) return null;
+        var list = remoteListPrice is { } listPrice && listPrice >= sale ? listPrice : sale;
+        return (decimal.Round(list, 2, MidpointRounding.AwayFromZero), decimal.Round(sale, 2, MidpointRounding.AwayFromZero));
+    }
+
     public const string PriceNotSentNote = "Fiyat gönderilmedi: geçerli panel fiyatı yok (boş, 0 ya da liste fiyatı satış fiyatından küçük); yalnız stok gitti.";
 
     // Whether an offer follows the panel price when the panel price changes. "Özel Fiyat" on (false) keeps its own price.

@@ -300,6 +300,9 @@ public static partial class CatalogEndpoints
         api.MapPatch("/channel-offers/{id:guid}", async (Guid id, UpdateChannelOfferCommand command, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateOfferAsync(tenant.TenantId, tenant.UserId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http)).Produces<ChannelOfferView>().IfMatch().Idempotent(WriteReasons.VersionGuarded);
         // The "Özel Fiyat" choice of the variants' offers on one connection, stored without a price change.
+        // Owner rule of 18 Nov 2026: what "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" would write (read only).
+        api.MapGet("/channel-offers/panel-price-fill-preview", async (HttpContext http, IInventoryService service) =>
+            Tenant(http) is { } tenant ? Results.Ok(await service.PanelPriceFillPreviewAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<PanelPriceFillPreview>();
         api.MapPut("/channel-offers/panel-price-follow", async (SetChannelOfferPanelFollowCommand command, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http)).Produces<ChannelOfferPanelFollowView>().Idempotent(WriteReasons.Replaces);
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>

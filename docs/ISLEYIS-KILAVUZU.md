@@ -465,6 +465,12 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   değerler: aynı kod için onaylanan → yoksa günlükteki son kabul edilen → fiyat için yoksa teklifin kayıtlı fiyatı;
   önceki stok bilinmiyorsa boş. Risk: pazaryerinde kampanya için elle değiştirilmiş fiyat, o bedenin ilk stok hareketinde
   panelin fiyatıyla ezilir (`PanelPriceOfferPolicy.InForce`, `PriceInventoryComposer`).
+- **Panel fiyatı ilk pazaryerinden** (sahip kararı, 18 Kas 2026): bir varyant ilk kez bir pazaryerinden içe aktarılırken
+  panel liste ve satış fiyatı o pazaryerinin fiyatıyla kaydedilir (fiyat boş ya da 0 ise yazılmaz); sonraki aktarımlar
+  mevcut panel fiyatını değiştirmez (`PanelPriceOfferPolicy.ImportedPanelPrices`). Kayıtlı panel fiyatı olmayan mevcut
+  bedenler kendiliğinden doldurulmaz; "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" için salt okunur önizleme var
+  (`GET /channel-offers/panel-price-fill-preview`: her bedenin en eski teklifinin fiyatı; 0 TL olanlar boş kalır).
+  Onaylı uygulaması henüz yok; uygulandığında pazaryerine hiçbir şey göndermeyecek.
 - **Panel fiyatını izleyen teklif**: panel fiyatı sahip tarafından değişince (ürün düzenleyici, Hızlı/Toplu fiyat, Ürün
   Excel'i) Özel Fiyat'ı kapalı tekliflerin fiyatı panel fiyatına çekilir ve yazması açık bağlantıya gider. Özel Fiyat açık
   (`false`) teklif değişmez. Seçimi hiç kaydedilmemiş (`NULL`) teklif, bedenin **kayıtlı** panel fiyatı varsa izler;

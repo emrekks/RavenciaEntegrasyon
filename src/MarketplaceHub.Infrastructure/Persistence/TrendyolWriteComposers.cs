@@ -409,7 +409,8 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 // by hand), and the panel is the source. Only the stock keeps the "what differs from the confirmed value"
                 // rule; a price change without a stock change still goes only when it differs.
                 var fields = PriceInventorySendPolicy.TrendyolFields(row.Offer, barcode, quantity, sendSale, sendList, priceHash, inventory.ProjectionVersion);
-                var price = priceKnown && (fields.Price || fields.Quantity);
+                // A stock held back ("Platformlarda Güncelle" with the price only) carries no price along with it.
+                var price = priceKnown && (fields.Price || fields.Quantity && !holdStock);
                 if (!fields.Quantity && !price) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
                 quantityOmitted = !fields.Quantity;
                 priceOmitted = !price;

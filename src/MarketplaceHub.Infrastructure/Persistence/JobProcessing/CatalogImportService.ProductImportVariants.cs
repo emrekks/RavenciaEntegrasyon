@@ -107,6 +107,10 @@ internal sealed partial class CatalogImportService
         if (variant is null)
         {
             variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = sortOrder, Sku = sku, SkuNormalized = skuNormalized, Barcode = barcode, BarcodeNormalized = barcodeNormalized, ModelCode = Short(remote.ModelCode, 160), OptionSignature = optionSignature, Status = remote.Archived ? ProductStatus.Archived : ProductStatus.Active, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            // Owner rule of 18 Nov 2026: a variant first read from a marketplace takes that marketplace's price as its panel
+            // price (list and sale); a later import never changes it. No price (empty or 0) writes none.
+            if (PanelPriceOfferPolicy.ImportedPanelPrices(remote.SalePrice, remote.ListPrice) is { } panelPrice)
+                (variant.DefaultListPrice, variant.DefaultSalePrice) = (panelPrice.ListPrice, panelPrice.SalePrice);
             db.ProductVariants.Add(variant);
             run.InsertedCount++;
         }

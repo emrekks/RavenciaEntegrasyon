@@ -104,6 +104,51 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.All(known, row => Assert.Contains(links, link => link.VariantId == row.VariantId));
     }
 
+    // Owner rule of 18 Nov 2026: a variant first read from a marketplace takes that marketplace's price as its panel price
+    // (sale and list, as its offer stores them); a later import never changes a panel price already there.
+    [PostgreSqlTheory]
+    [MemberData(nameof(Pages))]
+    public async Task ANewVariantTakesTheMarketplacePriceAsItsPanelPrice_AndALaterImportKeepsIt(string marketplace)
+    {
+        var (platform, products) = MappedPage(marketplace);
+        var now = fixture.Now;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ppanel-{marketplace.ToLowerInvariant()}-{Guid.NewGuid():N}"[..30], DisplayName = "panel", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = marketplace, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            await seed.SaveChangesAsync();
+        }
+        async Task ImportAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferences(), new CatalogPage(products), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, """{"full":true,"includeArchived":true,"includeDrafts":true}""", $"panel-price-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Kind is JobCompletionKind.Succeeded or JobCompletionKind.ManualReview, $"{result.Kind} {result.ErrorCode} {result.ErrorSummary}");
+        }
+        await ImportAsync();
+
+        await using (var check = fixture.CreateContext())
+        {
+            var rows = await (from variant in check.ProductVariants.AsNoTracking()
+                              join offer in check.ChannelOffers.AsNoTracking() on variant.Id equals offer.VariantId
+                              where variant.TenantId == tenant.Id
+                              select new { variant.Id, variant.DefaultSalePrice, variant.DefaultListPrice, offer.SalePrice, offer.ListPrice }).ToListAsync();
+            Assert.NotEmpty(rows);
+            Assert.Contains(rows, row => row.SalePrice > 0);
+            foreach (var row in rows)
+                if (row.SalePrice > 0) Assert.Equal((row.ListPrice, row.SalePrice), (row.DefaultListPrice!.Value, row.DefaultSalePrice!.Value));
+                else Assert.Null(row.DefaultSalePrice);
+            // The owner changes a panel price; the next import leaves it.
+            await check.ProductVariants.Where(x => x.Id == rows[0].Id).ExecuteUpdateAsync(set => set.SetProperty(x => x.DefaultSalePrice, 1.5m).SetProperty(x => x.DefaultListPrice, 2.5m));
+        }
+        await ImportAsync();
+        await using var after = fixture.CreateContext();
+        var kept = await after.ProductVariants.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DefaultSalePrice == 1.5m);
+        Assert.Equal(2.5m, kept.DefaultListPrice);
+    }
+
     private static (string Platform, IReadOnlyList<RemoteCatalogProduct> Products) MappedPage(string marketplace)
     {
         switch (marketplace)

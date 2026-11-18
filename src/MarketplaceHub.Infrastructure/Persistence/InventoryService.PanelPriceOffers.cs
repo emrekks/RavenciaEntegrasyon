@@ -69,4 +69,36 @@ public sealed partial class InventoryService
             }
         }
     }
+
+    // Owner rule of 18 Nov 2026: the variants without a saved panel price and the price each would take from the marketplace
+    // it was first read from (its oldest offer: offer ids are time ordered). Read only; the fill itself is a later step
+    // the owner confirms, and it never sends anything to a marketplace.
+    public async Task<PanelPriceFillPreview> PanelPriceFillPreviewAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var variants = await (from variant in db.ProductVariants.AsNoTracking()
+                              join card in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { card.TenantId, ProductId = card.Id }
+                              where variant.TenantId == tenantId && !(variant.DefaultSalePrice > 0) && !(card.DefaultSalePrice > 0)
+                              select new { variant.Id, variant.Sku }).ToListAsync(cancellationToken);
+        var ids = variants.Select(x => x.Id).ToArray();
+        var offers = new List<(Guid OfferId, Guid VariantId, string PlatformCode, decimal ListPrice, decimal SalePrice)>();
+        foreach (var chunk in ids.Chunk(2_000))
+            offers.AddRange((await (from offer in db.ChannelOffers.AsNoTracking()
+                                    join connection in db.PlatformConnections.AsNoTracking() on new { offer.TenantId, Id = offer.ConnectionId } equals new { connection.TenantId, connection.Id }
+                                    where offer.TenantId == tenantId && chunk.Contains(offer.VariantId)
+                                    select new { offer.Id, offer.VariantId, connection.PlatformCode, offer.ListPrice, offer.SalePrice }).ToListAsync(cancellationToken))
+                .Select(x => (x.Id, x.VariantId, x.PlatformCode, x.ListPrice, x.SalePrice)));
+        var first = offers.GroupBy(x => x.VariantId).ToDictionary(group => group.Key, group => group.OrderBy(x => x.OfferId).First());
+        int fillable = 0, zero = 0, withoutOffer = 0;
+        var bySource = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var sample = new List<PanelPriceFillRow>();
+        foreach (var variant in variants.OrderBy(x => x.Sku, StringComparer.Ordinal))
+        {
+            if (!first.TryGetValue(variant.Id, out var offer)) { withoutOffer++; continue; }
+            if (PanelPriceOfferPolicy.ImportedPanelPrices(offer.SalePrice, offer.ListPrice) is not { } price) { zero++; continue; }
+            fillable++;
+            bySource[offer.PlatformCode] = bySource.GetValueOrDefault(offer.PlatformCode) + 1;
+            if (sample.Count < MaxPanelPriceDifferences) sample.Add(new(variant.Id, variant.Sku, offer.PlatformCode, price.ListPrice, price.SalePrice));
+        }
+        return new(variants.Count, fillable, zero, withoutOffer, bySource, sample);
+    }
 }

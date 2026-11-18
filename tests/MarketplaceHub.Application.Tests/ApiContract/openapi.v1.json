@@ -2619,6 +2619,38 @@
         }
       }
     },
+    "/api/v1/channel-offers/panel-price-fill-preview": {
+      "get": {
+        "tags": [
+          "channel-offers"
+        ],
+        "operationId": "getChannelOffersPanelPriceFillPreview",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PanelPriceFillPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
     "/api/v1/channel-offers/panel-price-follow": {
       "put": {
         "tags": [
@@ -33675,6 +33707,78 @@
               "string"
             ],
             "format": "date-time"
+          }
+        }
+      },
+      "PanelPriceFillPreview": {
+        "required": [
+          "withoutPanelPrice",
+          "fillable",
+          "zeroPrice",
+          "withoutOffer",
+          "fillableBySource",
+          "sample"
+        ],
+        "type": "object",
+        "properties": {
+          "withoutPanelPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fillable": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "zeroPrice": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "withoutOffer": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "fillableBySource": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "sample": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PanelPriceFillRow"
+            }
+          }
+        }
+      },
+      "PanelPriceFillRow": {
+        "required": [
+          "variantId",
+          "sku",
+          "platformCode",
+          "listPrice",
+          "salePrice"
+        ],
+        "type": "object",
+        "properties": {
+          "variantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "platformCode": {
+            "type": "string"
+          },
+          "listPrice": {
+            "type": "number",
+            "format": "double"
+          },
+          "salePrice": {
+            "type": "number",
+            "format": "double"
           }
         }
       },
