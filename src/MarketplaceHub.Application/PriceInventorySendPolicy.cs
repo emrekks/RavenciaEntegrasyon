@@ -70,9 +70,16 @@ public static class PriceInventorySendPolicy
         var sameCode = offer.LastSentCode is not null && string.Equals(offer.LastSentCode, line.Barcode, StringComparison.Ordinal);
         if (!sameCode)
         {
+            // A price known without a code (read from the marketplace, or held before a panel price pulled the stored one)
+            // is what the marketplace holds for this listing: a line that carried no accepted price keeps it, so a refused
+            // price is tried again (Pazarama compares with it; review of 18 Nov 2026).
+            var keepKnownPrice = offer.LastSentCode is null && line.PriceOmitted;
             offer.LastSentQuantity = null;
-            offer.LastSentSalePrice = null;
-            offer.LastSentListPrice = null;
+            if (!keepKnownPrice)
+            {
+                offer.LastSentSalePrice = null;
+                offer.LastSentListPrice = null;
+            }
         }
         offer.LastSentCode = line.Barcode;
         if (!line.QuantityOmitted) offer.LastSentQuantity = line.Quantity;

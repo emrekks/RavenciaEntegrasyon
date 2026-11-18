@@ -101,7 +101,7 @@ public sealed class PriceStockJobGoldenPostgreSqlTests(PostgreSqlTenantIsolation
     {
         { "TRENDYOL", "accepted" }, { "TRENDYOL", "uncertain-then-accepted" }, { "TRENDYOL", "repeat-request" }, { "TRENDYOL", "expired" },
         { "TRENDYOL", "rejected-unknown-code" }, { "TRENDYOL", "line-unconfirmed" }, { "TRENDYOL", "writes-off" }, { "TRENDYOL", "automatic-policies-off" },
-        { "N11", "accepted" }, { "PAZARAMA", "accepted" }, { "PTTAVM", "repeat-request" }, { "SHOPIFY", "not-sent-and-price-only" }, { "HEPSIBURADA", "accepted" }
+        { "N11", "accepted" }, { "PAZARAMA", "accepted" }, { "PTTAVM", "repeat-request" }, { "SHOPIFY", "not-sent-and-price-only" }, { "SHOPIFY", "price-refused-stock-written" }, { "HEPSIBURADA", "accepted" }
     };
 
     [PostgreSqlTheory]
@@ -144,10 +144,12 @@ public sealed class PriceStockJobGoldenPostgreSqlTests(PostgreSqlTenantIsolation
                 "rejected-unknown-code" => [Line("869200000001", true), Line("869200000002", false, "TRENDYOL_BARCODE_NOT_FOUND", status: "Ürün bulunamadı")],
                 "line-unconfirmed" => [Line("869200000001", true)],
                 "not-sent-and-price-only" => [Line("869200000001", false, "PRICE_INVENTORY_NOT_SENT", retryable: true, status: PriceStockService.NotSentLineStatus), Line("869200000002", false, PriceStockService.PriceOnlyAppliedCode, retryable: true)],
+                // Review of 18 Nov 2026: Shopify refused the price but wrote the stock; the stock mark moves, the price goes again.
+                "price-refused-stock-written" => [Line("869200000001", true), Line("869200000002", false, PriceStockService.StockOnlyAppliedCode, status: "Price must be greater than 0")],
                 "accepted" when platform == "HEPSIBURADA" => [],
                 _ => [Line("869200000001", true), Line("869200000002", true)]
             };
-            return polls == 1 && scenario != "not-sent-and-price-only"
+            return polls == 1 && scenario is not ("not-sent-and-price-only" or "price-refused-stock-written")
                 ? AdapterResult<RemoteOperationStatus>.Success(new("batch-golden-1", "IN_PROGRESS", []))
                 : AdapterResult<RemoteOperationStatus>.Success(new("batch-golden-1", "COMPLETED", lines));
         };

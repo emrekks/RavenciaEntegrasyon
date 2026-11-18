@@ -41,7 +41,10 @@ PUT    /api/v1/catalog/categories/{id:guid}/attribute-requirements | gate=Operat
 GET    /api/v1/catalog/model-codes/holder | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=200 | cross=200
 POST   /api/v1/catalog/variant-codes/taken | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=200 | ownerIfMatch=200
 POST   /api/v1/channel-offers | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+POST   /api/v1/channel-offers/panel-price-fill | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+GET    /api/v1/channel-offers/panel-price-fill-preview | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/channel-offers/panel-price-follow | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=422 VALIDATION_FAILED | ownerIfMatch=422 VALIDATION_FAILED
+GET    /api/v1/channel-offers/price-import-preview | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=200 | cross=200
 GET    /api/v1/channel-offers/{id:guid} | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PATCH  /api/v1/channel-offers/{id:guid} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=428 PRECONDITION_REQUIRED | ownerIfMatch=500 INTERNAL_ERROR
 GET    /api/v1/connections | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
@@ -86,6 +89,8 @@ DELETE /api/v1/connections/{id:guid}/instant-notifications | gate=Elevated | sam
 GET    /api/v1/connections/{id:guid}/instant-notifications | gate=Working | sameOrigin=yes | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=403 CROSS_SITE_REQUEST_REFUSED
 POST   /api/v1/connections/{id:guid}/instant-notifications | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/connections/{id:guid}/n11-shipment-templates | gate=Working | sameOrigin=yes | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=403 CROSS_SITE_REQUEST_REFUSED
+GET    /api/v1/connections/{id:guid}/panel-price-offers | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+POST   /api/v1/connections/{id:guid}/panel-price-offers | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/connections/{id:guid}/sync-policies | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/connections/{id:guid}/sync-policies/{resourceType} | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=422 VALIDATION_FAILED | ownerIfMatch=422 VALIDATION_FAILED
 POST   /api/v1/connections/{id:guid}/sync-policies/{resourceType}/runs | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED

@@ -150,7 +150,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 // marketplace's notifications (a setting on the store's side) are for administrators.
                 // A write switch (PUT /connections/{id}/sync-policies/PRICE_WRITE, STOCK_WRITE, ...) is a permission like
                 // the master external-write switch, and as elevated (YENİ-03); so is the pair switched together (external-write-group).
-                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "instant-notifications" or "external-write-group"
+                // Opening the missing offers at the panel price (panel-price-offers) writes the owner's price data: elevated too.
+                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "instant-notifications" or "external-write-group" or "panel-price-offers"
                         || segments.Length == 6 && segments[4].Equals("sync-policies", StringComparison.OrdinalIgnoreCase) && MarketplaceExternalWritePolicies.IsPermissionPolicy(last)
                     ? ElevatedRoles
                     : OperationalRoles;
@@ -167,6 +168,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // The Hızlı Güncelle choice (fields and stores) is kept by whoever sends product updates.
             case "settings" when segments.Length == 4 && last == "platform-update":
                 return OperationalRoles;
+            // "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" writes the panel price of the whole catalogue at once.
+            case "channel-offers" when last == "panel-price-fill":
+                return ElevatedRoles;
             case "catalog" or "products" or "variants" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
                 return OperationalRoles;
             default:

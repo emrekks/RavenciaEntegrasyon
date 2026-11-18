@@ -444,6 +444,7 @@ internal sealed partial class CatalogImportService
                     existingVariantExternalIds?.Add(externalVariantId);
                 }
             }
+            await FlushPanelRepricesAsync(tenantId, connectionId, now, cancellationToken);
             // The new sizes a plain pull reported on this card are in the panel now.
             if (!observeOnly && !isNewProduct && importedVariants.Any(variant => db.Entry(variant).State == EntityState.Added))
                 await ResolveIssue(tenantId, $"product-new-sizes:{connectionId:D}:{Short(externalProductId, 200)}", cancellationToken);
@@ -840,10 +841,11 @@ internal sealed partial class CatalogImportService
             if (variant is null) continue;
 
             matched.Add(variant.Id);
-            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: updatePrices, observeOnly: observeOnly, updateStock: updateStock, forceStockUpdate: updateStock);
+            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: updatePrices, observeOnly: observeOnly, updateStock: updateStock, forceStockUpdate: updateStock, updatePanelPrice: updatePrices);
             if (syncMedia && remote.ImageUrls is not null)
                 await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {OptionSignature(remote.Options)}", cancellationToken);
         }
+        await FlushPanelRepricesAsync(tenantId, connectionId, now, cancellationToken);
         return matched;
     }
 

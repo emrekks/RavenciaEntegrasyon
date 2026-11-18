@@ -494,6 +494,9 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
         var projections = new List<StockProjectionChange>();
         var stockSetItemIds = new List<Guid>();
         var repricedOffers = new List<ChannelOffer>();
+        // The variants whose panel price the file changes, with whether they had one saved before (the offers that follow
+        // the panel price take the new one: owner rule of 18 Nov 2026, PanelPriceOffers.RepriceFollowersAsync).
+        var panelSavedBefore = new Dictionary<Guid, bool>();
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var reservedByItem = await ReservedAsync(tenantId, items.Select(item => item.Id).ToArray(), cancellationToken);
         foreach (var change in changes)
@@ -526,6 +529,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 }
                 if (change.PanelPrice is { } panel && (variant.DefaultSalePrice != panel.SalePrice || variant.DefaultListPrice != panel.ListPrice))
                 {
+                    panelSavedBefore[variant.Id] = variant.DefaultSalePrice is > 0 || productById[variant.ProductId].DefaultSalePrice is > 0;
                     if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (variant.DefaultListPrice, variant.DefaultSalePrice), (panel.ListPrice, panel.SalePrice),
                             ProductChangeSources.FileImport, userId, correlationId, now) is { } priceChange)
                         db.ProductChangeEntries.Add(priceChange);
@@ -568,6 +572,19 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 pricesUpdated++;
                 Written(variant);
             }
+        }
+        // A store price the file names for an offer wins over the panel price it follows; every other offer that follows
+        // the panel price (Özel Fiyat off) takes the file's panel price and goes like a store price edit (E).
+        var followersRepriced = 0;
+        if (panelSavedBefore.Count > 0)
+        {
+            var panelChanges = panelSavedBefore.ToDictionary(pair => pair.Key, pair => byId[pair.Key] is var changed && productById[changed.ProductId] is var card
+                ? new PanelPriceOffers.PanelPriceChange(changed.DefaultSalePrice, card.DefaultSalePrice, changed.DefaultListPrice, card.DefaultListPrice, pair.Value)
+                : null!);
+            var followers = await PanelPriceOffers.RepriceFollowersAsync(db, tenantId, panelChanges, offerById.Keys.ToHashSet(), ImportReason, $"USER:{userId:D}", now, cancellationToken);
+            repricedOffers.AddRange(followers);
+            followersRepriced = followers.Count;
+            foreach (var offer in followers) Written(byId[offer.VariantId]);
         }
         foreach (var change in productChanges)
         {
@@ -731,7 +748,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             Action = "PRODUCT_TRANSFER_IMPORTED",
             TargetType = "ProductVariant",
             TargetId = null,
-            Reason = $"Ürün dosyası içe aktarıldı: {written.Count} varyant ({products.Count} ürün); maliyet {costsUpdated} güncellendi, {costsCleared} silindi; desi {desiUpdated} güncellendi, {desiCleared} silindi; stok {stocksUpdated}; mağaza fiyatı {pricesUpdated}; ürün adı {titlesUpdated}; açıklama {descriptionsUpdated}; barkod {barcodesUpdated}; model kodu {modelCodesUpdated} güncellendi, {modelCodesCleared} silindi; panel fiyatı {panelPricesUpdated}; KDV {vatUpdated}; marka {brandsUpdated} ürün kartı ({brandsCreated} yeni marka).",
+            Reason = $"Ürün dosyası içe aktarıldı: {written.Count} varyant ({products.Count} ürün); maliyet {costsUpdated} güncellendi, {costsCleared} silindi; desi {desiUpdated} güncellendi, {desiCleared} silindi; stok {stocksUpdated}; mağaza fiyatı {pricesUpdated}; panel fiyatını izleyen mağaza fiyatı {followersRepriced}; ürün adı {titlesUpdated}; açıklama {descriptionsUpdated}; barkod {barcodesUpdated}; model kodu {modelCodesUpdated} güncellendi, {modelCodesCleared} silindi; panel fiyatı {panelPricesUpdated}; KDV {vatUpdated}; marka {brandsUpdated} ürün kartı ({brandsCreated} yeni marka).",
             CorrelationId = correlationId,
             CreatedAt = now
         });

@@ -1,3 +1,4 @@
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 using Row = MarketplaceHub.Infrastructure.Persistence.PttAvmProductPublicationComposer.FamilyVariantRow;
@@ -85,15 +86,40 @@ public sealed class PttAvmFamilyPublicationTests
     }
 
     [Fact]
-    public void VariantsMustShareThePriceAndDifferInBarcodeAndOptions()
+    public void VariantsMustDifferInBarcodeAndOptions()
     {
         var rows = TwoColoursThreeSizes();
-        rows[2] = Variant("mzdb003lacl", "Lacivert", "L", price: 549.90m);
-        Assert.Equal("PTTAVM_VARIANT_PRICE_DIFFERS", PttAvmProductPublicationComposer.PlanFamily(rows, []).Error!.Code);
         rows[2] = Variant("MZDB003LACM", "Lacivert", "L");
         Assert.Equal("BARCODE_DUPLICATE", PttAvmProductPublicationComposer.PlanFamily(rows, []).Error!.Code);
         rows[2] = Variant("mzdb003lacl", "lacivert", "m");
         Assert.Equal("PTTAVM_VARIANT_OPTIONS_DUPLICATE", PttAvmProductPublicationComposer.PlanFamily(rows, []).Error!.Code);
+    }
+
+    // Owner decision of 18 Nov 2026: "normal beden 100 TL ise büyük beden 150 ise farkı 50 olarak sistem hesaplasın". PTT AVM
+    // keeps one product price and a VAT-inclusive difference per variant: the family's lowest price is the product price
+    // and each variant carries its own price less it (never below 0).
+    [Fact]
+    public void VariantsPricedApartGoAtTheLowestPriceWithEachDifference()
+    {
+        var rows = TwoColoursThreeSizes();
+        rows[0] = Variant("mzdb003lacs", "Lacivert", "S", price: 100m);
+        rows[1] = Variant("mzdb003lacm", "Lacivert", "M", price: 100m);
+        rows[2] = Variant("mzdb003lacl", "Lacivert", "L", price: 150m);
+        rows[3] = Variant("mzdb003yesls", "Yeşil", "S", price: 100m, card: "Yeşil Kazak");
+        rows[4] = Variant("mzdb003yeslm", "Yeşil", "M", price: 100m, card: "Yeşil Kazak");
+        rows[5] = Variant("mzdb003yesll", "Yeşil", "L", price: 150m, card: "Yeşil Kazak");
+
+        var (plan, error) = PttAvmProductPublicationComposer.PlanFamily(rows, []);
+
+        Assert.Null(error);
+        Assert.Equal(100m, plan!.Price);
+        Assert.Equal([0m, 0m, 50m, 0m, 0m, 50m], plan.Variants.Select(x => x.PriceDifference));
+        var xml = PttAvmProductPayloadRules.ItemsXml(new PttAvmProductPayloadRules.ProductDraft("MZDB003", "Kazak", "Açıklama", "1", "MZDB003", plan.Price, 20m, 6, 2m, ["https://example.com/a.jpg"], plan.Variants));
+        Assert.Contains("<ept:PriceWithVat>100.00</ept:PriceWithVat>", xml);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(xml, "<ept:Price>50.00</ept:Price>").Count);
+        // A difference survives the job payload it travels in; 0 is left out of it, as before.
+        var draft = new PttAvmProductPayloadRules.ProductDraft("MZDB003", "Kazak", "Açıklama", "1", "MZDB003", plan.Price, 20m, 6, 2m, ["https://example.com/a.jpg"], plan.Variants);
+        Assert.Equal([0m, 0m, 50m, 0m, 0m, 50m], PttAvmProductPayloadRules.Read(PttAvmProductPayloadRules.Payload(draft), out _)!.Variants!.Select(x => x.PriceDifference));
     }
 
     [Fact]

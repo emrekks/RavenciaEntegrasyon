@@ -693,7 +693,10 @@ public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string
     decimal? SafetyStock = null,
     // Left out because the user did not pick it ("Platformlarda Güncelle" with only the price or only the stock): the
     // value may still differ from the marketplace's, so its mark stays and a later send still carries it.
-    bool PriceHeld = false, bool StockHeld = false);
+    bool PriceHeld = false, bool StockHeld = false,
+    // Why a stock line carries no price (owner rule of 18 Nov 2026: the price goes with every stock send): the price in
+    // force is empty, 0 or a list price below the sale price, so the stock went alone. Recorded in the send log.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? PriceNote = null);
 // Automatic: the job was built by the system on its own (a stock or price change, the reconcile scan); its values are
 // rebuilt the same way before the send (PriceInventoryComposer automatic mode). Trigger: why it was queued
 // (PriceStockSendTriggers), recorded in the send log; null on jobs queued before it was carried.
@@ -1322,8 +1325,8 @@ public interface IMarketplaceConnectionService
     Task<ServiceResult<ConnectionView>> SetActiveAsync(Guid tenantId, Guid id, long expectedVersion, bool active, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CapabilityView>>> CapabilitiesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
-    Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true);
-    Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> UpdateExternalWriteGroupAsync(Guid tenantId, Guid id, UpdateExternalWriteGroupCommand command, CancellationToken cancellationToken, bool elevated = true);
+    Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true, Guid? actorUserId = null);
+    Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> UpdateExternalWriteGroupAsync(Guid tenantId, Guid id, UpdateExternalWriteGroupCommand command, CancellationToken cancellationToken, bool elevated = true, Guid? actorUserId = null);
     Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<WebhookSubscriptionView>> RevokeWebhookAsync(Guid tenantId, Guid id, Guid subscriptionId, CancellationToken cancellationToken);
 }

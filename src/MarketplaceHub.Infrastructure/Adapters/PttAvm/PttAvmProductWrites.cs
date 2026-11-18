@@ -222,7 +222,8 @@ public static class PttAvmProductPayloadRules
     // colour and size (PTT AVM's attributes "Renk" and "Beden") and their stock; the price is the product's.
     public sealed record ProductDraft(string Barcode, string Name, string LongDescription, string CategoryId, string ProductCode, decimal PriceWithVat, decimal VatRate, int Quantity, decimal Desi, IReadOnlyList<string> Images, IReadOnlyList<VariantDraft>? Variants = null, string? Brand = null);
 
-    public sealed record VariantDraft(string Barcode, string Color, string Size, int Quantity);
+    // PriceDifference: VAT-inclusive, added to the product price (VariantV3.Price); 0 is left out of the request.
+    public sealed record VariantDraft(string Barcode, string Color, string Size, int Quantity, decimal PriceDifference = 0m);
 
     // A variant PTT AVM holds: its barcode, or else only its name ("Lacivert / L") with GetProductsWithVariants, and
     // its stock as PTT AVM reports it. Price is its price field (a difference to the product price unless
@@ -270,12 +271,12 @@ public static class PttAvmProductPayloadRules
         };
         if (!string.IsNullOrWhiteSpace(draft.Brand)) payload["brand"] = draft.Brand.Trim();
         if (draft.Variants is { Count: > 0 } variants)
-            payload["variants"] = new JsonArray([.. variants.Select(variant => (JsonNode)new JsonObject
+            payload["variants"] = new JsonArray([.. variants.Select(variant =>
             {
-                ["barcode"] = variant.Barcode,
-                ["color"] = variant.Color,
-                ["size"] = variant.Size,
-                ["quantity"] = variant.Quantity
+                var entry = new JsonObject { ["barcode"] = variant.Barcode, ["color"] = variant.Color, ["size"] = variant.Size, ["quantity"] = variant.Quantity };
+                // The price difference (owner decision of 18 Nov 2026), left out at 0 so a one-price family reads as before.
+                if (variant.PriceDifference != 0) entry["priceDifference"] = PttAvmPriceInventoryRules.Price(variant.PriceDifference);
+                return (JsonNode)entry;
             })]);
         return payload.ToJsonString();
     }
@@ -364,7 +365,9 @@ public static class PttAvmProductPayloadRules
             if (string.IsNullOrEmpty(barcode) || barcode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength
                 || string.IsNullOrEmpty(color) || color.Length > MaxVariantValueLength || string.IsNullOrEmpty(size) || size.Length > MaxVariantValueLength
                 || quantity is not (>= 0 and <= PttAvmPriceInventoryRules.MaxQuantity)) return null;
-            variants.Add(new(barcode, color, size, quantity.Value));
+            var difference = RemoteJson.NumberDecimal(entry, "priceDifference") ?? 0m;
+            if (difference < 0) return null;
+            variants.Add(new(barcode, color, size, quantity.Value, difference));
         }
         var combinations = variants.Select(x => VariantLabel(x.Color, x.Size)).Distinct(StringComparer.Ordinal).Count();
         return variants.Count is > 0 and <= PttAvmPriceInventoryRules.MaxVariantsPerProduct
@@ -382,8 +385,8 @@ public static class PttAvmProductPayloadRules
     // {Definition, Value}}, CatalogBarcode, Price, Quantity, VariantBarcode}}. The first family send used the
     // ePttAVMService namespace's Variant names (Variant, VariantAttr{Deger, Tanim}, Miktar, VariantBarkod); the
     // data-contract reader skipped them as unknown elements and PTT AVM opened the product without variants.
-    // CatalogBarcode is not sent; Price is left out (a non-nillable decimal, so the service reads 0 either way):
-    // the family's variants share the product price.
+    // CatalogBarcode is not sent; Price is the variant's price difference (owner decision of 18 Nov 2026), left out at 0
+    // (a non-nillable decimal, so the service reads 0 either way), so a family at one price sends what it sent before.
     internal static string ItemsXml(ProductDraft draft)
     {
         var xml = new StringBuilder($"""<ept:ProductV3Request xmlns:ept="{PttAvmHttpClient.RequestsNamespace}">""");
@@ -413,6 +416,7 @@ public static class PttAvmProductPayloadRules
                 foreach (var (definition, value) in new[] { ("Renk", variant.Color), ("Beden", variant.Size) })
                     xml.Append("<ept:VariantAttrV3><ept:Definition>").Append(definition).Append("</ept:Definition><ept:Value>").Append(SecurityElement.Escape(value)).Append("</ept:Value></ept:VariantAttrV3>");
                 xml.Append("</ept:Attributes>");
+                if (variant.PriceDifference != 0) Field("Price", variant.PriceDifference.ToString("0.00", CultureInfo.InvariantCulture));
                 Field("Quantity", variant.Quantity.ToString(CultureInfo.InvariantCulture));
                 Field("VariantBarcode", variant.Barcode);
                 xml.Append("</ept:VariantV3>");
@@ -477,14 +481,14 @@ public static class PttAvmProductPayloadRules
                 unreadable.Add(variant);
                 continue;
             }
-            carried.Add(new(barcode, color, size, (int)quantity));
-            // The write-side Variant has no price and no active flag: a variant priced apart or passive on PTT AVM would
-            // not stay as it is. A field PTT AVM did not send is unknown, not a reason to stop.
+            // Owner decision of 18 Nov 2026: the variant's price difference is written (VariantV3.Price). A panel variant takes
+            // the panel's difference; any other keeps the one PTT AVM holds. The write-side Variant has no active flag and
+            // no price of its own: a variant PTT AVM prices on its own or keeps passive would not stay as it is.
+            var panelDifference = panel.FirstOrDefault(x => string.Equals(x.Barcode, barcode, StringComparison.OrdinalIgnoreCase))?.PriceDifference;
+            carried.Add(new(barcode, color, size, (int)quantity, panelDifference ?? (variant.PriceIsDifference != false ? variant.Price ?? 0m : 0m)));
             var reasons = new List<string>();
-            if (variant.Price is { } price && price != 0)
-                reasons.Add(variant.PriceIsDifference == false
-                    ? $"kendi fiyatı {price.ToString("0.##", CultureInfo.InvariantCulture)} TL"
-                    : $"{price.ToString("0.##", CultureInfo.InvariantCulture)} TL fiyat farkı");
+            if (variant.Price is { } price && price != 0 && variant.PriceIsDifference == false)
+                reasons.Add($"kendi fiyatı {price.ToString("0.##", CultureInfo.InvariantCulture)} TL");
             if (variant.Active == false) reasons.Add("pasif");
             if (reasons.Count > 0) notCarriable.Add(new(variant, string.Join(", ", reasons)));
         }
