@@ -337,7 +337,7 @@ function closeOnlyFoot(foot: ReactNode): boolean {
 // a screen reader reads after the title (the confirmation's question). `container`: where the window is drawn (the
 // body by default); a page whose window content is styled under its own scope (Sistem Ayarları' `main .ss-page`) draws
 // it in main and names that scope with `layerClass`.
-export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false, role = 'dialog', describedBy, container }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; hint?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean; role?: 'dialog' | 'alertdialog'; describedBy?: string; container?: Element | null }) {
+export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false, onBeforeClose, role = 'dialog', describedBy, container }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; hint?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean; onBeforeClose?: () => boolean | void; role?: 'dialog' | 'alertdialog'; describedBy?: string; container?: Element | null }) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   // Closing from the window itself (the cross, a tap outside, Escape) first plays the closing motion, then closes.
@@ -346,6 +346,7 @@ export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onC
   const close = useRef(onClose)
   close.current = () => {
     if (locked || closingRef.current) return
+    if (onBeforeClose && onBeforeClose() === false) return
     closingRef.current = true
     const still = typeof window.matchMedia !== 'function' || window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (still) { onCloseRef.current(); return }

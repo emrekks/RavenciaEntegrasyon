@@ -91,7 +91,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-acc.rr-open > .rr-opt .rr-ico:last-child { transform: rotate(180deg); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-acc-b { display: grid; gap: 2px; margin: 0 0 4px 22px; padding-left: 8px; border-left: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pop .rr-logo { width: 24px; height: 24px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--rr-line); border-radius: 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 16px; border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step > header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-stepn { display: grid; place-items: center; width: 22px; height: 22px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line-strong); border-radius: 7px; font-size: 12px; font-weight: 600; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { display: flex; gap: 8px; margin-left: auto; }
@@ -99,7 +99,6 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup { border: 1px solid var(--rr-line); border-radius: 12px; overflow: hidden; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup + .rr-vgroup { margin-top: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-h { display: flex; align-items: center; gap: 10px; padding: 0 0 0 12px; background: var(--rr-raised); font-size: 14px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-vg-h { border-bottom: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 40px; padding: 0 12px 0 0; color: var(--rr-ink); text-align: left; background: none; border: 0; cursor: pointer; font: inherit; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t:hover small { color: var(--rr-ink); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t b { font-weight: 600; }
@@ -111,25 +110,24 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-name { display: flex; flex: 1; align-items: baseline; gap: 10px; min-width: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-name b { flex: 0 1 10em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-name small { flex: none; white-space: nowrap; }
-/* Two groups in one row open together: hovering either lights both, an open pair shares an accent and a link mark, and
-   the opened tables fade in (transform only, so nothing around them jumps). */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup { transition: border-color .18s, box-shadow .18s; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-h { transition: background-color .18s, box-shadow .18s; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-row-hint { border-color: color-mix(in srgb, var(--rr-primary) 40%, var(--rr-line)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-row-hint .rr-vg-h { background: color-mix(in srgb, var(--rr-primary-soft) 35%, var(--rr-raised)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-paired.rr-open { border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); animation: rr-vg-pair .6s ease-out; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-paired.rr-open .rr-vg-h { background: color-mix(in srgb, var(--rr-primary-soft) 55%, var(--rr-raised)); box-shadow: inset 0 2px 0 var(--rr-primary); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-paired.rr-open .rr-vg-t .rr-ico { color: var(--rr-primary); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-link { display: grid; flex: none; place-items: center; width: 16px; height: 16px; margin-left: auto; color: var(--rr-primary); opacity: 0; transition: opacity .18s; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-link + .rr-ico { margin-left: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-row-hint .rr-vg-link { opacity: .55; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-paired.rr-open .rr-vg-link { opacity: 1; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-qtable-wrap { animation: rr-vg-in .22s ease-out; }
-@keyframes rr-vg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@keyframes rr-vg-pair { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--rr-primary) 35%, transparent); } to { box-shadow: 0 0 0 3px transparent; } }
+/* Colour groups open on their own: the opened one is framed and its table takes the full width under its row (the panel
+   grows in 150 ms; reduced motion shows it at once). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup { transition: border-color .15s, box-shadow .15s; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open { border-color: color-mix(in srgb, var(--rr-primary) 55%, var(--rr-line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rr-primary) 35%, transparent); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-vg-h { background: color-mix(in srgb, var(--rr-primary-soft) 55%, var(--rr-raised)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-vg-t .rr-ico { color: var(--rr-primary); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel { display: grid; grid-column: 1 / -1; grid-template-rows: 1fr; min-width: 0; animation: rr-vg-grow .15s ease-out; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel > .rr-qtable-wrap { min-height: 0; min-width: 0; border: 1px solid var(--rr-line); border-radius: 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel.rr-closing { grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .15s ease-in, opacity .15s ease-in; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel.rr-closing > .rr-qtable-wrap { border-width: 0; }
+@keyframes rr-vg-grow { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-paired.rr-open,
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroup.rr-open .rr-qtable-wrap { animation: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel { animation: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-panel.rr-closing { transition: none; }
+}
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-h { transition: background-color .18s, box-shadow .18s; }
+@keyframes rr-vg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
 }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
