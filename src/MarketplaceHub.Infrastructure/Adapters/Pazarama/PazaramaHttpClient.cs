@@ -340,14 +340,15 @@ public sealed partial class PazaramaHttpClient(
         return new(null, TimeSpan.Zero, new(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID", $"Pazarama oturum servisi beklenen token yanıtını vermedi (yanıt alanları: {ShapeOf(body)}).", (int)status, null, null));
     }
 
-    // A success:false token answer is a refused key only with the key named and refused: a word of the credentials
-    // (client id/secret, istemci, api key, anahtar, kimlik bilgisi, kullanıcı adı, şifre) together with a refusal
-    // (geçersiz, hatalı, yanlış, invalid, wrong, incorrect, reddedildi, eşleşmedi, bulunamadı), or a word that is a refusal
-    // of access by itself (yetkisiz, unauthorized). "Sistem hatalı çalışıyor" or "Invalid request format" name no
-    // credential: they stay unknown (PAZARAMA_TOKEN_INVALID) instead of holding the connection as a refused key.
-    // Matched in Turkish (İ/ı: "GEÇERSİZ İSTEMCİ", "YETKİSİZ") and invariant lower case ("INVALID CLIENT").
-    private static readonly string[] CredentialWords = ["client", "istemci", "api key", "apikey", "api anahtar", "anahtar", "kimlik bilgi", "credential", "kullanıcı adı", "username", "şifre", "parola", "password", "secret"];
-    private static readonly string[] RefusalWords = ["geçersiz", "hatalı", "yanlış", "invalid", "wrong", "incorrect", "reddedil", "eşleşme", "bulunamadı"];
+    // A success:false token answer is a refused key only when it names the key as a phrase (client id, client secret,
+    // istemci kimliği, api key, api anahtarı, kimlik bilgisi, kullanıcı adı, şifre, parola, secret, credential) and
+    // refuses it (geçersiz, hatalı, yanlış, invalid, wrong, bad, incorrect, reddedildi, eşleşmedi, bulunamadı), or says
+    // yetkisiz / unauthorized. A lone "client", "istemci" or "anahtar" names no key ("İstemci isteği hatalı biçimde",
+    // "Client error, invalid request body", "Anahtar kelime bulunamadı"), and neither does "Access denied" / "erişim
+    // reddedildi": they stay unknown (PAZARAMA_TOKEN_INVALID) instead of holding the connection as a refused key.
+    // Matched in Turkish (İ/ı: "GEÇERSİZ İSTEMCİ KİMLİĞİ", "YETKİSİZ") and invariant lower case ("INVALID CLIENT ID").
+    private static readonly string[] CredentialPhrases = ["client id", "client_id", "clientid", "client secret", "client_secret", "clientsecret", "istemci kimliği", "istemci kimligi", "istemci id", "istemci anahtarı", "api key", "apikey", "api anahtar", "kimlik bilgi", "credential", "kullanıcı adı", "username", "şifre", "parola", "password", "secret"];
+    private static readonly string[] RefusalWords = ["geçersiz", "hatalı", "yanlış", "invalid", "wrong", "bad", "incorrect", "reddedil", "eşleşme", "bulunamadı"];
     private static readonly string[] AccessRefusalWords = ["yetkisiz", "unauthorized"];
     private static readonly CultureInfo Turkish = CultureInfo.GetCultureInfo("tr-TR");
 
@@ -356,7 +357,7 @@ public sealed partial class PazaramaHttpClient(
         if (string.IsNullOrWhiteSpace(message)) return false;
         string[] forms = [message.ToLower(Turkish), message.ToLowerInvariant()];
         bool Has(string[] words) => words.Any(word => forms.Any(form => form.Contains(word, StringComparison.Ordinal)));
-        return Has(AccessRefusalWords) || Has(CredentialWords) && Has(RefusalWords);
+        return Has(AccessRefusalWords) || Has(CredentialPhrases) && Has(RefusalWords);
     }
 
     private static void ReadToken(JsonElement element, ref string? accessToken, ref TimeSpan expiresIn)

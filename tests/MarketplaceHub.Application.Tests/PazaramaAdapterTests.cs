@@ -42,10 +42,10 @@ public sealed class PazaramaAdapterTests
     [Fact]
     public void AnEnvelopeSayingSuccessFalseIsRejectedCredentialsWithTheMessage()
     {
-        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, """{"data":null,"success":false,"userMessage":"Geçersiz anahtar"}""");
+        var token = PazaramaHttpClient.TokenResponse(HttpStatusCode.OK, """{"data":null,"success":false,"userMessage":"Geçersiz API anahtarı"}""");
 
         Assert.Equal("PAZARAMA_CREDENTIALS_REJECTED", token.Error!.Code);
-        Assert.Contains("Geçersiz anahtar", token.Error.SafeMessage);
+        Assert.Contains("Geçersiz API anahtarı", token.Error.SafeMessage);
     }
 
     [Fact]

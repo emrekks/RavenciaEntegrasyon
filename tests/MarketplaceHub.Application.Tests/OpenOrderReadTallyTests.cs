@@ -4,6 +4,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
+// OpenOrderReadTally's rules A–D.
 public sealed class OpenOrderReadTallyTests
 {
     private static AdapterError Error(AdapterErrorClass @class, string code) => new(@class, code, code, null, null, null);
@@ -15,77 +16,60 @@ public sealed class OpenOrderReadTallyTests
         return tally;
     }
 
-    // The connection's failure: one request is enough.
+    // A: the connection's failure, one request is enough; kinds may differ (a token error then a network one).
     [Theory]
     [InlineData(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR")]
     [InlineData(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED")]
     [InlineData(AdapterErrorClass.Authentication, "PAZARAMA_CREDENTIALS_REJECTED")]
     [InlineData(AdapterErrorClass.Remote5xx, "PAZARAMA_TOKEN_REMOTE_ERROR")]
     [InlineData(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID")]
-    public void AConnectionLevelFailureFailsTheScan(AdapterErrorClass @class, string code)
+    public void RuleA_AConnectionLevelFailureFailsTheJob(AdapterErrorClass @class, string code)
     {
-        var tally = Failing(Error(@class, code));
+        var tally = Failing(Error(@class, code), Error(AdapterErrorClass.TransientNetwork, "PAZARAMA_NETWORK_ERROR"));
 
-        Assert.Equal(OpenOrderScanVerdict.Fail, tally.Verdict());
+        Assert.Equal(OpenOrderScanVerdict.ConnectionFailed, tally.Verdict());
         Assert.Equal(code, tally.FirstFailure!.Code);
     }
 
-    // An unclear token answer (a contract code) makes the job a manual review, not a silent success.
     [Fact]
-    public void AnUnclearTokenAnswerOnEveryOrderIsAManualReview()
+    public void RuleA_AnUnclearTokenAnswerOnEveryOrderIsAManualReview()
     {
         var token = Error(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID");
         var tally = Failing(token, token, token);
 
-        Assert.Equal(OpenOrderScanVerdict.Fail, tally.Verdict());
         Assert.Equal(JobCompletionKind.ManualReview, JobExecutionResult.FromAdapterError(tally.FirstFailure!).Kind);
     }
 
+    // B: 5xx only, from two requests up: unread, ended blocked in one attempt (no retry chain, no hold on the connection).
     [Fact]
-    public void ServerErrorsFailOnlyFromTwoRequestsAndOnlyUntilPoisoned()
+    public void RuleB_ServerErrorsFromTwoRequestsAreAnUnreadRun()
     {
-        var one = Error(AdapterErrorClass.Remote5xx, "SHOPIFY_REMOTE_ERROR");
+        var error = Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR");
+        var tally = Failing(error, error, Error(AdapterErrorClass.Remote5xx, "N11_OTHER_5XX"));
 
-        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(one).Verdict());
-        Assert.Equal(OpenOrderScanVerdict.FailUntilPoisoned, Failing(one, one).Verdict());
+        Assert.Equal(OpenOrderScanVerdict.Unread, tally.Verdict());
+        var result = tally.UnreadResult();
+        Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+        Assert.Equal("N11_REMOTE_ERROR", result.ErrorCode);
+        Assert.False(result.BackOffConnection);
+        Assert.Null(result.RetryAfter);
+        Assert.Contains("3 istek", result.ErrorSummary);
     }
 
+    // C: one answer makes it a success. D: one request with one 5xx, a mix of kinds, an order's own contract error.
     [Fact]
-    public void DifferentCodesOrOneAnswerLetTheScanGoOn()
+    public void RulesCAndD_AreASuccess()
     {
-        var mixed = Failing(Error(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR"), Error(AdapterErrorClass.Remote5xx, "SHOPIFY_REMOTE_ERROR"));
-        var answered = Failing(Error(AdapterErrorClass.TransientNetwork, "SHOPIFY_NETWORK_ERROR"));
+        var answered = Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR"), Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR"));
         answered.Answered();
-
-        Assert.Equal(OpenOrderScanVerdict.Proceed, mixed.Verdict());
-        Assert.Equal(OpenOrderScanVerdict.Proceed, answered.Verdict());
-        Assert.Equal(1, answered.Failures);
-    }
-
-    // One order's own contract error, even on every order, is the orders', not the connection's.
-    [Fact]
-    public void OrderContractErrorsLeaveTheScanASuccess()
-    {
         var contract = Error(AdapterErrorClass.ContractViolation, "PAZARAMA_ORDER_CONTRACT_INVALID");
 
+        Assert.Equal(OpenOrderScanVerdict.Proceed, answered.Verdict());
+        Assert.Equal(2, answered.Failures);
+        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR")).Verdict());
+        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR"), Error(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR")).Verdict());
         Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(contract, contract).Verdict());
-        Assert.Equal(OpenOrderScanVerdict.Proceed, Failing(Error(AdapterErrorClass.Validation, "N11_REQUEST_REJECTED"), Error(AdapterErrorClass.Validation, "N11_REQUEST_REJECTED")).Verdict());
-    }
-
-    [Fact]
-    public void AScanThatAskedNothingGoesOn() => Assert.Equal(OpenOrderScanVerdict.Proceed, new OpenOrderReadTally().Verdict());
-
-    [Theory]
-    [InlineData(null, 0, null)]
-    [InlineData("after:k-24", 0, "after:k-24")]
-    [InlineData("strikes:2|after:k-24", 2, "after:k-24")]
-    [InlineData("strikes:1|", 1, null)]
-    [InlineData("strikes:1|trendyol-open-v1:recent:p-1", 1, "trendyol-open-v1:recent:p-1")]
-    [InlineData("strikes:x|after:1", 0, "strikes:x|after:1")]
-    public void StrikesAreKeptInFrontOfThePosition(string? opaque, int strikes, string? position)
-    {
-        Assert.Equal((strikes, position), OpenScanStrikes.Split(opaque));
-        if (strikes > 0) Assert.Equal(opaque, OpenScanStrikes.Join(strikes, position));
+        Assert.Equal(OpenOrderScanVerdict.Proceed, new OpenOrderReadTally().Verdict());
     }
 
     [Fact]

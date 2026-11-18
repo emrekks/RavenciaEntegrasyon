@@ -7,10 +7,9 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // 17 Nov 2026: Pazarama's token service answered empty for every request, yet the order status scan ended SUCCEEDED every
-// two minutes and moved its ORDER_LIFECYCLE watermark and last success. An open-order scan whose failure is the
-// connection's (no answer, one code, token / sign-in / network / quota, or 5xx from two requests up) now fails and keeps
-// its cursor; a batch failing with 5xx only goes on after OpenScanStrikes.PoisonAfter runs; anything else stays a
-// success with the orders it could not ask named on the job (OpenOrderReadTally).
+// two minutes and moved its ORDER_LIFECYCLE watermark and last success. OpenOrderReadTally's rules: A, the connection's
+// failure, fails the job and keeps the position; B, 5xx only from two requests up, ends the run unread (blocked, no last
+// success, the failure streak grows) and moves the position on; C and D are a success naming the orders not read.
 public sealed partial class PostgreSqlTenantIsolationTests
 {
     [PostgreSqlTheory]
@@ -132,10 +131,57 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Ö2 scenario 1: 27 open orders, the first 25 always answer 5xx. Two runs fail and keep the position (counting the
-    // strikes); the third goes on past the batch; the next run asks the 26th and the 27th.
+    // Rule B, review scenario 1: n11, three open orders always answering the same 5xx, six scheduled runs. No run is a
+    // success, the last success stays, the failure streak reaches the threshold and the owner gets the notice.
     [PostgreSqlFact]
-    public async Task OpenOrderScanGoesPastABatchThatAlwaysAnswers5xx()
+    public async Task RuleB_A5xxOutageIsNeverASuccessAndWarnsAfterThreeRuns()
+    {
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-n11-outage", "N11", 3);
+        var port = new TallyOrderPort(_ => Remote("N11_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
+        try
+        {
+            for (var run = 0; run < 6; run++)
+            {
+                var result = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId);
+                Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+                Assert.Equal("N11_REMOTE_ERROR", result.ErrorCode);
+            }
+            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
+            await using var check = fixture.CreateContext();
+            var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE");
+            Assert.Equal(6, cursor.ConsecutiveFailureCount);
+            var notices = await new AttentionNoticeService(check, fixture.TimeProvider).ListAsync(tenant.Id, CancellationToken.None);
+            Assert.Contains(notices, notice => notice.ResourceType == "ORDER_LIFECYCLE" && notice.ConnectionId == connection.Id);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // Review scenario 2: a 20-second wobble (one run of 5xx, the next answered) warns nobody; the second run is a success.
+    [PostgreSqlFact]
+    public async Task RuleB_AWobbleIsForgottenOnTheNextAnsweredRun()
+    {
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-wobble", "N11", 3);
+        var down = true;
+        var port = new TallyOrderPort(_ => down ? Remote("N11_REMOTE_ERROR", AdapterErrorClass.Remote5xx) : Remote("NOT_FOUND", AdapterErrorClass.NotFound));
+        try
+        {
+            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            down = false;
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            await using var check = fixture.CreateContext();
+            var cursor = await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE");
+            Assert.Equal(0, cursor.ConsecutiveFailureCount);
+            Assert.True(cursor.LastSuccessAt > watermark);
+            Assert.Empty(await new AttentionNoticeService(check, fixture.TimeProvider).ListAsync(tenant.Id, CancellationToken.None));
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // Rule B, review scenario 3a: 27 open orders, the first 25 always answer 5xx. The run is unread but its position moves
+    // on, in the cursor text the scan always wrote (no prefix: a deploy overlap reads it as before), so the next run asks
+    // the 26th and the 27th and is a success.
+    [PostgreSqlFact]
+    public async Task RuleB_TheScanGoesPastABatchThatAlwaysAnswers5xx()
     {
         var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-poison", "SHOPIFY", 27);
         var port = new TallyOrderPort(id => int.Parse(id[^2..], System.Globalization.CultureInfo.InvariantCulture) < 25
@@ -143,12 +189,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
             : Remote("NOT_FOUND", AdapterErrorClass.NotFound));
         try
         {
-            var first = await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId);
-            Assert.Equal(JobCompletionKind.Retry, first.Kind);
+            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
             await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-            Assert.Equal("strikes:1|", await LifecycleOpaqueCursorAsync(tenant.Id));
-            Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
-            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
             Assert.Equal("after:tally-poison-24", await LifecycleOpaqueCursorAsync(tenant.Id));
 
             port.Requested.Clear();
@@ -158,21 +200,22 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Ö2 scenario 2: Trendyol's open-package queue always answers 5xx; after the strikes the position moves and the daily
-    // pass over older packages starts.
+    // Rule B, review scenario 3b: Trendyol's open-package queue always answers 5xx; the position moves past it in the
+    // scan's own cursor text, and the next run reaches the daily pass over older packages.
     [PostgreSqlFact]
-    public async Task TrendyolOpenPackageScanGoesPastAQueueThatAlwaysAnswers5xx()
+    public async Task RuleB_TrendyolOpenPackageScanGoesPastAQueueThatAlwaysAnswers5xx()
     {
         var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-ty-poison", "TRENDYOL", 3, storefronts: true);
         var port = new TallyOrderPort(_ => Remote("TRENDYOL_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
         try
         {
-            Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
-            Assert.Equal(JobCompletionKind.Retry, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(3, port.Calls);
             await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
-            Assert.Equal(3 * 2, port.Calls);
+            Assert.StartsWith(OrderReadService.TrendyolOpenScanCursorPrefix + "recent:", await LifecycleOpaqueCursorAsync(tenant.Id));
 
             Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(3, port.Calls);
             await using var check = fixture.CreateContext();
             Assert.NotNull((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE_OLDER")).LastSuccessAt);
             Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
@@ -180,9 +223,24 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // Ö2 scenario 3: one open order that answers 5xx for good does not make a failing job each run.
+    // Rule B on PttAVM's older-order loop (open orders older than its windows): unread, the last success stays.
     [PostgreSqlFact]
-    public async Task OneOrderThatAlwaysAnswers5xxDoesNotFailTheScan()
+    public async Task RuleB_PttAvmOlderOrdersAnswering5xxAreAnUnreadRun()
+    {
+        var (tenant, connection, watermark, jobId) = await SeedOpenOrderTallyAsync("tally-ptt", "PTTAVM", 3, orderedAt: fixture.Now.AddYears(-1));
+        var port = new TallyOrderPort(_ => Remote("PTTAVM_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
+        try
+        {
+            Assert.Equal(JobCompletionKind.Blocked, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PttAvmOrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(3, port.Calls);
+            await AssertWatermarkUnchangedAsync(tenant.Id, "ORDER_LIFECYCLE", watermark);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // Review scenario 3c: one open order that answers 5xx for good does not make a failing job each run (rule D).
+    [PostgreSqlFact]
+    public async Task RuleD_OneOrderThatAlwaysAnswers5xxDoesNotFailTheScan()
     {
         var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-single", "SHOPIFY", 1);
         var port = new TallyOrderPort(_ => Remote("SHOPIFY_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
@@ -196,7 +254,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
 
-    // A real outage (the network for every order) keeps failing however many runs it lasts; the strikes are not spent.
+    // Rule A: a real network outage keeps failing however many runs it lasts, the watermark in place.
     [PostgreSqlFact]
     public async Task ARealOutageKeepsFailingWithTheWatermarkInPlace()
     {
@@ -259,7 +317,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         return (await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ResourceType == "ORDER_LIFECYCLE")).OpaqueCursor;
     }
 
-    private async Task<(Tenant Tenant, PlatformConnection Connection, DateTimeOffset Watermark, Guid JobId)> SeedOpenOrderTallyAsync(string name, string platform, int openOrders, bool storefronts = false)
+    private async Task<(Tenant Tenant, PlatformConnection Connection, DateTimeOffset Watermark, Guid JobId)> SeedOpenOrderTallyAsync(string name, string platform, int openOrders, bool storefronts = false, DateTimeOffset? orderedAt = null)
     {
         var (tenant, connection, watermark) = await SeedReadGuardConnectionAsync(name, platform, "ORDER_LIFECYCLE");
         var jobId = Guid.CreateVersion7();
@@ -270,6 +328,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, $"{name}-{index:00}", isReturnClaim: false, fixture.Now);
             // One storefront each: Trendyol reads each in its own request.
             if (storefronts) order.StoreFrontCode = $"S{index}";
+            if (orderedAt is { } at) order.OrderedAt = at;
             seedDb.Orders.Add(order);
             var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"{name}-package-{index:00}", fixture.Now);
             package.Status = ShipmentPackageStatus.New;

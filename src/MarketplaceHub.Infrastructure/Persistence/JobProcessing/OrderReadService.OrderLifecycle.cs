@@ -31,31 +31,20 @@ internal sealed partial class OrderReadService
         packages.Where(package => package.TenantId == tenantId
             && package.Status != ShipmentPackageStatus.Delivered && package.Status != ShipmentPackageStatus.Cancelled && package.Status != ShipmentPackageStatus.Returned);
 
-    // OpenOrderReadTally: a scan whose failure is the connection's fails with its first error. Its position stays where
-    // the run found it (startOpaque, as stored) and the issues it recorded are kept; its watermark and last success do not
-    // move. A batch failing with server errors only is failed PoisonAfter - 1 times, counted in the cursor
-    // (OpenScanStrikes); the next time the scan goes on past it as a success, with the failed orders counted on the job.
-    // Going on, the cursor keeps the position the scan set (or startOpaque's position) without strikes.
-    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, CancellationToken cancellationToken)
+    // OpenOrderReadTally's rules A and B. A (the connection's failure): the position goes back to where the run found it
+    // (startOpaque), the issues it recorded are kept, and the job fails with the first error. B (unread): the position
+    // moves on (nextOpaque) and the job ends blocked in one attempt; in both the watermark and the last success stay
+    // (the processor records a failed run). C and D: the scan goes on as a success.
+    private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, string? nextOpaque, CancellationToken cancellationToken)
     {
         var verdict = tally.Verdict();
-        if (verdict == OpenOrderScanVerdict.FailUntilPoisoned)
-        {
-            var (strikes, startPosition) = OpenScanStrikes.Split(startOpaque);
-            if (strikes + 1 < OpenScanStrikes.PoisonAfter)
-            {
-                cursor.OpaqueCursor = OpenScanStrikes.Join(strikes + 1, startPosition);
-                await db.SaveChangesAsync(cancellationToken);
-                throw JobProcessingException.FromAdapter(tally.FirstFailure!);
-            }
-        }
-        else if (verdict == OpenOrderScanVerdict.Fail)
-        {
-            cursor.OpaqueCursor = startOpaque;
-            await db.SaveChangesAsync(cancellationToken);
-            throw JobProcessingException.FromAdapter(tally.FirstFailure!);
-        }
-        cursor.OpaqueCursor = OpenScanStrikes.Position(cursor.OpaqueCursor);
+        if (verdict == OpenOrderScanVerdict.Proceed) return;
+        cursor.OpaqueCursor = verdict == OpenOrderScanVerdict.ConnectionFailed ? startOpaque : nextOpaque;
+        if (verdict == OpenOrderScanVerdict.Unread) cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        throw verdict == OpenOrderScanVerdict.ConnectionFailed
+            ? JobProcessingException.FromAdapter(tally.FirstFailure!)
+            : new JobProcessingException(tally.UnreadResult());
     }
 
     internal async Task<bool> SyncOpenOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -101,7 +90,7 @@ internal sealed partial class OrderReadService
 
             // Keyset paging: the set shrinks as packages are delivered, so an offset would skip the orders
             // that slid into the pages already read. The cursor keeps the last order id read instead.
-            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(OpenScanStrikes.Position(cursor.OpaqueCursor));
+            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(cursor.OpaqueCursor);
             var lifecyclePage = lastSeenOrderId is null
                 ? lifecycleOrders
                 : lifecycleOrders.Where(order => string.Compare(order.ExternalOrderId, lastSeenOrderId) > 0);
@@ -151,7 +140,7 @@ internal sealed partial class OrderReadService
                         && package.Status != ShipmentPackageStatus.Returned))
                 .Select(order => order.ExternalOrderId)
                 .Distinct();
-            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(OpenScanStrikes.Position(cursor.OpaqueCursor));
+            var lastSeenOrderId = HepsiburadaLifecycleLastSeen(cursor.OpaqueCursor);
             var lifecyclePage = lastSeenOrderId is null
                 ? openOrderIds
                 : openOrderIds.Where(id => string.Compare(id, lastSeenOrderId) > 0);
@@ -201,7 +190,7 @@ internal sealed partial class OrderReadService
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
             if (!isHepsiburada) await ResolveIssue(tenantId, OpenOrderMissingIssueKey(connectionId, externalOrderId), cancellationToken);
         }
-        await FailWhenNothingRead(tally, cursor, startPosition, cancellationToken);
+        await FailWhenNothingRead(tally, cursor, startPosition, cursor.OpaqueCursor, cancellationToken);
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);
         if (isHepsiburada)
             await ReconcileHepsiburadaPackageStatuses(tenantId, connectionId, correlationId, cancellationToken);
@@ -264,7 +253,7 @@ internal sealed partial class OrderReadService
         var sliceStarted = Stopwatch.StartNew();
         var budget = TrendyolOpenScanSliceBudget();
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
-        var position = ReadTrendyolOpenScanCursor(OpenScanStrikes.Position(cursor.OpaqueCursor));
+        var position = ReadTrendyolOpenScanCursor(cursor.OpaqueCursor);
         var open = await (from package in db.ShipmentPackages.AsNoTracking()
                           join order in db.Orders.AsNoTracking()
                               on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
@@ -281,8 +270,8 @@ internal sealed partial class OrderReadService
         // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
         async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
         {
-            // A slice whose failure is the connection's keeps its stored position (OpenOrderReadTally, OpenScanStrikes).
-            await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, cancellationToken);
+            // A slice that heard nothing back (OpenOrderReadTally): A keeps the stored position, B moves to the next one.
+            await FailWhenNothingRead(tally, cursor, cursor.OpaqueCursor, TrendyolOpenScanCursor(next), cancellationToken);
             if (received.Count > 0) await UpsertOrders(tenantId, connectionId, received, cancellationToken);
             cursor.OpaqueCursor = TrendyolOpenScanCursor(next);
             cursor.Version++;

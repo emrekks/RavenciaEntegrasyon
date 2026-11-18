@@ -27,18 +27,24 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   `[]` is the same passing remote error, and so is the token service's own 5xx (`PAZARAMA_TOKEN_REMOTE_ERROR`, a token
   code); `success:false` with the busy words (`SaysTryLater`, as the order service says them) is a passing remote
   error, not a refused key; a refused key is only OAuth `invalid_client` / `unauthorized_client`, 401/403, or
-  `success:false` that names the key and refuses it (client / istemci / api key / anahtar / kimlik bilgisi / kullanıcı
-  adı / şifre with geçersiz / hatalı / yanlış / invalid / reddedildi..., or yetkisiz / unauthorized alone; Turkish
-  İ/ı matched). "Sistem hatalı çalışıyor", "Invalid request format", "Oturum bilgileriniz alınamadı" and a 400 with no
-  body stay `PAZARAMA_TOKEN_INVALID` (unknown). A held token failure counts from when it was stored, so a clock set
-  back does not keep it.
-- An open-order status scan (`PAZARAMA_ORDER_STATUS_SYNC` and the other marketplaces' status scans) fails only when
-  its failure is the connection's: no answer at all and every failure the same code, of a token / sign-in / network /
-  quota kind (a `*_TOKEN_*` contract code makes it a manual review), or 5xx from two requests up. A batch failing with
-  5xx only is failed twice (strikes kept in the `ORDER_LIFECYCLE` cursor as `strikes:{n}|{position}`) and passed on
-  the third run, so one order answering 5xx for good never holds the scan. Otherwise the scan succeeds and its label
-  says "· N sipariş okunamadı" (not counted in Okunan or Hatalı). `OpenOrderReadTally`, `OpenScanStrikes`. Live 17 Nov:
-  the scan ended SUCCEEDED every two minutes while no token could be had.
+  `success:false` that names the key as a phrase (client id, client secret, istemci kimliği, api key, api anahtarı,
+  kimlik bilgisi, kullanıcı adı, şifre, parola, secret, credential) with a refusal (geçersiz, hatalı, yanlış, invalid,
+  wrong, bad, reddedildi...), or says yetkisiz / unauthorized; Turkish İ/ı matched. A lone "client", "istemci" or
+  "anahtar" ("İstemci isteği hatalı biçimde", "Anahtar kelime bulunamadı"), "Access denied" / "Erişim reddedildi",
+  "Oturum bilgileriniz alınamadı" and a 400 with no body stay `PAZARAMA_TOKEN_INVALID` (unknown). A held token failure
+  counts from when it was stored, so a clock set back does not keep it.
+- Open-order status scans (`PAZARAMA_ORDER_STATUS_SYNC` and the other marketplaces' status scans; an answer is a read or
+  a "not found"), `OpenOrderReadTally`:
+  A. no answer, every failure token / session / sign-in / network / quota (a `*_TOKEN_*` contract code makes it a
+     manual review): the job fails with that error; position and watermark stay.
+  B. no answer, 5xx only from two requests up (a batch that always answers 5xx cannot be told from a 5xx outage): the
+     run is unread, ended blocked in one attempt (no retry chain, no hold on the connection, closed by the next
+     successful run); last success and watermark stay and the failure streak grows, so a real outage warns after
+     three scheduled runs; the position moves to the next batch, so such a batch never holds the orders behind it.
+  C/D. at least one answer, or one request with one 5xx, or anything else: a success whose label says
+     "· N sipariş okunamadı" (not counted in Okunan or Hatalı).
+  The cursor keeps the text it always had (no prefix). Live 17 Nov: the scan ended SUCCEEDED every two minutes while
+  no token could be had.
 
 ## Limits
 - Price/stock and product create: documented 10 s between requests per seller; code keeps 12.5 s, price and stock

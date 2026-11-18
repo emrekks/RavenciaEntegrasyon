@@ -2,68 +2,59 @@ using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// What one open-order (lifecycle) scan heard back, and whether the scan as a whole must fail.
+// What one open-order (lifecycle) scan heard back, and what the run counts as.
 // 17 Nov 2026: Pazarama's token service answered empty for every request and the order status scan still ended SUCCEEDED
-// every two minutes, moving its watermark and last success. A scan fails only when its failure is the connection's, not
-// an order's: it asked, got no answer at all (a read or a marketplace "not found"), and every failure carries the same
-// code of a connection-wide kind:
-// - always: a token or session that could not be had (a *_TOKEN_* or *CREDENTIAL* code, a contract one included, which
-//   makes the job a manual review instead of a silent success), a refused sign-in, the network, a quota;
-// - a server error (5xx) only from two requests up, and only until the same batch has failed that way PoisonAfter runs in
-//   a row (OpenScanStrikes): orders a marketplace answers with 5xx for good must not hold the scan's position for ever.
-// Anything else (mixed results, different codes, one order's own contract error) leaves the scan a success; the failed
-// orders are counted on the job and asked again on the next pass.
+// every two minutes, moving its watermark and last success. An answer is a read or a marketplace "not found".
+// A  no answer, every failure of a connection-level kind (no token or session, a refused sign-in, the network, a quota):
+//    the job fails with the first error (retried, held or reviewed as that error says); position and watermark stay.
+// B  no answer, every failure a server error (5xx) from two requests up: a batch the marketplace answers with 5xx for good
+//    cannot be told from a 5xx outage, so the run counts as unread (no last success, the failure streak grows and warns
+//    after three scheduled runs) in one attempt, with no retry chain; the position moves to the next batch, so such a
+//    batch never holds the orders behind it, and any answer on a later run makes that run a success again.
+// C  at least one answer: a success, the orders it could not ask named on the job.
+// D  anything else (one request with one 5xx, different codes, an order's own contract error): as C.
 internal sealed class OpenOrderReadTally
 {
     private int answers;
     private AdapterError? firstFailure;
-    private bool sameCode = true;
+    private bool allConnectionLevel = true;
+    private bool allServerErrors = true;
 
     public int Failures { get; private set; }
+
+    public AdapterError? FirstFailure => firstFailure;
 
     public void Answered() => answers++;
 
     public void Failed(AdapterError? error)
     {
         Failures++;
-        if (Failures == 1) firstFailure = error;
-        else if (!string.Equals(error?.Code, firstFailure?.Code, StringComparison.Ordinal)) sameCode = false;
+        firstFailure ??= error;
+        if (error is null || !IsConnectionLevel(error)) allConnectionLevel = false;
+        if (error?.Class != AdapterErrorClass.Remote5xx || IsConnectionLevel(error)) allServerErrors = false;
     }
-
-    public AdapterError? FirstFailure => firstFailure;
 
     public OpenOrderScanVerdict Verdict()
     {
-        if (answers > 0 || Failures == 0 || firstFailure is null || !sameCode) return OpenOrderScanVerdict.Proceed;
-        if (IsConnectionLevel(firstFailure)) return OpenOrderScanVerdict.Fail;
-        return firstFailure.Class == AdapterErrorClass.Remote5xx && Failures >= 2 ? OpenOrderScanVerdict.FailUntilPoisoned : OpenOrderScanVerdict.Proceed;
+        if (answers > 0 || Failures == 0 || firstFailure is null) return OpenOrderScanVerdict.Proceed;
+        if (allConnectionLevel) return OpenOrderScanVerdict.ConnectionFailed;
+        return allServerErrors && Failures >= 2 ? OpenOrderScanVerdict.Unread : OpenOrderScanVerdict.Proceed;
     }
 
-    // A failure that is the connection's whatever the order: no token or session, a refused sign-in, no network, a quota.
+    // A failure that is the connection's whatever the order: no token or session (a *_TOKEN_* or *CREDENTIAL* code, a
+    // contract one included, which makes the job a manual review instead of a silent success), a refused sign-in, no
+    // network, a quota.
     internal static bool IsConnectionLevel(AdapterError error) =>
         error.Class is AdapterErrorClass.Authentication or AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit
         || error.Code.Contains("_TOKEN_", StringComparison.Ordinal) || error.Code.Contains("CREDENTIAL", StringComparison.Ordinal);
+
+    // Rule B's job result: blocked, which ends the job in its one attempt (no retry chain, no dead job), is not a success
+    // (the cursor's failure streak grows and its last success stays), puts no hold on the connection, and is closed by
+    // the next successful run of the same read (ScheduledReadSupersession).
+    internal JobExecutionResult UnreadResult() => JobExecutionResult.Blocked(
+        firstFailure!.Code,
+        $"Açık siparişlerin hiçbiri okunamadı ({Failures} istek sunucu hatası verdi: {firstFailure.SafeMessage}); tur okunamadı sayıldı, tarama sonraki partiden sürecek.",
+        firstFailure.RemoteRequestId);
 }
 
-internal enum OpenOrderScanVerdict { Proceed, Fail, FailUntilPoisoned }
-
-// How many runs in a row the same open-order batch failed with server errors only, kept in front of the scan's own
-// position in the ORDER_LIFECYCLE cursor ("strikes:{n}|{position}", no migration). Any other text has no strikes.
-internal static class OpenScanStrikes
-{
-    private const string Prefix = "strikes:";
-    public const int PoisonAfter = 3;
-
-    public static (int Strikes, string? Position) Split(string? opaque)
-    {
-        if (opaque is null || !opaque.StartsWith(Prefix, StringComparison.Ordinal)) return (0, opaque);
-        var bar = opaque.IndexOf('|', Prefix.Length);
-        if (bar < 0 || !int.TryParse(opaque.AsSpan(Prefix.Length, bar - Prefix.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var strikes)) return (0, opaque);
-        var position = opaque[(bar + 1)..];
-        return (strikes, position.Length == 0 ? null : position);
-    }
-
-    public static string Join(int strikes, string? position) => $"{Prefix}{strikes}|{position}";
-
-    public static string? Position(string? opaque) => Split(opaque).Position;
-}
+internal enum OpenOrderScanVerdict { Proceed, ConnectionFailed, Unread }
