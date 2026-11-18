@@ -29,9 +29,14 @@
 /* Lines: one card each by default. */
 .jobs-reference-drawer .jc-columns { display: none; }
 .jobs-reference-drawer .jc-lines { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.jobs-reference-drawer .jc-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; min-width: 0; padding: 10px 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 13px; }
+.jobs-reference-drawer .jc-line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "product product" "kind time" "values values" "source result"; gap: 8px 12px; min-width: 0; padding: 10px 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 13px; }
 .jobs-reference-drawer .jc-line > * { min-width: 0; }
-.jobs-reference-drawer .jc-product { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+.jobs-reference-drawer .jc-product { grid-area: product; display: flex; align-items: center; gap: 10px; }
+.jobs-reference-drawer .jc-kind { grid-area: kind; }
+.jobs-reference-drawer .jc-values { grid-area: values; }
+.jobs-reference-drawer .jc-source { grid-area: source; }
+.jobs-reference-drawer .jc-result { grid-area: result; }
+.jobs-reference-drawer .jc-time { grid-area: time; }
 .jobs-reference-drawer .jc-product .psl-thumb,
 .jobs-reference-drawer .jc-product .psl-product-placeholder { flex: none; width: 30px; height: 45px; min-height: 0; padding: 0; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 7px; background: var(--rv-color-surface-raised); }
 .jobs-reference-drawer .jc-product .psl-product-placeholder { display: grid; place-items: center; color: var(--rv-color-subtle); }
@@ -40,7 +45,7 @@
 .jobs-reference-drawer .jc-product-text strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .jobs-reference-drawer .jc-product-text small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 .jobs-reference-drawer .jc-line [data-label]::before { content: attr(data-label); display: block; color: var(--rv-color-muted); font-size: 11px; }
-.jobs-reference-drawer .jc-values { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.jobs-reference-drawer .jc-values { display: flex; flex-wrap: wrap; gap: 4px 16px; }
 .jobs-reference-drawer .jc-values::before { flex-basis: 100%; }
 .jobs-reference-drawer .jc-values > span { display: inline-flex; align-items: baseline; gap: 6px; }
 .jobs-reference-drawer .jc-values small { color: var(--rv-color-muted); font-size: 11px; }
@@ -55,8 +60,8 @@
 .jobs-reference-drawer .jc-source .platform-square-mark { flex: none; width: 16px; height: 16px; border-radius: 7px; overflow: hidden; }
 .jobs-reference-drawer .jc-result { display: grid; gap: 2px; }
 .jobs-reference-drawer .jc-result small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.jobs-reference-drawer .jc-pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
-.jobs-reference-drawer .jc-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-subtle); }
+.jobs-reference-drawer .jc-pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.jobs-reference-drawer .jc-pill i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-subtle); }
 .jobs-reference-drawer .jc-pill.is-success i { background: var(--rv-color-success, #12b76a); }
 .jobs-reference-drawer .jc-pill.is-warning i { background: var(--rv-color-warning, #f79009); }
 .jobs-reference-drawer .jc-pill.is-danger i { background: var(--rv-color-danger, #f04438); }
@@ -68,13 +73,12 @@
 /* A wide drawer: one table row per line under a header row. */
 @container jc (min-width: 760px) {
   .jobs-reference-drawer .jc-columns,
-  .jobs-reference-drawer .jc-line { display: grid; grid-template-columns: minmax(200px, 2.2fr) 90px minmax(150px, 1.4fr) minmax(110px, 1fr) minmax(140px, 1.2fr) 112px; gap: 0 12px; align-items: center; }
+  .jobs-reference-drawer .jc-line { display: grid; grid-template-columns: minmax(210px, 2fr) 96px minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(130px, 1.1fr) 96px; grid-template-areas: "product kind values source result time"; gap: 0 12px; align-items: center; }
   .jobs-reference-drawer .jc-columns { padding: 0 12px; color: var(--rv-color-muted); font-size: 12px; }
   .jobs-reference-drawer .jc-lines { gap: 0; overflow: hidden; border: 1px solid var(--rv-color-border); border-radius: 12px; }
   .jobs-reference-drawer .jc-line { padding: 6px 12px; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; }
   .jobs-reference-drawer .jc-line:first-child { border-top: 0; }
-  .jobs-reference-drawer .jc-product,
-  .jobs-reference-drawer .jc-values { grid-column: auto; }
   .jobs-reference-drawer .jc-values { display: grid; gap: 2px; }
+  .jobs-reference-drawer .jc-time { white-space: normal; }
   .jobs-reference-drawer .jc-line [data-label]::before { display: none; }
 }

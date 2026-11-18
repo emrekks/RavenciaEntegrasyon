@@ -114,7 +114,8 @@ export function jobChangeValues(line: JobChangeLine): JobChangeValues {
 export function jobChangeDifference(previous: number | null | undefined, next: number | null | undefined, money = false) {
   if (previous === null || previous === undefined || next === null || next === undefined || previous === next) return null
   const delta = next - previous
-  const amount = Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
+  const size = Math.abs(delta)
+  const amount = size.toLocaleString('tr-TR', { minimumFractionDigits: money && !Number.isInteger(size) ? 2 : 0, maximumFractionDigits: 2 })
   return `${delta > 0 ? '+' : '−'}${money ? '₺' : ''}${amount}`
 }
 

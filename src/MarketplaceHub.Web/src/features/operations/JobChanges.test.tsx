@@ -157,6 +157,7 @@ describe('job-changes helpers', () => {
     expect(jobChangeResult({ result: 'REJECTED', errorCode: 'X', errorMessage: 'Stok negatif' })).toMatchObject({ label: 'Reddedildi', tone: 'danger', detail: 'Stok negatif' })
     expect(jobChangeResult({ result: 'APPLIED', errorCode: null, errorMessage: null }).detail).toBeNull()
     expect(jobChangeDifference(130, 120, true)).toBe('−₺10')
+    expect(jobChangeDifference(799, 749.9, true)).toBe('−₺49,10')
     expect(jobChangeDifference(null, 5)).toBeNull()
     expect(jobChangesQueryString('  869 ', null)).toBe('?limit=50&search=869')
   })

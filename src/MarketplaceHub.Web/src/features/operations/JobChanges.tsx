@@ -37,7 +37,7 @@ function LineRow({ line, orderNumber }: { line: JobChangeLine; orderNumber: stri
       <ProductThumb url={line.imageUrl} title={line.productTitle ?? 'Ürün'} />
       <span className="jc-product-text">
         <strong title={line.productTitle ?? undefined}>{line.productTitle ?? 'Ürün bilgisi yok'}</strong>
-        {codes && <small>{codes}</small>}
+        {codes && <small title={codes}>{codes}</small>}
         {variant && <small>{variant}</small>}
       </span>
     </div>
