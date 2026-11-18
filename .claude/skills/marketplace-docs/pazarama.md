@@ -40,9 +40,9 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   or session code, a refused sign-in, the network, a quota), fails with that error (retry, hold or, for
   `PAZARAMA_TOKEN_INVALID`, manual review); its position and watermark stay. This is the 17 Nov live case: the scan
   ended SUCCEEDED every two minutes while no token could be had. Every other run goes on exactly as before (position,
-  watermark, older-pass stamp, last success), with "· N sipariş okunamadı" in its label.
+  watermark, older-pass stamp, last success), with "· bazı siparişler okunamadı" in its label when an order or package read failed with a passing or connection error (no count: one Trendyol request carries up to 50 packages and a "not found" is an answer, so no request count is an order count).
   **Known limit:** while the order service answers 5xx only (however many requests), the scan still looks successful;
-  only the label's count shows the orders not read. Telling a 5xx outage from orders that always answer 5xx was tried
+  only the label note shows that some orders were not read. Telling a 5xx outage from orders that always answer 5xx was tried
   and dropped (review of 18 Nov).
 
 ## Limits

@@ -36,6 +36,7 @@ internal sealed partial class OrderReadService
     // a failed run, so the watermark and the last success stay. Any other run goes on exactly as before.
     private async Task FailWhenNothingRead(OpenOrderReadTally tally, SyncCursor cursor, string? startOpaque, CancellationToken cancellationToken)
     {
+        if (tally.HadReadFailure) run.OpenOrderReadFailed = true;
         if (tally.ConnectionFailure() is not { } failure) return;
         cursor.OpaqueCursor = startOpaque;
         await db.SaveChangesAsync(cancellationToken);

@@ -136,11 +136,12 @@ public sealed partial class MarketplaceJobProcessor
             ? "Pazaryerinden yeni kayıt gelmedi"
             : $"{counts.Received} kayıt okundu · {counts.Inserted} yeni · {counts.Updated} güncellendi · {counts.Unchanged} değişmedi" + (counts.Skipped > 0 ? $" · {counts.Skipped} atlandı" : "") + (counts.Failed > 0 ? $" · {counts.Failed} hatalı" : "");
 
-    // An open-order status scan that succeeded in part (OpenOrderReadTally) names the orders it could not ask. They were
-    // not read, so they are not in Okunan nor in the records' Hatalı (which counts records read but not processed): the
-    // counters keep adding up and the label's "hatalı" stays the counters' number. Other reads keep their label.
-    internal static string OpenOrderScanNote(string jobType, int failedRequests) =>
-        failedRequests > 0 && OrderReadRunHandler.StatusTypes.Contains(jobType) ? $" · {failedRequests} sipariş okunamadı" : "";
+    // An open-order status scan that could not read an order or package (a passing or connection error on that read,
+    // OpenOrderReadTally) says so, without a count: a request can carry fifty packages and a "not found" is an answer,
+    // so no count of requests or failures is the number of orders not read. The orders were not read, so they are
+    // neither in Okunan nor in the records' Hatalı. Other reads keep their label.
+    internal static string OpenOrderScanNote(string jobType, bool readFailed) =>
+        readFailed && OrderReadRunHandler.StatusTypes.Contains(jobType) ? " · bazı siparişler okunamadı" : "";
 
     private async Task RecordReadProgressAsync(Guid tenantId, Guid? jobId, string jobType, CancellationToken cancellationToken)
     {
@@ -160,7 +161,7 @@ public sealed partial class MarketplaceJobProcessor
             failed = counts.Failed;
             label = ReadRecordLabel(counts);
         }
-        label += OpenOrderScanNote(jobType, run.FailedCount);
+        label += OpenOrderScanNote(jobType, run.OpenOrderReadFailed);
         try
         {
             await db.IntegrationJobs

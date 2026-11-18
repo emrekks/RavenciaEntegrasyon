@@ -169,7 +169,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             await using var check = fixture.CreateContext();
             Assert.Equal(2, (await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE")).LastFailedCount);
             var job = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId);
-            Assert.Contains("2 sipariş okunamadı", job.ProgressLabel);
+            AssertNoteWithoutCount(job.ProgressLabel);
             Assert.Equal(0, job.ProgressFailed);
             Assert.Equal(0, job.ProgressReceived);
         }
@@ -203,7 +203,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             Assert.Equal(3, port.Calls);
             await AssertLifecycleMovedAsync(tenant.Id, watermark);
             Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
-            Assert.Contains("3 sipariş okunamadı", await JobLabelAsync(jobId));
+            AssertNoteWithoutCount(await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
@@ -238,7 +238,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         {
             for (var run = 0; run < 3; run++)
                 Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ShopifyOrderStatusSync, port, jobId)).Kind);
-            Assert.Contains("1 sipariş okunamadı", await JobLabelAsync(jobId));
+            AssertNoteWithoutCount(await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
     }
@@ -263,9 +263,81 @@ public sealed partial class PostgreSqlTenantIsolationTests
             Assert.Null(await LifecycleOpaqueCursorAsync(tenant.Id));
             await using var check = fixture.CreateContext();
             Assert.NotNull((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE_OLDER")).LastSuccessAt);
-            Assert.Contains($"{requests} sipariş okunamadı", await JobLabelAsync(jobId));
+            AssertNoteWithoutCount(await JobLabelAsync(jobId));
         }
         finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // E1: the label says "some orders were not read" without a count, and only for a real order or package read error.
+    // Trendyol, one storefront: one request carries the three packages and answers 5xx: note, no count.
+    // Trendyol, a storefront each: one network error and the other storefronts "not found": note.
+    // Trendyol, a storefront each, all "not found": no note.
+    [PostgreSqlTheory]
+    [InlineData(false, "5xx", true)]
+    [InlineData(true, "network+notfound", true)]
+    [InlineData(true, "notfound", false)]
+    public async Task TheNoteFollowsRealReadErrorsOnly(bool storefronts, string answers, bool note)
+    {
+        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync($"tally-note-{answers}".Replace('+', '-'), "TRENDYOL", 3, storefronts: storefronts);
+        var port = new TallyOrderPort(id => answers switch
+        {
+            "5xx" => Remote("TRENDYOL_REMOTE_ERROR", AdapterErrorClass.Remote5xx),
+            "network+notfound" when id.EndsWith("-00", StringComparison.Ordinal) => Remote("TRENDYOL_NETWORK_ERROR", AdapterErrorClass.TransientNetwork),
+            _ => Remote("NOT_FOUND", AdapterErrorClass.NotFound)
+        });
+        try
+        {
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            var label = await JobLabelAsync(jobId);
+            if (note) AssertNoteWithoutCount(label);
+            else Assert.DoesNotContain("okunamadı", label);
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // E1: n11, 25 open orders all answering 5xx: note, no count.
+    [PostgreSqlFact]
+    public async Task TheNoteOnTwentyFiveServerErrorsHasNoCount()
+    {
+        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-note-n11", "N11", 25);
+        var port = new TallyOrderPort(_ => Remote("N11_REMOTE_ERROR", AdapterErrorClass.Remote5xx));
+        try
+        {
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, port, jobId)).Kind);
+            Assert.Equal(25, port.Calls);
+            AssertNoteWithoutCount(await JobLabelAsync(jobId));
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    // E1: another failure of the same job (Hepsiburada's cancelled-order list) is no order read error: no note when every
+    // order answered.
+    [PostgreSqlFact]
+    public async Task AnotherFailureOfTheJobDoesNotWriteTheNote()
+    {
+        var (tenant, connection, _, jobId) = await SeedOpenOrderTallyAsync("tally-note-hb", "HEPSIBURADA", 3);
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = HepsiburadaPackageStatusReconciliationPolicy.CursorResourceType, LastSuccessAt = fixture.Now, Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+        var port = new TallyOrderPort(_ => Remote("NOT_FOUND", AdapterErrorClass.NotFound));
+        var cancelled = new EmptyCancelledListPort(fails: true);
+        try
+        {
+            Assert.Equal(JobCompletionKind.Succeeded, (await RunTallyJobAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaOrderStatusSync, port, jobId, cancelled)).Kind);
+            Assert.True(cancelled.Calls > 0);
+            await using var check = fixture.CreateContext();
+            Assert.True((await check.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ResourceType == "ORDER_LIFECYCLE")).LastFailedCount > 0);
+            Assert.DoesNotContain("okunamadı", await JobLabelAsync(jobId));
+        }
+        finally { await DeleteOpenOrderTallyAsync(tenant.Id); }
+    }
+
+    private static void AssertNoteWithoutCount(string? label)
+    {
+        Assert.Contains(" · bazı siparişler okunamadı", label);
+        Assert.DoesNotMatch("[0-9]+ sipariş okunamadı", label!);
     }
 
     private static AdapterError Remote(string code, AdapterErrorClass @class) => new(@class, code, code, 503, null, null);
@@ -354,8 +426,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
         await DeleteReadGuardTenantAsync(tenantId);
     }
 
-    // Hepsiburada's cancelled-order list, answered empty.
-    private sealed class EmptyCancelledListPort : IHepsiburadaInvoiceStatusPort
+    // Hepsiburada's cancelled-order list, answered empty, or failing with a server error.
+    private sealed class EmptyCancelledListPort(bool fails = false) : IHepsiburadaInvoiceStatusPort
     {
         public int Calls { get; private set; }
 
@@ -364,6 +436,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
         public Task<AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>> ListCancelledOrderLinesAsync(AdapterContext context, DateTimeOffset since, DateTimeOffset until, AdapterPageRequest page, CancellationToken cancellationToken)
         {
             Calls++;
+            if (fails) return Task.FromResult(AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Failure(Remote("HEPSIBURADA_REMOTE_ERROR", AdapterErrorClass.Remote5xx)));
             return Task.FromResult(AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Success(new AdapterPageResult<RemoteCancelledOrderLine>([], null, false, 0)));
         }
     }

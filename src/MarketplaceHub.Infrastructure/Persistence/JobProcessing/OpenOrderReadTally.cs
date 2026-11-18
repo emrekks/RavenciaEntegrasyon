@@ -18,6 +18,10 @@ internal sealed class OpenOrderReadTally
 
     public int Failures { get; private set; }
 
+    // An order or package read that failed with a passing or connection error (not a "not found", not one order's own
+    // contract error): the label says some orders were not read.
+    public bool HadReadFailure { get; private set; }
+
     public AdapterError? FirstFailure => firstFailure;
 
     public void Answered() => answers++;
@@ -27,6 +31,7 @@ internal sealed class OpenOrderReadTally
         Failures++;
         firstFailure ??= error;
         if (error is null || !IsConnectionLevel(error)) allConnectionLevel = false;
+        if (error is not null && (error.Class is AdapterErrorClass.Remote5xx or AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit || IsConnectionLevel(error))) HadReadFailure = true;
     }
 
     // The error that fails the scan (rule A), or null when the scan goes on.

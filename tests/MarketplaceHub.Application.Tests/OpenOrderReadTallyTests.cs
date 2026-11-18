@@ -66,13 +66,30 @@ public sealed class OpenOrderReadTallyTests
         Assert.True(OpenOrderReadTally.IsConnectionLevel(Error(AdapterErrorClass.Authentication, code)));
 
     [Fact]
-    public void ThePartlyFailedNoteIsOnlyOnOpenOrderScans()
+    public void TheNoteIsOnlyOnOpenOrderScansAndHasNoCount()
     {
-        Assert.Equal(" · 2 sipariş okunamadı", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.PazaramaOrderStatusSync, 2));
-        Assert.Equal(" · 1 sipariş okunamadı", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.OrderStatusSync, 1));
-        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.PazaramaOrderStatusSync, 0));
-        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.PazaramaOrderSync, 2));
-        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.OrderRecoverySync, 2));
-        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.ReturnSync, 2));
+        Assert.Equal(" · bazı siparişler okunamadı", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.PazaramaOrderStatusSync, true));
+        Assert.Equal(" · bazı siparişler okunamadı", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.OrderStatusSync, true));
+        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.PazaramaOrderStatusSync, false));
+        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.PazaramaOrderSync, true));
+        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.OrderRecoverySync, true));
+        Assert.Equal("", MarketplaceJobProcessor.OpenOrderScanNote(MarketplaceJobTypes.ReturnSync, true));
+    }
+
+    // Only a read that failed with a passing or connection error writes the note; a "not found" is an answer and an
+    // order's own contract error is not an unread order.
+    [Fact]
+    public void OnlyAReadErrorCountsForTheNote()
+    {
+        var notFound = new OpenOrderReadTally();
+        notFound.Answered();
+
+        Assert.False(notFound.HadReadFailure);
+        Assert.False(Failing(Error(AdapterErrorClass.ContractViolation, "PAZARAMA_ORDER_CONTRACT_INVALID")).HadReadFailure);
+        Assert.False(Failing(Error(AdapterErrorClass.Validation, "N11_REQUEST_REJECTED")).HadReadFailure);
+        Assert.True(Failing(Error(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR")).HadReadFailure);
+        Assert.True(Failing(Error(AdapterErrorClass.TransientNetwork, "N11_NETWORK_ERROR")).HadReadFailure);
+        Assert.True(Failing(Error(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED")).HadReadFailure);
+        Assert.True(Failing(Error(AdapterErrorClass.ContractViolation, "PAZARAMA_TOKEN_INVALID")).HadReadFailure);
     }
 }

@@ -13,6 +13,8 @@ internal sealed class JobRunContext
     public int UpdatedCount;
     public int SkippedCount;
     public int FailedCount;
+    // An open-order scan could not read an order or package (OpenOrderReadTally): its label says so, without a count.
+    public bool OpenOrderReadFailed;
     public int RetryCount;
     public int RateLimitCount;
     public int ImportProcessedCount;
