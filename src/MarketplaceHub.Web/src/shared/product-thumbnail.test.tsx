@@ -64,4 +64,39 @@ describe('product frames', () => {
     expect(image.getAttribute('src')).toBe(`${own}?w=480`)
     expect(image.getAttribute('srcset')).toBe(`${own}?w=480 480w, ${own} 1200w`)
   })
+
+  it('shows a loading frame until the photo is painted, then the loaded frame', () => {
+    const cdn = 'https://cdn.dsmcdn.com/ty1998/prod/QC_PREP/1_org_zoom.jpg'
+    act(() => root.render(null))
+    act(() => root.render(<RrImagePreview title="Bluz" sources={[cdn]} onClose={() => {}} />))
+    const frame = () => document.querySelector<HTMLElement>('.rr-img-preview')!
+    expect(frame().dataset.state).toBe('loading')
+    const image = frame().querySelector('img')!
+    Object.defineProperty(image, 'naturalWidth', { value: 1200, configurable: true })
+    act(() => { image.dispatchEvent(new Event('load')) })
+    expect(frame().dataset.state).toBe('loaded')
+  })
+
+  it('tries the small copy when the photo fails and says so when nothing loads, never leaving a dark empty box', () => {
+    const cdn = 'https://cdn.dsmcdn.com/ty1998/prod/QC_PREP/1_org_zoom.jpg'
+    act(() => root.render(null))
+    act(() => root.render(<RrImagePreview title="Bluz" sources={[cdn]} onClose={() => {}} />))
+    expect(document.querySelector('.rr-img-preview img')!.getAttribute('src')).toBe(cdn)
+    act(() => { document.querySelector('.rr-img-preview img')!.dispatchEvent(new Event('error')) })
+    expect(document.querySelector('.rr-img-preview img')!.getAttribute('src')).toContain('/mnresize/256/384/')
+    act(() => { document.querySelector('.rr-img-preview img')!.dispatchEvent(new Event('error')) })
+    expect(document.querySelector('.rr-img-preview img')).toBeNull()
+    expect(document.querySelector('.rr-img-preview')!.getAttribute('data-state')).toBe('failed')
+    expect(document.querySelector('.rr-img-fail')?.textContent).toBe('Görsel yüklenemedi')
+  })
+
+  it('treats a photo that loads with no size as failed', () => {
+    const cdn = 'https://cdn.dsmcdn.com/ty1998/prod/QC_PREP/1_org_zoom.jpg'
+    act(() => root.render(null))
+    act(() => root.render(<RrImagePreview title="Bluz" sources={[cdn]} onClose={() => {}} />))
+    const image = document.querySelector('.rr-img-preview img')!
+    Object.defineProperty(image, 'naturalWidth', { value: 0, configurable: true })
+    act(() => { image.dispatchEvent(new Event('load')) })
+    expect(document.querySelector('.rr-img-preview img')!.getAttribute('src')).toContain('/mnresize/')
+  })
 })

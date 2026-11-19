@@ -396,8 +396,15 @@ export function RrThumb({ src, fallbackSrc, quantity, large, small, onOpen, alt,
 // Our own photos open as the 480 px copy, or the original on a high-density screen (previewSrcSet).
 export function RrImagePreview({ title, crumb, sources, onClose }: { title: string; crumb?: string; sources: string[]; onClose: () => void }) {
   // `crumb` is the codes line ("Model Kodu: … · Renk: …"); it is shown under the title, never above it.
+  // Each photo is tried as given and then as its small CDN copy; when none of them loads the frame says so instead of staying a dark box.
+  const candidates = [...new Set(sources.flatMap(value => [value, thumbnailUrl(value)]))]
   const [index, setIndex] = useState(0)
-  const source = sources[index]
+  const [loaded, setLoaded] = useState(false)
+  const source = candidates[index]
   const srcSet = source ? previewSrcSet(source) : undefined
-  return <RrModal title={title} desc={crumb || undefined} size="img" onClose={onClose}><div className="rr-img-preview">{source ? <img key={source} src={srcSet ? thumbnailUrl(source, 480) : source} srcSet={srcSet} sizes={srcSet ? '(max-width: 760px) 92vw, 430px' : undefined} alt={title} referrerPolicy="no-referrer" onError={() => setIndex(value => value + 1)} /> : <RrIcon name="image" />}</div></RrModal>
+  const next = () => { setLoaded(false); setIndex(value => value + 1) }
+  const state = !source ? (candidates.length ? 'failed' : 'empty') : loaded ? 'loaded' : 'loading'
+  return <RrModal title={title} desc={crumb || undefined} size="img" onClose={onClose}><div className="rr-img-preview" data-state={state}>{source
+    ? <img key={source} src={srcSet ? thumbnailUrl(source, 480) : source} srcSet={srcSet} sizes={srcSet ? '(max-width: 760px) 92vw, 430px' : undefined} alt={title} referrerPolicy="no-referrer" onLoad={event => { if (event.currentTarget.naturalWidth > 0) setLoaded(true); else next() }} onError={next} />
+    : <><RrIcon name="image" />{state === 'failed' && <span className="rr-img-fail" role="status">Görsel yüklenemedi</span>}</>}</div></RrModal>
 }
