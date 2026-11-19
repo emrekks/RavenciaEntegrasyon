@@ -29,7 +29,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var fair = fairness is not null;
         var fairConnections = fairness?.ConnectionIds.ToArray() ?? [];
         var fairLeasedAt = fairness?.LastLeasedAt.ToArray() ?? [];
-        var agedBefore = now - (fairness?.Aging ?? TimeSpan.Zero);
+        var agedBefore = fairness is null ? DateTimeOffset.MinValue : now - fairness.Aging;
         var candidateLimit = fair ? FairCandidateLimit : CandidateLimit;
         // Bulkheads (JobBulkhead): at most N running jobs of a class, or of the leasing lane, per marketplace.
         var bulk = bulkhead is { IsEmpty: false } ? bulkhead : null;

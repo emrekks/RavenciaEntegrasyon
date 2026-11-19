@@ -30,3 +30,36 @@ internal sealed record LaneAlertSettings(bool Enabled, TimeSpan Evaluate, TimeSp
         TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:LaneAlerts:SustainMinutes", 10), 1, 120)),
         TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:LaneAlerts:ClearMinutes", 10), 1, 120)));
 }
+
+// Worker lanes step 2 (19 Nov 2026), connection fairness (JobFairness, ConnectionLeaseClock):
+//   Worker:Fairness:Enabled       default true; false = the earlier order (priority, tenant load, age)
+//   Worker:Fairness:AgingMinutes  default 15 (1..120): a job runnable this long goes ahead of the fairness order, oldest first
+// Replayed (S3a: store A reads its catalog for 50 minutes with 20 background jobs queued, store B's two jobs come a minute
+// later): B waits at most 67 s instead of 1148 s; five tenants: catalog p95 613 -> 431 s, connection p95 ratio 21.8 -> 18.5;
+// one tenant unchanged. Aging 5 minutes let a store's long first import overtake the other store again (B p95 1140 s).
+internal sealed record FairnessSettings(bool Enabled, TimeSpan Aging)
+{
+    public static FairnessSettings From(IConfiguration configuration) => new(
+        configuration.GetValue("Worker:Fairness:Enabled", true),
+        TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:Fairness:AgingMinutes", 15), 1, 120)));
+}
+
+// Worker lanes step 2, per-marketplace bulkheads (WorkerBulkheads, JobBulkhead):
+//   Worker:Bulkhead:Enabled             default true; false = no class or lane cap
+//   Worker:Bulkhead:Classes:<class>     the class's cap per marketplace (0 = none); defaults in WorkerBulkheads.DefaultClasses
+//   Worker:Bulkhead:LaneCaps:<lane>     at most this many jobs of one marketplace in the lane at once; default none
+internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string, int> ClassCaps, IReadOnlyDictionary<string, int> LaneCaps)
+{
+    public static BulkheadSettings From(IConfiguration configuration) => new(
+        configuration.GetValue("Worker:Bulkhead:Enabled", true),
+        MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.DefaultClasses.ToDictionary(item => item.Name,
+            item => Math.Clamp(configuration.GetValue($"Worker:Bulkhead:Classes:{item.Name}", item.DefaultCap), 0, 50)),
+        configuration.GetSection("Worker:Bulkhead:LaneCaps").GetChildren()
+            .Select(child => (child.Key, Cap: int.TryParse(child.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var cap) ? cap : 0))
+            .Where(item => item.Cap > 0)
+            .ToDictionary(item => item.Key, item => Math.Min(item.Cap, 50)));
+
+    public Application.JobBulkhead? For(string lane) => Enabled
+        ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null)
+        : null;
+}

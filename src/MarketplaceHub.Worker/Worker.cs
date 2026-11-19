@@ -30,6 +30,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // Worker lanes step 1: quota-aware leasing (QuotaPressure, JobQuotaHold). Worker:QuotaAwareLeasing:Enabled=false restores
     // the earlier behaviour (a job waits for its quota inside its slot).
     private readonly QuotaAwareLeasingSettings quotaAwareLeasing = QuotaAwareLeasingSettings.From(configuration);
+    // Worker lanes step 2: connection fairness and per-marketplace bulkheads (Worker:Fairness:*, Worker:Bulkhead:*).
+    private readonly FairnessSettings fairnessSettings = FairnessSettings.From(configuration);
+    private readonly BulkheadSettings bulkheads = BulkheadSettings.From(configuration);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -60,11 +63,13 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var slots = LaneSlots(configuration, lane.Name, lane.DefaultSlots);
             totalSlots += slots;
             var laneWake = wakeRouter.SignalFor(lane.Name);
+            var bulkhead = bulkheads.For(lane.Name);
             loops.AddRange(Lane(lane.Name, slots, slot => RunLeaseLaneAsync(slot, lane.MaximumPriority, lane.MinimumPriority, laneWake, stoppingToken,
-                includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes])));
+                includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], bulkhead: bulkhead)));
         }
         await WarnWhenPoolIsTooSmallAsync(totalSlots, stoppingToken);
         StartQuotaAwareLeasing();
+        LogFairnessAndBulkheads();
         loops.Add(RunHealthWatchdogAsync(stoppingToken));
         loops.Add(RunLeaseReaperAsync(stoppingToken));
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
@@ -317,11 +322,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
     }
 
-    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, LaneWakeSignal laneWake, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
+    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, LaneWakeSignal laneWake, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null)
     {
         await RunSlotAsync(laneWake, async token =>
         {
-            var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes);
+            var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes, bulkhead);
             // Health is refreshed only after a successful lease database cycle.
             // A live process that cannot reach the database must not remain healthy.
             TouchHealthFile();
@@ -469,14 +474,40 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             """).SingleAsync(cancellationToken);
     }
 
-    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
+    private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
         var reaped = reapExpiredLeases && !singleJobId.HasValue ? await jobs.ReapExpiredAsync(cancellationToken) : 0;
         if (reaped > 0) logger.LogWarning("Reaped {Count} expired job leases", reaped);
-        var hold = singleJobId.HasValue ? null : QuotaHoldNow(DateTimeOffset.UtcNow);
-        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes, hold);
+        var now = DateTimeOffset.UtcNow;
+        var hold = singleJobId.HasValue ? null : QuotaHoldNow(now);
+        var fairness = singleJobId.HasValue ? null : FairnessNow();
+        var job = await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes, hold,
+            fairness, singleJobId.HasValue ? null : bulkhead);
+        if (job?.ConnectionId is { } connectionId) MarketplaceHub.Infrastructure.Jobs.ConnectionLeaseClock.Shared.Record(connectionId, now);
+        return job;
+    }
+
+    // The fairness order the lease gets now (null when connection fairness is off): when each connection was last served.
+    internal JobFairness? FairnessNow() => fairnessSettings.Enabled
+        ? MarketplaceHub.Infrastructure.Jobs.ConnectionLeaseClock.Shared.Fairness(fairnessSettings.Aging)
+        : null;
+
+    // The startup log names the modes, so a rollback (Worker__Fairness__Enabled=false, Worker__Bulkhead__Enabled=false) shows.
+    private void LogFairnessAndBulkheads()
+    {
+        if (fairnessSettings.Enabled)
+            logger.LogInformation("Connection fairness is on: within a priority the connection with fewer running jobs, then the one served longest ago, goes first; a job runnable for {AgingMinutes} min goes ahead; user actions keep their order",
+                fairnessSettings.Aging.TotalMinutes);
+        else
+            logger.LogInformation("Connection fairness is off: jobs are leased by priority, tenant load and age");
+        if (bulkheads.Enabled)
+            logger.LogInformation("Marketplace bulkheads are on: classes {Classes}; lane caps {LaneCaps}",
+                string.Join(", ", bulkheads.ClassCaps.Select(item => $"{item.Key}={item.Value}")),
+                bulkheads.LaneCaps.Count == 0 ? "none" : string.Join(", ", bulkheads.LaneCaps.Select(item => $"{item.Key}={item.Value}")));
+        else
+            logger.LogInformation("Marketplace bulkheads are off");
     }
 
     internal async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
