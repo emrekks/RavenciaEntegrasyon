@@ -38,6 +38,8 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var bulkClassNames = bulk?.ClassNames.ToArray() ?? [];
         var bulkClassCaps = bulk?.ClassCaps.ToArray() ?? [];
         var laneCap = bulk?.LaneCap;
+        var classMinimumPriority = bulk?.ClassMinimumPriority ?? 0;
+        var classMaximumPriority = bulk?.ClassMaximumPriority ?? 0;
         var bulkOn = bulk is not null;
         var heldAbovePriority = Math.Max(JobPriorityPolicy.BulkUserAction, hold.HeldAbovePriority);
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
@@ -62,7 +64,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                   AND running."ConnectionId" IS NOT NULL),
             -- Bulkheads: the running jobs with their marketplace (only read when a bulkhead is set).
             running_platform AS (
-                SELECT running."JobType", running."Priority", running_connection."PlatformCode" AS platform
+                SELECT running."TenantId", running."JobType", running."Priority", running_connection."PlatformCode" AS platform
                 FROM integration.jobs running
                 JOIN integration.platform_connections running_connection ON running_connection."Id" = running."ConnectionId"
                 WHERE {bulkOn}
@@ -78,7 +80,15 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                 SELECT tenant_pick.*
                 FROM queued_tenants
                 CROSS JOIN LATERAL (
-                SELECT candidate."Id", candidate."TenantId", candidate."ConnectionId", candidate."Priority", candidate."AvailableAt", candidate."CreatedAt"
+                SELECT owner_pick."Id", owner_pick."TenantId", owner_pick."ConnectionId", owner_pick."Priority", owner_pick."AvailableAt", owner_pick."CreatedAt"
+                FROM (
+                SELECT candidate."Id", candidate."TenantId", candidate."ConnectionId", candidate."Priority", candidate."AvailableAt", candidate."CreatedAt",
+                       -- With connection fairness only the first job of each lock group is a candidate: two slots woken
+                       -- together would otherwise take the same connection's next job of a group the first slot is
+                       -- leasing (SKIP LOCKED), and that lease is deferred by the lock. Jobs without a group stand alone.
+                       row_number() OVER (
+                           PARTITION BY coalesce(candidate."LockGroup", candidate_group.lock_group, candidate."Id"::text)
+                           ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC) AS group_rank
                 FROM integration.jobs candidate
                 LEFT JOIN unnest({LockGroupJobTypes}::text[], {LockGroups}::text[]) AS candidate_group(job_type, lock_group)
                   ON candidate_group.job_type = candidate."JobType"
@@ -86,11 +96,14 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                   ON {bulkOn} AND candidate_connection."Id" = candidate."ConnectionId"
                 WHERE candidate."TenantId" = queued_tenants."TenantId"
                   AND (NOT {fair} OR candidate."ConnectionId" IS NOT DISTINCT FROM queued_tenants."ConnectionId")
-                  -- Bulkheads: a class, or the leasing lane, already runs its cap of this marketplace's jobs. Never a user
+                  -- Bulkheads, per tenant and marketplace (a marketplace's quota is the seller account's, so one tenant
+                  -- never limits another): a class counts and limits only jobs in its priority range (the range of the
+                  -- dedicated lane it stands for: a recovery read in the background lane, a first import or a user's
+                  -- refresh neither counts nor is limited); a lane cap counts the leasing lane's own jobs. Never a user
                   -- action, never a job without a connection.
                   AND NOT ({bulkOn} AND candidate."Priority" > {JobPriorityPolicy.BulkUserAction}
                       AND candidate_connection."PlatformCode" IS NOT NULL
-                      AND (EXISTS (
+                      AND ((candidate."Priority" BETWEEN {classMinimumPriority} AND {classMaximumPriority} AND EXISTS (
                               SELECT 1
                               FROM unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS candidate_class(job_type, class_name)
                               JOIN unnest({bulkClassNames}::text[], {bulkClassCaps}::int[]) AS class_cap(class_name, cap)
@@ -102,11 +115,14 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                                     JOIN unnest({bulkJobTypes}::text[], {bulkClasses}::text[]) AS running_class(job_type, class_name)
                                       ON running_class.job_type = running_platform."JobType"
                                     WHERE running_class.class_name = candidate_class.class_name
-                                      AND running_platform.platform = candidate_connection."PlatformCode"))
+                                      AND running_platform."TenantId" = candidate."TenantId"
+                                      AND running_platform."Priority" BETWEEN {classMinimumPriority} AND {classMaximumPriority}
+                                      AND running_platform.platform = candidate_connection."PlatformCode")))
                           OR ({laneCap}::int IS NOT NULL AND {laneCap}::int <= (
                               SELECT count(*)
                               FROM running_platform
                               WHERE running_platform.platform = candidate_connection."PlatformCode"
+                                AND running_platform."TenantId" = candidate."TenantId"
                                 AND ({minimumPriority}::int IS NULL OR running_platform."Priority" >= {minimumPriority}::int)
                                 AND ({maximumPriority}::int IS NULL OR running_platform."Priority" <= {maximumPriority}::int)
                                 AND (cardinality({includedJobTypes}::text[]) = 0 OR running_platform."JobType" = ANY({includedJobTypes}::text[]))
@@ -151,12 +167,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
                         -- oldest one runs, the later one waits for it.
                         AND (candidate."JobType" <> {PanelJobTypes.FactoryReset}
                           OR (panel_reset."CreatedAt", panel_reset."Id") < (candidate."CreatedAt", candidate."Id")))
-                ORDER BY candidate."Priority" ASC, candidate."AvailableAt" ASC, candidate."CreatedAt" ASC
+                ) owner_pick
+                WHERE NOT {fair} OR owner_pick.group_rank = 1
+                ORDER BY owner_pick."Priority" ASC, owner_pick."AvailableAt" ASC, owner_pick."CreatedAt" ASC
                 LIMIT {candidateLimit}) tenant_pick),
+            -- Connection fairness orders jobs of a connection only: user actions and jobs without a connection keep the
+            -- earlier order (priority, tenant load, age).
             fair_picks AS (
                 SELECT picks.*,
-                       {fair} AND picks."Priority" > {JobPriorityPolicy.BulkUserAction} AS fair_job,
-                       {fair} AND picks."Priority" > {JobPriorityPolicy.BulkUserAction} AND greatest(picks."AvailableAt", picks."CreatedAt") <= {agedBefore} AS aged
+                       {fair} AND picks."Priority" > {JobPriorityPolicy.BulkUserAction} AND picks."ConnectionId" IS NOT NULL AS fair_job,
+                       {fair} AND picks."Priority" > {JobPriorityPolicy.BulkUserAction} AND picks."ConnectionId" IS NOT NULL
+                           AND greatest(picks."AvailableAt", picks."CreatedAt") <= {agedBefore} AS aged
                 FROM picks)
             SELECT job.* FROM integration.jobs job
             JOIN fair_picks picks ON picks."Id" = job."Id"

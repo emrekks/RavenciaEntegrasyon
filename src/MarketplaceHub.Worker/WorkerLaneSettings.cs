@@ -46,7 +46,8 @@ internal sealed record FairnessSettings(bool Enabled, TimeSpan Aging)
 
 // Worker lanes step 2, per-marketplace bulkheads (WorkerBulkheads, JobBulkhead):
 //   Worker:Bulkhead:Enabled             default true; false = no class or lane cap
-//   Worker:Bulkhead:Classes:<class>     the class's cap per marketplace (0 = none); defaults in WorkerBulkheads.DefaultClasses
+//   Worker:Bulkhead:Classes:<class>     the class's cap per tenant and marketplace, jobs of priority 0..hot ceiling only
+//                                       (0 = none, the default while the dedicated lanes exist; WorkerBulkheads)
 //   Worker:Bulkhead:LaneCaps:<lane>     at most this many jobs of one marketplace in the lane at once; default none
 internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string, int> ClassCaps, IReadOnlyDictionary<string, int> LaneCaps)
 {
@@ -59,7 +60,7 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
             .Where(item => item.Cap > 0)
             .ToDictionary(item => item.Key, item => Math.Min(item.Cap, 50)));
 
-    public Application.JobBulkhead? For(string lane) => Enabled
-        ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null)
+    public Application.JobBulkhead? For(string lane, int hotPriorityCeiling) => Enabled
+        ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null, hotPriorityCeiling)
         : null;
 }

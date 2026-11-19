@@ -63,7 +63,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var slots = LaneSlots(configuration, lane.Name, lane.DefaultSlots);
             totalSlots += slots;
             var laneWake = wakeRouter.SignalFor(lane.Name);
-            var bulkhead = bulkheads.For(lane.Name);
+            var bulkhead = bulkheads.For(lane.Name, hotPriorityCeiling);
             loops.AddRange(Lane(lane.Name, slots, slot => RunLeaseLaneAsync(slot, lane.MaximumPriority, lane.MinimumPriority, laneWake, stoppingToken,
                 includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], bulkhead: bulkhead)));
         }
