@@ -30998,7 +30998,8 @@
           "attempts",
           "queued",
           "running",
-          "slots"
+          "slots",
+          "waitStatus"
         ],
         "type": "object",
         "properties": {
@@ -31035,6 +31036,38 @@
             "type": "integer",
             "format": "int32",
             "default": 0
+          },
+          "targetSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "recentP95WaitSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "oldestWaitSeconds": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "waitStatus": {
+            "type": "string",
+            "default": "OK"
+          },
+          "alertSince": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },

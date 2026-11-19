@@ -27,6 +27,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // Asks the due-time wake to read the next due moment again (a scheduler pass enqueued jobs).
     private readonly JobWakeSignal dueRecheck = new();
     private static readonly TimeSpan DueRecheckDebounce = TimeSpan.FromSeconds(1);
+    // Worker lanes step 1: quota-aware leasing (QuotaPressure, JobQuotaHold). Worker:QuotaAwareLeasing:Enabled=false restores
+    // the earlier behaviour (a job waits for its quota inside its slot).
+    private readonly QuotaAwareLeasingSettings quotaAwareLeasing = QuotaAwareLeasingSettings.From(configuration);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -61,6 +64,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes])));
         }
         await WarnWhenPoolIsTooSmallAsync(totalSlots, stoppingToken);
+        StartQuotaAwareLeasing();
         loops.Add(RunHealthWatchdogAsync(stoppingToken));
         loops.Add(RunLeaseReaperAsync(stoppingToken));
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
@@ -70,12 +74,36 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:IssueRetention:Enabled", true)) loops.Add(RunIssueRetentionAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunWebhookUpkeepAsync(stoppingToken));
+        if (schedulerEnabled) loops.Add(RunLaneWaitAlertsAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunExternalEffectSweepAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ProductModelScan:Enabled", true)) loops.Add(RunProductModelScanAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:ReturnCardColumns:Enabled", true)) loops.Add(RunReturnCardColumnsRepairAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunProductWarrantyRepairAsync(stoppingToken));
         await Task.WhenAll(loops);
     }
+
+    // The startup log names the mode, so a rollback (Worker__QuotaAwareLeasing__Enabled=false) shows in the logs.
+    private void StartQuotaAwareLeasing()
+    {
+        if (!quotaAwareLeasing.Enabled)
+        {
+            logger.LogInformation("Quota-aware leasing is off: jobs wait for their marketplace quota inside their slot");
+            return;
+        }
+        var pressure = MarketplaceHub.Infrastructure.Jobs.QuotaPressure.Shared;
+        pressure.Saturation = quotaAwareLeasing.Saturation;
+        // A full bucket that has emptied its waiters: the jobs held for it are runnable again now, not at the next poll.
+        pressure.Released += () => wakeRouter.WakeAll();
+        pressure.PairsTrimmed += dropped => logger.LogWarning("Quota-aware leasing: {Dropped} least recently learned connection + job type pairs dropped (limit reached)", dropped);
+        logger.LogInformation("Quota-aware leasing is on: a background job (priority above {HotPriorityCeiling}) whose marketplace quota has kept a request waiting for {SaturationSeconds} s is held in the queue for at most {MaximumHoldMinutes} min; user actions, new-order reads, webhooks and writes are never held",
+            hotPriorityCeiling, quotaAwareLeasing.Saturation.TotalSeconds, quotaAwareLeasing.MaximumHold.TotalMinutes);
+    }
+
+    // The quota hold the lease gets now (null when quota-aware leasing is off): the pairs whose bucket is full, held only
+    // above the hot priority ceiling.
+    internal JobQuotaHold? QuotaHoldNow(DateTimeOffset now) => quotaAwareLeasing.Enabled
+        ? MarketplaceHub.Infrastructure.Jobs.QuotaPressure.Shared.Held(now, quotaAwareLeasing.MaximumHold, hotPriorityCeiling)
+        : null;
 
     private IEnumerable<Task> Lane(string lane, int slots, Func<string, Task> run)
     {
@@ -187,6 +215,44 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
             if (!stoppingToken.IsCancellationRequested)
                 await Task.Delay(schedulerScanInterval, stoppingToken);
+        }
+    }
+
+    // Worker lanes step 1: every minute each lane's queue wait is compared with its target; a miss that lasts opens the lane's
+    // operational issue, ten minutes back within target close it (LaneWaitMonitor, LaneWaitAlarm).
+    private Task RunLaneWaitAlertsAsync(CancellationToken stoppingToken)
+    {
+        var settings = LaneAlertSettings.From(configuration);
+        if (!settings.Enabled)
+        {
+            logger.LogInformation("Lane wait alerts are off (Worker:LaneAlerts:Enabled): open lane alerts are resolved");
+            return ResolveLaneWaitAlertsAsync(stoppingToken);
+        }
+        logger.LogInformation("Lane wait alerts are on: every {EvaluateSeconds} s, p95 of the last {WindowMinutes} min against each lane's target, opened after {SustainMinutes} min, closed after {ClearMinutes} min",
+            settings.Evaluate.TotalSeconds, settings.Window.TotalMinutes, settings.Sustain.TotalMinutes, settings.Clear.TotalMinutes);
+        // A lane not looked at for two passes starts its count again (LaneWaitAlarm.StaleAfter).
+        var alarm = new MarketplaceHub.Infrastructure.Jobs.LaneWaitAlarm(settings.Sustain, settings.Clear, 2 * settings.Evaluate);
+        return RunPeriodicAsync(settings.Evaluate, settings.Evaluate, async token =>
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var monitor = ActivatorUtilities.CreateInstance<LaneWaitMonitor>(scope.ServiceProvider);
+            var changed = await monitor.EvaluateAsync(alarm, settings.Window, token);
+            if (changed > 0) logger.LogInformation("Lane wait alerts: {Changed} lane alert(s) opened or closed", changed);
+        }, exception => logger.LogError(exception, "Lane wait alert pass failed"), stoppingToken, "lane-wait-alerts");
+    }
+
+    // Lane alerts switched off: the alerts left open would never close, so they are resolved once at startup.
+    private async Task ResolveLaneWaitAlertsAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var resolved = await ActivatorUtilities.CreateInstance<LaneWaitMonitor>(scope.ServiceProvider).ResolveAllAsync(stoppingToken);
+            if (resolved > 0) logger.LogInformation("Lane wait alerts are off: {Resolved} open lane alert(s) resolved", resolved);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogError(exception, "Resolving the open lane wait alerts failed");
         }
     }
 
@@ -409,7 +475,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var jobs = scope.ServiceProvider.GetRequiredService<IJobLeaseService>();
         var reaped = reapExpiredLeases && !singleJobId.HasValue ? await jobs.ReapExpiredAsync(cancellationToken) : 0;
         if (reaped > 0) logger.LogWarning("Reaped {Count} expired job leases", reaped);
-        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes);
+        var hold = singleJobId.HasValue ? null : QuotaHoldNow(DateTimeOffset.UtcNow);
+        return await jobs.TryLeaseAsync(JobRetryPolicy.DefaultLeaseDuration, maximumPriority, minimumPriority, cancellationToken, onlyJobType ?? singleJobType, singleJobId, includedJobTypes, excludedJobTypes, hold);
     }
 
     internal async Task ExecuteLeasedJobAsync(LeasedJob job, CancellationToken stoppingToken)
@@ -448,6 +515,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var heartbeat = MaintainLeaseAsync(job, execution, heartbeatStop.Token);
         JobExecutionResult? result = null;
 
+        // The quota buckets this run takes tokens from, learned for quota-aware leasing (QuotaPressure).
+        using var quotaScope = MarketplaceHub.Infrastructure.Jobs.JobQuotaScope.Enter();
         try
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -467,6 +536,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             logger.LogError(exception, "Job {JobId} execution failed", job.Id);
             result = ExceptionResult(exception);
         }
+        LearnQuotaBuckets(job, quotaScope.Keys);
 
         try
         {
@@ -518,6 +588,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             heartbeatStop.Cancel();
             await heartbeat;
         }
+    }
+
+    // A job that writes to a marketplace or the invoice provider (shutdown-protected) is never held for its quota: its path
+    // and timing stay exactly as they were. Every other job of a connection teaches the buckets it used.
+    internal void LearnQuotaBuckets(LeasedJob job, IReadOnlyCollection<string> keys)
+    {
+        if (!quotaAwareLeasing.Enabled || job.ConnectionId is not { } connectionId || FinishOnShutdown(job.JobType)) return;
+        MarketplaceHub.Infrastructure.Jobs.QuotaPressure.Shared.Learn(connectionId, job.JobType, keys);
     }
 
     // Whether a run that ended during shutdown goes back to the queue (ReleaseOnShutdownAsync: no attempt spent) instead of

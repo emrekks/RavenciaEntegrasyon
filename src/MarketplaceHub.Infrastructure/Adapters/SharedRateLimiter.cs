@@ -44,14 +44,29 @@ public static class SharedRateLimits
     public static (double Capacity, double TokensPerSecond) ForSpacing(TimeSpan spacing) =>
         (1, 1 / Math.Max(0.001, spacing.TotalSeconds));
 
-    public static async Task WaitAsync(ISharedRateLimiter limiter, string key, (double Capacity, double TokensPerSecond) bucket, TimeProvider timeProvider, CancellationToken cancellationToken)
+    // Worker lanes step 1: the bucket is recorded for the running job (JobQuotaScope), and a wait is registered with the
+    // worker's QuotaPressure while it lasts, so jobs of a full bucket are not leased meanwhile. The wait itself is unchanged.
+    public static Task WaitAsync(ISharedRateLimiter limiter, string key, (double Capacity, double TokensPerSecond) bucket, TimeProvider timeProvider, CancellationToken cancellationToken) =>
+        WaitAsync(limiter, key, bucket, timeProvider, Jobs.QuotaPressure.Shared, cancellationToken);
+
+    internal static async Task WaitAsync(ISharedRateLimiter limiter, string key, (double Capacity, double TokensPerSecond) bucket, TimeProvider timeProvider, Jobs.QuotaPressure pressure, CancellationToken cancellationToken)
     {
-        while (true)
+        Jobs.JobQuotaScope.Current?.Record(key);
+        Jobs.QuotaPressure.Waiter? waiter = null;
+        try
         {
-            var wait = await limiter.TryTakeAsync(key, bucket.Capacity, bucket.TokensPerSecond, cancellationToken);
-            if (wait <= TimeSpan.Zero) return;
-            var bounded = wait < TimeSpan.FromMilliseconds(10) ? TimeSpan.FromMilliseconds(10) : wait > TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : wait;
-            await Task.Delay(bounded, timeProvider, cancellationToken);
+            while (true)
+            {
+                var wait = await limiter.TryTakeAsync(key, bucket.Capacity, bucket.TokensPerSecond, cancellationToken);
+                if (wait <= TimeSpan.Zero) return;
+                waiter ??= pressure.BeginWait(key, timeProvider.GetUtcNow());
+                var bounded = wait < TimeSpan.FromMilliseconds(10) ? TimeSpan.FromMilliseconds(10) : wait > TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : wait;
+                await Task.Delay(bounded, timeProvider, cancellationToken);
+            }
+        }
+        finally
+        {
+            waiter?.End(timeProvider.GetUtcNow());
         }
     }
 }

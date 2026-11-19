@@ -1645,6 +1645,11 @@ export type LaneMetricView = {
   queued: number
   running: number
   slots: number
+  targetSeconds?: null | number
+  recentP95WaitSeconds?: null | number
+  oldestWaitSeconds?: null | number
+  waitStatus: string
+  alertSince?: null | string
 }
 
 export type LinkRevocationRequest = {
