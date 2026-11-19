@@ -1,0 +1,31 @@
+/* Read-only detail windows behind the API Sağlık cells (offers not sent, failed pushes, lost links, attempts). */
+.rr-layer.rr-layer .md-modal { width: min(1080px, calc(100vw - 32px)); }
+.rr-layer.rr-layer .md-lead { margin: 0 0 12px; }
+.rr-layer.rr-layer .md-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.rr-layer.rr-layer .md-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 0; height: 36px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.rr-layer.rr-layer .md-tabs button.md-on { color: var(--rr-text); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); font-weight: 600; }
+.rr-layer.rr-layer .md-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.rr-layer.rr-layer .md-filters .rr-search { flex: 1 1 260px; max-width: 420px; }
+.rr-layer.rr-layer .md-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 12px; }
+.rr-layer.rr-layer .md-totals > div { padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 12px; }
+.rr-layer.rr-layer .md-totals dt { color: var(--rr-muted); font-size: 12px; }
+.rr-layer.rr-layer .md-totals dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; }
+.rr-layer.rr-layer .md-wrap { overflow-x: auto; border: 1px solid var(--rr-line); border-radius: 12px; }
+.rr-layer.rr-layer .md-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rr-layer.rr-layer .md-tbl th { padding: 8px 12px; color: var(--rr-muted); background: var(--rv-color-table-head); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; }
+.rr-layer.rr-layer .md-tbl td { padding: 8px 12px; vertical-align: middle; border-top: 1px solid var(--rr-line); }
+.rr-layer.rr-layer .md-num, .rr-layer.rr-layer .md-nowrap { white-space: nowrap; }
+.rr-layer.rr-layer .md-act { text-align: right; white-space: nowrap; }
+.rr-layer.rr-layer .md-ident { display: grid; gap: 2px; }
+.rr-layer.rr-layer .md-code { min-height: 0; padding: 0; color: inherit; background: none; border: 0; font: inherit; text-align: left; cursor: copy; }
+.rr-layer.rr-layer .md-code:hover { color: var(--rv-color-primary); }
+.rr-layer.rr-layer .md-none { color: var(--rr-muted); cursor: default; }
+.rr-layer.rr-layer .md-prod { display: grid; min-width: 0; max-width: 340px; }
+.rr-layer.rr-layer .md-prod b { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.rr-layer.rr-layer .md-prod small { color: var(--rr-muted); }
+.rr-layer.rr-layer .md-errcode { margin-right: 6px; font-weight: 600; }
+.rr-layer.rr-layer .md-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: 12px; }
+.rr-layer.rr-layer .md-empty { padding: 24px 0; text-align: center; }
+@media (max-width: 640px) {
+  .rr-layer.rr-layer .md-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

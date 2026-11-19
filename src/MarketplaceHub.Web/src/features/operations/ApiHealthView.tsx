@@ -1,10 +1,13 @@
 import { cardCountText } from '../../shared/metric-value'
 import { Link } from 'react-router'
+import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { CardBackgroundIcon, type CardIconName, type CardTone } from '../../shared/components/CardBackgroundIcon'
 import { RrIcon } from '../../shared/ui/rr-components'
 import { dashboardBootstrapQuery, IntegrationStatusPanel, knownCount, useIntegrationHealth } from '../dashboard/IntegrationStatusPanel'
 import { ApiHealthSignalsPanel } from './ApiHealthSignalsPanel'
+// The detail windows load when a cell is opened.
+const PriceStockProblemDialog = lazy(() => import('./MonitorDetailDialogs').then(module => ({ default: module.PriceStockProblemDialog })))
 import { EmergencyStopButton, usePriceStockMonitor } from '../marketplace/integrations/PriceStockMonitorPanel'
 import type { IntegrationFeedback } from '../marketplace/shared'
 import './api-health.css'
@@ -31,6 +34,8 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
   const bootstrap = useQuery(dashboardBootstrapQuery)
   const metrics = bootstrap.data?.metrics
   const monitor = usePriceStockMonitor()
+  const [problemOf, setProblemOf] = useState<string | null>(null)
+  const problemRow = problemOf ? monitor.rows?.find(row => row.connectionId === problemOf) : undefined
   const stats = apiHealthStats(integration.matrix.isLoading || integration.matrix.isError ? null : integration.attention, knownCount(bootstrap.isLoading, metrics?.recentJobCount), knownCount(bootstrap.isLoading, metrics?.deadJobCount), knownCount(bootstrap.isLoading, metrics?.manualReviewJobCount))
   return <div className="api-health">
     <div className="rr rr-dashboard api-health-rr">
@@ -41,7 +46,8 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
           return stat.to ? <Link key={stat.key} className={className} to={stat.to}>{body}</Link> : <div key={stat.key} className={className}>{body}</div>
         })}
       </div></section>
-      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.notice} />
+      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.notice} onProblemOpen={setProblemOf} />
+      {problemRow && <Suspense fallback={null}><PriceStockProblemDialog connectionId={problemRow.connectionId} displayName={problemRow.displayName} counts={{ invalidOffers: problemRow.invalidOffers, failedPushes: problemRow.failedPushes7d, manualReview: problemRow.manualReviewPushes, notFoundLinks: problemRow.notFoundLinks, rejectedLinks: problemRow.rejectedLinks }} onClose={() => setProblemOf(null)} /></Suspense>}
       <ApiHealthSignalsPanel />
     </div>
   </div>

@@ -53,6 +53,9 @@
 
 /* Marketplace pricing: a disclosure with the title on top and the channels opening right below it. */
 .app-shell.stitch-shell main .marketplace-pricing-open { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; justify-items: start; gap: 6px; padding: 14px 16px; text-align: left; }
+.app-shell.stitch-shell main .marketplace-pricing-openrow { display: flex; align-items: flex-start; gap: 6px; }
+.app-shell.stitch-shell main .marketplace-pricing-openrow > .marketplace-pricing-open { flex: 1 1 auto; min-width: 0; }
+.app-shell.stitch-shell main .marketplace-pricing-note { display: block; margin-top: 6px; color: var(--rv-color-warning); font-size: 12px; line-height: 1.4; }
 .app-shell.stitch-shell main .marketplace-pricing-open-title { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; }
 .app-shell.stitch-shell main .marketplace-pricing-open-title strong { font-size: 14px; font-weight: 700; }
 .app-shell.stitch-shell main .marketplace-pricing-open-title .ui-icon { flex: none; color: var(--rv-color-muted); transition: transform .15s ease; }

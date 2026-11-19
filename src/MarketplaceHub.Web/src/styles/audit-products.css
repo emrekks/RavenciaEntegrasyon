@@ -32,7 +32,7 @@
 /* Ürün Düzenleyici variant table: Liste Fiyatı (heading, pencil and bulk icon) was 96 px and wrapped to two lines while
    Seçenek and Barkod had room; every heading stays on one line and the table fits at 1280 px without sideways scroll. */
 @media (min-width: 1201px) {
-  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(888px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 28px minmax(var(--vopt-w, 170px), 1.1fr) minmax(116px, .9fr) minmax(116px, .9fr) 76px 112px 112px 112px 168px; }
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(894px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(116px, .9fr) minmax(116px, .9fr) 76px 112px 112px 112px 168px; }
   :root:root:root body .variant-table-editor .variant-table-head > * > span { white-space: nowrap; }
 }
 
@@ -126,7 +126,7 @@
    when the card is narrower. */
 :root:root:root body .variant-table-editor { --vopt-w: calc(64px + var(--vopt-ch, 12) * 7.8px); }
 @media (min-width: 1025px) and (max-width: 1200px) {
-  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(1080px + max(180px, var(--vopt-w))); grid-template-columns: 28px minmax(max(180px, var(--vopt-w)), 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 184px; }
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(1086px + max(180px, var(--vopt-w))); grid-template-columns: 34px minmax(max(180px, var(--vopt-w)), 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 184px; }
 }
 @media (min-width: 1025px) {
   :root:root:root body .variant-table-editor .variant-option-cell > .variant-option-text { overflow: visible; text-overflow: clip; }
