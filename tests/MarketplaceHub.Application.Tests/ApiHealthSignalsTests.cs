@@ -34,6 +34,23 @@ public sealed class ApiHealthSignalPolicyTests
         Assert.Null(ApiHealthSignalPolicy.FailureRate(ApiHealthSignalPolicy.ErrorRate([])));
     }
 
+    // The attempt list of the error-rate cell names each failure's class with the same rule the cell counts by.
+    [Theory]
+    [InlineData("HEPSIBURADA_RATE_LIMITED", "rateLimited")]
+    [InlineData("N11_REMOTE_ERROR", "marketplace")]
+    [InlineData("PAZARAMA_NETWORK_ERROR", "marketplace")]
+    [InlineData("N11_REQUEST_REJECTED", "ours")]
+    [InlineData("N11_CREDENTIALS_REJECTED", "ours")]
+    [InlineData("PRODUCT_APPROVAL_PENDING", "workflowOther")]
+    [InlineData(null, "workflowOther")]
+    public void ClassOf_IsTheCellsSplit(string? code, string expected)
+    {
+        Assert.Equal(expected, ApiHealthSignalPolicy.ClassOf(code));
+        var cell = ApiHealthSignalPolicy.ErrorRate([(false, code)]);
+        Assert.Equal(1, expected switch { "rateLimited" => cell.RateLimited, "marketplace" => cell.RemoteSide, "ours" => cell.OurSide, _ => cell.WorkflowWait });
+        Assert.Equal(["marketplace", "ours", "rateLimited", "workflowOther"], ApiHealthSignalPolicy.Classes);
+    }
+
     [Theory]
     [InlineData(120, 120, "ok")]
     [InlineData(360, 120, "ok")]

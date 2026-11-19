@@ -86,6 +86,31 @@ public static partial class MarketplaceEndpoints
         api.MapGet("/price-stock-monitor", async (HttpContext http, IPriceStockMonitorService service) => Tenant(http) is { } tenant ? Results.Ok(await service.MonitorAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<PriceStockMonitorView>();
         // API Sağlığı: per connection, the key / schedule lag / error rate / quota / queue age / webhook signals from stored data.
         api.MapGet("/api-health-signals", async (HttpContext http, IApiHealthSignalsService service) => Tenant(http) is { } tenant ? Results.Ok(await service.SignalsAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<ApiHealthSignalsView>();
+        // The lists behind the monitor's and the health cells' numbers for one connection (İşlem Takibi detail windows), read-only.
+        api.MapGet("/price-stock-monitor/{connectionId:guid}/invalid-offers", async (Guid connectionId, HttpContext http, IPriceStockMonitorService service, string? search, string? reason, int? page, int? pageSize) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var request = NumberedPageRequest.From(page, pageSize);
+            return Result(await service.InvalidOffersAsync(tenant.TenantId, connectionId, search, reason, request.Page, request.PageSize, http.RequestAborted), Results.Ok);
+        }).Produces<PriceStockInvalidOffersView>();
+        api.MapGet("/price-stock-monitor/{connectionId:guid}/failed-pushes", async (Guid connectionId, HttpContext http, IPriceStockMonitorService service, string? kind, int? page, int? pageSize) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var request = NumberedPageRequest.From(page, pageSize);
+            return Result(await service.FailedPushesAsync(tenant.TenantId, connectionId, kind, request.Page, request.PageSize, http.RequestAborted), Results.Ok);
+        }).Produces<PriceStockFailedPushesView>();
+        api.MapGet("/price-stock-monitor/{connectionId:guid}/lost-links", async (Guid connectionId, HttpContext http, IPriceStockMonitorService service, string? health, int? page, int? pageSize) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var request = NumberedPageRequest.From(page, pageSize);
+            return Result(await service.LostLinksAsync(tenant.TenantId, connectionId, health, request.Page, request.PageSize, http.RequestAborted), Results.Ok);
+        }).Produces<PriceStockLostLinksView>();
+        api.MapGet("/api-health-signals/{connectionId:guid}/attempts", async (Guid connectionId, HttpContext http, IApiHealthSignalsService service, [Microsoft.AspNetCore.Mvc.FromQuery(Name = "class")] string? attemptClass, int? page, int? pageSize) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var request = NumberedPageRequest.From(page, pageSize);
+            return Result(await service.AttemptsAsync(tenant.TenantId, connectionId, attemptClass, request.Page, request.PageSize, http.RequestAborted), Results.Ok);
+        }).Produces<ApiHealthAttemptsView>();
         api.MapPost("/price-stock-monitor/emergency-stop", async (HttpContext http, IPriceStockMonitorService service) =>
         {
             if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);

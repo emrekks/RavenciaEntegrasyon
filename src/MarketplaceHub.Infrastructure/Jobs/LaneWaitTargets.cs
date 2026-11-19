@@ -5,9 +5,12 @@ namespace MarketplaceHub.Infrastructure.Jobs;
 // Worker lanes step 1 (19 Nov 2026): how long a job of each lane may wait in the queue before it is leased (the target its
 // p95 wait is held to), and the alert raised when the target keeps being missed.
 //
-// Targets (Worker:LaneTargets:<lane> in seconds, 1..86400, overrides one). Measured on the live week 13-18 Nov 2026
+// Targets (LaneTargets:<lane> in seconds, 1..86400, overrides one; a shared setting the API and the worker both read, so on
+// the server it goes in the compose file's production_environment block that both services get). Measured on the live week 13-18 Nov 2026
 // (first-attempt wait as İşlem Takibi shows it; replay with today's 20 slots):
-//   user 5 s                    a user waits for it; p95 2.4 s, at most 3 s (replay with two tenants p95 6.3 s);
+//   user 5 s                    a user waits for it; p95 2.4 s, at most 3 s (replay with two tenants p95 6.3 s); only
+//                               UserAction jobs count: bulk user work (BulkUserAction, e.g. approving 150 invoices) is
+//                               queued on purpose and stays out of the target and the alert;
 //   hot and the platform order lanes 60 s   new orders, webhooks and writes; p95 0-0.1 s, at most 28 s (order polling
 //                                           runs every 3 minutes, so a minute's wait still shows a new order the same poll);
 //   order-status, hepsiburada-status, returns-read 300 s   periodic scans of open orders and returns; p95 under 1 s, at most 30 s;
@@ -33,9 +36,17 @@ public static class LaneWaitTargets
     public static TimeSpan For(IConfiguration? configuration, string lane)
     {
         var fallback = DefaultFor(lane);
-        var seconds = configuration?.GetValue($"Worker:LaneTargets:{lane}", (int)fallback.TotalSeconds) ?? (int)fallback.TotalSeconds;
+        var seconds = configuration?.GetValue($"LaneTargets:{lane}", (int)fallback.TotalSeconds) ?? (int)fallback.TotalSeconds;
         return TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 86_400));
     }
+
+    // Whether a job's wait counts toward its lane's target: in the user lane only the actions a user waits for (UserAction).
+    public static bool CountsTowardTarget(string lane, int priority) => lane != "user" || priority <= Application.JobPriorityPolicy.UserAction;
+
+    // The recent window whose p95 wait is compared with the target (LaneAlerts:WindowMinutes, 1..60, default 5), shared by the
+    // worker's alert and the API's lane metrics so both show the same state.
+    public static TimeSpan Window(IConfiguration? configuration) =>
+        TimeSpan.FromMinutes(Math.Clamp(configuration?.GetValue("LaneAlerts:WindowMinutes", 5) ?? 5, 1, 60));
 
     // The operational issue a lane's sustained miss opens (ops.operational_issues), one per tenant and lane.
     public const string IssueCode = "QUEUE_WAIT_TARGET_EXCEEDED";
@@ -72,28 +83,42 @@ public static class LaneWaitTargets
 // target, or a job it could run has waited longer than the target. One slow job does not open an alert: the breach must hold
 // at every look for SustainFor (a single late job leaves the recent window before that), and an open alert closes only after
 // the lane has stayed within its target for ClearAfter. Whether the alert is open comes from the issue itself, so a worker
-// restart neither forgets an open alert nor opens a second one.
-public sealed class LaneWaitAlarm(TimeSpan sustainFor, TimeSpan clearAfter)
+// restart neither forgets an open alert nor opens a second one. A lane that was not looked at for StaleAfter (its tenant had
+// no work, or the pass failed) starts its count again, so a breach seen hours ago never opens an alert at one late look.
+public sealed class LaneWaitAlarm(TimeSpan sustainFor, TimeSpan clearAfter, TimeSpan? staleAfter = null)
 {
-    private readonly Dictionary<(Guid TenantId, string Lane), (DateTimeOffset? BreachedSince, DateTimeOffset? HealthySince)> states = new();
+    private readonly Dictionary<(Guid TenantId, string Lane), State> states = new();
 
     public TimeSpan SustainFor { get; } = sustainFor;
     public TimeSpan ClearAfter { get; } = clearAfter;
+    // Two evaluation periods by default (Worker:LaneAlerts:EvaluateSeconds, one minute).
+    public TimeSpan StaleAfter { get; } = staleAfter ?? TimeSpan.FromMinutes(2);
 
     public LaneAlarmTransition Observe(Guid tenantId, string lane, bool breached, bool open, DateTimeOffset now)
     {
         var key = (tenantId, lane);
-        states.TryGetValue(key, out var state);
+        if (!states.TryGetValue(key, out var state) || now - state.LastLook > StaleAfter) state = new State(null, null, now);
         if (breached)
         {
-            state = (state.BreachedSince ?? now, null);
+            state = new State(state.BreachedSince ?? now, null, now);
             states[key] = state;
             return !open && now - state.BreachedSince >= SustainFor ? LaneAlarmTransition.Open : LaneAlarmTransition.None;
         }
-        state = (null, state.HealthySince ?? now);
+        state = new State(null, state.HealthySince ?? now, now);
         states[key] = state;
         return open && now - state.HealthySince >= ClearAfter ? LaneAlarmTransition.Resolve : LaneAlarmTransition.None;
     }
+
+    // Drops the lanes not looked at for StaleAfter (tenants without work), so the states do not pile up.
+    public void ForgetStale(DateTimeOffset now)
+    {
+        foreach (var key in states.Where(entry => now - entry.Value.LastLook > StaleAfter).Select(entry => entry.Key).ToList())
+            states.Remove(key);
+    }
+
+    internal int Tracked => states.Count;
+
+    private readonly record struct State(DateTimeOffset? BreachedSince, DateTimeOffset? HealthySince, DateTimeOffset LastLook);
 }
 
 public enum LaneAlarmTransition

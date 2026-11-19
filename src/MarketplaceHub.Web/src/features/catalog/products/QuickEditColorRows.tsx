@@ -38,7 +38,7 @@ export function colorRowsLayout(rows: readonly MatrixLine[], sizes: readonly str
   return { colorPx, labelPx, cellPx, windowPx }
 }
 
-export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selected, onSelect, renderCell, caption, head }: {
+export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selected, onSelect, renderCell, caption, head, band, bandKey }: {
   rows: readonly MatrixLine[]
   sizes: readonly string[]
   cells: ReadonlyMap<string, T[]>
@@ -50,6 +50,9 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
   caption: string
   // Shown above the ticks, in the sticky row (the value picker).
   head?: ReactNode
+  // The heading of the value shown in the boxes ("Liste Fiyatı (₺)"), above the size columns; the rows fade in when it changes.
+  band?: ReactNode
+  bandKey?: string
 }) {
   const idsIn = (predicate: (colorKey: string, size: string) => boolean) => rows.flatMap(row => sizes.flatMap(size => predicate(row.key, size) ? (cells.get(matrixCellKey(row.key, size)) ?? []).map(idOf) : []))
   const allIds = idsIn(() => true)
@@ -93,6 +96,7 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
     <div className="rr-cr-list" ref={list} role="region" aria-label={caption}>
       {/* The header row of the list: the corner ticks everything, each size head ticks its column; it uses the rows' own grid, so
           the colour column and every size column line up with the ticks below. */}
+      {band != null && <div className="rr-cr-row rr-cr-band" aria-live="polite"><span aria-hidden="true" /><b>{band}</b></div>}
       <div className="rr-cr-row rr-cr-hrow">
         <div className="rr-cr-color rr-cr-hcolor"><Tick id={allId} checked={all.checked} mixed={all.indeterminate} round label="Tüm varyantları seç" disabled={!allIds.length} onChange={checked => onSelect(allIds, checked)} /><label htmlFor={allId}>Tümünü Seç</label></div>
         <div className="rr-cr-sizes">{sizes.map(size => {
@@ -101,6 +105,7 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
           return <div className="rr-cr-pair rr-cr-hpair" key={size}><label className="rr-cr-size"><Tick checked={head.checked} mixed={head.indeterminate} round tick label={`${size} bedenindeki tüm varyantları seç`} disabled={!ids.length} onChange={checked => onSelect(ids, checked)} /><span>{size}</span></label><span aria-hidden="true" /></div>
         })}</div>
       </div>
+      <div className="rr-cr-body" key={bandKey}>
       {rows.map((row, rowIndex) => {
         const rowIds = idsIn(color => color === row.key)
         const rowState = state(rowIds)
@@ -115,6 +120,7 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
           }) : [<span className="rr-cr-gap" key={`gap-${size}`} aria-hidden="true" />] })}</div>
         </div>
       })}
+      </div>
     </div>
   </div>
 }

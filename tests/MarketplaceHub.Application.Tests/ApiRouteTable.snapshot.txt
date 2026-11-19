@@ -1,4 +1,5 @@
 GET    /api/v1/api-health-signals | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/api-health-signals/{connectionId:guid}/attempts | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/auth/change-password | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | ownerIfMatch=401 AUTHENTICATION_REQUIRED
 GET    /api/v1/auth/csrf | gate=Open | sameOrigin=no | anon=200 | owner=200 | cross=200
 GET    /api/v1/auth/invitations/ | gate=Open | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=401 AUTHENTICATION_REQUIRED | cross=401 AUTHENTICATION_REQUIRED
@@ -205,6 +206,9 @@ POST   /api/v1/orders/{id:guid}/packages | gate=Operations | sameOrigin=no | ano
 PUT    /api/v1/orders/{id:guid}/shopify-status | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/price-stock-monitor | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/price-stock-monitor/emergency-stop | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+GET    /api/v1/price-stock-monitor/{connectionId:guid}/failed-pushes | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/price-stock-monitor/{connectionId:guid}/invalid-offers | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/price-stock-monitor/{connectionId:guid}/lost-links | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/price-stock-send-log | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/price-stock-send-log/counts | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/product-activity | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

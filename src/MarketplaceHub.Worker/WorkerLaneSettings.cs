@@ -17,7 +17,8 @@ internal sealed record QuotaAwareLeasingSettings(bool Enabled, TimeSpan Saturati
 // Worker lanes step 1, lane wait alerts (LaneWaitMonitor, LaneWaitAlarm; targets in LaneWaitTargets):
 //   Worker:LaneAlerts:Enabled         default true; false = no QUEUE_WAIT_TARGET_EXCEEDED issue is opened or closed
 //   Worker:LaneAlerts:EvaluateSeconds default 60 (15..600)
-//   Worker:LaneAlerts:WindowMinutes   default 5 (1..60): the recent jobs whose p95 wait is compared with the target
+//   LaneAlerts:WindowMinutes          default 5 (1..60): the recent jobs whose p95 wait is compared with the target; shared
+//                                     with the API (LaneWaitTargets.Window), like the targets LaneTargets:<lane>
 //   Worker:LaneAlerts:SustainMinutes  default 10 (1..120): missed at every look this long before the issue opens
 //   Worker:LaneAlerts:ClearMinutes    default 10 (1..120): within target this long before it closes
 internal sealed record LaneAlertSettings(bool Enabled, TimeSpan Evaluate, TimeSpan Window, TimeSpan Sustain, TimeSpan Clear)
@@ -25,7 +26,7 @@ internal sealed record LaneAlertSettings(bool Enabled, TimeSpan Evaluate, TimeSp
     public static LaneAlertSettings From(IConfiguration configuration) => new(
         configuration.GetValue("Worker:LaneAlerts:Enabled", true),
         TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:LaneAlerts:EvaluateSeconds", 60), 15, 600)),
-        TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:LaneAlerts:WindowMinutes", 5), 1, 60)),
+        MarketplaceHub.Infrastructure.Jobs.LaneWaitTargets.Window(configuration),
         TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:LaneAlerts:SustainMinutes", 10), 1, 120)),
         TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Worker:LaneAlerts:ClearMinutes", 10), 1, 120)));
 }

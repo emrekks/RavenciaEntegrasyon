@@ -4,6 +4,7 @@ using MarketplaceHub.Infrastructure.Jobs;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -66,6 +67,72 @@ public sealed class WorkerLaneQuotaAndTargetTests
     }
 
     [Fact]
+    public void ABucketThatWasFullReleasesWhenItEmptiesEvenIfItsLastWaiterWasShort()
+    {
+        var pressure = new QuotaPressure();
+        var released = 0;
+        pressure.Released += () => released++;
+        var full = pressure.BeginWait("trendyol:x:fg", Start);
+        var late = pressure.BeginWait("trendyol:x:fg", Start.AddSeconds(18));
+        full.End(Start.AddSeconds(20));
+        Assert.Equal(0, released);
+        late.End(Start.AddSeconds(22));
+        Assert.Equal(1, released);
+        // A new busy spell starts clean: a short wait alone releases nothing.
+        pressure.BeginWait("trendyol:x:fg", Start.AddSeconds(30)).End(Start.AddSeconds(31));
+        Assert.Equal(1, released);
+    }
+
+    [Fact]
+    public void LearnedPairsPastTheLimitDropTheLeastRecentlyLearnedAndSaySo()
+    {
+        var pressure = new QuotaPressure();
+        var trimmed = 0;
+        pressure.PairsTrimmed += dropped => trimmed += dropped;
+        var first = Guid.NewGuid();
+        pressure.Learn(first, MarketplaceJobTypes.OrderStatusSync, ["k:first"]);
+        for (var index = 0; index < QuotaPressure.MaximumLearnedPairs; index++)
+            pressure.Learn(Guid.NewGuid(), MarketplaceJobTypes.OrderStatusSync, ["k:other"]);
+        Assert.Equal(QuotaPressure.MaximumLearnedPairs / 10, trimmed);
+        Assert.True(pressure.LearnedPairs <= QuotaPressure.MaximumLearnedPairs);
+        using var waiter = pressure.BeginWait("k:first", Start);
+        Assert.True(pressure.Held(Start.AddSeconds(11), TimeSpan.FromMinutes(15)).IsEmpty);
+    }
+
+    [Fact]
+    public void TheHoldCarriesTheHotPriorityCeiling()
+    {
+        var pressure = new QuotaPressure();
+        var connection = Guid.NewGuid();
+        pressure.Learn(connection, MarketplaceJobTypes.OrderSync, ["trendyol:x:fg"]);
+        using var waiter = pressure.BeginWait("trendyol:x:fg", Start);
+        Assert.Equal(2, pressure.Held(Start.AddSeconds(11), TimeSpan.FromMinutes(15)).HeldAbovePriority);
+        Assert.Equal(4, pressure.Held(Start.AddSeconds(11), TimeSpan.FromMinutes(15), 4).HeldAbovePriority);
+    }
+
+    [Fact]
+    public void AStaleBreachDoesNotOpenAnAlertAtOneLateLook()
+    {
+        var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(2));
+        var tenant = Guid.NewGuid();
+        for (var minute = 0; minute < 6; minute++)
+            Assert.Equal(LaneAlarmTransition.None, alarm.Observe(tenant, "hot", breached: true, open: false, Start.AddMinutes(minute)));
+        // The tenant had no work for hours (not looked at), then one late look: the count starts again.
+        Assert.Equal(LaneAlarmTransition.None, alarm.Observe(tenant, "hot", breached: true, open: false, Start.AddHours(3)));
+        alarm.ForgetStale(Start.AddHours(6));
+        Assert.Equal(0, alarm.Tracked);
+    }
+
+    [Fact]
+    public void BulkUserWorkStaysOutOfTheUserLaneTarget()
+    {
+        Assert.True(LaneWaitTargets.CountsTowardTarget("user", JobPriorityPolicy.UserAction));
+        Assert.False(LaneWaitTargets.CountsTowardTarget("user", JobPriorityPolicy.BulkUserAction));
+        Assert.True(LaneWaitTargets.CountsTowardTarget("background", 4));
+        Assert.Equal(TimeSpan.FromMinutes(7), LaneWaitTargets.Window(Config(("LaneAlerts:WindowMinutes", "7"))));
+    }
+
+    [Fact]
     public async Task TheSharedLimiterWaitMarksItsBucketFullWhileItWaitsAndRecordsItForTheJob()
     {
         var pressure = new QuotaPressure();
@@ -117,13 +184,13 @@ public sealed class WorkerLaneQuotaAndTargetTests
         Assert.Equal(TimeSpan.FromSeconds(60), LaneWaitTargets.For(null, "product-catalog"));
         Assert.Equal(TimeSpan.FromSeconds(120), LaneWaitTargets.For(null, "initial-data-sync"));
         Assert.Equal(TimeSpan.FromSeconds(600), LaneWaitTargets.For(null, "background"));
-        Assert.Equal(TimeSpan.FromSeconds(90), LaneWaitTargets.For(Config(("Worker:LaneTargets:hot", "90")), "hot"));
+        Assert.Equal(TimeSpan.FromSeconds(90), LaneWaitTargets.For(Config(("LaneTargets:hot", "90")), "hot"));
     }
 
     [Fact]
     public void OneLateJobDoesNotOpenAnAlertButASustainedMissDoesAndItClosesItself()
     {
-        var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
+        var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
         var tenant = Guid.NewGuid();
         // A single late job is in the five-minute window for five looks, then gone.
         for (var minute = 0; minute < 5; minute++)
@@ -147,7 +214,7 @@ public sealed class WorkerLaneQuotaAndTargetTests
     [Fact]
     public void AnAlertLeftOpenByTheLastWorkerClosesAfterTheClearTime()
     {
-        var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
+        var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1));
         var tenant = Guid.NewGuid();
         Assert.Equal(LaneAlarmTransition.None, alarm.Observe(tenant, "background", breached: false, open: true, Start));
         Assert.Equal(LaneAlarmTransition.Resolve, alarm.Observe(tenant, "background", breached: false, open: true, Start.AddMinutes(10)));
@@ -216,28 +283,36 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
         var tenant = NewTenant("quota-hold");
         var throttled = NewConnection(tenant);
         var other = NewConnection(tenant);
-        var scan = NewJob(tenant.Id, throttled.Id, MarketplaceJobTypes.OrderStatusSync, priority: 0);
-        var otherScan = NewJob(tenant.Id, other.Id, MarketplaceJobTypes.OrderStatusSync, priority: 0);
+        var scan = NewJob(tenant.Id, throttled.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.Default);
+        var otherScan = NewJob(tenant.Id, other.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.Default);
         var user = NewJob(tenant.Id, throttled.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.UserAction);
         user.LockGroup = "user-test";
+        // A new-order read of the same store: hot work is never held, a bulk user action can keep its bucket busy for minutes.
+        var newOrders = NewJob(tenant.Id, throttled.Id, MarketplaceJobTypes.OrderSync, priority: JobPriorityPolicy.Realtime);
+        newOrders.LockGroup = "new-orders-test";
+        var interactive = NewJob(tenant.Id, throttled.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.Interactive);
+        interactive.LockGroup = "interactive-test";
         await using (var setup = fixture.CreateContext())
         {
             setup.Tenants.Add(tenant);
             setup.PlatformConnections.AddRange(throttled, other);
-            setup.IntegrationJobs.AddRange(scan, otherScan, user);
+            setup.IntegrationJobs.AddRange(scan, otherScan, user, newOrders, interactive);
             await setup.SaveChangesAsync();
         }
 
         try
         {
-            var hold = new JobQuotaHold([throttled.Id], [MarketplaceJobTypes.OrderStatusSync], TimeSpan.FromMinutes(15));
+            var hold = new JobQuotaHold([throttled.Id, throttled.Id], [MarketplaceJobTypes.OrderStatusSync, MarketplaceJobTypes.OrderSync], TimeSpan.FromMinutes(15));
             await using (var db = fixture.CreateContext())
             {
                 var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
-                // The quota is full: the throttled store's scan stays queued; the other store's scan and the user's action go.
+                // The quota is full: the throttled store's background scan stays queued; the other store's scan, the user's
+                // action and the throttled store's hot work (priority 0..2) go.
                 Assert.Null(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: scan.Id, quotaHold: hold));
                 Assert.NotNull(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: otherScan.Id, quotaHold: hold));
                 Assert.NotNull(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: user.Id, quotaHold: hold));
+                Assert.NotNull(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: newOrders.Id, quotaHold: hold));
+                Assert.NotNull(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: interactive.Id, quotaHold: hold));
             }
             await using (var db = fixture.CreateContext())
             {
@@ -257,7 +332,7 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
     {
         var tenant = NewTenant("quota-starve");
         var connection = NewConnection(tenant);
-        var scan = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, priority: 0);
+        var scan = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.Default);
         scan.AvailableAt = DateTimeOffset.UtcNow.AddMinutes(-16);
         scan.CreatedAt = scan.AvailableAt;
         await using (var setup = fixture.CreateContext())
@@ -277,6 +352,52 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
         }
         finally
         {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task TheWorkerPassesItsQuotaHoldToTheLeaseAndHotWorkStillGoes()
+    {
+        var tenant = NewTenant("quota-worker");
+        var connection = NewConnection(tenant);
+        var scan = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.Default);
+        var newOrders = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync, priority: JobPriorityPolicy.Realtime);
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.PlatformConnections.Add(connection);
+            setup.IntegrationJobs.AddRange(scan, newOrders);
+            await setup.SaveChangesAsync();
+        }
+
+        // The worker's own pressure registry: both job types of the store learned the store's foreground bucket, which a
+        // request has been waiting on for twenty seconds (a bulk shipment action, say).
+        var bucket = $"trendyol:{connection.Id:N}:fg";
+        QuotaPressure.Shared.Learn(connection.Id, MarketplaceJobTypes.OrderStatusSync, [bucket]);
+        QuotaPressure.Shared.Learn(connection.Id, MarketplaceJobTypes.OrderSync, [bucket]);
+        var waiter = QuotaPressure.Shared.BeginWait(bucket, DateTimeOffset.UtcNow.AddSeconds(-20));
+        try
+        {
+            var worker = new MarketplaceHub.Worker.Worker(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<MarketplaceHub.Worker.Worker>.Instance, new ConfigurationBuilder().Build(), null!);
+            var hold = worker.QuotaHoldNow(DateTimeOffset.UtcNow);
+            Assert.NotNull(hold);
+            Assert.Equal(WorkerLanes.DefaultHotPriorityCeiling, hold.HeldAbovePriority);
+            await using var db = fixture.CreateContext();
+            var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+            Assert.Null(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: scan.Id, quotaHold: hold));
+            Assert.NotNull(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: newOrders.Id, quotaHold: hold));
+
+            // Switched off, the worker passes no hold.
+            var off = new MarketplaceHub.Worker.Worker(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<MarketplaceHub.Worker.Worker>.Instance,
+                new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Worker:QuotaAwareLeasing:Enabled"] = "false" }).Build(), null!);
+            Assert.Null(off.QuotaHoldNow(DateTimeOffset.UtcNow));
+        }
+        finally
+        {
+            waiter.End(DateTimeOffset.UtcNow);
             await CleanupAsync(tenant.Id);
         }
     }
@@ -302,22 +423,20 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
         try
         {
             var clock = new WorkerLaneQuotaAndTargetTests.SteppingTime(start);
-            var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10));
-            async Task<OperationalIssue?> EvaluateAsync(JobQuotaHold? hold = null)
+            var alarm = new LaneWaitAlarm(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(2));
+            async Task<OperationalIssue?> EvaluateAsync()
             {
                 await using var db = fixture.CreateContext();
-                await new LaneWaitMonitor(db, clock).EvaluateAsync(alarm, LaneWaitMonitor.DefaultWindow, hold, CancellationToken.None);
+                await new LaneWaitMonitor(db, clock).EvaluateAsync(alarm, LaneWaitMonitor.DefaultWindow, CancellationToken.None);
                 return await db.OperationalIssues.AsNoTracking().SingleOrDefaultAsync(issue => issue.TenantId == tenant.Id && issue.DedupeKey == LaneWaitTargets.IssueKey("hot"));
             }
 
-            Assert.Null(await EvaluateAsync());
-            clock.Advance(TimeSpan.FromMinutes(5));
-            Assert.Null(await EvaluateAsync());
-            // Held for a full quota, it waits for the marketplace, not for a slot: no miss at that look, the count starts over.
-            Assert.Null(await EvaluateAsync(new JobQuotaHold([connection.Id], [MarketplaceJobTypes.OrderSync], TimeSpan.FromMinutes(60))));
-            clock.Advance(TimeSpan.FromMinutes(1));
-            Assert.Null(await EvaluateAsync());
-            clock.Advance(TimeSpan.FromMinutes(10));
+            // Missed at every look (one a minute): no alert for ten minutes, then one.
+            for (var minute = 0; minute < 10; minute++)
+            {
+                Assert.Null(await EvaluateAsync());
+                clock.Advance(TimeSpan.FromMinutes(1));
+            }
             var opened = await EvaluateAsync();
             Assert.NotNull(opened);
             Assert.Equal(IssueStatus.Open, opened.Status);
@@ -339,12 +458,88 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
             // The job ran; ten minutes within target close the alert.
             await using (var db = fixture.CreateContext())
                 await db.IntegrationJobs.Where(job => job.Id == late.Id).ExecuteUpdateAsync(setters => setters.SetProperty(job => job.Status, JobStatus.Succeeded));
+            for (var minute = 0; minute < 10; minute++)
+            {
+                clock.Advance(TimeSpan.FromMinutes(1));
+                Assert.Equal(IssueStatus.Open, (await EvaluateAsync())!.Status);
+            }
             clock.Advance(TimeSpan.FromMinutes(1));
-            Assert.Equal(IssueStatus.Open, (await EvaluateAsync())!.Status);
-            clock.Advance(TimeSpan.FromMinutes(10));
             var closed = await EvaluateAsync();
             Assert.Equal(IssueStatus.Resolved, closed!.Status);
             Assert.NotNull(closed.ResolvedAt);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task HeldWorkCountsAsWaitingWhileBulkUserWorkAndJobsBehindAPanelResetDoNot()
+    {
+        var tenant = NewTenant("lane-waiting");
+        var connection = NewConnection(tenant);
+        var resetTenant = NewTenant("lane-reset");
+        var resetConnection = NewConnection(resetTenant);
+        var now = DateTimeOffset.UtcNow;
+        DateTimeOffset Ago(int minutes) => now.AddMinutes(-minutes);
+        // A background scan held for a full quota for twenty minutes (target 600 s), and a bulk user action queued for ten.
+        var held = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.OrderStatusSync, priority: JobPriorityPolicy.Default);
+        held.AvailableAt = held.CreatedAt = Ago(20);
+        var bulk = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.ShipmentAction, priority: JobPriorityPolicy.BulkUserAction);
+        bulk.LockGroup = "bulk-test";
+        bulk.AvailableAt = bulk.CreatedAt = Ago(10);
+        // Another tenant's new-order read waits behind its Paneli Tamamen Sıfırla.
+        var behindReset = NewJob(resetTenant.Id, resetConnection.Id, MarketplaceJobTypes.OrderSync, priority: JobPriorityPolicy.Realtime);
+        behindReset.AvailableAt = behindReset.CreatedAt = Ago(10);
+        var reset = NewJob(resetTenant.Id, resetConnection.Id, PanelJobTypes.FactoryReset, priority: JobPriorityPolicy.UserAction);
+        reset.ConnectionId = null;
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.AddRange(tenant, resetTenant);
+            setup.PlatformConnections.AddRange(connection, resetConnection);
+            setup.IntegrationJobs.AddRange(held, bulk, behindReset, reset);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var monitor = new LaneWaitMonitor(db, TimeProvider.System);
+            var waits = await monitor.SnapshotAsync(tenant.Id, LaneWaitMonitor.DefaultWindow, CancellationToken.None);
+            Assert.True(Assert.Single(waits, wait => wait.Lane == "background").Breached);
+            Assert.Null(Assert.Single(waits, wait => wait.Lane == "user").OldestWaitSeconds);
+            var resetWaits = await monitor.SnapshotAsync(resetTenant.Id, LaneWaitMonitor.DefaultWindow, CancellationToken.None);
+            Assert.Null(Assert.Single(resetWaits, wait => wait.Lane == "hot").OldestWaitSeconds);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+            await CleanupAsync(resetTenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task SwitchingTheAlertsOffResolvesTheOpenOnes()
+    {
+        var tenant = NewTenant("lane-off");
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            await setup.SaveChangesAsync();
+            await new IssueRecorder(setup).RecordAsync(tenant.Id, LaneWaitTargets.IssueKey("hot"), LaneWaitTargets.IssueCode, "test", DateTimeOffset.UtcNow, CancellationToken.None);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True(await new LaneWaitMonitor(db, TimeProvider.System).ResolveAllAsync(CancellationToken.None) >= 1);
+            await using (var db = fixture.CreateContext())
+            {
+                var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(item => item.TenantId == tenant.Id && item.Code == LaneWaitTargets.IssueCode);
+                Assert.Equal(IssueStatus.Resolved, issue.Status);
+            }
         }
         finally
         {

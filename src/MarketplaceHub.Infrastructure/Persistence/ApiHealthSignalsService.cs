@@ -26,10 +26,8 @@ public sealed class ApiHealthSignalsService(AppDbContext db, TimeProvider timePr
         var ids = connections.Select(x => x.Id).ToArray();
 
         // Finished attempts of the last 24 hours, and the newest refusal and success of the last 30 days, per connection.
-        var attempts = await (from attempt in db.JobAttempts.AsNoTracking()
-                              join job in db.IntegrationJobs.AsNoTracking() on attempt.JobId equals job.Id
-                              where attempt.TenantId == tenantId && job.ConnectionId != null && ids.Contains(job.ConnectionId.Value) && attempt.CompletedAt != null && attempt.StartedAt >= dayAgo
-                              select new { ConnectionId = job.ConnectionId!.Value, attempt.Succeeded, attempt.ErrorCode }).ToListAsync(cancellationToken);
+        var attempts = await FinishedAttempts(db, tenantId, ids, dayAgo)
+            .Select(x => new { x.ConnectionId, x.Attempt.Succeeded, x.Attempt.ErrorCode }).ToListAsync(cancellationToken);
         var refusals = await (from attempt in db.JobAttempts.AsNoTracking()
                               join job in db.IntegrationJobs.AsNoTracking() on attempt.JobId equals job.Id
                               where attempt.TenantId == tenantId && job.ConnectionId != null && ids.Contains(job.ConnectionId.Value) && attempt.StartedAt >= monthAgo && !attempt.Succeeded
@@ -101,5 +99,48 @@ public sealed class ApiHealthSignalsService(AppDbContext db, TimeProvider timePr
             return new ApiHealthConnectionSignals(connection.Id, connection.PlatformCode, connection.DisplayName, auth, lag, errorRate, rateLimit, queue, webhook);
         }).ToList();
         return new ApiHealthSignalsView(now, rows);
+    }
+
+    // Members set by an initializer, so EF can carry them into the queries composed on top.
+    private sealed class AttemptRow
+    {
+        public Guid ConnectionId { get; init; }
+        public required JobAttempt Attempt { get; init; }
+        public required string JobType { get; init; }
+    }
+
+    // The finished attempts of the last 24 hours: the error-rate cell and its attempt list read the same rows.
+    private static IQueryable<AttemptRow> FinishedAttempts(AppDbContext db, Guid tenantId, Guid[] ids, DateTimeOffset since) =>
+        from attempt in db.JobAttempts.AsNoTracking()
+        join job in db.IntegrationJobs.AsNoTracking() on attempt.JobId equals job.Id
+        where attempt.TenantId == tenantId && job.ConnectionId != null && ids.Contains(job.ConnectionId.Value) && attempt.CompletedAt != null && attempt.StartedAt >= since
+        select new AttemptRow { ConnectionId = job.ConnectionId!.Value, Attempt = attempt, JobType = job.JobType };
+
+    public async Task<ServiceResult<ApiHealthAttemptsView>> AttemptsAsync(Guid tenantId, Guid connectionId, string? attemptClass, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var wanted = string.IsNullOrWhiteSpace(attemptClass) ? null
+            : ApiHealthSignalPolicy.Classes.FirstOrDefault(x => string.Equals(x, attemptClass.Trim(), StringComparison.OrdinalIgnoreCase))
+              ?? throw new ArgumentException($"class {string.Join(", ", ApiHealthSignalPolicy.Classes)} değerlerinden biri olmalıdır.");
+        var shown = await db.PlatformConnections.AsNoTracking()
+            .AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED" && MarketplacePlatforms.Contains(x.PlatformCode), cancellationToken);
+        if (!shown) return ServiceResult<ApiHealthAttemptsView>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
+        var dayAgo = timeProvider.GetUtcNow().AddHours(-24).ToUniversalTime();
+        var rows = FinishedAttempts(db, tenantId, [connectionId], dayAgo);
+        var all = await rows.Select(x => new { x.Attempt.Succeeded, x.Attempt.ErrorCode }).ToListAsync(cancellationToken);
+        var totals = ApiHealthSignalPolicy.ErrorRate(all.Select(x => (x.Succeeded, (string?)x.ErrorCode)));
+        // The failed attempts are classified by code in memory (the class is ApiHealthSignalPolicy's rule, not SQL); a day
+        // of one connection's failures is small.
+        var failed = await rows.Where(x => !x.Attempt.Succeeded)
+            .Select(x => new { x.Attempt.JobId, x.JobType, x.Attempt.StartedAt, x.Attempt.ErrorCode, x.Attempt.ErrorSummary, x.Attempt.Id })
+            .ToListAsync(cancellationToken);
+        var matching = failed
+            .Select(x => (Row: x, Class: ApiHealthSignalPolicy.ClassOf(x.ErrorCode)))
+            .Where(x => wanted is null || x.Class == wanted)
+            .OrderByDescending(x => x.Row.StartedAt).ThenBy(x => x.Row.Id)
+            .ToList();
+        var items = matching.Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(x => new ApiHealthAttemptView(x.Row.JobId, x.Row.JobType, x.Row.StartedAt, x.Class, x.Row.ErrorCode, JobErrorMessages.Display(x.Row.ErrorCode, x.Row.ErrorSummary)))
+            .ToList();
+        return ServiceResult<ApiHealthAttemptsView>.Ok(new(totals, items, page, pageSize, matching.Count, ApiHealthSignalPolicy.Classes));
     }
 }

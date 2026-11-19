@@ -65,6 +65,10 @@ async function type(input: HTMLInputElement, value: string) {
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
 }
+async function pickValue(name: string) {
+  await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+  await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith(name))!.click() })
+}
 const field = (label: string) => Array.from(document.body.querySelectorAll('label.rr-fld')).find(item => item.querySelector('small')?.textContent === label)!.querySelector('input')!
 
 describe('ProductQuickEditModal opened from the product editor', () => {
@@ -77,10 +81,19 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     expect(document.body.textContent).toContain('Model Kodu: MZ070')
     expect(document.body.textContent).not.toContain('Fiyat Kanalı')
     await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Bej rengindeki tüm varyantları seç"]')!)
-    await type(field('Satış Fiyatı'), '150')
-    await type(field('Liste Fiyatı'), '180')
-    await type(field('Maliyet'), '70')
-    await type(field('Miktar'), '8')
+    // One value shows at a time (named in the band above the sizes); what was typed for the others is kept and applied together.
+    expect(document.body.querySelector('.rr-cr-band')?.textContent).toBe('Stok (Adet)')
+    await type(field('Miktar (Adet)'), '8')
+    await pickValue('Satış Fiyatı')
+    expect(document.body.querySelector('.rr-cr-band')?.textContent).toBe('Satış Fiyatı (₺)')
+    await type(field('Satış Fiyatı (₺)'), '150')
+    await pickValue('Liste Fiyatı')
+    expect(document.body.querySelector('.rr-cr-band')?.textContent).toBe('Liste Fiyatı (₺)')
+    expect(document.body.textContent).toContain('Liste Fiyatını Düzenle')
+    await type(field('Liste Fiyatı (₺)'), '180')
+    await pickValue('Maliyet')
+    expect(document.body.querySelector('.rr-cr-band')?.textContent).toBe('Maliyet (₺)')
+    await type(field('Maliyet (₺)'), '70')
     // A hand-typed cell is applied too; the tabs name the editable values.
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
     expect(Array.from(document.body.querySelectorAll('[role="option"]')).map(item => item.textContent)).toEqual(['Stok', 'Maliyet', 'Liste Fiyatı', 'Satış Fiyatı'])
@@ -102,7 +115,8 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     root = createRoot(container)
     await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
     expect(document.body.querySelector('.rr-note')?.textContent).toContain('Seçim yok: 3 varyantın tümüne')
-    await type(field('Maliyet'), '55')
+    await pickValue('Maliyet')
+    await type(field('Maliyet (₺)'), '55')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
     expect(onApply).toHaveBeenCalledWith(rows.map(item => ({ key: item.key, stock: 3, listPrice: 120, salePrice: 100, costPrice: 55 })))
   })
@@ -112,7 +126,8 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     root = createRoot(container)
     await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply }} /></MemoryRouter>) })
     await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Bej rengindeki tüm varyantları seç"]')!)
-    await type(field('Satış Fiyatı'), '500')
+    await pickValue('Satış Fiyatı')
+    await type(field('Satış Fiyatı (₺)'), '500')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
     expect(onApply).not.toHaveBeenCalled()
     expect(document.body.querySelector('.rr-callout')?.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz')
