@@ -105,7 +105,7 @@ export function healthLink({ row, auth, webhook }: IntegrationHealth['health'][n
   return row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn') ? matrixJobsLink(row.platformCode) : null
 }
 
-export function IntegrationStatusPanel({ integration, extras, headerAction, notice }: { integration?: IntegrationHealth; extras?: Record<string, StatusExtras>; headerAction?: ReactNode; notice?: string | null }) {
+export function IntegrationStatusPanel({ integration, extras, headerAction, notice, onProblemOpen }: { integration?: IntegrationHealth; extras?: Record<string, StatusExtras>; headerAction?: ReactNode; notice?: string | null; onProblemOpen?: (connectionId: string) => void }) {
   const own = useIntegrationHealth()
   const { matrix, rows, health, attention } = integration ?? own
   const bootstrap = useQuery(dashboardBootstrapQuery)
@@ -119,7 +119,7 @@ export function IntegrationStatusPanel({ integration, extras, headerAction, noti
         {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{matrixCellText(cell)}</span></td> })}
         <td data-l="Webhook"><span className={`rr-mx rr-${webhook.tone}`} title={extra ? `${webhook.title}\n${extra.sourceHint}` : webhook.title}><i />{webhook.text}</span></td>
         {extras ? <><td data-l="Otomatik Yazma">{extra ? <span className={`psm-chip is-write-${extra.write.tone}`} title={extra.write.title}><i aria-hidden="true" />{extra.write.label}</span> : <span className="rr-mx rr-off">—</span>}</td>
-          <td data-l="Sorun">{extra?.problem ? <span className={`rr-mx rr-${extra.problem.tone}`} title={extra.problem.title}><i />{extra.problem.text}</span> : null}</td></> : null}
+          <td data-l="Sorun">{extra?.problem ? (onProblemOpen ? <button type="button" className={`rr-mx rr-${extra.problem.tone} rr-mx-open`} title={extra.problem.title} aria-haspopup="dialog" onClick={() => onProblemOpen(row.connectionId)}><i />{extra.problem.text}</button> : <span className={`rr-mx rr-${extra.problem.tone}`} title={extra.problem.title}><i />{extra.problem.text}</span>) : null}</td></> : null}
         <td className="rr-mx-act">{link && <Link className="rr-btn rr-link" to={link}>İncele</Link>}</td></tr> })}
     </tbody></table></div>
     <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{loadingValue(metrics?.recentJobCount)}</b> istek · Açıkta kalan: <Link className="rr-mx-foot-link" to="/jobs?statu=DEAD&aralik=tum" title="Deneme hakkı dolan işler; İşlem Takibi’nde tüm zamanlarla açılır"><b className="rr-num">{loadingValue(metrics?.deadJobCount)}</b> tamamlanamayan</Link> · <Link className="rr-mx-foot-link" to="/jobs?statu=MANUAL_REVIEW&aralik=tum" title="Kararınızı bekleyen işler; İşlem Takibi’nde tüm zamanlarla açılır"><b className="rr-num">{loadingValue(metrics?.manualReviewJobCount)}</b> karar bekleyen iş</Link></span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
