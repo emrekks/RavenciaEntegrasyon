@@ -52,7 +52,7 @@ function CopyCode({ value, label }: { value: string | null | undefined; label: s
 }
 
 function Identity({ barcode, sku }: { barcode?: string | null; sku?: string | null }) {
-  return <span className="md-ident"><CopyCode value={barcode} label="Barkod" /><CopyCode value={sku} label="Stok kodu" /></span>
+  return <span className="md-ident"><CopyCode value={barcode} label="Barkod" />{sku && sku !== barcode ? <CopyCode value={sku} label="Stok kodu" /> : null}</span>
 }
 
 function Product({ title, variant }: { title?: string | null; variant?: string | null }) {
