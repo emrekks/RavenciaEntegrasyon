@@ -35,6 +35,8 @@ const fixture = vi.hoisted(() => {
     failUpload: false,
     // O2: values stored with more precision than a person may type (prices and costs keep four decimals, a stock may be fractional).
     precise: false,
+    // A stock stored fractional (the server allows it); the form shows it as it is.
+    fractionalStock: false,
     log: [] as Array<Record<string, unknown>>,
     toasts: [] as Array<Record<string, unknown>>
   })
@@ -42,7 +44,7 @@ const fixture = vi.hoisted(() => {
   const statusFor = (connectionId: string, platformCode: string, offerId: string, price: number) => ({ connectionId, platformCode, platform: platformCode === 'N11' ? 'N11' : 'Trendyol', isLinked: state.liveTy && platformCode !== 'N11', isMatched: state.liveTy && platformCode !== 'N11', status: 'ACTIVE', offerId, offerVersion: 3, listPrice: price, salePrice: price, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, offerStatus: 'ACTIVE', followsPanelPrice: true })
   const variant = (id: string, colour: string, size: string, sku: string, barcode: string) => ({
     id, version: 1, productId: 'p1', sku, barcode, modelCode: 'RYP006', optionSignature: `Renk: ${colour} | Beden: ${size}`, status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1,
-    costPrice: state.precise && id === 'v1' ? 12.3456 : state.cost[id], onHand: state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90,
+    costPrice: state.precise && id === 'v1' ? 12.3456 : state.cost[id], onHand: state.fractionalStock && id === 'v1' ? 2.5 : state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90,
     currency: 'TRY', offerStatus: 'ACTIVE', priceVersion: 1, offerVersion: 3, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: state.variantMedia[id] ?? [], options: { Renk: colour, Beden: size }, attributes: [],
     platformStatuses: [statusFor('ty', 'TRENDYOL', `o-${id}`, 90), statusFor('n11', 'N11', `n-${id}`, 95)]
   })
@@ -389,6 +391,18 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     expect(precise.map(entry => [entry.method, entry.path])).toEqual(plain.map(entry => [entry.method, entry.path]))
     const replaced = JSON.stringify(plain).split('"defaultListPrice":100,').join('"defaultListPrice":99.999,').split('"defaultSalePrice":90,').join('"defaultSalePrice":12.3456,')
     expect(JSON.stringify(precise)).toBe(replaced)
+  })
+
+  it('saves an untouched record holding a fractional stock, sending no stock', async () => {
+    fixture.state.fractionalStock = true
+    await renderAt('/products/p1')
+    expect(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S stok"]').value).toBe('2,5')
+    setValue(titleInput(), 'Yeni Ad')
+    await settle()
+    await submit('save')
+    const writes = fixture.state.log.filter(entry => entry.method !== 'GET')
+    expect(writes.map(entry => [entry.method, entry.path])).toEqual([['PATCH', '/products/p1']])
+    expect(JSON.stringify(writes)).not.toContain('onHand')
   })
 
   it('update with a stock and cost change', async () => {

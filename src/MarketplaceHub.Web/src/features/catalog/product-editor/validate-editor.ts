@@ -12,8 +12,7 @@ import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { draftBlockingIssues, unreadableNumberIssues } from '../product-draft'
 import { editorVatRateIssue } from '../product-editor-state'
 import { MAX_VARIANTS } from './editor-helpers'
-import { channelFieldKey, readMoneyField } from './seeded-fields'
-import { editorCount } from './editor-number'
+import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -124,7 +123,7 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
   }
   issues.push(...unreadableNumberIssues(rows))
-  if (!Number.isFinite(editorCount(form.safetyStock || 0)) || !Number.isFinite(editorCount(form.initialStock || 0))) issues.push('Stok ve güvenlik stoğu 1.250 gibi sıfır veya pozitif bir tam sayı olmalıdır.')
+  if (!Number.isFinite(readCountField('safetyStock', form.safetyStock || 0)) || !Number.isFinite(readCountField('initialStock', form.initialStock || 0))) issues.push('Stok ve güvenlik stoğu 1.250 gibi sıfır veya pozitif bir tam sayı olmalıdır.')
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
   // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
   if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')

@@ -24,8 +24,9 @@ import type { VariantActionsResult } from './use-variant-actions'
 import type { VariantCodeActionsResult } from './use-variant-code-actions'
 import type { EditorMediaActionsResult } from './use-editor-media-actions'
 import type { PlatformUpdateResult } from './use-platform-update'
-import { editorCount, parseEditorNumber } from './editor-number'
+import { parseEditorNumber } from './editor-number'
 import { priceInputNumber } from './card-prices'
+import { readCountField } from './seeded-fields'
 import { priceFieldText } from '../quick-price-edit'
 
 export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult) {
@@ -104,7 +105,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
           vatRate: offerVatRate(platform.vatRate ?? selectedPlatform.vatRate),
           vatInclusion: platform.vatInclusion ?? selectedPlatform.vatInclusion ?? form.vatIncluded,
           roundingMode: platform.roundingMode ?? selectedPlatform.roundingMode ?? 'HALF_EVEN',
-          safetyStock: platform.safetyStock ?? selectedPlatform.safetyStock ?? editorCount(form.safetyStock || 0),
+          safetyStock: platform.safetyStock ?? selectedPlatform.safetyStock ?? readCountField('safetyStock', form.safetyStock || 0),
           status: 'ACTIVE',
           reason: `${platformDisplayName(platform)} toplu varyant fiyatı`
         }
@@ -159,7 +160,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
         vatRate: offerVatRate(platform.vatRate ?? targetPlatform.vatRate),
         vatInclusion: platform.vatInclusion ?? targetPlatform.vatInclusion ?? form.vatIncluded,
         roundingMode: platform.roundingMode ?? targetPlatform.roundingMode ?? 'HALF_EVEN',
-        safetyStock: platform.safetyStock ?? targetPlatform.safetyStock ?? editorCount(form.safetyStock || 0),
+        safetyStock: platform.safetyStock ?? targetPlatform.safetyStock ?? readCountField('safetyStock', form.safetyStock || 0),
         status: 'ACTIVE',
         reason: `${platformDisplayName(platform)} varyant fiyatı`
       }
@@ -230,7 +231,7 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
           vatRate: offerVatRate(target.platform.vatRate),
           vatInclusion: target.platform.vatInclusion ?? form.vatIncluded,
           roundingMode: target.platform.roundingMode ?? 'HALF_EVEN',
-          safetyStock: target.platform.safetyStock ?? editorCount(form.safetyStock || 0),
+          safetyStock: target.platform.safetyStock ?? readCountField('safetyStock', form.safetyStock || 0),
           status: 'ACTIVE',
           reason: `${platformDisplayName(target.platform)} toplu varyant fiyatı`,
           // A price typed apart from the variant's panel price is this marketplace's own ("Özel Fiyat"), so a panel save

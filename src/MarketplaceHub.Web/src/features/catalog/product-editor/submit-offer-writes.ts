@@ -6,9 +6,9 @@ import { mapWithConcurrency, mediaSaveProgressMessage } from './product-media-sa
 import { editorOfferPriceReason, platformUpdateWritesOffers } from './platform-update-fields'
 import { channelTakesListPrice, editorChannelOfferPrices, editorOfferUnchanged, offerHasSalePrice, panelFollowChoiceVariantIds, unpricedOfferWarning } from '../quick-price-edit'
 import { channelOfferWriteConcurrency } from './editor-helpers'
-import { editorCount, parseEditorNumber } from './editor-number'
+import { parseEditorNumber } from './editor-number'
 import { priceInputNumber } from './card-prices'
-import { channelFieldKey, readMoneyField } from './seeded-fields'
+import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
 import { rowsBySku, skuKey } from './submit-media-step'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
@@ -88,7 +88,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     // no price to write: the server refuses a sale price of zero, and one such row used to stop the whole save
     // after the card was written (owner 7.11.2026, MZ052BOD: "Satış fiyatı sıfırdan büyük olmalıdır").
     if (!offerHasSalePrice(offerPrices)) { unpricedOfferSkus.add(row.sku); return }
-    const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: parseEditorNumber(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: editorCount(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
+    const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: parseEditorNumber(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: readCountField('safetyStock', form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
     // An offer the variant already has is written at the version this form loaded (PATCH + If-Match), so a price
     // changed meanwhile elsewhere is refused instead of overwritten; one the write would leave as it is is skipped.
     // POST only creates: the server refuses it over an offer this form did not know of.

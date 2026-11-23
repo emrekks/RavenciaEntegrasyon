@@ -36,7 +36,8 @@ type NumberRow = { salePrice: number; listPrice: number; stock?: number; costPri
 export function unreadableNumberIssues(rows: ReadonlyArray<NumberRow>): string[] {
   const issues: string[] = []
   if (rows.some(row => Number.isNaN(row.salePrice) || Number.isNaN(row.listPrice) || (row.costPrice != null && Number.isNaN(row.costPrice)))) issues.push('Bir varyantın fiyatı ya da maliyeti okunamadı; nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane kullanın (1.250 ya da 1.250,50).')
-  if (rows.some(row => row.stock != null && (!Number.isInteger(row.stock) || row.stock < 0))) issues.push('Bir varyantın stoğu okunamadı; 1.250 gibi sıfır veya pozitif bir tam sayı girin.')
+  // A typed stock the reader refused is NaN; a fractional or negative stock can only be the stored one and is kept (O2).
+  if (rows.some(row => row.stock != null && Number.isNaN(row.stock))) issues.push('Bir varyantın stoğu okunamadı; 1.250 gibi sıfır veya pozitif bir tam sayı girin.')
   return issues
 }
 export function draftBlockingIssues(rows: ReadonlyArray<{ sku: string; barcode: string; optionSignature: string } & NumberRow>, prices: { listPrice: string; salePrice: string }) {

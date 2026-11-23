@@ -1,5 +1,6 @@
 import { useState, type InputHTMLAttributes } from 'react'
 import { priceFieldText } from '../quick-price-edit'
+import { trNumberInput } from '../../../shared/tr-number'
 import { priceInputNumber } from './card-prices'
 import { editorCount } from './editor-number'
 
@@ -14,7 +15,7 @@ const readers: Record<TrNumberKind, (text: string) => number | null> = {
   cost: text => text.trim() === '' ? null : priceInputNumber(text),
   count: text => editorCount(text),
 }
-const shown = (kind: TrNumberKind, value: number | null) => value == null || !Number.isFinite(value) ? '' : kind === 'count' ? String(value) : value === 0 && kind === 'price' ? '0' : priceFieldText(value)
+const shown = (kind: TrNumberKind, value: number | null) => value == null || !Number.isFinite(value) ? '' : kind === 'count' ? trNumberInput(value) : value === 0 && kind === 'price' ? '0' : priceFieldText(value)
 
 export function TrNumberInput({ kind, value, onText, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & { kind: TrNumberKind; value: number | null; onText: (text: string) => void }) {
   const [text, setText] = useState(() => shown(kind, value))
