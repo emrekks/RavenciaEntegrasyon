@@ -75,23 +75,132 @@ public sealed class JobChangesService(AppDbContext db, IPriceStockSendLogService
         return ServiceResult<JobChangesSummaryView>.Ok(new(scope.Mode, lineOutcome, summary, spawned, trigger, orderNumber));
     }
 
-    public async Task<ServiceResult<PageResult<JobChangeLineView>>> PageAsync(Guid tenantId, Guid jobId, JobChangesQuery query, CancellationToken cancellationToken)
+    public async Task<ServiceResult<JobChangesPageView>> PageAsync(Guid tenantId, Guid jobId, JobChangesQuery query, CancellationToken cancellationToken)
     {
         var scope = await ScopeAsync(tenantId, jobId, cancellationToken);
-        if (scope is null) return ServiceResult<PageResult<JobChangeLineView>>.Fail(JobNotFoundCode, JobNotFoundMessage, 404);
+        if (scope is null) return ServiceResult<JobChangesPageView>.Fail(JobNotFoundCode, JobNotFoundMessage, 404);
+        var numbered = query.Numbered;
+        int? page = numbered ? query.EffectivePage : null;
+        int? pageSize = numbered ? query.EffectivePageSize : null;
+        var empty = ServiceResult<JobChangesPageView>.Ok(new([], null, false, page, pageSize, 0));
+        var filter = Filter(scope, query);
+        if (filter is null) return empty;
+        if (filter.Activity is { } activityQuery)
+        {
+            if (numbered)
+            {
+                var counted = await activity.OffsetPageAsync(tenantId, activityQuery, query.Skip, query.EffectivePageSize, cancellationToken);
+                if (!counted.Succeeded) return ServiceResult<JobChangesPageView>.Fail(counted.Error!.Code, counted.Error.Message, counted.Error.Status);
+                return Numbered(counted.Value!.Items.Select(FromActivity).ToList(), counted.Value.TotalCount);
+            }
+            var cursorPage = await activity.PageAsync(tenantId, activityQuery with { Limit = query.EffectiveLimit, After = query.After }, cancellationToken);
+            if (!cursorPage.Succeeded) return ServiceResult<JobChangesPageView>.Fail(cursorPage.Error!.Code, cursorPage.Error.Message, cursorPage.Error.Status);
+            var total = await CountAsync(tenantId, filter, cancellationToken);
+            return ServiceResult<JobChangesPageView>.Ok(new(cursorPage.Value!.Items.Select(FromActivity).ToList(), cursorPage.Value.NextCursor, cursorPage.Value.HasMore, null, null, total));
+        }
+        var sendQuery = filter.SendLog!;
+        if (numbered)
+        {
+            var counted = await sendLog.OffsetPageAsync(tenantId, sendQuery, query.Skip, query.EffectivePageSize, cancellationToken);
+            if (!counted.Succeeded) return ServiceResult<JobChangesPageView>.Fail(counted.Error!.Code, counted.Error.Message, counted.Error.Status);
+            return Numbered(counted.Value!.Items.Select(FromSendLog).ToList(), counted.Value.TotalCount);
+        }
+        var lines = await sendLog.PageAsync(tenantId, sendQuery with { Limit = query.EffectiveLimit, After = query.After }, cancellationToken);
+        if (!lines.Succeeded) return ServiceResult<JobChangesPageView>.Fail(lines.Error!.Code, lines.Error.Message, lines.Error.Status);
+        var lineTotal = await CountAsync(tenantId, filter, cancellationToken);
+        return ServiceResult<JobChangesPageView>.Ok(new(lines.Value!.Items.Select(FromSendLog).ToList(), lines.Value.NextCursor, lines.Value.HasMore, null, null, lineTotal));
+
+        ServiceResult<JobChangesPageView> Numbered(IReadOnlyList<JobChangeLineView> items, int totalCount) =>
+            ServiceResult<JobChangesPageView>.Ok(new(items, null, (long)query.Skip + items.Count < totalCount, page, pageSize, totalCount));
+    }
+
+    // The list's rows for a job: the send log rows of its send jobs or the import's Ürün Hareketleri rows, narrowed by
+    // the search and the summary groups. Null when nothing can match (a job that sends and changes nothing, a scan that
+    // queued no send, groups of the other mode only).
+    private sealed record ListFilter(PriceStockSendLogQuery? SendLog, ProductActivityQuery? Activity, IReadOnlyList<string> Codes);
+
+    private static ListFilter? Filter(Scope scope, JobChangesQuery query)
+    {
         var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
-        var empty = ServiceResult<PageResult<JobChangeLineView>>.Ok(new([], null, false));
+        var groups = JobChangeGroups.Parse(query.Groups);
+        if (groups is { Count: 0 }) return null;
         if (scope.Mode == JobChangeModes.ProductImport)
         {
-            var page = await activity.PageAsync(tenantId, ImportQuery(scope, query.EffectiveLimit, query.After, search), cancellationToken);
-            if (!page.Succeeded) return ServiceResult<PageResult<JobChangeLineView>>.Fail(page.Error!.Code, page.Error.Message, page.Error.Status);
-            return ServiceResult<PageResult<JobChangeLineView>>.Ok(new(page.Value!.Items.Select(FromActivity).ToList(), page.Value.NextCursor, page.Value.HasMore));
+            var kinds = groups is null ? ImportKinds : groups.Select(JobChangeGroups.ActivityKind).OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
+            return kinds.Length == 0 ? null : new(null, ImportQuery(scope, null, null, search) with { Kinds = kinds }, kinds);
         }
-        if (scope.Mode != JobChangeModes.SendLog || scope.SendJobIds.Count == 0) return empty;
-        var lines = await sendLog.PageAsync(tenantId, new PriceStockSendLogQuery(query.EffectiveLimit, query.After, Search: search, JobIds: scope.SendJobIds), cancellationToken);
-        if (!lines.Succeeded) return ServiceResult<PageResult<JobChangeLineView>>.Fail(lines.Error!.Code, lines.Error.Message, lines.Error.Status);
-        return ServiceResult<PageResult<JobChangeLineView>>.Ok(new(lines.Value!.Items.Select(FromSendLog).ToList(), lines.Value.NextCursor, lines.Value.HasMore));
+        if (scope.Mode != JobChangeModes.SendLog || scope.SendJobIds.Count == 0) return null;
+        var results = groups is null ? null : groups.SelectMany(JobChangeGroups.SendResults).Distinct(StringComparer.Ordinal).ToArray();
+        if (results is { Length: 0 }) return null;
+        return new(new PriceStockSendLogQuery(Search: search, Results: results, JobIds: scope.SendJobIds), null, results ?? PriceStockSendResults.All.ToArray());
     }
+
+    // Every row the filter keeps, from the grouped counts (the counts leave the kind and result filters out, so only the
+    // filter's own codes are added up).
+    private async Task<int> CountAsync(Guid tenantId, ListFilter filter, CancellationToken cancellationToken)
+    {
+        if (filter.Activity is { } activityQuery)
+        {
+            var counts = await activity.CountsAsync(tenantId, activityQuery, cancellationToken);
+            return counts.Succeeded ? counts.Value!.Where(x => filter.Codes.Contains(x.Kind, StringComparer.Ordinal)).Sum(x => x.Count) : 0;
+        }
+        var results = await sendLog.CountsAsync(tenantId, filter.SendLog!, cancellationToken);
+        return results.Succeeded ? results.Value!.Where(x => filter.Codes.Contains(x.Result, StringComparer.Ordinal)).Sum(x => x.Count) : 0;
+    }
+
+    // Every line of the list, page by page in the list's order (newest first), for the export.
+    private async IAsyncEnumerable<JobChangeLineView> AllLinesAsync(Guid tenantId, ListFilter filter, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        string? after = null;
+        do
+        {
+            IReadOnlyList<JobChangeLineView> items;
+            if (filter.Activity is { } activityQuery)
+            {
+                var page = await activity.PageAsync(tenantId, activityQuery with { Limit = ProductActivityQuery.MaximumLimit, After = after }, cancellationToken);
+                if (!page.Succeeded) throw new InvalidOperationException(page.Error!.Message);
+                items = page.Value!.Items.Select(FromActivity).ToList();
+                after = page.Value.HasMore ? page.Value.NextCursor : null;
+            }
+            else
+            {
+                var page = await sendLog.PageAsync(tenantId, filter.SendLog! with { Limit = PriceStockSendLogQuery.MaximumLimit, After = after }, cancellationToken);
+                if (!page.Succeeded) throw new InvalidOperationException(page.Error!.Message);
+                items = page.Value!.Items.Select(FromSendLog).ToList();
+                after = page.Value.HasMore ? page.Value.NextCursor : null;
+            }
+            foreach (var item in items) yield return item;
+        }
+        while (after is not null);
+    }
+
+    public async Task<ServiceResult<JobExportFile>> ExportAsync(Guid tenantId, Guid jobId, JobChangesQuery query, CancellationToken cancellationToken)
+    {
+        var scope = await ScopeAsync(tenantId, jobId, cancellationToken);
+        if (scope is null) return ServiceResult<JobExportFile>.Fail(JobNotFoundCode, JobNotFoundMessage, 404);
+        var filter = Filter(scope, query);
+        var total = filter is null ? 0 : await CountAsync(tenantId, filter, cancellationToken);
+        if (total > JobChangesQuery.MaximumExportRows)
+            return ServiceResult<JobExportFile>.Fail("JOB_EXPORT_TOO_LARGE",
+                $"Liste {total:N0} satır; Excel en çok {JobChangesQuery.MaximumExportRows:N0} satır alır. Arama ya da sonuç süzgeciyle daraltıp tekrar deneyin.", 422);
+        var lines = filter is null ? EmptyLines() : AllLinesAsync(tenantId, filter, cancellationToken);
+        var file = await JobExportWorkbook.WriteAsync("Değişenler", JobChangesExportRows.Header, JobChangesExportRows.Widths,
+            RowsAsync(lines, scope.Job.JobType, cancellationToken), cancellationToken);
+        return ServiceResult<JobExportFile>.Ok(new(JobExportWorkbook.FileName(scope.Job, "degisenler"), file));
+    }
+
+    private static async IAsyncEnumerable<IReadOnlyList<object?>> RowsAsync(IAsyncEnumerable<JobChangeLineView> lines, string jobType, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var line in lines.WithCancellation(cancellationToken))
+            foreach (var row in JobChangesExportRows.Rows(line, jobType)) yield return row;
+    }
+
+#pragma warning disable CS1998 // An empty list has nothing to wait for.
+    private static async IAsyncEnumerable<JobChangeLineView> EmptyLines()
+    {
+        yield break;
+    }
+#pragma warning restore CS1998
 
     private async Task<Scope?> ScopeAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {

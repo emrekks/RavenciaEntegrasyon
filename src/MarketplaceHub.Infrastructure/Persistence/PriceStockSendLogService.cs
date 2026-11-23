@@ -37,6 +37,20 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
         return ServiceResult<PageResult<PriceStockSendLogView>>.Ok(new(await ViewsAsync(tenantId, rows, cancellationToken), nextCursor, hasMore));
     }
 
+    // A numbered page (İşlem Takibi › İş detayı): the same order as the cursor list (newest first, ties by id, so a row
+    // shows on one page only) and the count of every row the filters keep, results included.
+    public async Task<ServiceResult<CountedPage<PriceStockSendLogView>>> OffsetPageAsync(Guid tenantId, PriceStockSendLogQuery request, int skip, int take, CancellationToken cancellationToken)
+    {
+        var query = await FilteredAsync(tenantId, request, includeResults: true, cancellationToken);
+        if (query is null) return ServiceResult<CountedPage<PriceStockSendLogView>>.Ok(new([], 0));
+        var total = await query.CountAsync(cancellationToken);
+        var rows = total <= skip ? new List<MarketplaceHub.Domain.PriceStockSendLog>() : await query
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
+            .Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, 200))
+            .ToListAsync(cancellationToken);
+        return ServiceResult<CountedPage<PriceStockSendLogView>>.Ok(new(await ViewsAsync(tenantId, rows, cancellationToken), total));
+    }
+
     // The summary above the log: how many rows each result has under the list's filters, the result filter left out so
     // every count stays visible while one is picked. Grouped in the database, one row per result.
     public async Task<ServiceResult<IReadOnlyList<PriceStockSendLogCount>>> CountsAsync(Guid tenantId, PriceStockSendLogQuery request, CancellationToken cancellationToken)

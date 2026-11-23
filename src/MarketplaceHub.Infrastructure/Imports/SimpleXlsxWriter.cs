@@ -27,49 +27,7 @@ public static class SimpleXlsxWriter
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            Entry(archive, "[Content_Types].xml", writer =>
-            {
-                writer.WriteStartElement("Types", "http://schemas.openxmlformats.org/package/2006/content-types");
-                Default(writer, "rels", "application/vnd.openxmlformats-package.relationships+xml");
-                Default(writer, "xml", "application/xml");
-                Override(writer, "/xl/workbook.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml");
-                Override(writer, "/xl/styles.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml");
-                for (var index = 1; index <= sheets.Count; index++)
-                    Override(writer, $"/xl/worksheets/sheet{index}.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml");
-                writer.WriteEndElement();
-            });
-            Entry(archive, "_rels/.rels", writer =>
-            {
-                writer.WriteStartElement("Relationships", "http://schemas.openxmlformats.org/package/2006/relationships");
-                Relationship(writer, "rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "xl/workbook.xml");
-                writer.WriteEndElement();
-            });
-            Entry(archive, "xl/workbook.xml", writer =>
-            {
-                writer.WriteStartElement("workbook", MainNamespace);
-                writer.WriteAttributeString("xmlns", "r", null, RelationshipNamespace);
-                writer.WriteStartElement("sheets", MainNamespace);
-                var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                for (var index = 0; index < sheets.Count; index++)
-                {
-                    writer.WriteStartElement("sheet", MainNamespace);
-                    writer.WriteAttributeString("name", SheetName(sheets[index].Name, index, usedNames));
-                    writer.WriteAttributeString("sheetId", (index + 1).ToString(CultureInfo.InvariantCulture));
-                    writer.WriteAttributeString("id", RelationshipNamespace, $"rId{index + 1}");
-                    writer.WriteEndElement();
-                }
-                writer.WriteEndElement();
-                writer.WriteEndElement();
-            });
-            Entry(archive, "xl/_rels/workbook.xml.rels", writer =>
-            {
-                writer.WriteStartElement("Relationships", "http://schemas.openxmlformats.org/package/2006/relationships");
-                for (var index = 1; index <= sheets.Count; index++)
-                    Relationship(writer, $"rId{index}", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet", $"worksheets/sheet{index}.xml");
-                Relationship(writer, $"rId{sheets.Count + 1}", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", "styles.xml");
-                writer.WriteEndElement();
-            });
-            Entry(archive, "xl/styles.xml", WriteStyles);
+            WritePackage(archive, sheets.Select(sheet => sheet.Name).ToList());
             for (var index = 0; index < sheets.Count; index++)
             {
                 var sheet = sheets[index];
@@ -79,78 +37,166 @@ public static class SimpleXlsxWriter
         return buffer.ToArray();
     }
 
+    // One sheet written row by row as the rows arrive, so a long list is never held in memory: the header (bold,
+    // frozen), then every row. Text that a spreadsheet could read as a formula once copied or saved as CSV (it starts
+    // with =, +, -, @, a tab or a line break) gets a leading apostrophe. output stays open; returns the rows written
+    // below the header.
+    public static async Task<int> WriteStreamingAsync(Stream output, string sheetName, IReadOnlyList<string> header, IReadOnlyList<double> columnWidths,
+        IAsyncEnumerable<IReadOnlyList<object?>> rows, CancellationToken cancellationToken)
+    {
+        var written = 0;
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WritePackage(archive, [sheetName]);
+            var entry = archive.CreateEntry("xl/worksheets/sheet1.xml", CompressionLevel.Optimal);
+            await using var stream = entry.Open();
+            using var writer = XmlWriter.Create(stream, new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = false });
+            writer.WriteStartDocument(true);
+            writer.WriteStartElement("worksheet", MainNamespace);
+            WriteFrozenHeader(writer);
+            WriteColumns(writer, columnWidths);
+            writer.WriteStartElement("sheetData", MainNamespace);
+            WriteRow(writer, 0, header.Cast<object?>().ToList(), escapeFormulas: false);
+            await foreach (var row in rows.WithCancellation(cancellationToken))
+                WriteRow(writer, ++written, row, escapeFormulas: true);
+            writer.WriteEndElement();
+            writer.WriteEndElement();
+            writer.WriteEndDocument();
+        }
+        return written;
+    }
+
+    // Text a spreadsheet would run as a formula (CSV/DDE injection) when it starts with one of these.
+    public static string EscapeFormulaText(string text) =>
+        text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r' or '\n' ? "'" + text : text;
+
+    private static void WritePackage(ZipArchive archive, IReadOnlyList<string> sheets)
+    {
+        Entry(archive, "[Content_Types].xml", writer =>
+        {
+            writer.WriteStartElement("Types", "http://schemas.openxmlformats.org/package/2006/content-types");
+            Default(writer, "rels", "application/vnd.openxmlformats-package.relationships+xml");
+            Default(writer, "xml", "application/xml");
+            Override(writer, "/xl/workbook.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml");
+            Override(writer, "/xl/styles.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml");
+            for (var index = 1; index <= sheets.Count; index++)
+                Override(writer, $"/xl/worksheets/sheet{index}.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml");
+            writer.WriteEndElement();
+        });
+        Entry(archive, "_rels/.rels", writer =>
+        {
+            writer.WriteStartElement("Relationships", "http://schemas.openxmlformats.org/package/2006/relationships");
+            Relationship(writer, "rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument", "xl/workbook.xml");
+            writer.WriteEndElement();
+        });
+        Entry(archive, "xl/workbook.xml", writer =>
+        {
+            writer.WriteStartElement("workbook", MainNamespace);
+            writer.WriteAttributeString("xmlns", "r", null, RelationshipNamespace);
+            writer.WriteStartElement("sheets", MainNamespace);
+            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var index = 0; index < sheets.Count; index++)
+            {
+                writer.WriteStartElement("sheet", MainNamespace);
+                writer.WriteAttributeString("name", SheetName(sheets[index], index, usedNames));
+                writer.WriteAttributeString("sheetId", (index + 1).ToString(CultureInfo.InvariantCulture));
+                writer.WriteAttributeString("id", RelationshipNamespace, $"rId{index + 1}");
+                writer.WriteEndElement();
+            }
+            writer.WriteEndElement();
+            writer.WriteEndElement();
+        });
+        Entry(archive, "xl/_rels/workbook.xml.rels", writer =>
+        {
+            writer.WriteStartElement("Relationships", "http://schemas.openxmlformats.org/package/2006/relationships");
+            for (var index = 1; index <= sheets.Count; index++)
+                Relationship(writer, $"rId{index}", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet", $"worksheets/sheet{index}.xml");
+            Relationship(writer, $"rId{sheets.Count + 1}", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", "styles.xml");
+            writer.WriteEndElement();
+        });
+        Entry(archive, "xl/styles.xml", WriteStyles);
+    }
+
     private static void WriteSheet(XmlWriter writer, SimpleXlsxSheet sheet)
     {
         writer.WriteStartElement("worksheet", MainNamespace);
-        if (sheet.Rows.Count > 1)
-        {
-            writer.WriteStartElement("sheetViews", MainNamespace);
-            writer.WriteStartElement("sheetView", MainNamespace);
-            writer.WriteAttributeString("workbookViewId", "0");
-            writer.WriteStartElement("pane", MainNamespace);
-            writer.WriteAttributeString("ySplit", "1");
-            writer.WriteAttributeString("topLeftCell", "A2");
-            writer.WriteAttributeString("activePane", "bottomLeft");
-            writer.WriteAttributeString("state", "frozen");
-            writer.WriteEndElement();
-            writer.WriteEndElement();
-            writer.WriteEndElement();
-        }
-        if (sheet.ColumnWidths.Count > 0)
-        {
-            writer.WriteStartElement("cols", MainNamespace);
-            for (var column = 0; column < sheet.ColumnWidths.Count; column++)
-            {
-                writer.WriteStartElement("col", MainNamespace);
-                var number = (column + 1).ToString(CultureInfo.InvariantCulture);
-                writer.WriteAttributeString("min", number);
-                writer.WriteAttributeString("max", number);
-                writer.WriteAttributeString("width", Math.Clamp(sheet.ColumnWidths[column], 4, 120).ToString("0.##", CultureInfo.InvariantCulture));
-                writer.WriteAttributeString("customWidth", "1");
-                writer.WriteEndElement();
-            }
-            writer.WriteEndElement();
-        }
+        if (sheet.Rows.Count > 1) WriteFrozenHeader(writer);
+        WriteColumns(writer, sheet.ColumnWidths);
         writer.WriteStartElement("sheetData", MainNamespace);
-        for (var rowIndex = 0; rowIndex < sheet.Rows.Count; rowIndex++)
+        for (var rowIndex = 0; rowIndex < sheet.Rows.Count; rowIndex++) WriteRow(writer, rowIndex, sheet.Rows[rowIndex], escapeFormulas: false);
+        writer.WriteEndElement();
+        writer.WriteEndElement();
+    }
+
+    private static void WriteFrozenHeader(XmlWriter writer)
+    {
+        writer.WriteStartElement("sheetViews", MainNamespace);
+        writer.WriteStartElement("sheetView", MainNamespace);
+        writer.WriteAttributeString("workbookViewId", "0");
+        writer.WriteStartElement("pane", MainNamespace);
+        writer.WriteAttributeString("ySplit", "1");
+        writer.WriteAttributeString("topLeftCell", "A2");
+        writer.WriteAttributeString("activePane", "bottomLeft");
+        writer.WriteAttributeString("state", "frozen");
+        writer.WriteEndElement();
+        writer.WriteEndElement();
+        writer.WriteEndElement();
+    }
+
+    private static void WriteColumns(XmlWriter writer, IReadOnlyList<double> columnWidths)
+    {
+        if (columnWidths.Count == 0) return;
+        writer.WriteStartElement("cols", MainNamespace);
+        for (var column = 0; column < columnWidths.Count; column++)
         {
-            var row = sheet.Rows[rowIndex];
-            var rowNumber = (rowIndex + 1).ToString(CultureInfo.InvariantCulture);
-            writer.WriteStartElement("row", MainNamespace);
-            writer.WriteAttributeString("r", rowNumber);
-            for (var column = 0; column < row.Count; column++)
-            {
-                var value = row[column];
-                if (value is null) continue;
-                writer.WriteStartElement("c", MainNamespace);
-                writer.WriteAttributeString("r", ColumnName(column) + rowNumber);
-                switch (value)
-                {
-                    case int or long:
-                        writer.WriteAttributeString("s", (rowIndex == 0 ? HeaderStyle : WholeNumberStyle).ToString(CultureInfo.InvariantCulture));
-                        writer.WriteElementString("v", MainNamespace, Convert.ToString(value, CultureInfo.InvariantCulture));
-                        break;
-                    case decimal number:
-                        writer.WriteAttributeString("s", (rowIndex == 0 ? HeaderStyle : MoneyStyle).ToString(CultureInfo.InvariantCulture));
-                        writer.WriteElementString("v", MainNamespace, number.ToString(CultureInfo.InvariantCulture));
-                        break;
-                    default:
-                        if (rowIndex == 0) writer.WriteAttributeString("s", HeaderStyle.ToString(CultureInfo.InvariantCulture));
-                        writer.WriteAttributeString("t", "inlineStr");
-                        writer.WriteStartElement("is", MainNamespace);
-                        writer.WriteStartElement("t", MainNamespace);
-                        var text = CellText(Convert.ToString(value, CultureInfo.InvariantCulture));
-                        if (text.Length > 0 && (char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[^1]))) writer.WriteAttributeString("xml", "space", null, "preserve");
-                        writer.WriteString(text);
-                        writer.WriteEndElement();
-                        writer.WriteEndElement();
-                        break;
-                }
-                writer.WriteEndElement();
-            }
+            writer.WriteStartElement("col", MainNamespace);
+            var number = (column + 1).ToString(CultureInfo.InvariantCulture);
+            writer.WriteAttributeString("min", number);
+            writer.WriteAttributeString("max", number);
+            writer.WriteAttributeString("width", Math.Clamp(columnWidths[column], 4, 120).ToString("0.##", CultureInfo.InvariantCulture));
+            writer.WriteAttributeString("customWidth", "1");
             writer.WriteEndElement();
         }
         writer.WriteEndElement();
+    }
+
+    // Row rowIndex (0: the header) of a sheet.
+    private static void WriteRow(XmlWriter writer, int rowIndex, IReadOnlyList<object?> row, bool escapeFormulas)
+    {
+        var rowNumber = (rowIndex + 1).ToString(CultureInfo.InvariantCulture);
+        writer.WriteStartElement("row", MainNamespace);
+        writer.WriteAttributeString("r", rowNumber);
+        for (var column = 0; column < row.Count; column++)
+        {
+            var value = row[column];
+            if (value is null) continue;
+            writer.WriteStartElement("c", MainNamespace);
+            writer.WriteAttributeString("r", ColumnName(column) + rowNumber);
+            switch (value)
+            {
+                case int or long:
+                    writer.WriteAttributeString("s", (rowIndex == 0 ? HeaderStyle : WholeNumberStyle).ToString(CultureInfo.InvariantCulture));
+                    writer.WriteElementString("v", MainNamespace, Convert.ToString(value, CultureInfo.InvariantCulture));
+                    break;
+                case decimal number:
+                    writer.WriteAttributeString("s", (rowIndex == 0 ? HeaderStyle : MoneyStyle).ToString(CultureInfo.InvariantCulture));
+                    writer.WriteElementString("v", MainNamespace, number.ToString(CultureInfo.InvariantCulture));
+                    break;
+                default:
+                    if (rowIndex == 0) writer.WriteAttributeString("s", HeaderStyle.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteAttributeString("t", "inlineStr");
+                    writer.WriteStartElement("is", MainNamespace);
+                    writer.WriteStartElement("t", MainNamespace);
+                    var raw = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+                    var text = CellText(escapeFormulas ? EscapeFormulaText(raw) : raw);
+                    if (text.Length > 0 && (char.IsWhiteSpace(text[0]) || char.IsWhiteSpace(text[^1]))) writer.WriteAttributeString("xml", "space", null, "preserve");
+                    writer.WriteString(text);
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    break;
+            }
+            writer.WriteEndElement();
+        }
         writer.WriteEndElement();
     }
 

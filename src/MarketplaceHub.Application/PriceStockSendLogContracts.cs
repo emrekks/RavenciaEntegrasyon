@@ -177,4 +177,8 @@ public interface IPriceStockSendLogService
 
     // Rows per result under the list's filters except the result filter; Results, After, Limit and OldestFirst are ignored.
     Task<ServiceResult<IReadOnlyList<PriceStockSendLogCount>>> CountsAsync(Guid tenantId, PriceStockSendLogQuery query, CancellationToken cancellationToken);
+
+    // A numbered page in the list's order (newest first, then by id): take rows (1-200) after skip, with every row the
+    // filters keep counted; After and Limit are ignored.
+    Task<ServiceResult<CountedPage<PriceStockSendLogView>>> OffsetPageAsync(Guid tenantId, PriceStockSendLogQuery query, int skip, int take, CancellationToken cancellationToken);
 }

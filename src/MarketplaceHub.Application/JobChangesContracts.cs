@@ -107,18 +107,89 @@ public static class JobChangeResults
     public const string Changed = "CHANGED";
 }
 
-// limit 1-50 (default 50); after is the previous page's NextCursor; search names a barcode, stock code, model code or title.
-public sealed record JobChangesQuery(int? Limit = null, string? After = null, string? Search = null)
+// The summary's counts that also filter the list (JobChangesQuery.Groups), named as JobChangeCounts names them: a send
+// job's results (applied, unchanged, pending, rejected, uncertain, superseded) and an import's kinds (priceChanged,
+// stockChanged). A group of the other mode matches nothing.
+public static class JobChangeGroups
+{
+    public const string Applied = "applied";
+    public const string Unchanged = "unchanged";
+    public const string Pending = "pending";
+    public const string Rejected = "rejected";
+    public const string Uncertain = "uncertain";
+    public const string Superseded = "superseded";
+    public const string PriceChanged = "priceChanged";
+    public const string StockChanged = "stockChanged";
+
+    public static readonly IReadOnlyList<string> All = [Applied, Unchanged, Pending, Rejected, Uncertain, Superseded, PriceChanged, StockChanged];
+
+    // The send log results a send group counts (JobChangesService.SummaryAsync counts them the same way).
+    public static IReadOnlyList<string> SendResults(string group) => group switch
+    {
+        Applied => [PriceStockSendResults.Applied],
+        Unchanged => [PriceStockSendResults.Unchanged],
+        Pending => [PriceStockSendResults.Submitted],
+        Rejected => [PriceStockSendResults.Rejected, PriceStockSendResults.Failed],
+        Uncertain => [PriceStockSendResults.Unknown],
+        Superseded => [PriceStockSendResults.Superseded],
+        _ => []
+    };
+
+    // The Ürün Hareketleri kind an import group counts.
+    public static string? ActivityKind(string group) => group switch
+    {
+        PriceChanged => ProductActivityKinds.Price,
+        StockChanged => ProductActivityKinds.Stock,
+        _ => null
+    };
+
+    // The known groups among the given ones (case-insensitive); null: no filter; empty: only unknown names, nothing matches.
+    public static IReadOnlyList<string>? Parse(IReadOnlyList<string>? values)
+    {
+        var given = (values ?? []).Select(value => value.Trim()).Where(value => value.Length > 0).ToArray();
+        if (given.Length == 0) return null;
+        return All.Where(group => given.Contains(group, StringComparer.OrdinalIgnoreCase)).ToArray();
+    }
+}
+
+// Two ways to page, the same rows in the same order (newest first, then by id, so no line shows on two pages):
+//   - the cursor (the panel's list so far): limit 1-50 (default 50), after the previous page's NextCursor;
+//   - page numbers: page (1-based) with pageSize 1-200 (default 25), when either is given.
+// search names a barcode, stock code, model code or title; groups keeps the lines of the summary's counts it names.
+public sealed record JobChangesQuery(int? Limit = null, string? After = null, string? Search = null, int? Page = null, int? PageSize = null, IReadOnlyList<string>? Groups = null)
 {
     public const int DefaultLimit = 50;
     public const int MaximumLimit = 50;
+    public const int DefaultPageSize = 25;
+    public const int MaximumPageSize = 200;
+    public const int MaximumPage = 100_000;
     public const int MaximumSpawnedJobs = 20;
+    // The most lines an Excel export carries; a larger list is refused with a reason (narrow it with search or groups).
+    public const int MaximumExportRows = 100_000;
     public int EffectiveLimit => Math.Clamp(Limit ?? DefaultLimit, 1, MaximumLimit);
+    public bool Numbered => Page is not null || PageSize is not null;
+    public int EffectivePage => Math.Clamp(Page ?? 1, 1, MaximumPage);
+    public int EffectivePageSize => Math.Clamp(PageSize ?? DefaultPageSize, 1, MaximumPageSize);
+    public int Skip => (EffectivePage - 1) * EffectivePageSize;
 }
+
+// The list's page: the cursor members (NextCursor, HasMore) as before, and TotalCount, every line the search and groups
+// keep. Page and PageSize are the numbered page's (null on a cursor page). On a numbered page NextCursor is null and
+// HasMore says whether a later page exists.
+public sealed record JobChangesPageView(IReadOnlyList<JobChangeLineView> Items, string? NextCursor, bool HasMore, int? Page, int? PageSize, int TotalCount);
+
+// One numbered page of a list and the count of every row its filters keep.
+public sealed record CountedPage<T>(IReadOnlyList<T> Items, int TotalCount);
+
+// A workbook written to a temporary file (deleted when the stream is closed): its download name and its content.
+public sealed record JobExportFile(string FileName, Stream Content);
 
 public interface IJobChangesService
 {
     Task<ServiceResult<JobChangesSummaryView>> SummaryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken);
 
-    Task<ServiceResult<PageResult<JobChangeLineView>>> PageAsync(Guid tenantId, Guid jobId, JobChangesQuery query, CancellationToken cancellationToken);
+    Task<ServiceResult<JobChangesPageView>> PageAsync(Guid tenantId, Guid jobId, JobChangesQuery query, CancellationToken cancellationToken);
+
+    // Every line the query's search and groups keep, as an .xlsx (Limit, After, Page and PageSize are ignored).
+    Task<ServiceResult<JobExportFile>> ExportAsync(Guid tenantId, Guid jobId, JobChangesQuery query, CancellationToken cancellationToken);
 }

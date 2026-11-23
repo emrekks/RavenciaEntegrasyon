@@ -64,13 +64,32 @@ public static class JobEndpoints
                 ? Result(http, await service.GetAsync(tenant.TenantId, id, http.RequestAborted))
                 : Unauthorized(http)).Produces<JobDetailView>();
         // Gidenler ve Değişenler: what a price/stock job sent line by line (its send log, or the send jobs a stock scan or
-        // dispatch queued) and what a product import changed. Read-only. The lines: { items, nextCursor, hasMore }, newest
-        // first, limit 1-50 (default 50), search names a barcode, stock code, model code or title. The summary: the
-        // list's mode, why it is empty when the job recorded why, its counts and the send jobs it queued.
-        api.MapGet("/{id:guid}/changes", async (Guid id, HttpContext http, IJobChangesService service, int? limit, string? after, string? search) =>
+        // dispatch queued) and what a product import changed. Read-only. The lines: { items, nextCursor, hasMore,
+        // totalCount, page, pageSize }, newest first (then by id). Cursor paging: limit 1-50 (default 50) and after; page
+        // numbers: page (1-based) and pageSize 1-200 (default 25), when either is given. search names a barcode, stock
+        // code, model code or title; groups (a comma list of the summary's counts: applied, unchanged, pending, rejected,
+        // uncertain, superseded, priceChanged, stockChanged) keeps their lines. The summary: the list's mode, why it is
+        // empty when the job recorded why, its counts and the send jobs it queued.
+        api.MapGet("/{id:guid}/changes", async (Guid id, HttpContext http, IJobChangesService service, int? limit, string? after, string? search, int? page, int? pageSize, string? groups) =>
             Tenant(http) is { } tenant
-                ? Result(http, await service.PageAsync(tenant.TenantId, id, new JobChangesQuery(limit, after, search), http.RequestAborted))
-                : Unauthorized(http)).Produces<PageResult<JobChangeLineView>>();
+                ? Result(http, await service.PageAsync(tenant.TenantId, id, ChangesQuery(limit, after, search, page, pageSize, groups), http.RequestAborted))
+                : Unauthorized(http)).Produces<JobChangesPageView>();
+        // The same lines as an Excel workbook (one row per value a line carried), search and groups as for the list.
+        api.MapGet("/{id:guid}/changes/export.xlsx", async (Guid id, HttpContext http, IJobChangesService service, string? search, string? groups) =>
+            Tenant(http) is { } tenant
+                ? File(http, await service.ExportAsync(tenant.TenantId, id, ChangesQuery(null, null, search, null, null, groups), http.RequestAborted))
+                : Unauthorized(http)).ProducesFile(Catalog.ProductTransferEndpoints.XlsxMediaType);
+        // Çekilen Kayıtlar: the products a product read pulled, as it stored them (problems first). { kind, items, page,
+        // pageSize, totalCount, storedCount, receivedCount, omittedCount, counts }; storedCount below receivedCount: the
+        // read kept only part of its list. onlyProblems keeps the skipped and failed; search names a model code or barcode.
+        api.MapGet("/{id:guid}/read-records", async (Guid id, HttpContext http, IJobReadRecordsService service, bool? onlyProblems, string? search, int? page, int? pageSize) =>
+            Tenant(http) is { } tenant
+                ? Result(http, await service.PageAsync(tenant.TenantId, id, ReadRecordsQuery(onlyProblems, search, page, pageSize), http.RequestAborted))
+                : Unauthorized(http)).Produces<JobReadRecordsPageView>();
+        api.MapGet("/{id:guid}/read-records/export.xlsx", async (Guid id, HttpContext http, IJobReadRecordsService service, bool? onlyProblems, string? search) =>
+            Tenant(http) is { } tenant
+                ? File(http, await service.ExportAsync(tenant.TenantId, id, ReadRecordsQuery(onlyProblems, search, null, null), http.RequestAborted))
+                : Unauthorized(http)).ProducesFile(Catalog.ProductTransferEndpoints.XlsxMediaType);
         api.MapGet("/{id:guid}/changes/summary", async (Guid id, HttpContext http, IJobChangesService service) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.SummaryAsync(tenant.TenantId, id, http.RequestAborted))
@@ -100,6 +119,33 @@ public static class JobEndpoints
                 ? RequireIdempotency(http) ?? Result(http, await service.CancelAsync(tenant.TenantId, id, http.RequestAborted))
                 : Unauthorized(http)).RequireIdempotencyKey().Produces<JobDetailView>();
         return endpoints;
+    }
+
+    // page 1-100000 and pageSize 1-200 are checked (400 outside); pageSize defaults to 25 in the service.
+    private static void CheckPage(int? page, int? pageSize)
+    {
+        if (page is not null) EndpointHelpers.PageNumber(page);
+        if (pageSize is not null) EndpointHelpers.PageSize(pageSize);
+    }
+
+    private static JobChangesQuery ChangesQuery(int? limit, string? after, string? search, int? page, int? pageSize, string? groups)
+    {
+        CheckPage(page, pageSize);
+        return new(limit, after, search, page, pageSize, List(groups));
+    }
+
+    private static JobReadRecordsQuery ReadRecordsQuery(bool? onlyProblems, string? search, int? page, int? pageSize)
+    {
+        CheckPage(page, pageSize);
+        return new(onlyProblems == true, search, page, pageSize);
+    }
+
+    // A workbook the service wrote to a temporary file: streamed to the browser, the file deleted when it is sent.
+    private static IResult File(HttpContext http, ServiceResult<JobExportFile> result)
+    {
+        if (!result.Succeeded) return Security.ApiProblems.Of(http, result.Error!);
+        http.Response.Headers.CacheControl = "no-store";
+        return Results.File(result.Value!.Content, Catalog.ProductTransferEndpoints.XlsxMediaType, result.Value.FileName);
     }
 
     // ids: a comma list of job ids; anything that is not an id is left out.
