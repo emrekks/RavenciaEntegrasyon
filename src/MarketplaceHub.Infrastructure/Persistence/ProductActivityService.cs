@@ -65,6 +65,36 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         return ServiceResult<PageResult<ProductActivityView>>.Ok(new(await ViewsAsync(tenantId, rows, balances, cancellationToken), nextCursor, hasMore));
     }
 
+    // A numbered page (İşlem Takibi › İş detayı): the cursor list's order (newest first, ties by id, so a row shows on
+    // one page only), each source read newest first up to the page's end, and the rows the filters keep counted per source.
+    public async Task<ServiceResult<CountedPage<ProductActivityView>>> OffsetPageAsync(Guid tenantId, ProductActivityQuery request, int skip, int take, CancellationToken cancellationToken)
+    {
+        var empty = ServiceResult<CountedPage<ProductActivityView>>.Ok(new([], 0));
+        var kinds = Codes(request.Kinds, ProductActivityKinds.All);
+        if (kinds is { Length: 0 }) return empty;
+        var movements = Codes(request.Movements, ProductActivityMovements.All);
+        if (movements is { Length: 0 }) return empty;
+        var filter = await FilterAsync(tenantId, request, cancellationToken);
+        if (filter is null) return empty;
+        filter = filter with { Movements = movements, IncludeInitialPrices = request.IncludeInitialPrices };
+        skip = Math.Max(0, skip);
+        take = Math.Clamp(take, 1, 200);
+        var branches = Branches(kinds ?? ProductActivityKinds.All, filter, withCursor: false).ToList();
+        if (branches.Count == 0) return empty;
+        var countSql = filter.With + string.Join("\nUNION ALL\n", branches.Select(branch => $"SELECT 'ROWS' AS \"Kind\", count(*)::int AS \"Count\" {branch.From} WHERE {branch.Where}"));
+        var total = (await db.Database.SqlQueryRaw<ProductActivityCountRow>(Escaped(countSql), filter.Parameters(tenantId).ToArray()).ToListAsync(cancellationToken)).Sum(x => x.Count);
+        if (total <= skip) return ServiceResult<CountedPage<ProductActivityView>>.Ok(new([], total));
+        var parameters = filter.Parameters(tenantId);
+        parameters.Add(new NpgsqlParameter("limit", NpgsqlDbType.Integer) { Value = skip + take });
+        parameters.Add(new NpgsqlParameter("skip", NpgsqlDbType.Integer) { Value = skip });
+        parameters.Add(new NpgsqlParameter("take", NpgsqlDbType.Integer) { Value = take });
+        var union = branches.Select(branch => $"({branch.Select} {branch.From} WHERE {branch.Where} ORDER BY {branch.Time} DESC, {branch.Id} DESC LIMIT @limit)");
+        var sql = $"{filter.With}SELECT * FROM ({string.Join("\nUNION ALL\n", union)}) activity ORDER BY \"OccurredAt\" DESC, \"Id\" DESC OFFSET @skip LIMIT @take";
+        var rows = await db.Database.SqlQueryRaw<ProductActivityRow>(Escaped(sql), parameters.ToArray()).ToListAsync(cancellationToken);
+        var balances = await StockAfterAsync(tenantId, rows, cancellationToken);
+        return ServiceResult<CountedPage<ProductActivityView>>.Ok(new(await ViewsAsync(tenantId, rows, balances, cancellationToken), total));
+    }
+
     // The on-hand stock right after each stock-changing row of the page. The ledger keeps no balance, but every on-hand
     // change writes a row, so it is the item's on-hand now less the deltas of the item's on-hand rows after it (in the
     // list's order, OccurredAt then Id). Only the page's rows are looked at, each summing its later rows over the

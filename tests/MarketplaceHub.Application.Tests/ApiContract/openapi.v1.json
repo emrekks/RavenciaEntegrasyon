@@ -11492,12 +11492,52 @@
           {
             "name": "after",
             "in": "query",
+            "description": "The nextCursor of the previous page; wins over the page number. Refused (400) when it is not one, when it falls inside a page of the asked limit, or where the list's order gives no cursor (nextCursor null).",
             "schema": {
               "type": "string"
             }
           },
           {
             "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "1-100000; outside it the request is refused (400). Default 1.",
+            "schema": {
+              "maximum": 100000,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 25.",
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 25
+            }
+          },
+          {
+            "name": "groups",
             "in": "query",
             "schema": {
               "type": "string"
@@ -11510,7 +11550,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PageResultOfJobChangeLineView"
+                  "$ref": "#/components/schemas/JobChangesPageView"
                 }
               }
             }
@@ -11531,7 +11571,67 @@
             "$ref": "#/components/responses/ServerError"
           }
         },
-        "x-paging": "cursor"
+        "x-paging": "page+pageSize|cursor"
+      }
+    },
+    "/api/v1/jobs/{id}/changes/export.xlsx": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsByIdChangesExportXlsx",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "groups",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
       }
     },
     "/api/v1/jobs/{id}/changes/summary": {
@@ -11653,6 +11753,159 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{id}/read-records": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsByIdReadRecords",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "onlyProblems",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "1-100000; outside it the request is refused (400). Default 1.",
+            "schema": {
+              "maximum": 100000,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "1-200; outside it the request is refused (400). Default 25.",
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32",
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobReadRecordsPageView"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        },
+        "x-paging": "page+pageSize"
+      }
+    },
+    "/api/v1/jobs/{id}/read-records/export.xlsx": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJobsByIdReadRecordsExportXlsx",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "onlyProblems",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -29950,6 +30203,49 @@
           }
         }
       },
+      "JobChangesPageView": {
+        "required": [
+          "items",
+          "hasMore",
+          "totalCount"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobChangeLineView"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "JobChangesSummaryView": {
         "required": [
           "mode",
@@ -30412,6 +30708,131 @@
             "type": "string"
           },
           "why": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "JobReadRecordCounts": {
+        "required": [
+          "new",
+          "updated",
+          "unchanged",
+          "skipped",
+          "failed"
+        ],
+        "type": "object",
+        "properties": {
+          "new": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unchanged": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "skipped": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "JobReadRecordsPageView": {
+        "required": [
+          "kind",
+          "items",
+          "page",
+          "pageSize",
+          "totalCount",
+          "storedCount",
+          "receivedCount",
+          "omittedCount",
+          "counts"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobReadRecordView"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "totalCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "storedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "receivedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "omittedCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/JobReadRecordCounts"
+          }
+        }
+      },
+      "JobReadRecordView": {
+        "required": [
+          "modelCode",
+          "result"
+        ],
+        "type": "object",
+        "properties": {
+          "modelCode": {
+            "type": "string"
+          },
+          "firstBarcode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "barcodeCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "variantCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "result": {
+            "type": "string"
+          },
+          "reason": {
             "type": [
               "null",
               "string"
@@ -33825,46 +34246,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InvoiceListView"
-            }
-          },
-          "nextCursor": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "hasMore": {
-            "type": "boolean"
-          },
-          "totalCount": {
-            "type": [
-              "null",
-              "integer"
-            ],
-            "format": "int32"
-          },
-          "supportedFilters": {
-            "type": [
-              "null",
-              "array"
-            ],
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "PageResultOfJobChangeLineView": {
-        "required": [
-          "items",
-          "hasMore"
-        ],
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/JobChangeLineView"
             }
           },
           "nextCursor": {

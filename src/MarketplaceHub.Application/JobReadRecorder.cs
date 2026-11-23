@@ -45,7 +45,12 @@ public sealed record JobReadSummaryView(string Kind, JobReadCounts Counts, int O
 // (Received = Inserted + Updated + Unchanged + Skipped + Failed); the stored list keeps the problems first and is capped.
 public sealed class JobReadRecorder
 {
+    // The records a read keeps (the job detail lists at most this many); a product read keeps every product it pulled up
+    // to MaxProductRecords (Çekilen Kayıtlar' full list and Excel, ~80 bytes a record), the other reads the first 100.
     public const int MaxRecords = 100;
+    public const int MaxProductRecords = 20_000;
+
+    public static int Cap(string? kind) => kind == "PRODUCT" ? MaxProductRecords : MaxRecords;
     private static readonly JsonSerializerOptions Json = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly Dictionary<string, JobReadRecord> records = new(StringComparer.Ordinal);
     private readonly List<string> order = [];
@@ -98,8 +103,8 @@ public sealed class JobReadRecorder
     // This run's records joined to what earlier runs of the same job stored (the slices of a long read, or a retry after
     // a failure). While every earlier record is still listed, a record read again counts once (its strongest outcome),
     // so a retry does not double the counts; past the cap the counts add. The list keeps the problems first, then new
-    // and updated records, and holds at most MaxRecords.
-    public (JobReadCounts Counts, IReadOnlyList<JobReadRecord> Kept, int Omitted) MergeWith(JobReadCounts previousCounts, IReadOnlyList<JobReadRecord> previousRecords, int previousOmitted)
+    // and updated records, and holds at most maxRecords (MaxRecords unless given; Cap names a kind's).
+    public (JobReadCounts Counts, IReadOnlyList<JobReadRecord> Kept, int Omitted) MergeWith(JobReadCounts previousCounts, IReadOnlyList<JobReadRecord> previousRecords, int previousOmitted, int maxRecords = MaxRecords)
     {
         List<JobReadRecord> all;
         JobReadCounts counts;
@@ -130,7 +135,7 @@ public sealed class JobReadRecorder
             .ThenBy(x => x.index)
             .Select(x => x.record)
             .ToList();
-        var kept = sorted.Take(MaxRecords).ToList();
+        var kept = sorted.Take(Math.Max(1, maxRecords)).ToList();
         return (counts, kept, Math.Max(0, counts.Received - kept.Count));
     }
 

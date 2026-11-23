@@ -39,8 +39,8 @@ public sealed partial class MarketplaceJobProcessor
             // A finished read that pulled nothing still says so ("0 kayıt"), instead of looking like an old job.
             if (run.ReadRecorder.IsEmpty && (row is not null || !final)) return row is null ? null : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
             var previous = row is null ? JobReadCounts.Zero : new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
-            var (counts, kept, omitted) = run.ReadRecorder.MergeWith(previous, row is null ? [] : JobReadRecorder.Deserialize(row.RecordsJson), row?.Omitted ?? 0);
             var kind = row?.Kind ?? run.ReadRecorder.Kind ?? run.ReadRecordingKind;
+            var (counts, kept, omitted) = run.ReadRecorder.MergeWith(previous, row is null ? [] : JobReadRecorder.Deserialize(row.RecordsJson), row?.Omitted ?? 0, JobReadRecorder.Cap(kind));
             var json = JobReadRecorder.Serialize(kept);
             var now = timeProvider.GetUtcNow().ToUniversalTime();
             // Written past the change tracker: after a failed run it may still hold that run's half-applied entities,
