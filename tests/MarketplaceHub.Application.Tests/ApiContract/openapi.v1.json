@@ -28315,6 +28315,13 @@
           "adoptFromInactive": {
             "type": "boolean",
             "default": false
+          },
+          "restorePreparedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },

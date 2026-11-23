@@ -159,10 +159,10 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await db.WebhookSubscriptions
                 .Where(x => x.TenantId == closed.Connection.TenantId && x.Id == closed.SubscriptionId && x.Status != "ACTIVE" && (x.LastRefusedAt == null || x.LastRefusedAt < aMinuteAgo))
                 .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastRefusedAt, now), cancellationToken);
-            var platform = closed.Connection.PlatformCode switch { "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", _ => "Trendyol" };
+            // Who calls is not known: the record says calls come to a closed address, never that the marketplace sends them.
             var reason = closed.Connection.PlatformCode == "HEPSIBURADA"
-                ? "Hepsiburada kapalı webhook adresine istek gönderiyor; Önceki Tanımı Geri Yükle ile tanımı geri yükleyin ya da Hepsiburada'daki adresi güncelleyin"
-                : $"{platform} kapalı webhook adresine istek gönderiyor; webhook'u açın ya da {platform}'daki kaydı kaldırın";
+                ? "bu adrese istek geliyor ama webhook tanımı kapalı; adres bu bağlantı için verildiyse Önceki Tanımı Geri Yükle ile tanımı geri yükleyin"
+                : "bu adrese istek geliyor ama webhook kapalı; adres bu bağlantı için kullanılıyorsa webhook'u açın ya da pazaryerindeki eski kaydı kaldırın";
             await NoteRejectedAsync(closed.Connection, CallsRejectedCode, reason, cancellationToken, issueCode: CallsRejectedCode);
             return CallsRejectedCode;
         }

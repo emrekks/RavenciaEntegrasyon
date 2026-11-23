@@ -13,7 +13,7 @@ export const routeOnlyWebhookMessage = 'Bu webhook Uygulama Gizli Anahtarı olma
 
 // ACTIVE comes only once notifications have arrived and keep arriving: before the first one the server says WAITING,
 // and QUIET when an order came without its notification. The marketplace is named by instantNotificationStateLabel.
-export const instantNotificationStateLabels: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Pazaryeri durdurdu', MISSING: 'Pazaryerinde kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son siparişin bildirimi gelmedi', CONNECTION_INACTIVE: 'Bağlantı pasif', CALLED_WHILE_OFF: 'Kapalıyken istek geliyor' }
+export const instantNotificationStateLabels: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Pazaryeri durdurdu', MISSING: 'Pazaryerinde kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son siparişin bildirimi gelmedi', CONNECTION_INACTIVE: 'Bağlantı pasif', CALLED_WHILE_OFF: 'Kapalı adrese istek geliyor' }
 
 const marketplaceNames: Record<string, string> = { TRENDYOL: 'Trendyol', SHOPIFY: 'Shopify', HEPSIBURADA: 'Hepsiburada' }
 

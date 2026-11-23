@@ -53,7 +53,7 @@ public sealed class InstantNotificationService(
             var paused = await db.WebhookSubscriptions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == PausedStatus, cancellationToken);
             // The marketplace still calls a definition the panel closed (refused with 404): said, not shown as plain "off".
             if (!paused && await CalledWhileClosedAsync(tenantId, connectionId, cancellationToken) is { } lastCall)
-                return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, CalledWhileOffState, CalledWhileClosedMessage(connection.PlatformCode, lastCall), cancellationToken));
+                return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, CalledWhileOffState, CalledWhileClosedMessage(connection, lastCall), cancellationToken));
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", paused ? PausedMessage(connection) : null, cancellationToken));
         }
         if (subscription.ExternalSubscriptionId == ManualRegistration)
@@ -73,7 +73,7 @@ public sealed class InstantNotificationService(
             // A definition that has received nothing while Hepsiburada calls a closed one (live 23 Nov 2026: an unused one
             // restored over the one Hepsiburada had): the calls are refused, so that is what the panel says.
             if (subscription.LastReceivedAt is null && await CalledWhileClosedAsync(tenantId, connectionId, cancellationToken) is { } calledAt)
-                return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, CalledWhileOffState, CalledWhileClosedMessage(connection.PlatformCode, calledAt), cancellationToken));
+                return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, CalledWhileOffState, CalledWhileClosedMessage(connection, calledAt), cancellationToken));
             var manualState = subscription.LastReceivedAt is null ? "WAITING" : missed ? "QUIET" : "ACTIVE";
             var manualMessage = manualState switch
             {
@@ -879,7 +879,7 @@ public sealed class InstantNotificationService(
             AdoptableFrom: adoptable is null ? null : new(adoptable.Value.Source.DisplayName, adoptable.Value.Source.Environment == "PRODUCTION" ? "Canlı" : "Test (SIT)", PreparedAt(adoptable.Value.Subscription.Id)));
     }
 
-    public async Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, DateTimeOffset? expectedPreparedAt, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
         if (connection is null) return NotFound();
@@ -894,6 +894,10 @@ public sealed class InstantNotificationService(
         var previous = await PreviousDefinitionAsync(tenantId, connectionId, current, tracked: true, cancellationToken);
         if (previous is null)
             return ServiceResult<InstantNotificationView>.Fail("WEBHOOK_PREVIOUS_MISSING", "Geri yüklenecek önceki bir Hepsiburada tanımı yok.", 404);
+        // The choice is made again at the click and may differ from the one the panel showed (a call to another closed
+        // address, a definition closed meanwhile): only the definition the user saw is restored.
+        if (expectedPreparedAt is not { } expected || PreparedAt(previous.Id).ToUnixTimeMilliseconds() != expected.ToUnixTimeMilliseconds())
+            return ServiceResult<InstantNotificationView>.Fail(PreviousChangedCode, "Öneri Değişti, Yeniden Bakın: geri yüklenecek tanım ekranda gösterilenden farklı.", 409);
         if (current is not null)
         {
             current.Status = "DELETED";
@@ -979,7 +983,9 @@ public sealed class InstantNotificationService(
         var now = timeProvider.GetUtcNow();
         var called = closed.Where(x => x.LastRefusedAt is { } refused && now - refused <= StillCalledWithin)
             .OrderByDescending(x => x.LastRefusedAt).ThenByDescending(x => x.Id).FirstOrDefault();
-        if (called is not null) return called;
+        // A call to a closed address is written by anyone who knows that address, so it does not set a definition the user
+        // closed by hand before one prepared in the last day; the panel only warns about the calls (CALLED_WHILE_OFF).
+        if (called is not null && !(called.ClosedReason == WebhookCloseReasons.Manual && current is not null && now - PreparedAt(current.Id) < FreshDefinitionAge)) return called;
         var previous = closed.OrderBy(x => x.LastReceivedAt is null).ThenByDescending(x => x.LastReceivedAt).ThenByDescending(x => x.Id).FirstOrDefault();
         if (previous is null) return null;
         if (previous.LastReceivedAt is null && current is { RoutePublicId: null } && PreparedAt(previous.Id) >= PreparedAt(current.Id)) return null;
@@ -988,6 +994,7 @@ public sealed class InstantNotificationService(
     }
 
     // A closed definition refused a call this recently is still the one the marketplace calls.
+    internal const string PreviousChangedCode = "WEBHOOK_PREVIOUS_CHANGED";
     internal static readonly TimeSpan StillCalledWithin = TimeSpan.FromDays(7);
     // A definition prepared this recently is not set aside for one the user closed by hand.
     internal static readonly TimeSpan FreshDefinitionAge = TimeSpan.FromHours(24);
@@ -1024,13 +1031,14 @@ public sealed class InstantNotificationService(
             .MaxAsync(x => x.LastRefusedAt, cancellationToken);
     }
 
-    internal static string CalledWhileClosedMessage(string platformCode, DateTimeOffset lastCall)
+    // Who sends the calls is not known (anyone who has the old address can call it): the text says calls come, not that the
+    // marketplace sends them; the marketplace is named only by the connection's own name.
+    internal static string CalledWhileClosedMessage(PlatformConnection connection, DateTimeOffset lastCall)
     {
-        var platform = PlatformName(platformCode);
         var at = lastCall.ToOffset(MarketplaceHub.Infrastructure.Adapters.TurkeyTime.Offset).ToString("dd.MM.yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
-        return platformCode == "HEPSIBURADA"
-            ? $"Kapalıyken istek geliyor (son: {at}). Hepsiburada kapalı bir webhook tanımının adresine istek gönderiyor ve reddediliyor; Önceki Tanımı Geri Yükle ile o tanımı geri yükleyin ya da Hepsiburada'dan adresi güncellemesini isteyin."
-            : $"Kapalıyken istek geliyor (son: {at}). {platform} kapalı bir webhook tanımının adresine istek gönderiyor ve reddediliyor; webhook'u açın ya da {platform}'daki kaydı kaldırın.";
+        return connection.PlatformCode == "HEPSIBURADA"
+            ? $"Bu adrese istek geliyor (son: {at}): kapalı bir webhook tanımının adresine gelen istekler reddediliyor. Bu adres {connection.DisplayName} için verildiyse Önceki Tanımı Geri Yükle ile tanımı geri yükleyin ya da adresin güncellenmesini isteyin."
+            : $"Bu adrese istek geliyor (son: {at}): kapalı bir webhook tanımının adresine gelen istekler reddediliyor. Bu adres {connection.DisplayName} için kullanılıyorsa webhook'u açın ya da pazaryerindeki eski kaydı kaldırın.";
     }
 
     // A version 7 id begins with the Unix milliseconds of its creation: when a definition was prepared.

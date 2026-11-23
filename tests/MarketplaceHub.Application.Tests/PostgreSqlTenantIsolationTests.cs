@@ -5558,14 +5558,25 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.NotEqual(given.Value!.Setup!.BaseUrl, prepared.Value!.Setup!.BaseUrl);
             Assert.NotNull((await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.PreviousPreparedAt);
 
-            var restored = await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore", CancellationToken.None);
+            // The click carries the definition the panel showed: another one (or none) is refused and nothing changes.
+            var shown = (await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.PreviousPreparedAt!.Value;
+            foreach (var stale in new DateTimeOffset?[] { shown.AddMilliseconds(-1), null })
+            {
+                var refused = await service.RestorePreviousAsync(tenant.Id, connection.Id, stale, "restore-stale", CancellationToken.None);
+                Assert.Equal((InstantNotificationService.PreviousChangedCode, 409), (refused.Error?.Code, refused.Error?.Status));
+                Assert.StartsWith("Öneri Değişti, Yeniden Bakın", refused.Error!.Message);
+                db.ChangeTracker.Clear();
+                Assert.Equal(hasher.Hash(prepared.Value!.Setup!.BaseUrl.Split('/').Last()), (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).RouteTokenHash);
+            }
+
+            var restored = await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore");
 
             Assert.Null(restored.Error);
             Assert.Equal("WAITING", restored.Value!.State);
             Assert.Null(restored.Value.PreviousPreparedAt);
             var active = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE");
             Assert.Equal(hasher.Hash(given.Value.Setup.BaseUrl.Split('/').Last()), active.RouteTokenHash);
-            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-again", CancellationToken.None)).Error?.Code);
+            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore-again")).Error?.Code);
         }
         finally
         {
@@ -5623,30 +5634,30 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Equal("OFF", offered.State);
             Assert.Equal(InstantNotificationService.PreparedAt(used), offered.PreviousPreparedAt);
             Assert.Equal(lastNotification, offered.PreviousLastReceivedAt);
-            var restored = await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore", CancellationToken.None);
+            var restored = await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore");
             Assert.Null(restored.Error);
             Assert.Equal(used, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
             // It receives: it is not swapped for another one.
-            Assert.Equal(409, (await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-in-use", CancellationToken.None)).Error?.Status);
+            Assert.Equal(409, (await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore-in-use")).Error?.Status);
 
             // An unused definition is active (older than the used one): the used one is still offered and restored.
             await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.Status, row => row.Id == older ? "ACTIVE" : "DELETED"));
             db.ChangeTracker.Clear();
             Assert.Equal(InstantNotificationService.PreparedAt(used), (await service.StatusAsync(tenant.Id, connection.Id, "status-older", CancellationToken.None)).Value!.PreviousPreparedAt);
-            Assert.Null((await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-over-older", CancellationToken.None)).Error);
+            Assert.Null((await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore-over-older")).Error);
             Assert.Equal(used, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
 
             // The live state of 23 Nov: the newest unused one was restored by mistake; pressing again brings the used one back.
             await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.Status, row => row.Id == newest ? "ACTIVE" : "DELETED"));
             db.ChangeTracker.Clear();
-            Assert.Null((await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-over-newest", CancellationToken.None)).Error);
+            Assert.Null((await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore-over-newest")).Error);
             var rows = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
             Assert.Equal("ACTIVE", rows[used]);
             Assert.Equal("DELETED", rows[newest]);
             Assert.Equal("DELETED", rows[older]);
 
             // Another tenant does not reach the connection.
-            Assert.Equal(404, (await service.RestorePreviousAsync(Guid.NewGuid(), connection.Id, "restore-other-tenant", CancellationToken.None)).Error?.Status);
+            Assert.Equal(404, (await RestoreOfferedAsync(service, Guid.NewGuid(), connection.Id, "restore-other-tenant")).Error?.Status);
         }
         finally
         {
@@ -5714,7 +5725,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             // The panel says calls come while it is off, and offers that definition, naming that it was closed by hand.
             var status = (await service.StatusAsync(tenant.Id, live.Id, "status", CancellationToken.None)).Value!;
             Assert.Equal(InstantNotificationService.CalledWhileOffState, status.State);
-            Assert.StartsWith("Kapalıyken istek geliyor (son: ", status.Message);
+            Assert.StartsWith("Bu adrese istek geliyor (son: ", status.Message);
             Assert.Equal(InstantNotificationService.PreparedAt(moved.Id), status.PreviousPreparedAt);
             Assert.NotNull(status.PreviousLastRefusedAt);
             Assert.NotNull(status.PreviousClosedByHandAt);
@@ -5729,7 +5740,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             await receiver.NoteRouteRefusedAsync(test.PublicId, token, CancellationToken.None);
             Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.DedupeKey == issueKey && x.TenantId == tenant.Id)).Status);
             db.ChangeTracker.Clear();
-            var restored = await service.RestorePreviousAsync(tenant.Id, live.Id, "restore", CancellationToken.None);
+            var restored = await RestoreOfferedAsync(service, tenant.Id, live.Id, "restore");
             Assert.Null(restored.Error);
             Assert.Equal("WAITING", restored.Value!.State);
             Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.DedupeKey == issueKey && x.TenantId == tenant.Id)).Status);
@@ -5772,9 +5783,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<object> result, CancellationToken cancellationToken = default) { Seen(command); return base.ScalarExecutingAsync(command, eventData, result, cancellationToken); }
     }
 
-    // A definition the user closed by hand is not offered over one prepared in the last day, unless Hepsiburada still calls it.
+    // A definition the user closed by hand is not offered over one prepared in the last day, even while calls come to its
+    // address (anyone who knows the address can make them).
     [PostgreSqlFact]
-    public async Task InstantNotifications_HepsiburadaDoesNotOfferADefinitionClosedByHandOverAFreshOneUnlessItIsStillCalled()
+    public async Task InstantNotifications_HepsiburadaDoesNotOfferADefinitionClosedByHandOverAFreshOneEvenWhileItsAddressIsCalled()
     {
         var tenant = NewTenant("hb-closed-by-hand");
         var connection = NewQuestionConnection(tenant);
@@ -5805,22 +5817,20 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             var fresh = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE");
 
             Assert.Null((await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.PreviousPreparedAt);
-            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore", CancellationToken.None)).Error?.Code);
+            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore")).Error?.Code);
             Assert.Equal(fresh.Id, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
 
-            // Hepsiburada still calls A: it is the strongest candidate, named as closed by hand, and B is closed over it.
+            // Calls come to A's address: anyone who has it can make them, so they do not set A before the fresh B. The panel
+            // warns that calls come and offers nothing; B stays.
             Assert.Equal(MarketplaceWebhookService.CallsRejectedCode, await receiver.NoteRouteRefusedAsync(connection.PublicId, oldToken, CancellationToken.None));
             db.ChangeTracker.Clear();
-            var offered = (await service.StatusAsync(tenant.Id, connection.Id, "status-called", CancellationToken.None)).Value!;
-            Assert.Equal(InstantNotificationService.CalledWhileOffState, offered.State);
-            Assert.NotNull(offered.PreviousClosedByHandAt);
-            Assert.NotNull(offered.PreviousLastRefusedAt);
-            Assert.Null((await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-called", CancellationToken.None)).Error);
-            var rows = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
-            Assert.Equal("DELETED", rows[fresh.Id].Status);
-            Assert.Equal(WebhookCloseReasons.RestoredOver, rows[fresh.Id].ClosedReason);
-            Assert.Equal("ACTIVE", rows.Values.Single(x => x.Id != fresh.Id).Status);
-            Assert.Null(rows.Values.Single(x => x.Id != fresh.Id).ClosedReason);
+            var called = (await service.StatusAsync(tenant.Id, connection.Id, "status-called", CancellationToken.None)).Value!;
+            Assert.Equal(InstantNotificationService.CalledWhileOffState, called.State);
+            Assert.StartsWith("Bu adrese istek geliyor (son: ", called.Message);
+            Assert.DoesNotContain("Hepsiburada", called.Message);
+            Assert.Null(called.PreviousPreparedAt);
+            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await RestoreOfferedAsync(service, tenant.Id, connection.Id, "restore-called")).Error?.Code);
+            Assert.Equal(fresh.Id, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
         }
         finally
         {
@@ -5830,6 +5840,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
     }
+
+    // Önceki Tanımı Geri Yükle as the panel sends it: with the definition the status it just read offered.
+    private static async Task<ServiceResult<InstantNotificationView>> RestoreOfferedAsync(InstantNotificationService service, Guid tenantId, Guid connectionId, string correlationId) =>
+        await service.RestorePreviousAsync(tenantId, connectionId, (await service.StatusAsync(tenantId, connectionId, correlationId, CancellationToken.None)).Value?.PreviousPreparedAt, correlationId, CancellationToken.None);
 
     private sealed class RecordingWebhookPort : IWebhookRegistrationPort
     {

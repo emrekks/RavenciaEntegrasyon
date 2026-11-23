@@ -52,8 +52,8 @@ describe('webhookCell', () => {
   })
 
   it('marks a marketplace that keeps calling a closed address as refused, saying it once', () => {
-    const cell = webhookCell(status('CALLED_WHILE_OFF', { lastRejectedAt: '2026-11-23T10:00:00Z', lastRejectedReason: 'Hepsiburada bildirimi reddedildi.', message: 'Kapalıyken istek geliyor (son: 23.11.2026 13:00).' }), false, since, 'HEPSIBURADA')
+    const cell = webhookCell(status('CALLED_WHILE_OFF', { lastRejectedAt: '2026-11-23T10:00:00Z', lastRejectedReason: 'Mağaza bildirimi reddedildi.', message: 'Bu adrese istek geliyor (son: 23.11.2026 13:00).' }), false, since, 'HEPSIBURADA')
     expect(cell).toMatchObject({ tone: 'bad', text: 'İstek Reddediliyor' })
-    expect(cell.title).toBe('Webhook · Kapalıyken istek geliyor · Kapalıyken istek geliyor (son: 23.11.2026 13:00).')
+    expect(cell.title).toBe('Webhook · Kapalı adrese istek geliyor · Bu adrese istek geliyor (son: 23.11.2026 13:00).')
   })
 })

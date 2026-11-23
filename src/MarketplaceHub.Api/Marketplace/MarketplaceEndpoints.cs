@@ -271,7 +271,7 @@ public static partial class MarketplaceEndpoints
             var result = adopt
                 ? await service.AdoptFromInactiveAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted)
                 : restore
-                ? await service.RestorePreviousAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted)
+                ? await service.RestorePreviousAsync(tenant.TenantId, id, command?.RestorePreparedAt, OperationCorrelation(http), http.RequestAborted)
                 : await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret);
             if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, adopt ? "INSTANT_NOTIFICATIONS_ADOPTED" : restore ? "INSTANT_NOTIFICATIONS_RESTORED" : "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
             return Result(result, Results.Ok);
@@ -412,7 +412,8 @@ public static partial class MarketplaceEndpoints
         return new UriBuilder(uri) { Path = "/mnresize/256/384" + path }.Uri.AbsoluteUri;
     }
     public sealed record ActiveCommand(bool Active);
-    public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false, bool AdoptFromInactive = false);
+    // RestorePreparedAt: with RestorePrevious, the preparation time of the definition the panel offered (PreviousPreparedAt).
+    public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false, bool AdoptFromInactive = false, DateTimeOffset? RestorePreparedAt = null);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);
     public sealed record CommonLabelCommand(int BoxQuantity, decimal VolumetricHeight, string Format = "ZPL");
     public sealed record LabelCapabilityProbeCommand(string CapabilityCode, int BoxQuantity, decimal VolumetricHeight);

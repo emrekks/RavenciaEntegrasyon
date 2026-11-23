@@ -1224,7 +1224,8 @@ public interface IInstantNotificationService
     Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     // Hepsiburada: makes the last closed definition (the address and password Hepsiburada was given) the active one
     // again, closing a newer one that has received nothing.
-    Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // expectedPreparedAt: the PreviousPreparedAt the panel showed; another definition chosen by now answers 409.
+    Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, DateTimeOffset? expectedPreparedAt, string correlationId, CancellationToken cancellationToken);
     // Hepsiburada: moves the active definition of an inactive Hepsiburada connection here, keeping the address, user and
     // password Hepsiburada was given; the current definition is closed and can be restored.
     Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);

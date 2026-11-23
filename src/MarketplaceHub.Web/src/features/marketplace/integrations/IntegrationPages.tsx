@@ -380,14 +380,15 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
   // Hepsiburada keeps the address and password it was given: a definition closed and prepared again before
   // Hepsiburada had the new one is made the active one again, so Hepsiburada need not set it up again.
   const restore = useMutation({
-    mutationFn: () => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ restorePrevious: true }) }),
+    // It names the definition the window showed: the server answers 409 when it would now restore another one.
+    mutationFn: () => hubApi<InstantNotificationStatus>(`/connections/${connectionId}/instant-notifications`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ restorePrevious: true, restorePreparedAt: status.data?.previousPreparedAt ?? null }) }),
     onSuccess: next => {
       client.setQueryData(instantNotificationsQueryKey(connectionId), { ...next, setup: null })
       setConfirm(null)
       setSetup(null)
       setFeedback({ kind: 'success', message: 'Önceki tanım geri yüklendi. Hepsiburada’ya ilettiğiniz adres ve şifre yeniden geçerli.' })
     },
-    onError: reason => { setConfirm(null); setFeedback(failureNotice(reason, 'Önceki tanım geri yüklenemedi.')) }
+    onError: reason => { setConfirm(null); setFeedback(failureNotice(reason, 'Önceki tanım geri yüklenemedi.')); void status.refetch() }
   })
   // The definition a test (SIT) store was given, when Hepsiburada was asked to set that one up for the live store: it
   // moves here with its address, user and password; this connection's own unused definition is kept to restore.
@@ -479,7 +480,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
       ? `Son bildirimi ${time(data.previousLastReceivedAt)} tarihinde alan tanım (${time(data.previousPreparedAt)} tarihinde hazırlanan adres ve şifre) geri yüklenecek.`
       : `${time(data.previousPreparedAt)} tarihinde hazırlanan, hiç bildirim almamış tanımın adresi ve şifresi yeniden geçerli olur.`} size="sm" locked={restore.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={restore.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn pri" disabled={restore.isPending} onClick={() => restore.mutate()}>{restore.isPending ? 'Geri Yükleniyor…' : 'Geri Yükle'}</button></>}>
       <ul className="instant-notifications-terms">
-        {data.previousLastRefusedAt && <li><strong>Hepsiburada bu tanımın adresine hâlâ istek gönderiyor</strong> (son: {time(data.previousLastRefusedAt)}); geri yüklenince istekleri kabul edilir.</li>}
+        {data.previousLastRefusedAt && <li><strong>Bu Adrese İstek Geliyor</strong> (son: {time(data.previousLastRefusedAt)}); isteği gönderenin kim olduğu doğrulanamaz. Geri yüklenince bu adrese gelen istekler kabul edilir.</li>}
         {data.previousClosedByHandAt && <li><strong>Bu tanımı {time(data.previousClosedByHandAt)} tarihinde siz kapattınız.</strong></li>}
         <li>Hepsiburada’ya ilettiğiniz bilgiler o tarihte hazırlananlarsa, Hepsiburada’nın yeniden tanımlama yapması gerekmez.</li>
         {registered && <li>Silinecek tanım: şu anki, {time(data.registeredAt)} tarihinde hazırlanan ve hiç bildirim almamış tanım; adresine gelen istekler reddedilir.</li>}

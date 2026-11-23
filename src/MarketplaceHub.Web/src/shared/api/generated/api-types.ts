@@ -994,6 +994,7 @@ export type InstantNotificationCommand = {
   clientSecret?: null | string
   restorePrevious?: boolean
   adoptFromInactive?: boolean
+  restorePreparedAt?: null | string
 }
 
 export type InstantNotificationView = {
