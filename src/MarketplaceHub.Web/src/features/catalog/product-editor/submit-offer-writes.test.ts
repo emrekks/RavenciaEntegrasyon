@@ -49,6 +49,23 @@ describe('runOfferWrites', () => {
     await runOfferWrites(input({ rows: [row('v1')], channelPricing: { ty: { listPrice: '130', salePrice: '111' } }, channelPriceDraft: () => ({ listPrice: '130', salePrice: '111' }), channelPriceEdited: () => true }))
     expect(api.calls).toEqual([{ method: 'POST', path: '/channel-offers', ifMatch: null, body: expect.objectContaining({ listPrice: 130, salePrice: 111, followsPanelPrice: false }) }])
   })
+  // O1 (scan 23 Nov 2026): a marketplace where only some variants have Özel Fiyat on opens with its switch on; Kaydet
+  // without touching anything turned Özel Fiyat on for every variant. Untouched, the change set is empty.
+  const mixedRows = [row('v1', { platformStatuses: [status('ty', { offerId: 'o-v1', listPrice: 130, salePrice: 120, followsPanelPrice: false })] }), row('v2', { platformStatuses: [status('ty', { offerId: 'o-v2', followsPanelPrice: true })] })]
+  const mixed = { product: product(['v1', 'v2']), rows: mixedRows, channelPricing: { ty: { listPrice: '130', salePrice: '120' } }, channelPriceDraft: () => ({ listPrice: '130', salePrice: '120' }) }
+  it('sends nothing for a mixed marketplace saved untouched', async () => {
+    await runOfferWrites(input({ ...mixed, choiceUntouched: () => true }))
+    expect(api.calls).toEqual([])
+  })
+  it('a following variant of an untouched mixed marketplace gets the panel price and keeps following it', async () => {
+    await runOfferWrites(input({ ...mixed, rows: [mixedRows[0], row('v2', { salePrice: 85, platformStatuses: mixedRows[1].platformStatuses })], choiceUntouched: () => true }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v2', listPrice: 100, salePrice: 85, followsPanelPrice: true }) }])
+  })
+  it('a mixed marketplace whose card price the owner typed gives every variant that price as its own', async () => {
+    await runOfferWrites(input({ ...mixed, channelPriceDraft: () => ({ listPrice: '140', salePrice: '125' }), channelPriceEdited: () => true, choiceUntouched: () => true }))
+    expect(api.calls.map(call => [call.path, call.body?.salePrice, call.body?.followsPanelPrice])).toEqual([['/channel-offers/o-v1', 125, false], ['/channel-offers/o-v2', 125, false]])
+  })
+
   it('says which variants had no price to write', async () => {
     const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 0, listPrice: 0 })] }))
     expect(api.calls).toEqual([])

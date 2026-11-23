@@ -1,7 +1,7 @@
 // Where a quick price change on the products list goes: the offer the variant has on the channel the person picked
 // (at the version the list loaded), or a new offer on that channel. The channel is always the person's choice; the
 // screen never prices a channel it picked by itself.
-import { parseTrCount, parseTrNumber, trNumberInput } from '../../shared/tr-number'
+import { parseTrCount, parseTrEntry, trEntryHelp, trNumberInput } from '../../shared/tr-number'
 import { queryKeys } from '../../shared/api/query-keys'
 
 export type QuickPriceOffer = {
@@ -132,6 +132,14 @@ export function offerFollowsPanel(offer: (Pick<QuickPriceOffer, 'followsPanelPri
 export function channelKeepsOwnPrice(items: ReadonlyArray<FollowItem>, connectionId: string): boolean {
   return items.some(item => !offerFollowsPanel(channelOffer(item.variant, connectionId)))
 }
+// How many of the variants' offers on a marketplace keep their own price (Özel Fiyat on) and how many follow the panel;
+// a variant without an offer there counts in neither. Both above zero is a mixed marketplace (O1, scan 23 Nov 2026): it is
+// shown as mixed and kept as it is, each variant with its own choice, until the owner switches it.
+export function channelFollowMix(variants: ReadonlyArray<QuickPriceVariant>, connectionId: string): { own: number; follows: number; mixed: boolean } {
+  let own = 0; let follows = 0
+  for (const variant of variants) { const offer = channelOffer(variant, connectionId); if (!offer) continue; if (offerFollowsPanel(offer)) follows += 1; else own += 1 }
+  return { own, follows, mixed: own > 0 && follows > 0 }
+}
 export function initialCustomChannels(items: ReadonlyArray<FollowItem>, columns: ReadonlyArray<QuickPriceColumn>): Record<string, boolean> {
   return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, channelKeepsOwnPrice(items, column.id)]))
 }
@@ -173,13 +181,19 @@ export type EditorChannelOfferInput = {
   card: { listPrice: number; salePrice: number }
   cardEdited: boolean
   variantPrice?: { listPrice: number; salePrice: number } | null
-  offer?: { listPrice?: number | null; salePrice?: number | null } | null
+  offer?: { listPrice?: number | null; salePrice?: number | null; followsPanelPrice?: boolean | null } | null
   takesListPrice?: boolean
+  // The marketplace's switch is as the editor opened it (not switched this session): each variant keeps its stored choice.
+  choiceUntouched?: boolean
 }
 export function editorChannelOfferPrices(input: EditorChannelOfferInput): { listPrice: number; salePrice: number; followsPanelPrice: boolean } {
   const followsPanelPrice = !input.custom
   if (input.variantPrice) return { ...input.variantPrice, followsPanelPrice: followsPanelPrice && typedOfferPriceChoice(input.variantPrice, input.panel, input.takesListPrice ?? true) !== false }
   if (!input.custom) return { ...input.panel, followsPanelPrice }
+  // A mixed marketplace (O1): its switch shows on because one variant keeps its own price, but a variant whose offer
+  // follows the panel keeps following it (the panel price, its stored choice) unless the owner switched the marketplace
+  // or typed its card price. Saving untouched so writes nothing new and turns no one's Özel Fiyat on.
+  if (input.choiceUntouched && !input.cardEdited && input.offer && offerFollowsPanel(input.offer)) return { ...input.panel, followsPanelPrice: true }
   const own = input.offer?.salePrice != null && input.offer.salePrice > 0 ? { listPrice: input.offer.listPrice ?? input.offer.salePrice, salePrice: input.offer.salePrice } : null
   return { ...(input.cardEdited || !own ? input.card : own), followsPanelPrice }
 }
@@ -249,7 +263,7 @@ function samePrice(left: number, right: number) {
 // is shown as it is; a field's text is read as Turkish ("1.250" is 1250), and text that is not a price is shown as typed.
 export function formatPriceField(value: string | number): string {
   if (typeof value === 'string' && value.trim() === '') return ''
-  const number = typeof value === 'number' ? value : parseTrNumber(value)
+  const number = typeof value === 'number' ? value : parseTrEntry(value)
   return number !== null && Number.isFinite(number) ? number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(value)
 }
 
@@ -291,13 +305,13 @@ export function panelPriceTarget(variant: { id: string; version?: number | null;
 // The list and sale price typed into the two per-variant fields, checked as the server checks them. An empty list
 // price takes the sale price. The fields are read as Turkish ("1.250" is 1250, "1.250,50" is 1250.5); a value that
 // could mean two things is refused, never guessed.
-export const unreadablePriceMessage = 'Fiyat okunamadı; 1.250,50 biçiminde girin.'
+export const unreadablePriceMessage = trEntryHelp
 export function inlinePrices(list: string, sale: string): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
   if (sale.trim() === '') return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const salePrice = parseTrNumber(sale)
+  const salePrice = parseTrEntry(sale)
   if (salePrice === null) return { ok: false, message: unreadablePriceMessage }
   if (salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const listPrice = list.trim() === '' ? salePrice : parseTrNumber(list)
+  const listPrice = list.trim() === '' ? salePrice : parseTrEntry(list)
   if (listPrice === null) return { ok: false, message: unreadablePriceMessage }
   if (listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
   if (!hasAtMostTwoDecimals(listPrice) || !hasAtMostTwoDecimals(salePrice)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
@@ -308,8 +322,8 @@ export function inlinePrices(list: string, sale: string): { ok: true; listPrice:
 // when left empty. Without a list price field the sale price stands for both. A stock is a whole number of pieces: a
 // fraction is refused with its own message, never rounded.
 export function bulkEditValues(input: { showListPrice: boolean; listPrice: string; salePrice: string; stockAmount: string }): { ok: true; list: number | null; sale: number | null; amount: number | null } | { ok: false; message: string } {
-  const read = (text: string) => text.trim() === '' ? null : parseTrNumber(text)
-  const unreadable = (text: string) => text.trim() !== '' && parseTrNumber(text) === null
+  const read = (text: string) => text.trim() === '' ? null : parseTrEntry(text)
+  const unreadable = (text: string) => text.trim() !== '' && parseTrEntry(text) === null
   if ((input.showListPrice && unreadable(input.listPrice)) || unreadable(input.salePrice)) return { ok: false, message: unreadablePriceMessage }
   const sale = read(input.salePrice)
   const list = input.showListPrice ? read(input.listPrice) : sale

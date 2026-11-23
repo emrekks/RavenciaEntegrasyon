@@ -73,7 +73,7 @@ describe('PriceSuggestionLink', () => {
     expect(button('Maliyete Göre').getAttribute('aria-pressed')).toBe('true')
     act(() => button('Fiyatı Uygula').click())
     expect(document.querySelector('.price-suggestion-modal')).toBeNull()
-    const expected = String(suggestPrice({ cost: 200, targetRate: 65, basis: 'cost', commissionRate: 21.5, cargo: 100, serviceFee: 13.19, vatRate: 20, vatIncluded: true })!.price)
+    const expected = String(suggestPrice({ cost: 200, targetRate: 65, basis: 'cost', commissionRate: 21.5, cargo: 100, serviceFee: 13.19, vatRate: 20, vatIncluded: true })!.price).replace('.', ',')
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Satış Fiyatı"]')!.value).toBe(expected)
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Liste Fiyatı"]')!.value).toBe(expected)
   })

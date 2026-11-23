@@ -41,7 +41,8 @@ import { EditorSubmitBar } from './EditorSubmitBar'
 import { EditorDialogs } from './EditorDialogs'
 import { EditorWindows } from './EditorWindows'
 import { EditorOptionsSection } from './EditorOptionsSection'
-import { channelTakesListPrice } from '../quick-price-edit'
+import { channelTakesListPrice, priceFieldText } from '../quick-price-edit'
+import { parseEditorNumber } from './editor-number'
 export { BulkVariantPlatformPricingModal } from './BulkVariantPlatformPricingModal'
 export { PublishPlatformCard, cardLookupKey, publishCardState } from './PublishPlatformCard'
 
@@ -88,11 +89,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // The marketplaces of the card: the same Özel Fiyat state as the card's switch, and each variant's offer price there (a staged draft first).
       isNewProduct: !editor.editProductId,
       channels: editor.platformCards.map(card => ({ connectionId: card.connection.id, name: card.name, platformCode: card.connection.platformCode, takesListPrice: channelTakesListPrice(card.connection.platformCode), custom: card.connection.id in editor.channelPricing, onToggleCustom: () => editor.toggleCustomChannelPrice(card.connection.id) })),
+      // As Turkish text ("1250,5"), the one way the window reads a typed price; a staged draft holds a number field's value.
       channelPrice: (rowKey, connectionId) => {
         const staged = variantChannelPricing[`${rowKey}:${connectionId}`]
-        if (staged) return { list: staged.listPrice, sale: staged.salePrice }
+        const text = (value: string) => value.trim() === '' ? '' : priceFieldText(parseEditorNumber(value))
+        if (staged) return { list: text(staged.listPrice), sale: text(staged.salePrice), follows: false }
         const platform = variantRows.find(row => row.key === rowKey)?.platformStatuses?.find(item => item.connectionId === connectionId)
-        return platform?.offerId ? { list: platform.listPrice == null ? '' : String(platform.listPrice), sale: platform.salePrice == null ? '' : String(platform.salePrice) } : null
+        return platform?.offerId ? { list: priceFieldText(platform.listPrice), sale: priceFieldText(platform.salePrice), follows: platform.followsPanelPrice !== false } : null
       },
       // Staged as the editor's per-variant marketplace price drafts (variantChannelPricing): only the page's Kaydet writes them.
       onApplyChannelPrices: changes => {

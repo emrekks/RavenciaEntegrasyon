@@ -105,7 +105,7 @@ describe('a card with variants in the editor', () => {
       expect(labelled(name).querySelector('.required-marker')).not.toBeNull()
     }
     expect(inputOf('Liste Fiyatı').value).toBe('120')
-    expect(inputOf('Satış Fiyatı').value).toBe('99.9')
+    expect(inputOf('Satış Fiyatı').value).toBe('99,9')
     // Owner, 11 Nov 2026 ("Salt okunur kalsın"): on a card with variants the codes are read-only (selectable) and not required.
     for (const [name, value] of [['Stok Kodu', 'SKU-1'], ['Barkod', 'SKU-1-B']]) {
       expect(inputOf(name)).toMatchObject({ readOnly: true, disabled: false, value, title: 'Varyantlı üründe kodlar varyant tablosunda düzenlenir.' })

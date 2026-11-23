@@ -3,7 +3,7 @@ import type { ApiAnswer } from '../../shared/api/api-answer'
 
 // GET /connections/{id}/instant-notifications (InstantNotificationService.StatusAsync): the connection's webhook as the
 // integration page shows it. The overview reads the same answer under the same query key.
-export type InstantNotificationState = 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE'
+export type InstantNotificationState = 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE' | 'CALLED_WHILE_OFF'
 // CONTRACT: the API declares the state as a string; InstantNotificationService writes only these.
 export type InstantNotificationStatus = Omit<ApiAnswer<'getConnectionsByIdInstantNotifications'>, 'state'> & { state: InstantNotificationState }
 
@@ -13,7 +13,7 @@ export const routeOnlyWebhookMessage = 'Bu webhook Uygulama Gizli Anahtarı olma
 
 // ACTIVE comes only once notifications have arrived and keep arriving: before the first one the server says WAITING,
 // and QUIET when an order came without its notification. The marketplace is named by instantNotificationStateLabel.
-export const instantNotificationStateLabels: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Pazaryeri durdurdu', MISSING: 'Pazaryerinde kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son siparişin bildirimi gelmedi', CONNECTION_INACTIVE: 'Bağlantı pasif' }
+export const instantNotificationStateLabels: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Pazaryeri durdurdu', MISSING: 'Pazaryerinde kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son siparişin bildirimi gelmedi', CONNECTION_INACTIVE: 'Bağlantı pasif', CALLED_WHILE_OFF: 'Kapalı adrese istek geliyor' }
 
 const marketplaceNames: Record<string, string> = { TRENDYOL: 'Trendyol', SHOPIFY: 'Shopify', HEPSIBURADA: 'Hepsiburada' }
 
@@ -36,7 +36,8 @@ export function webhookTone(status: InstantNotificationStatus): 'ok' | 'warn' | 
   switch (status.state) {
     case 'UNSUPPORTED': return 'na'
     case 'MISSING':
-    case 'CONNECTION_INACTIVE': return 'bad'
+    case 'CONNECTION_INACTIVE':
+    case 'CALLED_WHILE_OFF': return 'bad' // the marketplace calls a closed address and is refused (404)
     case 'PASSIVE':
     case 'QUIET': return 'warn'
     case 'ACTIVE': return status.lastRejectedAt ? 'warn' : 'ok'

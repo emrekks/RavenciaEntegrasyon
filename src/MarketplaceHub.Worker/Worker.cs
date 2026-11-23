@@ -68,8 +68,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (pool is not null) wakeRouter.LaneNotified += pool.NoteWork;
         // Borrowing slots wait on a signal of their own: a lane's notification goes to its own slots first (a borrowing slot
         // that may not borrow would use the wake up and leave the job to the idle poll). They are woken when a slot is freed
-        // and when one of the lane's own slots found work (there may be more).
-        var borrowWakes = lanes.ToDictionary(lane => lane.Name, _ => new LaneWakeSignal());
+        // and when one of the lane's own slots found work (there may be more), and by the lane's notifications (JobWakeRouter).
+        var borrowWakes = lanes.ToDictionary(lane => lane.Name, lane => wakeRouter.BorrowSignalFor(lane.Name));
         if (pool is not null)
             pool.SlotFreed += freedFor =>
             {
@@ -501,6 +501,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // be long without a due job waiting for it.
     private async Task RunDueJobWakeAsync(CancellationToken stoppingToken)
     {
+        // Flexible lanes: the jobs that became due since this moment are told to their lanes' pool before the wake.
+        var dueSince = DateTimeOffset.UtcNow;
         while (!stoppingToken.IsCancellationRequested)
         {
             var recheck = Task.WhenAny(wakeSignal.Current, dueRecheck.Current);
@@ -525,10 +527,62 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 // Pulsed whether the wait ended by time or by a notification: the moment read above has passed
                 // either way, and the next read only looks at later ones.
                 if (nextDue is { } due && due <= DateTimeOffset.UtcNow + JobIdleWait.MinimumDueWait)
+                {
+                    if (laneModel.Flexible) dueSince = await NoteDueWorkAsync(dueSince, stoppingToken);
                     wakeRouter.WakeAll();
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
         }
+    }
+
+    // Flexible lanes (23 Nov scan): a job that becomes due raises no notification, so its lane was never told it has work and
+    // did not want its lent slot back: borrowers kept taking every freed slot and the job waited for the borrowed work to end.
+    // The lanes that can lease a job due since the last look are told now. Returns the moment the next look starts from (the
+    // same one when the read failed, so nothing due meanwhile is missed).
+    private async Task<DateTimeOffset> NoteDueWorkAsync(DateTimeOffset since, CancellationToken stoppingToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var due = await BecameDueAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), since, now, stoppingToken);
+            if (due.Count > 0) wakeRouter.NoteDue(due);
+            return now;
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Jobs that became due could not be read; their lanes are only woken");
+            return since;
+        }
+    }
+
+    // The job types and priorities of the queued jobs that became leasable in (since, now]: their AvailableAt passed, or a
+    // quota backoff of their connection ended (any lock group: a lane told of work it cannot lease finds nothing on its next
+    // poll and stops wanting).
+    internal static async Task<IReadOnlyCollection<(string JobType, int Priority)>> BecameDueAsync(AppDbContext db, DateTimeOffset since, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        since = since.ToUniversalTime();
+        now = now.ToUniversalTime();
+        var rows = await db.Database.SqlQuery<DueJobKind>($"""
+            SELECT DISTINCT job."JobType", job."Priority"
+            FROM integration.jobs job
+            WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED')
+              AND job."AttemptCount" < job."MaxAttempts"
+              AND job."AvailableAt" <= {now}
+              AND (job."AvailableAt" > {since}
+                OR EXISTS (
+                    SELECT 1 FROM integration.connection_backoffs backoff
+                    WHERE backoff."ConnectionId" = job."ConnectionId" AND backoff."Until" > {since} AND backoff."Until" <= {now}))
+            """).ToListAsync(cancellationToken);
+        return [.. rows.Select(row => (row.JobType, row.Priority))];
+    }
+
+    internal sealed class DueJobKind
+    {
+        public string JobType { get; set; } = "";
+        public int Priority { get; set; }
     }
 
     // The earliest future moment a queued job becomes leasable: its AvailableAt, or the end of a quota backoff

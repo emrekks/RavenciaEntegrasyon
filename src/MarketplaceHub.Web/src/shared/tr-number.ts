@@ -21,10 +21,27 @@ export function parseTrNumber(raw: string): number | null {
   return negative ? -value : value
 }
 
-// A whole number typed in Turkish ("1.250" -> 1250), or why it is not one: empty, unreadable, a fraction or below zero.
+// The one rule of every price and stock box a person types into on the product screens (Toplu Düzenle, the products
+// list's quick edit, the product editor's card prices): a point only groups thousands and a comma is the only decimal
+// mark, so the number read is the number the box shows formatted (1.250 -> 1.250,00) and the number sent.
+// - "1.250" -> 1250, "1.250,50" -> 1250.5, "1250,5" -> 1250.5, "12,5" -> 12.5, "1250" -> 1250.
+// - Refused (null), never guessed: a point used as a decimal point ("1.25", "12.5", "1250.50"), English grouping
+//   ("1,250.50") and everything parseTrNumber refuses. parseTrNumber's single-point reading stays for the commission
+//   tariff filters only.
+export function parseTrEntry(raw: string): number | null {
+  const body = raw.replace(/[\s₺%]/g, '').replace(/^[-−–]/, '')
+  if (/^\d+\.\d{1,2}$/.test(body)) return null
+  return parseTrNumber(raw)
+}
+
+// The message for a typed price parseTrEntry refuses.
+export const trEntryHelp = 'Fiyat okunamadı; nokta yalnız binlik ayırıcıdır, ondalık için virgül kullanın (1.250 ya da 1.250,50).'
+
+// A whole number typed in Turkish ("1.250" -> 1250), read by parseTrEntry, or why it is not one: empty, unreadable,
+// a fraction or below zero.
 export function parseTrCount(raw: string): { ok: true; value: number } | { ok: false; reason: 'empty' | 'invalid' | 'fraction' | 'negative' } {
   if (raw.trim() === '') return { ok: false, reason: 'empty' }
-  const value = parseTrNumber(raw)
+  const value = parseTrEntry(raw)
   if (value === null) return { ok: false, reason: 'invalid' }
   if (!Number.isInteger(value)) return { ok: false, reason: 'fraction' }
   if (value < 0) return { ok: false, reason: 'negative' }

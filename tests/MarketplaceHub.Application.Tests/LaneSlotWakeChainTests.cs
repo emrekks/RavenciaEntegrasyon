@@ -158,4 +158,49 @@ public sealed class LaneSlotWakeChainPostgreSqlTests(PostgreSqlTenantIsolationFi
             await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = {tenant.Id}");
         }
     }
+
+    // Flexible lanes, 23 Nov scan: the due-time wake tells the lanes of the jobs that became due since its last look (their
+    // AvailableAt passed, or their connection's quota backoff ended), and no others.
+    [PostgreSqlFact]
+    public async Task TheDueTimeWakeFindsTheJobsThatBecameDueSinceItsLastLook()
+    {
+        var prefix = $"TEST_DUE_{Guid.NewGuid():N}"[..30];
+        var tenant = ScheduledPolicyIsolationTests.NewTenant("due-wake");
+        var since = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var now = DateTimeOffset.UtcNow;
+        var backedOff = Guid.NewGuid();
+        await using var seed = fixture.CreateContext();
+        try
+        {
+            seed.Tenants.Add(tenant);
+            void Add(string name, DateTimeOffset availableAt, int priority = 4, Guid? connection = null) =>
+                JobEnqueuer.Add(seed, new IntegrationJobRequest(tenant.Id, connection, $"{prefix}_{name}", "{}", $"due-wake:{name}", "test", availableAt) { Priority = priority });
+            Add("RETRY", since.AddMinutes(5));
+            Add("RETRY2", since.AddMinutes(6), priority: 3);
+            Add("LATER", now.AddMinutes(5));
+            Add("OLD", since.AddMinutes(-5));
+            Add("BACKOFF", since.AddMinutes(-30), connection: backedOff);
+            Add("LEASED", since.AddMinutes(5));
+            await seed.SaveChangesAsync();
+            await seed.Database.ExecuteSqlInterpolatedAsync($"UPDATE integration.jobs SET \"Status\" = 'LEASED' WHERE \"TenantId\" = {tenant.Id} AND \"JobType\" = {prefix + "_LEASED"}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.connection_backoffs ("ConnectionId", "LockGroup", "Until", "Reason") VALUES ({backedOff}, 'test', {since.AddMinutes(2)}, 'test')
+                """);
+
+            await using var db = fixture.CreateContext();
+            var due = (await WorkerService.BecameDueAsync(db, since, now, CancellationToken.None))
+                .Where(job => job.JobType.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(job => $"{job.JobType[(prefix.Length + 1)..]}:{job.Priority}").Order(StringComparer.Ordinal).ToArray();
+            Assert.Equal(["BACKOFF:4", "RETRY2:3", "RETRY:4"], due);
+            // The next look starts where this one ended: nothing new.
+            Assert.DoesNotContain(await WorkerService.BecameDueAsync(db, now, now.AddSeconds(1), CancellationToken.None), job => job.JobType.StartsWith(prefix, StringComparison.Ordinal));
+        }
+        finally
+        {
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.connection_backoffs WHERE \"ConnectionId\" = {backedOff}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.outbox_events WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.jobs WHERE \"TenantId\" = {tenant.Id}");
+            await seed.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM iam.tenants WHERE \"Id\" = {tenant.Id}");
+        }
+    }
 }

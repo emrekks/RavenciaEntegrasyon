@@ -3,7 +3,7 @@ import { instantNotificationStateLabel, webhookTone, type InstantNotificationSta
 export type WebhookCell = { tone: 'ok' | 'warn' | 'bad' | 'off' | 'na'; text: string; title: string }
 
 // The matrix cell's short words; the integration page's full label and its explanation go to the hover text.
-const SHORT: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Durduruldu', MISSING: 'Kayıt Yok', UNKNOWN: 'Okunamadı', WAITING: 'Bekleniyor', QUIET: 'Bildirim Yok', CONNECTION_INACTIVE: 'Bağlantı Pasif' }
+const SHORT: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Durduruldu', MISSING: 'Kayıt Yok', UNKNOWN: 'Okunamadı', WAITING: 'Bekleniyor', QUIET: 'Bildirim Yok', CONNECTION_INACTIVE: 'Bağlantı Pasif', CALLED_WHILE_OFF: 'İstek Reddediliyor' }
 
 /** The overview's webhook cell for a connection, from the integration page's status answer. */
 export function webhookCell(status: InstantNotificationStatus | undefined, failed: boolean, since: (timestamp: string | null) => string | null, platformCode?: string | null): WebhookCell {
@@ -13,6 +13,7 @@ export function webhookCell(status: InstantNotificationStatus | undefined, faile
   const text = status.state === 'ACTIVE' && !rejected ? since(status.lastReceivedAt) ?? SHORT.ACTIVE
     : rejected ? 'Reddedilen Var'
     : SHORT[status.state]
-  const detail = [status.lastRejectedReason, status.message].filter(Boolean).join(' ')
+  // A closed address still called: the message says it, the refusal record would say it again.
+  const detail = [status.state === 'CALLED_WHILE_OFF' ? null : status.lastRejectedReason, status.message].filter(Boolean).join(' ')
   return { tone, text, title: `Webhook · ${instantNotificationStateLabel(status.state, platformCode)}${detail ? ` · ${detail}` : ''}` }
 }

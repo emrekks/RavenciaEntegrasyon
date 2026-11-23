@@ -102,6 +102,75 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.True(service.RouteRefusalNoted);
     }
 
+    // Every refused call reaches the record (its writes are held to once a minute by their own conditions), so a stream of
+    // wrong-token calls cannot hide the calls to a closed definition of the same address; only the log line is held to
+    // once a minute per address and reason. An unknown address leaves neither a log line nor a cache entry.
+    [Fact]
+    public async Task ReceiveWebhook_KeepsEveryRefusal_AndLogsOncePerAddressAndReasonAMinute()
+    {
+        var logs = new CountingLoggerProvider();
+        var services = new ServiceCollection().AddLogging().AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(logs).AddMemoryCache(options => options.SizeLimit = 100).BuildServiceProvider();
+        var connection = Guid.CreateVersion7();
+        async Task CallAsync(RecordingWebhookService service, Guid address, string token)
+        {
+            var context = NewContext([], 0);
+            context.RequestServices = services;
+            await (await MarketplaceEndpoints.ReceiveWebhook(address, token, context, service, new Gate(false), Quota)).ExecuteAsync(context);
+            Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        }
+
+        var wrongToken = new RecordingWebhookService { RefusalCode = "WEBHOOK_ROUTE_TOKEN_MISMATCH" };
+        for (var index = 0; index < 5; index++) await CallAsync(wrongToken, connection, $"guess-{index}");
+        var closed = new RecordingWebhookService { RefusalCode = "WEBHOOK_CALLS_REJECTED" };
+        for (var index = 0; index < 3; index++) await CallAsync(closed, connection, "closed-token");
+        Assert.Equal(5, wrongToken.RefusalsNoted);
+        Assert.Equal(3, closed.RefusalsNoted);
+        Assert.Equal(2, logs.Count("Webhook route refused"));
+
+        var unknown = new RecordingWebhookService();
+        for (var index = 0; index < 3; index++) await CallAsync(unknown, Guid.CreateVersion7(), "guess");
+        Assert.Equal(3, unknown.RefusalsNoted);
+        Assert.Equal(2, logs.Count("Webhook route refused"));
+    }
+
+    private sealed class CountingLoggerProvider : Microsoft.Extensions.Logging.ILoggerProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> messages = new();
+        public int Count(string start) => messages.Count(message => message.StartsWith(start, StringComparison.Ordinal));
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(messages);
+        public void Dispose() { }
+        private sealed class Logger(System.Collections.Concurrent.ConcurrentQueue<string> messages) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => messages.Enqueue(formatter(state, exception));
+        }
+    }
+
+    // A fault while the refusal is kept does not turn the address's 404 into a 500.
+    [Fact]
+    public async Task ReceiveWebhook_WhenKeepingTheRefusalFails_StillAnswers404()
+    {
+        var service = new RecordingWebhookService { RefusalFault = new TimeoutException("database timeout") };
+        var context = NewContext([], 0);
+
+        await (await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "closed-token", "orders", context, service, new Gate(false), Quota)).ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        Assert.Equal(1, service.RefusalsNoted);
+    }
+
+    // The event path is the sender's: a log line keeps at most 64 characters of it.
+    [Fact]
+    public void LoggedPath_KeepsAtMost64CharactersOfTheSendersPath()
+    {
+        Assert.Equal("/", MarketplaceEndpoints.LoggedPath(null));
+        Assert.Equal("orders", MarketplaceEndpoints.LoggedPath("orders"));
+        var logged = MarketplaceEndpoints.LoggedPath(new string('x', 10_000));
+        Assert.Equal(65, logged.Length);
+        Assert.EndsWith("…", logged);
+    }
+
     [Fact]
     public void WebhookLimits_LimitEachAddress()
     {
@@ -225,12 +294,18 @@ public sealed class MarketplaceWebhookEndpointTests
             return Task.FromResult(ServiceResult<bool>.Ok(true));
         }
 
-        public bool RouteRefusalNoted { get; private set; }
+        public bool RouteRefusalNoted => RefusalsNoted > 0;
+        public int RefusalsNoted { get; private set; }
+        // What the service answers for a refused address: null for one that names nothing.
+        public string? RefusalCode { get; init; }
 
-        public Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken)
+        // A database fault while the refusal is kept (a timeout, a deadlock).
+        public Exception? RefusalFault { get; init; }
+
+        public Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken)
         {
-            RouteRefusalNoted = true;
-            return Task.CompletedTask;
+            RefusalsNoted++;
+            return RefusalFault is null ? Task.FromResult(RefusalCode) : Task.FromException<string?>(RefusalFault);
         }
     }
 }
