@@ -48,7 +48,7 @@ describe('price/stock send log results and triggers', () => {
   })
 
   it('labels every trigger the server sends', () => {
-    expect(triggerCodes.map(sendLogTriggerLabel)).toEqual(['Sipariş', 'Manuel Stok', 'Fiyat Değişikliği', 'Pazaryeri Stok Aktarımı', 'Stok Değişikliği', 'Kontrol Taraması', 'Panelden Gönderim', 'Otomatik'])
+    expect(triggerCodes.map(sendLogTriggerLabel)).toEqual(['Sipariş', 'Manuel Stok', 'Fiyat Değişikliği', 'Pazaryeri Stok Çekimi', 'Stok Değişikliği', 'Kontrol Taraması', 'Panelden Gönderim', 'Otomatik'])
   })
 
   it('groups every result and every trigger exactly once', () => {
@@ -57,7 +57,7 @@ describe('price/stock send log results and triggers', () => {
     expect([...results].sort()).toEqual([...resultCodes].sort())
     expect([...triggers].sort()).toEqual([...triggerCodes].sort())
     expect(sendLogResultGroups.map(group => group.label)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Diğer'])
-    expect(sendLogTriggerGroups.map(group => group.label)).toEqual(['Otomatik', 'Panelden', 'Aktarım'])
+    expect(sendLogTriggerGroups.map(group => group.label)).toEqual(['Otomatik', 'Panelden', 'Çekim'])
   })
 
   it('puts the marketplace error after the meaning of the result', () => {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { ToneIcon, UiIcon } from '../shared/components'
 import './notification-panel.css'
 import { describeNotification, notificationItemList, presentNotification } from '../shared/notification-describe'
-import { ViewTabIcon, type ViewTabIconName } from '../shared/view-tabs'
+import { lockPageScroll } from '../shared/hooks/useScrollLock'
 import { clearNotificationHistory, markAllNotificationsRead, markNotificationRead, notificationSubjectLabels, type AppNotification } from '../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../shared/platform-logos'
 import { formatDateTime, formatIstanbul } from '../shared/format-date'
@@ -33,6 +33,8 @@ function dayLabel(iso: string) {
 
 type ItemProps = { notification: AppNotification; expanded: boolean; onToggle: () => void; onOpen: (href: string) => void }
 
+// One row of the list: a tone tile (the marketplace's logo for a marketplace notification), the title, up to two lines of text,
+// a meta line (where it happened · when), and one row of actions under it. Unread: a soft tint and a dot; error: a 3 px edge.
 function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProps) {
   const presentation = presentNotification(notification)
   const unread = !notification.read
@@ -42,19 +44,15 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
   const facts = expanded ? describeNotification(notification) : []
   const itemList = notificationItemList(notification)
   return <article className={`rv-notification-history-item is-${notification.kind} ${unread ? 'is-unread' : 'is-read'}${expanded ? ' is-expanded' : ''}`}>
-    <span className="rv-notification-icon" aria-hidden="true"><ToneIcon kind={notification.kind} size={18} /></span>
+    <span className="rv-notification-icon" aria-hidden="true">{logo ? <img className={`rv-notification-logo ${platformLogoClass(presentation.platformCode)}`} src={logo} alt="" /> : <ToneIcon kind={notification.kind} size={18} />}</span>
     <div className="rv-notification-history-copy rv-notification-card">
       <div className="rv-notification-history-top">
-        {source ? <span className="rv-notification-source">
-          {logo && <img className={`rv-notification-logo ${platformLogoClass(presentation.platformCode)}`} src={logo} alt="" aria-hidden="true" />}
-          <span>{source}</span>
-        </span> : <span className="rv-notification-source" />}
+        <strong className="rv-notification-title">{presentation.title}{presentation.count > 1 && <b className="rv-notification-count" aria-label={`${presentation.count} kez`}>{presentation.count}×</b>}</strong>
         {unread && <i className="rv-notification-unread-dot" aria-label="Okunmadı" />}
-        <time dateTime={notification.createdAt} title={formatDateTime(notification.createdAt)}>{relativeTime(notification.createdAt)}</time>
       </div>
-      <strong className="rv-notification-title">{presentation.title}{presentation.count > 1 && <b className="rv-notification-count" aria-label={`${presentation.count} kez`}>{presentation.count}×</b>}</strong>
-      {presentation.summary && <p>{presentation.summary}</p>}
+      {presentation.summary && <p className="rv-notification-text">{presentation.summary}</p>}
       {subject && <p className="rv-notification-subject"><span>{notificationSubjectLabels[subject.kind]}</span><b>{subject.label}</b></p>}
+      <div className="rv-notification-meta"><span className="rv-notification-source">{source}</span><time dateTime={notification.createdAt} title={formatDateTime(notification.createdAt)}>{relativeTime(notification.createdAt)}</time></div>
       {expanded && <div className="rv-notification-detail">
         <dl>
           {facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd className={fact.tone ? `is-${fact.tone}` : undefined}>{fact.href ? <button type="button" className="rv-notification-link" onClick={() => onOpen(fact.href!)}>{fact.value}</button> : fact.value}</dd></div>)}
@@ -68,7 +66,7 @@ function NotificationItem({ notification, expanded, onToggle, onOpen }: ItemProp
       <div className="rv-notification-foot">
         {notification.href && <button type="button" className="rv-notification-go" onClick={() => onOpen(notification.href!)}><span>{notification.actionLabel ?? 'Sayfaya Git'}</span><UiIcon name="arrowRight" size={14} /></button>}
         <button type="button" className="rv-notification-more" aria-expanded={expanded} onClick={onToggle}><span>{expanded ? 'Gizle' : 'Ayrıntı'}</span><UiIcon name="chevronDown" size={14} /></button>
-        {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} title="Okundu Olarak İşaretle" aria-label="Okundu Olarak İşaretle"><UiIcon name="circleCheck" size={14} /></button>}
+        {unread && <button type="button" className="rv-notification-mark-read" onClick={() => markNotificationRead(notification.id)} title="Okundu Olarak İşaretle" aria-label="Okundu Olarak İşaretle"><UiIcon name="circleCheck" size={16} /></button>}
       </div>
     </div>
   </article>
@@ -100,11 +98,17 @@ function useOpened(anchor: RefObject<HTMLElement | null>) {
 
 type PanelProps = { notifications: AppNotification[]; onNavigate: (href: string) => void; onCleared: () => void }
 
+// The double tick of "Tümünü Okundu Yap".
+const DoubleCheck = () => <svg className="ui-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m2 12 5 5L18 6" /><path d="m13 16 1 1L22 8" /></svg>
+
 export function NotificationPanel({ notifications, onNavigate, onCleared }: PanelProps) {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState(false)
   const headingRef = useRef<HTMLDivElement>(null)
   const opened = useOpened(headingRef)
+  // On a phone the panel is a sheet over a dimmed page: the page behind does not scroll.
+  useEffect(() => (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 760px)').matches ? lockPageScroll(true) : undefined), [])
   const unread = notifications.filter(notification => !notification.read)
   const errors = notifications.filter(notification => notification.kind === 'error')
   const visible = filter === 'UNREAD' ? unread : filter === 'ERROR' ? errors : notifications
@@ -121,33 +125,36 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
     return [[label, items, shown] as const]
   })
   const dayKind = (label: string) => label === 'Bugün' ? 'is-today' : label === 'Dün' ? 'is-yesterday' : 'is-older'
-  const filters: Array<[Filter, string, number, ViewTabIconName]> = [['ALL', 'Tümü', notifications.length, 'all'], ['UNREAD', 'Okunmamış', unread.length, 'unread'], ['ERROR', 'Hatalar', errors.length, 'attention']]
+  const filters: Array<[Filter, string, number]> = [['ALL', 'Tümü', notifications.length], ['UNREAD', 'Okunmamış', unread.length], ['ERROR', 'Hatalar', errors.length]]
 
   const open = (notification: AppNotification) => (href: string) => {
     markNotificationRead(notification.id)
     onNavigate(href)
   }
+  const emptyText = notifications.length === 0 ? 'Yeni sipariş, fatura ve hata bildirimleri burada görünür.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'
 
-  return <>
+  return <div className="rv-notification-panel">
+    <span className="rv-notification-grab" aria-hidden="true" />
     <div ref={headingRef} className="rv-notification-history-heading">
       <span className="rv-notification-history-title"><strong>Bildirimler</strong>{unread.length > 0 && <b aria-label={`${unread.length} okunmamış bildirim`}>{unread.length}</b>}</span>
       <div className="rv-notification-history-actions">
-        <button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unread.length === 0} title="Tüm bildirimleri okundu olarak işaretle"><UiIcon name="check" size={14} />Tümünü Okundu Yap</button>
-        <button type="button" className="rv-notification-clear" title="Bildirim geçmişini temizle" onClick={() => { clearNotificationHistory(); onCleared() }} disabled={notifications.length === 0}><UiIcon name="trash" size={14} />Temizle</button>
+        <button type="button" className="rv-notification-mark-all" onClick={() => markAllNotificationsRead()} disabled={unread.length === 0} title="Tümünü Okundu Yap" aria-label="Tümünü Okundu Yap"><DoubleCheck /></button>
+        <button type="button" className="rv-notification-clear" title="Temizle" aria-label="Temizle" aria-expanded={confirmClear} onClick={() => setConfirmClear(true)} disabled={notifications.length === 0}><UiIcon name="trash" size={18} /></button>
       </div>
     </div>
-    <div className="rv-notification-filters rv-tabs rv-view-tabs" role="tablist" aria-label="Bildirim filtresi">
-      {filters.map(([value, label, count, icon]) => <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'is-active' : undefined} onClick={() => setFilter(value)}><span className="rv-tab-label"><ViewTabIcon name={icon} />{label}</span><span className="rv-tab-count">{count}</span></button>)}
+    {confirmClear && <div className="rv-notification-confirm" role="alert"><span>Bildirim geçmişi temizlensin mi?</span><button type="button" onClick={() => setConfirmClear(false)}>Vazgeç</button><button type="button" className="is-danger" onClick={() => { clearNotificationHistory(); setConfirmClear(false); onCleared() }}>Temizle</button></div>}
+    <div className="rv-notification-filters rv-nseg" role="tablist" aria-label="Bildirim filtresi">
+      {filters.map(([value, label, count]) => <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? 'is-active' : undefined} onClick={() => setFilter(value)}><span>{label}</span><b>{count}</b></button>)}
     </div>
     {visible.length === 0
-      ? <p className="rv-notification-history-empty">{notifications.length === 0 ? 'Henüz kaydedilmiş bildirim yok.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'}</p>
+      ? <div className="rv-notification-history-empty"><UiIcon name="bell" size={28} /><strong>{notifications.length === 0 ? 'Bildirim Yok' : filter === 'UNREAD' ? 'Okunmamış Bildirim Yok' : 'Hata Bildirimi Yok'}</strong><p>{emptyText}</p></div>
       : <div className="rv-notification-history-list rv-notification-timeline">
         {drawn.map(([label, items, shown]) => <section key={label} className={`rv-notification-day ${dayKind(label)}`} aria-label={label}>
-          <h4 className="rv-notification-group"><i aria-hidden="true" /><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></h4>
+          <h4 className="rv-notification-group"><span>{label}</span><small>{dayDate(items[0].createdAt)}</small><b>{items.length}</b></h4>
           <div className="rv-notification-day-body">{shown.map(notification => <NotificationItem key={notification.id} notification={notification} expanded={expandedId === notification.id} onToggle={() => setExpandedId(current => current === notification.id ? null : notification.id)} onOpen={open(notification)} />)}</div>
         </section>)}
       </div>}
     {/* The notification center keeps every notification for a week, also the ones cleared here. */}
     <div className="rv-notification-center-link"><button type="button" className="rv-notification-go" onClick={() => onNavigate(notificationCenterHref)}><span>Tüm Bildirimler (Son 7 Gün)</span><UiIcon name="arrowRight" size={14} /></button></div>
-  </>
+  </div>
 }

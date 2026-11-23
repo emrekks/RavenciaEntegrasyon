@@ -69,6 +69,8 @@ describe('order summary cards', () => {
     open(host, 'İptal')
     const chip = host.querySelector<HTMLButtonElement>('.rr-metric-chip')!
     expect(chip.textContent).toBe('1 Kısmi İptal | 2 Adet Ürün')
+    // The units are their own span (hidden on a phone, where the chip is one "N Kısmi İptal" line) and sit in the chip's tip too.
+    expect(chip.querySelector('.rr-metric-adet')?.textContent).toContain('2 Adet Ürün')
     chip.click()
     open(host, 'Yeniden Gönderim')
     open(host, 'Mikro İhracat Sipariş')

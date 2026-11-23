@@ -2,7 +2,7 @@
 export type NotificationHistoryPlacement = { top: number; left: number; width: number }
 
 export function notificationHistoryPlacement(anchor: Pick<DOMRect, 'right' | 'bottom'>, viewportWidth: number): NotificationHistoryPlacement {
-  const width = Math.min(440, viewportWidth - 32)
+  const width = Math.min(400, viewportWidth - 32)
   const left = Math.max(16, Math.min(anchor.right - width, viewportWidth - width - 16))
   return { top: anchor.bottom + 10, left, width }
 }
@@ -19,6 +19,8 @@ export function followNotificationBell(anchor: () => HTMLElement | null, panel: 
     const bell = anchor()
     const target = panel()
     if (!bell || !target) return
+    // A phone opens it as a bottom sheet (notifications.css): no place of its own.
+    if (window.innerWidth <= 760) { if (last !== 'sheet') { target.style.top = ''; target.style.left = ''; target.style.width = ''; last = 'sheet' } return }
     const { top, left, width } = notificationHistoryPlacement(bell.getBoundingClientRect(), window.innerWidth)
     const key = `${top}|${left}|${width}`
     if (key === last) return

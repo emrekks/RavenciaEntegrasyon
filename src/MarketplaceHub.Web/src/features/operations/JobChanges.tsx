@@ -103,7 +103,7 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
         {counts.map(item => { const group = chipGroups[item.key]; const on = group !== undefined && groups.includes(group); return <li key={item.key}>{group ? <button type="button" className={`jc-chip${on ? ' is-on' : ''}`} aria-pressed={on} title={on ? 'Süzgeci kaldır' : `Yalnız ${item.label} satırlarını göster`} onClick={() => setGroups(current => on ? current.filter(value => value !== group) : [...current, group])}><small>{item.label}</small><strong>{formatCount(item.value)}</strong></button> : <><small>{item.label}</small><strong>{formatCount(item.value)}</strong></>}</li> })}
       </ul>
       {outcome && <p className="jc-note" role="status">{outcome}</p>}
-      {productImport && <p className="jc-hint">Liste, bu aktarımın çalıştığı süre içinde aynı mağazadan panele işlenen stok ve mağaza fiyatı değişikliklerinden oluşur (Ürün Hareketleri).</p>}
+      {productImport && <p className="jc-hint">Liste, bu çekimin çalıştığı süre içinde aynı mağazadan panele işlenen stok ve mağaza fiyatı değişikliklerinden oluşur (Ürün Hareketleri).</p>}
       {spawned.length > 0 && <nav className="jc-spawned" aria-label="Doğan gönderim işleri">
         <small>Doğan Gönderim İşleri</small>
         {spawned.map(job => <button key={job.id} type="button" className="jc-spawned-link" onClick={() => onOpenJob?.(job.id)} disabled={!onOpenJob}>
