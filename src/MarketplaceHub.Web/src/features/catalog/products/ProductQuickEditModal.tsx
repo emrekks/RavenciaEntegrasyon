@@ -3,7 +3,7 @@ import { variantOptionParts } from '../variant-option-label'
 import { colourFirstOptions } from '../variant-option-matching'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
-import { TitleHint } from '../../../shared/components'
+import { TitleHint, UnsavedChangesGuard } from '../../../shared/components'
 import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
@@ -86,12 +86,16 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // The editor's marketplace prices typed here (per variant and marketplace) stay here until Varyantlara Uygula hands them over.
   type ChannelCell = { list: string; sale: string; follows?: boolean }
   const [channelDrafts, setChannelDrafts] = useState<Record<string, ChannelCell>>({})
-  const draftChannels = draft?.channels ?? []
+  // The editor's Özel Fiyat switches as flipped in this window (O5): a draft like every cell, handed to the editor only with
+  // Varyantlara Uygula; Vazgeç (or closing) leaves the editor's switches as they were.
+  const [customDrafts, setCustomDrafts] = useState<Record<string, boolean>>({})
+  const toggleDraftCustom = (channel: QuickEditDraftChannel) => { setNotice(''); setCustomDrafts(current => { const next = { ...current }; const flipped = !(current[channel.connectionId] ?? channel.custom); if (flipped === channel.custom) delete next[channel.connectionId]; else next[channel.connectionId] = flipped; return next }) }
+  const draftChannels: QuickEditDraftChannel[] = (draft?.channels ?? []).map(channel => ({ ...channel, custom: customDrafts[channel.connectionId] ?? channel.custom, onToggleCustom: () => toggleDraftCustom(channel) }))
   const channelOriginal = (rowKey: string, connectionId: string): ChannelCell | null => draft && !draft.isNewProduct ? draft.channelPrice?.(rowKey, connectionId) ?? null : null
   // A marketplace of the editor where only some variants keep their own price (O1): its switch is on, but a variant that
   // follows the panel shows the panel price read-only and gets no price from this window, as the editor's Kaydet keeps it.
   const draftChannelMixed = (connectionId: string) => { const originals = (draft?.rows ?? []).map(row => channelOriginal(row.key, connectionId)).filter(cell => cell != null); return originals.some(cell => cell.follows === true) && originals.some(cell => cell.follows !== true) }
-  const followsInMixed = (rowKey: string, channel: QuickEditDraftChannel) => channel.custom && draftChannelMixed(channel.connectionId) && channelOriginal(rowKey, channel.connectionId)?.follows === true
+  const followsInMixed = (rowKey: string, channel: QuickEditDraftChannel) => channel.custom && !(channel.connectionId in customDrafts) && draftChannelMixed(channel.connectionId) && channelOriginal(rowKey, channel.connectionId)?.follows === true
   const setDraftValue = (key: string, field: keyof QuickEditDraftValues, value: string) => { setNotice(''); setDraftValues(current => ({ ...current, [key]: { ...current[key], [field]: value } })) }
   // Typing in the table makes drafts only (owner, 18 Nov 2026): nothing is saved, and nothing goes to a marketplace, until
   // the person presses Kaydet in the bar and confirms. Tümüne Uygula fills drafts too.
@@ -103,8 +107,15 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const savedStocks = useRef(new Map<string, SavedStock>())
   const [confirmClose, setConfirmClose] = useState(false)
   const draftCount = stockDrafts.count + priceDrafts.count + followDrafts.count
-  useUnsavedChangesGuard(draftCount > 0 && !draft)
-  useEffect(() => { if (!draftCount) setConfirmClose(false) }, [draftCount])
+  // The editor's window holds unapplied work: a cell or a marketplace price typed, a value typed below, a switch flipped.
+  const [bulk, setBulk] = useState<Record<string, { list: string; sale: string; cost: string; stock: string }>>({})
+  const editorWindowDirty = Boolean(draft) && (Object.keys(customDrafts).length > 0
+    || Object.values(bulk).some(typed => Object.values(typed).some(text => text.trim() !== ''))
+    || (draft?.rows ?? []).some(row => { const start = quickEditDraftValues(row); const now = draftValues[row.key]; return now != null && (now.stock !== start.stock || now.listPrice !== start.listPrice || now.salePrice !== start.salePrice || now.costPrice !== start.costPrice) })
+    || Object.entries(channelDrafts).some(([key, cell]) => { const [rowKey, connectionId] = key.split('|'); const original = channelOriginal(rowKey, connectionId); return original != null && (cell.list !== original.list || cell.sale !== original.sale) }))
+  const unsaved = draft ? editorWindowDirty : draftCount > 0
+  useUnsavedChangesGuard(unsaved)
+  useEffect(() => { if (!unsaved) setConfirmClose(false) }, [unsaved])
   const clearRowError = (key: string) => setRowErrors(current => { if (!(key in current)) return current; const next = { ...current }; delete next[key]; return next })
   const contextProduct = products[0]
   const contextTitle = contextProduct?.title || 'Toplu düzenleme'
@@ -157,7 +168,6 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // (the editor's window has one set, applied together). A dot on the value list marks the values holding a typed amount.
   type Bulk = { list: string; sale: string; cost: string; stock: string }
   const emptyBulk: Bulk = { list: '', sale: '', cost: '', stock: '' }
-  const [bulk, setBulk] = useState<Record<string, Bulk>>({})
   const bulkKey = draft && activeTab?.kind !== 'draftChannel' ? 'draft' : activeTab?.id ?? ''
   const activeDraftChannel = activeTab?.kind === 'draftChannel' ? draftChannels.find(channel => channel.connectionId === activeTab.columnId) : undefined
   const bulkNow = bulk[bulkKey] ?? emptyBulk
@@ -266,6 +276,8 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       if (!channelResult.ok) { setNotice(`Başarısız: ${channelResult.message}`); return }
       const result = applyQuickEditDraft(draft.rows, draftValues, new Set(targetIds), { listPrice: panelBulk.list, salePrice: panelBulk.sale, costPrice: panelBulk.cost, stockAction, stockAmount: panelBulk.stock }, row => variantAxisParts(row.optionSignature).map(part => part.value).join(' · ') || row.sku || 'Varyant')
       if (!result.ok) { setNotice(`Başarısız: ${result.message}`); return }
+      // The switches flipped here reach the editor now, with the cells; the editor's Kaydet stores them.
+      for (const channel of draft.channels ?? []) if (channel.connectionId in customDrafts && customDrafts[channel.connectionId] !== channel.custom) channel.onToggleCustom()
       draft.onApply(result.changes)
       if (channelResult.changes.length) draft.onApplyChannelPrices?.(channelResult.changes)
       onClose()
@@ -408,7 +420,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     document.addEventListener('keydown', press)
     return () => document.removeEventListener('keydown', press)
   }, [draft])
-  const requestClose = () => { if (draftCount > 0 && !draft) setConfirmClose(true); else onClose() }
+  const requestClose = () => { if (unsaved) setConfirmClose(true); else onClose() }
   const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.</>
   const canApply = stepValue === 'price' ? (showListPrice && listPrice.trim() !== '') || salePrice.trim() !== '' : stepValue === 'stock' ? stockAmount.trim() !== '' : true
   // What the boxes show now: one value, named in the band above the sizes, in step 2's title and in its field.
@@ -527,9 +539,14 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       onValue={value => { setNotice(''); clearRowError(`p:${key}`); priceDrafts.set(key, { ...current, [field]: value }, original) }}
       onKeyDown={event => { if (event.key === 'Escape' && draftPair !== undefined) { event.preventDefault(); priceDrafts.revert(key); clearRowError(`p:${key}`) } }} /></span>
   }
-  return <RrModal crumb={!draft && mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} modalStyle={typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches ? undefined : { width: windowWidth, maxWidth: 'calc(100vw - 32px)' }} onClose={onClose} onBeforeClose={() => { if (draftCount > 0 && !draft) { setConfirmClose(true); return false } return true }} foot={draft
-    ? <><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} seçili</b> varyanta</> : <>Seçim yok: <b>{targetIds.length} varyantın</b> tümüne</>}</span><button type="button" className="rr-btn" onClick={requestClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !targetIds.length}>{saving ? 'Uygulanıyor…' : 'Varyantlara Uygula'}</button></>
+  return <RrModal crumb={!draft && mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} modalStyle={typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches ? undefined : { width: windowWidth, maxWidth: 'calc(100vw - 32px)' }} onClose={onClose} onBeforeClose={() => { if (unsaved) { setConfirmClose(true); return false } return true }} foot={draft
+    ? confirmClose && unsaved
+      // Vazgeç, Esc or the window's X with unapplied work asks first (O5); leaving drops every draft of this window, the
+      // Özel Fiyat switches included, and the editor stays as it was.
+      ? <><span className="rr-note rv-draftbar-text" role="status"><b>Uygulanmamış değişiklikler var.</b> Kapatırsanız bu penceredeki değişiklikler silinir.</span><button type="button" className="rr-btn" onClick={() => setConfirmClose(false)}>Düzenlemeye Dön</button><button type="button" className="rr-btn rr-danger" onClick={onClose}>Değişiklikleri Sil ve Kapat</button></>
+      : <><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} seçili</b> varyanta</> : <>Seçim yok: <b>{targetIds.length} varyantın</b> tümüne</>}</span><button type="button" className="rr-btn" onClick={requestClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !targetIds.length}>{saving ? 'Uygulanıyor…' : 'Varyantlara Uygula'}</button></>
     : <DraftSaveBar variant="foot" lead={activeSelection.length ? `${activeSelection.length} Seçili` : undefined} count={draftCount} busy={saving} invalid={firstDraftError} summary={saveSummary} notice="Otomatik dış yazması açık pazaryerlerine gönderilir." leaving={confirmClose} onSave={() => void saveDrafts()} onDiscard={() => { stockDrafts.revertAll(); priceDrafts.revertAll(); followDrafts.revertAll(); setRowErrors({}); setNotice('') }} onStay={() => setConfirmClose(false)} onLeave={onClose} onClose={onClose} />}>
+    {draft && <UnsavedChangesGuard when={unsaved} message="Toplu Düzenleme penceresinde uygulanmamış değişiklikler var. Sayfadan çıkarsanız bu değişiklikler kaybolur." />}
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><small className="rr-lead"><span className="rr-lead-long">Düzenlenecek değeri listeden seçin. Renk kutusu o rengi, beden başlığı o bedeni, beden etiketi tek varyantı seçer.</span><span className="rr-lead-short">Etikete dokunarak seçin; kutuya değeri yazın.</span></small></header>
         <QuickEditColorRows rows={matrix.rows} sizes={matrix.sizes} cells={matrix.cells} idOf={item => item.variant.id} labelOf={itemLabel} selected={selectedSet} onSelect={selectIds} renderCell={renderCell} caption={`${contextTitle}: renk ve beden varyantları`} band={valueBand} bandKey={activeTab?.id} head={<div className="rr-mx-tabs"><div className="rr-mx-pickfld"><PanelSelect ariaLabel="Düzenlenen Değer" value={activeTab?.id ?? ''} onChange={changeValue} width={240} options={valueOptions} triggerLabel={<span className="rr-mx-trig"><span className="rr-mx-trigk">Değer:</span>{activeTab ? valueText(activeTab) : ''}{valueTabs.some(tabHasDraft) && <i className="rr-mx-dot" aria-label="Kaydedilmemiş değişiklik var" />}</span>} /></div>

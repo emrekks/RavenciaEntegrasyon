@@ -138,10 +138,10 @@ describe('the editor window with marketplace prices', () => {
   const offers: Record<string, { list: string; sale: string }> = { 'b-s': { list: '180', sale: '150' }, 'b-xl': { list: '180', sale: '150' } }
   type Channels = NonNullable<import('./ProductQuickEditModal').QuickEditDraft['channels']>
   const channels = (custom: boolean, toggle = vi.fn()): Channels => [{ connectionId: 'c-ty', name: 'Trendyol', platformCode: 'TRENDYOL', takesListPrice: true, custom, onToggleCustom: toggle }]
-  async function mount(extra: Partial<import('./ProductQuickEditModal').QuickEditDraft>) {
+  async function mount(extra: Partial<import('./ProductQuickEditModal').QuickEditDraft>, onClose: () => void = () => undefined) {
     root = createRoot(container)
     const onApplyChannelPrices = vi.fn()
-    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply: () => undefined, channelPrice: key => offers[key] ?? null, onApplyChannelPrices, ...extra }} /></MemoryRouter>) })
+    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={onClose} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply: () => undefined, channelPrice: key => offers[key] ?? null, onApplyChannelPrices, ...extra }} /></MemoryRouter>) })
     return onApplyChannelPrices
   }
   async function pickChannel(name: string) {
@@ -166,8 +166,41 @@ describe('the editor window with marketplace prices', () => {
     expect(document.body.querySelector('.rr-mx-box input[aria-label*="Trendyol"]')).toBeNull()
     expect(document.body.querySelector('.rr-mx-follow')).not.toBeNull()
     expect(document.body.textContent).toContain('Tüm varyantlar için')
+    // The switch is a draft of this window (O5): the editor's switch flips only with Varyantlara Uygula.
     await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Trendyol özel fiyat"]')!)
+    expect(toggle).not.toHaveBeenCalled()
+    expect(document.body.querySelector('.rr-mx-box input[aria-label*="Trendyol"]')).not.toBeNull()
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
     expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  // O5 (scan 23 Nov 2026): the window closed without a word over unapplied drafts, and Vazgeç left the switch flipped.
+  it('Vazgeç with a flipped switch and a typed cell asks first, then drops them all and leaves the editor as it was', async () => {
+    const toggle = vi.fn(); const onClose = vi.fn()
+    const onApplyChannelPrices = await mount({ channels: channels(false, toggle) }, onClose)
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Trendyol özel fiyat"]')!)
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, '140')
+    const footButton = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(item => item.textContent === label)!
+    await click(footButton('Vazgeç'))
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Uygulanmamış değişiklikler var')
+    await click(footButton('Düzenlemeye Dön'))
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="Trendyol özel fiyat"]')!.checked).toBe(true)
+    await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
+    expect(onClose).not.toHaveBeenCalled()
+    await click(footButton('Değişiklikleri Sil ve Kapat'))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(toggle).not.toHaveBeenCalled()
+    expect(onApplyChannelPrices).not.toHaveBeenCalled()
+  })
+
+  it('closes at once when nothing was typed or switched', async () => {
+    const onClose = vi.fn()
+    await mount({ channels: channels(true) }, onClose)
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(item => item.textContent === 'Vazgeç')!)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('hands a typed marketplace price to the editor as a draft and sends nothing itself', async () => {
