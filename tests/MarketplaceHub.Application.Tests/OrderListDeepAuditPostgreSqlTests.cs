@@ -521,6 +521,44 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Scan, 23 Nov 2026: the Teslim Edilemedi tab read every current package while the row (and the web's undeliveredReturn,
+    // which reads the row's packages and lines) leaves out Shopify's remainder placeholder: an order could be listed there
+    // with a row that did not say Teslim Edilemedi. One package set now: every order the tab lists as returned carries the
+    // raw status on a listed package or line.
+    [PostgreSqlFact]
+    public async Task TeslimEdilemediReadsTheSamePackagesAsTheRow()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ol-uar2-{Guid.NewGuid():N}"[..20], DisplayName = "uar2", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var shopify = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "SHOPIFY", Environment = "STAGE", DisplayName = "uar2", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ExternalOrderId = "sh-uar", OrderNumber = "sh-uar", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-1), LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "RETURNED", CreatedAt = now, UpdatedAt = now, Version = 1 };
+            seed.Orders.Add(order);
+            seed.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = "1", Sku = "SKU-sh", TitleSnapshot = "Ürün", OrderedQuantity = 1, UnitPrice = 10m, VatRate = 20m, RawStatus = "Returned" });
+            seed.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, OrderId = order.Id, ExternalPackageId = "p-sh", Status = ShipmentPackageStatus.Returned, RawStatus = "Returned", StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+            seed.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, OrderId = order.Id, ExternalPackageId = "order:sh-uar:remainder", Status = ShipmentPackageStatus.Returned, RawStatus = "UndeliveredAndReturned", StatusOccurredAt = now.AddMinutes(-1), MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            var all = await service.OrdersAsync(tenant.Id, 50, 1, null, new OrderListQuery(), CancellationToken.None);
+            var row = Assert.Single(all.Items);
+            Assert.DoesNotContain(row.Packages ?? [], package => package.RawStatus == "UndeliveredAndReturned");
+            var undelivered = await service.OrdersAsync(tenant.Id, 50, 1, null, new OrderListQuery(Status: "UNDELIVERED"), CancellationToken.None);
+            Assert.Empty(undelivered.Items);
+            Assert.Equal(0, (await service.OrderSummaryAsync(tenant.Id, new OrderListQuery(), CancellationToken.None)).Undelivered);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
 

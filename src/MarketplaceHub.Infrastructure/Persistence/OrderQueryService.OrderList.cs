@@ -155,9 +155,7 @@ internal sealed partial class OrderQueryService
                 .ToList();
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var orderPackages = (packagesByOrder.GetValueOrDefault(order.Id) ?? [])
-                .Where(package => !string.Equals(connection?.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                    || !(package.ExternalPackageId.StartsWith("order:", StringComparison.OrdinalIgnoreCase)
-                        && package.ExternalPackageId.EndsWith(":remainder", StringComparison.OrdinalIgnoreCase)))
+                .Where(package => !IsShopifyRemainderPackage(connection?.PlatformCode, package.ExternalPackageId))
                 .ToList();
             var package = SelectDisplayPackage(orderPackages, connection?.PlatformCode);
             // The displayed package is ordered by the latest operational event,
@@ -561,12 +559,25 @@ internal sealed partial class OrderQueryService
     // An undelivered-and-returned order: RETURNED with a line or a current package of that raw status (the lines and
     // packages the order list sends the web). One rule for the Teslim Edilemedi list and its count, which both read
     // FilteredOrders; the order keeps its DerivedStatus, so it stays under İade Edildi as well.
+    // The packages are the ones the row lists (scan, 23 Nov 2026: the tab read every current package, the row and the web's
+    // undeliveredReturn the listed ones, without Shopify's remainder placeholder; IsShopifyRemainderPackage is the one rule).
     internal Expression<Func<Order, bool>> UndeliveredReturnInDatabase(IQueryable<ShipmentPackage> currentPackages) =>
         order => order.DerivedStatus == "RETURNED"
             && (db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id
                     && line.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus)
                 || currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id
-                    && package.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus));
+                    && package.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus
+                    && !(package.ExternalPackageId.ToLower().StartsWith(ShopifyRemainderPrefix) && package.ExternalPackageId.ToLower().EndsWith(ShopifyRemainderSuffix)
+                        && db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY"))));
+
+    // Shopify's "order:{id}:remainder" placeholder package: never listed on an order row, nor read by its row rules.
+    private const string ShopifyRemainderPrefix = "order:";
+    private const string ShopifyRemainderSuffix = ":remainder";
+
+    internal static bool IsShopifyRemainderPackage(string? platformCode, string externalPackageId) =>
+        string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+        && externalPackageId.StartsWith(ShopifyRemainderPrefix, StringComparison.OrdinalIgnoreCase)
+        && externalPackageId.EndsWith(ShopifyRemainderSuffix, StringComparison.OrdinalIgnoreCase);
 
     // left(order) || right(order), as one predicate.
     private static Expression<Func<Order, bool>> Either(Expression<Func<Order, bool>> left, Expression<Func<Order, bool>> right)
