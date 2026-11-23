@@ -43,6 +43,8 @@ export const deviceStorageKeyPrefixes = [
   'ravencia.sidebarPinned', 'ravencia.rememberedEmail', 'ravencia.rememberMe', 'ravencia.visualTheme',
   'ravencia.shippingLabelSettings', 'ravencia.shippingLabelTemplates', 'ravencia.printedShippingLabels',
   'rv-answered-idempotency-keys', 'rv.priceSuggestion.assumptions', 'commission-table-zoom', 'rv-category-library-open', 'rv-height:',
+  // The last sort picked on each list page, per person (tenant and user in the key): it outlasts sign-out on purpose.
+  'rv-sort:', 'rv-page-size:',
   // sessionStorage, this tab only: the one reload after a new build, and the first off-site backup run just started.
   'rv-reloaded-for-new-build', 'offsite-first-run'
 ] as const

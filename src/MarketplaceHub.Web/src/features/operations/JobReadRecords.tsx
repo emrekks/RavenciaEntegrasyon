@@ -9,7 +9,7 @@ export function JobReadRecords({ read, recordsKept }: { read: JobReadSummary | n
   const [problemsOnly, setProblemsOnly] = useState(false)
   if (!read) {
     if (!recordsKept) return null
-    return <section className="publication-job-variants" aria-label="Çekilen Kayıtlar">
+    return <section className="publication-job-variants publication-job-read" aria-label="Çekilen Kayıtlar">
       <h3>Çekilen Kayıtlar</h3>
       <p className="publication-job-note">Bu iş kayıt bazında ayrıntı tutulmadan önce çalıştı; yalnızca toplam sayılar biliniyor.</p>
     </section>
@@ -17,7 +17,7 @@ export function JobReadRecords({ read, recordsKept }: { read: JobReadSummary | n
   const headings = readHeadings(read.kind)
   const problems = read.records.filter(isReadProblem).length
   const shown = problemsOnly ? read.records.filter(isReadProblem) : read.records
-  return <section className="publication-job-variants" aria-label="Çekilen Kayıtlar">
+  return <section className="publication-job-variants publication-job-read" aria-label="Çekilen Kayıtlar">
     <div className="publication-job-variants-head">
       <h3>Çekilen Kayıtlar</h3>
       {read.records.length > 0 && <div className="publication-job-variants-tools">

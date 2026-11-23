@@ -85,3 +85,10 @@
 .qq-platform-tabs { max-width: 100%; }
 .qq-platform-tabs .rv-tab-label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .qq-platform-tabs .platform-square-mark.is-sm { margin-right: 0; vertical-align: baseline; }
+
+/* A lane against its wait target: a small dot and the word, in the panel's ok / warn / bad tones. */
+.qq-wait { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; }
+.qq-wait i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.qq-wait.is-ok { color: var(--rv-color-accent); }
+.qq-wait.is-warn { color: var(--rv-color-warning); }
+.qq-wait.is-bad { color: var(--rv-color-danger); font-weight: 600; }

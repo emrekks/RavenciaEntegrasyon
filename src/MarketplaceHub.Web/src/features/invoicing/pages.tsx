@@ -1,7 +1,7 @@
 import type { ApiAnswer } from '../../shared/api/api-answer'
 import { cardCountText } from '../../shared/metric-value'
 import { useMetricSource } from '../marketplace/use-metric-source'
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { needsOrderNumberSearch } from './invoice-order-number-search'
 import { platformDisplayNames } from '../../shared/platform-names'
 import { copyText } from '../../shared/copy-text'
@@ -31,7 +31,8 @@ import { platformLogoSource } from '../../shared/platform-logos'
 import { PlatformFilter } from '../../shared/PlatformFilter'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { invoiceProviderForEnvironment, isInvoiceCreationActionVisible, isInvoiceCreationAvailable } from './invoice-creation-availability'
-import { InvoiceSortSelect } from './InvoiceSortSelect'
+import { InvoiceSortSelect, invoiceSortOptions } from './InvoiceSortSelect'
+import { initialSort, rememberPageSize, rememberSort, storedPageSize } from '../../shared/sticky-sort'
 import { PanelSelect, PanelSelectList } from '../../shared/PanelSelect'
 import './invoice-filter-card.css'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from './InvoiceWorkspacePreviewModal'
@@ -347,7 +348,7 @@ export function InvoicesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const initialTab = resolveInvoiceTab(requestedTab)
-  const client = useQueryClient(); const [search, setSearch] = useState(() => readUrlText(searchParams, 'q')); const [searchFilter, setSearchFilter] = useState(() => readUrlText(searchParams, 'q')); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(() => readUrlList(searchParams, 'platforms').length ? readUrlList(searchParams, 'platforms') : null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState(() => readUrlText(searchParams, 'shipment', 'ALL')); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(() => readUrlText(searchParams, 'from')); const [dateTo, setDateTo] = useState(() => readUrlText(searchParams, 'to')); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(() => readUrlNumber(searchParams, 'size', 20, [20, 50, 100, 200])); const [pageNumber, setPageNumber] = useState(() => readUrlNumber(searchParams, 'page', 1)); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null)
+  const client = useQueryClient(); const [search, setSearch] = useState(() => readUrlText(searchParams, 'q')); const [searchFilter, setSearchFilter] = useState(() => readUrlText(searchParams, 'q')); const [sortOrder, setSortOrder] = useState(() => initialSort('invoices', invoiceSortOptions.map(option => option.value), 'ORDER_DESC')); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(() => readUrlList(searchParams, 'platforms').length ? readUrlList(searchParams, 'platforms') : null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState(() => readUrlText(searchParams, 'shipment', 'ALL')); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(() => readUrlText(searchParams, 'from')); const [dateTo, setDateTo] = useState(() => readUrlText(searchParams, 'to')); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSizeState] = useState(() => readUrlNumber(searchParams, 'size', storedPageSize('invoices', [20, 50, 100, 200], 20), [20, 50, 100, 200])); const setPageSize = useCallback((size: number) => { rememberPageSize('invoices', size); setPageSizeState(size) }, []); const [pageNumber, setPageNumber] = useState(() => readUrlNumber(searchParams, 'page', 1)); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null)
   // Every list change drops the selection, a new sort too (as on Siparişler; owner, 15 Nov 2026); a page change keeps it
   // (owner, 16 Nov 2026, WEB-SAYFALAR-11): the packages picked on other pages count and take part in every bulk action,
   // from the copy taken when they were picked; an invoice is created only through the server's preview, which reads
@@ -358,9 +359,9 @@ export function InvoicesPage() {
   // the phone sheet's extra fields apply at once. The address keeps the applied values.
   const [platformDraft, setPlatformDraft] = useState<string[] | null>(() => selectedPlatforms)
   const [draftFrom, setDraftFrom] = useState(dateFrom); const [draftTo, setDraftTo] = useState(dateTo); const [sortDraft, setSortDraft] = useState(sortOrder)
-  function applyCardFilters() { setSearchFilter(search.trim()); setSelectedPlatforms(platformDraft?.length ? platformDraft : null); setDateFrom(draftFrom); setDateTo(draftTo); setSortOrder(sortDraft) }
+  function applyCardFilters() { setSearchFilter(search.trim()); setSelectedPlatforms(platformDraft?.length ? platformDraft : null); setDateFrom(draftFrom); setDateTo(draftTo); rememberSort('invoices', sortDraft); setSortOrder(sortDraft) }
   function pickPlatformsNow(next: string[]) { const value = next.length ? next : null; setPlatformDraft(value); setSelectedPlatforms(value) }
-  function clearFilters() { setSearch(''); setSearchFilter(''); setPlatformDraft(null); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDraftFrom(''); setDraftTo(''); setDateFrom(''); setDateTo(''); setSortDraft('ORDER_DESC'); setSortOrder('ORDER_DESC') }
+  function clearFilters() { setSearch(''); setSearchFilter(''); setPlatformDraft(null); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDraftFrom(''); setDraftTo(''); setDateFrom(''); setDateTo('') }
   useEffect(() => { setTab(initialTab) }, [initialTab])
   const [messageTitle, setMessageTitle] = useState<string | undefined>()
   function setMessage(value: string, kind: InvoiceNoticeKind = 'info', context?: NotificationContext) { setMessageState(value); setMessageKind(kind); setMessageTitle(context?.title); if (value && kind !== 'pending') appendNotification({ ...context, message: value, kind }) }
@@ -558,7 +559,7 @@ export function InvoicesPage() {
   const shipmentStatusOptions = pageData?.shipmentStatuses ?? []
   const invoiceStatusOptions = (pageData?.invoiceStatuses ?? []).map(value => [value, workspaceInvoiceStatusFilterLabel(value)] as const)
   // Temizle is grey while every filter, applied or still waiting in the card, is at its default.
-  const hasInvoiceFilters = Boolean(search.trim() || searchFilter || selectedPlatforms?.length || platformDraft?.length || shipmentStatusFilter !== 'ALL' || cargoFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || invoiceActionFilter !== 'ALL' || dateFrom || dateTo || draftFrom || draftTo || sortOrder !== 'ORDER_DESC' || sortDraft !== 'ORDER_DESC')
+  const hasInvoiceFilters = Boolean(search.trim() || searchFilter || selectedPlatforms?.length || platformDraft?.length || shipmentStatusFilter !== 'ALL' || cargoFilter !== 'ALL' || invoiceStatusFilter !== 'ALL' || invoiceActionFilter !== 'ALL' || dateFrom || dateTo || draftFrom || draftTo)
   const cardFilterCount = [selectedPlatforms?.length, dateFrom || dateTo, shipmentStatusFilter !== 'ALL', cargoFilter !== 'ALL', invoiceStatusFilter !== 'ALL', invoiceActionFilter !== 'ALL', sortOrder !== 'ORDER_DESC'].filter(Boolean).length
   const cargoPopOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargoFilterOptions(cargoOptions)]
   const shipmentPopOptions = [{ value: 'ALL', label: 'Tüm Sipariş Durumları' }, ...shipmentStatusOptions.map(value => ({ value, label: statusLabel(value) }))]

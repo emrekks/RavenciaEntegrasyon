@@ -59,7 +59,11 @@ function Product({ title, variant }: { title?: string | null; variant?: string |
   return <span className="md-prod"><b title={title ?? undefined}>{title || 'Ürün adı yok'}</b>{variant ? <small>{variant}</small> : null}</span>
 }
 
-const openProduct = (productId?: string | null) => productId ? <Link className="rr-btn rr-link" to={`/products/${productId}`} onClick={event => event.stopPropagation()}>Ürünü Aç</Link> : <span className="md-none">—</span>
+// The product opens in a new tab (this window and the list stay where they are); a job opens its detail over the page.
+const openProduct = (productId?: string | null) => productId ? <Link className="rr-btn rr-link" to={`/products/${productId}`} target="_blank" rel="noopener noreferrer">Ürünü Aç</Link> : <span className="md-none">—</span>
+function OpenJob({ jobId, onOpenJob }: { jobId: string; onOpenJob?: (jobId: string) => void }) {
+  return onOpenJob ? <button type="button" className="rr-btn rr-link" onClick={() => onOpenJob(jobId)}>İşi Aç</button> : <Link className="rr-btn rr-link" to={`/jobs?ara=${encodeURIComponent(jobId)}`}>İşi Aç</Link>
+}
 
 function PagedFoot({ page, pageSize, total, onPage, shown }: { page: number; pageSize: number; total: number; onPage: (page: number) => void; shown: number }) {
   const pages = Math.max(1, Math.ceil(total / pageSize))
@@ -100,7 +104,7 @@ function InvalidOffersTab({ connectionId }: { connectionId: string }) {
   </>
 }
 
-function FailedPushesTab({ connectionId, kind }: { connectionId: string; kind: 'failed' | 'manual-review' }) {
+function FailedPushesTab({ connectionId, kind, onOpenJob }: { connectionId: string; kind: 'failed' | 'manual-review'; onOpenJob?: (jobId: string) => void }) {
   const [page, setPage] = useState(1)
   const query = useQuery({ queryKey: queryKeys.priceStockMonitor('failed-pushes', connectionId, kind, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<FailedPushes>(`/price-stock-monitor/${connectionId}/failed-pushes?${qs({ kind, page, pageSize: PAGE_SIZE })}`, { signal }) })
@@ -111,7 +115,7 @@ function FailedPushesTab({ connectionId, kind }: { connectionId: string; kind: '
         <td className="md-nowrap">{item.at ? formatDateTime(item.at) : '—'}</td>
         <td>{item.status}</td>
         <td title={item.errorSummary ?? undefined}>{item.errorCode ? <b className="md-errcode">{item.errorCode}</b> : null}{item.errorSummary ?? (item.errorCode ? '' : '—')}</td>
-        <td className="md-act"><Link className="rr-btn rr-link" to={`/jobs?ara=${encodeURIComponent(item.jobId)}`}>İşi Aç</Link></td></tr>)}
+        <td className="md-act"><OpenJob jobId={item.jobId} onOpenJob={onOpenJob} /></td></tr>)}
     </tbody></table></div>
     <PagedFoot page={data.page} pageSize={data.pageSize} total={data.totalCount} shown={data.items.length} onPage={setPage} />
   </>}</Body>
@@ -143,7 +147,9 @@ export type ProblemCounts = { invalidOffers: number; failedPushes: number; manua
 export const problemTotal = (counts: ProblemCounts) => counts.invalidOffers + counts.failedPushes + counts.manualReview + counts.notFoundLinks + counts.rejectedLinks
 
 // The Sorun cell's window: the title count is the cell's number; a tab per kind of problem, each with its own count.
-export function PriceStockProblemDialog({ connectionId, displayName, counts, onClose }: { connectionId: string; displayName: string; counts: ProblemCounts; onClose: () => void }) {
+export function PriceStockProblemDialog({ connectionId, displayName, counts, onClose, onOpenJob }: { connectionId: string; displayName: string; counts: ProblemCounts; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
+  // A job opened from here closes this window first: the job's detail then opens over the page that was already open.
+  const openJob = onOpenJob ? (jobId: string) => { onClose(); onOpenJob(jobId) } : undefined
   const tabs = [
     { id: 'invalid', label: 'Gönderilemeyen Teklif', count: counts.invalidOffers },
     { id: 'failed', label: 'Başarısız Gönderim', count: counts.failedPushes },
@@ -158,14 +164,15 @@ export function PriceStockProblemDialog({ connectionId, displayName, counts, onC
     {tabs.length > 1 && <div className="md-tabs" role="tablist" aria-label="Sorun türü">{tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === current?.id} className={tab.id === current?.id ? 'md-on' : undefined} onClick={() => setActive(tab.id)}>{tab.label}<span className="rr-num">{tab.count.toLocaleString('tr-TR')}</span></button>)}</div>}
     <p className="rr-lead md-lead">Yalnız okuma: buradan bir şey gönderilmez veya yeniden denenmez. Düzeltmek için ürüne gidin.</p>
     {current?.id === 'invalid' && <InvalidOffersTab key="invalid" connectionId={connectionId} />}
-    {current?.id === 'failed' && <FailedPushesTab key="failed" connectionId={connectionId} kind="failed" />}
-    {current?.id === 'review' && <FailedPushesTab key="review" connectionId={connectionId} kind="manual-review" />}
+    {current?.id === 'failed' && <FailedPushesTab key="failed" connectionId={connectionId} kind="failed" onOpenJob={openJob} />}
+    {current?.id === 'review' && <FailedPushesTab key="review" connectionId={connectionId} kind="manual-review" onOpenJob={openJob} />}
     {current?.id === 'lost' && <LostLinksTab key="lost" connectionId={connectionId} notFound={counts.notFoundLinks} rejected={counts.rejectedLinks} />}
   </RrModal>
 }
 
 // The Hata Oranı and Hız Sınırı cells' window: the four numbers behind the rate, the formula, then the failed attempts.
-export function ApiHealthAttemptsDialog({ connectionId, displayName, kind, onClose }: { connectionId: string; displayName: string; kind: 'errorRate' | 'rateLimit'; onClose: () => void }) {
+export function ApiHealthAttemptsDialog({ connectionId, displayName, kind, onClose, onOpenJob }: { connectionId: string; displayName: string; kind: 'errorRate' | 'rateLimit'; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
+  const openJob = onOpenJob ? (jobId: string) => { onClose(); onOpenJob(jobId) } : undefined
   const [side, setSide] = useState(kind === 'rateLimit' ? 'rateLimited' : ''); const [page, setPage] = useState(1)
   const query = useQuery({ queryKey: queryKeys.apiHealthSignals('attempts', connectionId, side, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<Attempts>(`/api-health-signals/${connectionId}/attempts?${qs({ class: side, page, pageSize: PAGE_SIZE })}`, { signal }) })
@@ -190,7 +197,7 @@ export function ApiHealthAttemptsDialog({ connectionId, displayName, kind, onClo
           <td>{jobTitle(item.jobType)}</td>
           <td title={item.errorSummary ?? undefined}>{item.errorCode ? <b className="md-errcode">{item.errorCode}</b> : null}{item.errorSummary ?? (item.errorCode ? '' : '—')}</td>
           <td>{sideText(item.class)}</td>
-          <td className="md-act"><Link className="rr-btn rr-link" to={`/jobs?ara=${encodeURIComponent(item.jobId)}`}>İşi Aç</Link></td></tr>)}
+          <td className="md-act"><OpenJob jobId={item.jobId} onOpenJob={openJob} /></td></tr>)}
       </tbody></table></div>
       <PagedFoot page={data.page} pageSize={data.pageSize} total={data.totalCount} shown={data.items.length} onPage={setPage} />
     </>}</Body>
