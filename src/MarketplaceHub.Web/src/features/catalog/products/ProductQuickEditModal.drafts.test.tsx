@@ -337,6 +337,15 @@ describe('ProductQuickEditModal drafts', () => {
     expect(bar()?.querySelector('[role="alert"]')).toBeNull()
   })
 
+  it('Enter in a cell never submits the window, and each variant\'s tick is reachable by keyboard', async () => {
+    await render()
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    await act(async () => { stockBox('SKU-2').dispatchEvent(enter) })
+    expect(enter.defaultPrevented).toBe(true)
+    const tick = document.body.querySelector<HTMLInputElement>('input[aria-label$="varyantını seç"]')!
+    expect(tick.tabIndex).toBe(0)
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))
