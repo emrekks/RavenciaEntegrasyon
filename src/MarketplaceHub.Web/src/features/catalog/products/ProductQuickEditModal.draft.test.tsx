@@ -180,6 +180,35 @@ describe('the editor window with marketplace prices', () => {
     expect(hubApi).not.toHaveBeenCalled()
   })
 
+  // Y2 (scan 23 Nov 2026): "1.250" showed as 1.250,00 but went to the offer as 1,25. The change set handed to the
+  // editor carries the number shown, and a point used as a decimal point is refused, never guessed.
+  it.each([
+    ['1.250', '1250'],
+    ['1.250,50', '1250.5'],
+    ['1250,5', '1250.5'],
+    ['12,5', '12.5'],
+    ['149', '149'],
+  ])('hands "%s" typed into a marketplace cell to the editor as %s', async (typed, sent) => {
+    const onApplyChannelPrices = await mount({ channels: channels(true) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Liste Fiyatı'))[1].click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol liste fiyatı"]')!, typed)
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    const expectedSale = Number(sent) < 150 ? null : '150'
+    if (expectedSale == null) { expect(onApplyChannelPrices).not.toHaveBeenCalled(); expect(document.body.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz'); return }
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: sent, salePrice: expectedSale }])
+  })
+
+  it.each(['1.25', '1250.50', '1,250.50'])('refuses "%s" in a marketplace cell and hands nothing to the editor', async typed => {
+    const onApplyChannelPrices = await mount({ channels: channels(true) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, typed)
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApplyChannelPrices).not.toHaveBeenCalled()
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('nokta yalnız binlik ayırıcıdır')
+  })
+
   it('switches the marketplace off for a new product, saying to save first', async () => {
     await mount({ channels: channels(true), isNewProduct: true })
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })

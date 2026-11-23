@@ -10,7 +10,7 @@ import { familySizeChartUrl } from './family-gallery-save'
 import { takePendingCreateMedia } from './pending-create-media'
 import { editorStatusFor } from '../product-draft'
 import { withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
-import { editorCustomChannelPrices, panelPrices } from '../quick-price-edit'
+import { editorCustomChannelPrices, panelPrices, priceFieldText } from '../quick-price-edit'
 import { editorDataStamp, editorSeedKey, editorOpenedDesi, editorVat } from '../product-editor-state'
 import { baselineWithWebColor } from './editor-reducer'
 import { copiedChannelPricing } from './marketplace-channel-pricing'
@@ -58,7 +58,7 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
     initialEditModelCode.current = initialModelCode.trim()
     const openedDesi = editorOpenedDesi(product.variants)
     initialEditDesi.current = openedDesi ?? 0
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: openedDesi == null ? '' : String(openedDesi), warrantyMonths: editorWarrantyText(product.warrantyMonths), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: editorStatusFor(product.status) })
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: openedDesi == null ? '' : String(openedDesi), warrantyMonths: editorWarrantyText(product.warrantyMonths), deliveryDays: String(product.deliveryDays ?? 1), listPrice: priceFieldText(initialListPrice), salePrice: priceFieldText(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: editorStatusFor(product.status) })
     // An existing product opens with each marketplace's stored choice (else what its offer prices say): a marketplace
     // with its own price has its switch on and shows that price; a card with variants is on as soon as one variant's
     // offer there keeps its own price, and shows the first such variant's price.

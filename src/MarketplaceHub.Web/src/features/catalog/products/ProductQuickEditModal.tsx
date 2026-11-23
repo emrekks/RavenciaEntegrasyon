@@ -8,7 +8,7 @@ import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
-import { parseEditorNumber } from '../product-editor/editor-number'
+import { parseTrEntry, trEntryHelp } from '../../../shared/tr-number'
 import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
@@ -223,7 +223,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         const handEdited = cell.list !== original.list || cell.sale !== original.sale
         const bulked = hasTyped && targets.has(row.key)
         if (!handEdited && !bulked) continue
-        const prices = quickEditOfferPrices({ listPrice: parseEditorNumber(cell.list), salePrice: parseEditorNumber(cell.sale) }, bulked ? read.list : null, bulked ? read.sale : null)
+        // A cell reads by the one rule of this window (parseTrEntry: "1.250" is 1250), the rule its formatted text is
+        // shown by; a cell it refuses stops the apply instead of being sent as another number.
+        const cellList = cell.list.trim() === '' ? null : parseTrEntry(cell.list)
+        const cellSale = cell.sale.trim() === '' ? null : parseTrEntry(cell.sale)
+        if ((cell.list.trim() !== '' && cellList === null) || (cell.sale.trim() !== '' && cellSale === null)) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${trEntryHelp}` }
+        const prices = quickEditOfferPrices({ listPrice: cellList, salePrice: cellSale }, bulked ? read.list : null, bulked ? read.sale : null)
         if (!prices.ok) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${prices.message}` }
         const listPrice = channel.takesListPrice ? prices.listPrice : prices.salePrice
         changes.push({ rowKey: row.key, connectionId: channel.connectionId, listPrice: String(listPrice), salePrice: String(prices.salePrice) })

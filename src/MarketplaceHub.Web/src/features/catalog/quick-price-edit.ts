@@ -1,7 +1,7 @@
 // Where a quick price change on the products list goes: the offer the variant has on the channel the person picked
 // (at the version the list loaded), or a new offer on that channel. The channel is always the person's choice; the
 // screen never prices a channel it picked by itself.
-import { parseTrCount, parseTrNumber, trNumberInput } from '../../shared/tr-number'
+import { parseTrCount, parseTrEntry, trEntryHelp, trNumberInput } from '../../shared/tr-number'
 import { queryKeys } from '../../shared/api/query-keys'
 
 export type QuickPriceOffer = {
@@ -249,7 +249,7 @@ function samePrice(left: number, right: number) {
 // is shown as it is; a field's text is read as Turkish ("1.250" is 1250), and text that is not a price is shown as typed.
 export function formatPriceField(value: string | number): string {
   if (typeof value === 'string' && value.trim() === '') return ''
-  const number = typeof value === 'number' ? value : parseTrNumber(value)
+  const number = typeof value === 'number' ? value : parseTrEntry(value)
   return number !== null && Number.isFinite(number) ? number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(value)
 }
 
@@ -291,13 +291,13 @@ export function panelPriceTarget(variant: { id: string; version?: number | null;
 // The list and sale price typed into the two per-variant fields, checked as the server checks them. An empty list
 // price takes the sale price. The fields are read as Turkish ("1.250" is 1250, "1.250,50" is 1250.5); a value that
 // could mean two things is refused, never guessed.
-export const unreadablePriceMessage = 'Fiyat okunamadı; 1.250,50 biçiminde girin.'
+export const unreadablePriceMessage = trEntryHelp
 export function inlinePrices(list: string, sale: string): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
   if (sale.trim() === '') return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const salePrice = parseTrNumber(sale)
+  const salePrice = parseTrEntry(sale)
   if (salePrice === null) return { ok: false, message: unreadablePriceMessage }
   if (salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const listPrice = list.trim() === '' ? salePrice : parseTrNumber(list)
+  const listPrice = list.trim() === '' ? salePrice : parseTrEntry(list)
   if (listPrice === null) return { ok: false, message: unreadablePriceMessage }
   if (listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
   if (!hasAtMostTwoDecimals(listPrice) || !hasAtMostTwoDecimals(salePrice)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
@@ -308,8 +308,8 @@ export function inlinePrices(list: string, sale: string): { ok: true; listPrice:
 // when left empty. Without a list price field the sale price stands for both. A stock is a whole number of pieces: a
 // fraction is refused with its own message, never rounded.
 export function bulkEditValues(input: { showListPrice: boolean; listPrice: string; salePrice: string; stockAmount: string }): { ok: true; list: number | null; sale: number | null; amount: number | null } | { ok: false; message: string } {
-  const read = (text: string) => text.trim() === '' ? null : parseTrNumber(text)
-  const unreadable = (text: string) => text.trim() !== '' && parseTrNumber(text) === null
+  const read = (text: string) => text.trim() === '' ? null : parseTrEntry(text)
+  const unreadable = (text: string) => text.trim() !== '' && parseTrEntry(text) === null
   if ((input.showListPrice && unreadable(input.listPrice)) || unreadable(input.salePrice)) return { ok: false, message: unreadablePriceMessage }
   const sale = read(input.salePrice)
   const list = input.showListPrice ? read(input.listPrice) : sale
