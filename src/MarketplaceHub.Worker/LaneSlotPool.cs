@@ -34,7 +34,17 @@ public sealed class LaneSlotPool
     private readonly Dictionary<string, int> borrowed = [];
     private readonly HashSet<string> wanting = [];
     private readonly Dictionary<string, DateTimeOffset> workNoticed = [];
+    // Lanes whose last poll found nothing (until a notification names a job for them or a slot finds one), and when each
+    // lane last found nothing.
+    private readonly HashSet<string> quiet = [];
+    private readonly Dictionary<string, DateTimeOffset> lastQuiet = [];
+    private readonly DateTimeOffset createdAt;
     private int running;
+
+    // An unprotected lane whose own slot finds no room and that found nothing for this long wants its slot back anyway, so a
+    // job no notification announced (a missed one, at startup or a listener reconnect) waits at most this long plus the end
+    // of the next unprotected or borrowed job, never for a whole backlog of borrowed reads.
+    public static readonly TimeSpan IdleProbeAfter = TimeSpan.FromMinutes(2);
 
     public LaneSlotPool(IReadOnlyDictionary<string, int> slots, IEnumerable<string> protectedLanes, IReadOnlyDictionary<string, int>? borrowLimits = null, TimeProvider? clock = null)
     {
@@ -43,6 +53,7 @@ public sealed class LaneSlotPool
         this.borrowLimits = (borrowLimits ?? new Dictionary<string, int>()).Where(item => reserved.ContainsKey(item.Key))
             .ToDictionary(item => item.Key, item => Math.Max(0, item.Value), StringComparer.Ordinal);
         this.clock = clock ?? TimeProvider.System;
+        createdAt = this.clock.GetUtcNow();
         Total = reserved.Values.Sum();
     }
 
@@ -60,7 +71,11 @@ public sealed class LaneSlotPool
     public void NoteWork(string lane)
     {
         lock (gate)
-            if (reserved.ContainsKey(lane)) workNoticed[lane] = clock.GetUtcNow();
+            if (reserved.ContainsKey(lane))
+            {
+                workNoticed[lane] = clock.GetUtcNow();
+                quiet.Remove(lane);
+            }
     }
 
     // One of the lane's slots polled and found nothing: it has no work it could take now.
@@ -70,6 +85,9 @@ public sealed class LaneSlotPool
         {
             workNoticed.Remove(lane);
             wanting.Remove(lane);
+            if (!reserved.ContainsKey(lane)) return;
+            quiet.Add(lane);
+            lastQuiet[lane] = clock.GetUtcNow();
         }
     }
 
@@ -88,8 +106,12 @@ public sealed class LaneSlotPool
                 if (running + Kept(lane, includeWanting: false) >= Total)
                 {
                     // No room. A lane known to have work wants its slot back, so borrowers take nothing new; a lane that only
-                    // polls idly does not hold the next free slot up.
-                    if (workNoticed.TryGetValue(lane, out var noticed) && clock.GetUtcNow() - noticed <= WorkNoticeTtl) wanting.Add(lane);
+                    // polls idly does not hold the next free slot up, unless it found nothing for IdleProbeAfter (it may
+                    // have a job no notification announced: it takes the next free slot for one poll).
+                    var now = clock.GetUtcNow();
+                    if ((workNoticed.TryGetValue(lane, out var noticed) && now - noticed <= WorkNoticeTtl)
+                        || now - lastQuiet.GetValueOrDefault(lane, createdAt) >= IdleProbeAfter)
+                        wanting.Add(lane);
                     return false;
                 }
                 wanting.Remove(lane);
@@ -99,6 +121,11 @@ public sealed class LaneSlotPool
             }
             // Borrow only when the lane's own slots are all busy, within the lane's borrow limit, and never into a slot another
             // lane may need now: the idle own slots of protected lanes and of lanes that want theirs stay free.
+            // Never while the lane's last poll found nothing (23 Nov, after the release): an own slot that is only polling
+            // counts as busy, so every freed slot woke the lane's borrowing slots to poll the same empty queue, and their
+            // releases woke the next ones; the storm filled the unprotected part, and an unprotected lane's own slot found no
+            // room for minutes (a Trendyol return read waited 113 s after the restart on an idle worker).
+            if (quiet.Contains(lane)) return false;
             if (own.GetValueOrDefault(lane) < floor) return false;
             if (borrowLimits.TryGetValue(lane, out var limit) && borrowed.GetValueOrDefault(lane) >= limit) return false;
             if (running + Kept(lane, includeWanting: true) >= Total) return false;
@@ -157,5 +184,10 @@ public sealed class LaneSlotPool
     internal bool Wants(string lane)
     {
         lock (gate) return wanting.Contains(lane);
+    }
+
+    internal bool IsQuiet(string lane)
+    {
+        lock (gate) return quiet.Contains(lane);
     }
 }

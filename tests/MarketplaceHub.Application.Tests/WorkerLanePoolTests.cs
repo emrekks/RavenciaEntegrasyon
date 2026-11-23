@@ -313,7 +313,7 @@ public sealed class WorkerLanePoolTests
         int[] slots = [2, 1, 2, 1];
         bool[] isProtected = [true, true, false, false];
         var total = slots.Sum();
-        var start = new PoolState(new int[4], new int[4], new bool[4], new bool[4]);
+        var start = new PoolState(new int[4], new int[4], new bool[4], new bool[4], new bool[4]);
         var seen = new HashSet<string> { start.Key };
         var queue = new Queue<(PoolState State, List<PoolStep> Path)>();
         queue.Enqueue((start, []));
@@ -329,6 +329,8 @@ public sealed class WorkerLanePoolTests
                 var where = $"{string.Join(", ", path)} then {step} = {result}";
                 if (step.Kind == StepKind.ClaimOwn && isProtected[step.Lane])
                     Assert.True(result, $"protected {lanes[step.Lane]} refused its idle own slot: {where}");
+                if (step.Kind == StepKind.ClaimBorrow && state.Quiet[step.Lane])
+                    Assert.False(result, $"{lanes[step.Lane]} borrowed although its last poll found nothing: {where}");
                 if (step.Kind == StepKind.ClaimBorrow && result)
                     for (var lane = 0; lane < 4; lane++)
                         if (lane != step.Lane && pool.Wants(lanes[lane]) && own[lane] < slots[lane])
@@ -344,7 +346,7 @@ public sealed class WorkerLanePoolTests
                             Assert.True(Apply(probe, probeOwn, probeBorrowed, probeNoticed, new PoolStep(StepKind.ClaimOwn, lane)),
                                 $"{lanes[lane]} wanted its slot back and did not get it after {where}");
                         }
-                var next = new PoolState(own, borrowed, noticed, [.. lanes.Select(pool.Wants)]);
+                var next = new PoolState(own, borrowed, noticed, [.. lanes.Select(pool.Wants)], [.. lanes.Select(pool.IsQuiet)]);
                 if (seen.Add(next.Key)) queue.Enqueue((next, [.. path, step]));
             }
         }
@@ -358,12 +360,10 @@ public sealed class WorkerLanePoolTests
                 if (state.Borrowed[lane] < total - slots[lane]) yield return new PoolStep(StepKind.ClaimBorrow, lane);
                 if (state.Own[lane] > 0) yield return new PoolStep(StepKind.ReleaseOwn, lane);
                 if (state.Borrowed[lane] > 0) yield return new PoolStep(StepKind.ReleaseBorrow, lane);
-                // Protected lanes never fail their own claim, so whether they have work changes nothing.
-                if (!isProtected[lane])
-                {
-                    if (!state.Noticed[lane]) yield return new PoolStep(StepKind.NoteWork, lane);
-                    if (state.Noticed[lane] || state.Wanting[lane]) yield return new PoolStep(StepKind.NoteNoWork, lane);
-                }
+                // A slot finding a job or a notification (NoteWork), a poll finding nothing (NoteNoWork): known work makes an
+                // unprotected lane want its slot, a poll that found nothing stops the lane borrowing.
+                if (!state.Noticed[lane] || state.Quiet[lane]) yield return new PoolStep(StepKind.NoteWork, lane);
+                if (state.Noticed[lane] || state.Wanting[lane] || !state.Quiet[lane]) yield return new PoolStep(StepKind.NoteNoWork, lane);
             }
         }
 
@@ -418,9 +418,9 @@ public sealed class WorkerLanePoolTests
         public override string ToString() => $"{Kind}({Lane})";
     }
 
-    private sealed record PoolState(int[] Own, int[] Borrowed, bool[] Noticed, bool[] Wanting)
+    private sealed record PoolState(int[] Own, int[] Borrowed, bool[] Noticed, bool[] Wanting, bool[] Quiet)
     {
-        public string Key => $"{string.Join(',', Own)}|{string.Join(',', Borrowed)}|{string.Join(',', Noticed)}|{string.Join(',', Wanting)}";
+        public string Key => $"{string.Join(',', Own)}|{string.Join(',', Borrowed)}|{string.Join(',', Noticed)}|{string.Join(',', Wanting)}|{string.Join(',', Quiet)}";
     }
 
     [Fact]
@@ -487,6 +487,51 @@ public sealed class WorkerLanePoolTests
         Assert.Empty(noted);
         router.NoteDue([("TEST_DUE_RETRY", 4), ("TEST_DUE_OTHER", 3), (MarketplaceHub.Application.MarketplaceJobTypes.PazaramaOrderSync, 0)]);
         Assert.Equal(["pazarama-orders", "background"], noted);
+    }
+
+    [Fact]
+    public void ALaneWhoseLastPollFoundNothingBorrowsNothingUntilItHasWorkAgain()
+    {
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["pazarama-orders"] = 1, ["returns-read"] = 2 }, ["pazarama-orders"]);
+        // The Pazarama slot is polling (its own slot counts as busy): its poll found nothing, so its borrowing slots, woken by
+        // every freed slot, take no slot to poll the same empty queue.
+        Assert.True(pool.TryClaim("pazarama-orders", true));
+        pool.NoteNoWork("pazarama-orders");
+        Assert.True(pool.IsQuiet("pazarama-orders"));
+        Assert.False(pool.TryClaim("pazarama-orders", false));
+        // A notification names a Pazarama job (or a slot finds one): it may borrow again.
+        pool.NoteWork("pazarama-orders");
+        Assert.True(pool.TryClaim("pazarama-orders", false));
+        Assert.Equal(1, pool.Borrowed("pazarama-orders"));
+    }
+
+    [Fact]
+    public void ALaneThatFoundNothingForTwoMinutesTakesTheNextFreeSlotForOnePoll()
+    {
+        // A job no notification announced (missed at startup or on a listener reconnect) while catalog reads fill the
+        // unprotected part: the return lane polls idly, so it does not want its slot at once, but two minutes after its last
+        // empty poll it does, and the next freed slot is its own for one poll.
+        var clock = new ManualClock();
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["product-catalog"] = 1, ["returns-read"] = 1 }, [], clock: clock);
+        Assert.True(pool.TryClaim("product-catalog", true));
+        Assert.True(pool.TryClaim("product-catalog", false));
+        pool.NoteNoWork("returns-read");
+        clock.Advance(TimeSpan.FromSeconds(30));
+        Assert.False(pool.TryClaim("returns-read", true));
+        Assert.False(pool.Wants("returns-read"));
+        clock.Advance(LaneSlotPool.IdleProbeAfter);
+        Assert.False(pool.TryClaim("returns-read", true));
+        Assert.True(pool.Wants("returns-read"));
+        pool.Release("product-catalog", false);
+        Assert.False(pool.TryClaim("product-catalog", false));
+        Assert.True(pool.TryClaim("returns-read", true));
+        // It found nothing: the next two minutes it holds nothing up again.
+        pool.NoteNoWork("returns-read");
+        pool.Release("returns-read", true);
+        pool.NoteWork("product-catalog");
+        Assert.True(pool.TryClaim("product-catalog", false));
+        Assert.False(pool.TryClaim("returns-read", true));
+        Assert.False(pool.Wants("returns-read"));
     }
 
     private sealed class ManualClock : TimeProvider
