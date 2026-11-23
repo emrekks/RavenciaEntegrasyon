@@ -53,11 +53,11 @@ export function productRequiredGaps(product: Pick<Product, 'title' | 'brandId' |
     modelCode: primary?.modelCode ?? product.modelCode ?? '',
     baseSku: primary?.sku ?? '',
     barcode: primary?.barcode ?? '',
-    desi: desi == null ? '' : String(desi),
+    desi: desi ?? '',
     warrantyMonths: editorWarrantyText(product.warrantyMonths),
     deliveryDays: String(product.deliveryDays ?? 1),
-    listPrice: String(listPrice),
-    salePrice: String(salePrice)
+    listPrice,
+    salePrice
   }, { automaticBarcodes: false, hasVariants: product.variants.length > 1 })
 }
 

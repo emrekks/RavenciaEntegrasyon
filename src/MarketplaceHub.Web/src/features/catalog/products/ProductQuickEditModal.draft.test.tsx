@@ -37,6 +37,14 @@ describe('applyQuickEditDraft', () => {
     expect(applyQuickEditDraft(rows, cells(), new Set(['b-s']), { ...noBulk, stockAction: 'SUBTRACT', stockAmount: '4' })).toMatchObject({ ok: false, message: expect.stringContaining('sıfırın altına') })
   })
 
+  // O2: a row loaded with a stored 99.999 price, a 12.3456 cost and a 2.5 stock applies untouched as it is.
+  it('keeps untouched four-decimal prices and a fractional stock as stored', () => {
+    const precise = [row('p', 'Bej', 'S', { listPrice: 99.999, salePrice: 12.3456, costPrice: 12.3456, stock: 2.5 })]
+    expect(applyQuickEditDraft(precise, cells(precise), new Set(), noBulk)).toEqual({ ok: true, changes: [] })
+    const typed = { p: { ...quickEditDraftValues(precise[0]), salePrice: '13' } }
+    expect(applyQuickEditDraft(precise, typed, new Set(), noBulk)).toEqual({ ok: true, changes: [{ key: 'p', stock: 2.5, listPrice: 99.999, salePrice: 13, costPrice: 12.3456 }] })
+  })
+
   it('keeps an emptied cost unknown (null), never 0', () => {
     const typed = cells(); typed['s-s'] = { ...typed['s-s'], costPrice: '' }
     expect(applyQuickEditDraft(rows, typed, new Set(), noBulk)).toEqual({ ok: true, changes: [{ key: 's-s', stock: 3, listPrice: 120, salePrice: 100, costPrice: null }] })
@@ -203,13 +211,25 @@ describe('the editor window with marketplace prices', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  // ORTA-1 (review 23 Nov): an offer stored with list 631.104 went to the editor as the text "631,104" when only the sale
+  // price was typed; the editor's typed rule read it as NaN and the offer PATCH carried listPrice null. The loaded side
+  // now goes over as the loaded number.
+  it('hands a side left as loaded (631.104) to the editor as the loaded number', async () => {
+    const onApplyChannelPrices = await mount({ channels: channels(true), channelPrice: () => ({ list: '631,104', sale: '631,104', follows: false, values: { list: 631.104, sale: 631.104 } }) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, '600')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: 631.104, salePrice: 600 }])
+  })
+
   it('hands a typed marketplace price to the editor as a draft and sends nothing itself', async () => {
     const onApplyChannelPrices = await mount({ channels: channels(true) })
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
     await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, '140')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
-    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '180', salePrice: '140' }])
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: 180, salePrice: 140 }])
     expect(hubApi).not.toHaveBeenCalled()
   })
 
@@ -217,9 +237,9 @@ describe('the editor window with marketplace prices', () => {
   // editor carries the number shown, and a point used as a decimal point is refused, never guessed.
   it.each([
     ['1.250', '1250'],
-    ['1.250,50', '1250.5'],
-    ['1250,5', '1250.5'],
-    ['12,5', '12.5'],
+    ['1.250,50', '1250,5'],
+    ['1250,5', '1250,5'],
+    ['12,5', '12,5'],
     ['149', '149'],
   ])('hands "%s" typed into a marketplace cell to the editor as %s', async (typed, sent) => {
     const onApplyChannelPrices = await mount({ channels: channels(true) })
@@ -227,12 +247,12 @@ describe('the editor window with marketplace prices', () => {
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Liste Fiyatı'))[1].click() })
     await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol liste fiyatı"]')!, typed)
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
-    const expectedSale = Number(sent) < 150 ? null : '150'
+    const expectedSale = Number(sent.replace(',', '.')) < 150 ? null : '150'
     if (expectedSale == null) { expect(onApplyChannelPrices).not.toHaveBeenCalled(); expect(document.body.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz'); return }
-    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: sent, salePrice: expectedSale }])
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: Number(sent.replace(',', '.')), salePrice: Number(expectedSale) }])
   })
 
-  it.each(['1.25', '1250.50', '1,250.50'])('refuses "%s" in a marketplace cell and hands nothing to the editor', async typed => {
+  it.each(['1.25', '1250.50', '1,250.50', '1,250', '1,000'])('refuses "%s" in a marketplace cell and hands nothing to the editor', async typed => {
     const onApplyChannelPrices = await mount({ channels: channels(true) })
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
@@ -253,7 +273,7 @@ describe('the editor window with marketplace prices', () => {
     expect(document.body.querySelector('.rr-mx-follow')?.textContent).toBe('100,00')
     await type(field('Satış Fiyatı (₺)'), '140')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
-    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '180', salePrice: '140' }])
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: 180, salePrice: 140 }])
   })
 
   it('switches the marketplace off for a new product, saying to save first', async () => {

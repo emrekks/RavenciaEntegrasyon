@@ -4,7 +4,7 @@
 // baseline for something the editor saved on its own (a seeded Web Color, a picture write).
 import type { SetStateAction } from 'react'
 import { EMPTY_EDITOR_FORM, type EditorForm } from './editor-form'
-import type { ChannelPricingDraft } from './marketplace-channel-pricing'
+import type { ChannelPricingDraft, StagedOfferPrices } from './marketplace-channel-pricing'
 import type { EditorWebColor } from '../product-editor-state'
 import type { PendingProductMediaFile, ProductFamilyMediaItem, VariantDraft } from './editor-types'
 
@@ -22,7 +22,7 @@ export type EditorFields = {
   pendingFamilyMediaRemovals: ProductFamilyMediaItem[]
   // "Pazaryerlerine Özel Fiyat" (per marketplace) and a new product's variant price table (per variant and marketplace).
   channelPricing: Record<string, ChannelPricingDraft>
-  variantChannelPricing: Record<string, ChannelPricingDraft>
+  variantChannelPricing: Record<string, StagedOfferPrices>
   // Web Color: automatic (each row's own Renk) or one manual value.
   webColorAutoEnabled: boolean
   manualWebColorValueId: string
@@ -64,7 +64,7 @@ export type DirtyFields = {
   sizeChartUrl: string | null
 }
 
-const sortedPricing = (pricing: Record<string, ChannelPricingDraft>) => Object.entries(pricing).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, value]) => [key, String(value.listPrice), String(value.salePrice)])
+const sortedPricing = (pricing: Record<string, ChannelPricingDraft | StagedOfferPrices>) => Object.entries(pricing).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, value]) => [key, String(value.listPrice), String(value.salePrice)])
 
 // The index of a row's pictures in its compared tuple (rowMediaRefs below).
 const ROW_MEDIA_INDEX = 10
