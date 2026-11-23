@@ -50,12 +50,18 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
         var monitor = new LaneWaitMonitor(db, timeProvider, configuration);
         var waits = await monitor.SnapshotAsync(tenantId, LaneWaitTargets.Window(configuration), cancellationToken);
         var alerts = await monitor.OpenAlertsAsync(tenantId, cancellationToken);
-        // Worker lanes step 3: the lane's running jobs over every tenant, so the slots it borrowed show (flexible lane model).
-        var running = await db.IntegrationJobs.AsNoTracking()
-            .Where(job => job.Status == Domain.JobStatus.Leased && job.LeaseExpiresAt > now)
-            .GroupBy(job => new { job.JobType, job.Priority })
-            .Select(group => new { group.Key.JobType, group.Key.Priority, Count = group.Count() })
-            .ToListAsync(cancellationToken);
+        // Worker lanes step 3: borrowed slots exist only with the flexible lane model (Worker:LaneModel, which the api reads
+        // like the worker does: set it on both). Legacy: null, never a count. Flexible: the lane's running jobs over every
+        // tenant beyond its own slots, each job counted in the lane that leases it first (WorkerLanes.LaneFor); a job another
+        // lane leased (overlapping lanes, a lease from before a restart) can move one count between lanes, never add one.
+        var flexibleLanes = string.Equals(configuration?["Worker:LaneModel"]?.Trim(), "flexible", StringComparison.OrdinalIgnoreCase);
+        var running = flexibleLanes
+            ? await db.IntegrationJobs.AsNoTracking()
+                .Where(job => job.Status == Domain.JobStatus.Leased && job.LeaseExpiresAt > now)
+                .GroupBy(job => new { job.JobType, job.Priority })
+                .Select(group => new RunningRow(group.Key.JobType, group.Key.Priority, group.Count()))
+                .ToListAsync(cancellationToken)
+            : null;
         return lanes.Select(definition =>
         {
             var code = LaneCode(definition.Name);
@@ -66,7 +72,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             var status = alertSince is not null ? LaneWaitStatus.Alert : wait?.Breached == true ? LaneWaitStatus.OverTarget : LaneWaitStatus.Ok;
             return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), LaneSlots(definition),
                 LaneWaitTargets.For(configuration, definition.Name).TotalSeconds, wait?.RecentP95WaitSeconds, wait?.OldestWaitSeconds, status, alertSince,
-                Math.Max(0, running.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).Sum(row => row.Count) - LaneSlots(definition)));
+                running is null ? null : Math.Max(0, running.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).Sum(row => row.Count) - LaneSlots(definition)));
         }).ToList();
     }
 
@@ -186,4 +192,5 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
     private static double? Round(double? value) => value is { } number ? Math.Round(number, 1) : null;
     private sealed record LaneAttemptRow(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds);
     private sealed record QuotaRow(int Requests, int Peak);
+    private sealed record RunningRow(string JobType, int Priority, int Count);
 }

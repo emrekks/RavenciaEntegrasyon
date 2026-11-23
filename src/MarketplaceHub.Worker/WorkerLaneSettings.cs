@@ -70,15 +70,31 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
 //   Worker:LaneModel                         legacy (default): each lane leases only on its own slots, as before;
 //                                            flexible: the same lanes and slots, and a lane whose own slots are all busy
 //                                            borrows another lane's idle slot (never more jobs in all than the slots add up to)
-//   Worker:FlexibleLanes:ProtectedLanes      default "user,hot": lanes whose idle slots are never lent
-// Legacy stays the default for the first release: the owner turns flexible on with Worker__LaneModel=flexible on the worker.
-internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> ProtectedLanes)
+//   Worker:FlexibleLanes:ProtectedLanes      lanes whose idle slots are never lent; default every lane that reads new orders or
+//                                            order states and the user lane: user, hot, hepsiburada-orders, pazarama-orders,
+//                                            pttavm-orders, hepsiburada-status, order-status (a catalog read borrowed for up to
+//                                            52 minutes on live, 3148 s, must never sit in the slot a new order needs)
+//   Worker:FlexibleLanes:BorrowLimits:<lane> at most this many borrowed slots for the lane; default none: limiting the long
+//                                            lanes (catalog, first import) to 4 or 2 borrowed slots lost most of the gain in
+//                                            the replay (five tenants catalog p95 75 -> 119 / 282 s, six stores' first imports
+//                                            1779 -> 2675 / 3875 s) and new orders wait no longer without it (their lanes never lend)
+// Legacy stays the default for the first release: the owner turns flexible on with Worker__LaneModel=flexible (worker and api:
+// the api reads it to show borrowed slots).
+internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> ProtectedLanes, IReadOnlyDictionary<string, int> BorrowLimits)
 {
     public const string Legacy = "legacy";
     public const string FlexibleModel = "flexible";
+    public const string DefaultProtectedLanes = "user,hot,hepsiburada-orders,pazarama-orders,pttavm-orders,hepsiburada-status,order-status";
 
     public static LaneModelSettings From(IConfiguration configuration) => new(
-        string.Equals(configuration["Worker:LaneModel"]?.Trim(), FlexibleModel, StringComparison.OrdinalIgnoreCase),
-        [.. (configuration["Worker:FlexibleLanes:ProtectedLanes"] ?? "user,hot")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]);
+        IsFlexible(configuration),
+        [.. (configuration["Worker:FlexibleLanes:ProtectedLanes"] ?? DefaultProtectedLanes)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+        configuration.GetSection("Worker:FlexibleLanes:BorrowLimits").GetChildren()
+            .Select(child => (child.Key, Limit: int.TryParse(child.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) ? limit : -1))
+            .Where(item => item.Limit >= 0)
+            .ToDictionary(item => item.Key, item => Math.Min(item.Limit, 100)));
+
+    public static bool IsFlexible(IConfiguration? configuration) =>
+        string.Equals(configuration?["Worker:LaneModel"]?.Trim(), FlexibleModel, StringComparison.OrdinalIgnoreCase);
 }

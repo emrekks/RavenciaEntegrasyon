@@ -64,7 +64,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var totalSlots = laneSlots.Values.Sum();
         // Worker lanes step 3: with the flexible model the lanes' slots form one pool (LaneSlotPool); each lane also runs
         // borrowing slots, which lease only while the pool lends them a free slot.
-        var pool = laneModel.Flexible ? new LaneSlotPool(laneSlots, laneModel.ProtectedLanes) : null;
+        var pool = laneModel.Flexible ? new LaneSlotPool(laneSlots, laneModel.ProtectedLanes, laneModel.BorrowLimits) : null;
+        if (pool is not null) wakeRouter.LaneNotified += pool.NoteWork;
         // Borrowing slots wait on a signal of their own: a lane's notification goes to its own slots first (a borrowing slot
         // that may not borrow would use the wake up and leave the job to the idle poll). They are woken when a slot is freed
         // and when one of the lane's own slots found work (there may be more).
@@ -357,6 +358,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // A live process that cannot reach the database must not remain healthy.
             TouchHealthFile();
             if (job is not null) leased?.Invoke();
+            if (job is null) pool?.NoteNoWork(laneName ?? lane);
+            else pool?.NoteWork(laneName ?? lane);
             return job;
         }, async job =>
         {
@@ -404,8 +407,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (pool is null)
             logger.LogInformation("Lane model is legacy: each lane leases on its own slots only (Worker:LaneModel=flexible lets a busy lane borrow idle slots)");
         else
-            logger.LogInformation("Lane model is flexible: {Total} slots in one pool, each lane keeps its own slots and borrows idle ones; lanes that never lend: {Protected}",
-                pool.Total, string.Join(", ", pool.ProtectedLanes));
+            logger.LogInformation("Lane model is flexible: {Total} slots in one pool, each lane keeps its own slots and borrows idle ones; lanes that never lend: {Protected}; borrow limits: {Limits}",
+                pool.Total, string.Join(", ", pool.ProtectedLanes), pool.BorrowLimits.Count == 0 ? "none" : string.Join(", ", pool.BorrowLimits.Select(item => $"{item.Key}={item.Value}")));
     }
 
     // One lease slot of a lane: lease and run jobs until none is left, then wait for a wake of its lane (or the idle delay)
@@ -477,7 +480,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     private static readonly TimeSpan LongQueueWait = TimeSpan.FromSeconds(10);
-    private static string LaneName(string slot) => slot.Split('#')[0];
+    internal static string LaneName(string slot) => slot.Split('#', '+')[0];
 
     private async Task ProduceScheduledJobsAsync(CancellationToken cancellationToken)
     {
