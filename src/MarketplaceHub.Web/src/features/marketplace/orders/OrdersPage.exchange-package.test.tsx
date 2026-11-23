@@ -17,7 +17,7 @@ vi.mock('../../../shared/api', async importOriginal => {
       order('o1', '1000000001', { packageId: '2000000001', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'NEW-TRK', cargoTrackingLink: 'https://tracking.example.test/new', shipped: true }),
       order('o2', '1000000002', { packageId: null, cargoProviderName: null, cargoTrackingNumber: null, cargoTrackingLink: null, shipped: false }),
       order('o3', '1000000003', { packageId: '2000000002', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'WAIT-TRK', cargoTrackingLink: null, shipped: false, claimId: 'cl3', claimVersion: 4, shippedSource: null }),
-      order('o4', '11805950642', { packageId: '4360616613', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'HAND-TRK', cargoTrackingLink: null, shipped: true, claimId: 'cl4', claimVersion: 7, shippedSource: 'MANUAL' })
+      order('o4', '1000000004', { packageId: '2000000003', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'HAND-TRK', cargoTrackingLink: null, shipped: true, claimId: 'cl4', claimVersion: 7, shippedSource: 'MANUAL' })
     ], nextCursor: null, hasMore: false, totalCount: 4, supportedFilters: ['labelPrinted'] }
     if (path.startsWith('/orders/facets')) return { platforms: {}, cargos: {} }
     if (path.startsWith('/orders/summary')) return {}
@@ -78,10 +78,10 @@ describe('OrdersPage exchange package shipped mark', () => {
     const { hubApi } = await import('../../../shared/api')
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/orders?status=RESENT']}><OrdersPage /></MemoryRouter></QueryClientProvider>) })
-    for (let index = 0; index < 20 && !container.textContent?.includes('11805950642'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    for (let index = 0; index < 20 && !container.textContent?.includes('1000000004'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
     const rows = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')]
     const waiting = rows.find(row => row.textContent?.includes('1000000003'))!
-    const handMarked = rows.find(row => row.textContent?.includes('11805950642'))!
+    const handMarked = rows.find(row => row.textContent?.includes('1000000004'))!
     expect(waiting.querySelector('.rr-ordercell')!.textContent).toContain('Değişim: Kargoya Verilmesi Bekleniyor')
     expect(handMarked.querySelector('.rr-ordercell')!.textContent).toContain('Değişim: Kargoya Verildi (Elle)')
 
