@@ -5,7 +5,6 @@
  * sheet from the bottom (notifications.css places it); controls are 36 px (44 px on touch), radii 7 / 12 / 14.
  */
 .rv-notification-panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
-.rv-notification-grab { display: none; }
 
 .rv-notification-history-item { --rv-tone: var(--rv-color-primary); }
 .rv-notification-history-item.is-success { --rv-tone: var(--rv-color-accent); }
@@ -116,9 +115,8 @@
 .rv-notification-center-link > .rv-notification-go { flex: 1; justify-content: center; height: 44px; border-radius: 0; font-size: 13px; }
 .rv-notification-history button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
 
-/* Phones: the sheet's handle, 44 px touch targets for the actions, nothing wider than the sheet. */
+/* Phones: 44 px touch targets for the actions, nothing wider than the sheet. */
 @media (max-width: 760px) {
-  .rv-notification-grab { display: block; flex: none; width: 36px; height: 4px; margin: 8px auto 0; background: var(--rv-color-border-strong); border-radius: 2px; }
   .rv-notification-history-heading { min-height: 52px; }
   .rv-notification-go, .rv-notification-more, .rv-notification-mark-read { height: 44px; }
   .rv-notification-mark-read { width: 44px; opacity: 1; }

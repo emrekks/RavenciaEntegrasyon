@@ -134,7 +134,6 @@ export function NotificationPanel({ notifications, onNavigate, onCleared }: Pane
   const emptyText = notifications.length === 0 ? 'Yeni sipariş, fatura ve hata bildirimleri burada görünür.' : filter === 'UNREAD' ? 'Okunmamış bildirim yok.' : 'Hata bildirimi yok.'
 
   return <div className="rv-notification-panel">
-    <span className="rv-notification-grab" aria-hidden="true" />
     <div ref={headingRef} className="rv-notification-history-heading">
       <span className="rv-notification-history-title"><strong>Bildirimler</strong>{unread.length > 0 && <b aria-label={`${unread.length} okunmamış bildirim`}>{unread.length}</b>}</span>
       <div className="rv-notification-history-actions">
