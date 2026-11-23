@@ -58,6 +58,7 @@ public static class VariantCodeAvailability
         var rows = await (from variant in variants.AsNoTracking()
                           join product in db.Products.AsNoTracking() on new { variant.TenantId, variant.ProductId } equals new { product.TenantId, ProductId = product.Id }
                           where skuKeys.Contains(variant.SkuNormalized) || variant.BarcodeNormalized != null && barcodeKeys.Contains(variant.BarcodeNormalized)
+                          orderby variant.Id
                           select new Row(variant.Id, variant.ProductId, product.Title, variant.SkuNormalized, variant.BarcodeNormalized))
             .Take(MaxCodesPerRequest * 2).ToListAsync(cancellationToken);
         return Match(skus, barcodes, rows);

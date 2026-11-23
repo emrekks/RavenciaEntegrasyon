@@ -41,12 +41,16 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
     // Guard job types whose dedup key carries a version that only moves forward, so the key never recurs.
     internal static readonly string[] VersionedGuardJobTypes = [MarketplaceJobTypes.StockProjectionDispatch, MarketplaceJobTypes.PriceInventorySync];
 
-    // Blocks that happen before anything is sent to the marketplace.
+    // Blocks that happen before anything is sent to the marketplace, or after which the job's key guards nothing.
     internal static readonly string[] PreSendBlockCodes =
     [
         "CONNECTION_REQUIRED", "CONNECTION_OUT_OF_SCOPE", "CONNECTION_INACTIVE", "CONNECTION_NOT_FOUND",
         "EXTERNAL_WRITES_DISABLED", "N11_EXTERNAL_WRITES_DISABLED", "PAZARAMA_EXTERNAL_WRITES_DISABLED", "PTTAVM_EXTERNAL_WRITES_DISABLED",
-        "STOCK_PROJECTION_PAYLOAD_INVALID", "INVALID_IMPORT_PAYLOAD"
+        "STOCK_PROJECTION_PAYLOAD_INVALID", "INVALID_IMPORT_PAYLOAD",
+        // A product update, archive or approval check stopped because a newer job of the same product carries a newer
+        // payload: that newer job is the product's guard, the stopped one's key (the old payload hash) guards nothing
+        // (scan 23 Nov 2026: seven such PRODUCT_UPDATE jobs of 14 Nov were kept for ever).
+        "PRODUCT_UPDATE_SUPERSEDED", "PRODUCT_ARCHIVE_SUPERSEDED", "PRODUCT_APPROVAL_SUPERSEDED"
     ];
 
     public Task<int> PurgeAsync(TimeSpan succeededRetention, TimeSpan failedRetention, int maximumBatches, CancellationToken cancellationToken) =>

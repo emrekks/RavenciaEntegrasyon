@@ -88,6 +88,11 @@ public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvid
             """, cancellationToken);
     }
 
+    // Y5 (scan 23 Nov 2026): the open issues whose subject is gone (OrphanedOperationalIssues), every tenant, in bounded
+    // batches; how many per issue code.
+    public Task<IReadOnlyDictionary<string, int>> ResolveOrphanedAsync(int batchSize, int maxBatches, CancellationToken cancellationToken) =>
+        OrphanedOperationalIssues.ResolveAsync(db, null, timeProvider.GetUtcNow(), batchSize, maxBatches, cancellationToken);
+
     public async Task<int> DeleteResolvedAsync(TimeSpan retention, CancellationToken cancellationToken)
     {
         var cutoff = timeProvider.GetUtcNow() - retention;

@@ -182,6 +182,9 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         var cancelledBeforeRun = Guard(MarketplaceJobTypes.ShipmentAction, $"shipment:{Guid.NewGuid():N}", JobStatus.Cancelled, attempts: 0);
         var blockedBeforeSend = Guard(MarketplaceJobTypes.ShipmentAction, $"shipment:{Guid.NewGuid():N}", JobStatus.Blocked, error: "CONNECTION_INACTIVE");
         var sentShipment = Guard(MarketplaceJobTypes.ShipmentAction, $"shipment:{Guid.NewGuid():N}", JobStatus.Succeeded);
+        // Scan 23 Nov 2026: a product update a newer payload superseded guards nothing; a superseded create keeps its guard.
+        var supersededUpdate = Guard(MarketplaceJobTypes.ProductUpdate, $"product-update:{Guid.NewGuid():N}:{Guid.NewGuid():N}:old", JobStatus.Blocked, attempts: 3, error: "PRODUCT_UPDATE_SUPERSEDED");
+        var supersededCreate = Guard(MarketplaceJobTypes.ProductCreate, $"product-create:{Guid.NewGuid():N}:{Guid.NewGuid():N}:old", JobStatus.Blocked, error: "PRODUCT_PUBLICATION_SUPERSEDED");
         var inboxKey = $"bg-{Guid.NewGuid():N}";
         var usageKey = $"bg-retired:{Guid.NewGuid():N}";
         var settledEffect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "SHIPMENT", IdempotencyKey = $"bg-{Guid.NewGuid():N}", CreatedAt = old, CompletedAt = old, Outcome = "APPLIED" };
@@ -190,7 +193,7 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
-        db.IntegrationJobs.AddRange(versionedDispatch, versionedPush, cancelledBeforeRun, blockedBeforeSend, sentShipment);
+        db.IntegrationJobs.AddRange(versionedDispatch, versionedPush, cancelledBeforeRun, blockedBeforeSend, sentShipment, supersededUpdate, supersededCreate);
         db.InboxMessages.Add(new InboxMessage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Source = "TRENDYOL_WEBHOOK", ExternalMessageId = inboxKey, PayloadHash = "h", ReceivedAt = old });
         db.ExternalEffectRecords.AddRange(settledEffect, openEffect);
         await db.SaveChangesAsync();
@@ -204,7 +207,7 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await retention.PurgeCompletedEffectRecordsAsync(TimeSpan.FromDays(90), maximumBatches: 1_000, CancellationToken.None);
 
         var remaining = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync();
-        Assert.Equal([sentShipment.Id], remaining);
+        Assert.Equal(new[] { sentShipment.Id, supersededCreate.Id }.Order(), remaining.Order());
         Assert.False(await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
         Assert.Equal(0, await db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM integration.rate_limit_usage WHERE \"Key\" = {usageKey}").SingleAsync());
         Assert.Equal([openEffect.Id], await db.ExternalEffectRecords.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync());

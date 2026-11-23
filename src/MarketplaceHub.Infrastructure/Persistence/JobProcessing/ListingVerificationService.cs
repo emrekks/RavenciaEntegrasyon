@@ -263,6 +263,9 @@ internal sealed class ListingVerificationService(
             : $"{platformName} doğrulama taraması: {state.Received:N0} ürün okundu, bağlı {healthy:N0} koddan {seen:N0} tanesi görüldü"
                 + (complete ? $"; {firstMisses:N0} kod ilk kez görülmedi, {newlyNotFound.Count:N0} kod bulunamadı işaretlendi, {queued.Count:N0} kod tekil sorguya alındı ({relookedUp:N0} tanesi bulunamadı kodun yeniden sorgusu)." : "; tarama eksik sayıldı, hiçbir kod işaretlenmedi.");
         if (observe) await RecordIssue(tenantId, $"listing-verify-observe:{connectionId}", "LISTING_VERIFY_OBSERVE", summary, cancellationToken);
+        // The first run that marks states ends the observe-only period: its notice describes nothing any more (scan 23 Nov
+        // 2026: three stayed open after ten runs). Only the marketplaces that have an observe period ever wrote one.
+        else if (ListingVerificationPolicy.ObservesOnly(platform, 0)) await ResolveIssue(tenantId, $"listing-verify-observe:{connectionId}", cancellationToken);
         var cursor = await Cursor(tenantId, connectionId, ListingVerificationPolicy.StateCursorResource, cancellationToken);
         cursor.OpaqueCursor = state.Complete(now).ToJson();
         cursor.Version++;

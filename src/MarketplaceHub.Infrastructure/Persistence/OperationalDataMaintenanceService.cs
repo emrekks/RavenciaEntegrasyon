@@ -42,6 +42,8 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         connection.Version++;
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);
+        // Y5: the open issues of the deleted products' variants and of the deleted connection's listings are resolved.
+        await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 2_000, maxBatches: 50, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true, WebhookNotice = webhookNotice });

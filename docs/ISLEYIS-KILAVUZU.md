@@ -2433,7 +2433,10 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 2. **Operasyonel sorunlar** (sunucuda kayıtlı sorunlar; Açık / Kabul Edildi / Çözüldü): **zile düşmez**; ilgili ekranlarda
    görünür (webhook paneli, fiyat-stok izleme, iş ayrıntısındaki hata nedenleri). 30 gün görülmeyen açık sorun çözüldü sayılır;
    çözülmüş sorun 30 gün sonra silinir (`OperationalIssueRetentionService.cs:6-11`). (canlı, 12 Kas: 1311 açık, 9933 çözülmüş;
-   başta `PRODUCT_WEBCOLOR_MAPPING_REQUIRED` 734, `ORDER_LINE_VARIANT_UNMATCHED` 550.)
+   başta `PRODUCT_WEBCOLOR_MAPPING_REQUIRED` 734, `ORDER_LINE_VARIANT_UNMATCHED` 550.) Konusu artık olmayan açık sorun
+   (silinmiş varyant, sonradan bağlanan pazaryeri ürünü, sonradan alınan ürün, çözülmüş kod çakışması, biten gözlem dönemi,
+   silinen bağlantı) ürün silmede ve günlük bakımda (worker açılışından 15 dk sonra, sonra günde bir) gerekçesi özete
+   eklenerek çözülür; konusu duran ya da okunamayan sorun açık kalır (`OrphanedOperationalIssues.cs`, tarama 23 Kas).
 3. **Alarm** — sunucunun e-postayla (ya da Telegram/Slack ile) gönderdiği operatör uyarısı (7.1). Zil ile bağlantısı yoktur.
 
 ### 7.5 Kullanıcılar, roller, izinler
