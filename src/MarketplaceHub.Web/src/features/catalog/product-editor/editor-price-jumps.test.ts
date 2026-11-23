@@ -20,9 +20,17 @@ describe('the editor save price-jump confirmation', () => {
   it('warns for a marketplace card price the person typed, going to the variant\'s offer', () => {
     expect(lines({ channelPricing: { ty: { listPrice: '5000', salePrice: '4000' } }, channelPriceDraft: () => ({ listPrice: '5000', salePrice: '4000' }), channelPriceEdited: () => true })).toEqual(['1 Varyantın Fiyatı Üç Katından Fazla Artıyor: 1.250,00 → 4.000,00'])
   })
-  it('stays quiet for an ordinary change, an untouched save and a new variant', () => {
+  it('stays quiet for an ordinary change and an untouched save', () => {
     expect(lines({ rows: [row('v1', { salePrice: 1199 })] })).toEqual([])
     expect(lines({})).toEqual([])
-    expect(lines({ rows: [row('new-1', { salePrice: 1.25, listPrice: 1.25, platformStatuses: [] })] })).toEqual([])
+  })
+  // A new variant and a first offer (POST) have no price before: they are set against the panel price.
+  it('sets a new variant against the card\'s panel price, and stays quiet without one', () => {
+    const card = { ...saved, defaultSalePrice: 1250, defaultListPrice: 1300 } as Product
+    expect(lines({ saved: card, rows: [row('new-1', { salePrice: 1.25, listPrice: 1.3, platformStatuses: [] })] })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 1,25'])
+    expect(lines({ rows: [row('new-1', { salePrice: 1.25, listPrice: 1.3, platformStatuses: [] })] })).toEqual([])
+  })
+  it('sets a first offer on a marketplace (POST) against the variant\'s panel price', () => {
+    expect(lines({ rows: [row('v1', { platformStatuses: [] })], variantChannelPricing: { 'v1:n11': { listPrice: '13', salePrice: '12,5' } } })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 12,50'])
   })
 })

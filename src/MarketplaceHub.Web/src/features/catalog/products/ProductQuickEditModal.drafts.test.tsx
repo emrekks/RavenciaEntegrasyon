@@ -328,6 +328,18 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => call.body)).toEqual([{ listPrice: 500, salePrice: 4.5, reason: 'Hızlı varyant fiyat düzenleme' }])
   })
 
+  it('sets a first offer on a marketplace against the panel price in the confirmation', async () => {
+    const oneOffer: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: item.id === 'v1' ? [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: 'o-v1', offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice: false })] : [] })) }
+    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [oneOffer])
+    await pickValue('Trendyol', 'Satış')
+    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-2 Trendyol satış fiyatı"]')!
+    expect(sale.value).toBe('')
+    await act(async () => { sale.focus() })
+    await type(sale, '4,5')
+    await click(barButton('Kaydet'))
+    expect(bar()?.querySelector('[role="alert"]')?.textContent).toBe('1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 450,00 → 4,50')
+  })
+
   it('names no warning for an ordinary price change', async () => {
     await render('price')
     const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!

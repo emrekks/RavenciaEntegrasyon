@@ -424,9 +424,15 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   }, [draft])
   const requestClose = () => { if (unsaved) setConfirmClose(true); else onClose() }
   // A price falling below half or rising above three times its value is named in Kaydet's confirmation (priceJumps).
+  // A first offer on a marketplace (no price before) is set against the variant's panel price; without one, no warning.
+  const jumpItems = new Map(variants.map(item => [item.variant.id, item]))
   const jumpLines = priceJumps([...priceDrafts.entries].flatMap(([key, entry]) => (['sale', 'list'] as const).flatMap(field => {
     const after = entry.value[field] === entry.original[field] ? null : parseTrEntry(entry.value[field])
-    return after == null ? [] : [{ key: key.split('|')[0], before: parseTrEntry(entry.original[field]), after }]
+    const [variantId, columnId] = key.split('|')
+    const item = jumpItems.get(variantId)
+    const panel = item && columnId !== PANEL_PRICE_CHOICE ? panelPrices(item.variant, item.product) : null
+    const before = entry.original[field].trim() === '' ? (field === 'list' ? panel?.listPrice : panel?.salePrice) : parseTrEntry(entry.original[field])
+    return after == null ? [] : [{ key: variantId, before, after }]
   }))).lines
   const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.{jumpLines.map(text => <span key={text} className="rv-draftbar-warn" role="alert">{text}</span>)}</>
   const canApply = stepValue === 'price' ? (showListPrice && listPrice.trim() !== '') || salePrice.trim() !== '' : stepValue === 'stock' ? stockAmount.trim() !== '' : true

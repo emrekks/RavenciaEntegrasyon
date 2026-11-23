@@ -24,17 +24,23 @@ export function editorPriceChanges(input: EditorPriceJumpInput): PriceChange[] {
   const push = (key: string, before: number | null | undefined, after: number) => { if (Number.isFinite(after) && after > 0 && before !== after) changes.push({ key, before, after }) }
   for (const row of input.rows) {
     const variant = savedById.get(row.key)
-    if (!variant || !input.saved) continue
-    const panel = panelPrices(variant, input.saved)
+    if (!input.saved) continue
+    // A new variant (nothing saved) is set against the card's panel price; without one there is nothing to compare with.
+    const panel = variant ? panelPrices(variant, input.saved) : { listPrice: input.saved.defaultListPrice ?? null, salePrice: input.saved.defaultSalePrice ?? null }
     push(row.key, panel.salePrice, row.salePrice)
     push(row.key, panel.listPrice, row.listPrice)
-    for (const status of row.platformStatuses ?? []) {
-      if (!status.connectionId || !status.offerId) continue
-      const staged = input.variantChannelPricing[`${row.key}:${status.connectionId}`]
-      const typed = staged ?? (status.connectionId in input.channelPricing && input.channelPriceEdited(status.connectionId) ? input.channelPriceDraft(status.connectionId) : null)
+    // Every marketplace the row gets a typed price on: its offer's price before, or, for a first offer (POST), the panel
+    // price the variant had (the price it sold at there until now).
+    const statuses = new Map((row.platformStatuses ?? []).filter(status => status.connectionId).map(status => [status.connectionId!, status]))
+    const connectionIds = new Set([...statuses.keys(), ...Object.keys(input.channelPricing), ...Object.keys(input.variantChannelPricing).filter(key => key.startsWith(`${row.key}:`)).map(key => key.slice(row.key.length + 1))])
+    for (const connectionId of connectionIds) {
+      const status = statuses.get(connectionId)
+      const staged = input.variantChannelPricing[`${row.key}:${connectionId}`]
+      const typed = staged ?? (connectionId in input.channelPricing && input.channelPriceEdited(connectionId) ? input.channelPriceDraft(connectionId) : null)
       if (!typed) continue
-      push(row.key, status.salePrice, priceInputNumber(typed.salePrice))
-      push(row.key, status.listPrice, priceInputNumber(typed.listPrice))
+      const before = status?.offerId ? { listPrice: status.listPrice, salePrice: status.salePrice } : panel
+      push(row.key, before.salePrice, priceInputNumber(typed.salePrice))
+      push(row.key, before.listPrice, priceInputNumber(typed.listPrice))
     }
   }
   return changes
