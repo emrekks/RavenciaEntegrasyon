@@ -17,7 +17,7 @@ public interface IPrivateFileStorage
 
 public interface IJobLeaseService
 {
-    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null);
+    Task<LeasedJob?> TryLeaseAsync(TimeSpan leaseDuration, int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, Guid? onlyJobId = null, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobQuotaHold? quotaHold = null, JobFairness? fairness = null, JobBulkhead? bulkhead = null);
     Task<bool> HeartbeatAsync(Guid jobId, string leaseToken, TimeSpan extension, CancellationToken cancellationToken);
     Task<bool> CompleteAsync(Guid jobId, string leaseToken, JobExecutionResult result, CancellationToken cancellationToken);
     Task<int> ReapExpiredAsync(CancellationToken cancellationToken);
@@ -38,6 +38,27 @@ public sealed record JobQuotaHold(IReadOnlyList<Guid> ConnectionIds, IReadOnlyLi
     public const int DefaultHeldAbovePriority = 2;
     public static readonly JobQuotaHold None = new([], [], TimeSpan.Zero);
     public bool IsEmpty => ConnectionIds.Count == 0 || MaximumHold <= TimeSpan.Zero;
+}
+
+// Connection fairness (worker lanes step 2, 19 Nov 2026): within one priority, after the tenant with fewer running jobs, the
+// connection with fewer running jobs goes first, then the one that was leased a job longest ago (LastLeasedAt, from the
+// worker; a connection it has not leased for since it started counts as never leased). User actions (priority
+// BulkUserAction or lower) keep their order. A job runnable for Aging or longer goes ahead of the fairness order, oldest
+// first, so no job waits for ever behind other connections. ConnectionIds[i] goes with LastLeasedAt[i].
+public sealed record JobFairness(TimeSpan Aging, IReadOnlyList<Guid> ConnectionIds, IReadOnlyList<DateTimeOffset> LastLeasedAt);
+
+// Per-marketplace bulkheads (worker lanes step 2), counted per tenant and marketplace (a marketplace quota belongs to the
+// seller account, so one tenant never limits another):
+//   - a job of a class (JobTypes[i] belongs to Classes[i]) whose priority is within ClassMinimumPriority..ClassMaximumPriority
+//     is not leased while ClassCaps[j] jobs of its class (ClassNames[j]) in that priority range already run for the same
+//     tenant and marketplace; jobs of the class outside the range (a background recovery read, a first import) neither
+//     count nor are limited;
+//   - with LaneCap set, a job is not leased while that many jobs of the leasing lane run for the same tenant and marketplace.
+// User actions and jobs without a connection are never limited.
+public sealed record JobBulkhead(IReadOnlyList<string> JobTypes, IReadOnlyList<string> Classes, IReadOnlyList<string> ClassNames, IReadOnlyList<int> ClassCaps, int? LaneCap,
+    int ClassMinimumPriority = 0, int ClassMaximumPriority = JobQuotaHold.DefaultHeldAbovePriority)
+{
+    public bool IsEmpty => (ClassNames.Count == 0 || JobTypes.Count == 0) && LaneCap is null;
 }
 
 // QueueWait: how long the job waited between becoming runnable and this lease (slot, lock group or backoff wait).

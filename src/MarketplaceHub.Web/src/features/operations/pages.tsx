@@ -270,10 +270,10 @@ type JobDetailQueryState = { isLoading: boolean; isError: boolean; data: JobDeta
 type JobActionState = { isPending: boolean; isError: boolean; variables?: { id: string; verb: 'retry' | 'cancel' }; mutate: (variables: { id: string; verb: 'retry' | 'cancel' }) => void }
 type OneTimeInvoiceDeliveryActionState = { isPending: boolean; isError: boolean; mutate: (variables: { id: string; confirmed: boolean; orderNumber: string }) => void }
 
-function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, oneTimeInvoiceDelivery, onClose, onOpenJob }: { selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; oneTimeInvoiceDelivery: OneTimeInvoiceDeliveryActionState; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
+function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retryable, cancellable, action, oneTimeInvoiceDelivery, onClose, onOpenJob, overDialog = false }: { overDialog?: boolean; selected: JobSummary | undefined; detail: JobDetailQueryState; selectedIsRunning: boolean; elevated: boolean; retryable: boolean | undefined; cancellable: boolean | undefined; action: JobActionState; oneTimeInvoiceDelivery: OneTimeInvoiceDeliveryActionState; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
   const [oneTimeDeliveryOpen, setOneTimeDeliveryOpen] = useState(false)
   const [oneTimeDeliveryConfirmed, setOneTimeDeliveryConfirmed] = useState(false)
-  return <div className="job-detail-backdrop jobs-reference-drawer-backdrop" role="presentation" onMouseDown={onClose}><DialogSurface as="aside" onClose={onClose} className="job-detail-drawer jobs-reference-drawer panel" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
+  return <div className={`job-detail-backdrop jobs-reference-drawer-backdrop${overDialog ? ' is-over-dialog' : ''}`} role="presentation" onMouseDown={onClose}><DialogSurface as="aside" onClose={onClose} className="job-detail-drawer jobs-reference-drawer panel" aria-labelledby="job-detail-title" onMouseDown={event => event.stopPropagation()}>
     <div className="jobs-reference-drawer-header">
       <div>
         <h2 id="job-detail-title">{selected ? jobTitle(selected.jobType, selected.marketplace, selected.resource) : 'İşlem Ayrıntısı'}</h2>
@@ -386,6 +386,8 @@ export function JobsPage({ me }: { me: Me }) {
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
   const cardFilterCount = [platforms.length > 0, Boolean(direction), Boolean(status), timeRange !== '24h'].filter(Boolean).length
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // A job opened from an API Sağlık detail window opens over that window, which stays open underneath.
+  const [jobOverDialog, setJobOverDialog] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' | 'warning'; context?: NotificationContext } | null>(null)
   useEffect(() => {
     if (!feedback) return
@@ -576,8 +578,8 @@ export function JobsPage({ me }: { me: Me }) {
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İşler') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }, { value: 'queue', label: viewTabLabel('waiting', 'Kuyruk ve Kota') }, { value: 'notifications', label: viewTabLabel('unread', 'Bildirimler') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key === 'ALL' || tab.key === category || categoryCounts.get(tab.key) !== 0).map(tab => ({ value: tab.key, label: tab.label, title: tab.title, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
-      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
-        : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense>
+      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={jobId => { setJobOverDialog(true); setSelectedId(jobId) }} /></Suspense>
+        : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} onOpenJob={setSelectedId} /></Suspense>
         : mainTab === 'queue' ? <Suspense fallback={<Busy text="Kuyruk ölçümleri yükleniyor…" />}><QueueQuotaView /></Suspense>
         : mainTab === 'notifications' ? <Suspense fallback={<Busy text="Bildirimler yükleniyor…" />}><NotificationCenter /></Suspense> : <>
       <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
@@ -597,7 +599,7 @@ export function JobsPage({ me }: { me: Me }) {
           <span {...statusChipProps('cancelled')}><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>
         </div>
         <div className="jobs-reference-toolbar-actions">
-          <span className="rr ops-psize"><RrPageSize value={pageSize} sizes={[...jobPageSizes]} onChange={setPageSize} /></span>
+          <span className="rr ops-psize"><RrPageSize remember="jobs" value={pageSize} sizes={[...jobPageSizes]} onChange={setPageSize} /></span>
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
@@ -621,7 +623,7 @@ export function JobsPage({ me }: { me: Me }) {
       </>}
       </>}
     </div>
-     {selectedId && <JobDetailDrawer key={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} onOpenJob={setSelectedId} />}
+     {selectedId && <JobDetailDrawer key={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} overDialog={jobOverDialog} onClose={() => { setSelectedId(null); setJobOverDialog(false) }} onOpenJob={setSelectedId} />}
      {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} title={feedback.context?.title} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
   </section>
 }

@@ -105,14 +105,16 @@ export function healthLink({ row, auth, webhook }: IntegrationHealth['health'][n
   return row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn') ? matrixJobsLink(row.platformCode) : null
 }
 
-export function IntegrationStatusPanel({ integration, extras, headerAction, notice, onProblemOpen }: { integration?: IntegrationHealth; extras?: Record<string, StatusExtras>; headerAction?: ReactNode; notice?: string | null; onProblemOpen?: (connectionId: string) => void }) {
+export function IntegrationStatusPanel({ integration, extras, headerAction, onProblemOpen }: { integration?: IntegrationHealth; extras?: Record<string, StatusExtras>; headerAction?: ReactNode; onProblemOpen?: (connectionId: string) => void }) {
   const own = useIntegrationHealth()
-  const { matrix, rows, health, attention } = integration ?? own
+  const { matrix, rows, health, attention: matrixAttention } = integration ?? own
+  // The pill counts every store that needs a look: a marketplace signal or a price/stock send problem (the Sorun column), so it never says everything is fine over a row marked as a problem.
+  const needing = health.filter(item => item.attention || extras?.[item.row.connectionId]?.attention)
+  const attention = extras ? needing.length : matrixAttention
   const bootstrap = useQuery(dashboardBootstrapQuery)
   const metrics = bootstrap.data?.metrics
   const loadingValue = (value: number | undefined) => { const known = knownCount(bootstrap.isLoading, value); return known === null ? '—' : known.toLocaleString('tr-TR') }
-  return <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div>{matrix.isLoading ? <span className="rr-hpill">Kontrol ediliyor…</span> : <span className={`rr-hpill${attention ? ' rr-attn' : ''}`}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? <><span className="rr-lbl-long">{`${attention} konu dikkatinizi bekliyor`}</span><span className="rr-lbl-short">{`${attention} Konu Bekliyor`}</span></> : 'Her şey yolunda'}</span>}{headerAction}</div>
-    {notice ? <p className="rr-mx-notice" role="status">{notice}</p> : null}
+  return <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div>{matrix.isLoading ? <span className="rr-hpill">Kontrol ediliyor…</span> : <span className={`rr-hpill${attention ? ' rr-attn' : ''}`} title={attention ? `Dikkat isteyenler: ${needing.map(item => item.row.displayName).join(', ')}` : undefined}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? <><span className="rr-lbl-long">{`${attention} konu dikkatinizi bekliyor`}</span><span className="rr-lbl-short">{`${attention} Konu Bekliyor`}</span></> : 'Her şey yolunda'}</span>}{headerAction}</div>
     <div className="rr-mxwrap"><table className={`rr-mxt${extras ? ' rr-mxt-x' : ''}`}><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th>Webhook</th>{extras ? <><th>Otomatik Yazma</th><th>Sorun</th></> : null}<th /></tr></thead><tbody>
       {!rows.length && <tr><td colSpan={DATA_KEYS.length + 3 + (extras ? 2 : 0)}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
       {health.map(item => { const { row, auth, webhook, attention: rowAttention } = item; const extra = extras?.[row.connectionId]; const link = auth || row.issue || webhook.tone === 'bad' || webhook.tone === 'warn' ? healthLink(item) : null; return <tr key={row.connectionId} className={rowAttention || extra?.attention ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><span className="rr-mx-title"><b>{row.displayName}</b>{link && <Link className="rr-btn rr-link rr-mx-inline" to={link}>İncele</Link>}</span><small className={auth || row.issue ? 'rr-attn' : undefined} title={auth?.action ?? row.issue ?? undefined}>{auth?.title ?? row.issue ?? storeLabel(row)}</small></span></span></td>

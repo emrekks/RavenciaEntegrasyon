@@ -29,7 +29,7 @@ export function apiHealthStats(attention: number | null, recentJobs: number | nu
 
 // İşlem Takibi › API Sağlık: Genel Bakış's figure cards as the summary, Genel Bakış's own Entegrasyon Durumu panel,
 // with the automatic price/stock write state and sending problems folded into its rows. Each part is the shared one, so the two pages never drift apart.
-export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: IntegrationFeedback) => void }) {
+export function ApiHealthView({ onFeedback, onOpenJob }: { onFeedback: (feedback: IntegrationFeedback) => void; onOpenJob?: (jobId: string) => void }) {
   const integration = useIntegrationHealth()
   const bootstrap = useQuery(dashboardBootstrapQuery)
   const metrics = bootstrap.data?.metrics
@@ -46,9 +46,9 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
           return stat.to ? <Link key={stat.key} className={className} to={stat.to}>{body}</Link> : <div key={stat.key} className={className}>{body}</div>
         })}
       </div></section>
-      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.notice} onProblemOpen={setProblemOf} />
-      {problemRow && <Suspense fallback={null}><PriceStockProblemDialog connectionId={problemRow.connectionId} displayName={problemRow.displayName} counts={{ invalidOffers: problemRow.invalidOffers, failedPushes: problemRow.failedPushes7d, manualReview: problemRow.manualReviewPushes, notFoundLinks: problemRow.notFoundLinks, rejectedLinks: problemRow.rejectedLinks }} onClose={() => setProblemOf(null)} /></Suspense>}
-      <ApiHealthSignalsPanel />
+      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} onProblemOpen={setProblemOf} />
+      {problemRow && <Suspense fallback={null}><PriceStockProblemDialog connectionId={problemRow.connectionId} displayName={problemRow.displayName} counts={{ invalidOffers: problemRow.invalidOffers, failedPushes: problemRow.failedPushes7d, manualReview: problemRow.manualReviewPushes, notFoundLinks: problemRow.notFoundLinks, rejectedLinks: problemRow.rejectedLinks }} onClose={() => setProblemOf(null)} onOpenJob={onOpenJob} /></Suspense>}
+      <ApiHealthSignalsPanel onOpenJob={onOpenJob} />
     </div>
   </div>
 }

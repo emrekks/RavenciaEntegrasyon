@@ -41,6 +41,7 @@ let container: HTMLDivElement
 let root: Root
 
 beforeEach(() => {
+  localStorage.clear() // the last picked Sıralama is remembered per browser
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   requested.length = 0
   fixture.totalCount = 2
