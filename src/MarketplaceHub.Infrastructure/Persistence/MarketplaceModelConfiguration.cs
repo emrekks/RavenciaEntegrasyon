@@ -33,7 +33,7 @@ internal static class MarketplaceModelConfiguration
         builder.Entity<WebhookSubscription>(entity =>
         {
             entity.ToTable("webhook_subscriptions", "integration"); entity.HasKey(x => x.Id);
-            entity.Property(x => x.RouteTokenHash).HasMaxLength(128); entity.Property(x => x.AuthenticationType).HasMaxLength(32); entity.Property(x => x.ProtectedVerifierSecret).HasMaxLength(8192); entity.Property(x => x.ExternalSubscriptionId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.RouteTokenHash).HasMaxLength(128); entity.Property(x => x.AuthenticationType).HasMaxLength(32); entity.Property(x => x.ProtectedVerifierSecret).HasMaxLength(8192); entity.Property(x => x.ExternalSubscriptionId).HasMaxLength(256); entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.ClosedReason).HasMaxLength(24); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.RouteTokenHash }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Status });
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
