@@ -44,6 +44,17 @@ describe('parseTrEntry (the product screens\' one rule)', () => {
       expect(parseTrEntry(text), text).toBeNull()
   })
 
+  // Y1: the three-digit check ran on the raw text while parseTrNumber dropped the spaces later: "1, 250" read as 1.25.
+  it('refuses a space inside the number, and allows it only around it', () => {
+    for (const text of ['1, 250', '1,25 0', '1, 250', '1 ,250', '1 250', '1 250', '1.250, 50'])
+      expect(parseTrEntry(text), JSON.stringify(text)).toBeNull()
+    expect(parseTrEntry(' 1.250 ')).toBe(1250)
+    expect(parseTrEntry('1.250 ₺')).toBe(1250)
+    expect(parseTrEntry('₺1.250,50')).toBe(1250.5)
+    expect(parseTrEntry('1.250 TL')).toBe(1250)
+    expect(parseTrEntry(' 1.250,5 ')).toBe(1250.5)
+  })
+
   it('reads measurements with any number of decimals, never a point used as a decimal point', () => {
     expect(parseTrMeasure('0,125')).toBe(0.125)
     expect(parseTrMeasure('1.250')).toBe(1250)

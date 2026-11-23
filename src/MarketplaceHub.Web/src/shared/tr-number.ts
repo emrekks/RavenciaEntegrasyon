@@ -36,9 +36,14 @@ export function parseTrMeasure(raw: string): number | null {
 // - Refused (null), never guessed: a point used as a decimal point ("1.25", "12.5", "1250.50"), a comma with three or
 //   more digits after it ("1,250", "1,000": a thousands comma or three decimals?), English grouping ("1,250.50") and
 //   everything parseTrNumber refuses. parseTrNumber's single-point reading stays for the commission tariff filters.
+// - Whitespace (no-break and thin spaces too) is allowed only around the number, with a leading or trailing ₺, TL or %;
+//   a space inside it ("1 250", "1, 250", "1,25 0") is refused, so no check is ever made on text parseTrNumber later
+//   reads differently (Y1: "1, 250" passed the three-digit check and read as 1.25).
 export function parseTrEntry(raw: string): number | null {
-  if (/,\d{3,}\s*(₺|%)?\s*$/.test(raw.trim())) return null
-  return parseTrMeasure(raw)
+  const text = raw.trim().replace(/^₺\s*/, '').replace(/\s*(₺|TL|%)$/i, '')
+  if (/\s/.test(text)) return null
+  if (/,\d{3,}$/.test(text)) return null
+  return parseTrMeasure(text)
 }
 
 // The message for a typed price parseTrEntry refuses.
