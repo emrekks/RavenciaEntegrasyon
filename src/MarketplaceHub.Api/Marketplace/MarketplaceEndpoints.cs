@@ -300,6 +300,9 @@ public static partial class MarketplaceEndpoints
 
     private const string RefusalThrottle = "webhook-route-refused";
 
+    // The event path is the sender's to choose and has no length limit: a log line keeps its first 64 characters.
+    internal static string LoggedPath(string? eventPath) => eventPath is null ? "/" : eventPath.Length <= 64 ? eventPath : eventPath[..64] + "…";
+
     private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -317,7 +320,7 @@ public static partial class MarketplaceEndpoints
                 // Only known addresses are remembered (one entry per connection address), so random ids cannot fill the cache.
                 cache?.Set(throttleKey, true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1), Size = 1 });
                 http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
-                    .LogWarning("Webhook route refused with {Code} for address {AddressPrefix}…, path {EventPath}.", refusal, connectionPublicId.ToString("N")[..8], eventPath ?? "/");
+                    .LogWarning("Webhook route refused with {Code} for address {AddressPrefix}…, path {EventPath}.", refusal, connectionPublicId.ToString("N")[..8], LoggedPath(eventPath));
             }
             return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
         }
@@ -337,13 +340,13 @@ public static partial class MarketplaceEndpoints
         // Hepsiburada blacklists a feed after 20 replies slower than five seconds in an hour.
         if (stopwatch.Elapsed > TimeSpan.FromSeconds(4))
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
-                .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, eventPath ?? "/");
+                .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, LoggedPath(eventPath));
         if (!result.Succeeded)
         {
             // A refused delivery says why, with the body's outline only (its top-level names), never its content.
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
                 .LogWarning("Webhook refused with {Code} ({Status}) for connection {ConnectionPublicId}, path {EventPath}; body outline {Outline}.",
-                    result.Error!.Code, result.Error.Status, connectionPublicId, eventPath ?? "/", WebhookBodyOutline(body.Memory));
+                    result.Error!.Code, result.Error.Status, connectionPublicId, LoggedPath(eventPath), WebhookBodyOutline(body.Memory));
             return Problem(http, result.Error!);
         }
         if (!result.Value)

@@ -130,6 +130,17 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.Equal(3, unknown.RefusalsNoted);
     }
 
+    // The event path is the sender's: a log line keeps at most 64 characters of it.
+    [Fact]
+    public void LoggedPath_KeepsAtMost64CharactersOfTheSendersPath()
+    {
+        Assert.Equal("/", MarketplaceEndpoints.LoggedPath(null));
+        Assert.Equal("orders", MarketplaceEndpoints.LoggedPath("orders"));
+        var logged = MarketplaceEndpoints.LoggedPath(new string('x', 10_000));
+        Assert.Equal(65, logged.Length);
+        Assert.EndsWith("…", logged);
+    }
+
     [Fact]
     public void WebhookLimits_LimitEachAddress()
     {
