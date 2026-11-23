@@ -1326,3 +1326,8 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 /* Varyant Düzenleme on RrModal: the read-only name field and the switch row's help line (the rr layer resets small). */
 .rr-layer.rr-layer .variant-option-edit-pair .rr-in:disabled { color: var(--rr-muted); background: var(--rr-raised); }
 .rr-layer.rr-layer .variant-option-edit-switch small { color: var(--rr-muted); font-size: 12px; }
+/* Where the box is narrower than the columns (1025-1200 px) the İşlem column stays in view at the right edge while the rest scrolls. */
+@media (min-width: 1025px) and (max-width: 1200px) {
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-head > :last-child { position: sticky; right: 0; z-index: 4; background: inherit; box-shadow: -8px 0 8px -8px rgb(0 0 0 / 40%); }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor .variant-table-row > :last-child { position: sticky; right: 0; z-index: 2; background: var(--rv-color-surface); box-shadow: -8px 0 8px -8px rgb(0 0 0 / 40%); }
+}

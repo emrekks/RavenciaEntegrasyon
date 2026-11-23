@@ -212,3 +212,5 @@
 :root:root body .app-shell.stitch-shell main .jobs-reference-table tr:has(> td.jobs-reference-empty) { height: auto; min-height: 0; }
 :root:root body .app-shell.stitch-shell main .jobs-reference-table td.jobs-reference-empty { display: flex; justify-content: center; align-items: center; height: auto; min-height: 0; max-height: none; padding: 32px 16px; white-space: normal; }
 :root:root body .app-shell.stitch-shell main .jobs-reference-table td.jobs-reference-empty .rv-empty-state { margin: 0 auto; }
+/* A job opened from an API Sağlık detail window opens above it (that window keeps its place beneath). */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-backdrop.is-over-dialog, .jobs-reference-drawer-backdrop.is-over-dialog { z-index: 1100; }
