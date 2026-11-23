@@ -217,6 +217,31 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.DoesNotContain("Trendyol", reason);
     }
 
+    // Scan, 23 Nov 2026: removing the owner's "Değişim Onaylandı" mark left his "Kargoya Verildi" mark behind on a claim
+    // that was no exchange resend any more: "İşareti Kaldır" refused it, and a new exchange mark brought it back unseen.
+    [PostgreSqlFact]
+    public async Task Removing_the_exchange_mark_takes_the_hand_made_shipped_mark_with_it()
+    {
+        var (tenant, connection) = await SeedAsync();
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "ex-orphan", claim => { claim.ResolvedWith = ReturnCustomerRequestPolicy.Change; claim.ResolvedWithSource = ReturnCustomerRequestPolicy.ManualSource; });
+        var claimId = await ClaimIdAsync(tenant.Id, order);
+        long Version(AppDbContext db) => db.ReturnClaims.AsNoTracking().Single(x => x.Id == claimId).Version;
+        await using (var db = fixture.CreateContext())
+            Assert.True((await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, Version(db), true, "corr-o1", CancellationToken.None)).Succeeded);
+        await using (var db = fixture.CreateContext())
+            Assert.True((await Service(db).MarkExchangeApprovedAsync(tenant.Id, Guid.NewGuid(), claimId, Version(db), false, "corr-o2", CancellationToken.None)).Succeeded);
+        await using (var db = fixture.CreateContext())
+        {
+            var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId);
+            Assert.Equal(((string?)null, (DateTimeOffset?)null, (string?)null), (claim.ResolvedWith, claim.ReplacementShippedAt, claim.ReplacementShippedSource));
+        }
+        // Marked made again, it waits for the carrier: the old hand-made mark does not come back.
+        await using (var db = fixture.CreateContext())
+            Assert.True((await Service(db).MarkExchangeApprovedAsync(tenant.Id, Guid.NewGuid(), claimId, Version(db), true, "corr-o3", CancellationToken.None)).Succeeded);
+        var again = await CountsAsync(tenant.Id, order);
+        Assert.Equal((1, true, false), (again.Count, again.Unshipped, again.Row.Shipped));
+    }
+
     private async Task RunStatusSyncAsync(Guid tenantId, Guid connectionId, ClaimPort port)
     {
         await using var db = fixture.CreateContext();

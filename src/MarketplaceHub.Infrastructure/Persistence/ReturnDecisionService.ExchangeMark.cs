@@ -29,8 +29,7 @@ internal sealed partial class ReturnDecisionService
         {
             if (claim.ResolvedWithSource != ReturnCustomerRequestPolicy.ManualSource)
                 return ServiceResult<ReturnDetailView>.Fail(ReturnCustomerRequestPolicy.ManualExchangeMarkNotAllowedCode, "Bu iadede elle konmuş bir Değişim Onaylandı işareti yok.", 409);
-            claim.ResolvedWith = null;
-            claim.ResolvedWithSource = null;
+            ExchangeResendRules.ClearManualExchangeMark(claim);
         }
         var now = timeProvider.GetUtcNow();
         claim.UpdatedAt = now;

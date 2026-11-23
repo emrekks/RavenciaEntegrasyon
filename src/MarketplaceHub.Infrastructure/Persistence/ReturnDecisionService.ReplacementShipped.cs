@@ -91,6 +91,21 @@ internal static class ExchangeResendRules
         && !db.OrderLines.Any(line => line.TenantId == claim.TenantId && line.OrderId == claim.OrderId && line.ShippedQuantity > 0
             && line.SourceSnapshotJson != null && line.SourceSnapshotJson.Contains(HepsiburadaExchangeLineReason));
 
+    // The owner's "Değişim Onaylandı" mark goes (removed by him, or lapsed on a read): the outcome is unknown again. A claim
+    // without a package Trendyol named is then no exchange resend, so a "Kargoya Verildi" mark made by hand on it goes too;
+    // left behind it was orphaned (scan, 23 Nov 2026): "İşareti Kaldır" refused it and a new exchange mark brought it back
+    // as "Kargoya Verildi (Elle)" unseen.
+    internal static void ClearManualExchangeMark(ReturnClaim claim)
+    {
+        claim.ResolvedWith = null;
+        claim.ResolvedWithSource = null;
+        if (claim.ReplacementPackageId is null && claim.ReplacementShippedSource == ReturnCustomerRequestPolicy.ManualSource)
+        {
+            claim.ReplacementShippedAt = null;
+            claim.ReplacementShippedSource = null;
+        }
+    }
+
     // The marketplace's name as the texts use it: "Trendyol'a", "Hepsiburada'ya" (only these two have exchanges).
     internal static (string Name, string To) PlatformName(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
     {
