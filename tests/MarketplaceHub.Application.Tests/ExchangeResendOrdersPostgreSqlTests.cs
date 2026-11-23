@@ -242,7 +242,56 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal((1, true, false), (again.Count, again.Unshipped, again.Row.Shipped));
     }
 
-    private async Task RunStatusSyncAsync(Guid tenantId, Guid connectionId, ClaimPort port)
+    // Scan, 23 Nov 2026: with more waiting exchanges than one request holds (20), the re-read asked the same first 20 every
+    // hour and never the rest. They take turns: two runs ask all 25, the second one starting after the last asked.
+    [PostgreSqlFact]
+    public async Task More_waiting_exchanges_than_one_request_holds_take_turns()
+    {
+        var (tenant, connection) = await SeedAsync();
+        var numbers = Enumerable.Range(1, 25).Select(i => $"ex-turn-{i:00}").ToArray();
+        foreach (var number in numbers)
+            await SeedOrderAsync(tenant.Id, connection.Id, number, claim => { claim.ReplacementPackageId = "28717256"; claim.LastRemoteModifiedAt = fixture.Now.AddDays(-5); claim.RequestedAt = fixture.Now.AddDays(-10); });
+        var port = new RecordingClaimPort();
+        await RunStatusSyncAsync(tenant.Id, connection.Id, port);
+        await using (var db = fixture.CreateContext())
+            await db.SyncCursors.Where(x => x.TenantId == tenant.Id && x.ResourceType == "RETURN_EXCHANGE_RESEND")
+                .ExecuteUpdateAsync(x => x.SetProperty(c => c.LastAttemptAt, fixture.Now.AddHours(-2)));
+        await RunStatusSyncAsync(tenant.Id, connection.Id, port);
+        Assert.Equal(2, port.Rereads.Count);
+        Assert.All(port.Rereads, ids => Assert.Equal(20, ids.Count));
+        Assert.Equal(numbers.Select(number => $"claim-{number}").Order(), port.Rereads.SelectMany(ids => ids).Distinct().Order());
+    }
+
+    // getClaims by claimIds answering each claim as stored (Rejected, its package named, no link); it records what each
+    // exchange re-read asked.
+    private sealed class RecordingClaimPort : IReturnPort, IReturnBatchReadPort
+    {
+        public List<IReadOnlyList<string>> Rereads { get; } = [];
+
+        private static RemoteReturnClaim Claim(string claimId)
+        {
+            var orderNumber = claimId["claim-".Length..];
+            return new(claimId, orderNumber, "Rejected", "WRONGCHANGEREQUEST", null, null, null, [new RemoteReturnLine("ci-1", $"{orderNumber}-1", 1, RawStatus: "Rejected")], "{}",
+                ReplacementPackage: new RemoteReplacementPackage("28717256", null, null, null), ReplacementInfoPresent: true);
+        }
+
+        public Task<AdapterResult<IReadOnlyList<RemoteReturnClaim>>> GetManyAsync(AdapterContext context, IReadOnlyList<string> externalReturnIds, CancellationToken cancellationToken)
+        {
+            if (context.IdempotencyKey.Contains("exchange-resend-reread", StringComparison.Ordinal)) Rereads.Add(externalReturnIds.ToList());
+            return Task.FromResult(AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Success(externalReturnIds.Select(Claim).ToList()));
+        }
+
+        public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteReturnClaim>.Success(Claim(externalReturnId)));
+
+        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new([], null, false)));
+
+        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private async Task RunStatusSyncAsync(Guid tenantId, Guid connectionId, IReturnPort port)
     {
         await using var db = fixture.CreateContext();
         var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, port, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);

@@ -416,17 +416,31 @@ internal sealed partial class ReturnReadService
         if (returns is not IReturnBatchReadPort batchReader) return;
         var now = timeProvider.GetUtcNow();
         var since = now.AddDays(-ExchangeResendRereadDays);
-        var ids = await db.ReturnClaims.AsNoTracking()
+        var waiting = db.ReturnClaims.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status != ReturnClaimStatus.Cancelled
                 && x.CustomerRequest == ReturnCustomerRequestPolicy.Change
                 && (x.ReplacementPackageId != null || x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
                 && x.ReplacementCargoTrackingLink == null && x.ReplacementShippedAt == null
-                && (x.LastRemoteModifiedAt ?? x.UpdatedAt) >= since)
-            .OrderBy(x => x.Id).Select(x => x.ExternalClaimId).Take(ReturnLifecycleBatchPolicy.ClaimIdsPerRequest).ToListAsync(cancellationToken);
-        ids = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
-        if (ids.Count == 0) return;
+                && x.ExternalClaimId != null && x.ExternalClaimId != ""
+                && (x.LastRemoteModifiedAt ?? x.UpdatedAt) >= since);
+        if (!await waiting.AnyAsync(cancellationToken)) return;
         var cursor = await Cursor(tenantId, connectionId, ExchangeResendRereadCursor, cancellationToken);
         if (cursor.LastAttemptAt is { } lastAttempt && now - lastAttempt < ExchangeResendRereadSpacing) return;
+        // More waiting claims than one request holds take turns (scan, 23 Nov 2026: the first 20 by id were asked every
+        // hour and the rest never): the cursor keeps the last claim asked, the next run starts after it and wraps round.
+        var take = ReturnLifecycleBatchPolicy.ClaimIdsPerRequest;
+        var hasLast = Guid.TryParse(cursor.OpaqueCursor, out var lastId);
+        var batch = await (hasLast ? waiting.Where(x => x.Id.CompareTo(lastId) > 0) : waiting)
+            .OrderBy(x => x.Id).Select(x => new { x.Id, x.ExternalClaimId }).Take(take).ToListAsync(cancellationToken);
+        if (batch.Count < take && hasLast)
+        {
+            var taken = batch.Select(x => x.Id).ToArray();
+            batch.AddRange(await waiting.Where(x => !taken.Contains(x.Id)).OrderBy(x => x.Id).Select(x => new { x.Id, x.ExternalClaimId })
+                .Take(take - batch.Count).ToListAsync(cancellationToken));
+        }
+        var ids = batch.Select(x => x.ExternalClaimId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return;
+        cursor.OpaqueCursor = batch[^1].Id.ToString("D");
         cursor.LastAttemptAt = now;
         cursor.Version++;
         await db.SaveChangesAsync(cancellationToken);
