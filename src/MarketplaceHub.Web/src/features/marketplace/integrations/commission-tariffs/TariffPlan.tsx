@@ -5,7 +5,7 @@ import { hubApi, hubFile } from '../../../../shared/api'
 import { Busy, ErrorBox, StickyActionBar, TitleHint, UiIcon } from '../../../../shared/components'
 import { newIdempotencyKey } from '../../../../shared/idempotency'
 import { compareOptionValues } from '../../../catalog/shared'
-import { parseTrNumber } from '../../../../shared/tr-number'
+import { parseTrEntry } from '../../../../shared/tr-number'
 import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from '../unit-profit'
 import { useMediaQuery } from '../../../../shared/hooks/useMediaQuery'
 import { PanelSelect } from '../../../../shared/PanelSelect'
@@ -672,10 +672,11 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   </div>
 }
 
-// A price of the seller's own as typed in Turkish ("1.250" is 1250, "1.250,50" is 1250.5), or null when it is not a
+// A price of the seller's own (saved to the server) read by the one rule of typed prices (parseTrEntry: "1.250" is 1250,
+// "1.250,50" is 1250.5; "1.25" and "1,250" are refused), or null when it is not a
 // price above zero.
 export function ownPriceValue(text: string): number | null {
-  const number = parseTrNumber(text)
+  const number = parseTrEntry(text)
   return number !== null && number > 0 ? number : null
 }
 
