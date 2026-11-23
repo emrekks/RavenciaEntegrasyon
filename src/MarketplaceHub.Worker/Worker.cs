@@ -68,7 +68,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // borrowing slots, which lease only while the pool lends them a free slot.
         var pool = laneModel.Flexible ? new LaneSlotPool(laneSlots, laneModel.ProtectedLanes, laneModel.BorrowLimits) : null;
         lanePool = pool;
-        if (pool is not null) wakeRouter.LaneNotified += pool.NoteWork;
+        if (pool is not null)
+        {
+            wakeRouter.LaneNotified += pool.NoteWork;
+            // A job ended (here or on another worker): a lock group or a bulkhead may have opened for any lane.
+            wakeRouter.JobEnded += pool.Unquiet;
+        }
         // Borrowing slots wait on a signal of their own: a lane's notification goes to its own slots first (a borrowing slot
         // that may not borrow would use the wake up and leave the job to the idle poll). They are woken when a slot is freed
         // and when one of the lane's own slots found work (there may be more), and by the lane's notifications (JobWakeRouter).
@@ -370,15 +375,14 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         {
             RecordQueueWait(job, lane);
             await ExecuteLeasedJobAsync(job, stoppingToken);
-        }, heldWork: () => QuotaHoldNow(DateTimeOffset.UtcNow) is { IsEmpty: false }), exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
+        }), exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
     }
 
     // A slot leases only with room in the pool (flexible lane model; no pool: always), and gives the room back when it found
     // nothing, failed, or its job ended. It tells the pool what its poll found: a job (NoteWork), or nothing (NoteNoWork, with
-    // the lane's epoch read before the poll, so a notification that came during the poll is not undone by its stale answer;
-    // heldWork: jobs were held for their quota at the time). Only the release of a job that ran wakes other lanes' slots.
-    internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run,
-        Func<bool>? heldWork = null)
+    // the lane's epoch read before the poll, so a notification, a job's end or a hold's end during the poll is not undone by its
+    // stale answer). Only the release of a job that ran wakes other lanes' slots.
+    internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run)
     {
         if (pool is not null && !pool.TryClaim(lane, ownSlot)) return null;
         var epoch = pool?.Epoch(lane) ?? 0;
@@ -394,7 +398,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
         if (job is null)
         {
-            pool?.NoteNoWork(lane, epoch, heldWork?.Invoke() ?? false);
+            pool?.NoteNoWork(lane, epoch);
             pool?.Release(lane, ownSlot, ranJob: false);
             return null;
         }

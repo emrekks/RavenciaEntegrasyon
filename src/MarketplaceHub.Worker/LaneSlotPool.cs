@@ -34,23 +34,21 @@ public sealed class LaneSlotPool
     private readonly Dictionary<string, int> borrowed = [];
     private readonly HashSet<string> wanting = [];
     private readonly Dictionary<string, DateTimeOffset> workNoticed = [];
-    // Lanes whose last poll found nothing (until a notification names a job for them or a slot finds one), and when each
-    // lane last found nothing.
-    private readonly HashSet<string> quiet = [];
-    private readonly Dictionary<string, DateTimeOffset> lastQuiet = [];
-    // Quiet lanes whose empty poll ran while quota-aware leasing held jobs back: quiet only until this moment (a held job may be
-    // theirs), or until the hold ends (QuotaReleased).
+    // Lanes whose last poll found nothing, quiet (borrowing nothing) until this moment, and when each lane last found nothing.
     private readonly Dictionary<string, DateTimeOffset> quietUntil = [];
-    // Each lane's work epoch: NoteWork moves it on, so a poll that started before a notification cannot mark the lane quiet
-    // after it (the notification's job was committed after the poll's snapshot).
+    private readonly Dictionary<string, DateTimeOffset> lastQuiet = [];
+    // Each lane's epoch: NoteWork and Unquiet move it on, so a poll that started before a notification, a job's end or the end
+    // of a quota hold cannot mark the lane quiet after it (its snapshot may have missed the job those made leasable).
     private readonly Dictionary<string, long> epochs = [];
-    // Lanes with known work whose borrowing slot found no room: an empty poll's release (which wakes no one else) wakes them.
+    // Lanes with known work whose borrowing slot found no room: the next release wakes them, an empty poll's too.
     private readonly HashSet<string> starved = [];
     private readonly DateTimeOffset createdAt;
     private int running;
 
-    // How long a lane stays quiet after an empty poll while jobs were held for their quota (the next poll may find one).
-    public static readonly TimeSpan QuietWhileHeld = TimeSpan.FromSeconds(15);
+    // How long a lane stays quiet after an empty poll at most: a job may become leasable without anything telling the lane (a
+    // lock group or a bulkhead freed by another worker, a missed notification), and it is never forgotten for longer than a
+    // slot's longest idle wait. A job's end, a "freed" notification and the end of a quota hold end the quiet at once (Unquiet).
+    public static readonly TimeSpan QuietFor = JobIdleWait.Maximum;
 
     // An unprotected lane whose own slot finds no room and that found nothing for this long wants its slot back anyway, so a
     // job no notification announced (a missed one, at startup or a listener reconnect) waits at most this long plus the end
@@ -86,7 +84,6 @@ public sealed class LaneSlotPool
             {
                 workNoticed[lane] = clock.GetUtcNow();
                 epochs[lane] = epochs.GetValueOrDefault(lane) + 1;
-                quiet.Remove(lane);
                 quietUntil.Remove(lane);
             }
     }
@@ -98,9 +95,9 @@ public sealed class LaneSlotPool
     }
 
     // One of the lane's slots polled and found nothing: it has no work it could take now. seenEpoch: the epoch the slot read
-    // before its poll; when work was noted since, the poll's answer is stale and changes nothing (false). heldWork: the poll
-    // ran while jobs were held for their quota, so the lane is quiet for QuietWhileHeld at most.
-    public bool NoteNoWork(string lane, long? seenEpoch = null, bool heldWork = false)
+    // before its poll; when work was noted or a job ended since, the poll's answer is stale and changes nothing (false). The
+    // lane is quiet for QuietFor.
+    public bool NoteNoWork(string lane, long? seenEpoch = null)
     {
         lock (gate)
         {
@@ -110,28 +107,30 @@ public sealed class LaneSlotPool
             starved.Remove(lane);
             if (!reserved.ContainsKey(lane)) return true;
             var now = clock.GetUtcNow();
-            quiet.Add(lane);
+            quietUntil[lane] = now + QuietFor;
             lastQuiet[lane] = now;
-            if (heldWork) quietUntil[lane] = now + QuietWhileHeld;
-            else quietUntil.Remove(lane);
             return true;
         }
     }
 
-    // Quota-aware leasing ended a hold (a full bucket emptied its waiters): a lane quiet only because its jobs were held is
-    // not quiet any more, so its borrowing slots take the held jobs at once with the wake that follows.
-    public void QuotaReleased()
+    // Something may have made a job leasable that no notification names: a job ended (its connection's lock group, its
+    // marketplace's bulkhead may have opened; JobWakeRouter's "freed", or a release of this worker's), or quota-aware leasing
+    // ended a hold. No lane is quiet any more, and a poll running now cannot make one quiet (its snapshot may be older).
+    public void Unquiet()
     {
-        lock (gate)
-        {
-            foreach (var lane in quietUntil.Keys) quiet.Remove(lane);
-            quietUntil.Clear();
-        }
+        lock (gate) UnquietLocked();
+    }
+
+    public void QuotaReleased() => Unquiet();
+
+    private void UnquietLocked()
+    {
+        quietUntil.Clear();
+        foreach (var lane in reserved.Keys) epochs[lane] = epochs.GetValueOrDefault(lane) + 1;
     }
 
     // Called under the lock.
-    private bool IsQuietNow(string lane) =>
-        quiet.Contains(lane) && (!quietUntil.TryGetValue(lane, out var until) || clock.GetUtcNow() < until);
+    private bool IsQuietNow(string lane) => quietUntil.TryGetValue(lane, out var until) && clock.GetUtcNow() < until;
 
     // A slot of the lane asks for room before it polls the queue. own: one of the lane's own slots; otherwise a borrowing slot.
     public bool TryClaim(string lane, bool ownSlot)
@@ -167,7 +166,8 @@ public sealed class LaneSlotPool
             // counts as busy, so every freed slot woke the lane's borrowing slots to poll the same empty queue, and their
             // releases woke the next ones; the storm filled the unprotected part, and an unprotected lane's own slot found no
             // room for minutes (a Trendyol return read waited 113 s after the restart on an idle worker).
-            // A lane quiet while jobs were held for their quota is quiet for QuietWhileHeld at most.
+            // Quiet for QuietFor at most, and not after a job's end or a hold's end (24 Nov review: a lane quiet until a
+            // notification named its job kept a webhook waiting whose lock group another lane's job had held).
             if (IsQuietNow(lane)) return false;
             if (own.GetValueOrDefault(lane) < floor) return false;
             if (borrowLimits.TryGetValue(lane, out var limit) && borrowed.GetValueOrDefault(lane) >= limit) return false;
@@ -207,7 +207,8 @@ public sealed class LaneSlotPool
     // slots are all busy: an empty poll's slot was busy for one query only, and waking every such lane for it (their own slots
     // are mostly busy because they are polling too) made each empty poll wake the next ones (23 Nov: a storm of polls, every
     // idle wait cut back to one second). An empty poll wakes only the lanes known to have work that found no room: those
-    // that want their slot back, and those whose borrowing slot was refused for room (each until it polls once).
+    // that want their slot back, and those whose borrowing slot was refused for room (each until it is woken once). A job that
+    // ran also ends every lane's quiet (Unquiet): its end may have opened a lock group or a bulkhead for any lane.
     public void Release(string lane, bool ownSlot, bool ranJob = true)
     {
         List<string> lanes;
@@ -220,10 +221,14 @@ public sealed class LaneSlotPool
             if (!ranJob)
                 lanes = [.. wanting.Union(starved, StringComparer.Ordinal)];
             else
+            {
+                UnquietLocked();
                 lanes = wanting.Count > 0
                     ? [.. wanting]
                     : [.. reserved.Where(item => item.Value > 0 && own.GetValueOrDefault(item.Key) >= item.Value).Select(item => item.Key)];
-            starved.Clear();
+            }
+            // Only the lanes woken now leave the starved set.
+            starved.ExceptWith(lanes);
         }
         if (lanes.Count > 0) SlotFreed?.Invoke(lanes);
     }

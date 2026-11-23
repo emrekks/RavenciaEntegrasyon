@@ -608,32 +608,90 @@ public sealed class WorkerLanePoolTests
     }
 
     [Fact]
-    public void ALaneQuietWhileJobsAreHeldForTheirQuotaIsQuietForFifteenSecondsAtMostAndNotAfterTheHoldEnds()
+    public void ALaneIsQuietForFifteenSecondsAtMostAndNotAfterAJobEndsOrAHoldEnds()
     {
+        // 24 Nov review: quiet lasted until a notification named the lane's job, but a job becomes leasable in other ways too.
+        // The hot lane's three own slots run jobs, a webhook is notified, the borrowing slot's poll skips it (its connection's
+        // lock group runs in another lane) and the lane went quiet for good: the webhook waited for one of hot's own jobs.
         var clock = new ManualClock();
-        var pool = new LaneSlotPool(new Dictionary<string, int> { ["product-catalog"] = 1, ["background"] = 3 }, [], clock: clock);
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 3, ["product-catalog"] = 1, ["background"] = 4 }, ["hot"], clock: clock);
+        for (var slot = 0; slot < 3; slot++) Assert.True(pool.TryClaim("hot", true));
         Assert.True(pool.TryClaim("product-catalog", true));
-        // The borrowing slot's poll found only held jobs.
-        Assert.True(pool.TryClaim("product-catalog", false));
-        pool.NoteNoWork("product-catalog", heldWork: true);
-        pool.Release("product-catalog", false, ranJob: false);
-        Assert.False(pool.TryClaim("product-catalog", false));
-        // The hold ends (a full bucket emptied its waiters): the held jobs are taken at once, not after the own slot's job.
-        pool.QuotaReleased();
-        Assert.True(pool.TryClaim("product-catalog", false));
-        pool.NoteNoWork("product-catalog", heldWork: true);
-        pool.Release("product-catalog", false, ranJob: false);
-        // A hold that ends by time (the job runnable longer than the hold allows) raises nothing: 15 s at most.
-        clock.Advance(LaneSlotPool.QuietWhileHeld - TimeSpan.FromSeconds(1));
-        Assert.False(pool.TryClaim("product-catalog", false));
+        pool.NoteWork("hot");
+        Assert.True(pool.TryClaim("hot", false));
+        Assert.True(pool.NoteNoWork("hot", pool.Epoch("hot")));
+        pool.Release("hot", false, ranJob: false);
+        Assert.False(pool.TryClaim("hot", false));
+        // The catalog job that held the lock group ends: the webhook is leased on the woken borrowing slot at once.
+        pool.Release("product-catalog", true, ranJob: true);
+        Assert.True(pool.TryClaim("hot", false));
+        pool.Release("hot", false, ranJob: true);
+        // A bulkhead or lock group freed by a job of another worker or the api: the "freed" notification ends the quiet.
+        var router = new JobWakeRouter(WorkerLanes.All());
+        var live = new LaneSlotPool(WorkerLanes.All().ToDictionary(lane => lane.Name, lane => lane.DefaultSlots), [], clock: clock);
+        router.JobEnded += live.Unquiet;
+        for (var slot = 0; slot < WorkerLanes.All().Single(lane => lane.Name == "hot").DefaultSlots; slot++) Assert.True(live.TryClaim("hot", true));
+        live.NoteNoWork("hot");
+        Assert.False(live.TryClaim("hot", false));
+        router.Route(JobWakeRouter.Freed);
+        Assert.True(live.TryClaim("hot", false));
+        // Nothing tells the lane (a missed notification on a listener reconnect, a hold that ended by time): 15 s at most.
+        Assert.True(pool.TryClaim("hot", false));
+        pool.NoteNoWork("hot");
+        pool.Release("hot", false, ranJob: false);
+        clock.Advance(LaneSlotPool.QuietFor - TimeSpan.FromSeconds(1));
+        Assert.False(pool.TryClaim("hot", false));
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.True(pool.TryClaim("product-catalog", false));
-        // Nothing held: quiet until work comes, however long.
-        pool.NoteNoWork("product-catalog");
-        pool.Release("product-catalog", false, ranJob: false);
-        clock.Advance(TimeSpan.FromHours(1));
+        Assert.True(pool.TryClaim("hot", false));
+        // The end of a quota hold ends it at once.
+        pool.NoteNoWork("hot");
+        pool.Release("hot", false, ranJob: false);
+        Assert.False(pool.TryClaim("hot", false));
         pool.QuotaReleased();
-        Assert.False(pool.TryClaim("product-catalog", false));
+        Assert.True(pool.TryClaim("hot", false));
+    }
+
+    [Fact]
+    public async Task AHoldOrAJobEndingDuringAnEmptyPollLeavesTheLaneNotQuiet()
+    {
+        // The poll's snapshot may predate what the end made leasable: its "nothing" is stale (the lane epoch moved on).
+        foreach (var end in new Action<LaneSlotPool>[] { pool => pool.QuotaReleased(), pool => pool.Release("background", true, ranJob: true), pool => pool.Unquiet() })
+        {
+            var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["background"] = 2 }, []);
+            Assert.True(pool.TryClaim("hot", true));
+            Assert.True(pool.TryClaim("background", true));
+            Assert.Null(await WorkerService.LeaseThroughPoolAsync(pool, "hot", false, () =>
+            {
+                end(pool);
+                return Task.FromResult<LeasedJob?>(null);
+            }, _ => Task.CompletedTask));
+            Assert.False(pool.IsQuiet("hot"));
+            Assert.True(pool.TryClaim("hot", false));
+        }
+    }
+
+    [Fact]
+    public void AStarvedLaneStaysToBeWokenUntilItIsWoken()
+    {
+        // A borrower with known work refused for room, and a lane that wants its slot back: a job's end wakes only the lane that
+        // wants its slot; the starved one is woken by the next release, not forgotten.
+        var clock = new ManualClock();
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["product-catalog"] = 1, ["background"] = 1 }, [], clock: clock);
+        var freed = new List<IReadOnlyList<string>>();
+        pool.SlotFreed += lanes => freed.Add(lanes);
+        Assert.True(pool.TryClaim("hot", true));
+        Assert.True(pool.TryClaim("product-catalog", true));
+        Assert.True(pool.TryClaim("product-catalog", false));
+        pool.NoteWork("hot");
+        Assert.False(pool.TryClaim("hot", false));
+        pool.NoteWork("background");
+        Assert.False(pool.TryClaim("background", true));
+        Assert.True(pool.Wants("background"));
+        pool.Release("product-catalog", false, ranJob: true);
+        Assert.Equal(["background"], freed[^1]);
+        Assert.True(pool.TryClaim("background", true));
+        pool.Release("background", true, ranJob: false);
+        Assert.Equal(["hot"], freed[^1]);
     }
 
     [Fact]
@@ -679,7 +737,7 @@ public sealed class WorkerLanePoolTests
                     var lane = lanes[random.Next(lanes.Length)];
                     var epoch = pool.Epoch(lane);
                     if (random.Next(2) == 0) pool.NoteWork(lane);
-                    pool.NoteNoWork(lane, epoch, heldWork: random.Next(2) == 0);
+                    pool.NoteNoWork(lane, epoch);
                 }
                 else if (action == 6)
                 {
