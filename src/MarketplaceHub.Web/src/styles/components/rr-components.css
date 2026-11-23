@@ -1292,3 +1292,29 @@ main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl .rr-reasoncell > small { -
 
 /* the label of a return's cargo code (Pazarama) above its number, and the Hepsiburada note while no number exists: soft and small */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cargocell .rr-cargo-lbl { color: var(--rr-muted); font-size: 11.5px; }
+
+/* Phones, order and return cards (owner, 23 Nov 2026): the header is ONE line, the marketplace mark, the order number, the
+   copy icon and the Değişim tag, the number right beside the mark (8px, not a 96px column). When it cannot fit, the marks
+   (truck) wrap to the line below first. The mark sits on the first line (its box is centred on a 20px line by --rr-mark-h).
+   The package number and the shipping deadline show under the order date, as on the tablet card and the desktop row. */
+@media (max-width: 760px) {
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div { grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 8px; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > :is(.rr-wordmark, .rr-wordmark-text, .rr-wordmark-row) { align-self: start; margin-top: calc((20px - var(--rr-mark-h, 20px)) / 2); }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; gap: 2px 4px; min-height: 20px; line-height: 20px; white-space: nowrap; overflow-wrap: normal; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no > .rr-omarks { order: 3; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no > .rr-buyer-tag { order: 2; margin: 0; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-num + small.rr-num { display: block; grid-column: 1 / -1; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-num + small.rr-num + small.rr-num { display: none; }
+  html body main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-due { display: block; grid-column: 1 / -1; margin-top: 0; }
+  /* a long number (PttAVM, 22 characters) is set smaller so the copy icon stays on its line */
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no.rr-on-long { font-size: 12px; letter-spacing: -0.3px; }
+  /* less than 24 hours left: the warning colour (late stays red) */
+  html body main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-due.is-soon, html body main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-due.is-soon b { color: var(--rr-warn); }
+}
+/* the narrowest phones: the number a size smaller and tighter gaps, so number, copy icon and tag still share the line */
+@media (max-width: 380px) {
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell { gap: 8px; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div { column-gap: 6px; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no { column-gap: 2px; font-size: 13px; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no > .rr-buyer-tag { padding-inline: 5px; font-size: 11px; }
+}
