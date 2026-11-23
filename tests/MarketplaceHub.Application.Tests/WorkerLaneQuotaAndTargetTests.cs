@@ -449,6 +449,8 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
                     .LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None);
                 var hot = Assert.Single(lanes, lane => lane.Lane == "HOT");
                 Assert.Equal(60, hot.TargetSeconds);
+                // Legacy lane model: no borrowed count, whatever runs.
+                Assert.Null(hot.Borrowed);
                 Assert.Equal(LaneWaitStatus.Alert, hot.WaitStatus);
                 Assert.NotNull(hot.AlertSince);
                 Assert.True(hot.OldestWaitSeconds > 60);
@@ -516,6 +518,49 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
         {
             await CleanupAsync(tenant.Id);
             await CleanupAsync(resetTenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task WithFlexibleLanesTheLaneMetricsCountTheSlotsALaneRunsBeyondItsOwn()
+    {
+        var tenant = NewTenant("lane-borrowed");
+        var connection = NewConnection(tenant);
+        // Four product catalog reads run (three own slots): one is on a borrowed slot.
+        var running = Enumerable.Range(0, 4).Select(index =>
+        {
+            var job = NewJob(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, priority: 5);
+            job.LockGroup = $"borrowed-{index}";
+            job.Status = JobStatus.Leased;
+            job.AttemptCount = 1;
+            job.LeaseTokenHash = "running";
+            job.LeaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30);
+            return job;
+        }).ToList();
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.PlatformConnections.Add(connection);
+            setup.IntegrationJobs.AddRange(running);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            async Task<LaneMetricView> CatalogAsync(IConfiguration configuration)
+            {
+                await using var db = fixture.CreateContext();
+                var lanes = await new QueueHealthService(db, Microsoft.Extensions.Options.Options.Create(new MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolOptions()), TimeProvider.System, configuration)
+                    .LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None);
+                return Assert.Single(lanes, lane => lane.Lane == "PRODUCT_CATALOG");
+            }
+            var flexible = await CatalogAsync(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Worker:LaneModel"] = "flexible" }).Build());
+            Assert.True(flexible.Borrowed >= 1);
+            Assert.Null((await CatalogAsync(new ConfigurationBuilder().Build())).Borrowed);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
         }
     }
 

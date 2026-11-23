@@ -31496,6 +31496,13 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "borrowed": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },

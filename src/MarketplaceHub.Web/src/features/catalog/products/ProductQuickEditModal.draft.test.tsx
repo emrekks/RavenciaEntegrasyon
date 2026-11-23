@@ -133,3 +133,58 @@ describe('ProductQuickEditModal opened from the product editor', () => {
     expect(document.body.querySelector('.rr-callout')?.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz')
   })
 })
+
+describe('the editor window with marketplace prices', () => {
+  const offers: Record<string, { list: string; sale: string }> = { 'b-s': { list: '180', sale: '150' }, 'b-xl': { list: '180', sale: '150' } }
+  type Channels = NonNullable<import('./ProductQuickEditModal').QuickEditDraft['channels']>
+  const channels = (custom: boolean, toggle = vi.fn()): Channels => [{ connectionId: 'c-ty', name: 'Trendyol', platformCode: 'TRENDYOL', takesListPrice: true, custom, onToggleCustom: toggle }]
+  async function mount(extra: Partial<import('./ProductQuickEditModal').QuickEditDraft>) {
+    root = createRoot(container)
+    const onApplyChannelPrices = vi.fn()
+    await act(async () => { root.render(<MemoryRouter><ProductQuickEditModal onClose={() => undefined} draft={{ title: 'Gömlek', modelCode: 'MZ070', rows, onApply: () => undefined, channelPrice: key => offers[key] ?? null, onApplyChannelPrices, ...extra }} /></MemoryRouter>) })
+    return onApplyChannelPrices
+  }
+  async function pickChannel(name: string) {
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith(name))!.click() })
+  }
+
+  it('lists a marketplace under its own heading and names it in the band', async () => {
+    await mount({ channels: channels(true) })
+    await pickChannel('Satış Fiyatı')
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    expect(Array.from(document.body.querySelectorAll('.pm-pop > .rr-opt-group')).map(item => item.textContent)).toContain('Trendyol')
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    expect(document.body.querySelector('.rr-cr-band')?.textContent).toBe('Trendyol · Satış Fiyatı (₺)')
+  })
+
+  it('shows a marketplace that follows the panel price read-only, with the card-level Özel Fiyat switch beside it', async () => {
+    const toggle = vi.fn()
+    await mount({ channels: channels(false, toggle) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    expect(document.body.querySelector('.rr-mx-box input[aria-label*="Trendyol"]')).toBeNull()
+    expect(document.body.querySelector('.rr-mx-follow')).not.toBeNull()
+    expect(document.body.textContent).toContain('Tüm varyantlar için')
+    await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Trendyol özel fiyat"]')!)
+    expect(toggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands a typed marketplace price to the editor as a draft and sends nothing itself', async () => {
+    const onApplyChannelPrices = await mount({ channels: channels(true) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, '140')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '180', salePrice: '140' }])
+    expect(hubApi).not.toHaveBeenCalled()
+  })
+
+  it('switches the marketplace off for a new product, saying to save first', async () => {
+    await mount({ channels: channels(true), isNewProduct: true })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    const option = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="option"]')).filter(item => item.textContent?.includes('Önce ürünü kaydedin'))
+    expect(option.length).toBeGreaterThan(0)
+    expect(option.every(item => item.disabled)).toBe(true)
+  })
+})
