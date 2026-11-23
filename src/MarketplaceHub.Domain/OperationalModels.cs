@@ -85,8 +85,9 @@ public sealed class JobVariantResult
 }
 
 // What a read job pulled, one row per job: the outcome counts of every record it read (they always add up to Received)
-// and up to JobReadRecorder.MaxRecords of the records themselves as JSON (reference, order number, status, outcome,
-// reason; never a customer's name or address). Omitted counts the records beyond that cap.
+// and up to JobReadRecorder.Cap(kind) of the records themselves as JSON (reference, order number, status, outcome,
+// reason; never a customer's name or address): 100, a product read every product up to 20 000 (from 19 Nov 2026).
+// Omitted counts the records beyond that cap.
 public sealed class JobReadSummary
 {
     public Guid Id { get; set; }

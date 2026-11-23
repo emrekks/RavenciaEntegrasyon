@@ -468,7 +468,11 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var row = await db.JobReadSummaries.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == job.TenantId && x.JobId == job.Id, cancellationToken);
         if (row is null) return null;
         var counts = new JobReadCounts(row.Received, row.Inserted, row.Updated, row.Unchanged, row.Skipped, row.Failed);
-        return new JobReadSummaryView(row.Kind, counts, row.Omitted, JobReadRecorder.Deserialize(row.RecordsJson), JobReadSentence.Describe(row.Kind, marketplace, counts));
+        // A product read keeps every record (GET /jobs/{id}/read-records lists them); the detail carries the first 100
+        // (problems first) and counts the rest as before.
+        var records = JobReadRecorder.Deserialize(row.RecordsJson);
+        var shown = records.Count > JobReadRecorder.MaxRecords ? records.Take(JobReadRecorder.MaxRecords).ToList() : records;
+        return new JobReadSummaryView(row.Kind, counts, row.Omitted + (records.Count - shown.Count), shown, JobReadSentence.Describe(row.Kind, marketplace, counts));
     }
 
     // What a product write job sent, from its stored payload: the product's title and model codes from the card, and the

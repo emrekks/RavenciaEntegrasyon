@@ -432,4 +432,8 @@ public interface IProductActivityService
 
     // Rows per kind under the list's filters except the kind filter; Kinds, After and Limit are ignored.
     Task<ServiceResult<IReadOnlyList<ProductActivityCount>>> CountsAsync(Guid tenantId, ProductActivityQuery query, CancellationToken cancellationToken);
+
+    // A numbered page in the list's order (newest first, then by id): take rows (1-200) after skip, with every row the
+    // filters keep (the kind filter too) counted; After and Limit are ignored.
+    Task<ServiceResult<CountedPage<ProductActivityView>>> OffsetPageAsync(Guid tenantId, ProductActivityQuery query, int skip, int take, CancellationToken cancellationToken);
 }
