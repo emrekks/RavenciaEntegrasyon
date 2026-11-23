@@ -26,7 +26,7 @@ internal sealed partial class CatalogImportService
         // J1 (15 Nov 2026): the stops before the read name their cause. Both last: the store's platform and environment do not
         // change under a queued job (a passive store is stopped before this, CONNECTION_INACTIVE), and a run is not recreated.
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED"))
-            throw new JobProcessingException(JobExecutionResult.Blocked("CATALOG_STRUCTURE_NOT_SUPPORTED", "Katalog yapısı aktarımı yalnız etkin Trendyol ve Hepsiburada mağazalarında yapılır; bu mağazada okunmadı."));
+            throw new JobProcessingException(JobExecutionResult.Blocked("CATALOG_STRUCTURE_NOT_SUPPORTED", "Katalog yapısı çekimi yalnız etkin Trendyol ve Hepsiburada mağazalarında yapılır; bu mağazada okunmadı."));
         if (!Guid.TryParse(ReadText(payloadJson, "runId"), out var runId)) throw CatalogStructureRunMissing();
         var run = await db.CatalogStructureRuns.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == runId && x.ConnectionId == connectionId, cancellationToken);
         if (run is null) throw CatalogStructureRunMissing();
@@ -49,7 +49,7 @@ internal sealed partial class CatalogImportService
             finished.Version++;
             await db.SaveChangesAsync(cancellationToken);
             if (jobId is { } doneJob)
-                await UpdateProductSyncProgressAsync(tenantId, doneJob, report.Totals.Products, report.Totals.Products, 100, apply ? "Yapı panele aktarıldı" : "Önizleme hazır", cancellationToken);
+                await UpdateProductSyncProgressAsync(tenantId, doneJob, report.Totals.Products, report.Totals.Products, 100, apply ? "Yapı panele çekildi" : "Önizleme hazır", cancellationToken);
             return true;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -69,7 +69,7 @@ internal sealed partial class CatalogImportService
     private static readonly PageGuard CatalogStructurePageGuard = new(MaxPages: CatalogStructurePageCap, StopOnRepeatedCursor: true);
 
     private static JobProcessingException CatalogStructureRunMissing() =>
-        new(JobExecutionResult.Blocked("CATALOG_STRUCTURE_RUN_MISSING", "Katalog yapısı aktarımının kaydı panelde bulunamadı; ürünler okunmadı. Aktarımı yeniden başlatın."));
+        new(JobExecutionResult.Blocked("CATALOG_STRUCTURE_RUN_MISSING", "Katalog yapısı çekiminin kaydı panelde bulunamadı; ürünler okunmadı. Çekimi yeniden başlatın."));
 
     private async Task<StructureReport> RunCatalogStructure(Guid tenantId, PlatformConnection connection, bool apply, string correlationId, Guid? jobId, CancellationToken cancellationToken)
     {
@@ -118,9 +118,9 @@ internal sealed partial class CatalogImportService
         // J3 (15 Nov 2026): a product list that never ends, or names the page just read as the next one, stops the import
         // (the run is marked failed) instead of reading until the lease runs out; nothing is applied from a partial read.
         if (walk.Stop == PagedReadStop.PageCap)
-            throw PagedReadLoop.GuardFailure("CATALOG_STRUCTURE_PAGE_CAP", $"{platformLabel} ürün listesi {CatalogStructurePageCap} sayfayı aştı; katalog yapısı aktarımı durduruldu ve hiçbir şey uygulanmadı.");
+            throw PagedReadLoop.GuardFailure("CATALOG_STRUCTURE_PAGE_CAP", $"{platformLabel} ürün listesi {CatalogStructurePageCap} sayfayı aştı; katalog yapısı çekimi durduruldu ve hiçbir şey uygulanmadı.");
         if (walk.Stop == PagedReadStop.RepeatedCursor)
-            throw PagedReadLoop.GuardFailure("CATALOG_STRUCTURE_PAGE_REPEATED", $"{platformLabel} ürün listesi aynı sayfayı yeniden sonraki sayfa olarak verdi; katalog yapısı aktarımı durduruldu ve hiçbir şey uygulanmadı.");
+            throw PagedReadLoop.GuardFailure("CATALOG_STRUCTURE_PAGE_REPEATED", $"{platformLabel} ürün listesi aynı sayfayı yeniden sonraki sayfa olarak verdi; katalog yapısı çekimi durduruldu ve hiçbir şey uygulanmadı.");
         report.ResponseFields = (sampleKeys ?? []).ToList();
         if (report.Totals.Products > 0 && usage.Count == 0)
             report.Warnings.Add($"{platformLabel} ürün yanıtında kategori bilgisi bulunamadı. Yanıttaki alanlar: {string.Join(", ", sampleKeys ?? [])}");

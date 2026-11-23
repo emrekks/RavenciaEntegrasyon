@@ -358,7 +358,7 @@ internal sealed partial class SalesJobService
             if (conflictResolution == FullOrderSyncConflictResolution.Reject)
                 return ServiceResult<Guid>.Fail("ORDER_SYNC_ALREADY_RUNNING", "Tam sipariş taraması, bağlantıda başka bir sipariş işlemi çalıştığı için kuyruğa alınamadı. İşlem tamamlanınca yeniden deneyin.", 409);
             if (ProductImportConcurrencyPolicy.RejectsModeCollision(type, conflicting.JobType))
-                return ServiceResult<Guid>.Fail("PRODUCT_SYNC_ALREADY_RUNNING", "Bu bağlantıda başka bir ürün aktarımı çalışıyor. Önce mevcut işlemi durdurup eşlemeyi yeniden başlatın.", 409);
+                return ServiceResult<Guid>.Fail("PRODUCT_SYNC_ALREADY_RUNNING", "Bu bağlantıda başka bir ürün çekimi çalışıyor. Önce mevcut işlemi durdurup eşlemeyi yeniden başlatın.", 409);
             return ServiceResult<Guid>.Ok(conflicting.Id);
         }
 

@@ -401,7 +401,7 @@ internal sealed partial class CatalogImportService
             ?? (observeOnly || addOnly ? null : categoryContext?.LocalCategory ?? await UpsertCatalogCategory(tenantId, snapshot.CategoryName, cancellationToken));
         if (category is { } mappedCategory && categoryContext is not null && (!mappedCategory.IsActive || !mappedCategory.IsLeaf))
         {
-            await RecordIssue(tenantId, $"category-mapping-unusable:{connectionId:D}:{mappedCategory.Id:D}", "CATEGORY_MAPPING_UNUSABLE", $"Pazaryeri kategorisinin eşlendiği \"{Short(mappedCategory.Name, 120)}\" kategorisi {(mappedCategory.IsActive ? "alt kategorilere bölünmüş" : "kapalı")}; ürünler kategorisiz aktarıldı. Eşleştirmeyi etkin bir yaprak kategoriye çevirin.", cancellationToken);
+            await RecordIssue(tenantId, $"category-mapping-unusable:{connectionId:D}:{mappedCategory.Id:D}", "CATEGORY_MAPPING_UNUSABLE", $"Pazaryeri kategorisinin eşlendiği \"{Short(mappedCategory.Name, 120)}\" kategorisi {(mappedCategory.IsActive ? "alt kategorilere bölünmüş" : "kapalı")}; ürünler kategorisiz çekildi. Eşleştirmeyi etkin bir yaprak kategoriye çevirin.", cancellationToken);
             category = null;
         }
         if (!preserveLocal && !onlyNewVariants)
@@ -1032,7 +1032,7 @@ internal sealed partial class CatalogImportService
             || await db.BrandMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.LocalId == brandId, cancellationToken);
         if (alreadyMapped)
         {
-            await Unusable($"aynı adlı panel markası «{Short(brand.Name, 120)}» bu bağlantıda başka bir markaya eşli; ürünler bu panel markasıyla aktarıldı, eşleme yazılmadı");
+            await Unusable($"aynı adlı panel markası «{Short(brand.Name, 120)}» bu bağlantıda başka bir markaya eşli; ürünler bu panel markasıyla çekildi, eşleme yazılmadı");
             return brandId;
         }
         var brandSnapshotId = await db.ReferenceSnapshots.AsNoTracking()

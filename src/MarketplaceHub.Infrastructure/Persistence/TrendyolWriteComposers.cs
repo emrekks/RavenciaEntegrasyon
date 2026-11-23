@@ -367,7 +367,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 isShopify ? row.Link.ExternalId : null, row.Link.FulfilledByMarketplace));
         }
         if (rows.Count == 0 && skippedByHealth > 0) return NoChanges([]);
-        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş ya da pazar yerinden içe aktarılmış varyant ve ACTIVE teklif gerekir.", 422);
+        if (rows.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("LIVE_OFFER_REQUIRED", "Fiyat-stok gönderimi için LIVE eşleşmiş ya da pazar yerinden çekilmiş varyant ve ACTIVE teklif gerekir.", 422);
         var missingInventory = rows.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
 
@@ -545,7 +545,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           select new { Offer = offer, Variant = variant, Inventory = inventory, ExternalId = remoteLink.ExternalId })
             .ToListAsync(cancellationToken);
         var candidates = rows.Where(row => HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.ExternalId)).ToList();
-        if (candidates.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_SKU_LINK_REQUIRED", "Test fiyat-stok yüklemesi için Hepsiburada'dan içe aktarılmış, satışta olan bir teklif (HB kodu) gerekir.", 422);
+        if (candidates.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_SKU_LINK_REQUIRED", "Test fiyat-stok yüklemesi için Hepsiburada'dan çekilmiş, satışta olan bir teklif (HB kodu) gerekir.", 422);
         var missingInventory = candidates.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == candidates.Count) return MissingInventory(missingInventory);
 

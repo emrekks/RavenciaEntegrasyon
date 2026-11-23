@@ -1262,7 +1262,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             await transaction.RollbackAsync(cancellationToken);
             db.ChangeTracker.Clear();
-            return Conflict<ProductMarketplaceCodesView>("MARKETPLACE_CODES_CHANGED", "Kodlar bu sırada başka bir işlemde (örneğin ürün aktarımı) değişti; pencereyi yenileyip yeniden kaydedin.");
+            return Conflict<ProductMarketplaceCodesView>("MARKETPLACE_CODES_CHANGED", "Kodlar bu sırada başka bir işlemde (örneğin ürün çekimi) değişti; pencereyi yenileyip yeniden kaydedin.");
         }
         return await GetProductMarketplaceCodesAsync(tenantId, id, cancellationToken);
     }

@@ -81,7 +81,7 @@ internal static class JobChangesExportRows
         ["BULK_EDIT"] = "Toplu Düzenleme",
         ["PRICE_EDIT"] = "Fiyat Düzenleme",
         ["FILE_IMPORT"] = "Excel",
-        ["MARKETPLACE_IMPORT"] = "Pazaryeri İçe Aktarımı",
+        ["MARKETPLACE_IMPORT"] = "Pazaryeri Çekimi",
         ["PUBLISH"] = "Toplu Yayın",
         ["CLASSIC_IMPORT"] = "İçe Aktarım",
         ["QUICK_UPDATE"] = "Hızlı Güncelle",

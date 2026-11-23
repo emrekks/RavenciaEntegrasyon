@@ -99,7 +99,7 @@ public static class AttentionNoticePolicy
         "RETURN_RECONCILIATION" => "İade uzlaştırma",
         "QUESTIONS" => "Müşteri sorusu okuma",
         "REFERENCE_DATA" => "Kategori ve marka okuma",
-        "PRODUCTS" => "Ürün aktarımı",
+        "PRODUCTS" => "Ürün çekimi",
         "PRODUCT_APPROVAL" => "Ürün onay kontrolü",
         "STOCK_RECONCILIATION" => "Stok uzlaştırma",
         "FINANCE" => "Finans okuma",

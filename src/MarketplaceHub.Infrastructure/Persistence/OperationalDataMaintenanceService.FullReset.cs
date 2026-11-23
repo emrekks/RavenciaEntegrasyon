@@ -98,7 +98,7 @@ public sealed partial class OperationalDataMaintenanceService
                 await DeleteInBatchesAsync($"""DELETE FROM sales.marketplace_finance_transactions WHERE "Id" IN (SELECT "Id" FROM sales.marketplace_finance_transactions WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
                 await DeleteInBatchesAsync($"""DELETE FROM sales.marketplace_cargo_invoice_items WHERE "Id" IN (SELECT "Id" FROM sales.marketplace_cargo_invoice_items WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
                 await DeleteInBatchesAsync($"""DELETE FROM sales.marketplace_payout_orders WHERE "Id" IN (SELECT "Id" FROM sales.marketplace_payout_orders WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
-                await ReportFullResetProgressAsync(tenantId, jobId, 4, "Ürün aktarım kayıtları siliniyor", cancellationToken);
+                await ReportFullResetProgressAsync(tenantId, jobId, 4, "Ürün çekim kayıtları siliniyor", cancellationToken);
                 await DeleteInBatchesAsync($"""DELETE FROM catalog.product_import_staging_records WHERE "Id" IN (SELECT "Id" FROM catalog.product_import_staging_records WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
                 await ReportFullResetProgressAsync(tenantId, jobId, 5, "Kategori, özellik ve marka listeleri siliniyor", cancellationToken);
                 // A list's values go in batches before the list itself: deleting a list cascades to all of its values at once.

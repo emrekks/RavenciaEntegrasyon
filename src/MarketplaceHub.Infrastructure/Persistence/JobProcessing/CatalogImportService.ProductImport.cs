@@ -46,7 +46,7 @@ internal sealed partial class CatalogImportService
         // Keep it restricted to operational connections and recognised environments.
         // KUYRUK-9 (16 Nov 2026): named instead of the generic F3_JOB_REJECTED; still blocked, as before.
         if (connection is null || connection.Environment is not ("STAGE" or "PRODUCTION") || connection.Status is not ("ACTIVE" or "VERIFIED"))
-            throw new JobProcessingException(JobExecutionResult.Blocked("PRODUCT_IMPORT_CONNECTION_NOT_ELIGIBLE", "Ürün aktarımı yalnız etkin ya da doğrulanmış, canlı veya test ortamındaki desteklenen mağazalarda yapılır; bu mağazada ürün okunmadı."));
+            throw new JobProcessingException(JobExecutionResult.Blocked("PRODUCT_IMPORT_CONNECTION_NOT_ELIGIBLE", "Ürün çekimi yalnız etkin ya da doğrulanmış, canlı veya test ortamındaki desteklenen mağazalarda yapılır; bu mağazada ürün okunmadı."));
         var inventoryPolicy = await db.ConnectionInventoryPolicies.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
 
@@ -136,7 +136,7 @@ internal sealed partial class CatalogImportService
                 .Where(x => x.TenantId == tenantId && x.JobId == importJobId)
                 .ExecuteDeleteAsync(cancellationToken);
             if (jobId is { } finishedJob)
-                await UpdateProductSyncProgressAsync(tenantId, finishedJob, importSession.ReceivedProducts, importSession.TotalProducts, 100, "Aktarımı tamamlandı", cancellationToken, keepExistingTotal: true);
+                await UpdateProductSyncProgressAsync(tenantId, finishedJob, importSession.ReceivedProducts, importSession.TotalProducts, 100, "Çekim tamamlandı", cancellationToken, keepExistingTotal: true);
             return true;
         }
         var previousProgress = jobId is { } progressJob
@@ -203,7 +203,7 @@ internal sealed partial class CatalogImportService
             : null;
         var pageNumber = importSession.PageNumber;
         if (jobId is { } currentJob && scanRequired)
-            await UpdateProductSyncProgressAsync(tenantId, currentJob, receivedProducts, totalProducts, null, scanLabel + lifecycleLabel + contentLabel + " · Ürün aktarım havuzu hazırlanıyor", cancellationToken);
+            await UpdateProductSyncProgressAsync(tenantId, currentJob, receivedProducts, totalProducts, null, scanLabel + lifecycleLabel + contentLabel + " · Ürün çekim havuzu hazırlanıyor", cancellationToken);
         while (scanRequired)
         {
             pageNumber++;
@@ -302,7 +302,7 @@ internal sealed partial class CatalogImportService
             if (hasMore && nextCursor is not null && string.Equals(result.Value.NextCursor, nextCursor, StringComparison.Ordinal))
                 throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_REPEATED", "Pazaryeri ürün listesi okunan sayfayı yeniden sonraki sayfa olarak verdi; ürün aktarımı durduruldu.");
             if (hasMore && pageNumber >= ProductImportPageCap)
-                throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_CAP", $"Pazaryeri ürün listesi {ProductImportPageCap} sayfayı aştı; ürün aktarımı kaldığı sayfada durduruldu.");
+                throw PagedReadLoop.GuardFailure("PRODUCT_IMPORT_PAGE_CAP", $"Pazaryeri ürün listesi {ProductImportPageCap} sayfayı aştı; ürün çekimi kaldığı sayfada durduruldu.");
             nextCursor = hasMore ? result.Value.NextCursor : null;
             var pageSession = await db.ProductImportSessions.SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
             pageSession.NextCursor = nextCursor;
@@ -438,7 +438,7 @@ internal sealed partial class CatalogImportService
                 .ToListAsync(cancellationToken);
             if (stagingRows.Count == 0) continue;
             var snapshotGroups = stagingRows
-                .Select(row => JsonSerializer.Deserialize<RemoteCatalogProduct>(row.SnapshotJson) ?? throw new JsonException("Ürün aktarım havuzu kaydı çözümlenemedi."))
+                .Select(row => JsonSerializer.Deserialize<RemoteCatalogProduct>(row.SnapshotJson) ?? throw new JsonException("Ürün çekim havuzu kaydı çözümlenemedi."))
                 .GroupBy(x => x.ExternalProductId, StringComparer.OrdinalIgnoreCase)
                 .Select(MergeCatalogSnapshots)
                 .ToList();
@@ -664,7 +664,7 @@ internal sealed partial class CatalogImportService
         {
             if (jobId is { } failedJob)
                 await UpdateProductSyncProgressAsync(tenantId, failedJob, receivedProducts, totalProducts, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken);
-            throw new JobProcessingException(JobExecutionResult.ManualReview("PRODUCT_IMPORT_ALL_FAILED", "Ürün aktarımındaki kayıtların tamamı işlenemedi; aktarım başarılı sayılmadı."));
+            throw new JobProcessingException(JobExecutionResult.ManualReview("PRODUCT_IMPORT_ALL_FAILED", "Ürün çekimindeki kayıtların tamamı işlenemedi; çekim başarılı sayılmadı."));
         }
         if (!singleLookup)
         {
@@ -688,7 +688,7 @@ internal sealed partial class CatalogImportService
             var releaseKey = $"product-sync-watermark-released:{connectionId}";
             if (completed.Released)
                 await RecordIssue(tenantId, releaseKey, "PRODUCT_IMPORT_FAILED_LEFT_BEHIND",
-                    $"Bazı ürünler art arda {ProductImportScanPolicy.MaxHeldRuns} ürün çekiminde aktarılamadı; değişen ürün taraması bu ürünleri beklemeden ilerledi. Aktarılamayan ürünler Operasyon Sorunları'ndaki ürün aktarım uyarılarında duruyor; Tam Katalog Taraması ya da tekil ürün çekimi onları yeniden okur.",
+                    $"Bazı ürünler art arda {ProductImportScanPolicy.MaxHeldRuns} ürün çekiminde panele alınamadı; değişen ürün taraması bu ürünleri beklemeden ilerledi. Alınamayan ürünler Operasyon Sorunları'ndaki ürün çekim uyarılarında duruyor; Tam Katalog Taraması ya da tekil ürün çekimi onları yeniden okur.",
                     cancellationToken);
             // A whole catalog read without a failed model has read the products left behind again.
             else if (failedModels == 0 && effectiveFullScan && !(newOnly || existingOnly || mappingOnly || optionsOnly))
@@ -768,7 +768,7 @@ internal sealed partial class CatalogImportService
     }
 
     internal static string UnaddedSizesNote(int count) =>
-        $"{count} yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.";
+        $"{count} yeni beden var; eklemek için Yeni Ürünleri Çek ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.";
 
     private async Task RecordProductImportFailure(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, Exception exception, CancellationToken cancellationToken, string? conflictRows = null)
     {
@@ -780,7 +780,7 @@ internal sealed partial class CatalogImportService
         var constraint = root is PostgresException postgres
             ? $"sqlState={postgres.SqlState}; constraint={postgres.ConstraintName ?? "—"}; table={postgres.TableName ?? "—"}; detail={postgres.Detail ?? postgres.MessageText}"
             : $"exception={root.GetType().Name}; detail={root.Message}{(conflictRows is null ? "" : $" rows={conflictRows}")}";
-        var summary = Short($"Pazar yeri ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' aktarılmadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
+        var summary = Short($"Pazar yeri ürünü '{(string.IsNullOrWhiteSpace(externalProductId) ? "kimlik yok" : externalProductId)}' panele alınamadı; sonraki ürünle devam edildi. Veritabanı ayrıntısı: {constraint}", 2_000);
         await RecordIssue(tenantId, $"product-sync-import:{connectionId}:{issueIdentity}", "PRODUCT_IMPORT_FAILED", summary, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
