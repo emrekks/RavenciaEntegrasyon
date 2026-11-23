@@ -298,7 +298,7 @@ export function KpiStrip({ label, items, marks = true, aligned = false, long = f
         <strong>{hasSource === false ? noValue : item.text ?? (item.value === null ? noValue : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}
-        {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
+        {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note).split(' · ').flatMap((part, index) => index === 0 ? [<span key={part} className="reports-kpi-part">{part}</span>] : [<i key={`sep-${index}`} className="reports-kpi-sep">{' · '}</i>, <span key={`${index}-${part}`} className="reports-kpi-part">{part}</span>])}</span>}
         {item.tip && <span id={id} className="reports-sr">{item.tip.replaceAll('\n', ' ')}</span>}
       </div>
     })}</div>

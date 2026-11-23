@@ -14,7 +14,10 @@
 @media (max-width: 760px) {
   .rv-notification-history { top: auto; right: 0; bottom: 0; left: 0; width: 100%; max-height: var(--rv-sheet-max-height, 85dvh); padding-bottom: env(safe-area-inset-bottom); border-width: 1px 0 0; border-radius: 14px 14px 0 0; transform-origin: bottom center; }
 }
+@keyframes rv-sheet-up { from { transform: translateY(24px); } to { transform: none; } }
 .rv-notification-dim { display: none; }
 @media (max-width: 760px) { .rv-notification-dim { position: fixed; inset: 0; z-index: calc(var(--rv-z-toast) - 1); display: block; background: var(--rv-color-backdrop, rgb(0 0 0 / 50%)); } }
 .rv-notification-history { animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards, rv-motion-pop var(--rv-motion-menu) var(--rv-ease-menu) backwards; transform-origin: top right; }
 @media (prefers-reduced-motion: reduce) { .rv-notification-history { animation: none; } }
+/* The sheet slides up instead of popping from the bell. */
+@media (max-width: 760px) and (prefers-reduced-motion: no-preference) { .rv-notification-history { animation-name: rv-motion-fade, rv-sheet-up; transform-origin: bottom center; } }

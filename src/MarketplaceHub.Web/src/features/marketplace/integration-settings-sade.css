@@ -457,3 +457,15 @@ html body .cs-workspace.cs-workspace .cs-title-switch .pm-anchor { display: inli
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .cs-workspace .cs-head .cs-head-copy > p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+/* Webhook box: the buttons never split their text. Side by side they wrap to the next line when the box is too narrow; on a
+   phone the status is one line and the buttons stack at full width, the primary one first (44 px touch height). */
+.app-shell.stitch-shell main .instant-notifications-actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+.app-shell.stitch-shell main .instant-notifications-actions > button { flex: 0 0 auto; width: auto; min-height: 36px; white-space: nowrap; }
+.app-shell.stitch-shell main .instant-notifications-actions > button:not(.secondary) { order: -1; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .instant-notifications-status { flex-direction: column; align-items: stretch; }
+  .app-shell.stitch-shell main .instant-notifications-actions { flex-direction: column; align-items: stretch; width: 100%; }
+  .app-shell.stitch-shell main .instant-notifications-actions > button { width: 100%; min-height: 44px; }
+  .app-shell.stitch-shell main .instant-notifications-setup pre { overflow-wrap: anywhere; }
+}
