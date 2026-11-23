@@ -303,6 +303,19 @@ public static partial class MarketplaceEndpoints
     // The event path is the sender's to choose and has no length limit: a log line keeps its first 64 characters.
     internal static string LoggedPath(string? eventPath) => eventPath is null ? "/" : eventPath.Length <= 64 ? eventPath : eventPath[..64] + "…";
 
+    // Keeping the refusal is a side matter: a database fault there (a timeout, a deadlock) is logged and the answer stays
+    // the 404 the address gets, never a 500. A cancelled request still ends as cancelled.
+    private static async Task<string?> NoteRouteRefusedSafelyAsync(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service)
+    {
+        try { return await service.NoteRouteRefusedAsync(connectionPublicId, routeToken, http.RequestAborted); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                .LogWarning(exception, "Webhook route refusal for address {AddressPrefix}… could not be kept.", connectionPublicId.ToString("N")[..8]);
+            return null;
+        }
+    }
+
     private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -315,7 +328,7 @@ public static partial class MarketplaceEndpoints
             // once a minute: a marketplace retrying (or a flood) costs no database write or log line in between.
             var cache = http.RequestServices.GetService<IMemoryCache>();
             var throttleKey = (RefusalThrottle, connectionPublicId);
-            if (cache?.TryGetValue(throttleKey, out _) != true && await service.NoteRouteRefusedAsync(connectionPublicId, routeToken, http.RequestAborted) is { } refusal)
+            if (cache?.TryGetValue(throttleKey, out _) != true && await NoteRouteRefusedSafelyAsync(connectionPublicId, routeToken, http, service) is { } refusal)
             {
                 // Only known addresses are remembered (one entry per connection address), so random ids cannot fill the cache.
                 cache?.Set(throttleKey, true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1), Size = 1 });

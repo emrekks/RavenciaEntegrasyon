@@ -130,6 +130,19 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.Equal(3, unknown.RefusalsNoted);
     }
 
+    // A fault while the refusal is kept does not turn the address's 404 into a 500.
+    [Fact]
+    public async Task ReceiveWebhook_WhenKeepingTheRefusalFails_StillAnswers404()
+    {
+        var service = new RecordingWebhookService { RefusalFault = new TimeoutException("database timeout") };
+        var context = NewContext([], 0);
+
+        await (await MarketplaceEndpoints.ReceiveWebhookEvent(Guid.CreateVersion7(), "closed-token", "orders", context, service, new Gate(false), Quota)).ExecuteAsync(context);
+
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        Assert.Equal(1, service.RefusalsNoted);
+    }
+
     // The event path is the sender's: a log line keeps at most 64 characters of it.
     [Fact]
     public void LoggedPath_KeepsAtMost64CharactersOfTheSendersPath()
@@ -269,10 +282,13 @@ public sealed class MarketplaceWebhookEndpointTests
         // What the service answers for a refused address: null for one that names nothing.
         public string? RefusalCode { get; init; }
 
+        // A database fault while the refusal is kept (a timeout, a deadlock).
+        public Exception? RefusalFault { get; init; }
+
         public Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken)
         {
             RefusalsNoted++;
-            return Task.FromResult(RefusalCode);
+            return RefusalFault is null ? Task.FromResult(RefusalCode) : Task.FromException<string?>(RefusalFault);
         }
     }
 }
