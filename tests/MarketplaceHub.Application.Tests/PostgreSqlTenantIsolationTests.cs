@@ -5614,6 +5614,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             var older = await PrepareAndCloseAsync("unused-older", null);
             var used = await PrepareAndCloseAsync("used", lastNotification);
             var newest = await PrepareAndCloseAsync("unused-newest", null);
+            // As the live rows of 19-23 Nov: closed before the panel kept why (no reason).
+            await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.ClosedReason, (string?)null).SetProperty(row => row.ClosedAt, (DateTimeOffset?)null));
             db.ChangeTracker.Clear();
 
             // Off, three closed definitions: the one Hepsiburada delivered to is offered and restored, not the newest.
@@ -5645,6 +5647,152 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
 
             // Another tenant does not reach the connection.
             Assert.Equal(404, (await service.RestorePreviousAsync(Guid.NewGuid(), connection.Id, "restore-other-tenant", CancellationToken.None)).Error?.Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Live 19-23 Nov 2026: the definition moved from a (since deleted) test connection was closed and Hepsiburada's calls to
+    // it were refused for four days without a trace on the panel.
+    [PostgreSqlFact]
+    public async Task InstantNotifications_CallsToAClosedMovedDefinitionLeaveARefusalAndAWarningThatCloses()
+    {
+        var tenant = NewTenant("hb-closed-called");
+        var live = NewQuestionConnection(tenant);
+        live.PlatformCode = "HEPSIBURADA";
+        live.Environment = "PRODUCTION";
+        var test = NewQuestionConnection(tenant);
+        test.PlatformCode = "HEPSIBURADA";
+        test.Environment = "STAGE";
+        test.ExternalStoreId = $"{live.ExternalStoreId}-sit";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(live, test);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new InstantNotificationService(db, new RecordingWebhookPort(), hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+            var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+            var token = (await service.EnableAsync(tenant.Id, test.Id, "enable-test", CancellationToken.None)).Value!.Setup!.BaseUrl.Split('/').Last();
+            await db.PlatformConnections.Where(row => row.Id == test.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.Status, "DISABLED"));
+            Assert.Null((await service.AdoptFromInactiveAsync(tenant.Id, live.Id, "adopt", CancellationToken.None)).Error);
+            // The test connection is gone; the moved definition is closed by hand.
+            await db.PlatformConnections.Where(row => row.Id == test.Id).ExecuteUpdateAsync(row => row.SetProperty(x => x.Status, "DELETED"));
+            db.ChangeTracker.Clear();
+            Assert.Null((await service.DisableAsync(tenant.Id, live.Id, "close", CancellationToken.None)).Error);
+            var moved = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.RoutePublicId == test.PublicId);
+            Assert.Equal(WebhookCloseReasons.Manual, moved.ClosedReason);
+            var issueKey = MarketplaceWebhookService.RejectedPrefix(live.Id) + MarketplaceWebhookService.CallsRejectedCode;
+
+            // An address that names nothing leaves no trace.
+            Assert.Null(await receiver.NoteRouteRefusedAsync(Guid.NewGuid(), token, CancellationToken.None));
+            Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id));
+
+            // Hepsiburada calls the closed definition's address: the row and a warning keep it.
+            Assert.Equal(MarketplaceWebhookService.CallsRejectedCode, await receiver.NoteRouteRefusedAsync(test.PublicId, token, CancellationToken.None));
+            Assert.NotNull((await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.Id == moved.Id)).LastRefusedAt);
+            var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == issueKey);
+            Assert.Equal(IssueStatus.Open, issue.Status);
+            Assert.Equal(MarketplaceWebhookService.CallsRejectedCode, issue.Code);
+            // A second call within the minute adds nothing.
+            await receiver.NoteRouteRefusedAsync(test.PublicId, token, CancellationToken.None);
+            Assert.Equal(1, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.DedupeKey == issueKey)).OccurrenceCount);
+
+            // The panel says calls come while it is off, and offers that definition, naming that it was closed by hand.
+            var status = (await service.StatusAsync(tenant.Id, live.Id, "status", CancellationToken.None)).Value!;
+            Assert.Equal(InstantNotificationService.CalledWhileOffState, status.State);
+            Assert.StartsWith("Kapalıyken istek geliyor (son: ", status.Message);
+            Assert.Equal(InstantNotificationService.PreparedAt(moved.Id), status.PreviousPreparedAt);
+            Assert.NotNull(status.PreviousLastRefusedAt);
+            Assert.NotNull(status.PreviousClosedByHandAt);
+
+            // A day without calls closes the warning in the hourly upkeep.
+            var dayAgo = fixture.TimeProvider.GetUtcNow().AddHours(-25);
+            await db.OperationalIssues.Where(x => x.DedupeKey == issueKey && x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.LastSeenAt, dayAgo));
+            await service.RetryConnectionWebhooksAsync(CancellationToken.None);
+            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.DedupeKey == issueKey && x.TenantId == tenant.Id)).Status);
+
+            // A call opens it again; restoring the called definition closes it, and the address takes deliveries again.
+            await receiver.NoteRouteRefusedAsync(test.PublicId, token, CancellationToken.None);
+            Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.DedupeKey == issueKey && x.TenantId == tenant.Id)).Status);
+            db.ChangeTracker.Clear();
+            var restored = await service.RestorePreviousAsync(tenant.Id, live.Id, "restore", CancellationToken.None);
+            Assert.Null(restored.Error);
+            Assert.Equal("WAITING", restored.Value!.State);
+            Assert.Equal(IssueStatus.Resolved, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.DedupeKey == issueKey && x.TenantId == tenant.Id)).Status);
+            Assert.Equal("ACTIVE", (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.Id == moved.Id)).Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // A definition the user closed by hand is not offered over one prepared in the last day, unless Hepsiburada still calls it.
+    [PostgreSqlFact]
+    public async Task InstantNotifications_HepsiburadaDoesNotOfferADefinitionClosedByHandOverAFreshOneUnlessItIsStillCalled()
+    {
+        var tenant = NewTenant("hb-closed-by-hand");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new InstantNotificationService(db, new RecordingWebhookPort(), hasher, dataProtection, configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+            var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+            // A received notifications and was closed on purpose; B was prepared right after and given to Hepsiburada.
+            var oldToken = (await service.EnableAsync(tenant.Id, connection.Id, "enable-a", CancellationToken.None)).Value!.Setup!.BaseUrl.Split('/').Last();
+            await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.LastReceivedAt, fixture.TimeProvider.GetUtcNow().AddDays(-2)));
+            db.ChangeTracker.Clear();
+            Assert.Null((await service.DisableAsync(tenant.Id, connection.Id, "close-a", CancellationToken.None)).Error);
+            await Task.Delay(5);
+            Assert.Null((await service.EnableAsync(tenant.Id, connection.Id, "enable-b", CancellationToken.None)).Error);
+            var fresh = await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE");
+
+            Assert.Null((await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!.PreviousPreparedAt);
+            Assert.Equal("WEBHOOK_PREVIOUS_MISSING", (await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore", CancellationToken.None)).Error?.Code);
+            Assert.Equal(fresh.Id, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
+
+            // Hepsiburada still calls A: it is the strongest candidate, named as closed by hand, and B is closed over it.
+            Assert.Equal(MarketplaceWebhookService.CallsRejectedCode, await receiver.NoteRouteRefusedAsync(connection.PublicId, oldToken, CancellationToken.None));
+            db.ChangeTracker.Clear();
+            var offered = (await service.StatusAsync(tenant.Id, connection.Id, "status-called", CancellationToken.None)).Value!;
+            Assert.Equal(InstantNotificationService.CalledWhileOffState, offered.State);
+            Assert.NotNull(offered.PreviousClosedByHandAt);
+            Assert.NotNull(offered.PreviousLastRefusedAt);
+            Assert.Null((await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-called", CancellationToken.None)).Error);
+            var rows = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            Assert.Equal("DELETED", rows[fresh.Id].Status);
+            Assert.Equal(WebhookCloseReasons.RestoredOver, rows[fresh.Id].ClosedReason);
+            Assert.Equal("ACTIVE", rows.Values.Single(x => x.Id != fresh.Id).Status);
+            Assert.Null(rows.Values.Single(x => x.Id != fresh.Id).ClosedReason);
         }
         finally
         {

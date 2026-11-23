@@ -1203,7 +1203,11 @@ public sealed record InstantNotificationView(
     bool RouteOnly = false,
     // When the definition PreviousPreparedAt names last received a notification (null: it never did), so the panel
     // says which definition comes back.
-    DateTimeOffset? PreviousLastReceivedAt = null);
+    DateTimeOffset? PreviousLastReceivedAt = null,
+    // The last call Hepsiburada made to that definition's address while it was closed (it still uses it), and when the
+    // user closed it by hand (Webhook'u Kapat), so the panel warns before bringing back one closed on purpose.
+    DateTimeOffset? PreviousLastRefusedAt = null,
+    DateTimeOffset? PreviousClosedByHandAt = null);
 
 public sealed record WebhookAdoptableDefinition(string ConnectionName, string Environment, DateTimeOffset PreparedAt);
 
@@ -1867,8 +1871,10 @@ public interface IMarketplaceSalesService
 public interface IMarketplaceWebhookService
 {
     Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string routeToken, ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, string correlationId, CancellationToken cancellationToken);
-    // A delivery the route gate turned away: kept on the connection when the connection is known (an old or wrong route token).
-    Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken);
+    // A delivery the route gate turned away: kept on the connection when the address is known (a closed definition's, or
+    // an old or wrong route token of a known connection). Returns what it was (CallsRejectedCode or the token mismatch
+    // code), or null for an address that names nothing, which leaves no trace.
+    Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken);
 }
 
 public interface IMarketplaceJobProcessor

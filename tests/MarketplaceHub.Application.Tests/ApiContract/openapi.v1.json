@@ -28409,6 +28409,20 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "previousLastRefusedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "previousClosedByHandAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },

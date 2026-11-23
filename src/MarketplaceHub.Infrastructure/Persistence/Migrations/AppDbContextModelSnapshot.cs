@@ -7464,6 +7464,13 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ClosedReason")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
                     b.Property<Guid>("ConnectionId")
                         .HasColumnType("uuid");
 
@@ -7472,6 +7479,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)");
 
                     b.Property<DateTimeOffset?>("LastReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastRefusedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ProtectedVerifierSecret")

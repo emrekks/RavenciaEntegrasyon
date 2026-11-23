@@ -102,6 +102,34 @@ public sealed class MarketplaceWebhookEndpointTests
         Assert.True(service.RouteRefusalNoted);
     }
 
+    // A known address that keeps being refused is noted once a minute: a flood writes no row and logs no line in between.
+    // An unknown address is not remembered, so every call is looked up (and leaves no trace in the service).
+    [Fact]
+    public async Task ReceiveWebhook_NotesARefusedKnownAddressOnceAMinute_AndDoesNotRememberUnknownOnes()
+    {
+        var services = new ServiceCollection().AddLogging().AddMemoryCache(options => options.SizeLimit = 100).BuildServiceProvider();
+        var known = new RecordingWebhookService { RefusalCode = "WEBHOOK_CALLS_REJECTED" };
+        var connection = Guid.CreateVersion7();
+        for (var index = 0; index < 5; index++)
+        {
+            var context = NewContext([], 0);
+            context.RequestServices = services;
+            await (await MarketplaceEndpoints.ReceiveWebhook(connection, "closed-token", context, known, new Gate(false), Quota)).ExecuteAsync(context);
+            Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        }
+        Assert.Equal(1, known.RefusalsNoted);
+
+        var unknown = new RecordingWebhookService();
+        var stranger = Guid.CreateVersion7();
+        for (var index = 0; index < 3; index++)
+        {
+            var context = NewContext([], 0);
+            context.RequestServices = services;
+            await (await MarketplaceEndpoints.ReceiveWebhook(stranger, "guess", context, unknown, new Gate(false), Quota)).ExecuteAsync(context);
+        }
+        Assert.Equal(3, unknown.RefusalsNoted);
+    }
+
     [Fact]
     public void WebhookLimits_LimitEachAddress()
     {
@@ -225,12 +253,15 @@ public sealed class MarketplaceWebhookEndpointTests
             return Task.FromResult(ServiceResult<bool>.Ok(true));
         }
 
-        public bool RouteRefusalNoted { get; private set; }
+        public bool RouteRefusalNoted => RefusalsNoted > 0;
+        public int RefusalsNoted { get; private set; }
+        // What the service answers for a refused address: null for one that names nothing.
+        public string? RefusalCode { get; init; }
 
-        public Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken)
+        public Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken)
         {
-            RouteRefusalNoted = true;
-            return Task.CompletedTask;
+            RefusalsNoted++;
+            return Task.FromResult(RefusalCode);
         }
     }
 }

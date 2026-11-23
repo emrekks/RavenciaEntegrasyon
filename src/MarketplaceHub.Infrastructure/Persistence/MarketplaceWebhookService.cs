@@ -20,7 +20,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var match = candidates.SingleOrDefault(x => SafeVerify(routeToken, x.Subscription.RouteTokenHash));
         if (match is null)
         {
-            if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is { } named) await NoteRouteTokenMismatchAsync(named, cancellationToken);
+            await NoteRouteRefusedAsync(connectionPublicId, routeToken, cancellationToken);
             return NotFound();
         }
         var (connection, subscription) = (match.Connection, match.Subscription);
@@ -120,8 +120,10 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         var prefix = RejectedPrefix(connection.Id);
         var merchantMismatch = prefix + MerchantMismatchCode;
         var unknownEvent = prefix + UnknownEventCode;
+        // Calls to a closed definition go on whatever the open one receives; that warning closes on its own terms.
+        var callsRejected = prefix + CallsRejectedCode;
         return db.OperationalIssues
-            .Where(x => x.TenantId == connection.TenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix) && x.DedupeKey != merchantMismatch && x.DedupeKey != unknownEvent)
+            .Where(x => x.TenantId == connection.TenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix) && x.DedupeKey != merchantMismatch && x.DedupeKey != unknownEvent && x.DedupeKey != callsRejected)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, now), cancellationToken);
     }
     private async Task<ServiceResult<bool>> QueueListingVerifyAsync(PlatformConnection connection, Guid subscriptionId, string correlationId, CancellationToken cancellationToken)
@@ -140,30 +142,66 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         return ServiceResult<bool>.Ok(true);
     }
 
-    // The route gate refuses an old or wrong route token before the body is read, so ReceiveAsync never sees it;
-    // the refusal is still kept when the connection is one that receives deliveries.
-    public async Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken)
+    // The route gate refuses an old or wrong route token before the body is read, so ReceiveAsync never sees it; the
+    // refusal is still kept when the address is known. An address of a definition the panel closed (its route and token
+    // match a closed row) marks that row and opens a warning: 19-23 Nov 2026 Hepsiburada called a closed definition moved
+    // from a deleted connection for four days and nothing showed it. Any other address of a receiving connection is an
+    // old or wrong token. An address that names nothing leaves no trace.
+    public async Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken)
     {
-        if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is { } connection)
-            await NoteRouteTokenMismatchAsync(connection, cancellationToken);
+        if (await ClosedDefinitionAsync(connectionPublicId, routeToken, cancellationToken) is { } closed)
+        {
+            var now = timeProvider.GetUtcNow();
+            var aMinuteAgo = now.AddMinutes(-1);
+            await db.WebhookSubscriptions
+                .Where(x => x.TenantId == closed.Connection.TenantId && x.Id == closed.SubscriptionId && x.Status != "ACTIVE" && (x.LastRefusedAt == null || x.LastRefusedAt < aMinuteAgo))
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastRefusedAt, now), cancellationToken);
+            var platform = closed.Connection.PlatformCode switch { "HEPSIBURADA" => "Hepsiburada", "SHOPIFY" => "Shopify", _ => "Trendyol" };
+            var reason = closed.Connection.PlatformCode == "HEPSIBURADA"
+                ? "Hepsiburada kapalı webhook adresine istek gönderiyor; Önceki Tanımı Geri Yükle ile tanımı geri yükleyin ya da Hepsiburada'daki adresi güncelleyin"
+                : $"{platform} kapalı webhook adresine istek gönderiyor; webhook'u açın ya da {platform}'daki kaydı kaldırın";
+            await NoteRejectedAsync(closed.Connection, CallsRejectedCode, reason, cancellationToken, issueCode: CallsRejectedCode);
+            return CallsRejectedCode;
+        }
+        if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is not { } connection) return null;
+        await NoteRouteTokenMismatchAsync(connection, cancellationToken);
+        return RouteTokenMismatchCode;
     }
 
-    // The receiving connection an address names: by its own public id, else the one an active definition moved to it
-    // still answers on.
+    // The closed definition (any state but ACTIVE) whose address this is: the route names it (its moved-from public id,
+    // or its connection's own) and the token matches its hash. Its connection must be one that receives deliveries.
+    private async Task<(PlatformConnection Connection, Guid SubscriptionId)?> ClosedDefinitionAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken)
+    {
+        var closed = await (from item in db.WebhookSubscriptions.AsNoTracking()
+                            join owner in db.PlatformConnections.AsNoTracking() on new { item.TenantId, item.ConnectionId } equals new { owner.TenantId, ConnectionId = owner.Id }
+                            where item.Status != "ACTIVE" && (item.RoutePublicId == connectionPublicId || (item.RoutePublicId == null && owner.PublicId == connectionPublicId))
+                                && (owner.PlatformCode == "TRENDYOL" || owner.PlatformCode == "SHOPIFY" || owner.PlatformCode == "HEPSIBURADA") && AnsweringConnectionStatuses.Contains(owner.Status)
+                            select new { item.Id, item.RouteTokenHash, Connection = owner }).ToListAsync(cancellationToken);
+        var match = closed.FirstOrDefault(x => SafeVerify(routeToken, x.RouteTokenHash));
+        return match is null ? null : (match.Connection, match.Id);
+    }
+
+    // The receiving connection an address names: by its own public id, else the one a definition moved to it (in any
+    // state) carries in its address.
     private async Task<PlatformConnection?> ReceivingConnectionAsync(Guid connectionPublicId, CancellationToken cancellationToken)
     {
         var receiving = db.PlatformConnections.AsNoTracking().Where(x => (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA") && AnsweringConnectionStatuses.Contains(x.Status));
         return await receiving.SingleOrDefaultAsync(x => x.PublicId == connectionPublicId, cancellationToken)
-            ?? await receiving.Where(x => db.WebhookSubscriptions.Any(item => item.TenantId == x.TenantId && item.ConnectionId == x.Id && item.Status == "ACTIVE" && item.RoutePublicId == connectionPublicId)).FirstOrDefaultAsync(cancellationToken);
+            ?? await receiving.Where(x => db.WebhookSubscriptions.Any(item => item.TenantId == x.TenantId && item.ConnectionId == x.Id && item.RoutePublicId == connectionPublicId)).FirstOrDefaultAsync(cancellationToken);
     }
 
+    internal const string RouteTokenMismatchCode = "WEBHOOK_ROUTE_TOKEN_MISMATCH";
+    // The marketplace calls the address of a definition the panel closed; the warning closes once the definition is open
+    // again (Önceki Tanımı Geri Yükle) or after a day without calls (InstantNotificationService's hourly upkeep).
+    internal const string CallsRejectedCode = "WEBHOOK_CALLS_REJECTED";
+
     private Task NoteRouteTokenMismatchAsync(PlatformConnection connection, CancellationToken cancellationToken) =>
-        NoteRejectedAsync(connection, "WEBHOOK_ROUTE_TOKEN_MISMATCH", "adres eski ya da hatalı (abonelik yenilendiyse pazaryerindeki adresi güncelleyin)", cancellationToken);
+        NoteRejectedAsync(connection, RouteTokenMismatchCode, "adres eski ya da hatalı (abonelik yenilendiyse pazaryerindeki adresi güncelleyin)", cancellationToken);
 
     // A refused delivery for a known connection (old address, wrong password, a body that does not verify) leaves an
     // operational issue, so a marketplace that calls and is turned away is told apart from one that never calls; the
     // log alone is lost with every restart. One row per connection and code, touched at most once a minute.
-    private async Task NoteRejectedAsync(PlatformConnection connection, string code, string reason, CancellationToken cancellationToken, bool received = false)
+    private async Task NoteRejectedAsync(PlatformConnection connection, string code, string reason, CancellationToken cancellationToken, bool received = false, string? issueCode = null)
     {
         var now = timeProvider.GetUtcNow();
         var key = RejectedPrefix(connection.Id) + code;
@@ -179,7 +217,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
                     .SetProperty(x => x.LastSeenAt, now)
                     .SetProperty(x => x.OccurrenceCount, x => x.OccurrenceCount + 1), cancellationToken);
             if (touched > 0 || await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.DedupeKey == key, cancellationToken)) return;
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, DedupeKey = key, Code = received ? code : "WEBHOOK_DELIVERY_REJECTED", Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
+            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, DedupeKey = key, Code = issueCode ?? (received ? code : "WEBHOOK_DELIVERY_REJECTED"), Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }

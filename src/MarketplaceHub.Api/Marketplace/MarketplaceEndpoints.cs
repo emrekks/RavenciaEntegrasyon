@@ -11,6 +11,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Marketplace;
@@ -297,14 +298,27 @@ public static partial class MarketplaceEndpoints
     internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota) =>
         await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, quota, null);
 
+    private const string RefusalThrottle = "webhook-route-refused";
+
     private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         // The address (connection and route token) is checked before anything is read: an unknown one costs no body buffering.
         if (!await gate.IsKnownAsync(connectionPublicId, routeToken, http.RequestAborted))
         {
-            // A known connection called with an old or wrong address is shown on its webhook panel; the body stays unread.
-            await service.NoteRouteRefusedAsync(connectionPublicId, http.RequestAborted);
+            // A known address (a closed definition's, or an old or wrong token of a known connection) is shown on its webhook
+            // panel and logged, masked: the address's first 8 characters, never the token. The body stays unread; an address
+            // that names nothing leaves no trace (Caddy skips the hooks in its access log). A known address is noted at most
+            // once a minute: a marketplace retrying (or a flood) costs no database write or log line in between.
+            var cache = http.RequestServices.GetService<IMemoryCache>();
+            var throttleKey = (RefusalThrottle, connectionPublicId);
+            if (cache?.TryGetValue(throttleKey, out _) != true && await service.NoteRouteRefusedAsync(connectionPublicId, routeToken, http.RequestAborted) is { } refusal)
+            {
+                // Only known addresses are remembered (one entry per connection address), so random ids cannot fill the cache.
+                cache?.Set(throttleKey, true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1), Size = 1 });
+                http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                    .LogWarning("Webhook route refused with {Code} for address {AddressPrefix}…, path {EventPath}.", refusal, connectionPublicId.ToString("N")[..8], eventPath ?? "/");
+            }
             return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
         }
         // The connection's allowance is spent by admitted deliveries only (WebhookRateLimits).
