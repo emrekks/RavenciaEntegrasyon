@@ -61,6 +61,13 @@ describe('runOfferWrites', () => {
     await runOfferWrites(input({ ...mixed, rows: [mixedRows[0], row('v2', { salePrice: 85, platformStatuses: mixedRows[1].platformStatuses })], choiceUntouched: () => true }))
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v2', listPrice: 100, salePrice: 85, followsPanelPrice: true }) }])
   })
+  // B6 (pinned as is; the coordinator decides): a following variant whose offer drifted from the panel price (offer 160,
+  // panel 150) gets the panel price on an untouched save, by the owner's rule "Özel Fiyat açık değilse panel".
+  it('pins: an untouched mixed save writes the panel price to a following variant whose offer drifted (160 -> 150)', async () => {
+    const drifted = row('v2', { salePrice: 150, listPrice: 150, platformStatuses: [status('ty', { offerId: 'o-v2', listPrice: 160, salePrice: 160, followsPanelPrice: true })] })
+    await runOfferWrites(input({ ...mixed, rows: [mixedRows[0], drifted], choiceUntouched: () => true }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v2', listPrice: 150, salePrice: 150, followsPanelPrice: true }) }])
+  })
   it('a mixed marketplace whose card price the owner typed gives every variant that price as its own', async () => {
     await runOfferWrites(input({ ...mixed, channelPriceDraft: () => ({ listPrice: '140', salePrice: '125' }), channelPriceEdited: () => true, choiceUntouched: () => true }))
     expect(api.calls.map(call => [call.path, call.body?.salePrice, call.body?.followsPanelPrice])).toEqual([['/channel-offers/o-v1', 125, false], ['/channel-offers/o-v2', 125, false]])
