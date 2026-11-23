@@ -403,7 +403,9 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
   })
   const busy = change.isPending || restore.isPending || adopt.isPending
   const data = status.data
-  const registered = data != null && data.state !== 'OFF' && data.state !== 'UNSUPPORTED'
+  // CALLED_WHILE_OFF comes with or without an open definition: only one with an opening date is registered.
+  const calledWhileOff = data?.state === 'CALLED_WHILE_OFF'
+  const registered = data != null && data.state !== 'OFF' && data.state !== 'UNSUPPORTED' && !(calledWhileOff && !data.registeredAt)
   const time = (value: string | null) => value ? formatIstanbul(value, { dateStyle: 'medium', timeStyle: 'short' }) : '—'
   return <section className="panel instant-notifications-panel">
     <div className="cs-sec-head"><h3>Webhook<TitleHint label="Webhook">{hepsiburada
@@ -428,10 +430,13 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
         <div><dt>Son 24 Saat</dt><dd>{data.receivedLast24Hours.toLocaleString('tr-TR')} bildirim</dd></div>
         {data.lastRejectedAt && <div><dt>Son Reddedilen</dt><dd>{time(data.lastRejectedAt)}</dd></div>}
       </dl>}
-      {registered && data.lastRejectedReason && <p className="instant-notifications-message is-danger" role="alert">{data.lastRejectedReason}</p>}
+      {registered && data.lastRejectedReason && !calledWhileOff && <p className="instant-notifications-message is-danger" role="alert">{data.lastRejectedReason}</p>}
       {registered && shopify && data.routeOnly && <p className="instant-notifications-message" role="note">{routeOnlyWebhookMessage}</p>}
       {data.message
-        ? <p className="instant-notifications-message" role="status">{data.message}</p>
+        ? calledWhileOff
+          // The marketplace calls an address the panel refuses: a warning, and the refusal record says the same once.
+          ? <p className="instant-notifications-message is-danger" role="alert">{data.message}</p>
+          : <p className="instant-notifications-message" role="status">{data.message}</p>
         : !registered && !connectionActive && data.state !== 'UNSUPPORTED' && <p className="instant-notifications-message">Webhook’u açmak için önce bağlantıyı aktif edin.</p>}
       {setup && <div className="instant-notifications-setup">
         <p>Bu metni Hepsiburada’ya (Satıcı Paneli → Yardım Merkezi → Talepler → “API ENTEGRASYON”) iletin. Şifre yeniden gösterilmez; kaybolursa webhook’u kapatıp yeniden hazırlayın.</p>
@@ -474,8 +479,10 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
       ? `Son bildirimi ${time(data.previousLastReceivedAt)} tarihinde alan tanım (${time(data.previousPreparedAt)} tarihinde hazırlanan adres ve şifre) geri yüklenecek.`
       : `${time(data.previousPreparedAt)} tarihinde hazırlanan, hiç bildirim almamış tanımın adresi ve şifresi yeniden geçerli olur.`} size="sm" locked={restore.isPending} onClose={() => setConfirm(null)} foot={<><span className="rr-note" /><button type="button" className="rr-btn" disabled={restore.isPending} onClick={() => setConfirm(null)}>Vazgeç</button><button type="button" className="rr-btn pri" disabled={restore.isPending} onClick={() => restore.mutate()}>{restore.isPending ? 'Geri Yükleniyor…' : 'Geri Yükle'}</button></>}>
       <ul className="instant-notifications-terms">
+        {data.previousLastRefusedAt && <li><strong>Hepsiburada bu tanımın adresine hâlâ istek gönderiyor</strong> (son: {time(data.previousLastRefusedAt)}); geri yüklenince istekleri kabul edilir.</li>}
+        {data.previousClosedByHandAt && <li><strong>Bu tanımı {time(data.previousClosedByHandAt)} tarihinde siz kapattınız.</strong></li>}
         <li>Hepsiburada’ya ilettiğiniz bilgiler o tarihte hazırlananlarsa, Hepsiburada’nın yeniden tanımlama yapması gerekmez.</li>
-        {registered && <li>Şu anki tanım {time(data.registeredAt)} tarihinde hazırlandı ve hiç bildirim almadı; kapanır.</li>}
+        {registered && <li>Silinecek tanım: şu anki, {time(data.registeredAt)} tarihinde hazırlanan ve hiç bildirim almamış tanım; adresine gelen istekler reddedilir.</li>}
         <li>İlk bildirim gelene kadar siparişler düzenli kontrolle gelmeye devam eder.</li>
       </ul>
     </RrModal>}

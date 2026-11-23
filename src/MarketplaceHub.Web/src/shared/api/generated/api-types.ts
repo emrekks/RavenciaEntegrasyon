@@ -1010,6 +1010,8 @@ export type InstantNotificationView = {
   adoptableFrom?: null | WebhookAdoptableDefinition
   routeOnly: boolean
   previousLastReceivedAt?: null | string
+  previousLastRefusedAt?: null | string
+  previousClosedByHandAt?: null | string
 }
 
 export type InventoryItemView = {
