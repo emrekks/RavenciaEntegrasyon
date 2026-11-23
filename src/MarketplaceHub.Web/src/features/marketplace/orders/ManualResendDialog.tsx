@@ -57,7 +57,7 @@ export function ManualResendDialog({ legacyCount, onClearLegacy, onClose }: { le
             options={stores.map(store => ({ value: store.id, text: store.displayName, label: <span className="rr-mresend-opt"><RrLogo code={store.platformCode} />{store.displayName}</span> }))} />
         </div>
         <label className="rr-fld rr-mresend-number"><small>Sipariş No</small>
-          <input className="rr-in" value={orderNumber} disabled={busy} inputMode="text" autoComplete="off" enterKeyHint="done" placeholder="Pazaryerindeki sipariş numarası" aria-invalid={message?.kind === 'error' ? true : undefined} onChange={event => { setOrderNumber(event.target.value); setMessage(null) }} />
+          <input className="rr-in" value={orderNumber} disabled={busy} inputMode="text" autoComplete="off" enterKeyHint="done" placeholder="Pazaryeri sipariş no" aria-invalid={message?.kind === 'error' ? true : undefined} onChange={event => { setOrderNumber(event.target.value); setMessage(null) }} />
         </label>
         <button type="submit" className="rr-btn rr-primary rr-mresend-add" disabled={busy}>Ekle</button>
       </form>}

@@ -7,7 +7,8 @@
 .rr-layer.rr-layer .rr-mresend-form { display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
 .rr-layer.rr-layer .rr-mresend-form .rr-fld { display: grid; gap: 6px; min-width: 0; margin: 0; }
 .rr-layer.rr-layer .rr-mresend-form .rr-fld > small { color: var(--rr-muted); font-size: 13px; font-weight: 500; line-height: 18px; white-space: nowrap; }
-.rr-layer.rr-layer .rr-mresend-store { flex: 0 0 220px; }
+/* Wide enough for a store's full name, so its list opens exactly as wide as the bar. */
+.rr-layer.rr-layer .rr-mresend-store { flex: 0 0 280px; }
 .rr-layer.rr-layer .rr-mresend-store .pm-select, .rr-layer.rr-layer .rr-mresend-store .pm-anchor, .rr-layer.rr-layer .rr-mresend-store .rr-trigger { width: 100%; }
 .rr-layer.rr-layer .rr-mresend-store .rr-trigger { height: 36px; min-height: 0; border-radius: 7px; }
 .rr-layer.rr-layer .rr-mresend-number { flex: 1 1 auto; }
