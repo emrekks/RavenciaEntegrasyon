@@ -47,6 +47,13 @@ export function formatSeconds(seconds: number | null | undefined) {
   return `${(seconds / 3600).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} sa`
 }
 
+/** A lane against its wait target: Hedefte, Hedef Aşıldı (missed at this look) or Uyarı (missed for ten minutes on end). */
+export function laneWaitState(status: string): { label: string; tone: 'ok' | 'warn' | 'bad' } {
+  if (status === 'ALERT') return { label: 'Uyarı', tone: 'bad' }
+  if (status === 'OVER_TARGET') return { label: 'Hedef Aşıldı', tone: 'warn' }
+  return { label: 'Hedefte', tone: 'ok' }
+}
+
 /** The share of a limit used, 0 to 100 (more than the limit shows full). */
 export function usagePercent(used: number, limit: number) {
   if (!(limit > 0)) return 0

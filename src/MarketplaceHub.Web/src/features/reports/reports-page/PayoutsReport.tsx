@@ -1,4 +1,5 @@
 import type { ApiAnswer } from '../../../shared/api/api-answer'
+import { initialSort, rememberSort } from '../../../shared/sticky-sort'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
@@ -29,7 +30,7 @@ export function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[
     region: readUrlChoice(params, 'hr', ['ALL', 'TR_GULF', 'EUROPE', 'AZ', 'UNKNOWN'] as const, 'ALL'),
     state: readUrlChoice(params, 'hs', ['ALL', 'EXPECTED', 'PAID', 'OVERDUE', 'DEDUCTION'] as const, 'ALL'),
     from: readUrlText(params, 'hf'), to: readUrlText(params, 'ht'), min: readUrlText(params, 'hmin'), max: readUrlText(params, 'hmax'),
-    sort: readUrlChoice(params, 'ho', ['date', 'amount'] as const, 'date')
+    sort: initialSort('payouts', ['date', 'amount'] as const, 'date', params.get('ho'))
   }))
   const [search, setSearch] = useState(() => readUrlText(params, 'hq'))
   const [draft, setDraft] = useState({ ...applied, platforms, search })
@@ -62,6 +63,7 @@ export function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[
     setDraft(next)
     setPlatforms(next.platforms)
     setSearch(next.search)
+    rememberSort('payouts', next.sort)
     setApplied({ region: next.region, state: next.state, from: next.from, to: next.to, min: next.min, max: next.max, sort: next.sort })
     if (next.state === 'PAID') setTab('past')
     else if (next.state !== 'ALL') setTab('upcoming')
@@ -97,7 +99,7 @@ export function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[
       </button>
       {extra?.children}
     </li>
-  const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '' })
+  const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '', sort: applied.sort })
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data && !none) return <Busy text="Hakediş hazırlanıyor…" />
@@ -154,9 +156,9 @@ ${otherText}` : ''}` },
   const deductions = byDate ? listed.filter(deducting) : []
   const days = byDay(byDate ? listed.filter(group => !isWaitingPayout(group) && !deducting(group)) : listed)
   const filtered = [applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max)].some(Boolean)
-  const activeCount = [platforms.length > 0, region !== 'ALL', applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max), Boolean(search.trim()), applied.sort !== 'date'].filter(Boolean).length
+  const activeCount = [platforms.length > 0, region !== 'ALL', applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max), Boolean(search.trim())].filter(Boolean).length
   // Temizle is grey while the applied filters and the card's typed edits are all at their defaults.
-  const hasFiltersToClear = platforms.length > 0 || draft.platforms.length > 0 || Boolean(search.trim() || draft.search.trim()) || (Object.keys(emptyPayoutFilters) as Array<keyof typeof emptyPayoutFilters>).some(key => applied[key] !== emptyPayoutFilters[key] || draft[key] !== emptyPayoutFilters[key])
+  const hasFiltersToClear = platforms.length > 0 || draft.platforms.length > 0 || Boolean(search.trim() || draft.search.trim()) || (Object.keys(emptyPayoutFilters) as Array<keyof typeof emptyPayoutFilters>).some(key => key !== 'sort' && (applied[key] !== emptyPayoutFilters[key] || draft[key] !== emptyPayoutFilters[key]))
   const read = data?.coverage.filter(store => store.state === 'READ') ?? []
   const platformOptions = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].map(code => ({ value: code, label: platformName(code) }))
   const single = (label: string, value: string, options: Array<{ value: string; label: string }>, pick: (value: string) => void, disabled = false, right = false) =>

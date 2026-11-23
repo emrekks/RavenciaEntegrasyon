@@ -2,7 +2,7 @@
 import type { ApiResponse } from '../../../shared/api/generated/api-types'
 import { readProductListPage, type ProductListItem } from '../product-list-item'
 import type { ApiAnswer } from '../../../shared/api/api-answer'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { platformDisplayNames, platformDisplayOrder } from '../../../shared/platform-names'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -16,6 +16,7 @@ import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../../shared/ui/rr-components'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { productPlatformBreakdownTip, productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState, withProductPlatformWork } from '../product-platform-status'
+import { readStickySort, rememberSort, storedPageSize } from '../../../shared/sticky-sort'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { productSyncLabel, productSyncPercent } from '../product-sync-progress'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
@@ -54,6 +55,7 @@ import { ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Vari
 import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 
+const productSortValues = productCatalogSortOptions.map(option => option[0])
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
 type ProductSyncJob = ApiAnswer<'getJobs'>[number]
 const isProductImportConnection = productImportConnection
@@ -383,8 +385,8 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
 const productPageSizes = [20, 50, 100]
 // The list state a products address carries (W16); the page's cursor goes with it, so page 3 opens as page 3.
 function productListFromUrl(params: URLSearchParams) {
-  const filters: ProductListFilters = { search: readUrlText(params, 'q'), status: readUrlText(params, 'status'), platform: readUrlText(params, 'platform'), stock: readUrlText(params, 'stock'), sort: productCatalogSortValue(parseProductCatalogSort(readUrlText(params, 'sort'))) }
-  const pageSize = readUrlNumber(params, 'size', 20, productPageSizes)
+  const filters: ProductListFilters = { search: readUrlText(params, 'q'), status: readUrlText(params, 'status'), platform: readUrlText(params, 'platform'), stock: readUrlText(params, 'stock'), sort: productCatalogSortValue(parseProductCatalogSort(params.has('sort') ? readUrlText(params, 'sort') : readStickySort('products', productSortValues))) }
+  const pageSize = readUrlNumber(params, 'size', storedPageSize('products', productPageSizes, 20), productPageSizes)
   const after = readUrlText(params, 'after')
   const pageNumber = after ? readUrlNumber(params, 'page', 1) : 1
   return { filters, pageSize, pageNumber, pageCursors: pageNumber > 1 ? { [pageNumber]: after } : {} }
@@ -398,7 +400,9 @@ export function ProductsPage() {
   const [confirmImport, confirmImportDialog] = useConfirmDialog()
   const client = useQueryClient(); const navigate = useNavigate(); const [search, setSearch] = useState(initialList.filters.search); const [searchFilter, setSearchFilter] = useState(initialList.filters.search); const [status, setStatus] = useState(initialList.filters.status); const [platform, setPlatform] = useState(initialList.filters.platform); const [stock, setStock] = useState(initialList.filters.stock); const [selectedProductCache, setSelectedProductCache] = useState<Record<string, Product>>({}); const [allProductsSelected, setAllProductsSelected] = useState(false); const [selectingAllProducts, setSelectingAllProducts] = useState(false); const [quickEdit, setQuickEdit] = useState<{ productIds: string[]; mode: QuickEditMode } | null>(null); const toastStack = useToastStack(); const [statusRequest, setStatusRequest] = useState<{ productIds: string[]; status: 'ACTIVE' | 'ARCHIVED'; skippedCount?: number; draftCount?: number } | null>(null); const [jumpPage, setJumpPage] = useState(''); const [deleteRequest, setDeleteRequest] = useState<ProductDeleteRequest | null>(null); const [deletingProducts, setDeletingProducts] = useState(false); const [productImportOpen, setProductImportOpen] = useState(false); const [productImportMethod, setProductImportMethod] = useState<ProductImportMethod>('BULK'); const [productImportConnectionIds, setProductImportConnectionIds] = useState<string[]>([]); const [productImportMode, setProductImportMode] = useState<ProductImportMode>('FULL'); const [productImportLookup, setProductImportLookup] = useState(''); const [productImportIncludeArchived, setProductImportIncludeArchived] = useState(true); const [productImportUpdateExistingProducts, setProductImportUpdateExistingProducts] = useState(false); const [productImportUpdatePrices, setProductImportUpdatePrices] = useState(false); const [productImportUpdateStock, setProductImportUpdateStock] = useState(false); const [productImporting, setProductImporting] = useState(false); const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null); const [lowStockOpen, setLowStockOpen] = useState(() => searchParams.get('details') === 'low-stock'); const [transferOpen, setTransferOpen] = useState(false); const [bulkPublishOpen, setBulkPublishOpen] = useState(false); const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false); const [bulkFieldOpen, setBulkFieldOpen] = useState(false);const [publishProductId, setPublishProductId] = useState<string | null>(null); const [pageSize, setPageSize] = useState(initialList.pageSize)
   const [pageJumping, setPageJumping] = useState(false)
-  const [catalogSort, setCatalogSort] = useState<ProductCatalogSort>(() => parseProductCatalogSort(initialList.filters.sort))
+  const [catalogSort, setCatalogSortState] = useState<ProductCatalogSort>(() => parseProductCatalogSort(initialList.filters.sort))
+  // Every pick is remembered (Sıralama stays as chosen, also across visits); Temizle does not reset it.
+  const setCatalogSort = useCallback((next: ProductCatalogSort | ((current: ProductCatalogSort) => ProductCatalogSort)) => setCatalogSortState(current => { const value = typeof next === 'function' ? next(current) : next; rememberSort('products', productCatalogSortValue(value) || 'default'); return value }), [])
   const [productImportIncludePendingApproval, setProductImportIncludePendingApproval] = useState(false)
   const [expandedPlatformGroup, setExpandedPlatformGroup] = useState<string | null>(null)
   const productFilters = useMemo<ProductListFilters>(() => ({ search: searchFilter, status, platform, stock, sort: productCatalogSortValue(catalogSort) }), [searchFilter, status, platform, stock, catalogSort])
@@ -799,12 +803,12 @@ export function ProductsPage() {
         <label className="rr-fld rr-search"><small>Ürün Ara</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} aria-label="Ürün ara" placeholder="Ürün adı, stok kodu veya barkod ara" value={search} onChange={event => setSearch(event.target.value)} /></span></label>
         <div className="rr-fld"><small>Stok Durumu</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle}><span>{stockOptions.find(option => option.value === (stock || 'ALL'))?.label}</span><RrIcon name="chev" /></button>}>{columnPop('Stok Durumu', stockOptions, stock, setStock)}</RrAnchor></div>
         <div className="rr-fld"><small>Sıralama</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle}><span>{sortOptions.find(option => option[0] === sortValue)?.[1]}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop rr-right" role="listbox" style={{ minWidth: 260 }}>{sortOptions.map(([value, label]) => { const on = value === sortValue; return <button key={value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => { setSortValue(value); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{label}</span></button> })}</div>}</RrAnchor></div>
-        <div className="rr-fbtns"><button type="button" className="rr-btn rr-clear" disabled={!(search || status || platform || stock || catalogSort)} onClick={() => { setSearch(''); setStatus(''); setPlatform(''); setStock(''); setCatalogSort(null) }}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => setSearchFilter(search.trim())}>Filtrele</button></div>
+        <div className="rr-fbtns"><button type="button" className="rr-btn rr-clear" disabled={!(search || status || platform || stock)} onClick={() => { setSearch(''); setStatus(''); setPlatform(''); setStock('') }}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => setSearchFilter(search.trim())}>Filtrele</button></div>
       </div></RrFilterCard>
     </div>
     {selectionMode && <div className="rr-selbar" role="region" aria-label="Seçim modu"><button type="button" className="rr-btn rr-quiet" onClick={exitSelectionMode}>İptal</button><span className="rr-grow">{selectedProductCardCount} ürün kartı seçildi</span><button type="button" className="rr-btn" onClick={toggleAllVisible}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
     {(query.error ?? summaryQuery.error ?? connectionsQuery.error) && <RrError error={query.error ?? summaryQuery.error ?? connectionsQuery.error} onRetry={() => { void query.refetch(); void summaryQuery.refetch() }} />}
-    <div className="rr-panel"><div className="rr-panel-h"><div><h2>Ürün Kataloğu</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} ürün</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100]} onChange={setPageSize} /></div>
+    <div className="rr-panel"><div className="rr-panel-h"><div><h2>Ürün Kataloğu</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} ürün</p></div><RrPageSize remember="products" value={pageSize} sizes={[20, 50, 100]} onChange={setPageSize} /></div>
       {selectedProductIds.length > 0 && hasMoreProductsToSelect && <div className="rr-xsel" role="status"><span><b>{allProductsSelected ? 'Tüm ürün kartları seçildi.' : `${selectedProductCardCount.toLocaleString('tr-TR')} ürün kartı seçildi.`}</b> {allProductsSelected ? `${selectedProductIds.length.toLocaleString('tr-TR')} katalog kaydı toplu işlemlere dahil.` : 'Diğer sayfalardaki kartlar seçime dahil değil.'}</span>{allProductsSelected ? <button type="button" className="rr-btn rr-link" onClick={() => { setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) }}>Seçimi Temizle</button> : <button type="button" className="rr-btn rr-link" onClick={() => void selectAllFilteredProducts()} disabled={selectingAllProducts}>{selectingAllProducts ? 'Tüm Sayfalar Seçiliyor…' : `Tüm ${totalCount.toLocaleString('tr-TR')} Kaydı Seç`}</button>}</div>}
       <div ref={productListRef} className={`rr-tblwrap${query.isPlaceholderData ? ' is-stale-data' : ''}`} aria-busy={query.isPlaceholderData || undefined}>{query.isLoading && !pageProducts.length ? <RrLoading text="Ürünler yükleniyor…" /> : <table className="rr-tbl rr-ptbl">
         <colgroup><col className="rr-c-pd" /><col className="rr-c-var" /><col className="rr-c-pr" /><col className="rr-c-st" /><col className="rr-c-pl" /><col className="rr-c-status" /><col className="rr-c-act" /></colgroup>

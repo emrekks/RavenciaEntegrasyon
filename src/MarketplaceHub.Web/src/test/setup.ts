@@ -13,3 +13,7 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     dispatchEvent: () => false
   })
 }
+
+// A list page remembers the last Sıralama and Sayfa Başına in localStorage; a test must not inherit the previous test's pick.
+import { beforeEach } from 'vitest'
+beforeEach(() => { try { for (const key of Object.keys(localStorage)) if (key.startsWith('rv-sort:') || key.startsWith('rv-page-size:')) localStorage.removeItem(key) } catch { /* no storage here */ } })

@@ -1,3 +1,4 @@
+import { storedPageSize } from '../../shared/sticky-sort'
 import type { JobCategory } from './job-categories'
 import type { JobListTimeRange } from './job-list-query'
 import type { JobDirection } from './job-presentation'
@@ -48,7 +49,7 @@ export function readJobsViewState(params: URLSearchParams): JobsViewState {
     timeRange: fromSlug(rangeSlugs, params.get('aralik'), '24h'),
     search: (params.get('ara') ?? '').slice(0, 200),
     page: Number.isInteger(page) && page > 1 ? page : 1,
-    pageSize: (jobPageSizes as readonly number[]).includes(pageSize) ? pageSize : defaultPageSize
+    pageSize: (jobPageSizes as readonly number[]).includes(pageSize) ? pageSize : storedPageSize('jobs', jobPageSizes, defaultPageSize)
   }
 }
 

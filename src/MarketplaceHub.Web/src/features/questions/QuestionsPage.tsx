@@ -28,6 +28,8 @@ import { useDismissable } from '../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
+import { initialSort, rememberSort } from '../../shared/sticky-sort'
+const questionSorts = ['NEWEST', 'OLDEST', 'UPDATED'] as const
 
 // NOT_DELIVERED (answerSubmissionStatus): an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
 type MarketplaceQuestion = ApiAnswer<'getQuestionsById'>
@@ -175,7 +177,7 @@ export function QuestionsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   useEffect(() => { const timer = window.setTimeout(() => setSearch(searchInput), 300); return () => window.clearTimeout(timer) }, [searchInput])
-  const [sort, setSort] = useState('NEWEST')
+  const [sort, setSort] = useState<string>(() => initialSort('questions', questionSorts, 'NEWEST'))
   // The card's fields are typed first and applied with Filtrele (Enter too); the search alone follows the typing.
   const [draft, setDraft] = useState<{ connectionId?: string; dateFrom?: string; dateTo?: string; sort?: string }>({})
   const [deletingTemplate, setDeletingTemplate] = useState<Template | null>(null)
@@ -299,12 +301,12 @@ export function QuestionsPage() {
   const shownTo = draft.dateTo ?? dateTo
   const shownSort = draft.sort ?? sort
   const canApplyFilters = shownConnection !== connectionId || shownFrom !== dateFrom || shownTo !== dateTo || shownSort !== sort || searchInput !== search
-  const canClearFilters = shownConnection !== 'ALL' || shownFrom !== '' || shownTo !== '' || shownSort !== 'NEWEST' || searchInput !== '' || connectionId !== 'ALL' || dateFrom !== '' || dateTo !== '' || sort !== 'NEWEST' || search !== ''
+  const canClearFilters = shownConnection !== 'ALL' || shownFrom !== '' || shownTo !== '' || searchInput !== '' || connectionId !== 'ALL' || dateFrom !== '' || dateTo !== '' || search !== ''
   const applyFilters = (event?: FormEvent) => {
     event?.preventDefault()
-    setConnectionId(shownConnection); setDateFrom(shownFrom); setDateTo(shownTo); setSort(shownSort); setSearch(searchInput); setDraft({}); setFiltersOpen(false)
+    setConnectionId(shownConnection); setDateFrom(shownFrom); setDateTo(shownTo); rememberSort('questions', shownSort); setSort(shownSort); setSearch(searchInput); setDraft({}); setFiltersOpen(false)
   }
-  const clearFilters = () => { setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSort('NEWEST'); setSearchInput(''); setSearch(''); setDraft({}); setFiltersOpen(false) }
+  const clearFilters = () => { setConnectionId('ALL'); setDateFrom(''); setDateTo(''); setSearchInput(''); setSearch(''); setDraft({}); setFiltersOpen(false) }
   // The open question stays open while the list refreshes: the first one is taken once, and a question that leaves
   // the current filter or page (answered, moved down by a new one) is read on its own instead of silently giving its
   // place to another question.

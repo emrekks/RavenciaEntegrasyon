@@ -12,7 +12,7 @@ const KINDS: SignalKind[] = ['auth', 'lag', 'errorRate', 'rateLimit', 'queue', '
 
 // İşlem Takibi › API Sağlık › API Sağlığı: per connection the key, schedule lag, error rate, quota, queue age and webhook
 // signals, read from stored data only. One value per cell; the detail is the tooltip.
-export function ApiHealthSignalsPanel() {
+export function ApiHealthSignalsPanel({ onOpenJob }: { onOpenJob?: (jobId: string) => void }) {
   const signals = useQuery({ queryKey: queryKeys.apiHealthSignals(), queryFn: ({ signal }) => hubPoll<ApiHealthSignals>('/api-health-signals', { signal }), refetchInterval: 60_000, refetchIntervalInBackground: false })
   const rows = signals.data?.connections ?? []
   // A warning or fault cell is a button that opens its detail; green and empty cells stay plain.
@@ -33,7 +33,7 @@ export function ApiHealthSignalsPanel() {
             : <span className={`rr-mx rr-${cell.tone === 'ok' ? 'ok' : cell.tone}`} title={cell.title}><i />{cell.text}</span>}</td>)}</tr>
       })}
     </tbody></table></div>
-    {attempts && <Suspense fallback={null}><ApiHealthAttemptsDialog key={`${attempts.row.connectionId}-${attempts.kind}`} connectionId={attempts.row.connectionId} displayName={attempts.row.displayName} kind={attempts.kind} onClose={() => setOpen(null)} /></Suspense>}
+    {attempts && <Suspense fallback={null}><ApiHealthAttemptsDialog key={`${attempts.row.connectionId}-${attempts.kind}`} connectionId={attempts.row.connectionId} displayName={attempts.row.displayName} kind={attempts.kind} onClose={() => setOpen(null)} onOpenJob={onOpenJob} /></Suspense>}
     {detail && <RrModal crumb="API Sağlığı" title={detail.title} size="sm" onClose={() => setOpen(null)} foot={<button type="button" className="rr-btn" onClick={() => setOpen(null)}>Kapat</button>}>
       {detail.lead && <p className="rr-lead">{detail.lead}</p>}
       <dl className="rr-kv">{detail.facts.map(([label, value]) => <Fact key={label} label={label} value={value} />)}</dl>

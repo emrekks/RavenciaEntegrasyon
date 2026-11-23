@@ -9,9 +9,10 @@ import { Busy } from '../../shared/components/AsyncState'
 import { FieldHelp } from '../../shared/components/FieldHelp'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { jobTitle } from './job-presentation'
+import { formatDateTime } from '../../shared/format-date'
 import { ChoiceField } from './filter-fields'
 import {
-  activeJobTypes, countsByStatus, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneLabel, laneTotals, queueWindowOptions, quotaLaneLabels, usagePercent, usageTone, windowSince,
+  activeJobTypes, countsByStatus, filterJobsByTab, generalJobTab, jobPlatformTabs, formatSeconds, laneHint, laneWaitState, laneLabel, laneTotals, queueWindowOptions, quotaLaneLabels, usagePercent, usageTone, windowSince,
   type QueueWindow
 } from './queue-quota'
 import './queue-quota.css'
@@ -72,7 +73,7 @@ export function QueueQuotaView() {
     <section className="qq-section" aria-labelledby="qq-lanes">
       <h2 id="qq-lanes">Şeritler ve Slot Kullanımı</h2>
       {lanes.isLoading ? <Busy text="Şeritler yükleniyor…" /> : lanes.isError && !lanes.data ? <p role="alert" className="qq-error">Şerit ölçümleri alınamadı.</p> : <div className="qq-table-scroll"><table className="qq-table">
-        <thead><tr><th className="qq-first">Şerit</th><th className="qq-usage-th">Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th></tr></thead>
+        <thead><tr><th className="qq-first">Şerit</th><th className="qq-usage-th">Slot Kullanımı</th><th className="is-num">Bekleyen</th><th className="is-num">Deneme</th><th className="is-num">Ort. Bekleme</th><th className="is-num">En Uzun %5 Bekleme</th><th className="is-num">Hedef</th><th>Durum</th></tr></thead>
         <tbody>{(lanes.data ?? []).map(lane => <tr key={lane.lane}>
           <td className="qq-first"><strong>{laneLabel(lane.lane)}</strong><small>{laneHint(lane.lane)}</small></td>
           <td className="qq-usage-cell" data-label="Slot Kullanımı"><span className="qq-usage"><UsageBar used={lane.running} limit={lane.slots} label={`${laneLabel(lane.lane)}: ${lane.running} / ${lane.slots} slot`} /><span>{lane.running} / {lane.slots}</span></span></td>
@@ -80,6 +81,8 @@ export function QueueQuotaView() {
           <td className="is-num" data-label="Deneme">{lane.attempts.toLocaleString('tr-TR')}</td>
           <td className="is-num" data-label="Ort. Bekleme">{formatSeconds(lane.averageWaitSeconds)}</td>
           <td className="is-num" data-label="En Uzun %5 Bekleme">{formatSeconds(lane.p95WaitSeconds)}</td>
+          <td className="is-num" data-label="Hedef">{formatSeconds(lane.targetSeconds)}</td>
+          <td data-label="Durum">{(() => { const state = laneWaitState(lane.waitStatus); return <span className={`qq-wait is-${state.tone}`} title={[`Son 5 dk en uzun %5 bekleme: ${formatSeconds(lane.recentP95WaitSeconds)}`, `Sıradaki en eski iş: ${formatSeconds(lane.oldestWaitSeconds)}`, lane.alertSince ? `Uyarı ${formatDateTime(lane.alertSince)} tarihinden beri açık` : ''].filter(Boolean).join('\n')}><i aria-hidden="true" />{state.label}</span> })()}</td>
         </tr>)}</tbody>
       </table></div>}
     </section>

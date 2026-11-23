@@ -67,3 +67,12 @@ describe('Kuyruk ve Kota', () => {
     expect(filterJobsByTab(rows, 'N11')).toHaveLength(4)
   })
 })
+
+import { laneWaitState as waitState } from './queue-quota'
+describe('lane wait state', () => {
+  it('names the three states the API reports', () => {
+    expect(waitState('OK')).toEqual({ label: 'Hedefte', tone: 'ok' })
+    expect(waitState('OVER_TARGET')).toEqual({ label: 'Hedef Aşıldı', tone: 'warn' })
+    expect(waitState('ALERT')).toEqual({ label: 'Uyarı', tone: 'bad' })
+  })
+})
