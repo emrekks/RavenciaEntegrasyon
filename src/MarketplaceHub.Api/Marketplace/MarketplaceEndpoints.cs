@@ -264,7 +264,14 @@ public static partial class MarketplaceEndpoints
             if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, adopt ? "INSTANT_NOTIFICATIONS_ADOPTED" : restore ? "INSTANT_NOTIFICATIONS_RESTORED" : "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
             return Result(result, Results.Ok);
         }).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
-        api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : MissingContext(http)).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
+        // Audited like the opening: a Hepsiburada definition closed by hand left no trace of who closed it (20 Nov 2026).
+        api.MapDelete("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) =>
+        {
+            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
+            var result = await service.DisableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted);
+            if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, "INSTANT_NOTIFICATIONS_DISABLED", id, view.State);
+            return Result(result, Results.Ok);
+        }).WithServerBudget().RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<InstantNotificationView>();
         // Hepsiburada sends every event kind to its own path below the base address, some with PUT.
         api.MapMethods("/hooks/{connectionPublicId:guid}/{routeToken}", ["POST", "PUT"], ReceiveWebhook).DisableAntiforgery().RequireGate(ApiGate.Open).Produces<WebhookAcceptedView>().Idempotent("a repeated delivery of the same marketplace message is queued once (deduplicated by its message id)");
         // An event path answers as Hepsiburada's contracts show: a POST 201, a PUT 204, both without a body.
