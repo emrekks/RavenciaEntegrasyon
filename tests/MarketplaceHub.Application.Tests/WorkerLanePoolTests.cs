@@ -95,9 +95,13 @@ public sealed class WorkerLanePoolTests
     }
 
     [Fact]
-    public void TheLaneModelIsLegacyUnlessSetToFlexible()
+    public void TheLaneModelIsFlexibleUnlessSetToLegacy()
     {
-        Assert.False(LaneModelSettings.From(new ConfigurationBuilder().Build()).Flexible);
+        // Flexible by default since 23 Nov 2026 (owner's go); legacy is the way back, for the worker and the api alike.
+        Assert.True(LaneModelSettings.From(new ConfigurationBuilder().Build()).Flexible);
+        Assert.True(WorkerLaneModel.IsFlexible(null));
+        Assert.False(WorkerLaneModel.IsFlexible(Config(("Worker:LaneModel", " Legacy "))));
+        Assert.True(BulkheadSettings.From(new ConfigurationBuilder().Build(), LaneModelSettings.From(new ConfigurationBuilder().Build()).Flexible).For("pazarama-orders", 2)!.ClassCaps.All(cap => cap == 1));
         Assert.False(LaneModelSettings.From(Config(("Worker:LaneModel", "legacy"))).Flexible);
         var flexible = LaneModelSettings.From(Config(("Worker:LaneModel", " Flexible ")));
         Assert.True(flexible.Flexible);

@@ -405,7 +405,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private void LogLaneModel(LaneSlotPool? pool)
     {
         if (pool is null)
-            logger.LogInformation("Lane model is legacy: each lane leases on its own slots only (Worker:LaneModel=flexible lets a busy lane borrow idle slots)");
+            logger.LogInformation("Lane model is legacy: each lane leases on its own slots only (Worker:LaneModel=flexible, the default, lets a busy lane borrow idle slots)");
         else
             logger.LogInformation("Lane model is flexible: {Total} slots in one pool, each lane keeps its own slots and borrows idle ones; lanes that never lend: {Protected}; borrow limits: {Limits}",
                 pool.Total, string.Join(", ", pool.ProtectedLanes), pool.BorrowLimits.Count == 0 ? "none" : string.Join(", ", pool.BorrowLimits.Select(item => $"{item.Key}={item.Value}")));

@@ -449,8 +449,8 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
                     .LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None);
                 var hot = Assert.Single(lanes, lane => lane.Lane == "HOT");
                 Assert.Equal(60, hot.TargetSeconds);
-                // Legacy lane model: no borrowed count, whatever runs.
-                Assert.Null(hot.Borrowed);
+                // Flexible lane model by default: the borrowed count is there (0 or more).
+                Assert.NotNull(hot.Borrowed);
                 Assert.Equal(LaneWaitStatus.Alert, hot.WaitStatus);
                 Assert.NotNull(hot.AlertSince);
                 Assert.True(hot.OldestWaitSeconds > 60);
@@ -554,9 +554,9 @@ public sealed class WorkerLaneQuotaAndTargetPostgreSqlTests(PostgreSqlTenantIsol
                     .LanesAsync(tenant.Id, TimeSpan.FromHours(1), CancellationToken.None);
                 return Assert.Single(lanes, lane => lane.Lane == "PRODUCT_CATALOG");
             }
-            var flexible = await CatalogAsync(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Worker:LaneModel"] = "flexible" }).Build());
+            var flexible = await CatalogAsync(new ConfigurationBuilder().Build());
             Assert.True(flexible.Borrowed >= 1);
-            Assert.Null((await CatalogAsync(new ConfigurationBuilder().Build())).Borrowed);
+            Assert.Null((await CatalogAsync(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Worker:LaneModel"] = "legacy" }).Build())).Borrowed);
         }
         finally
         {

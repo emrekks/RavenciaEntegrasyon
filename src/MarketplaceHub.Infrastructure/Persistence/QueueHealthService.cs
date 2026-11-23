@@ -54,7 +54,7 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
         // like the worker does: set it on both). Legacy: null, never a count. Flexible: the lane's running jobs over every
         // tenant beyond its own slots, each job counted in the lane that leases it first (WorkerLanes.LaneFor); a job another
         // lane leased (overlapping lanes, a lease from before a restart) can move one count between lanes, never add one.
-        var flexibleLanes = string.Equals(configuration?["Worker:LaneModel"]?.Trim(), "flexible", StringComparison.OrdinalIgnoreCase);
+        var flexibleLanes = WorkerLaneModel.IsFlexible(configuration);
         var running = flexibleLanes
             ? await db.IntegrationJobs.AsNoTracking()
                 .Where(job => job.Status == Domain.JobStatus.Leased && job.LeaseExpiresAt > now)

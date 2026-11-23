@@ -31,6 +31,10 @@ services:
       # (ElevatedRoleMfaMiddleware). Off until the owner has enrolled TOTP; turned on with
       # MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES=true in production.env and a redeploy (docs/CI-CD-DEPLOY.md).
       Security__RequireMfaForElevatedRoles: "${MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES:-false}"
+      # Worker lanes (WorkerLaneModel, owner's go 23 Nov 2026): flexible lets a busy lane borrow the idle slots of the lanes
+      # that do not read orders (the pool stays the lanes' 20 slots); the api reads it too, to show borrowed slots, and both
+      # get this block. MARKETPLACEHUB_WORKER_LANE_MODEL=legacy in production.env and a redeploy go back to own slots only.
+      Worker__LaneModel: "${MARKETPLACEHUB_WORKER_LANE_MODEL:-flexible}"
       DataProtection__CertificatePath: /run/secrets/dp_certificate
       DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
     secrets: &production_secrets [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
