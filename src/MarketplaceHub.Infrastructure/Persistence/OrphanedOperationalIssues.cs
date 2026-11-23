@@ -5,22 +5,23 @@ using Npgsql;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// Y5/O7 (scan 23 Nov 2026): an open issue whose subject is gone, or whose problem the data no longer holds, is resolved.
-// The owner deleted every product on 17 Nov and imported again under new ids; the issues keyed by the old variant ids were
-// never named again, so about 1,500 of them stayed open beside the real work (1,041 Web Color, 309 PttAVM variants) until
-// the 30-day stale pass. Nothing in the delete paths or the import settled them.
+// Y5/O7 (scan 23 Nov 2026): an open issue whose subject is gone, or whose problem the data proves no longer holds, is
+// resolved. The owner deleted every product on 17 Nov and imported again under new ids; the issues keyed by the old variant
+// ids were never named again, so about 1,350 of them stayed open beside the real work (1,041 Web Color, 309 PttAVM
+// variants) until the 30-day stale pass. Nothing in the delete paths or the import settled them.
 //
-// Each rule reads its subject from the issue key, the way the writer built it, and closes the issue only when the database
-// answers for certain: the variant id the key names is no longer in the catalog, the marketplace listing it reported as
-// unmatched is linked now, the product whose import failed is in the panel now, the code clash is gone, the observe-only
-// period ended, the connection was deleted. A key the rule cannot read, or a subject that still exists, stays open
-// (unknown stays unknown). History is kept: the issue is resolved (with the reason added to its summary), not deleted; the
-// retention removes it a month later as any resolved issue. A later occurrence under the same key reopens it as before.
+// A rule closes an issue only when the database proves the warning is no longer true; in doubt it stays open. Each rule
+// names the issue codes it may touch (an issue of any other code is never resolved here, whatever its key) and reads its
+// subject from the key the way the writer built it: the variant id the key names is no longer in the catalog, the model
+// product a "variants on several cards" warning named has its product link now, the product whose import failed was
+// imported after the failure, the observe-only period ended, the connection was deleted. A warning whose condition needs
+// the marketplace's own data to judge (a variant linked to the wrong panel variant, a colour PttAVM does not list, a
+// multi-code clash) is left to its producer, which resolves it on the next import, or to the 30-day stale pass (review
+// 23 Nov 2026). History is kept: the issue is resolved (the reason added to its summary), not deleted; the retention
+// removes it a month later as any resolved issue. A later occurrence under the same key reopens it as before.
 public static class OrphanedOperationalIssues
 {
     public const string ResolvedStatus = nameof(IssueStatus.Resolved);
-    public const string BarcodeConflictCode = "PRODUCT_BARCODE_CONFLICT";
-    public const string BarcodeConflictPrefix = "product-sync-barcode-conflict:";
 
     // A uuid in the D or N form (the writers use both), else NULL: the CASE keeps a key that does not hold one from the cast.
     private static string Uuid(string text) =>
@@ -39,14 +40,16 @@ public static class OrphanedOperationalIssues
     private static readonly string UnmatchedListing = AfterConnection(Unmatched);
     private static readonly string FailedProduct = AfterConnection(ImportFailed);
     private static readonly string VariantGone = $"""NOT EXISTS (SELECT 1 FROM catalog.product_variants v WHERE v."TenantId" = i."TenantId" AND v."Id" = {VariantAtThree})""";
-    // PttAVM alone keys an unmatched issue by the panel variant (product-mapping-unmatched:{connection}:{variant:N}).
-    private static readonly string PttAvmVariantKey = $"""
-        i."DedupeKey" LIKE '{Unmatched}%' AND {Hex32AtThreeAlone}
-        AND EXISTS (SELECT 1 FROM integration.platform_connections c WHERE c."TenantId" = i."TenantId" AND c."Id" = {Connection} AND c."PlatformCode" = 'PTTAVM')
-        """;
 
-    public sealed record Rule(string Name, string Reason, string Where)
+    public const string MappingUnmatchedCode = "PRODUCT_MAPPING_UNMATCHED";
+    public const string ImportFailedCode = "PRODUCT_IMPORT_FAILED";
+    public const string ListingObserveCode = "LISTING_VERIFY_OBSERVE";
+
+    public sealed record Rule(string Name, string Reason, IReadOnlyList<string> Codes, string Where)
     {
+        // The whole match of the rule: one of its codes, its key condition.
+        public string Match => $"""i."Code" IN ({string.Join(", ", Codes.Select(code => $"'{code}'"))}) AND ({Where})""";
+
         // One bounded batch: the oldest open issues the rule matches (@tenant: one tenant, NULL: every tenant), resolved
         // with the reason added to the summary; the codes of those it resolved come back. Built from constants only. EF
         // formats raw SQL as a composite format string, so the regex quantifiers' braces are doubled.
@@ -55,7 +58,7 @@ public static class OrphanedOperationalIssues
                 SELECT i."Id" FROM ops.operational_issues i
                 WHERE i."Status" <> '{ResolvedStatus}' AND i."TenantId" IS NOT NULL
                   AND (CAST(@tenant AS uuid) IS NULL OR i."TenantId" = @tenant)
-                  AND ({Where.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal)})
+                  AND {Match.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal)}
                 ORDER BY i."Id"
                 LIMIT @batch
                 FOR UPDATE SKIP LOCKED)
@@ -68,57 +71,53 @@ public static class OrphanedOperationalIssues
     public static readonly IReadOnlyList<Rule> Rules =
     [
         // product-web-color-mapping / product-web-color-value / product-attribute-value:{product}:{variant}:… (CatalogAttributeService).
-        new("variant-gone", "Otomatik kapatıldı: kaydın konusu olan panel varyantı artık yok.", $"""
+        new("variant-gone", "Otomatik kapatıldı: kaydın konusu olan panel varyantı artık yok.",
+            ["PRODUCT_WEBCOLOR_MAPPING_REQUIRED", "PRODUCT_WEBCOLOR_VALUE_UNMAPPED", "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED"], $"""
             (i."DedupeKey" LIKE 'product-web-color-mapping:%' OR i."DedupeKey" LIKE 'product-web-color-value:%' OR i."DedupeKey" LIKE 'product-attribute-value:%')
             AND {VariantAtThree} IS NOT NULL AND {VariantGone}
             """),
-        // stock-projection-offer-invalid:{connection:N}:{variant:N}, product-sync-model-code-conflict:{connection}:{variant:N},
-        // and PttAVM's product-mapping-unmatched:{connection}:{variant:N}.
-        new("variant-gone-by-connection", "Otomatik kapatıldı: kaydın konusu olan panel varyantı artık yok.", $"""
+        // stock-projection-offer-invalid:{connection:N}:{variant:N} (the offer codes), product-sync-model-code-conflict:
+        // {connection}:{variant:N}, and PttAVM's product-mapping-unmatched:{connection}:{variant:N}.
+        new("variant-gone-by-connection", "Otomatik kapatıldı: kaydın konusu olan panel varyantı artık yok.",
+            [.. PriceStockOfferIssueCodes.All, ModelCodeUniquenessPolicy.ChangeConflictCode, MappingUnmatchedCode], $"""
             (((i."DedupeKey" LIKE 'stock-projection-offer-invalid:%' OR i."DedupeKey" LIKE 'product-sync-model-code-conflict:%') AND {Hex32AtThreeAlone})
-              OR ({PttAvmVariantKey}))
+              OR (i."Code" = '{MappingUnmatchedCode}' AND i."DedupeKey" LIKE '{Unmatched}%' AND {Hex32AtThreeAlone}
+                AND EXISTS (SELECT 1 FROM integration.platform_connections c WHERE c."TenantId" = i."TenantId" AND c."Id" = {Connection} AND c."PlatformCode" = 'PTTAVM')))
             AND {VariantAtThree} IS NOT NULL AND {VariantGone}
             """),
-        // The PttAVM variant the issue named is linked on that connection now.
-        new("pttavm-variant-linked", "Otomatik kapatıldı: panel varyantı pazaryerinde artık bağlı.", $"""
-            {PttAvmVariantKey}
-            AND EXISTS (SELECT 1 FROM catalog.marketplace_variant_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."VariantId" = {VariantAtThree})
+        // product-mapping-unmatched:{connection}:main:… / group:…: the N11 / Pazarama model product whose variants fell on
+        // several panel cards (CatalogImportService.MapExistingCatalogProduct, written only while it has no product link;
+        // a variant id never starts with main: or group:). Its product link exists now, so the warning cannot hold.
+        new("model-product-linked", "Otomatik kapatıldı: pazaryeri ürünü panelde artık bağlı.", [MappingUnmatchedCode], $"""
+            i."DedupeKey" LIKE '{Unmatched}%' AND {Connection} IS NOT NULL AND ({UnmatchedListing} LIKE 'main:_%' OR {UnmatchedListing} LIKE 'group:_%')
+            AND EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."ExternalId" = {UnmatchedListing})
             """),
-        // product-mapping-unmatched:{connection}:{marketplace id}: the listing is linked now. A variant link answers for any
-        // key; a product link only for a key that names a product (N11 main:, Pazarama group:, PttAVM ptt:, and Shopify and
-        // Hepsiburada, whose unmatched keys are their product ids), so a variant id that equals a product id is not taken.
-        new("listing-linked", "Otomatik kapatıldı: pazaryeri ürünü panelde artık bağlı.", $"""
-            i."DedupeKey" LIKE '{Unmatched}%' AND {Connection} IS NOT NULL AND NOT ({Hex32AtThreeAlone}) AND {UnmatchedListing} <> ''
-            AND (EXISTS (SELECT 1 FROM catalog.marketplace_variant_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."ExternalId" = {UnmatchedListing})
-              OR (EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."ExternalId" = regexp_replace({UnmatchedListing}, '^ptt:', ''))
-                AND ({UnmatchedListing} LIKE 'main:%' OR {UnmatchedListing} LIKE 'group:%' OR {UnmatchedListing} LIKE 'ptt:%'
-                  OR EXISTS (SELECT 1 FROM integration.platform_connections c WHERE c."TenantId" = i."TenantId" AND c."Id" = {Connection} AND c."PlatformCode" IN ('SHOPIFY', 'HEPSIBURADA')))))
-            """),
-        // product-sync-import:{connection}:{marketplace product}: a later import stored it (a catalog import does not resolve
-        // the failure itself, only the retry run does).
-        new("import-stored", "Otomatik kapatıldı: ürün sonradan panele alındı.", $"""
-            i."Code" = 'PRODUCT_IMPORT_FAILED' AND i."DedupeKey" LIKE '{ImportFailed}%' AND {Connection} IS NOT NULL
+        // product-sync-import:{connection}:{marketplace product}: a later import stored the product (its link was imported
+        // after the failure was last seen; a failed update of a product already linked keeps its older import time). A
+        // catalog import does not resolve the failure itself, only the retry run does.
+        new("imported-after-failure", "Otomatik kapatıldı: ürün hatadan sonra panele alındı.", [ImportFailedCode], $"""
+            i."DedupeKey" LIKE '{ImportFailed}%' AND {Connection} IS NOT NULL
             AND {FailedProduct} <> '' AND {FailedProduct} NOT LIKE 'missing:%'
-            AND EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."ExternalId" = {FailedProduct})
+            AND EXISTS (SELECT 1 FROM catalog.marketplace_product_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."ExternalId" = {FailedProduct}
+              AND l."LastImportedAt" > i."LastSeenAt")
             """),
         // listing-verify-observe:{connection}: the observe-only runs are over and at least one run after them marked states.
-        new("observe-period-over", "Otomatik kapatıldı: gözlem dönemi bitti; tarama artık durumları kendisi işaretliyor.", $$"""
-            i."Code" = 'LISTING_VERIFY_OBSERVE' AND i."DedupeKey" LIKE 'listing-verify-observe:%' AND {{Connection}} IS NOT NULL
+        new("observe-period-over", "Otomatik kapatıldı: gözlem dönemi bitti; tarama artık durumları kendisi işaretliyor.", [ListingObserveCode], $$"""
+            i."DedupeKey" LIKE 'listing-verify-observe:%' AND {{Connection}} IS NOT NULL
             AND EXISTS (SELECT 1 FROM integration.sync_cursors s WHERE s."TenantId" = i."TenantId" AND s."ConnectionId" = {{Connection}}
               AND s."ResourceType" = '{{ListingVerificationPolicy.StateCursorResource}}'
               AND COALESCE(CAST(substring(s."OpaqueCursor" from '"completedRuns":([0-9]{1,9})') AS int), 0) > {{ListingVerificationPolicy.ObserveOnlyRuns}})
             """),
         // An issue about one connection's listings whose connection was deleted (Bağlantıyı Sil keeps the row as DELETED).
-        new("connection-deleted", "Otomatik kapatıldı: bağlantı silindi.", $"""
-            (i."DedupeKey" LIKE '{Unmatched}%' OR i."DedupeKey" LIKE '{ImportFailed}%' OR i."DedupeKey" LIKE '{BarcodeConflictPrefix}%'
+        new("connection-deleted", "Otomatik kapatıldı: bağlantı silindi.",
+            [MappingUnmatchedCode, ImportFailedCode, "PRODUCT_BARCODE_CONFLICT", ListingObserveCode, .. PriceStockOfferIssueCodes.All, ModelCodeUniquenessPolicy.ChangeConflictCode, "PTTAVM_PRODUCT_CODE_NOT_MODEL"], $"""
+            (i."DedupeKey" LIKE '{Unmatched}%' OR i."DedupeKey" LIKE '{ImportFailed}%' OR i."DedupeKey" LIKE 'product-sync-barcode-conflict:%'
               OR i."DedupeKey" LIKE 'listing-verify-observe:%' OR i."DedupeKey" LIKE 'stock-projection-offer-invalid:%'
               OR i."DedupeKey" LIKE 'product-sync-model-code-conflict:%' OR i."DedupeKey" LIKE 'pttavm-product-code:%' OR i."DedupeKey" LIKE 'pttavm-product-link:%')
             AND {Connection} IS NOT NULL
             AND EXISTS (SELECT 1 FROM integration.platform_connections c WHERE c."TenantId" = i."TenantId" AND c."Id" = {Connection} AND c."Status" = 'DELETED')
             """)
     ];
-
-    public const string BarcodeConflictReason = "Otomatik kapatıldı: kod artık birden fazla panel ürününde değil.";
 
     // Resolves the orphaned open issues of one tenant (null: every tenant), at most batchSize x maxBatches per rule, and
     // returns how many it resolved per issue code. Idempotent: a second run finds nothing.
@@ -139,45 +138,6 @@ public static class OrphanedOperationalIssues
                 if (codes.Count < batchSize) break;
             }
         }
-        var barcode = await ResolveSettledBarcodeConflictsAsync(db, tenantId, resolvedAt, batchSize * maxBatches, cancellationToken);
-        if (barcode > 0) counts[BarcodeConflictCode] = counts.GetValueOrDefault(BarcodeConflictCode) + barcode;
         return counts;
-    }
-
-    // product-sync-barcode-conflict:{connection}:{code}: the code (a stored key form, CatalogImportService) was held by the
-    // variants of more than one panel product. Resolved when fewer than two products hold it now, by stock code or barcode
-    // in any stored form (CatalogKeyNormalizer.LookupKeys), which counts at least every holder the import counted.
-    private static async Task<int> ResolveSettledBarcodeConflictsAsync(AppDbContext db, Guid? tenantId, DateTimeOffset now, int limit, CancellationToken cancellationToken)
-    {
-        var open = await db.OperationalIssues
-            .Where(x => x.TenantId != null && (tenantId == null || x.TenantId == tenantId) && x.Status != IssueStatus.Resolved
-                && x.Code == BarcodeConflictCode && x.DedupeKey.StartsWith(BarcodeConflictPrefix))
-            .OrderBy(x => x.Id)
-            .Take(limit)
-            .ToListAsync(cancellationToken);
-        var resolved = 0;
-        foreach (var issue in open)
-        {
-            var rest = issue.DedupeKey[BarcodeConflictPrefix.Length..];
-            var separator = rest.IndexOf(':');
-            if (separator <= 0 || !Guid.TryParse(rest[..separator], out _)) continue;
-            var keys = CatalogKeyNormalizer.LookupKeys(rest[(separator + 1)..]);
-            if (keys.Length == 0) continue;
-            var issueTenant = issue.TenantId!.Value;
-            var holders = await db.ProductVariants.AsNoTracking()
-                .Where(x => x.TenantId == issueTenant && ((x.SkuNormalized != null && keys.Contains(x.SkuNormalized)) || (x.BarcodeNormalized != null && keys.Contains(x.BarcodeNormalized))))
-                .Select(x => x.ProductId)
-                .Distinct()
-                .OrderBy(id => id)
-                .Take(2)
-                .CountAsync(cancellationToken);
-            if (holders >= 2) continue;
-            issue.Status = IssueStatus.Resolved;
-            issue.ResolvedAt = now;
-            issue.Summary = $"{issue.Summary} · {BarcodeConflictReason}";
-            resolved++;
-        }
-        if (resolved > 0) await db.SaveChangesAsync(cancellationToken);
-        return resolved;
     }
 }

@@ -159,11 +159,15 @@ internal sealed partial class CatalogImportService
                         .Distinct()
                         .OrderBy(id => id).Take(2)
                         .ToListAsync(cancellationToken);
+                var barcodeConflictKey = $"product-sync-barcode-conflict:{connectionId}:{(skuCodes.Count > 0 ? skuCodes.First() : identityCodes.First())}";
+                // Y5 review (23 Nov 2026): the listing's whole code set lands on one panel product (or none) now, so the clash
+                // this listing reported is gone; only this check knows the whole set, the key holds its first code alone.
+                if (identityProductIds.Count <= 1) await ResolveOpenIssue(tenantId, barcodeConflictKey, cancellationToken);
                 if (identityProductIds.Count > 1)
                 {
                     if (!allowCrossProductVariantMatch)
                     {
-                        await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{(skuCodes.Count > 0 ? skuCodes.First() : identityCodes.First())}", "PRODUCT_BARCODE_CONFLICT", $"{observedPlatform} ürününün stok kodu veya barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
+                        await RecordIssue(tenantId, barcodeConflictKey, "PRODUCT_BARCODE_CONFLICT", $"{observedPlatform} ürününün stok kodu veya barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
                         return false;
                     }
 

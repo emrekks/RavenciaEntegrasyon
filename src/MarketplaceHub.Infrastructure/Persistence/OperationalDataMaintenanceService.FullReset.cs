@@ -203,14 +203,14 @@ public sealed partial class OperationalDataMaintenanceService
                 OR i."Code"='STOCK_ORDER_CONSUMPTION_BLOCKED' AND i."DedupeKey" LIKE 'stock-order-consumption:%'
                    AND NOT EXISTS (SELECT 1 FROM inventory.stock_reservations r WHERE r."TenantId"=i."TenantId" AND r."SourceType"='ORDER_LINE' AND r."Status"='Active' AND replace(r."SourceId", '-', '') = substring(i."DedupeKey" FROM 25)));
             """, cancellationToken);
-        // Y5 (scan 23 Nov 2026): the issues keyed by the variants of the products this reset deleted (Web Color, attribute
-        // values, other connections' offers and PttAVM links) name nothing any more either.
-        await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 2_000, maxBatches: 50, cancellationToken);
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "CONNECTION_FULL_RESET", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = jobId is { } id ? $"job:{id:D}" : "full-reset", CorrelationId = jobId?.ToString("D") ?? Guid.CreateVersion7().ToString("D"), CreatedAt = timeProvider.GetUtcNow() });
         AnnounceReset(tenantId, "connections", "PlatformConnection", connectionId);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        // Y5 (scan 23 Nov 2026): the issues keyed by the variants of the products this reset deleted (Web Color, attribute
+        // values, other connections' offers, PttAVM links) name nothing any more either; resolved after the commit.
+        await ResolveOrphanedIssuesAfterCommitAsync(tenantId, "full reset", cancellationToken);
     }
 
     private Task<int> CancelWaitingJobsAsync(Guid tenantId, Guid connectionId, Guid? keep, DateTimeOffset now, CancellationToken cancellationToken) =>

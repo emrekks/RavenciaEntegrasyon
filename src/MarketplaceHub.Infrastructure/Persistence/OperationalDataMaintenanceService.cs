@@ -42,9 +42,8 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         connection.Version++;
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);
-        // Y5: the open issues of the deleted products' variants and of the deleted connection's listings are resolved.
-        await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 2_000, maxBatches: 50, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        await ResolveOrphanedIssuesAfterCommitAsync(tenantId, "connection delete", cancellationToken);
         await RefreshDashboardBestEffortAsync(tenantId);
         return ServiceResult<OperationalDataResetView>.Ok(counts with { ConnectionDeleted = true, WebhookNotice = webhookNotice });
     }
@@ -53,6 +52,17 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
     // Webhook'u Kapat. A failure does not stop the deletion: the panel refuses that address's deliveries anyway, and the
     // returned notice tells the seller to remove it at the marketplace. Hepsiburada registers by hand, so only the seller
     // can have it removed there.
+    // Y5: after a delete or reset has committed, the open issues whose subject it removed are resolved (deleted variants,
+    // the deleted connection's listings). A failure here never undoes the owner's delete; the daily pass closes them.
+    private async Task ResolveOrphanedIssuesAfterCommitAsync(Guid tenantId, string after, CancellationToken cancellationToken)
+    {
+        try { await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 2_000, maxBatches: 50, cancellationToken); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "Resolving the issues left without a subject after the {Operation} of tenant {TenantId} failed; the daily issue pass closes them", after, tenantId);
+        }
+    }
+
     private async Task<string?> CloseMarketplaceWebhookAsync(PlatformConnection connection, string correlationId, CancellationToken cancellationToken)
     {
         var externalId = await db.WebhookSubscriptions.AsNoTracking()

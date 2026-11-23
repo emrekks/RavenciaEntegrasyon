@@ -914,10 +914,17 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // Return lines reported as unlinked whose line has since been linked to its order line.
             var linked = await issues.ResolveLinkedReturnLineIssuesAsync(token);
             if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
-            // Issues whose subject is gone (a deleted variant, a listing linked since, an import stored since, ...): at most
-            // 20 x 500 per rule a pass, logged per issue code.
-            foreach (var (code, count) in (await issues.ResolveOrphanedAsync(batchSize: 500, maxBatches: 20, token)).OrderBy(x => x.Key, StringComparer.Ordinal))
-                logger.LogInformation("Issue retention resolved {Count} {Code} issue(s) whose subject no longer exists", count, code);
+            // Issues whose subject is gone (a deleted variant, a deleted connection, an import stored since, ...): at most
+            // 20 x 500 per rule a pass, logged per issue code. Its failure does not keep the deletion below from running.
+            try
+            {
+                foreach (var (code, count) in (await issues.ResolveOrphanedAsync(batchSize: 500, maxBatches: 20, token)).OrderBy(x => x.Key, StringComparer.Ordinal))
+                    logger.LogInformation("Issue retention resolved {Count} {Code} issue(s) whose subject no longer exists", count, code);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                logger.LogError(exception, "Issue retention could not resolve the issues whose subject no longer exists; it tries again in the next pass");
+            }
             var deleted = await issues.DeleteResolvedAsync(resolvedRetention, token);
             if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
         }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken, "issue-retention");

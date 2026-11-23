@@ -36,6 +36,11 @@ internal sealed partial class CatalogImportService(
     private Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
         issues.ResolveAsync(tenantId, key, timeProvider.GetUtcNow(), cancellationToken);
 
+    // The same, reading the clock only when an open issue is there: a check that runs for every listing of a page leaves
+    // the run's other timestamps as they were.
+    private Task ResolveOpenIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
+        issues.ResolveIfOpenAsync(tenantId, key, timeProvider, cancellationToken);
+
     private Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) =>
         cursors.GetAsync(tenantId, connectionId, resource, cancellationToken);
 
