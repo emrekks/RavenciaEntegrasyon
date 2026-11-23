@@ -64,3 +64,15 @@ describe('ApiHealthAttemptsDialog', () => {
     expect(reasonText('SOMETHING_ELSE')).toBe('SOMETHING_ELSE')
   })
 })
+
+describe('opening a job from a detail window', () => {
+  it('closes the window and hands the job to the page instead of navigating', async () => {
+    hubPoll.mockResolvedValue({ items: [{ jobId: 'j7', errorCode: 'E', errorSummary: 'boom', status: 'DEAD', at: '2026-11-19T00:00:00Z' }], page: 1, pageSize: 50, totalCount: 1 })
+    const opened: string[] = []; let closed = 0
+    await mount(<PriceStockProblemDialog connectionId="c1" displayName="N11" counts={{ invalidOffers: 0, failedPushes: 1, manualReview: 0, notFoundLinks: 0, rejectedLinks: 0 }} onClose={() => { closed += 1 }} onOpenJob={id => opened.push(id)} />)
+    const button = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.md-tbl button')).find(item => item.textContent === 'İşi Aç')!
+    expect(document.body.querySelector('.md-tbl a')).toBeNull()
+    await act(async () => { button.click() })
+    expect(opened).toEqual(['j7']); expect(closed).toBe(1)
+  })
+})

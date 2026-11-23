@@ -76,15 +76,15 @@ export function lostListingLines(row: Pick<PriceStockConnectionMonitor, 'notFoun
   const counts = [row.notFoundLinks ? `${row.notFoundLinks.toLocaleString('tr-TR')} varyant bulunamadı` : '', row.rejectedLinks ? `${row.rejectedLinks.toLocaleString('tr-TR')} varyant reddedildi` : ''].filter(Boolean).join(', ')
   const lines = [`Pazaryerinde bulunamayan ilan: ${counts}${products ? ` (${products} ürün)` : ''}.`]
   lines.push(row.notFoundLinks
-    ? 'Bu bir gönderim hatası değil: gece yapılan ürün taraması ve tekil sorgu bu kodları pazaryerinde artık bulamıyor (ürün pazaryerinden silinmiş ya da kodu değişmiş olabilir).'
+    ? 'Gönderim hatası değil: pazaryeri bu kodları artık bulamıyor (silinmiş ya da kodu değişmiş olabilir).'
     : 'Pazaryeri bu kodları fiyat-stok gönderiminde tanımadı.')
-  if (!row.automaticWritesOpen) lines.push('Otomatik fiyat-stok gönderimi kapalı; bu ilanlara bir şey gönderilmiyor.')
+  if (!row.automaticWritesOpen) lines.push('Otomatik gönderim kapalı; bu ilanlara bir şey gönderilmiyor.')
   for (const listing of listings) {
     const state = listing.healthStatus === 'REJECTED' ? 'reddedildi' : 'bulunamadı'
     const range = skuRange(listing)
     lines.push(`• ${listing.title} · ${listing.variants} varyant ${state}${range ? ` (${range})` : ''}${listing.since ? ` · ${formatDate(listing.since)} tarihinden beri` : ''}`)
   }
-  lines.push('Ürün pazaryerinde olmalıysa ürün kartından Yayınla ile yeniden gönderin; artık satılmayacaksa bu bağlantıdaki eşleştirmesini kaldırın.')
+  lines.push('Olmalıysa ürün kartından Yayınla ile yeniden gönderin; olmayacaksa eşleştirmeyi kaldırın.')
   return lines
 }
 
@@ -97,7 +97,7 @@ export function statusExtras(row: PriceStockConnectionMonitor): StatusExtras {
   const parts = [
     row.failedPushes7d ? `${row.failedPushes7d} başarısız gönderim` : '',
     row.manualReviewPushes ? `${row.manualReviewPushes} kısmi / inceleme bekliyor` : '',
-    row.invalidOffers ? `${row.invalidOffers} gönderilemeyen teklif (pazaryerine gönderilemeyip bekletildi)` : ''
+    row.invalidOffers ? `${row.invalidOffers} gönderilemeyen teklif` : ''
   ].filter(Boolean)
   const lines = parts.length ? [parts.join(' · ')] : []
   if (row.latestFailure) lines.push(`Son hata: ${row.latestFailure.errorSummary ?? row.latestFailure.errorCode ?? row.latestFailure.status}${row.latestFailure.at ? ` · ${exactAge(row.latestFailure.at)}` : ''}`)

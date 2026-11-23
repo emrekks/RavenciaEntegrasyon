@@ -101,8 +101,8 @@ describe('price/stock monitor helpers', () => {
   it('names the lost listings by product and stock codes and says no send is involved while writes are off', () => {
     const lines = lostListingLines(shopifyLost)
     expect(lines[0]).toBe('Pazaryerinde bulunamayan ilan: 48 varyant bulunamadı (2 ürün).')
-    expect(lines.join('\n')).toContain('Bu bir gönderim hatası değil')
-    expect(lines).toContain('Otomatik fiyat-stok gönderimi kapalı; bu ilanlara bir şey gönderilmiyor.')
+    expect(lines.join('\n')).toContain('Gönderim hatası değil')
+    expect(lines).toContain('Otomatik gönderim kapalı; bu ilanlara bir şey gönderilmiyor.')
     expect(lines).toContain('• Kışlık Yonca Çiçek Desen · 24 varyant bulunamadı (MZ050YNC-01 … MZ050YNC-24) · 03.11.2026 tarihinden beri')
     expect(lines).toContain('• Kışlık Yonca Yaka Etek · 24 varyant bulunamadı (MZ036YNC-01, MZ036YNC-24) · 03.11.2026 tarihinden beri')
     expect(lostListingLines(connection())).toEqual([])

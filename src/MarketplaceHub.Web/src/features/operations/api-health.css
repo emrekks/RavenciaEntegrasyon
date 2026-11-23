@@ -46,5 +46,6 @@ html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x .rr-mx-nm small { max-width: 13
   html body .app-shell.stitch-shell main .rr.rr-dashboard.api-health-rr .rr-hpill .rr-lbl-short { display: inline; }
 }
 /* A warning or fault signal is a button: it looks like the plain chip and opens its detail. */
-button.rr-mx.rr-mx-open { cursor: pointer; font: inherit; }
+/* The global button rule (a primary-coloured box) reaches it; the chip stays transparent and borderless. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) button.rr-mx.rr-mx-open, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) button.rr-mx.rr-mx-open:hover:not(:disabled) { min-height: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; font: inherit; }
 button.rr-mx.rr-mx-open:hover { filter: brightness(1.08); }

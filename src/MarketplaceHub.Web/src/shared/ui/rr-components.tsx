@@ -1,5 +1,6 @@
 import { Children, Fragment, isValidElement, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { BrandSymbol } from '../components/BrandSymbol'
+import { rememberPageSize } from '../sticky-sort'
 import { previewSrcSet, thumbnailSources, thumbnailSrcSet, thumbnailUrl } from '../product-thumbnail'
 import { orderPlatformLogoSource, platformLogoSource } from '../platform-logos'
 import { createPortal } from 'react-dom'
@@ -288,8 +289,9 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
 }
 
 // "Sayfa Başına": a short list that opens right under its box (a native select opens its own list over the box on phones).
-export function RrPageSize({ value, sizes, onChange }: { value: number; sizes: number[]; onChange: (size: number) => void }) {
-  return <span className="rr-psize">Sayfa Başına<RrAnchor className="rr-psize-anchor" trigger={(open, toggle) => <button type="button" className="rr-in rr-psize-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Sayfa başına ${value} kayıt`} onClick={toggle}><span>{value}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop rr-static rr-psize-pop" role="listbox" aria-label="Sayfa başına kayıt">{sizes.map(size => <button type="button" role="option" key={size} aria-selected={size === value} className={`rr-opt${size === value ? ' rr-on' : ''}`} onClick={() => { onChange(size); close() }}>{size}</button>)}</div>}</RrAnchor></span>
+// remember: the list page whose size is kept for the next visit (storedPageSize).
+export function RrPageSize({ value, sizes, onChange, remember }: { value: number; sizes: number[]; onChange: (size: number) => void; remember?: string }) {
+  return <span className="rr-psize">Sayfa Başına<RrAnchor className="rr-psize-anchor" trigger={(open, toggle) => <button type="button" className="rr-in rr-psize-btn" aria-haspopup="listbox" aria-expanded={open} aria-label={`Sayfa başına ${value} kayıt`} onClick={toggle}><span>{value}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop rr-static rr-psize-pop" role="listbox" aria-label="Sayfa başına kayıt">{sizes.map(size => <button type="button" role="option" key={size} aria-selected={size === value} className={`rr-opt${size === value ? ' rr-on' : ''}`} onClick={() => { if (remember) rememberPageSize(remember, size); onChange(size); close() }}>{size}</button>)}</div>}</RrAnchor></span>
 }
 
 // Single-choice filter popover used under table heads and filter fields.

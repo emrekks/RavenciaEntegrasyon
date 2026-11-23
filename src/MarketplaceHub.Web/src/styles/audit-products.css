@@ -126,7 +126,7 @@
    when the card is narrower. */
 :root:root:root body .variant-table-editor { --vopt-w: calc(64px + var(--vopt-ch, 12) * 7.8px); }
 @media (min-width: 1025px) and (max-width: 1200px) {
-  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(1086px + max(180px, var(--vopt-w))); grid-template-columns: 34px minmax(max(180px, var(--vopt-w)), 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 184px; }
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(806px + var(--vopt-w, 170px)); grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(104px, .9fr) minmax(104px, .9fr) 64px 92px 92px 100px 168px; }
 }
 @media (min-width: 1025px) {
   :root:root:root body .variant-table-editor .variant-option-cell > .variant-option-text { overflow: visible; text-overflow: clip; }
