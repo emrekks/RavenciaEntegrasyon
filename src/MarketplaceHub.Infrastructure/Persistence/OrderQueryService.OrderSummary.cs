@@ -26,8 +26,8 @@ internal sealed partial class OrderQueryService
     internal static readonly TimeSpan OrderSummaryCacheLifetime = TimeSpan.FromMinutes(5);
 
     // Each counter is the number of distinct orders its tab lists for the same filters (date,
-    // search, platform, cargo, invoice, label): the tab query itself, counted once per tab in a
-    // single round trip. Only the requested tabs are counted.
+    // search, platform, cargo, invoice, label): the tab query itself, counted once per tab. Only the requested tabs are
+    // counted.
     public async Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken, IReadOnlyCollection<string>? tabs = null, bool allowCached = false)
     {
         var requested = tabs is null ? OrderSummaryTabs : OrderSummaryTabs.Where(tab => tabs.Contains(tab, StringComparer.OrdinalIgnoreCase)).ToArray();
@@ -90,15 +90,12 @@ internal sealed partial class OrderQueryService
 
     private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
     {
-        IQueryable<string>? tagged = null;
+        // One small query per tab, one after the other. They were one query of 16 tab queries joined by UNION ALL: EF
+        // compiles such a query the first time it meets it, and the union took 9-12 s on live right after every deploy
+        // (18 s on a seeded copy, where the 16 tab queries alone compile in under 0.5 s together and count in ~130 ms).
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var tab in requested)
-        {
-            var tabName = tab;
-            var rows = FilteredOrders(tenantId, options with { Status = tab, Sort = null }).Select(_ => tabName);
-            tagged = tagged is null ? rows : tagged.Concat(rows);
-        }
-        var counts = await tagged!.GroupBy(tab => tab).Select(group => new { Tab = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(row => row.Tab, row => row.Count, cancellationToken);
+            counts[tab] = await FilteredOrders(tenantId, options with { Status = tab, Sort = null }).CountAsync(cancellationToken);
         int Count(string tab) => counts.GetValueOrDefault(tab);
         // The micro-export card counts them in the one tab it asked for, under the same filters.
         var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options with { Status = requested[0] }, cancellationToken) : (0, null);
