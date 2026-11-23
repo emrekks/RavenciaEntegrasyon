@@ -1124,6 +1124,45 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
+    // Y5 review (23 Nov 2026): a product's import failure is resolved by any later run that writes the product, as the retry
+    // run does; a run that skips the product (here "Yeni Ürünleri Çek", which leaves a product the panel holds alone) says
+    // nothing about it and leaves its failure open.
+    [PostgreSqlFact]
+    public async Task AnImportFailure_IsResolvedByALaterRunThatWritesTheProduct_NotByOneThatSkipsIt()
+    {
+        var seed = await SeedAsync();
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK" }]));
+        async Task ImportAsync(string payload, Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor? failing = null)
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!);
+            if (failing is not null) options.AddInterceptors(failing);
+            await using var db = new AppDbContext(options.Options, fixture.TimeProvider);
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, payload, $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+        await ImportAsync("{\"full\":true}", new ConflictOnCardTitled("Haki"));
+        string hakiKey, bordoKey;
+        await using (var setup = fixture.CreateContext())
+        {
+            hakiKey = (await setup.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED" && row.Status == IssueStatus.Open)).DedupeKey;
+            // An earlier failure of the product that is in the panel (Bordo), as a failed update leaves one.
+            var bordo = await setup.MarketplaceProductLinks.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.ConnectionId == seed.ConnectionId);
+            bordoKey = $"product-sync-import:{seed.ConnectionId}:{bordo.ExternalId}";
+            setup.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, DedupeKey = bordoKey, Code = "PRODUCT_IMPORT_FAILED", Summary = "güncelleme hatası", Status = IssueStatus.Open, FirstSeenAt = fixture.Now, LastSeenAt = fixture.Now, OccurrenceCount = 1 });
+            await setup.SaveChangesAsync();
+        }
+
+        await ImportAsync("{\"newOnly\":true}");
+
+        await using var check = fixture.CreateContext();
+        var issues = await check.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED").ToDictionaryAsync(row => row.DedupeKey);
+        Assert.Equal(IssueStatus.Resolved, issues[hakiKey].Status);
+        Assert.NotNull(issues[hakiKey].ResolvedAt);
+        Assert.Equal(IssueStatus.Open, issues[bordoKey].Status);
+        Assert.Equal(2, (await CardsAsync(check, seed)).Count);
+    }
+
     // ISLEYICI-1: the products a run filters out (here a content whose every size is archived) no longer count towards
     // "not all failed": a run whose only processed model failed is not a success.
     [PostgreSqlFact]

@@ -56,6 +56,45 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // Scan 23 Nov 2026: a product update stopped by a newer update of the same product ends cancelled with its code, not
+    // blocked; a first publish stopped the same way stays blocked for the owner.
+    [PostgreSqlFact]
+    public async Task ASupersededProductUpdateEndsCancelled_ASupersededPublishStaysBlocked()
+    {
+        var tenant = NewTenant("bg-superseded");
+        var update = NewJob(tenant.Id, "TEST_SUPERSEDED_UPDATE");
+        var publish = NewJob(tenant.Id, "TEST_SUPERSEDED_PUBLISH");
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(update, publish);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            foreach (var (job, code) in new[] { (update, "PRODUCT_UPDATE_SUPERSEDED"), (publish, "PRODUCT_PUBLICATION_SUPERSEDED") })
+            {
+                await using var db = fixture.CreateContext();
+                var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+                var lease = await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: job.Id);
+                Assert.NotNull(lease);
+                Assert.True(await leases.CompleteAsync(job.Id, lease.LeaseToken, JobExecutionResult.Blocked(code, "yenisi var"), CancellationToken.None));
+            }
+
+            await using var verification = fixture.CreateContext();
+            var storedUpdate = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == update.Id);
+            Assert.Equal(JobStatus.Cancelled, storedUpdate.Status);
+            Assert.Equal("PRODUCT_UPDATE_SUPERSEDED", storedUpdate.LastErrorCode);
+            Assert.NotNull(storedUpdate.CompletedAt);
+            Assert.Equal(JobStatus.Blocked, (await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == publish.Id)).Status);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TheLeaseChecksTheLockGroupStoredOnTheJob()
     {

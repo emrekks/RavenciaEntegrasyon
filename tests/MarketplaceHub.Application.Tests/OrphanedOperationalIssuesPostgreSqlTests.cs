@@ -5,14 +5,18 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Y5/O7 (scan 23 Nov 2026): the owner deleted every product and imported again under new ids; about 1,500 issues keyed by
-// the old variants (Web Color, PttAVM links), stale code clashes, stored imports and the ended observe period stayed open
-// beside the real work. A product delete now resolves its issues, the daily pass resolves every issue whose subject is gone
-// and leaves those whose subject still exists or cannot be read, and a re-detection under the new ids opens its own issue.
+// Y5/O7 (scan 23 Nov 2026, rewritten after the review of 23 Nov): the owner deleted every product and imported again under
+// new ids; about 1,350 issues keyed by the old variants stayed open beside the real work. An issue is resolved only when
+// its subject (a variant, a connection) is gone, or when the writer's own guard no longer holds; one rule per issue code,
+// every other code untouched. The review found real warnings closed by the first version: a code clash over a listing's
+// whole code set, a listing linked to the wrong panel variant, a failed update of a linked product, PttAVM's warning on a
+// variant that keeps its own link. Each has a test below in which its subject and its condition still hold, and the pass
+// leaves it open. The prediction query (OrphanedOperationalIssues.PredictSql) is checked against the pass on one fixture.
 [Collection("postgres-integration")]
 public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
@@ -57,13 +61,13 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         return (card, m, l);
     }
 
-    private static OperationalIssue Issue(Seed seed, string key, string code) => new()
+    private static OperationalIssue Issue(Seed seed, string key, string code, string summary = "test") => new()
     {
         Id = Guid.CreateVersion7(),
         TenantId = seed.Tenant.Id,
         DedupeKey = key,
         Code = code,
-        Summary = "test",
+        Summary = summary,
         Status = IssueStatus.Open,
         FirstSeenAt = DateTimeOffset.UtcNow.AddDays(-6),
         LastSeenAt = DateTimeOffset.UtcNow.AddDays(-6),
@@ -76,6 +80,8 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         : key.StartsWith("listing-verify-observe:", StringComparison.Ordinal) ? "LISTING_VERIFY_OBSERVE"
         : key.StartsWith("product-sync-barcode-conflict:", StringComparison.Ordinal) ? "PRODUCT_BARCODE_CONFLICT"
         : key.StartsWith("product-mapping-unmatched:", StringComparison.Ordinal) ? "PRODUCT_MAPPING_UNMATCHED"
+        : key.StartsWith("pttavm-product-link:", StringComparison.Ordinal) ? "PRODUCT_MAPPING_UNMATCHED"
+        : key.StartsWith("pttavm-product-code:", StringComparison.Ordinal) ? "PTTAVM_PRODUCT_CODE_NOT_MODEL"
         : key.StartsWith("product-web-color-value:", StringComparison.Ordinal) ? "PRODUCT_WEBCOLOR_VALUE_UNMAPPED"
         : key.StartsWith("product-web-color", StringComparison.Ordinal) ? "PRODUCT_WEBCOLOR_MAPPING_REQUIRED"
         : key.StartsWith("product-attribute-value:", StringComparison.Ordinal) ? "PRODUCT_ATTRIBUTE_VALUE_UNMAPPED"
@@ -84,13 +90,54 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         : key.StartsWith("order-line-variant-unmatched:", StringComparison.Ordinal) ? "ORDER_LINE_VARIANT_UNMATCHED"
         : key.StartsWith("stock-order-consumption:", StringComparison.Ordinal) ? "STOCK_ORDER_CONSUMPTION_BLOCKED" : "OTHER";
 
+    // PttAVM's own summary for a variant whose colour or size it does not list (MapPttAvmProduct).
+    private const string PttColourMissing = "PttAVM'de bu renk/beden yok: MURDUM (X-M); ürün X · Kart.";
+
     private static string WebColorKey(Product card, ProductVariant variant) => $"product-web-color-mapping:{card.Id}:{variant.Id}:{Guid.CreateVersion7()}";
 
     private CatalogService Service(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
 
+    private static Task<IReadOnlyDictionary<(string Code, string Reason), int>> PassAsync(AppDbContext db, Guid tenantId, int batchSize = 500, int maxBatches = 5) =>
+        OrphanedOperationalIssues.ResolveAsync(db, tenantId, DateTimeOffset.UtcNow, batchSize, maxBatches, OrphanedOperationalIssues.MaintenanceActor, CancellationToken.None);
+
+    // The prediction query, narrowed to one tenant: what it says the pass resolves, by code and reason.
+    private static async Task<Dictionary<(string Code, string Reason), int>> PredictAsync(AppDbContext db, Guid tenantId)
+    {
+        var connection = (NpgsqlConnection)db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open) await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(OrphanedOperationalIssues.PredictSql(500 * 5, $"""i."TenantId" = '{tenantId}'"""), connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        var predicted = new Dictionary<(string Code, string Reason), int>();
+        while (await reader.ReadAsync())
+        {
+            if (reader.GetString(0) != "resolves") continue;
+            var key = (reader.GetString(1), reader.GetString(2));
+            predicted[key] = predicted.GetValueOrDefault(key) + (int)reader.GetInt64(4);
+        }
+        return predicted;
+    }
+
     private static async Task<Dictionary<string, OperationalIssue>> IssuesAsync(AppDbContext db, Guid tenantId) =>
         await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.DedupeKey);
+
+    // Seeds the issues, runs the pass and says the given ones stayed open, untouched.
+    private async Task AssertThePassLeavesOpenAsync(Seed seed, params (string Key, string Code, string Summary)[] issues)
+    {
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.OperationalIssues.AddRange(issues.Select(issue => Issue(seed, issue.Key, issue.Code, issue.Summary)));
+            await setup.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Empty(await PredictAsync(db, seed.Tenant.Id));
+            Assert.Empty(await PassAsync(db, seed.Tenant.Id));
+        }
+        await using var check = fixture.CreateContext();
+        var stored = await IssuesAsync(check, seed.Tenant.Id);
+        Assert.All(issues, issue => Assert.True(stored[issue.Key].Status == IssueStatus.Open && stored[issue.Key].Summary == issue.Summary && stored[issue.Key].ResolvedAt is null, issue.Key));
+    }
 
     [PostgreSqlFact]
     public async Task DeletingAProductResolvesTheIssuesOfItsVariantsAndLeavesTheOtherCardsOpen()
@@ -108,12 +155,14 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             [
                 WebColorKey(gone.Card, gone.M),
                 $"product-attribute-value:{gone.Card.Id}:{gone.L.Id}:{Guid.CreateVersion7()}:PAMUK",
-                $"product-mapping-unmatched:{seed.Ptt.Id}:{gone.M.Id:N}",
                 $"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{gone.L.Id:N}"
             ];
             liveKeys = [WebColorKey(kept.Card, kept.M), $"product-mapping-unmatched:{seed.Ptt.Id}:{kept.L.Id:N}", $"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{kept.M.Id:N}"];
             await setup.SaveChangesAsync();
-            setup.OperationalIssues.AddRange(goneKeys.Concat(liveKeys).Select(key => Issue(seed, key, CodeOf(key))));
+            setup.OperationalIssues.AddRange(goneKeys.Concat(liveKeys).Select(key => Issue(seed, key, CodeOf(key), key.Contains(seed.Ptt.Id.ToString(), StringComparison.Ordinal) ? PttColourMissing : "test")));
+            var pttGone = $"product-mapping-unmatched:{seed.Ptt.Id}:{gone.M.Id:N}";
+            setup.OperationalIssues.Add(Issue(seed, pttGone, "PRODUCT_MAPPING_UNMATCHED", PttColourMissing));
+            goneKeys = [.. goneKeys, pttGone];
             await setup.SaveChangesAsync();
         }
 
@@ -129,13 +178,13 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         {
             Assert.Equal(IssueStatus.Resolved, issues[key].Status);
             Assert.NotNull(issues[key].ResolvedAt);
-            Assert.EndsWith("panel varyantı artık yok.", issues[key].Summary, StringComparison.Ordinal);
+            Assert.EndsWith($"({OrphanedOperationalIssues.DeleteActor}): konu artık yok — kaydın panel varyantı silinmiş.", issues[key].Summary, StringComparison.Ordinal);
         });
         Assert.All(liveKeys, key => Assert.Equal(IssueStatus.Open, issues[key].Status));
     }
 
     [PostgreSqlFact]
-    public async Task ThePassResolvesIssuesWhoseSubjectIsGone_LeavesLiveAndUnreadableSubjectsOpen_AndIsIdempotent()
+    public async Task ThePassResolvesOnlyWhatItsRulesProve_ThePredictionCountsTheSame_AndASecondRunFindsNothing()
     {
         Seed seed;
         var closes = new List<string>();
@@ -147,37 +196,40 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             var other = AddCard(setup, seed, "LIVE2");
             var deletedConnection = Connection(seed.Tenant, "PAZARAMA");
             deletedConnection.Status = "DELETED";
-            setup.PlatformConnections.Add(deletedConnection);
-            var at = DateTimeOffset.UtcNow;
-            // An N11 model product linked since its "several cards" warning; a Trendyol product imported after its failure.
+            var pazarama = Connection(seed.Tenant, "PAZARAMA");
+            setup.PlatformConnections.AddRange(deletedConnection, pazarama);
+            // An N11 model product and a Pazarama group linked since their "several cards" warnings.
             setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, ProductId = live.Card.Id, ExternalId = "main:MODEL-1", Version = 1 });
-            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Trendyol.Id, ProductId = other.Card.Id, ExternalId = "861751633", LastImportedAt = at, Version = 1 });
-            // Review 23 Nov 2026, warnings still true: an N11 variant linked to the WRONG panel variant (the import warns
-            // exactly then); a PttAVM variant that keeps an old own link while PttAVM lists no such colour/size; a Trendyol
-            // product already linked whose UPDATE import failed after its last import; a variant id equal to a product id.
-            setup.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, VariantId = live.M.Id, ExternalId = "N11-WRONG-VARIANT", Version = 1 });
-            setup.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Ptt.Id, VariantId = live.L.Id, ExternalId = "LIVE1-L", Version = 1 });
-            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Trendyol.Id, ProductId = live.Card.Id, ExternalId = "861700001", LastImportedAt = at.AddDays(-10), Version = 1 });
-            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, ProductId = other.Card.Id, ExternalId = "N11-SAME-ID", Version = 1 });
-            // The listing check of N11: three runs completed (observe-only is two); of PttAVM: two (still observing).
+            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = pazarama.Id, ProductId = other.Card.Id, ExternalId = "group:G-1", Version = 1 });
+            // The listing check of N11: three runs completed (observe-only is two); of PttAVM: two (its notice still describes the last one);
+            // of Trendyol: five, but Trendyol has no observe period (a notice there is not this rule's).
             setup.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, ResourceType = ListingVerificationPolicy.StateCursorResource, OpaqueCursor = """{"runJobId":null,"completedRuns":3}""", Version = 1 });
             setup.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Ptt.Id, ResourceType = ListingVerificationPolicy.StateCursorResource, OpaqueCursor = """{"runJobId":null,"completedRuns":2}""", Version = 1 });
+            setup.SyncCursors.Add(new SyncCursor { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Trendyol.Id, ResourceType = ListingVerificationPolicy.StateCursorResource, OpaqueCursor = """{"runJobId":null,"completedRuns":5}""", Version = 1 });
             await setup.SaveChangesAsync();
 
             var goneVariant = Guid.CreateVersion7();
             var goneProduct = Guid.CreateVersion7();
+            var neverStored = Guid.CreateVersion7();
             closes.AddRange(
             [
                 $"product-web-color-mapping:{goneProduct}:{goneVariant}:{Guid.CreateVersion7()}",
                 $"product-web-color-value:{goneProduct}:{goneVariant}:KIRMIZI",
+                $"product-attribute-value:{goneProduct}:{goneVariant}:{Guid.CreateVersion7()}:PAMUK",
                 $"product-mapping-unmatched:{seed.Ptt.Id}:{goneVariant:N}",
                 $"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{goneVariant:N}",
                 $"product-sync-model-code-conflict:{seed.Trendyol.Id}:{goneVariant:N}",
                 $"product-mapping-unmatched:{seed.N11.Id}:main:MODEL-1",
-                $"product-sync-import:{seed.Trendyol.Id}:861751633",
+                $"product-mapping-unmatched:{pazarama.Id}:group:G-1",
                 $"listing-verify-observe:{seed.N11.Id}",
                 $"product-mapping-unmatched:{deletedConnection.Id}:PZ-1",
-                $"product-sync-barcode-conflict:{deletedConnection.Id}:PZ-2"
+                $"pttavm-product-link:{deletedConnection.Id}:PZ-3",
+                $"product-sync-barcode-conflict:{deletedConnection.Id}:PZ-2",
+                $"product-sync-import:{deletedConnection.Id}:PZ-4",
+                $"listing-verify-observe:{deletedConnection.Id}",
+                $"pttavm-product-code:{deletedConnection.Id}:PZ-5",
+                // A connection id no connection row holds any more.
+                $"product-sync-import:{neverStored}:PZ-6"
             ]);
             stays.AddRange(
             [
@@ -185,18 +237,14 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
                 $"product-mapping-unmatched:{seed.Ptt.Id}:{live.M.Id:N}",
                 $"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{other.M.Id:N}",
                 $"product-mapping-unmatched:{seed.N11.Id}:N11-NOT-LINKED",
-                $"product-mapping-unmatched:{seed.N11.Id}:N11-SAME-ID",
-                $"product-mapping-unmatched:{seed.N11.Id}:N11-WRONG-VARIANT",
-                $"product-mapping-unmatched:{seed.Ptt.Id}:{live.L.Id:N}",
-                $"product-sync-import:{seed.Trendyol.Id}:861700001",
-                // A code clash is judged by its producer only: the key holds the first code of the listing's set (PRB-A1
-                // on one card while PRB-A2 is on another), or an old dotless-ı key form no lookup finds again.
-                $"product-sync-barcode-conflict:{seed.N11.Id}:LIVE1-M",
-                $"product-sync-barcode-conflict:{seed.N11.Id}:PRBDUPı",
+                $"product-mapping-unmatched:{seed.N11.Id}:main:MODEL-NOT-LINKED",
                 $"product-mapping-unmatched:{seed.Ptt.Id}:ptt:PTT-NOT-LINKED",
+                $"pttavm-product-link:{seed.Ptt.Id}:PTT-1",
+                $"pttavm-product-code:{seed.Ptt.Id}:PTT-2",
+                // A failed import is judged by the import alone (it resolves it when it writes the product again).
                 $"product-sync-import:{seed.Trendyol.Id}:999999999",
-                $"product-sync-import:{seed.Trendyol.Id}:missing:abcdef",
                 $"listing-verify-observe:{seed.Ptt.Id}",
+                $"listing-verify-observe:{seed.Trendyol.Id}",
                 // Unreadable subjects: no uuid where the writer puts one; a 32-hex id on a connection that is not PttAVM.
                 "product-web-color-mapping:not-a-guid:also-not:x",
                 $"product-mapping-unmatched:{seed.N11.Id}:{goneVariant:N}",
@@ -204,46 +252,148 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
                 $"order-line-variant-unmatched:{seed.Trendyol.Id:N}:LIVE9",
                 $"stock-order-consumption:{Guid.CreateVersion7():N}"
             ]);
-            setup.OperationalIssues.AddRange(closes.Concat(stays).Select(key => Issue(seed, key, CodeOf(key))));
-            // O1: only the codes each rule names. Issues of other codes whose keys look like a rule's keys stay open.
-            foreach (var (key, code) in new[]
+            string Summary(string key) => key.StartsWith("product-mapping-unmatched:", StringComparison.Ordinal) && key.Contains(seed.Ptt.Id.ToString(), StringComparison.Ordinal) && !key.Contains(":ptt:", StringComparison.Ordinal) ? PttColourMissing : "test";
+            setup.OperationalIssues.AddRange(closes.Concat(stays).Select(key => Issue(seed, key, CodeOf(key), Summary(key))));
+            // Only the code each rule names: issues of other codes, or of a rule's code under another rule's key, stay open.
+            foreach (var (key, code, summary) in new[]
             {
-                ($"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{Guid.CreateVersion7():N}", "STOCK_ORDER_CONSUMPTION_BLOCKED"),
-                ($"product-web-color-mapping:{goneProduct}:{Guid.CreateVersion7()}:x", "ORDER_LINE_VARIANT_UNMATCHED"),
-                ($"product-mapping-unmatched:{seed.Ptt.Id}:{Guid.CreateVersion7():N}", "INVOICE_ADJUSTMENT_REQUIRED"),
-                ($"product-mapping-unmatched:{deletedConnection.Id}:PZ-9", "HEPSIBURADA_RETURN_ORDER_OUTSIDE_HISTORY"),
-                ($"listing-verify-observe:{deletedConnection.Id}", "SOME_NEW_CODE")
+                ($"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{Guid.CreateVersion7():N}", "STOCK_ORDER_CONSUMPTION_BLOCKED", "test"),
+                ($"product-web-color-mapping:{goneProduct}:{Guid.CreateVersion7()}:x", "ORDER_LINE_VARIANT_UNMATCHED", "test"),
+                ($"product-web-color-value:{goneProduct}:{Guid.CreateVersion7()}:x", "PRODUCT_WEBCOLOR_MAPPING_REQUIRED", "test"),
+                ($"product-mapping-unmatched:{seed.Ptt.Id}:{Guid.CreateVersion7():N}", "INVOICE_ADJUSTMENT_REQUIRED", PttColourMissing),
+                // A 32-hex PttAVM key whose summary is not one of PttAVM's variant warnings.
+                ($"product-mapping-unmatched:{seed.Ptt.Id}:{Guid.CreateVersion7():N}", "PRODUCT_MAPPING_UNMATCHED", "test"),
+                ($"product-mapping-unmatched:{deletedConnection.Id}:PZ-9", "HEPSIBURADA_RETURN_ORDER_OUTSIDE_HISTORY", "test"),
+                ($"listing-verify-observe:{deletedConnection.Id}:x", "SOME_NEW_CODE", "test"),
+                ($"product-sync-link-conflict:{deletedConnection.Id}:PZ-8", "PRODUCT_LINK_CONFLICT", "test")
             })
             {
                 stays.Add(key);
-                setup.OperationalIssues.Add(Issue(seed, key, code));
+                setup.OperationalIssues.Add(Issue(seed, key, code, summary));
             }
             await setup.SaveChangesAsync();
         }
 
         await using (var db = fixture.CreateContext())
         {
-            var counts = await OrphanedOperationalIssues.ResolveAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, batchSize: 500, maxBatches: 5, CancellationToken.None);
+            var predicted = await PredictAsync(db, seed.Tenant.Id);
+            var counts = await PassAsync(db, seed.Tenant.Id);
+            // The prediction query and the pass agree, code by code and reason by reason.
+            Assert.Equal(predicted.OrderBy(x => x.Key).ToList(), counts.OrderBy(x => x.Key).ToList());
             Assert.Equal(closes.Count, counts.Values.Sum());
-            Assert.Equal(1, counts["PRODUCT_BARCODE_CONFLICT"]);
-            Assert.Equal(1, counts["LISTING_VERIFY_OBSERVE"]);
-            Assert.Equal(1, counts["PRODUCT_IMPORT_FAILED"]);
+            Assert.Equal(2, counts[("PRODUCT_MAPPING_UNMATCHED", OrphanedOperationalIssues.ConditionCleared)]);
+            Assert.Equal(1, counts[("LISTING_VERIFY_OBSERVE", OrphanedOperationalIssues.ConditionCleared)]);
+            Assert.Equal(1, counts[("LISTING_VERIFY_OBSERVE", OrphanedOperationalIssues.SubjectGone)]);
+            Assert.Equal(2, counts[("PRODUCT_IMPORT_FAILED", OrphanedOperationalIssues.SubjectGone)]);
+            Assert.All(counts.Keys, key => Assert.Contains(key.Code, OrphanedOperationalIssues.Codes));
         }
 
         await using (var check = fixture.CreateContext())
         {
             var issues = await IssuesAsync(check, seed.Tenant.Id);
-            Assert.All(closes, key => Assert.True(issues[key].Status == IssueStatus.Resolved && issues[key].ResolvedAt is not null && issues[key].Summary.Contains("Otomatik kapatıldı", StringComparison.Ordinal), key));
-            Assert.All(stays, key => Assert.True(issues[key].Status == IssueStatus.Open && issues[key].Summary == "test", key));
+            Assert.All(closes, key => Assert.True(issues[key].Status == IssueStatus.Resolved && issues[key].ResolvedAt is not null
+                && issues[key].Summary.Contains($"Otomatik kapatıldı ({OrphanedOperationalIssues.MaintenanceActor}): ", StringComparison.Ordinal), key));
+            Assert.All(stays, key => Assert.True(issues[key].Status == IssueStatus.Open && issues[key].ResolvedAt is null && !issues[key].Summary.Contains("Otomatik kapatıldı", StringComparison.Ordinal), key));
         }
 
-        // A second run finds nothing.
+        // A second run finds nothing, and the prediction then finds nothing either. The check query finds every resolved one
+        // under a rule of its own code, none under NO RULE MATCHES NOW.
         await using (var again = fixture.CreateContext())
-            Assert.Empty(await OrphanedOperationalIssues.ResolveAsync(again, seed.Tenant.Id, DateTimeOffset.UtcNow, batchSize: 500, maxBatches: 5, CancellationToken.None));
+        {
+            Assert.Empty(await PassAsync(again, seed.Tenant.Id));
+            Assert.Empty(await PredictAsync(again, seed.Tenant.Id));
+            var connection = (NpgsqlConnection)again.Database.GetDbConnection();
+            await using var command = new NpgsqlCommand(OrphanedOperationalIssues.VerifySql($"""i."TenantId" = '{seed.Tenant.Id}'"""), connection);
+            await using var reader = await command.ExecuteReaderAsync();
+            var resolvedRows = 0L;
+            while (await reader.ReadAsync())
+            {
+                if (reader.GetString(0) != "resolved by the pass") continue;
+                Assert.Equal(nameof(IssueStatus.Resolved), reader.GetString(1));
+                Assert.NotEqual("NO RULE MATCHES NOW", reader.GetString(3));
+                resolvedRows += reader.GetInt64(5);
+            }
+            Assert.Equal(closes.Count, resolvedRows);
+        }
     }
 
-    // Y1 (review 23 Nov 2026): a code clash is judged over the listing's whole code set, which only the import knows. The
-    // pass leaves it open; the next import of that listing resolves it once the set lands on one panel product.
+    // Review finding 1: a code clash is judged over the listing's whole code set. The key holds the first code alone, which
+    // one card holds while the listing's second code is on another card: the clash holds and the pass leaves it open.
+    [PostgreSqlFact]
+    public async Task CodeClashOverAMultiCodeListing_WhileItsCodesSitOnTwoCards_StaysOpen()
+    {
+        Seed seed;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var first = AddCard(setup, seed, "CLA");
+            var second = AddCard(setup, seed, "CLB");
+            first.M.Sku = first.M.SkuNormalized = "CLASH-1";
+            second.M.Sku = second.M.SkuNormalized = "CLASH-2";
+            await setup.SaveChangesAsync();
+        }
+        await AssertThePassLeavesOpenAsync(seed,
+            ($"product-sync-barcode-conflict:{seed.N11.Id}:CLASH-1", "PRODUCT_BARCODE_CONFLICT", "N11 ürününün stok kodu veya barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı."));
+    }
+
+    // Review finding 2: an N11 listing linked to another panel variant than the one its codes name now. The listing and both
+    // variants exist and the wrong link stays: the warning holds.
+    [PostgreSqlFact]
+    public async Task ListingLinkedToTheWrongPanelVariant_StaysOpen()
+    {
+        Seed seed;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var card = AddCard(setup, seed, "WRONG");
+            setup.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, VariantId = card.M.Id, ExternalId = "WRONG-L", Version = 1 });
+            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, ProductId = card.Card.Id, ExternalId = "WRONG-L", Version = 1 });
+            await setup.SaveChangesAsync();
+        }
+        await AssertThePassLeavesOpenAsync(seed,
+            ($"product-mapping-unmatched:{seed.N11.Id}:WRONG-L", "PRODUCT_MAPPING_UNMATCHED", "Pazar yeri varyantı WRONG-L daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme WRONG-L. Bağlantı değiştirilmedi · Kart."));
+    }
+
+    // Review finding 3: the update import of a Trendyol product that is linked failed. The product, its link (imported before
+    // and also after the failure) and the connection exist: whether the failure still holds is the import's to say.
+    [PostgreSqlFact]
+    public async Task FailedUpdateImportOfALinkedProduct_StaysOpen()
+    {
+        Seed seed;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var card = AddCard(setup, seed, "UPD");
+            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Trendyol.Id, ProductId = card.Card.Id, ExternalId = "861700001", LastImportedAt = DateTimeOffset.UtcNow.AddDays(-10), Version = 1 });
+            var later = AddCard(setup, seed, "UPD2");
+            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Trendyol.Id, ProductId = later.Card.Id, ExternalId = "861700002", LastImportedAt = DateTimeOffset.UtcNow, Version = 1 });
+            await setup.SaveChangesAsync();
+        }
+        await AssertThePassLeavesOpenAsync(seed,
+            ($"product-sync-import:{seed.Trendyol.Id}:861700001", "PRODUCT_IMPORT_FAILED", "Pazar yeri ürünü '861700001' panele alınamadı; sonraki ürünle devam edildi."),
+            ($"product-sync-import:{seed.Trendyol.Id}:861700002", "PRODUCT_IMPORT_FAILED", "Pazar yeri ürünü '861700002' panele alınamadı; sonraki ürünle devam edildi."));
+    }
+
+    // Review finding 4: PttAVM does not list a colour of a panel variant that still exists and keeps its own link on the
+    // connection. The variant and its link exist: the warning holds.
+    [PostgreSqlFact]
+    public async Task PttAvmWarningOnAVariantThatExistsAndKeepsItsOwnLink_StaysOpen()
+    {
+        Seed seed;
+        ProductVariant variant;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var card = AddCard(setup, seed, "OWN");
+            variant = card.L;
+            setup.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Ptt.Id, VariantId = card.L.Id, ExternalId = "OWN-L", Version = 1 });
+            await setup.SaveChangesAsync();
+        }
+        await AssertThePassLeavesOpenAsync(seed,
+            ($"product-mapping-unmatched:{seed.Ptt.Id}:{variant.Id:N}", "PRODUCT_MAPPING_UNMATCHED", PttColourMissing));
+    }
+
+    // A clash is resolved by the import once the listing's codes land on one card, never by the pass.
     [PostgreSqlFact]
     public async Task ACodeClashIsResolvedByTheImportOnceTheListingsCodesLandOnOneCard_NotByThePass()
     {
@@ -279,8 +429,7 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         await using (var db = fixture.CreateContext())
         {
             Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key)).Status);
-            // The key's own code has one holder, yet the listing's other code is on another card: the clash holds.
-            Assert.Empty(await OrphanedOperationalIssues.ResolveAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, batchSize: 500, maxBatches: 5, CancellationToken.None));
+            Assert.Empty(await PassAsync(db, seed.Tenant.Id));
             Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key)).Status);
             // The owner moves the second code off the other card.
             await db.ProductVariants.Where(x => x.Id == onSecondCard.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Sku, "PRB-Z2").SetProperty(x => x.SkuNormalized, "PRB-Z2"));
@@ -291,6 +440,90 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         var issue = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key);
         Assert.Equal(IssueStatus.Resolved, issue.Status);
         Assert.NotNull(issue.ResolvedAt);
+    }
+
+    // The "several cards" warning of an N11 model product is resolved by the mapping itself once the product's variants land
+    // on one panel card; while they sit on two it stays.
+    [PostgreSqlFact]
+    public async Task TheSeveralCardsWarningIsResolvedByTheMappingOnceTheVariantsLandOnOneCard()
+    {
+        Seed seed;
+        ProductVariant onFirst, onSecond;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var first = AddCard(setup, seed, "SCA");
+            var second = AddCard(setup, seed, "SCB");
+            first.M.Sku = first.M.SkuNormalized = "SC-1";
+            second.M.Sku = second.M.SkuNormalized = "SC-2";
+            onFirst = first.L;
+            onSecond = second.M;
+            await setup.SaveChangesAsync();
+        }
+        var snapshot = new RemoteCatalogProduct("main:SC", "SC", "Model", "", null, null, null, null, [],
+            [
+                new RemoteCatalogVariant("SC-1", "SC-1", null, "SC", new Dictionary<string, string>(), false, 500m, null, 10m, 1m, "TRY", "{}"),
+                new RemoteCatalogVariant("SC-2", "SC-2", null, "SC", new Dictionary<string, string>(), false, 500m, null, 10m, 1m, "TRY", "{}")
+            ], "{}");
+        async Task MapAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            await (Task<bool>)map.Invoke(processor.CatalogImport, [seed.Tenant.Id, seed.N11.Id, snapshot, false, CancellationToken.None, true, true, false, null, "N11", false])!;
+            await db.SaveChangesAsync();
+        }
+        var key = $"product-mapping-unmatched:{seed.N11.Id}:main:SC";
+
+        await MapAsync();
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key)).Status);
+            Assert.Empty(await PassAsync(db, seed.Tenant.Id));
+            // The owner moves the second code onto the first card.
+            await db.ProductVariants.Where(x => x.Id == onSecond.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Sku, "SC-X").SetProperty(x => x.SkuNormalized, "SC-X"));
+            await db.ProductVariants.Where(x => x.Id == onFirst.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Sku, "SC-2").SetProperty(x => x.SkuNormalized, "SC-2"));
+        }
+
+        await MapAsync();
+        await using var check = fixture.CreateContext();
+        var issue = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key);
+        Assert.Equal(IssueStatus.Resolved, issue.Status);
+        Assert.NotNull(issue.ResolvedAt);
+    }
+
+    // An issue the pass resolved by mistake is not stuck: its own writer opens the same record again under the same key,
+    // with its own summary, and the next pass leaves it open while the guard holds again.
+    [PostgreSqlFact]
+    public async Task AnIssueThePassResolvedOpensAgainUnderItsOwnKeyWhenItsWriterSeesItAgain()
+    {
+        Seed seed;
+        Guid linkId;
+        var key = "";
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var card = AddCard(setup, seed, "REOPEN");
+            linkId = Guid.CreateVersion7();
+            setup.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = linkId, TenantId = seed.Tenant.Id, ConnectionId = seed.N11.Id, ProductId = card.Card.Id, ExternalId = "main:REOPEN", Version = 1 });
+            key = $"product-mapping-unmatched:{seed.N11.Id}:main:REOPEN";
+            setup.OperationalIssues.Add(Issue(seed, key, "PRODUCT_MAPPING_UNMATCHED"));
+            await setup.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(1, (await PassAsync(db, seed.Tenant.Id))[("PRODUCT_MAPPING_UNMATCHED", OrphanedOperationalIssues.ConditionCleared)]);
+            // The link goes again and the import sees the listing on several cards once more.
+            await db.MarketplaceProductLinks.Where(x => x.Id == linkId).ExecuteDeleteAsync();
+            await new IssueRecorder(db).RecordAsync(seed.Tenant.Id, key, "PRODUCT_MAPPING_UNMATCHED", "yeniden", DateTimeOffset.UtcNow, CancellationToken.None);
+            await db.SaveChangesAsync();
+            Assert.Empty(await PassAsync(db, seed.Tenant.Id));
+        }
+        await using var check = fixture.CreateContext();
+        var issue = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key);
+        Assert.Equal(IssueStatus.Open, issue.Status);
+        Assert.Equal("yeniden", issue.Summary);
+        Assert.Equal(2, issue.OccurrenceCount);
     }
 
     [PostgreSqlFact]
@@ -304,10 +537,11 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             await setup.SaveChangesAsync();
         }
 
+        var key = ("PRODUCT_WEBCOLOR_MAPPING_REQUIRED", OrphanedOperationalIssues.SubjectGone);
         await using (var db = fixture.CreateContext())
         {
-            Assert.Equal(4, (await OrphanedOperationalIssues.ResolveAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, batchSize: 2, maxBatches: 2, CancellationToken.None))["PRODUCT_WEBCOLOR_MAPPING_REQUIRED"]);
-            Assert.Equal(1, (await OrphanedOperationalIssues.ResolveAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, batchSize: 2, maxBatches: 2, CancellationToken.None))["PRODUCT_WEBCOLOR_MAPPING_REQUIRED"]);
+            Assert.Equal(4, (await PassAsync(db, seed.Tenant.Id, batchSize: 2, maxBatches: 2))[key]);
+            Assert.Equal(1, (await PassAsync(db, seed.Tenant.Id, batchSize: 2, maxBatches: 2))[key]);
         }
         await using var check = fixture.CreateContext();
         Assert.Equal(0, await check.OperationalIssues.CountAsync(x => x.TenantId == seed.Tenant.Id && x.Status == IssueStatus.Open));
@@ -329,7 +563,7 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             oldKey = WebColorKey(old.Card, old.M);
             oldPttKey = $"product-mapping-unmatched:{seed.Ptt.Id}:{old.M.Id:N}";
             await setup.SaveChangesAsync();
-            setup.OperationalIssues.AddRange(Issue(seed, oldKey, "PRODUCT_WEBCOLOR_MAPPING_REQUIRED"), Issue(seed, oldPttKey, "PRODUCT_MAPPING_UNMATCHED"));
+            setup.OperationalIssues.AddRange(Issue(seed, oldKey, "PRODUCT_WEBCOLOR_MAPPING_REQUIRED"), Issue(seed, oldPttKey, "PRODUCT_MAPPING_UNMATCHED", PttColourMissing));
             await setup.SaveChangesAsync();
         }
         await using (var db = fixture.CreateContext())
@@ -345,9 +579,9 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             newPttKey = $"product-mapping-unmatched:{seed.Ptt.Id}:{fresh.M.Id:N}";
             var recorder = new IssueRecorder(import);
             await recorder.RecordAsync(seed.Tenant.Id, newKey, "PRODUCT_WEBCOLOR_MAPPING_REQUIRED", "yeni", DateTimeOffset.UtcNow, CancellationToken.None);
-            await recorder.RecordAsync(seed.Tenant.Id, newPttKey, "PRODUCT_MAPPING_UNMATCHED", "yeni", DateTimeOffset.UtcNow, CancellationToken.None);
+            await recorder.RecordAsync(seed.Tenant.Id, newPttKey, "PRODUCT_MAPPING_UNMATCHED", PttColourMissing, DateTimeOffset.UtcNow, CancellationToken.None);
             await import.SaveChangesAsync();
-            Assert.Empty(await OrphanedOperationalIssues.ResolveAsync(import, seed.Tenant.Id, DateTimeOffset.UtcNow, batchSize: 500, maxBatches: 5, CancellationToken.None));
+            Assert.Empty(await PassAsync(import, seed.Tenant.Id));
         }
 
         await using var check = fixture.CreateContext();

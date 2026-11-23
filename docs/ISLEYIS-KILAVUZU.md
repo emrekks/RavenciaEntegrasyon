@@ -2433,10 +2433,15 @@ ve pasif bağlantıların ayarlarına dokunulmaz.
 2. **Operasyonel sorunlar** (sunucuda kayıtlı sorunlar; Açık / Kabul Edildi / Çözüldü): **zile düşmez**; ilgili ekranlarda
    görünür (webhook paneli, fiyat-stok izleme, iş ayrıntısındaki hata nedenleri). 30 gün görülmeyen açık sorun çözüldü sayılır;
    çözülmüş sorun 30 gün sonra silinir (`OperationalIssueRetentionService.cs:6-11`). (canlı, 12 Kas: 1311 açık, 9933 çözülmüş;
-   başta `PRODUCT_WEBCOLOR_MAPPING_REQUIRED` 734, `ORDER_LINE_VARIANT_UNMATCHED` 550.) Konusu artık olmayan açık sorun
-   (silinmiş varyant, sonradan bağlanan pazaryeri ürünü, sonradan alınan ürün, çözülmüş kod çakışması, biten gözlem dönemi,
-   silinen bağlantı) ürün silmede ve günlük bakımda (worker açılışından 15 dk sonra, sonra günde bir) gerekçesi özete
-   eklenerek çözülür; konusu duran ya da okunamayan sorun açık kalır (`OrphanedOperationalIssues.cs`, tarama 23 Kas).
+   başta `PRODUCT_WEBCOLOR_MAPPING_REQUIRED` 734, `ORDER_LINE_VARIANT_UNMATCHED` 550.) Açık sorun yalnız iki durumda
+   kendiliğinden çözülür: **konusu yok** (anahtarındaki panel varyantı ya da pazaryeri bağlantısı silinmiş) ya da **koşul
+   artık geçerli değil** (uyarıyı yazan kontrolün kendi şartı artık tutmuyor: "birden fazla karta düştü" uyarısının ürün
+   bağlantısı kuruldu; doğrulamanın gözlem dönemi bitti). Her kural tek bir sorun koduna bağlıdır; kuralı olmayan koda
+   dokunulmaz (kod çakışması, yanlış varyanta bağlı ilan, başarısız aktarım, varyantı duran PttAVM renk uyarısı bunlardan:
+   onları bir sonraki aktarım kendisi çözer). Ürün/bağlantı silmede ve günlük bakımda (worker açılışından 15 dk sonra, sonra
+   günde bir; `Worker:IssueRetention:ResolveOrphaned=false` kapatır; 500'lük partiler, kural başına geçişte en çok 10 parti)
+   çalışır; kayıt silinmez, özetine "Otomatik kapatıldı (sistem, …): konu artık yok / koşul artık geçerli değil" eklenir,
+   aynı anahtarla yeniden görülürse yeniden açılır (`OrphanedOperationalIssues.cs`, tarama 23 Kas).
 3. **Alarm** — sunucunun e-postayla (ya da Telegram/Slack ile) gönderdiği operatör uyarısı (7.1). Zil ile bağlantısı yoktur.
 
 ### 7.5 Kullanıcılar, roller, izinler

@@ -62,6 +62,63 @@ public static class ScheduledReadSupersession
     internal const string Summary =
         "Aynı mağazadaki aynı okumanın sonraki çalışması başarılı oldu; bu eski hata kaydı kapatıldı.";
 
+    // Scan 23 Nov 2026: a read the user asked for (not a scheduled one) that stopped in manual review because the
+    // marketplace refused the store's credentials waits there for ever once the credentials work again (3 Pazarama
+    // question reads of 17 Nov, every later question read of the store succeeded). It is closed when a later run of the
+    // same read type on the same connection succeeded: the refusal was the store's, and that run got through. Only the
+    // credential codes below qualify; the read is closed, not run again (the scheduled reads cover its data).
+    internal static readonly IReadOnlySet<string> CredentialReviewCodes = new HashSet<string>(StringComparer.Ordinal) { "PAZARAMA_TOKEN_INVALID" };
+
+    internal const string CredentialsRecoveredSummary =
+        "Mağazanın kimlik bilgisi sonradan çalıştı (aynı okumanın sonraki çalışması başarılı); bu okuma kapatıldı, yeniden çalıştırılmadı.";
+
+    public static bool CredentialsRecovered(
+        (Guid ConnectionId, string JobType, JobStatus Status, string? ErrorCode, DateTimeOffset CreatedAt) failed,
+        (Guid ConnectionId, string JobType, JobStatus Status, DateTimeOffset CreatedAt) later) =>
+        failed.Status == JobStatus.ManualReview && failed.ErrorCode is not null && CredentialReviewCodes.Contains(failed.ErrorCode)
+        && ReadJobTypes.Contains(failed.JobType)
+        && later.Status == JobStatus.Succeeded
+        && failed.ConnectionId == later.ConnectionId
+        && string.Equals(failed.JobType, later.JobType, StringComparison.Ordinal)
+        && later.CreatedAt > failed.CreatedAt;
+
+    // Closes the reads CredentialsRecovered names; returns how many.
+    internal static async Task<int> CloseCredentialReviewsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var types = ReadJobTypes.ToArray();
+        var codes = CredentialReviewCodes.ToArray();
+        var waiting = await db.IntegrationJobs.AsNoTracking()
+            .Where(x => x.Status == JobStatus.ManualReview && x.LastErrorCode != null && codes.Contains(x.LastErrorCode)
+                && x.ConnectionId != null && types.Contains(x.JobType))
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => new { x.Id, x.TenantId, ConnectionId = x.ConnectionId!.Value, x.JobType, x.Status, x.LastErrorCode, x.CreatedAt })
+            .Take(500)
+            .ToListAsync(cancellationToken);
+        var closed = 0;
+        var byTenant = new Dictionary<Guid, int>();
+        foreach (var group in waiting.GroupBy(x => (x.TenantId, x.ConnectionId, x.JobType)))
+        {
+            var latest = await db.IntegrationJobs.AsNoTracking()
+                .Where(x => x.TenantId == group.Key.TenantId && x.ConnectionId == group.Key.ConnectionId && x.JobType == group.Key.JobType && x.Status == JobStatus.Succeeded)
+                .OrderByDescending(x => x.CreatedAt)
+                .Select(x => (DateTimeOffset?)x.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (latest is null) continue;
+            foreach (var job in group.Where(x => CredentialsRecovered(
+                         (x.ConnectionId, x.JobType, x.Status, x.LastErrorCode, x.CreatedAt),
+                         (group.Key.ConnectionId, group.Key.JobType, JobStatus.Succeeded, latest.Value))))
+            {
+                var one = await Jobs.JobStateMachine.CancelWhereAsync(
+                    db.IntegrationJobs.Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode),
+                    now, Code, CredentialsRecoveredSummary, keepEarlierCompletedAt: true, cancellationToken);
+                closed += one;
+                byTenant[job.TenantId] = byTenant.GetValueOrDefault(job.TenantId) + one;
+            }
+        }
+        await Jobs.JobStateMachine.PublishBulkAsync(db, byTenant, now, JobStatus.Cancelled, cancellationToken);
+        return closed;
+    }
+
     // Closes the superseded failures; returns how many. Each pass looks at a bounded number of failures.
     internal static async Task<int> CloseAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {

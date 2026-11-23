@@ -337,6 +337,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         {
             JobCompletionKind.Succeeded => JobStatus.Succeeded,
             JobCompletionKind.Retry => JobStatus.RetryScheduled,
+            JobCompletionKind.Blocked when CancelsWhenSuperseded(result.ErrorCode) => JobStatus.Cancelled,
             JobCompletionKind.Blocked => JobStatus.Blocked,
             JobCompletionKind.ManualReview => JobStatus.ManualReview,
             _ => JobStatus.Dead
@@ -375,6 +376,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     // over up to 30 % more than asked, at least 3 s and at most 5 minutes more, never less: a quota or Retry-After
     // wait is a minimum. The spread comes from a hash of the job id and its version, which changes with every lease,
     // so the same jobs do not keep landing in the same order. A slice of a long job keeps its own short pause.
+    // A product update, archive or approval check that stopped before any call because a newer job of the same product
+    // carries a newer payload ends cancelled, not blocked: the newer job is the product's work and its result, nothing is
+    // left for anyone to settle (scan 23 Nov 2026: seven PRODUCT_UPDATE jobs of 14 Nov stayed BLOCKED). The code stays on
+    // the job, so the panel still says the newer update replaced it.
+    internal static readonly IReadOnlySet<string> SupersededStopCodes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "PRODUCT_UPDATE_SUPERSEDED", "PRODUCT_ARCHIVE_SUPERSEDED", "PRODUCT_APPROVAL_SUPERSEDED"
+    };
+
+    internal static bool CancelsWhenSuperseded(string? errorCode) => errorCode is not null && SupersededStopCodes.Contains(errorCode);
+
     internal static TimeSpan DeferralDelay(TimeSpan requested, Guid jobId, long version)
     {
         var spread = TimeSpan.FromTicks(requested.Ticks * 3 / 10);

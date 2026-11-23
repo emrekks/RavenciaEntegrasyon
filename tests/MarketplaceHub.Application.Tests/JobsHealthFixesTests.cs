@@ -28,6 +28,42 @@ public sealed class JobsHealthFixesTests
             (connection, MarketplaceJobTypes.ReturnReconciliation, $"scheduled:return-reconcile-short:{connection:N}:9", JobStatus.Succeeded, Now), "REMOTE_CONTRACT_INVALID"));
     }
 
+    // Scan 23 Nov 2026: three Pazarama question reads asked for by hand waited in review on a refused token although every
+    // later question read of the store succeeded. A read in review on refused credentials closes once a later run of the
+    // same read type on the same connection succeeded; nothing else does.
+    [Fact]
+    public void AReadInReviewOnRefusedCredentialsClosesOnceALaterRunOfTheSameReadSucceeded()
+    {
+        var connection = Guid.NewGuid();
+        var failed = (connection, MarketplaceJobTypes.QuestionSync, JobStatus.ManualReview, (string?)"PAZARAMA_TOKEN_INVALID", Now.AddDays(-6));
+        var later = (connection, MarketplaceJobTypes.QuestionSync, JobStatus.Succeeded, Now);
+        Assert.True(ScheduledReadSupersession.CredentialsRecovered(failed, later));
+
+        // Another review code, an earlier or another success, another connection or read type, or a write: stays.
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed with { Item4 = "REMOTE_CONTRACT_INVALID" }, later));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed with { Item4 = null }, later));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed, later with { Item4 = Now.AddDays(-7) }));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed, later with { Item3 = JobStatus.ManualReview }));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed, later with { Item1 = Guid.NewGuid() }));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed, later with { Item2 = MarketplaceJobTypes.PazaramaOrderSync }));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed with { Item2 = MarketplaceJobTypes.ShipmentAction }, later with { Item2 = MarketplaceJobTypes.ShipmentAction }));
+        Assert.False(ScheduledReadSupersession.CredentialsRecovered(failed with { Item3 = JobStatus.Dead }, later));
+    }
+
+    // Scan 23 Nov 2026: a product update stopped because a newer update of the product carries a newer payload stayed
+    // BLOCKED; it now ends cancelled (the newer job is the product's), with its code kept. A first publish that stopped the
+    // same way still waits for the owner.
+    [Fact]
+    public void ASupersededProductUpdateEndsCancelled_AFirstPublishStaysBlocked()
+    {
+        Assert.True(JobLeaseService.CancelsWhenSuperseded("PRODUCT_UPDATE_SUPERSEDED"));
+        Assert.True(JobLeaseService.CancelsWhenSuperseded("PRODUCT_ARCHIVE_SUPERSEDED"));
+        Assert.True(JobLeaseService.CancelsWhenSuperseded("PRODUCT_APPROVAL_SUPERSEDED"));
+        Assert.False(JobLeaseService.CancelsWhenSuperseded("PRODUCT_PUBLICATION_SUPERSEDED"));
+        Assert.False(JobLeaseService.CancelsWhenSuperseded("PRICE_INVENTORY_SUPERSEDED"));
+        Assert.False(JobLeaseService.CancelsWhenSuperseded(null));
+    }
+
     [Fact]
     public void AReviewAPersonMustSettleOrAWriteOrAnInvoiceIsNeverClosedByALaterRun()
     {

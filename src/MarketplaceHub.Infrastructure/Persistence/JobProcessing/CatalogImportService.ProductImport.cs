@@ -430,6 +430,16 @@ internal sealed partial class CatalogImportService
         // marketplace's first product newest and each later one a millisecond older.
         var catalogOrderStamp = timeProvider.GetUtcNow();
         var catalogOrderPosition = 0;
+        // A product's PRODUCT_IMPORT_FAILED issue is raised when its model's write throws (RecordProductImportFailure, for
+        // every product of the model); the retry run resolves it once the model is stored. Any run now resolves it for the
+        // products it wrote without that write throwing, once their model is saved (Y5 review, 23 Nov 2026: twelve stayed
+        // open after later imports). Read once.
+        var importFailurePrefix = $"product-sync-import:{connectionId}:";
+        var openImportFailures = (await db.OperationalIssues.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Code == "PRODUCT_IMPORT_FAILED" && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(importFailurePrefix))
+                .Select(x => x.DedupeKey)
+                .ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var modelKey in modelKeys)
         {
             var stagingRows = await db.ProductImportStagingRecords.AsNoTracking()
@@ -451,6 +461,9 @@ internal sealed partial class CatalogImportService
             var attemptCounters = (run.ImportProcessedCount, run.ImportSkippedCount, run.AlreadyInPanelCount, run.NewProductCount, run.NewSizeCount, run.UnaddedSizeCount, run.UnchangedVariantCount);
             List<string> attemptAddedProductIds = [];
             List<string> attemptAddedVariantIds = [];
+            // The products this attempt wrote (stored or mapped): only those settle an earlier import failure; one the run
+            // skipped (new-only, existing-only, unchanged) or refused (a code clash) proves nothing about it.
+            List<string> attemptWrittenProductIds = [];
             run.CatalogStockReadAt = stagingRows.Min(row => row.CreatedAt);
             try
             {
@@ -460,6 +473,7 @@ internal sealed partial class CatalogImportService
                     if (mappingOnly)
                     {
                         var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", pttAvm: isPttAvm);
+                        if (mapped) attemptWrittenProductIds.Add(snapshot.ExternalProductId);
                         if (!mapped) run.ImportSkippedCount++;
                         else run.ImportProcessedCount++;
                         continue;
@@ -545,6 +559,7 @@ internal sealed partial class CatalogImportService
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
                             if (existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256))) attemptAddedVariantIds.Add(Short(variant.ExternalVariantId, 256));
+                    if (changed) attemptWrittenProductIds.Add(snapshot.ExternalProductId);
                     if (changed) run.ImportProcessedCount++;
                     else run.ImportSkippedCount++;
                     if (run.ImportSummaryMode == ImportSummaryMode.NewOnly)
@@ -573,6 +588,21 @@ internal sealed partial class CatalogImportService
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "COMPLETED").SetProperty(x => x.FinalizedAt, timeProvider.GetUtcNow()), cancellationToken);
+                if (openImportFailures.Count > 0)
+                {
+                    var storedKeys = attemptWrittenProductIds
+                        .Select(externalProductId => $"{importFailurePrefix}{Short(externalProductId, 256)}")
+                        .Where(openImportFailures.Contains)
+                        .ToArray();
+                    if (storedKeys.Length > 0)
+                    {
+                        var resolvedAt = timeProvider.GetUtcNow();
+                        await db.OperationalIssues
+                            .Where(x => x.TenantId == tenantId && x.Code == "PRODUCT_IMPORT_FAILED" && x.Status != IssueStatus.Resolved && storedKeys.Contains(x.DedupeKey))
+                            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, resolvedAt), cancellationToken);
+                        openImportFailures.ExceptWith(storedKeys);
+                    }
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

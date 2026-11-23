@@ -56,7 +56,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
     // the deleted connection's listings). A failure here never undoes the owner's delete; the daily pass closes them.
     private async Task ResolveOrphanedIssuesAfterCommitAsync(Guid tenantId, string after, CancellationToken cancellationToken)
     {
-        try { await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 2_000, maxBatches: 50, cancellationToken); }
+        try { await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 500, maxBatches: 200, OrphanedOperationalIssues.DeleteActor, cancellationToken, subjectGoneOnly: true); }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning(exception, "Resolving the issues left without a subject after the {Operation} of tenant {TenantId} failed; the daily issue pass closes them", after, tenantId);
