@@ -67,8 +67,8 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
 }
 
 // Worker lanes step 3 (19 Nov 2026), the lane model (LaneSlotPool):
-//   Worker:LaneModel                         legacy (default): each lane leases only on its own slots, as before;
-//                                            flexible: the same lanes and slots, and a lane whose own slots are all busy
+//   Worker:LaneModel                         legacy: each lane leases only on its own slots, as before;
+//                                            flexible (default since 23 Nov 2026): the same lanes and slots, and a lane whose own slots are all busy
 //                                            borrows another lane's idle slot (never more jobs in all than the slots add up to)
 //   Worker:FlexibleLanes:ProtectedLanes      lanes whose idle slots are never lent; default every lane that reads new orders or
 //                                            order states and the user lane: user, hot, hepsiburada-orders, pazarama-orders,
@@ -78,7 +78,7 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
 //                                            lanes (catalog, first import) to 4 or 2 borrowed slots lost most of the gain in
 //                                            the replay (five tenants catalog p95 75 -> 119 / 282 s, six stores' first imports
 //                                            1779 -> 2675 / 3875 s) and new orders wait no longer without it (their lanes never lend)
-// Legacy stays the default for the first release: the owner turns flexible on with Worker__LaneModel=flexible (worker and api:
+// Flexible is the default (WorkerLaneModel, owner's go 23 Nov 2026); Worker__LaneModel=legacy goes back (worker and api:
 // the api reads it to show borrowed slots).
 internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> ProtectedLanes, IReadOnlyDictionary<string, int> BorrowLimits)
 {
@@ -95,6 +95,5 @@ internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> Pr
             .Where(item => item.Limit >= 0)
             .ToDictionary(item => item.Key, item => Math.Min(item.Limit, 100)));
 
-    public static bool IsFlexible(IConfiguration? configuration) =>
-        string.Equals(configuration?["Worker:LaneModel"]?.Trim(), FlexibleModel, StringComparison.OrdinalIgnoreCase);
+    public static bool IsFlexible(IConfiguration? configuration) => MarketplaceHub.Infrastructure.Jobs.WorkerLaneModel.IsFlexible(configuration);
 }
