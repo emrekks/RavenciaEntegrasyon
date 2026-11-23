@@ -5744,6 +5744,34 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         }
     }
 
+    // A random address (no connection, no definition) costs the two lookups it did before refusals were kept, and no write.
+    [PostgreSqlFact]
+    public async Task Webhooks_ARefusedAddressThatNamesNothingCostsTwoQueriesAndNoWrite()
+    {
+        var counter = new CommandCounter();
+        await using var db = fixture.CreateContextWith(counter);
+        var receiver = new MarketplaceWebhookService(db, new TokenHasher(new byte[32]), new MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookVerifier(db, new EphemeralDataProtectionProvider()), fixture.TimeProvider);
+
+        Assert.Null(await receiver.NoteRouteRefusedAsync(Guid.NewGuid(), "random-token", CancellationToken.None));
+
+        Assert.Equal(2, counter.Count);
+        Assert.Equal(0, counter.Writes);
+    }
+
+    private sealed class CommandCounter : DbCommandInterceptor
+    {
+        public int Count { get; private set; }
+        public int Writes { get; private set; }
+        private void Seen(DbCommand command)
+        {
+            Count++;
+            if (System.Text.RegularExpressions.Regex.IsMatch(command.CommandText, @"^\s*(INSERT|UPDATE|DELETE)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline)) Writes++;
+        }
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default) { Seen(command); return base.ReaderExecutingAsync(command, eventData, result, cancellationToken); }
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default) { Seen(command); return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken); }
+        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(DbCommand command, CommandEventData eventData, InterceptionResult<object> result, CancellationToken cancellationToken = default) { Seen(command); return base.ScalarExecutingAsync(command, eventData, result, cancellationToken); }
+    }
+
     // A definition the user closed by hand is not offered over one prepared in the last day, unless Hepsiburada still calls it.
     [PostgreSqlFact]
     public async Task InstantNotifications_HepsiburadaDoesNotOfferADefinitionClosedByHandOverAFreshOneUnlessItIsStillCalled()
@@ -10470,6 +10498,8 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     // the scheduler tests: a Take/First without an ordering EF keeps reads an arbitrary row.
     public AppDbContext CreateStrictContext() => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString)
         .ConfigureWarnings(warnings => warnings.Throw(CoreEventId.RowLimitingOperationWithoutOrderByWarning)).Options);
+
+    public AppDbContext CreateContextWith(IInterceptor interceptor) => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).AddInterceptors(interceptor).Options);
 
     public AppDbContext CreateContext(TimeProvider clock) => new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(databaseConnectionString).Options, clock);
 

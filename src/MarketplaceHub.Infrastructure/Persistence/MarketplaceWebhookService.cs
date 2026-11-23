@@ -149,6 +149,9 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     // old or wrong token. An address that names nothing leaves no trace.
     public async Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken)
     {
+        // The receiving connection first: an address that names none (random junk) costs the two lookups it always did
+        // and stops here. Every closed definition the next lookup can match belongs to an address this one names.
+        if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is not { } connection) return null;
         if (await ClosedDefinitionAsync(connectionPublicId, routeToken, cancellationToken) is { } closed)
         {
             var now = timeProvider.GetUtcNow();
@@ -163,7 +166,6 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await NoteRejectedAsync(closed.Connection, CallsRejectedCode, reason, cancellationToken, issueCode: CallsRejectedCode);
             return CallsRejectedCode;
         }
-        if (await ReceivingConnectionAsync(connectionPublicId, cancellationToken) is not { } connection) return null;
         await NoteRouteTokenMismatchAsync(connection, cancellationToken);
         return RouteTokenMismatchCode;
     }
