@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '../../../test/render'
-import { ExchangeResendTag, exchangeResendStatus, exchangeResendTitle } from './exchange-resend-tag'
+import { ExchangeResendTag, exchangeNoPackageNote, exchangeResendStatus, exchangeResendTitle } from './exchange-resend-tag'
+import { exchangeShipText, exchangeUnshipText } from './ExchangeResendShipDialog'
 
 afterEach(cleanup)
 
@@ -27,5 +28,17 @@ describe('exchange resend status', () => {
     expect(exchangeResendStatus({ packageId: '1', shipped: true, shippedSource: 'MANUAL' })).toBe('Kargoya Verildi (Elle)')
     expect(exchangeResendStatus({ packageId: '1', shipped: true, shippedSource: 'MARKETPLACE' })).toBe('Kargoya Verildi')
     expect(exchangeResendTitle({ packageId: '1', shipped: true, shippedSource: 'MANUAL' })).toBe('Değişim paketi 1 · kargoya verildi (elle işaretlendi)')
+  })
+})
+
+// Scan O3 (23 Nov 2026): a Hepsiburada exchange's texts read "Trendyol" (no package note, hover, the mark's dialog).
+describe('exchange texts name the marketplace', () => {
+  it('names Hepsiburada on a Hepsiburada exchange and keeps Trendyol on a Trendyol one', () => {
+    expect(exchangeNoPackageNote('HEPSIBURADA')).toBe('Hepsiburada değişim paketini talepte bildirmez; değişim ürünü kargoya verilince kapanır')
+    expect(exchangeNoPackageNote('TRENDYOL')).toBe('Değişim paketi bilgisi Trendyol\'dan gelmedi')
+    expect(exchangeResendTitle({ packageId: null, shipped: false }, 'HEPSIBURADA')).not.toContain('Trendyol')
+    expect(exchangeResendTitle({ packageId: null, shipped: true, shippedSource: 'MARKETPLACE' }, 'HEPSIBURADA')).toBe('Değişim onaylandı; Hepsiburada değişim paketini talepte bildirmez · kargoya verildi.')
+    expect(exchangeShipText('HEPSIBURADA')).toMatch(/^Bu işlem Hepsiburada'ya hiçbir şey göndermez/)
+    expect(exchangeUnshipText('TRENDYOL')).toMatch(/^Bu işlem Trendyol'a hiçbir şey göndermez/)
   })
 })

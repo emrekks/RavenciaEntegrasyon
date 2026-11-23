@@ -160,6 +160,63 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.Equal(1, linked.ManyCalls);
     }
 
+    // Scan O3 (23 Nov 2026): a Hepsiburada exchange (finalizedWith Change) never left Yeniden Gönderilecekler, as its claim
+    // names no exchange shipment. Hepsiburada re-creates the exchange product as an order line with creationReason
+    // ClaimChangeAccepted; once that line is shipped the exchange is handed to the carrier (MARKETPLACE) and the owner's mark
+    // is refused. Before that it waits, and an ordinary shipped line (creationReason OrderCreated) says nothing about it.
+    [PostgreSqlFact]
+    public async Task A_hepsiburada_exchange_closes_when_its_exchange_line_ships()
+    {
+        var (tenant, connection) = await SeedAsync("HEPSIBURADA");
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "hb-ex", claim =>
+        {
+            claim.Status = ReturnClaimStatus.Approved;
+            claim.RawStatus = "Accepted";
+            claim.ReasonCode = null;
+            claim.ResolvedWith = ReturnCustomerRequestPolicy.Change;
+        });
+        Guid exchangeLine;
+        await using (var db = fixture.CreateContext())
+        {
+            await db.OrderLines.Where(x => x.TenantId == tenant.Id && x.OrderId == order)
+                .ExecuteUpdateAsync(x => x.SetProperty(l => l.SourceSnapshotJson, "{\"lineItemId\":\"a\",\"creationReason\":\"OrderCreated\"}"));
+            var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order, ExternalLineId = "hb-ex-2", Sku = "SKU-2", TitleSnapshot = "Ürün", RawStatus = "Open", OrderedQuantity = 1, UnitPrice = 100, VatRate = 10, Version = 1, SourceSnapshotJson = "{\"lineItemId\":\"b\",\"creationReason\":\"ClaimChangeAccepted\"}" };
+            db.OrderLines.Add(line);
+            await db.SaveChangesAsync();
+            exchangeLine = line.Id;
+        }
+        var claimId = await ClaimIdAsync(tenant.Id, order);
+
+        var waiting = await CountsAsync(tenant.Id, order);
+        Assert.Equal((1, true, false, (string?)null), (waiting.Count, waiting.Unshipped, waiting.Row.Shipped, waiting.Row.ShippedSource));
+
+        await using (var db = fixture.CreateContext())
+            await db.OrderLines.Where(x => x.Id == exchangeLine).ExecuteUpdateAsync(x => x.SetProperty(l => l.ShippedQuantity, 1m));
+        var shipped = await CountsAsync(tenant.Id, order);
+        Assert.Equal((0, true, false, true, (string?)"MARKETPLACE"), (shipped.Count, shipped.InResent, shipped.Unshipped, shipped.Row.Shipped, shipped.Row.ShippedSource));
+        Assert.Empty(shipped.ExchangeStores);
+        await using (var db = fixture.CreateContext())
+        {
+            var refused = await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, shipped.Row.ClaimVersion, true, "corr-hb", CancellationToken.None);
+            Assert.Equal((409, ReturnDecisionService.ReplacementShipMarkNotAllowedCode), (refused.Error!.Status, refused.Error.Code));
+        }
+    }
+
+    // The mark's audit names the exchange's own marketplace (it read "Trendyol'a" on a Hepsiburada exchange).
+    [PostgreSqlFact]
+    public async Task The_shipped_marks_audit_names_hepsiburada()
+    {
+        var (tenant, connection) = await SeedAsync("HEPSIBURADA");
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "hb-mark", claim => { claim.Status = ReturnClaimStatus.Approved; claim.RawStatus = "Accepted"; claim.ResolvedWith = ReturnCustomerRequestPolicy.Change; });
+        var claimId = await ClaimIdAsync(tenant.Id, order);
+        await using var db = fixture.CreateContext();
+        var version = (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId)).Version;
+        Assert.True((await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, version, true, "corr-hb-mark", CancellationToken.None)).Succeeded);
+        var reason = await db.AuditLogs.Where(x => x.TenantId == tenant.Id && x.TargetId == claimId.ToString("D")).Select(x => x.Reason).SingleAsync();
+        Assert.Contains("Hepsiburada'ya bir şey gönderilmedi", reason);
+        Assert.DoesNotContain("Trendyol", reason);
+    }
+
     private async Task RunStatusSyncAsync(Guid tenantId, Guid connectionId, ClaimPort port)
     {
         await using var db = fixture.CreateContext();
@@ -237,11 +294,11 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         return order.Id;
     }
 
-    private async Task<(Tenant Tenant, PlatformConnection Connection)> SeedAsync()
+    private async Task<(Tenant Tenant, PlatformConnection Connection)> SeedAsync(string platformCode = "TRENDYOL")
     {
         var now = fixture.Now;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"exr-{Guid.NewGuid():N}", DisplayName = "exr", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
-        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = "Trendyol", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}" };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platformCode, Environment = "PRODUCTION", DisplayName = platformCode, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}" };
         await using var db = fixture.CreateContext();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);

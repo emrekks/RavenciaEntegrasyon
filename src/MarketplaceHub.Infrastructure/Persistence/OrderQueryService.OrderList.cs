@@ -122,13 +122,25 @@ internal sealed partial class OrderQueryService
                 .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
                     && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
                     && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
-                .Select(claim => new { claim.Id, claim.Version, claim.OrderId, claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt })
+                .Select(claim => new
+                {
+                    claim.Id,
+                    claim.Version,
+                    claim.OrderId,
+                    claim.ReplacementPackageId,
+                    claim.ReplacementCargoProviderName,
+                    claim.ReplacementCargoTrackingNumber,
+                    claim.ReplacementCargoTrackingLink,
+                    claim.ReplacementShippedAt,
+                    ExchangeLineShipped = db.OrderLines.Any(line => line.TenantId == claim.TenantId && line.OrderId == claim.OrderId && line.ShippedQuantity > 0
+                        && line.SourceSnapshotJson != null && line.SourceSnapshotJson.Contains(ExchangeResendRules.HepsiburadaExchangeLineReason))
+                })
                 .ToListAsync(cancellationToken))
             .GroupBy(claim => claim.OrderId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(claim => claim.ReplacementPackageId != null).Select(claim =>
             {
-                // Handed to the carrier: Trendyol's tracking link, or the owner's mark (ExchangeResendRules).
-                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt);
+                // Handed to the carrier: Trendyol's tracking link, Hepsiburada's shipped exchange line, or the owner's mark (ExchangeResendRules).
+                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt, claim.ExchangeLineShipped);
                 return new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, shippedSource is not null, claim.ReplacementCargoTrackingLink,
                     claim.Id, claim.Version, shippedSource);
             }).First());
@@ -233,6 +245,7 @@ internal sealed partial class OrderQueryService
         var currentPackages = CurrentShipmentPackages();
         var resendCreators = new[] { "transfer", "resend", "replacement" };
         var resentNotShipped = options.ResentNotShipped == true;
+        var exchangeClaims = resentNotShipped ? db.ReturnClaims.Where(ExchangeResendRules.NotShipped(db)) : db.ReturnClaims;
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
         {
@@ -430,10 +443,10 @@ internal sealed partial class OrderQueryService
                         // is a resend too when its exchange claim names the package (getClaims replacementOutboundpackageinfo)
                         // or the owner marked the exchange made; it waits for the carrier until the package's tracking link comes
                         // or the owner marks it handed to the carrier (ExchangeResendRules; a tracking number alone does not).
-                        || db.ReturnClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
+                        // Not handed over: ExchangeResendRules.NotShipped (a Hepsiburada exchange closes when its exchange line ships).
+                        || exchangeClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
                             && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
-                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
-                            && (!resentNotShipped || (claim.ReplacementCargoTrackingLink == null && claim.ReplacementShippedAt == null))),
+                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
                     // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
                     _ => x => x.DerivedStatus == status
                 };

@@ -109,11 +109,11 @@ internal sealed partial class OrderQueryService
         var lateStores = !includeMicro && requested.Contains("LATE") && Count("LATE") > 0 ? await TabOrdersByConnectionAsync(tenantId, options, "LATE", cancellationToken) : null;
         var resentStores = !includeMicro && options.ResentNotShipped == true && requested.Contains("RESENT") ? await TabOrdersByConnectionAsync(tenantId, options, "RESENT", cancellationToken) : null;
         // Of those, the exchanges whose package is not known to be handed to the carrier (the card's hover says what it counts).
+        var exchangeNotShipped = db.ReturnClaims.Where(ExchangeResendRules.NotShipped(db));
         var resentExchangeStores = resentStores is null ? null : await FilteredOrders(tenantId, options with { Status = "RESENT", Sort = null })
-            .Where(order => db.ReturnClaims.Any(claim => claim.TenantId == order.TenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled
+            .Where(order => exchangeNotShipped.Any(claim => claim.TenantId == order.TenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled
                 && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
-                && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
-                && claim.ReplacementCargoTrackingLink == null && claim.ReplacementShippedAt == null))
+                && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)))
             .GroupBy(order => order.ConnectionId).Select(group => new { ConnectionId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.ConnectionId.ToString("D"), row => row.Count, cancellationToken);
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
