@@ -40,7 +40,7 @@ describe('runOfferWrites', () => {
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ connectionId: 'ty', variantId: 'v1', listPrice: 100, salePrice: 80, followsPanelPrice: true, vatRate: 20, status: 'ACTIVE' }) }])
   })
   it('writes the prices staged from Toplu Düzenle as one PATCH per variant, each at its loaded version and as its own Özel Fiyat', async () => {
-    await runOfferWrites(input({ product: product(['v1', 'v2']), rows: [row('v1', { platformStatuses: [status('ty')] }), row('v2', { platformStatuses: [status('ty', { offerId: 'o-v2', offerVersion: 5 })] })], channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: '180', salePrice: '140' }, 'v2:ty': { listPrice: '200', salePrice: '160' } } }))
+    await runOfferWrites(input({ product: product(['v1', 'v2']), rows: [row('v1', { platformStatuses: [status('ty')] }), row('v2', { platformStatuses: [status('ty', { offerId: 'o-v2', offerVersion: 5 })] })], channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: 180, salePrice: 140 }, 'v2:ty': { listPrice: 200, salePrice: 160 } } }))
     expect(api.calls).toEqual([
       { method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v1', listPrice: 180, salePrice: 140, followsPanelPrice: false }) },
       { method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v5"', body: expect.objectContaining({ variantId: 'v2', listPrice: 200, salePrice: 160, followsPanelPrice: false }) }
@@ -80,7 +80,7 @@ describe('runOfferWrites', () => {
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1200.5, followsPanelPrice: false }) }])
   })
   it('writes "1.250" staged in the variant price table as 1250', async () => {
-    await runOfferWrites(input({ channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: '1.250', salePrice: '1.250' } } }))
+    await runOfferWrites(input({ channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: 1250, salePrice: 1250 } } }))
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1250 }) }])
   })
 
@@ -91,6 +91,18 @@ describe('runOfferWrites', () => {
     await runOfferWrites(input({ rows: [row('v1')], channelPricing: { ty: { listPrice: '99,999', salePrice: '99,999' } }, channelPriceDraft: () => ({ listPrice: '99,999', salePrice: '99,999' }) }))
     expect(api.calls).toEqual([{ method: 'POST', path: '/channel-offers', ifMatch: null, body: expect.objectContaining({ listPrice: 99.999, salePrice: 99.999 }) }])
     resetSeededFields()
+  })
+
+  // Review 23 Nov (iv): Hepsiburada takes a sale price only and stores list = sale (90 / 90); the panel list price (100)
+  // made the untouched offer "changed" and a Platformlarda Güncelle or Kaydet wrote it again.
+  it('writes nothing for an untouched Hepsiburada offer whose stored list price is its sale price', async () => {
+    const hb = [{ id: 'hb', platformCode: 'HEPSIBURADA' }]
+    await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], rows: [row('v1', { platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
+    await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], platformUpdate: { connectionIds: ['hb'], fields: ['PRICE'] }, rows: [row('v1', { platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
+    expect(api.calls).toEqual([])
+    // A sale price change still goes.
+    await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], rows: [row('v1', { salePrice: 85, platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
+    expect(api.calls.map(call => [call.method, call.body?.salePrice])).toEqual([['PATCH', 85]])
   })
 
   it('says which variants had no price to write', async () => {

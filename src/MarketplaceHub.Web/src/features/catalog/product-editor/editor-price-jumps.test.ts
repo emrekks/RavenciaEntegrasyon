@@ -15,7 +15,7 @@ describe('the editor save price-jump confirmation', () => {
     expect(lines({ rows: [row('v1', { salePrice: 1.25, listPrice: 1.3 })] })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 1,25'])
   })
   it('warns for a marketplace price staged from Toplu Düzenle', () => {
-    expect(lines({ variantChannelPricing: { 'v1:ty': { listPrice: '1,3', salePrice: '1,25' } } })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 1,25'])
+    expect(lines({ variantChannelPricing: { 'v1:ty': { listPrice: 1.3, salePrice: 1.25 } } })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 1,25'])
   })
   it('warns for a marketplace card price the person typed, going to the variant\'s offer', () => {
     expect(lines({ channelPricing: { ty: { listPrice: '5000', salePrice: '4000' } }, channelPriceDraft: () => ({ listPrice: '5000', salePrice: '4000' }), channelPriceEdited: () => true })).toEqual(['1 Varyantın Fiyatı Üç Katından Fazla Artıyor: 1.250,00 → 4.000,00'])
@@ -31,6 +31,6 @@ describe('the editor save price-jump confirmation', () => {
     expect(lines({ rows: [row('new-1', { salePrice: 1.25, listPrice: 1.3, platformStatuses: [] })] })).toEqual([])
   })
   it('sets a first offer on a marketplace (POST) against the variant\'s panel price', () => {
-    expect(lines({ rows: [row('v1', { platformStatuses: [] })], variantChannelPricing: { 'v1:n11': { listPrice: '13', salePrice: '12,5' } } })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 12,50'])
+    expect(lines({ rows: [row('v1', { platformStatuses: [] })], variantChannelPricing: { 'v1:n11': { listPrice: 13, salePrice: 12.5 } } })).toEqual(['1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 1.250,00 → 12,50'])
   })
 })

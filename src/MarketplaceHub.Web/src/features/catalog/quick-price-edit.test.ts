@@ -82,12 +82,12 @@ describe('panel price choice', () => {
     expect(inlinePrices('1.250', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
     expect(inlinePrices('1.250,50', '1.199,90')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1199.9 })
     expect(inlinePrices('1250,5', '1250,50')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1250.5 })
-    expect(inlinePrices('', '1250.50')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
-    expect(inlinePrices('', '1.25')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
+    expect(inlinePrices('', '1250.50')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
+    expect(inlinePrices('', '1.25')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(inlinePrices('', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
-    expect(inlinePrices('1,250.50', '100')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
-    expect(inlinePrices('', '0.125')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
-    expect(inlinePrices('', '12abc')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
+    expect(inlinePrices('1,250.50', '100')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
+    expect(inlinePrices('', '0.125')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
+    expect(inlinePrices('', '12abc')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(hasAtMostTwoDecimals(0.1 + 0.2)).toBe(true)
     expect(hasAtMostTwoDecimals(1.234)).toBe(false)
   })
@@ -300,7 +300,7 @@ describe('Toplu Fiyat/Stok values', () => {
   it('reads prices and stock as Turkish', () => {
     expect(values('1.250', '1.199,90', '1.250')).toEqual({ ok: true, list: 1250, sale: 1199.9, amount: 1250 })
     expect(values('', '1250,50', '')).toEqual({ ok: true, list: null, sale: 1250.5, amount: null })
-    expect(values('', '1250.50', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
+    expect(values('', '1250.50', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(values('999', '1.250', '', false)).toEqual({ ok: true, list: 1250, sale: 1250, amount: null })
   })
 
@@ -312,7 +312,7 @@ describe('Toplu Fiyat/Stok values', () => {
   })
 
   it('refuses an unreadable or wrong price', () => {
-    expect(values('1,250.50', '100', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' })
+    expect(values('1,250.50', '100', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(values('100', '150', '')).toMatchObject({ ok: false })
     expect(values('', '0', '')).toMatchObject({ ok: false })
   })

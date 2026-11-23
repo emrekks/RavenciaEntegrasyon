@@ -7,10 +7,9 @@ import { editorOfferPriceReason, platformUpdateWritesOffers } from './platform-u
 import { channelTakesListPrice, editorChannelOfferPrices, editorOfferUnchanged, offerHasSalePrice, panelFollowChoiceVariantIds, unpricedOfferWarning } from '../quick-price-edit'
 import { channelOfferWriteConcurrency } from './editor-helpers'
 import { parseEditorNumber } from './editor-number'
-import { priceInputNumber } from './card-prices'
 import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
 import { rowsBySku, skuKey } from './submit-media-step'
-import type { ChannelPricingDraft } from './marketplace-channel-pricing'
+import type { ChannelPricingDraft, StagedOfferPrices } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
 import type { ProductUpdateRequest, VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -46,7 +45,7 @@ export type OfferWritesInput = {
   form: Pick<EditorForm, 'currency' | 'vatRate' | 'vatIncluded' | 'safetyStock'>
   platformUpdate: ProductUpdateRequest | null
   channelPricing: Record<string, ChannelPricingDraft>
-  variantChannelPricing: Record<string, ChannelPricingDraft>
+  variantChannelPricing: Record<string, StagedOfferPrices>
   channelPriceDraft: (connectionId: string) => ChannelPricingDraft
   channelPriceEdited: (connectionId: string) => boolean
   // The marketplace's Özel Fiyat switch is as the editor opened it, on (each variant keeps its stored choice there).
@@ -74,15 +73,16 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     const variantPricing = input.variantChannelPricing[`${row.key}:${connectionId}`]
     // A marketplace that follows the panel takes this variant's own panel price; the card price is only the price
     // of a marketplace switched to "Özel Fiyat".
+    const takesListPrice = channelTakesListPrice(connections.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
     const offerPrices = editorChannelOfferPrices({
       custom: connectionId in channelPricing,
       panel: { listPrice: row.listPrice, salePrice: row.salePrice },
       card: { listPrice: readMoneyField(channelFieldKey(connectionId, 'listPrice'), pricing.listPrice), salePrice: readMoneyField(channelFieldKey(connectionId, 'salePrice'), pricing.salePrice) },
       cardEdited: input.channelPriceEdited(connectionId),
-      variantPrice: !platformUpdate && variantPricing ? { listPrice: priceInputNumber(variantPricing.listPrice), salePrice: priceInputNumber(variantPricing.salePrice) } : null,
+      variantPrice: !platformUpdate && variantPricing ? { listPrice: variantPricing.listPrice, salePrice: variantPricing.salePrice } : null,
       offer: platform,
       choiceUntouched: input.choiceUntouched?.(connectionId) ?? false,
-      takesListPrice: channelTakesListPrice(connections.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
+      takesListPrice
     })
     // A variant without a panel price (0 or empty in the variant table, often a colour imported without one) has
     // no price to write: the server refuses a sale price of zero, and one such row used to stop the whole save
@@ -95,7 +95,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     try {
       if (platform?.offerId) {
         if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
-        if (!editorOfferUnchanged(platform, offerCommand)) await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
+        if (!editorOfferUnchanged(platform, offerCommand, takesListPrice)) await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
       } else {
         await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
       }

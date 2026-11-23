@@ -1,6 +1,6 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { TitleHint } from '../../../shared/components'
-import { parseTrEntry, parseTrMeasure, trEntryHelp } from '../../../shared/tr-number'
+import { parseTrEntry, parseTrMeasure, parseTrPercent, trEntryHelp } from '../../../shared/tr-number'
 import { RrModal } from '../../../shared/ui/rr-components'
 import { DEFAULT_CARGO, DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
 import { cargoHint, commissionHint, serviceFeeHint, type HintContent } from './price-assumptions'
@@ -11,6 +11,8 @@ const money = (value: number) => `${value < 0 ? '−' : ''}${twoDecimals.format(
 const percent = (value: number | null) => value === null ? '—' : `%${value < 0 ? '−' : ''}${twoDecimals.format(Math.abs(value))}`
 // Read by the one rule of typed prices (parseTrEntry, B5): "1.250" is 1250, "12,5" is 12.5; "1.25" and "1,250" are refused (null).
 const numberOf = (value: string) => value.trim() === '' ? null : parseTrEntry(value)
+// A rate (commission, target margin, VAT) takes a "%" around it, never a currency (review 23 Nov, i).
+const rateOf = (value: string) => value.trim() === '' ? null : parseTrPercent(value)
 // The cost as the window opened with it is the editor's loaded value (O2): read with any number of decimals (12,3456).
 const loadedNumber = (value: string) => value.trim() === '' ? null : parseTrMeasure(value)
 
@@ -69,16 +71,16 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
   const [targetKind, setTargetKind] = useState<PriceTargetKind>('rate')
   const [targetAmount, setTargetAmount] = useState('200')
   const [assumptions, setAssumptions] = useState(readAssumptions)
-  const vatRate = numberOf(fields.vatRate) ?? DEFAULT_VAT_RATE
+  const vatRate = rateOf(fields.vatRate) ?? DEFAULT_VAT_RATE
   const updateAssumption = (name: keyof Assumptions, value: string) => setAssumptions(current => { const next = { ...current, [name]: value }; writeAssumptions(next); return next })
 
   const suggestion = useMemo(() => {
-    const values = { cost: costValue, targetRate: numberOf(targetKind === 'amount' ? targetAmount : targetRate), commissionRate: numberOf(assumptions.commissionRate), cargo: numberOf(assumptions.cargo), serviceFee: numberOf(assumptions.serviceFee) }
+    const values = { cost: costValue, targetRate: targetKind === 'amount' ? numberOf(targetAmount) : rateOf(targetRate), commissionRate: rateOf(assumptions.commissionRate), cargo: numberOf(assumptions.cargo), serviceFee: numberOf(assumptions.serviceFee) }
     if (Object.values(values).some(value => value === null)) return null
     return suggestPrice({ cost: values.cost!, targetRate: values.targetRate!, basis, targetKind, commissionRate: values.commissionRate!, cargo: values.cargo!, serviceFee: values.serviceFee!, vatRate, vatIncluded: fields.vatIncluded })
   }, [costValue, targetRate, targetAmount, targetKind, assumptions, basis, vatRate, fields.vatIncluded])
 
-  const missing = cost.trim() !== '' && costValue === null ? `Maliyet: ${trEntryHelp}` : costValue === null || costValue <= 0 ? 'Maliyeti girin.' : numberOf(targetKind === 'amount' ? targetAmount : targetRate) === null ? (targetKind === 'amount' ? 'Hedef kâr tutarını girin.' : 'Hedef kâr oranını girin.') : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
+  const missing = cost.trim() !== '' && costValue === null ? `Maliyet: ${trEntryHelp}` : costValue === null || costValue <= 0 ? 'Maliyeti girin.' : (targetKind === 'amount' ? numberOf(targetAmount) : rateOf(targetRate)) === null ? (targetKind === 'amount' ? 'Hedef kâr tutarını girin.' : 'Hedef kâr oranını girin.') : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
   const footer = <>
     <span className="rr-note" />
     <button type="button" className="rr-btn" onClick={onClose}>İptal</button>

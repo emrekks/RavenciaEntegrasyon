@@ -5,7 +5,7 @@ import { hubApi, hubFile } from '../../../../shared/api'
 import { Busy, ErrorBox, StickyActionBar, TitleHint, UiIcon } from '../../../../shared/components'
 import { newIdempotencyKey } from '../../../../shared/idempotency'
 import { compareOptionValues } from '../../../catalog/shared'
-import { parseTrEntry } from '../../../../shared/tr-number'
+import { parseTrEntry, trNumberInput } from '../../../../shared/tr-number'
 import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from '../unit-profit'
 import { useMediaQuery } from '../../../../shared/hooks/useMediaQuery'
 import { PanelSelect } from '../../../../shared/PanelSelect'
@@ -684,9 +684,11 @@ export function ownPriceValue(text: string): number | null {
 // shows it when opened); what it leaves is the range over the sizes, and the sizes it puts in no band are counted.
 function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; picks: Map<string, TariffPick>; onPick: (price: number | null) => void }) {
   const shared = rows.map(row => picks.get(row.id)?.price ?? null)
-  const [text, setText] = useState(() => shared[0] !== null && shared.every(price => price === shared[0]) ? String(shared[0]).replace('.', ',') : '')
+  // The stored price shown as it is; while the text is untouched it stays that number, never re-read by the typed rule.
+  const [start] = useState(() => shared[0] !== null && shared.every(price => price === shared[0]) ? { text: trNumberInput(shared[0]), price: shared[0] } : { text: '', price: null })
+  const [text, setText] = useState(start.text)
   const parse = ownPriceValue
-  const price = parse(text)
+  const price = text === start.text && start.price !== null ? start.price : parse(text)
   const choices = price === null ? [] : rows.map(row => ownChoice(row, price))
   const banded = choices.filter((choice): choice is CommissionChoice => choice !== null)
   const tiersHit = [...new Set(banded.map(choice => choice.tier))].sort()
@@ -701,9 +703,10 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
 // A price of the seller's own for one product: typed with a comma or a point, it shows the band it falls in and what
 // it leaves, and becomes the row's pick.
 function OwnPrice({ row, pick, picked, onPick }: { row: CommissionTariffRow; pick: TariffPick | undefined; picked: boolean; onPick: (price: number | null) => void }) {
-  const [text, setText] = useState(() => pick?.price ? String(pick.price).replace('.', ',') : '')
+  const [start] = useState(() => pick?.price ? { text: trNumberInput(pick.price), price: pick.price } : { text: '', price: null })
+  const [text, setText] = useState(start.text)
   const parse = ownPriceValue
-  const price = parse(text)
+  const price = text === start.text && start.price !== null ? start.price : parse(text)
   const choice = price === null ? null : ownChoice(row, price)
   return <div className={`commission-own${picked ? ' is-picked' : ''}`}>
     <input type="text" inputMode="decimal" placeholder="Fiyat girin" value={text} aria-label={`${row.productName ?? row.barcode} için kendi fiyatın`}

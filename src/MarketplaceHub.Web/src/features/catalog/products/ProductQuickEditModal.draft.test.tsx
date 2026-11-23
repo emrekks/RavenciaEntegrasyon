@@ -211,13 +211,25 @@ describe('the editor window with marketplace prices', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  // ORTA-1 (review 23 Nov): an offer stored with list 631.104 went to the editor as the text "631,104" when only the sale
+  // price was typed; the editor's typed rule read it as NaN and the offer PATCH carried listPrice null. The loaded side
+  // now goes over as the loaded number.
+  it('hands a side left as loaded (631.104) to the editor as the loaded number', async () => {
+    const onApplyChannelPrices = await mount({ channels: channels(true), channelPrice: () => ({ list: '631,104', sale: '631,104', follows: false, values: { list: 631.104, sale: 631.104 } }) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, '600')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: 631.104, salePrice: 600 }])
+  })
+
   it('hands a typed marketplace price to the editor as a draft and sends nothing itself', async () => {
     const onApplyChannelPrices = await mount({ channels: channels(true) })
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
     await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol satış fiyatı"]')!, '140')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
-    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '180', salePrice: '140' }])
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: 180, salePrice: 140 }])
     expect(hubApi).not.toHaveBeenCalled()
   })
 
@@ -237,7 +249,7 @@ describe('the editor window with marketplace prices', () => {
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
     const expectedSale = Number(sent.replace(',', '.')) < 150 ? null : '150'
     if (expectedSale == null) { expect(onApplyChannelPrices).not.toHaveBeenCalled(); expect(document.body.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz'); return }
-    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: sent, salePrice: expectedSale }])
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: Number(sent.replace(',', '.')), salePrice: Number(expectedSale) }])
   })
 
   it.each(['1.25', '1250.50', '1,250.50', '1,250', '1,000'])('refuses "%s" in a marketplace cell and hands nothing to the editor', async typed => {
@@ -261,7 +273,7 @@ describe('the editor window with marketplace prices', () => {
     expect(document.body.querySelector('.rr-mx-follow')?.textContent).toBe('100,00')
     await type(field('Satış Fiyatı (₺)'), '140')
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
-    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '180', salePrice: '140' }])
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: 180, salePrice: 140 }])
   })
 
   it('switches the marketplace off for a new product, saying to save first', async () => {

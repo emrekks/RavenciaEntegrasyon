@@ -20,7 +20,7 @@ export function cardPrices(listText: string, saleText: string): CardPrices {
   // An untouched box reads as loaded (seeded-fields.ts: a stored 99.999 is never "unreadable"); a typed one by the rule.
   const list = readMoneyField('listPrice', listText)
   const sale = readMoneyField('salePrice', saleText)
-  if (!Number.isFinite(list) || !Number.isFinite(sale)) return { listPrice: 0, salePrice: 0, issue: 'Liste ve satış fiyatı okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane).' }
+  if (!Number.isFinite(list) || !Number.isFinite(sale)) return { listPrice: 0, salePrice: 0, issue: 'Liste ve satış fiyatı okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' }
   if (list < 0 || sale < 0) return { listPrice: 0, salePrice: 0, issue: 'Fiyatlar negatif olamaz.' }
   const listPrice = list > 0 ? list : sale
   return { listPrice, salePrice: sale, issue: listPrice < sale ? 'Liste fiyatı satış fiyatından küçük olamaz.' : null }

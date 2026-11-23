@@ -1,4 +1,4 @@
-import { parseTrCount, parseTrEntry } from '../../../shared/tr-number'
+import { parseTrCount, parseTrEntry, trCountTooLarge } from '../../../shared/tr-number'
 import { hasAtMostTwoDecimals, priceFieldText, unreadablePriceMessage } from '../quick-price-edit'
 
 // The product editor's Toplu Düzenle: the same window as the products list's, working on the editor's unsaved variant
@@ -31,7 +31,7 @@ function readCount(text: string, loaded?: Loaded): Read {
   if (loaded) return { ok: true, value: loaded.value }
   if (text.trim() === '') return { ok: true, value: null }
   const count = parseTrCount(text)
-  if (!count.ok) return { ok: false, message: count.reason === 'fraction' ? 'Stok tam sayı olmalıdır.' : count.reason === 'negative' ? 'Stok negatif olamaz.' : 'Stok okunamadı; 1.250 gibi bir tam sayı girin.' }
+  if (!count.ok) return { ok: false, message: count.reason === 'tooLarge' ? trCountTooLarge : count.reason === 'fraction' ? 'Stok tam sayı olmalıdır.' : count.reason === 'negative' ? 'Stok negatif olamaz.' : 'Stok okunamadı; 1.250 gibi bir tam sayı girin.' }
   return { ok: true, value: count.value }
 }
 

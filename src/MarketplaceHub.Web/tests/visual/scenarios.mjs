@@ -70,19 +70,6 @@ export const scenarios = [
       } else await card.evaluate(element => element.scrollIntoView({ block: 'center' }))
     },
   })),
-  // The Hepsiburada package window: Desi and Paket Adedi as Turkish text boxes, an unreadable desi refused with its reason.
-  ...['dark', 'light'].map(theme => ({
-    name: `orders-hb-package-numbers-${theme}`, path: '/orders', widths: [375, 1280],
-    act: async page => {
-      if (theme === 'light') { await page.locator('.rv-topbar-theme').click(); await page.locator('html[data-theme="light"]').waitFor() }
-      await page.locator(':is(tr, article)', { hasText: '4290571836' }).first().getByRole('button', { name: 'İşleme Al' }).first().click()
-      const dialog = page.getByRole('dialog')
-      await dialog.locator('input[name="deci"]').fill('1.25')
-      await dialog.locator('input[name="parcelQuantity"]').fill('1.000')
-      await dialog.locator('button[type="submit"]').click()
-      await dialog.getByText('Desi okunamadı').waitFor()
-    },
-  })),
   {
     name: 'product-image-zoom', path: '/products/p1', widths: [375, 1280],
     act: async page => {

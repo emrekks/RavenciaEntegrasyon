@@ -458,6 +458,27 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     expect(inputs.map(input => input.value)).toEqual(['631,104', '631,104'])
   })
 
+  // ORTA-3 (review 23 Nov): "12.5" in a Desi Hesapla measure gave desi 0 and a silent desi 1 on Kaydet, and İptal kept
+  // what was typed. Now the measure is marked, Uygula stays off, and İptal leaves the form as it was.
+  it('marks an unreadable calculator measure, keeps Uygula off and takes it back on İptal', async () => {
+    await renderAt('/products/p1')
+    const desiBefore = inputOf('Desi').value
+    await click(need([...document.querySelectorAll<HTMLButtonElement>('.desi-inline-control button')].find(button => button.textContent === 'Hesapla'), 'Hesapla'))
+    const measure = (label: string) => need([...document.querySelectorAll<HTMLLabelElement>('.desi-calculator-grid label')].find(item => item.textContent?.startsWith(label))?.querySelector('input'), label)
+    setValue(measure('En'), '12.5')
+    setValue(measure('Boy'), '10')
+    setValue(measure('Yükseklik'), '20')
+    await settle()
+    expect(measure('En').getAttribute('aria-invalid')).toBe('true')
+    const footButton = (text: string) => need([...document.querySelectorAll<HTMLButtonElement>('.desi-calculator-modal button')].find(button => button.textContent === text), text)
+    expect(footButton('Uygula').disabled).toBe(true)
+    expect(document.querySelector('.desi-calculator-modal [role="alert"]')?.textContent).toContain('12,5 biçiminde yazın')
+    await click(footButton('İptal'))
+    await click(need([...document.querySelectorAll<HTMLButtonElement>('.desi-inline-control button')].find(button => button.textContent === 'Hesapla'), 'Hesapla'))
+    expect(measure('En').value).toBe('')
+    expect(inputOf('Desi').value).toBe(desiBefore)
+  })
+
   it('update with a stock and cost change', async () => {
     await renderAt('/products/p1')
     setValue(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S stok"]'), '9')

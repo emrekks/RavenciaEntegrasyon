@@ -22,3 +22,18 @@ export function editorCount(value: string | number): number {
   const count = parseTrCount(value)
   return count.ok ? count.value : Number.NaN
 }
+
+export type Measures = { weight: string; width: string; length: string; height: string }
+export const MEASURE_FIELDS: ReadonlyArray<{ key: keyof Measures; label: string }> = [
+  { key: 'weight', label: 'Ağırlık (kg)' }, { key: 'width', label: 'En (cm)' }, { key: 'length', label: 'Boy (cm)' }, { key: 'height', label: 'Yükseklik (cm)' }
+]
+// A measure the Turkish rule cannot read ("12.5": a point used as a decimal point) is never taken as 0 or guessed.
+export const unreadableMeasureMessage = 'Ölçü okunamadı; 12,5 biçiminde yazın (ondalık için virgül).'
+
+// The calculator's measures (review 23 Nov, ORTA-3): typed here, handed to the form only with Uygula, so İptal takes back
+// what was typed. An unreadable measure is marked and keeps Uygula off; the desi is never saved as a silent 1.
+export function calculatorDesi(measures: Measures): { desi: number; unreadable: Array<keyof Measures> } {
+  const unreadable = MEASURE_FIELDS.map(field => field.key).filter(key => measures[key].trim() !== '' && Number.isNaN(parseEditorNumber(measures[key])))
+  const [width, length, height] = [measures.width, measures.length, measures.height].map(parseEditorNumber)
+  return { desi: !unreadable.length && width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0, unreadable }
+}

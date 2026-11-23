@@ -1,5 +1,6 @@
 import { readMoneyField } from './seeded-fields'
 import { parseProductDesi } from '../product-desi'
+import { parseTrMeasure } from '../../../shared/tr-number'
 
 // The product editor's required fields (owner, 10 Nov 2026: "bunlar zorunlu alandır, boş olamazlar"). Every save but
 // Taslak Olarak Kaydet stops while one is empty: on a new card, on an edit and before publishing. A card that opens with
@@ -22,11 +23,14 @@ export const requiredEditorFieldLabels: Record<RequiredEditorField, string> = {
   desi: 'Desi'
 }
 
-export type RequiredFieldsForm = Record<'title' | 'brandId' | 'categoryId' | 'modelCode' | 'baseSku' | 'barcode' | 'listPrice' | 'salePrice' | 'warrantyMonths' | 'deliveryDays' | 'desi', string>
+// Desi and the prices are the editor's text, or a saved product's stored numbers (the list's Platformlara Güncelle):
+// a number is compared as it is, never written out and read again (review 23 Nov: String(0.5) read by the Turkish rule
+// held every product with desi 0,5 back as "Zorunlu eksik: Desi").
+export type RequiredFieldsForm = Record<'title' | 'brandId' | 'categoryId' | 'modelCode' | 'baseSku' | 'barcode' | 'warrantyMonths' | 'deliveryDays', string> & Record<'listPrice' | 'salePrice' | 'desi', string | number>
 
-const filled = (value: string) => value.trim() !== ''
-const positiveDesi = (value: string) => parseProductDesi(value) > 0
-const positivePrice = (key: 'listPrice' | 'salePrice', value: string) => readMoneyField(key, value) > 0
+const filled = (value: string | number) => typeof value === 'number' ? Number.isFinite(value) : value.trim() !== ''
+const positiveDesi = (value: string | number) => (typeof value === 'number' ? value : parseProductDesi(value)) > 0
+const positivePrice = (key: 'listPrice' | 'salePrice', value: string | number) => (typeof value === 'number' ? value : readMoneyField(key, value)) > 0
 
 // The eleven required fields in the order the page shows them, the same order as the server's list
 // (ProductRequiredFields.Fields, src/MarketplaceHub.Application/ProductRequiredFields.cs; a test holds them equal).
@@ -57,6 +61,8 @@ export function missingRequiredEditorFields(form: RequiredFieldsForm, options: {
 export function requiredFieldMessage(field: RequiredEditorField, form: RequiredFieldsForm) {
   const label = requiredEditorFieldLabels[field]
   if ((field === 'listPrice' || field === 'salePrice') && filled(form[field])) return `${label} 0'dan büyük olmalı.`
+  // A typed desi the Turkish rule cannot read ("1.5") is told so (review 23 Nov), not "zorunludur".
+  if (field === 'desi' && typeof form.desi === 'string' && filled(form.desi)) return parseTrMeasure(form.desi) === null ? 'Desi okunamadı; virgül kullanın (ör. 1,5).' : "Desi 0'dan büyük olmalı."
   return `${label} zorunludur.`
 }
 

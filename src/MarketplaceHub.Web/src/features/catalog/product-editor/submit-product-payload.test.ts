@@ -54,6 +54,14 @@ describe('buildCreatePayload', () => {
     const payload = buildCreatePayload(input([row('a')], { form: measured, variant: { form: measured, calculateDesi: true, calculatedDesi: 2, optionRequirements: [] } }))
     expect(payload.variants[0]).toMatchObject({ weight: 1.5, width: 30, height: 20, length: 10, desi: 2 })
   })
+  // ORTA-3 (review 23 Nov): a measure the rule cannot read ("12.5") made the calculator's desi 0 and the save stored a
+  // silent desi 1. Without a calculated desi the Desi field as typed goes, never 1.
+  it('never saves a silent desi 1 when the calculator gives none', () => {
+    const measured = { ...form, width: '12.5', height: '20', length: '10' }
+    const payload = buildCreatePayload(input([row('a')], { form: measured, variant: { form: measured, calculateDesi: true, calculatedDesi: 0, optionRequirements: [] } }))
+    expect(payload.variants[0].desi).toBe(2.5)
+    expect(payload.variants[0].width).toBeNull()
+  })
 })
 
 describe('buildUpdatePayload', () => {

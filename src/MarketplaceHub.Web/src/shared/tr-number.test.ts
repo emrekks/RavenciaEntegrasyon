@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTrCount, parseTrEntry, parseTrMeasure, parseTrNumber, trNumberInput } from './tr-number'
+import { parseTrCount, parseTrEntry, parseTrMeasure, parseTrNumber, parseTrPercent, trNumberInput } from './tr-number'
 
 describe('parseTrNumber', () => {
   it('reads Turkish thousands points and decimal commas', () => {
@@ -89,7 +89,9 @@ describe('parseTrEntry table', () => {
     ['0', 0], ['5', 5], ['1250', 1250], ['1.250', 1250], ['12.500', 12500], ['125.000', 125000], ['1.250.000', 1250000],
     ['1.250,50', 1250.5], ['1.250,5', 1250.5], ['1250,50', 1250.5], ['12,5', 12.5], ['0,5', 0.5], ['0,05', 0.05],
     ['631,10', 631.1], [' 1.250 ', 1250], [' 1.250,50 ', 1250.5], ['1.250 ₺', 1250], ['₺1.250,50', 1250.5],
-    ['1.250 TL', 1250], ['1.250tl', 1250], ['12,5 %', 12.5],
+    ['1.250 TL', 1250], ['1.250tl', 1250], ['9.999.999,99', 9999999.99],
+    // Review 23 Nov (i, ii): no percent sign on a price; above 9.999.999,99 or 15 digits refused, never rounded.
+    ['12,5 %', null], ['%10', null], ['10%', null], ['10.000.000', null], ['9.999.999,999', null], ['1234567890123456', null],
     // A space, a sign or a letter inside the number.
     ['1, 250', null], ['1 ,250', null], ['1,25 0', null], ['1 250', null], ['1 250', null], ['1.250, 50', null],
     ['1₺250', null], ['1%250', null], ['12a', null], ['abc', null], ['1e3', null], ['0x10', null], ['Infinity', null],
@@ -115,6 +117,24 @@ describe('parseTrEntry table', () => {
   it('refuses the same inside-number spaces and signs in measurements and filters', () => {
     for (const text of ['1, 250', '1 250', '1₺250', '1%250', '1,25 0'])
       for (const parse of [parseTrMeasure, parseTrNumber]) expect(parse(text), `${parse.name} ${text}`).toBeNull()
+  })
+})
+
+describe('units and ceilings (review 23 Nov: i, ii)', () => {
+  it('takes a percent sign only on a rate, and no unit on a stock or a measure', () => {
+    expect(parseTrPercent('%21,5')).toBe(21.5)
+    expect(parseTrPercent('20 %')).toBe(20)
+    expect(parseTrPercent('20 TL')).toBeNull()
+    for (const text of ['5 TL', '5₺', '₺5', '5 %']) {
+      expect(parseTrCount(text), text).toEqual({ ok: false, reason: 'invalid' })
+      expect(parseTrMeasure(text), text).toBeNull()
+    }
+  })
+  it('refuses a stock above 999.999 and any number of more than 15 digits', () => {
+    expect(parseTrCount('999.999')).toEqual({ ok: true, value: 999999 })
+    expect(parseTrCount('1.000.000')).toEqual({ ok: false, reason: 'tooLarge' })
+    expect(parseTrNumber('1234567890123456')).toBeNull()
+    expect(parseTrMeasure('9.999.999.999.999.999')).toBeNull()
   })
 })
 

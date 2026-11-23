@@ -222,10 +222,12 @@ export function typedOfferPriceChoice(prices: { listPrice: number; salePrice: nu
 // is written by PATCH at the version the editor loaded, so a price set meanwhile elsewhere is refused, never overwritten.
 type EditorOfferState = { listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null }
 type EditorOfferCommand = { listPrice: number; salePrice: number; currency: string; vatRate: number; vatInclusion: string; roundingMode: string; safetyStock: number; status: string; followsPanelPrice: boolean }
-export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOfferCommand): boolean {
+// takesListPrice false (Hepsiburada, PttAVM: a sale price only): the list price is not the marketplace's, so a panel list
+// price apart from the stored one (list = sale there) never makes an untouched offer "changed" (review 23 Nov, iv).
+export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOfferCommand, takesListPrice = true): boolean {
   const sameNumber = (stored: number | null | undefined, sent: number) => stored != null && samePrice(stored, sent)
   const sameText = (stored: string | null | undefined, sent: string) => (stored ?? '').trim().toUpperCase() === sent.trim().toUpperCase()
-  return sameNumber(offer.listPrice, command.listPrice) && sameNumber(offer.salePrice, command.salePrice) && sameNumber(offer.vatRate, command.vatRate) && sameNumber(offer.safetyStock, command.safetyStock)
+  return (!takesListPrice || sameNumber(offer.listPrice, command.listPrice)) && sameNumber(offer.salePrice, command.salePrice) && sameNumber(offer.vatRate, command.vatRate) && sameNumber(offer.safetyStock, command.safetyStock)
     && sameText(offer.currency, command.currency) && sameText(offer.vatInclusion, command.vatInclusion) && sameText(offer.roundingMode, command.roundingMode)
     && (offer.offerStatus ?? '').trim() === command.status.trim() && offer.followsPanelPrice === command.followsPanelPrice
 }
@@ -335,7 +337,7 @@ export function bulkEditValues(input: { showListPrice: boolean; listPrice: strin
   let amount: number | null = null
   if (input.stockAmount.trim() !== '') {
     const count = parseTrCount(input.stockAmount)
-    if (!count.ok) return { ok: false, message: count.reason === 'fraction' ? 'Stok miktarı tam sayı olmalıdır; kesirli bir değer (ör. 2,5) girilemez.' : count.reason === 'negative' ? 'Stok miktarı negatif olamaz.' : 'Stok miktarı okunamadı; 1.250 gibi bir tam sayı girin.' }
+    if (!count.ok) return { ok: false, message: count.reason === 'tooLarge' ? 'Stok miktarı en çok 999.999 olabilir.' : count.reason === 'fraction' ? 'Stok miktarı tam sayı olmalıdır; kesirli bir değer (ör. 2,5) girilemez.' : count.reason === 'negative' ? 'Stok miktarı negatif olamaz.' : 'Stok miktarı okunamadı; 1.250 gibi bir tam sayı girin.' }
     amount = count.value
   }
   if ((list != null && (list < 0 || !hasAtMostTwoDecimals(list))) || (sale != null && (sale <= 0 || !hasAtMostTwoDecimals(sale))) || (list != null && sale != null && list < sale)) return { ok: false, message: 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat veya hatalı fiyat sıralaması kullanılamaz, fiyat en fazla iki ondalık basamak içerebilir.' }

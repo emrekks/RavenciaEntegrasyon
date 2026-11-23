@@ -4,8 +4,8 @@
 // person typed, which goes to each variant's offer there. A new variant (nothing saved) has no previous value.
 import { panelPrices } from '../quick-price-edit'
 import type { PriceChange } from '../price-jump'
-import { priceInputNumber } from './card-prices'
-import type { ChannelPricingDraft } from './marketplace-channel-pricing'
+import { channelFieldKey, readMoneyField } from './seeded-fields'
+import type { ChannelPricingDraft, StagedOfferPrices } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
 import type { VariantDraft } from './editor-types'
 
@@ -13,7 +13,7 @@ export type EditorPriceJumpInput = {
   rows: ReadonlyArray<VariantDraft>
   saved: Product | null | undefined
   channelPricing: Readonly<Record<string, ChannelPricingDraft>>
-  variantChannelPricing: Readonly<Record<string, ChannelPricingDraft>>
+  variantChannelPricing: Readonly<Record<string, StagedOfferPrices>>
   channelPriceDraft: (connectionId: string) => ChannelPricingDraft
   channelPriceEdited: (connectionId: string) => boolean
 }
@@ -36,11 +36,13 @@ export function editorPriceChanges(input: EditorPriceJumpInput): PriceChange[] {
     for (const connectionId of connectionIds) {
       const status = statuses.get(connectionId)
       const staged = input.variantChannelPricing[`${row.key}:${connectionId}`]
-      const typed = staged ?? (connectionId in input.channelPricing && input.channelPriceEdited(connectionId) ? input.channelPriceDraft(connectionId) : null)
+      // A staged price is a number already; the card's text is read as Kaydet reads it (an untouched side as loaded).
+      const card = connectionId in input.channelPricing && input.channelPriceEdited(connectionId) ? input.channelPriceDraft(connectionId) : null
+      const typed = staged ?? (card ? { listPrice: readMoneyField(channelFieldKey(connectionId, 'listPrice'), card.listPrice), salePrice: readMoneyField(channelFieldKey(connectionId, 'salePrice'), card.salePrice) } : null)
       if (!typed) continue
       const before = status?.offerId ? { listPrice: status.listPrice, salePrice: status.salePrice } : panel
-      push(row.key, before.salePrice, priceInputNumber(typed.salePrice))
-      push(row.key, before.listPrice, priceInputNumber(typed.listPrice))
+      push(row.key, before.salePrice, typed.salePrice)
+      push(row.key, before.listPrice, typed.listPrice)
     }
   }
   return changes

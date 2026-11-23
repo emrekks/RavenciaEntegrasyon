@@ -1133,6 +1133,9 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 /* The bulk publish window's status pill wraps onto a second line instead of being cut off. */
 .app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status { flex: 0 1 auto; min-width: 0; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
 .variant-platform-pricing-modal > footer button { box-sizing: border-box; height: 36px; min-height: 0; padding-block: 0; }
+.variant-platform-pricing-modal > footer > .variant-platform-pricing-error { flex: 1 1 auto; align-self: center; min-width: 0; margin: 0 auto 0 0; }
+.price-comma-hint { display: none; grid-column: 1 / -1; margin-top: -6px; color: var(--rv-color-muted); font-size: 12px; }
+@media (pointer: coarse) { .price-comma-hint { display: block; } }
 /* A field a save refused: framed red, and shaken once the page has scrolled to it (field-error-reveal.ts). */
 .product-creation-workspace :is(input, select, textarea)[aria-invalid="true"],
 .product-creation-workspace label:has(> .product-field-error) :is(input, select, textarea) { border-color: var(--rv-color-danger); box-shadow: 0 0 0 1px var(--rv-color-danger); }
@@ -1323,6 +1326,7 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 .rr-layer.rr-layer .variant-code-confirm-body > :is(p, small) { color: var(--rr-muted); font-size: inherit; }
 /* Desi Hesapla on RrModal: two measures a row, on a phone too (as before). */
 .rr-layer.rr-layer .desi-calculator-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.rr-layer.rr-layer .desi-calculator-grid .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
 /* Varyant Düzenleme on RrModal: the read-only name field and the switch row's help line (the rr layer resets small). */
 .rr-layer.rr-layer .variant-option-edit-pair .rr-in:disabled { color: var(--rr-muted); background: var(--rr-raised); }
 .rr-layer.rr-layer .variant-option-edit-switch small { color: var(--rr-muted); font-size: 12px; }

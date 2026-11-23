@@ -53,12 +53,14 @@ export type QuickEditMode = 'stock' | 'price'
 // and each variant's price there (null: no offer). The window only reads them and hands changed cells back as drafts; the
 // page's Kaydet writes them (the editor's own offer writes, no other path).
 export type QuickEditDraftChannel = { connectionId: string; name: string; platformCode: string; takesListPrice: boolean; custom: boolean; onToggleCustom: () => void }
-export type QuickEditChannelChange = { rowKey: string; connectionId: string; listPrice: string; salePrice: string }
+// Numbers, never text (review 23 Nov): a side left as loaded is handed over as the loaded number, not re-read from its text.
+export type QuickEditChannelChange = { rowKey: string; connectionId: string; listPrice: number; salePrice: number }
 export type QuickEditDraft = {
   title: string; modelCode: string; rows: QuickEditDraftRow[]; onApply: (changes: QuickEditDraftChange[]) => void
   channels?: QuickEditDraftChannel[]; isNewProduct?: boolean
   // follows: the variant's offer there follows the panel price (its Özel Fiyat is off); a staged own price does not.
-  channelPrice?: (rowKey: string, connectionId: string) => { list: string; sale: string; follows?: boolean } | null
+  // values: the numbers the texts were made from; a side still as loaded is read as that number, never from its text.
+  channelPrice?: (rowKey: string, connectionId: string) => { list: string; sale: string; follows?: boolean; values?: { list: number | null; sale: number | null } } | null
   onApplyChannelPrices?: (changes: QuickEditChannelChange[]) => void
 }
 const DRAFT_PRODUCT_ID = 'editor-draft'
@@ -86,7 +88,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const products = draftProducts ?? savedProducts
   const [draftValues, setDraftValues] = useState<Record<string, QuickEditDraftValues>>(() => Object.fromEntries((draft?.rows ?? []).map(row => [row.key, quickEditDraftValues(row)])))
   // The editor's marketplace prices typed here (per variant and marketplace) stay here until Varyantlara Uygula hands them over.
-  type ChannelCell = { list: string; sale: string; follows?: boolean }
+  type ChannelCell = { list: string; sale: string; follows?: boolean; values?: { list: number | null; sale: number | null } }
   const [channelDrafts, setChannelDrafts] = useState<Record<string, ChannelCell>>({})
   // The editor's Özel Fiyat switches as flipped in this window (O5): a draft like every cell, handed to the editor only with
   // Varyantlara Uygula; Vazgeç (or closing) leaves the editor's switches as they were.
@@ -258,14 +260,14 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         // A cell reads by the one rule of this window (parseTrEntry: "1.250" is 1250), the rule its formatted text is
         // shown by; a cell it refuses stops the apply instead of being sent as another number.
         // A side still as loaded reads as the stored value (O2: a stored 99.999 is not refused); a typed side by the rule.
-        const cellRead = (text: string, start: string) => text.trim() === '' ? null : text === start ? parseTrMeasure(text) : parseTrEntry(text)
-        const cellList = cellRead(cell.list, original.list)
-        const cellSale = cellRead(cell.sale, original.sale)
+        const cellRead = (text: string, start: string, loaded: number | null | undefined) => text.trim() === '' ? null : text === start ? loaded ?? parseTrMeasure(text) : parseTrEntry(text)
+        const cellList = cellRead(cell.list, original.list, original.values?.list)
+        const cellSale = cellRead(cell.sale, original.sale, original.values?.sale)
         if ((cell.list.trim() !== '' && cellList === null) || (cell.sale.trim() !== '' && cellSale === null)) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${trEntryHelp}` }
         const prices = quickEditOfferPrices({ listPrice: cellList, salePrice: cellSale }, bulked ? read.list : null, bulked ? read.sale : null)
         if (!prices.ok) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${prices.message}` }
         const listPrice = channel.takesListPrice ? prices.listPrice : prices.salePrice
-        changes.push({ rowKey: row.key, connectionId: channel.connectionId, listPrice: priceFieldText(listPrice), salePrice: priceFieldText(prices.salePrice) })
+        changes.push({ rowKey: row.key, connectionId: channel.connectionId, listPrice, salePrice: prices.salePrice })
       }
     }
     return { ok: true, changes }
@@ -433,7 +435,8 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     const [variantId, columnId] = key.split('|')
     const item = jumpItems.get(variantId)
     const panel = item && columnId !== PANEL_PRICE_CHOICE ? panelPrices(item.variant, item.product) : null
-    const before = entry.original[field].trim() === '' ? (field === 'list' ? panel?.listPrice : panel?.salePrice) : parseTrEntry(entry.original[field])
+    // The loaded text was written from the stored number (any decimals): read back as that number, not by the typed rule.
+    const before = entry.original[field].trim() === '' ? (field === 'list' ? panel?.listPrice : panel?.salePrice) : parseTrMeasure(entry.original[field])
     return after == null ? [] : [{ key: variantId, before, after }]
   }))).lines
   const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.{jumpLines.map(text => <span key={text} className="rv-draftbar-warn" role="alert">{text}</span>)}</>

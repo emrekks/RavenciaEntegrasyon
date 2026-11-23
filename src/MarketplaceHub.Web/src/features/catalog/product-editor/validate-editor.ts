@@ -13,7 +13,8 @@ import { draftBlockingIssues, unreadableNumberIssues } from '../product-draft'
 import { editorVatRateIssue } from '../product-editor-state'
 import { MAX_VARIANTS } from './editor-helpers'
 import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
-import { trEntryHelp } from '../../../shared/tr-number'
+import { parseTrMeasure, trEntryHelp } from '../../../shared/tr-number'
+import { parseEditorNumber, unreadableMeasureMessage } from './editor-number'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -46,6 +47,8 @@ export type EditorSaveValidationInput = EditorValidationInput & {
   selectedChannels: Array<{ id: string; name: string; draft: ChannelPricingDraft }>
   // Every marketplace switched to Özel Fiyat (its card price is its own), selected or not.
   customChannels?: Array<{ id: string; name: string; draft: ChannelPricingDraft; edited?: boolean }>
+  // Desi Hesapla is in use: its measures are sent, so an unreadable one stops the save.
+  calculateDesi?: boolean
 }
 
 export type EditorValidationMode =
@@ -98,9 +101,17 @@ function customChannelIssues(input: EditorSaveValidationInput): string[] {
   })
 }
 
+// Desi Hesapla's measures as the save sends them: one the Turkish rule cannot read stops the save (never saved as 0 or 1).
+const measureUnreadable = (form: EditorForm) => [form.weight, form.width, form.length, form.height].some(value => value.trim() !== '' && Number.isNaN(parseEditorNumber(value)))
+// A typed desi the rule cannot read ("1.5") is told so, not "above zero".
+export function desiIssueText(desi: string) {
+  return desi.trim() !== '' && parseTrMeasure(desi) === null ? 'Desi okunamadı; virgül kullanın (ör. 1,5).' : 'Desi sıfırdan büyük olmalıdır.'
+}
+
 // A draft is stopped only by values the server refuses (clashing codes, malformed prices or image links).
 function draftIssues(input: EditorSaveValidationInput) {
   const issues = [...draftBlockingIssues(input.rows, input.form), ...customChannelIssues(input)]
+  if (input.calculateDesi && measureUnreadable(input.form)) issues.push(unreadableMeasureMessage)
   const media = invalidMediaUrlIssue(rowMediaUrls(input))
   if (media) issues.push(media)
   const warranty = warrantyIssue(input.form)
@@ -143,12 +154,13 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
   }
   issues.push(...unreadableNumberIssues(rows))
-  if (!Number.isFinite(readCountField('safetyStock', form.safetyStock || 0)) || !Number.isFinite(readCountField('initialStock', form.initialStock || 0))) issues.push('Stok ve güvenlik stoğu 1.250 gibi sıfır veya pozitif bir tam sayı olmalıdır.')
+  if (!Number.isFinite(readCountField('safetyStock', form.safetyStock || 0)) || !Number.isFinite(readCountField('initialStock', form.initialStock || 0))) issues.push('Stok ve güvenlik stoğu 1.250 gibi sıfır veya pozitif bir tam sayı olmalıdır (en çok 999.999).')
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
   // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
   if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
   // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
-  if (!(input.editing && input.initialDesi === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
+  if (!(input.editing && input.initialDesi === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push(desiIssueText(form.desi))
+  if (input.calculateDesi && measureUnreadable(form)) issues.push(unreadableMeasureMessage)
   if (productDesiTooLarge(form.desi)) issues.push(productDesiTooLargeMessage)
   const warranty = warrantyIssue(form)
   if (warranty) issues.push(warranty)

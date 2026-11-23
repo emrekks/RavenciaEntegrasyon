@@ -7,6 +7,11 @@ import { priceInputNumber } from './card-prices'
 // main (panel) price. Every switch starts off and its two inputs show 0 until the user turns it on and types a price.
 export type ChannelPricingDraft = { listPrice: string; salePrice: string }
 
+// A per-variant marketplace price staged for the page's Kaydet (Toplu Düzenle, the variant price window on a new card):
+// numbers, never text. A typed price is read once, when it is typed; a loaded price stays the number it was loaded as
+// (review 23 Nov: a stored 631.104 turned into the text "631,104" and read again by the typed rule became NaN).
+export type StagedOfferPrices = { listPrice: number; salePrice: number }
+
 export const emptyChannelPricingDraft: ChannelPricingDraft = { listPrice: '0', salePrice: '0' }
 
 // What the inputs show: the special price when the switch is on, else 0 (the panel price is used, not these).

@@ -10,7 +10,7 @@ const text = (value: FormDataEntryValue | string | null | undefined) => typeof v
 // A whole number of pieces within [min, max] ("1.000" is 1000; "2,5", "1e3" and "0x10" are refused).
 export function readFormCount(value: FormDataEntryValue | string | null | undefined, label: string, range: { min: number; max?: number }): FormNumber {
   const count = parseTrCount(text(value))
-  if (!count.ok) return { ok: false, message: `${label} okunamadı; 1.250 gibi bir tam sayı girin.` }
+  if (!count.ok) return { ok: false, message: count.reason === 'tooLarge' ? `${label} en çok 999.999 olabilir.` : `${label} okunamadı; 1.250 gibi bir tam sayı girin.` }
   if (count.value < range.min) return { ok: false, message: `${label} en az ${range.min} olmalıdır.` }
   if (range.max != null && count.value > range.max) return { ok: false, message: `${label} en çok ${range.max} olabilir.` }
   return { ok: true, value: count.value }

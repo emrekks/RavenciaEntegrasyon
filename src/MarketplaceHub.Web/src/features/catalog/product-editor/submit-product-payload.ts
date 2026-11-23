@@ -68,7 +68,9 @@ const variantAttributes = (row: VariantDraft, context: VariantPayloadContext) =>
   optionRequirements: context.optionRequirements
 })
 
-const savedDesi = (context: VariantPayloadContext) => context.calculateDesi ? context.calculatedDesi || 1 : parseProductDesi(context.form.desi)
+// The calculator's desi while its measures read, else the Desi field as typed; never a silent 1 (review 23 Nov, ORTA-3:
+// "12.5" in a measure gave 0 and the save stored desi 1). The save's checks stop an unreadable measure or desi first.
+const savedDesi = (context: VariantPayloadContext) => context.calculateDesi && context.calculatedDesi > 0 ? context.calculatedDesi : parseProductDesi(context.form.desi)
 
 const measurement = (context: VariantPayloadContext, value: string) => context.calculateDesi ? parseEditorNumber(value) || null : null
 
