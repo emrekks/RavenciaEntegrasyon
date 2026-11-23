@@ -46,9 +46,9 @@ describe('suggestPrice', () => {
 
 describe('appliedPrices', () => {
   it('raises an empty or lower list price to the sale price and leaves a higher one', () => {
-    expect(appliedPrices(499.9, '')).toEqual({ salePrice: '499.9', listPrice: '499.9' })
-    expect(appliedPrices(499.9, '450')).toEqual({ salePrice: '499.9', listPrice: '499.9' })
-    expect(appliedPrices(499.9, '600')).toEqual({ salePrice: '499.9', listPrice: '600' })
+    expect(appliedPrices(499.9, '')).toEqual({ salePrice: '499,9', listPrice: '499,9' })
+    expect(appliedPrices(499.9, '450')).toEqual({ salePrice: '499,9', listPrice: '499,9' })
+    expect(appliedPrices(499.9, '600')).toEqual({ salePrice: '499,9', listPrice: '600' })
   })
 })
 

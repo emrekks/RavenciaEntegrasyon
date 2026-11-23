@@ -1,4 +1,6 @@
 import type { ApiAnswer } from '../../../../shared/api/api-answer'
+import { readFormCount, readFormMeasure } from '../../../../shared/form-numbers'
+import { parseTrCount } from '../../../../shared/tr-number'
 import { PanelSelect } from '../../../../shared/PanelSelect'
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -33,6 +35,10 @@ export function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { it
     event.preventDefault()
     if (!selectedCount || saving) return
     const data = new FormData(event.currentTarget)
+    // Read in Turkish (shared/form-numbers.ts): "1.250" desi is 1250, never 1.25; "1e3" or "2,5" packages are refused.
+    const deci = readFormMeasure(data.get('deci'), 'Desi', { min: 0, max: 10000 })
+    const parcels = readFormCount(data.get('parcelQuantity'), 'Paket Adedi', { min: 1, max: 100 })
+    if (!deci.ok || !parcels.ok) { setError(!deci.ok ? deci.message : !parcels.ok ? parcels.message : ''); return }
     const lineItems = Object.entries(selected).filter(([, quantity]) => quantity > 0).map(([orderLineId, quantity]) => ({ orderLineId, quantity }))
     setSaving(true)
     setError('')
@@ -41,8 +47,8 @@ export function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { it
       cargoCompany: optionalText(data.get('cargoCompany')),
       carrier: optionalText(data.get('carrier')),
       creationReason: optionalText(data.get('creationReason')),
-      deci: Number(data.get('deci')),
-      parcelQuantity: Number(data.get('parcelQuantity')),
+      deci: deci.value,
+      parcelQuantity: parcels.value,
       shippingAddressLabel: optionalText(data.get('shippingAddressLabel')),
       shippingModel: optionalText(data.get('shippingModel')),
       lineItems,
@@ -68,8 +74,8 @@ export function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { it
     <form id="hb-package-form" style={{ display: 'contents' }} onSubmit={submit}>
       <section className="rr-osum" aria-label="Sipariş bilgileri"><span><RrLogo code={item.platformCode} />{displayOrderNumber(item.orderNumber)}</span><dl>{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
       <div className="rr-h3">Sipariş Kalemleri</div>
-      {lines.length ? <div className="rr-apr" role="table"><div className="rr-apr-h" role="row"><span role="columnheader">Bilgiler</span><span role="columnheader">Pakete Girecek Adet</span></div>{lines.map(line => { const available = availableQuantity(line); const on = (selected[line.id] ?? 0) > 0; return <div className="rr-apr-r" role="row" key={line.id}><label className="rr-apr-info"><input type="checkbox" className="rr-cb" checked={on} disabled={available <= 0 || saving} onChange={event => setSelected(current => { const next = { ...current }; if (event.target.checked) next[line.id] = available; else delete next[line.id]; return next })} /><RrThumb src={line.imageUrl ?? item.primaryImageUrl} fallbackSrc={line.fallbackImageUrl} quantity={productLineQuantity(line)} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku} · kalan {available} adet</small></span></label><div className="rr-apr-side">{on ? <input className="rr-in rr-num" aria-label={`${line.title} paket adedi`} type="number" min="1" max={available} step="1" value={selected[line.id]} disabled={saving} onChange={event => setSelected(current => ({ ...current, [line.id]: Math.min(available, Math.max(0, Number(event.target.value) || 0)) }))} /> : <span className="rr-qty-static">{available} Adet</span>}</div></div> })}</div> : <p className="rr-lead">Bu sipariş için paketlenebilir satır bulunamadı.</p>}
-      <div className="rr-dgrid">{[['barcode', 'Paket Barkodu', 'text', 128], ['cargoCompany', 'Kargo Firması Kodu', 'text', 100], ['carrier', 'Taşıyıcı', 'text', 100], ['creationReason', 'Oluşturma Nedeni', 'text', 100], ['deci', 'Desi', 'number', 0], ['parcelQuantity', 'Paket Adedi', 'number', 0], ['shippingAddressLabel', 'Gönderim Adresi Etiketi', 'text', 100], ['shippingModel', 'Gönderim Modeli', 'text', 100]].map(([name, label, type, max]) => <label key={name as string} className="rr-fld"><small>{label}</small><input className={`rr-in${type === 'number' ? ' rr-num' : ''}`} name={name as string} type={type as string} {...(type === 'number' ? { min: name === 'deci' ? 0 : 1, max: name === 'deci' ? 10000 : 100, step: 1, defaultValue: 1 } : { maxLength: max as number })} required={type === 'number'} /></label>)}</div>
+      {lines.length ? <div className="rr-apr" role="table"><div className="rr-apr-h" role="row"><span role="columnheader">Bilgiler</span><span role="columnheader">Pakete Girecek Adet</span></div>{lines.map(line => { const available = availableQuantity(line); const on = (selected[line.id] ?? 0) > 0; return <div className="rr-apr-r" role="row" key={line.id}><label className="rr-apr-info"><input type="checkbox" className="rr-cb" checked={on} disabled={available <= 0 || saving} onChange={event => setSelected(current => { const next = { ...current }; if (event.target.checked) next[line.id] = available; else delete next[line.id]; return next })} /><RrThumb src={line.imageUrl ?? item.primaryImageUrl} fallbackSrc={line.fallbackImageUrl} quantity={productLineQuantity(line)} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku} · kalan {available} adet</small></span></label><div className="rr-apr-side">{on ? <input className="rr-in rr-num" aria-label={`${line.title} paket adedi`} type="text" inputMode="numeric" autoComplete="off" value={selected[line.id]} disabled={saving} onChange={event => { const count = parseTrCount(event.target.value); setSelected(current => ({ ...current, [line.id]: count.ok ? Math.min(available, count.value) : 0 })) }} /> : <span className="rr-qty-static">{available} Adet</span>}</div></div> })}</div> : <p className="rr-lead">Bu sipariş için paketlenebilir satır bulunamadı.</p>}
+      <div className="rr-dgrid">{[['barcode', 'Paket Barkodu', 'text', 128], ['cargoCompany', 'Kargo Firması Kodu', 'text', 100], ['carrier', 'Taşıyıcı', 'text', 100], ['creationReason', 'Oluşturma Nedeni', 'text', 100], ['deci', 'Desi', 'number', 0], ['parcelQuantity', 'Paket Adedi', 'number', 0], ['shippingAddressLabel', 'Gönderim Adresi Etiketi', 'text', 100], ['shippingModel', 'Gönderim Modeli', 'text', 100]].map(([name, label, type, max]) => <label key={name as string} className="rr-fld"><small>{label}</small><input className={`rr-in${type === 'number' ? ' rr-num' : ''}`} name={name as string} type="text" autoComplete="off" {...(type === 'number' ? { inputMode: name === 'deci' ? 'decimal' as const : 'numeric' as const, defaultValue: 1 } : { maxLength: max as number })} required={type === 'number'} /></label>)}</div>
       {/* The form scrolls inside the window; the refusal is brought into view so it is not missed below the fields. */}
       {error && <div className="rr-callout rr-danger" role="alert" ref={node => node?.scrollIntoView({ block: 'nearest' })}><RrIcon name="alert" /><span>{error}</span></div>}
     </form>

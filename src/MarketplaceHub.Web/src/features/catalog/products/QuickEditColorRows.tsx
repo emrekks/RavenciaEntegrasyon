@@ -5,7 +5,8 @@ import './quick-edit-matrix.css'
 // The variants of a product as one line per colour: the colour (with a round tick for the whole row) on the left, then its
 // sizes side by side, each as a "size label + box" pair. A size a colour does not have is not drawn at all. A size label
 // ticks that one variant (the pair turns purple); the chips above tick a size in every colour; the corner ticks all.
-// Arrow keys, Tab and Enter move between the boxes (Enter and Down: the next colour, same size).
+// Arrow keys, Tab and Enter move between the boxes (Enter and Down: the next colour, same size); Enter in a box never
+// submits the window (no bulk Uygula from a cell). Each size label's tick is reachable with Tab and ticks with Space.
 export type MatrixLine = { key: string; label: string }
 export type MatrixPosition = { row: number; col: number }
 
@@ -117,7 +118,7 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
           <div className="rr-cr-sizes">{sizes.map((size, colIndex) => { const here = cells.get(matrixCellKey(row.key, size)) ?? []; return here.length ? here.map(item => {
             const on = selected.has(idOf(item))
             return <div className={`rr-cr-pair${on ? ' rr-on' : ''}`} key={idOf(item)}>
-              <label className="rr-cr-size" title={`${labelOf(item)} varyantını seç`}><input type="checkbox" className="rr-cb rr-cr-tick" tabIndex={-1} checked={on} aria-label={`${labelOf(item)} varyantını seç`} onChange={event => onSelect([idOf(item)], event.currentTarget.checked)} /><span>{size}</span></label>
+              <label className="rr-cr-size" title={`${labelOf(item)} varyantını seç`}><input type="checkbox" className="rr-cb rr-cr-tick" checked={on} aria-label={`${labelOf(item)} varyantını seç`} onChange={event => onSelect([idOf(item)], event.currentTarget.checked)} /><span>{size}</span></label>
               {renderCell(item, { row: rowIndex, col: colIndex })}
             </div>
           }) : [<span className="rr-cr-gap" key={`gap-${size}`} aria-hidden="true" />] })}</div>

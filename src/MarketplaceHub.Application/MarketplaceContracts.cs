@@ -1203,7 +1203,11 @@ public sealed record InstantNotificationView(
     bool RouteOnly = false,
     // When the definition PreviousPreparedAt names last received a notification (null: it never did), so the panel
     // says which definition comes back.
-    DateTimeOffset? PreviousLastReceivedAt = null);
+    DateTimeOffset? PreviousLastReceivedAt = null,
+    // The last call Hepsiburada made to that definition's address while it was closed (it still uses it), and when the
+    // user closed it by hand (Webhook'u Kapat), so the panel warns before bringing back one closed on purpose.
+    DateTimeOffset? PreviousLastRefusedAt = null,
+    DateTimeOffset? PreviousClosedByHandAt = null);
 
 public sealed record WebhookAdoptableDefinition(string ConnectionName, string Environment, DateTimeOffset PreparedAt);
 
@@ -1220,7 +1224,8 @@ public interface IInstantNotificationService
     Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     // Hepsiburada: makes the last closed definition (the address and password Hepsiburada was given) the active one
     // again, closing a newer one that has received nothing.
-    Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
+    // expectedPreparedAt: the PreviousPreparedAt the panel showed; another definition chosen by now answers 409.
+    Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, DateTimeOffset? expectedPreparedAt, string correlationId, CancellationToken cancellationToken);
     // Hepsiburada: moves the active definition of an inactive Hepsiburada connection here, keeping the address, user and
     // password Hepsiburada was given; the current definition is closed and can be restored.
     Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
@@ -1445,7 +1450,9 @@ public sealed record OrderListView(
     OrderBuyerTypeView? BuyerType = null,
     // The exchange this order is a resend for (owner, 18 Nov 2026): its claim names Trendyol's exchange package or the owner
     // marked it made. Null when it is no such exchange.
-    OrderExchangeResendView? ExchangeResend = null);
+    OrderExchangeResendView? ExchangeResend = null,
+    // The re-shipment the owner added by hand for this order (owner, 23 Nov 2026: "Elle Eklendi"); null when none.
+    OrderManualResendView? ManualResend = null);
 // PackageId and the carrier as Trendyol named them (null: not named). Shipped once the package's tracking link is known
 // (ShippedSource MARKETPLACE) or the owner marked it handed to the carrier (MANUAL, owner 23 Nov 2026); a tracking number
 // alone is not "shipped". ClaimId and ClaimVersion address that mark (POST /returns/{id}/replacement-shipped, If-Match).
@@ -1867,8 +1874,10 @@ public interface IMarketplaceSalesService
 public interface IMarketplaceWebhookService
 {
     Task<ServiceResult<bool>> ReceiveAsync(Guid connectionPublicId, string routeToken, ReadOnlyMemory<byte> rawBody, IReadOnlyDictionary<string, string> headers, string correlationId, CancellationToken cancellationToken);
-    // A delivery the route gate turned away: kept on the connection when the connection is known (an old or wrong route token).
-    Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken);
+    // A delivery the route gate turned away: kept on the connection when the address is known (a closed definition's, or
+    // an old or wrong route token of a known connection). Returns what it was (CallsRejectedCode or the token mismatch
+    // code), or null for an address that names nothing, which leaves no trace.
+    Task<string?> NoteRouteRefusedAsync(Guid connectionPublicId, string routeToken, CancellationToken cancellationToken);
 }
 
 public interface IMarketplaceJobProcessor

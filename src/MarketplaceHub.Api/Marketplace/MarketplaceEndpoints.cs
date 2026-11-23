@@ -11,6 +11,7 @@ using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using static MarketplaceHub.Api.Common.EndpointHelpers;
 
 namespace MarketplaceHub.Api.Marketplace;
@@ -257,6 +258,7 @@ public static partial class MarketplaceEndpoints
                 ? WithEtag(http, await service.MarkReplacementShippedAsync(tenant.TenantId, tenant.UserId, id, version, command.Marked, OperationCorrelation(http), http.RequestAborted), x => x.Version)
                 : failure!;
         }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
+        MapManualResendEndpoints(api);
         api.MapPost("/files/return-evidence", UploadReturnEvidenceAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ReturnEvidenceView>(StatusCodes.Status201Created);
 
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<InstantNotificationView>();
@@ -270,7 +272,7 @@ public static partial class MarketplaceEndpoints
             var result = adopt
                 ? await service.AdoptFromInactiveAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted)
                 : restore
-                ? await service.RestorePreviousAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted)
+                ? await service.RestorePreviousAsync(tenant.TenantId, id, command?.RestorePreparedAt, OperationCorrelation(http), http.RequestAborted)
                 : await service.EnableAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted, command?.ClientSecret);
             if (result is { Succeeded: true, Value: { } view }) await AuditAsync(http, tenant, adopt ? "INSTANT_NOTIFICATIONS_ADOPTED" : restore ? "INSTANT_NOTIFICATIONS_RESTORED" : "INSTANT_NOTIFICATIONS_ENABLED", id, view.State);
             return Result(result, Results.Ok);
@@ -297,14 +299,43 @@ public static partial class MarketplaceEndpoints
     internal static async Task<IResult> ReceiveWebhook(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota) =>
         await ReceiveWebhookCore(connectionPublicId, routeToken, http, service, gate, quota, null);
 
+    private const string RefusalThrottle = "webhook-route-refused";
+
+    // The event path is the sender's to choose and has no length limit: a log line keeps its first 64 characters.
+    internal static string LoggedPath(string? eventPath) => eventPath is null ? "/" : eventPath.Length <= 64 ? eventPath : eventPath[..64] + "…";
+
+    // Keeping the refusal is a side matter: a database fault there (a timeout, a deadlock) is logged and the answer stays
+    // the 404 the address gets, never a 500. A cancelled request still ends as cancelled.
+    private static async Task<string?> NoteRouteRefusedSafelyAsync(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service)
+    {
+        try { return await service.NoteRouteRefusedAsync(connectionPublicId, routeToken, http.RequestAborted); }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                .LogWarning(exception, "Webhook route refusal for address {AddressPrefix}… could not be kept.", connectionPublicId.ToString("N")[..8]);
+            return null;
+        }
+    }
+
     private static async Task<IResult> ReceiveWebhookCore(Guid connectionPublicId, string routeToken, HttpContext http, IMarketplaceWebhookService service, IWebhookRouteGate gate, WebhookConnectionQuota quota, string? eventPath)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         // The address (connection and route token) is checked before anything is read: an unknown one costs no body buffering.
         if (!await gate.IsKnownAsync(connectionPublicId, routeToken, http.RequestAborted))
         {
-            // A known connection called with an old or wrong address is shown on its webhook panel; the body stays unread.
-            await service.NoteRouteRefusedAsync(connectionPublicId, http.RequestAborted);
+            // A known address (a closed definition's, or an old or wrong token of a known connection) is shown on its webhook
+            // panel and logged, masked: the address's first 8 characters, never the token. The body stays unread; an address
+            // that names nothing leaves no trace (Caddy skips the hooks in its access log). The record is kept on every call
+            // (its writes are held to once a minute by their own conditions), so wrong-token calls cannot hide the calls to a
+            // closed definition; only the log line is held to once a minute per address and reason.
+            if (await NoteRouteRefusedSafelyAsync(connectionPublicId, routeToken, http, service) is { } refusal
+                && http.RequestServices.GetService<IMemoryCache>() is var cache && cache?.TryGetValue((RefusalThrottle, connectionPublicId, refusal), out _) != true)
+            {
+                // Only known addresses are remembered (one entry per address and reason), so random ids cannot fill the cache.
+                cache?.Set((RefusalThrottle, connectionPublicId, refusal), true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1), Size = 1 });
+                http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
+                    .LogWarning("Webhook route refused with {Code} for address {AddressPrefix}…, path {EventPath}.", refusal, connectionPublicId.ToString("N")[..8], LoggedPath(eventPath));
+            }
             return Problem(http, new("WEBHOOK_ROUTE_NOT_FOUND", "Webhook route bulunamadı.", 404));
         }
         // The connection's allowance is spent by admitted deliveries only (WebhookRateLimits).
@@ -323,13 +354,13 @@ public static partial class MarketplaceEndpoints
         // Hepsiburada blacklists a feed after 20 replies slower than five seconds in an hour.
         if (stopwatch.Elapsed > TimeSpan.FromSeconds(4))
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
-                .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, eventPath ?? "/");
+                .LogWarning("Webhook reply took {ElapsedMs} ms (connection {ConnectionPublicId}, path {EventPath}).", (long)stopwatch.Elapsed.TotalMilliseconds, connectionPublicId, LoggedPath(eventPath));
         if (!result.Succeeded)
         {
             // A refused delivery says why, with the body's outline only (its top-level names), never its content.
             http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
                 .LogWarning("Webhook refused with {Code} ({Status}) for connection {ConnectionPublicId}, path {EventPath}; body outline {Outline}.",
-                    result.Error!.Code, result.Error.Status, connectionPublicId, eventPath ?? "/", WebhookBodyOutline(body.Memory));
+                    result.Error!.Code, result.Error.Status, connectionPublicId, LoggedPath(eventPath), WebhookBodyOutline(body.Memory));
             return Problem(http, result.Error!);
         }
         if (!result.Value)
@@ -382,7 +413,8 @@ public static partial class MarketplaceEndpoints
         return new UriBuilder(uri) { Path = "/mnresize/256/384" + path }.Uri.AbsoluteUri;
     }
     public sealed record ActiveCommand(bool Active);
-    public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false, bool AdoptFromInactive = false);
+    // RestorePreparedAt: with RestorePrevious, the preparation time of the definition the panel offered (PreviousPreparedAt).
+    public sealed record InstantNotificationCommand(string? ClientSecret, bool RestorePrevious = false, bool AdoptFromInactive = false, DateTimeOffset? RestorePreparedAt = null);
     public sealed record OrderSyncCommand(string? ExternalOrderId, bool Full = false, string? PackageNumber = null);
     public sealed record CommonLabelCommand(int BoxQuantity, decimal VolumetricHeight, string Format = "ZPL");
     public sealed record LabelCapabilityProbeCommand(string CapabilityCode, int BoxQuantity, decimal VolumetricHeight);

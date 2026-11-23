@@ -104,6 +104,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "settings" when segments.Length > 3 && segments[3].Equals("ai", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
             // Ayarlar › Kullanıcılar (who has an account, their roles and second factors) is the owner's and administrators'.
             "settings" when segments.Length > 3 && segments[3].Equals("users", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
+            // The "Doldur" preview reads the whole catalogue on every call; it is for those who may run Doldur (scan
+            // 23 Nov 2026), the same gate as POST channel-offers/panel-price-fill.
+            "channel-offers" when last == "panel-price-fill-preview" => ElevatedRoles,
             _ => null
         };
     }
@@ -118,6 +121,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // The panel-only "Değişim Onaylandı" mark of a return takes it out of the invoice's returns (owner, 18 Nov 2026).
             // So is the panel-only "Kargoya Verildi" mark of an exchange package (owner, 23 Nov 2026).
             case "returns" when last is "exchange-approved" or "replacement-shipped":
+                return ElevatedRoles;
+            // The hand-added re-shipments of Siparişler › Yeniden Gönderimler and their "Kargoya Verildi" mark (owner, 23 Nov 2026).
+            case "manual-resends":
                 return ElevatedRoles;
             // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,

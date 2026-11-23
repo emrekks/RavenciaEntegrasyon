@@ -139,6 +139,10 @@ describe('commission tariff profit range', () => {
     expect(ownPriceValue('1.250,50')).toBe(1250.5)
     expect(ownPriceValue('0')).toBeNull()
     expect(ownPriceValue('1,250.50')).toBeNull()
+    // B4: the own price is saved; a point used as a decimal point or a comma with three digits is refused, never guessed.
+    expect(ownPriceValue('1.25')).toBeNull()
+    expect(ownPriceValue('1,250')).toBeNull()
+    expect(ownPriceValue('12,5')).toBe(12.5)
   })
 })
 

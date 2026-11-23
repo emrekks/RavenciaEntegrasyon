@@ -30,8 +30,18 @@ export function draftProductTitle(title: string, modelCode: string, now: Date) {
 // checks of the normal save come back as the list of what to complete before the card goes on sale. The one exception
 // is the stock code: every variant row is stored with one (a NOT NULL, unique column), and the panel never makes one
 // up, so a row without it stops the draft with what to do instead of being saved under an invented code or dropped.
-export function draftBlockingIssues(rows: ReadonlyArray<{ sku: string; barcode: string; optionSignature: string; salePrice: number; listPrice: number }>, prices: { listPrice: string; salePrice: string }) {
+// A number box of the variant table holding text its reader refused (B1: "1.25", "1,250", "2,5" stock): the row keeps NaN,
+// which would go out as null. Every save stops on it, a draft too, with what to type.
+type NumberRow = { salePrice: number; listPrice: number; stock?: number; costPrice?: number | null }
+export function unreadableNumberIssues(rows: ReadonlyArray<NumberRow>): string[] {
   const issues: string[] = []
+  if (rows.some(row => Number.isNaN(row.salePrice) || Number.isNaN(row.listPrice) || (row.costPrice != null && Number.isNaN(row.costPrice)))) issues.push('Bir varyantın fiyatı ya da maliyeti okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).')
+  // A typed stock the reader refused is NaN; a fractional or negative stock can only be the stored one and is kept (O2).
+  if (rows.some(row => row.stock != null && Number.isNaN(row.stock))) issues.push('Bir varyantın stoğu okunamadı; 1.250 gibi sıfır veya pozitif bir tam sayı girin (en çok 999.999).')
+  return issues
+}
+export function draftBlockingIssues(rows: ReadonlyArray<{ sku: string; barcode: string; optionSignature: string } & NumberRow>, prices: { listPrice: string; salePrice: string }) {
+  const issues: string[] = [...unreadableNumberIssues(rows)]
   const cardPriceIssue = cardPrices(prices.listPrice, prices.salePrice).issue
   if (cardPriceIssue) issues.push(cardPriceIssue)
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')

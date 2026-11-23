@@ -48,6 +48,26 @@ describe('shipment package requests', () => {
     expect(posts()).toHaveLength(1)
   })
 
+  // A type="number" box gave "1.250" typed in a tr-TR browser as 1.25 desi. Now a Turkish text box: 1250, or refused.
+  it('sends the desi/volume and box count read in Turkish, and nothing for an unreadable value', async () => {
+    const { host } = mount()
+    const button = await waitFor(() => byText<HTMLButtonElement>(host, 'button', 'Etiket Oluştur'))
+    const form = button.closest('form')!
+    const set = (name: string, value: string) => { const input = form.querySelector<HTMLInputElement>(`input[name="${name}"]`)!; expect(input.type).toBe('text'); input.value = value }
+    set('volumetricHeight', '1.25')
+    submit(form)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(posts()).toEqual([])
+    set('boxQuantity', '1e3'); set('volumetricHeight', '1.250')
+    submit(form)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(posts()).toEqual([])
+    set('boxQuantity', '2'); set('volumetricHeight', '1.250,5')
+    submit(form)
+    await waitFor(() => posts().length === 1)
+    expect(JSON.parse(posts()[0].body!)).toMatchObject({ boxQuantity: 2, volumetricHeight: 1250.5 })
+  })
+
   it('refreshes the order and package lists after a package request went through', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const invalidate = vi.spyOn(client, 'invalidateQueries')

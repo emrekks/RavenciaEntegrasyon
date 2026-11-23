@@ -103,7 +103,7 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // Owner, 18 Nov 2026 (11805950639): a Trendyol exchange request is approved with "Değişim Yap" in Trendyol's seller
+    // Owner, 18 Nov 2026 (1000000001): a Trendyol exchange request is approved with "Değişim Yap" in Trendyol's seller
     // panel; the API documents approveClaimLineItems for returns only. The detail offers no approval, a direct approval
     // is refused with its own code and nothing reaches Trendyol; the rejection (createClaimIssue) stays.
     [PostgreSqlFact]
@@ -153,7 +153,7 @@ public sealed class ReturnLineDecisionPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // Owner, 18 Nov 2026: 11805950639's exchange, made with "Değişim Yap", came back as Rejected. With Trendyol's own word
+    // Owner, 18 Nov 2026: 1000000001's exchange, made with "Değişim Yap", came back as Rejected. With Trendyol's own word
     // that the exchange was made (ResolvedWith CHANGE) it reads "Değişim Onaylandı" and raises no refused-return count;
     // without it, a rejected exchange request stays a rejection.
     [PostgreSqlFact]

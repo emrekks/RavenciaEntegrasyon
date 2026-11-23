@@ -2,6 +2,7 @@
 // the toast column's and the saved Hızlı Güncelle choice's, which come first as they did in the page).
 import { useMemo, useReducer, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { resetSeededFields } from './seeded-fields'
 import { productNotificationSubject } from '../../../shared/notifications'
 import { type VariantBulkEditField, type VariantBulkMode } from '../variant-bulk-edit'
 import { type RemovedVariantRow } from '../variant-row-removal'
@@ -130,6 +131,8 @@ export function useEditorState(c: EditorProps) {
   // it was filled or switched on: a card whose price was not changed leaves every variant's own offer price as it is.
   const initialCustomChannelIds = useRef<ReadonlySet<string>>(new Set())
   const channelPricingBase = useRef<Record<string, ChannelPricingDraft>>({})
+  // A new editor starts with no loaded box texts (seeded-fields.ts); the seed fills them for a product it opens.
+  useState(() => { resetSeededFields(); return null })
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({})
   const [requiredErrors, setRequiredErrors] = useState<Partial<Record<RequiredEditorField, string>>>({})
   // A save refused with a field message scrolls to that field, frames it red and shakes it.

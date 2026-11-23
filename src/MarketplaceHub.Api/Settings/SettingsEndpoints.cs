@@ -201,7 +201,8 @@ public static class SettingsEndpoints
         return Versioned(http, setting.Version, new { settings = normalized, version = setting.Version });
     }
 
-    // Siparişler > Yeniden Gönderim: a number the owner types as a reminder (Trendyol never returns resend packages).
+    // Siparişler > Yeniden Gönderim: the number the owner typed as a reminder before 23 Nov 2026 (Trendyol never returns
+    // resend packages); now only read ("Eski Hatırlatma: N") and cleared.
     private static async Task<IResult> GetResendReminderAsync(HttpContext http, AppDbContext db)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -219,6 +220,10 @@ public static class SettingsEndpoints
         var valueJson = JsonSerializer.Serialize(new { count });
         var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ResendReminderKey, http.RequestAborted);
         if (Precondition(http, setting) is { } precondition) return precondition;
+        // Owner, 23 Nov 2026: the gear keeps records (Platform + Sipariş No, /manual-resends) instead of a number. A count
+        // saved before stays as "Eski Hatırlatma: N" until the owner clears it; it is never raised again.
+        if (count > ReadResendReminder(setting?.ValueJson))
+            return Problem(http, new("RESEND_REMINDER_RECORDS_ONLY", "Yeniden gönderimler artık Platform ve Sipariş No ile kayıt olarak eklenir; eski hatırlatma yalnız temizlenebilir.", 409));
         if (setting is null)
         {
             setting = new TenantSetting { TenantId = tenant.TenantId, Key = ResendReminderKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };

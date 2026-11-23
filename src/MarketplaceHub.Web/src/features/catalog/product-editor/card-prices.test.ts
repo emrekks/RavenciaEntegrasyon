@@ -5,7 +5,9 @@ import { editorWarrantyText, editorWarrantyUpdate, missingRequiredEditorFields, 
 describe('card prices', () => {
   it('reads a decimal comma, a point and thousands points', () => {
     expect(priceInputNumber('549,90')).toBe(549.9)
-    expect(priceInputNumber('549.90')).toBe(549.9)
+    // A point used as a decimal point could mean two things: refused (NaN), never read as 549.9 or 54990.
+    expect(priceInputNumber('549.90')).toBeNaN()
+    expect(priceInputNumber('1.250')).toBe(1250)
     expect(priceInputNumber('1.249,90')).toBe(1249.9)
     expect(priceInputNumber('')).toBe(0)
     expect(priceInputNumber('abc')).toBeNaN()
@@ -15,8 +17,8 @@ describe('card prices', () => {
     expect(cardPrices('', '549,90')).toEqual({ listPrice: 549.9, salePrice: 549.9, issue: null })
     expect(cardPrices('699,90', '549,90')).toEqual({ listPrice: 699.9, salePrice: 549.9, issue: null })
     expect(cardPrices('500', '549,90').issue).toBe('Liste fiyatı satış fiyatından küçük olamaz.')
-    expect(cardPrices('-1', '0').issue).toBe('Fiyatlar negatif olamaz.')
-    expect(cardPrices('x', '10').issue).toMatch(/sayı olmalıdır/)
+    expect(cardPrices('-1', '0').issue).toMatch(/okunamadı; 1.250,50 biçiminde yazın/)
+    expect(cardPrices('x', '10').issue).toMatch(/okunamadı/)
   })
 })
 

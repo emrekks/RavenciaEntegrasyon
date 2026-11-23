@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, waitFor } from '../test/render'
 
 vi.mock('@microsoft/signalr', () => {
@@ -55,6 +55,19 @@ function submit(form: HTMLFormElement) {
 
 const shell = (host: HTMLElement) => host.querySelector('aside[aria-label="Ravencia ana menüsü"]')
 
+
+// The cause of this file's flaky timeouts: the pages the tests wait for (the shell's dashboard and Siparişler, the
+// notification panel, the invitations prompt) are lazily imported chunks, and the first import in a worker transforms
+// them, which on a busy machine outlasts waitFor's 2 s. Loading them once here, outside any test's clock, leaves waitFor
+// measuring the app's own behaviour.
+beforeAll(async () => {
+  await Promise.all([
+    import('../features/dashboard/DashboardPage'),
+    import('../features/marketplace/orders/OrdersPage'),
+    import('./NotificationPanel'),
+    import('./WorkspaceInvitationsPrompt'),
+  ])
+}, 60_000)
 describe('signing in', () => {
   it('asks for the password when there is no session', async () => {
     server.me = [{ status: 401 }]

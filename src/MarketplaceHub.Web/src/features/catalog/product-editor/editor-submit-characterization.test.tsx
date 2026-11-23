@@ -33,6 +33,12 @@ const fixture = vi.hoisted(() => {
     // Answers the next PATCH with 412 without changing the product (a version raised by nothing the form shows).
     bumpVersionSilently: false,
     failUpload: false,
+    // O2: values stored with more precision than a person may type (prices and costs keep four decimals, a stock may be fractional).
+    precise: false,
+    // A stock stored fractional (the server allows it); the form shows it as it is.
+    fractionalStock: false,
+    // (c) Trendyol on its own price (Özel Fiyat) stored with three decimals (631.104) on every variant.
+    ownPrice631: false,
     log: [] as Array<Record<string, unknown>>,
     toasts: [] as Array<Record<string, unknown>>
   })
@@ -40,16 +46,16 @@ const fixture = vi.hoisted(() => {
   const statusFor = (connectionId: string, platformCode: string, offerId: string, price: number) => ({ connectionId, platformCode, platform: platformCode === 'N11' ? 'N11' : 'Trendyol', isLinked: state.liveTy && platformCode !== 'N11', isMatched: state.liveTy && platformCode !== 'N11', status: 'ACTIVE', offerId, offerVersion: 3, listPrice: price, salePrice: price, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, offerStatus: 'ACTIVE', followsPanelPrice: true })
   const variant = (id: string, colour: string, size: string, sku: string, barcode: string) => ({
     id, version: 1, productId: 'p1', sku, barcode, modelCode: 'RYP006', optionSignature: `Renk: ${colour} | Beden: ${size}`, status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1,
-    costPrice: state.cost[id], onHand: state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: 100, defaultSalePrice: 90,
+    costPrice: state.precise && id === 'v1' ? 12.3456 : state.cost[id], onHand: state.fractionalStock && id === 'v1' ? 2.5 : state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90,
     currency: 'TRY', offerStatus: 'ACTIVE', priceVersion: 1, offerVersion: 3, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: state.variantMedia[id] ?? [], options: { Renk: colour, Beden: size }, attributes: [],
-    platformStatuses: [statusFor('ty', 'TRENDYOL', `o-${id}`, 90), statusFor('n11', 'N11', `n-${id}`, 95)]
+    platformStatuses: [state.ownPrice631 ? { ...statusFor('ty', 'TRENDYOL', `o-${id}`, 631.104), followsPanelPrice: false } : statusFor('ty', 'TRENDYOL', `o-${id}`, 90), statusFor('n11', 'N11', `n-${id}`, 95)]
   })
   const product = () => ({
     id: 'p1', version: state.version, title: state.title, description: '<p>Yeterince uzun bir açıklama metni burada yer alır.</p>', brandId: state.brandId, categoryId: state.categoryId, status: state.status, updatedAt: '2026-11-01T10:00:00Z',
     variants: [variant('v1', 'Siyah', 'S', 'RYP006-SY-S', '8680000000011'), variant('v2', 'Siyah', 'M', 'RYP006-SY-M', '8680000000028'), variant('v3', 'Bordo', 'S', 'RYP006-BD-S', '8680000000035'), variant('v4', 'Bordo', 'M', 'RYP006-BD-M', '8680000000042')],
     primaryImageUrl: state.mediaUrls[0] ?? null, totalStock: 10, startingPrice: 90, currency: 'TRY', modelCode: 'RYP006', activePlatforms: ['TRENDYOL'], mediaUrls: state.mediaUrls, attributes: state.attributes, familyProductIds: ['p1'],
     familyVersions: { p1: state.familyVersion },
-    trendyolWebColorValueId: 'wc-siyah', warrantyMonths: 24, deliveryDays: 2, vatRate: 20, vatInclusion: 'INCLUDED', defaultListPrice: 100, defaultSalePrice: 90
+    trendyolWebColorValueId: 'wc-siyah', warrantyMonths: 24, deliveryDays: 2, vatRate: 20, vatInclusion: 'INCLUDED', defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90
   })
   const requirement = (attributeId: string, name: string, role: 'OPTION' | 'ATTRIBUTE', values: Array<{ id: string; value: string }>, extra: { isWebColor?: boolean; isRequired?: boolean; displayOrder?: number } = {}) => ({ attributeId, isRequired: extra.isRequired ?? false, allowsCustomValue: false, displayOrder: extra.displayOrder ?? (role === 'OPTION' ? 1 : 3), role, isWebColor: extra.isWebColor ?? false, attribute: { id: attributeId, version: 1, code: name.toUpperCase(), name, dataType: 'SINGLE_SELECT', values } })
   const renk = requirement('a-renk', 'Renk', 'OPTION', [{ id: 'r-siyah', value: 'Siyah' }, { id: 'r-bordo', value: 'Bordo' }, { id: 'r-mavi', value: 'Mavi' }])
@@ -323,13 +329,154 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     await click(q('button.marketplace-pricing-open'))
     await click(q('input[aria-label="Trendyol Mağaza için özel fiyat"]'))
     await settle()
-    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[type="number"]')]
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')]
     expect(inputs).toHaveLength(2)
     setValue(inputs[0], '130')
     setValue(inputs[1], '111')
     await settle()
     await submit('save')
     expect(outcome()).toMatchSnapshot()
+  })
+
+  // B1 (23 Nov 2026): the editor's number boxes were type="number"; a tr-TR browser gave "1.250" as 1.25. Each is now a
+  // Turkish text box: what is typed is what the request carries, or the save is refused.
+  const sentBodies = () => JSON.stringify(fixture.state.log)
+  async function confirmJump() {
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('.price-jump-confirm-modal button')].find(button => button.textContent === 'Onayla ve Kaydet')
+    expect(confirm, 'price-jump confirmation').toBeDefined()
+    await click(confirm!)
+    await settle()
+  }
+  it('sends "1.250" typed in the variant table as 1250, after naming the jump', async () => {
+    await renderAt('/products/p1')
+    for (const [box, typed] of [['satış fiyatı', '1.200'], ['liste fiyatı', '1.250'], ['maliyeti', '1.000,50'], ['stok', '1.000']]) {
+      const input = q<HTMLInputElement>(`input[aria-label="Renk:Siyah_Beden:S ${box}"]`)
+      expect(input.type).toBe('text')
+      setValue(input, typed)
+    }
+    await settle()
+    await submit('save')
+    expect(document.querySelector('.price-jump-confirm-modal')?.textContent).toContain('Üç Katından Fazla Artıyor: 90,00 → 1.200,00')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+    await confirmJump()
+    expect(sentBodies()).toContain('"defaultSalePrice":1200')
+    expect(sentBodies()).toContain('"defaultListPrice":1250')
+    expect(sentBodies()).toContain('"costPrice":1000.5')
+    expect(sentBodies()).toContain('"onHand":1000')
+    expect(sentBodies()).not.toMatch(/:1\.2[05]?[,}]/)
+  })
+  it.each(['1.25', '1,250', '1250.50'])('refuses "%s" typed in the variant table and sends no price', async typed => {
+    await renderAt('/products/p1')
+    setValue(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S satış fiyatı"]'), typed)
+    await settle()
+    expect(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S satış fiyatı"]').getAttribute('aria-invalid')).toBe('true')
+    await submit('save')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+  })
+
+  // O2: a value stored with four decimals (99.999, 12.3456) is shown as held and an untouched save sends exactly what it
+  // sent before this branch: the stored numbers, nothing refused, no extra request.
+  it('saves an untouched record holding four-decimal prices and cost as it was', async () => {
+    const untouchedSave = async (precise: boolean) => {
+      fixture.state.precise = precise
+      await renderAt('/products/p1')
+      setValue(titleInput(), 'Yeni Ad')
+      await settle()
+      await submit('save')
+      const log = JSON.parse(JSON.stringify(fixture.state.log)) as Array<Record<string, unknown>>
+      act(() => root.unmount()); container.remove(); document.body.innerHTML = ''; localStorage.clear(); container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+      Object.assign(fixture.state, fixture.initial())
+      return log
+    }
+    const plain = await untouchedSave(false)
+    const precise = await untouchedSave(true)
+    expect(precise.map(entry => [entry.method, entry.path])).toEqual(plain.map(entry => [entry.method, entry.path]))
+    const replaced = JSON.stringify(plain).split('"defaultListPrice":100,').join('"defaultListPrice":99.999,').split('"defaultSalePrice":90,').join('"defaultSalePrice":12.3456,')
+    expect(JSON.stringify(precise)).toBe(replaced)
+  })
+
+  it('saves an untouched record holding a fractional stock, sending no stock', async () => {
+    fixture.state.fractionalStock = true
+    await renderAt('/products/p1')
+    expect(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S stok"]').value).toBe('2,5')
+    setValue(titleInput(), 'Yeni Ad')
+    await settle()
+    await submit('save')
+    const writes = fixture.state.log.filter(entry => entry.method !== 'GET')
+    expect(writes.map(entry => [entry.method, entry.path])).toEqual([['PATCH', '/products/p1']])
+    expect(JSON.stringify(writes)).not.toContain('onHand')
+  })
+
+  // O1: "1.25" in an Özel Fiyat card let a plain Kaydet save the product and store the choice without a price. Now no
+  // request goes out at all, and the reason names the marketplace.
+  it.each(['1.25', '1,250'])('sends nothing when an Özel Fiyat card holds "%s"', async typed => {
+    await renderAt('/products/p1')
+    await click(q('button.marketplace-pricing-open'))
+    await click(q('input[aria-label="Trendyol Mağaza için özel fiyat"]'))
+    await settle()
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')]
+    setValue(inputs[0], typed)
+    setValue(inputs[1], '120')
+    await settle()
+    // (b) review 23 Nov: the box itself is marked, with what to type under the card.
+    expect(inputs.map(input => input.getAttribute('aria-invalid'))).toEqual(['true', 'false'])
+    expect(q('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] .product-field-error').textContent).toContain('1.250,50 biçiminde yazın')
+    await submit('save')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+    expect(JSON.stringify(fixture.state.toasts)).toContain('Trendyol Mağaza Özel Fiyat: Fiyat okunamadı')
+  })
+
+  // (b) review 23 Nov: an Özel Fiyat card whose sale price the owner emptied stops the save before any request.
+  it('sends nothing when the sale price of an Özel Fiyat card was emptied', async () => {
+    fixture.state.ownPrice631 = true
+    await renderAt('/products/p1')
+    await click(q('button.marketplace-pricing-open'))
+    await settle()
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')]
+    setValue(inputs[1], '')
+    await settle()
+    expect(inputs[1].getAttribute('aria-invalid')).toBe('true')
+    await submit('save')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+    expect(JSON.stringify(fixture.state.toasts)).toContain("Trendyol Mağaza Özel Fiyat: Satış fiyatını girin ya da Özel Fiyat'ı kapatın.")
+  })
+
+  // (c) review 23 Nov: an Özel Fiyat price stored with three decimals (631.104) counted as changed, so an untouched
+  // Kaydet wrote it to the marketplace. Untouched, it is compared by the rule it is shown with: no offer request.
+  it('sends no offer request for an untouched Özel Fiyat price stored with three decimals (631.104)', async () => {
+    fixture.state.ownPrice631 = true
+    await renderAt('/products/p1')
+    await click(q('button.marketplace-pricing-open'))
+    await settle()
+    setValue(titleInput(), 'Yeni Ad')
+    await settle()
+    await submit('save')
+    const writes = fixture.state.log.filter(entry => entry.method !== 'GET')
+    expect(writes.map(entry => [entry.method, entry.path])).toEqual([['PATCH', '/products/p1']])
+    expect(fixture.state.toasts.filter(toast => toast.kind === 'error')).toEqual([])
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input:not([type="checkbox"])')]
+    expect(inputs.map(input => input.value)).toEqual(['631,104', '631,104'])
+  })
+
+  // ORTA-3 (review 23 Nov): "12.5" in a Desi Hesapla measure gave desi 0 and a silent desi 1 on Kaydet, and İptal kept
+  // what was typed. Now the measure is marked, Uygula stays off, and İptal leaves the form as it was.
+  it('marks an unreadable calculator measure, keeps Uygula off and takes it back on İptal', async () => {
+    await renderAt('/products/p1')
+    const desiBefore = inputOf('Desi').value
+    await click(need([...document.querySelectorAll<HTMLButtonElement>('.desi-inline-control button')].find(button => button.textContent === 'Hesapla'), 'Hesapla'))
+    const measure = (label: string) => need([...document.querySelectorAll<HTMLLabelElement>('.desi-calculator-grid label')].find(item => item.textContent?.startsWith(label))?.querySelector('input'), label)
+    setValue(measure('En'), '12.5')
+    setValue(measure('Boy'), '10')
+    setValue(measure('Yükseklik'), '20')
+    await settle()
+    expect(measure('En').getAttribute('aria-invalid')).toBe('true')
+    const footButton = (text: string) => need([...document.querySelectorAll<HTMLButtonElement>('.desi-calculator-modal button')].find(button => button.textContent === text), text)
+    expect(footButton('Uygula').disabled).toBe(true)
+    expect(document.querySelector('.desi-calculator-modal [role="alert"]')?.textContent).toContain('12,5 biçiminde yazın')
+    await click(footButton('İptal'))
+    await click(need([...document.querySelectorAll<HTMLButtonElement>('.desi-inline-control button')].find(button => button.textContent === 'Hesapla'), 'Hesapla'))
+    expect(measure('En').value).toBe('')
+    expect(inputOf('Desi').value).toBe(desiBefore)
   })
 
   it('update with a stock and cost change', async () => {

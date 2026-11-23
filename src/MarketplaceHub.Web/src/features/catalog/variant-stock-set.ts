@@ -1,5 +1,6 @@
 import { ApiRequestError, hubApi } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { parseTrCount } from '../../shared/tr-number'
 
 // Stock edits never send a difference computed against a number the screen loaded earlier: the new on-hand value
 // goes out as an absolute value together with the value it replaces, and the server refuses it (409 STOCK_CHANGED)
@@ -18,11 +19,12 @@ export function setVariantOnHand(update: VariantStockSet, reason: string) {
 
 // '' and '  ' are "no value", not zero; anything else must be a whole, non-negative number.
 export function parseStockInput(value: string | number): { kind: 'empty' } | { kind: 'invalid' } | { kind: 'value'; value: number } {
+  // Read as Turkish (parseTrCount): "1.000" is 1000; "1e3", "0x10", "2,5" and "-1" are refused, never read as JavaScript
+  // reads them (Number("1.000") is 1, Number("0x10") is 16).
   const text = String(value).trim()
   if (!text) return { kind: 'empty' }
-  const parsed = Number(text)
-  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) return { kind: 'invalid' }
-  return { kind: 'value', value: parsed }
+  const count = parseTrCount(text)
+  return count.ok ? { kind: 'value', value: count.value } : { kind: 'invalid' }
 }
 
 export function stockTarget(action: 'SET' | 'ADD' | 'SUBTRACT', amount: number, current: number) {
