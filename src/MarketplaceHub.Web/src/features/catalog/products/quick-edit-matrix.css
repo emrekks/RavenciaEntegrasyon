@@ -85,12 +85,12 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 100%; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { border: 0; border-radius: 0; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 4px 0 8px; background: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 1px 0 1px; background: none; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { min-height: 44px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { min-height: 32px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: stretch; gap: 8px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 2px; padding: 2px 4px 4px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { justify-content: flex-start; text-align: left; min-height: 28px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 0; padding: 0 4px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { justify-content: flex-start; text-align: left; min-height: 18px; line-height: 18px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-gap { height: 1px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-box { width: 100%; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in { width: 100%; height: 44px; font-size: 16px; }
