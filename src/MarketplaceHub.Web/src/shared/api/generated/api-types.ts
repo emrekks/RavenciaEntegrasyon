@@ -1009,6 +1009,7 @@ export type InstantNotificationView = {
   previousPreparedAt?: null | string
   adoptableFrom?: null | WebhookAdoptableDefinition
   routeOnly: boolean
+  previousLastReceivedAt?: null | string
 }
 
 export type InventoryItemView = {
@@ -1688,6 +1689,7 @@ export type LaneMetricView = {
   oldestWaitSeconds?: null | number
   waitStatus: string
   alertSince?: null | string
+  borrowed?: null | number
 }
 
 export type LinkRevocationRequest = {

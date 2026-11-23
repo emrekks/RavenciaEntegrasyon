@@ -860,6 +860,7 @@ public sealed class InstantNotificationService(
         return new(state, endpoint, registeredAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary,
             RouteOnly: connection.PlatformCode == "SHOPIFY" && subscription?.AuthenticationType == "ROUTE_TOKEN",
             PreviousPreparedAt: previous is null ? null : PreparedAt(previous.Id),
+            PreviousLastReceivedAt: previous?.LastReceivedAt,
             AdoptableFrom: adoptable is null ? null : new(adoptable.Value.Source.DisplayName, adoptable.Value.Source.Environment == "PRODUCTION" ? "Canlı" : "Test (SIT)", PreparedAt(adoptable.Value.Subscription.Id)));
     }
 
@@ -938,14 +939,20 @@ public sealed class InstantNotificationService(
         return found is null ? null : (found.Source, found.Subscription);
     }
 
-    // The last closed Hepsiburada definition prepared before the current one (ids are version 7, so they order by
-    // time). One closed after it was restored over is newer and is not offered back; over a definition moved here from
-    // another connection, which may be older than this connection's own, the last closed one is offered whatever its age.
+    // The closed Hepsiburada definition to make active again: the one that last received a notification (the address
+    // Hepsiburada actually calls), then the last prepared (ids are version 7, so they order by time). Live 23 Nov 2026:
+    // picking the last prepared alone restored one Hepsiburada was never given over the one it delivered to. A
+    // definition that has received is offered whatever its age (callers offer only while the current one has received
+    // nothing). One that never received must be older than the current one: one closed after it was restored over is
+    // newer and is not offered back; over a definition moved here from another connection, which may be older than this
+    // connection's own, the last closed one is offered whatever its age.
     private async Task<WebhookSubscription?> PreviousDefinitionAsync(Guid tenantId, Guid connectionId, WebhookSubscription? current, bool tracked, CancellationToken cancellationToken)
     {
         var query = db.WebhookSubscriptions.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "DELETED" && x.ExternalSubscriptionId == ManualRegistration);
-        var previous = await (tracked ? query : query.AsNoTracking()).OrderByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
-        return previous is not null && current is { RoutePublicId: null } && PreparedAt(previous.Id) >= PreparedAt(current.Id) ? null : previous;
+        var previous = await (tracked ? query : query.AsNoTracking())
+            .OrderBy(x => x.LastReceivedAt == null).ThenByDescending(x => x.LastReceivedAt).ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        return previous is { LastReceivedAt: null } && current is { RoutePublicId: null } && PreparedAt(previous.Id) >= PreparedAt(current.Id) ? null : previous;
     }
 
     // A version 7 id begins with the Unix milliseconds of its creation: when a definition was prepared.

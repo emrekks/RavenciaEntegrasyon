@@ -41,6 +41,7 @@ import { EditorSubmitBar } from './EditorSubmitBar'
 import { EditorDialogs } from './EditorDialogs'
 import { EditorWindows } from './EditorWindows'
 import { EditorOptionsSection } from './EditorOptionsSection'
+import { channelTakesListPrice } from '../quick-price-edit'
 export { BulkVariantPlatformPricingModal } from './BulkVariantPlatformPricingModal'
 export { PublishPlatformCard, cardLookupKey, publishCardState } from './PublishPlatformCard'
 
@@ -83,7 +84,22 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   return <EditorShell publishOnly={publishOnly} className={`product-add-page${editProductId ? ' product-edit-page' : ''}${editorHydrating ? ' is-hydrating' : ''}`} title={editProductId ? productToEdit.data?.title || 'Ürün Düzenle' : 'Yeni Ürün Ekle'} eyebrow={editProductId ? 'Ürün Düzenle' : 'Katalog'} meta={editProductId && productToEdit.data?.modelCode ? <p className="product-page-heading-meta">Model Kodu: <b>{productToEdit.data.modelCode}</b></p> : editProductId && productToEdit.isPending ? <p className="product-page-heading-meta" aria-hidden="true">Model Kodu: <b>…</b></p> : undefined}>
     {!publishOnly && <UnsavedChangesGuard when={editorDirty} allowNavigationRef={leavingAfterSave} />}
     {staleProductVersion != null && <div className="product-stale-banner" role="alert"><span><strong>Ürün başka bir işlemle güncellendi.</strong> Kaydedilmemiş değişiklikleriniz korunuyor; kaydederseniz sunucu sürüm çakışmasını bildirir.</span><button type="button" className="secondary" onClick={reloadEditedProduct}>Güncel Ürünü Yükle</button></div>}
-    {quickEditOpen && <Suspense fallback={null}><ProductQuickEditModal onClose={() => setQuickEditOpen(false)} draft={{ title: form.title, modelCode: form.modelCode, rows: variantRows, onApply: changes => {
+    {quickEditOpen && <Suspense fallback={null}><ProductQuickEditModal onClose={() => setQuickEditOpen(false)} draft={{ title: form.title, modelCode: form.modelCode, rows: variantRows,
+      // The marketplaces of the card: the same Özel Fiyat state as the card's switch, and each variant's offer price there (a staged draft first).
+      isNewProduct: !editor.editProductId,
+      channels: editor.platformCards.map(card => ({ connectionId: card.connection.id, name: card.name, platformCode: card.connection.platformCode, takesListPrice: channelTakesListPrice(card.connection.platformCode), custom: card.connection.id in editor.channelPricing, onToggleCustom: () => editor.toggleCustomChannelPrice(card.connection.id) })),
+      channelPrice: (rowKey, connectionId) => {
+        const staged = variantChannelPricing[`${rowKey}:${connectionId}`]
+        if (staged) return { list: staged.listPrice, sale: staged.salePrice }
+        const platform = variantRows.find(row => row.key === rowKey)?.platformStatuses?.find(item => item.connectionId === connectionId)
+        return platform?.offerId ? { list: platform.listPrice == null ? '' : String(platform.listPrice), sale: platform.salePrice == null ? '' : String(platform.salePrice) } : null
+      },
+      // Staged as the editor's per-variant marketplace price drafts (variantChannelPricing): only the page's Kaydet writes them.
+      onApplyChannelPrices: changes => {
+        editor.setVariantChannelPricing(current => ({ ...current, ...Object.fromEntries(changes.map(change => [`${change.rowKey}:${change.connectionId}`, { listPrice: change.listPrice, salePrice: change.salePrice }])) }))
+        showFeedback('Pazaryeri Fiyatları Hazırlandı', `${changes.length} fiyat taslağa yazıldı. Kalıcı olması için Kaydet’e basın.`, 'success')
+      },
+      onApply: changes => {
       // Only the table changes: the rows are saved (and sent on) with the page's Kaydet, as a hand-typed cell would be.
       const byKey = new Map(changes.map(change => [change.key, change]))
       setVariantRows(rows => rows.map(row => { const change = byKey.get(row.key); return change ? { ...row, stock: change.stock, listPrice: change.listPrice, salePrice: change.salePrice, costPrice: change.costPrice } : row }))

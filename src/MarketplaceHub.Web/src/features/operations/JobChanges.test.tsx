@@ -17,7 +17,9 @@ vi.mock('../../shared/api', () => {
     if (!key) throw new Error(`unexpected ${path}`)
     return answers.map.get(key)
   }
-  return { hubApi: answer, hubPoll: answer }
+  const hubFile = async (path: string) => { answers.calls.push(path); return { blob: new Blob(['x']), fileName: 'degisiklikler.xlsx', headers: new Headers() } }
+  class ApiRequestError extends Error { code?: string }
+  return { hubApi: answer, hubPoll: answer, hubFile, ApiRequestError }
 })
 
 const counts = { scanned: null, sent: null, applied: null, unchanged: null, pending: null, rejected: null, uncertain: null, superseded: null, priceChanged: null, stockChanged: null }
@@ -65,7 +67,7 @@ describe('JobChanges', () => {
       line({ result: 'APPLIED' }),
       line({ result: 'REJECTED', errorMessage: 'Fiyat aralık dışında', barcode: '8690002' }),
       line({ result: 'UNKNOWN', barcode: '8690003' })
-    ], nextCursor: null, hasMore: false })
+    ], nextCursor: null, hasMore: false, page: 1, pageSize: 25, totalCount: 3 })
 
     const text = await show('PRICE_INVENTORY_SYNC')
 
@@ -81,7 +83,7 @@ describe('JobChanges', () => {
     expect(text).toContain('Belirsiz · Yeniden Denenecek')
     expect(text).toContain('Sipariş #10045')
     expect(text).toContain('Varyant: Beyaz / M')
-    expect(text).toContain('Toplam 3 satır')
+    expect(text).toContain('Toplam 3 adet')
   })
 
   it('says why a scan sent nothing and links the send jobs it queued', async () => {
@@ -119,16 +121,35 @@ describe('JobChanges', () => {
     expect(text).toContain('Bu aktarımda panelde fiyatı veya stoğu değişen varyant bulunmadı.')
   })
 
-  it('asks for the next fifty lines with the cursor', async () => {
-    answers.map.set('/jobs/job-1/changes/summary', { mode: 'SEND_LOG', outcome: null, counts: { ...counts, sent: 51 }, spawnedJobs: [], sourceTrigger: null, sourceOrderNumber: null })
-    answers.map.set('/jobs/job-1/changes', { items: [line({})], nextCursor: 'CUR', hasMore: true })
+  it('pages the list 25 at a time, filters by a count chip and goes back to page 1 when the filter changes', async () => {
+    answers.map.set('/jobs/job-1/changes/summary', { mode: 'SEND_LOG', outcome: null, counts: { ...counts, sent: 51, rejected: 7 }, spawnedJobs: [], sourceTrigger: null, sourceOrderNumber: null })
+    answers.map.set('/jobs/job-1/changes', { items: [line({})], nextCursor: null, hasMore: false, page: 1, pageSize: 25, totalCount: 51 })
 
     const text = await show('PRICE_INVENTORY_SYNC')
-    expect(text).toContain('devamı var')
-    const more = [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Sonraki 50 Satır'))!
-    await act(async () => { more.click() })
+    expect(text).toContain('Toplam 51 adet')
+    expect(answers.calls).toContain('/jobs/job-1/changes?page=1&pageSize=25')
+    const page2 = [...container.querySelectorAll<HTMLButtonElement>('.rr-pages button')].find(button => button.textContent === '2')!
+    await act(async () => { page2.click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    expect(answers.calls).toContain('/jobs/job-1/changes?limit=50&after=CUR')
+    expect(answers.calls).toContain('/jobs/job-1/changes?page=2&pageSize=25')
+    const chip = [...container.querySelectorAll<HTMLButtonElement>('.jc-chip')].find(button => button.textContent?.includes('Reddedilen'))!
+    await act(async () => { chip.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(answers.calls).toContain('/jobs/job-1/changes?page=1&pageSize=25&groups=rejected')
+  })
+
+  it('downloads the Excel file of the current search and filter', async () => {
+    URL.createObjectURL = () => 'blob:x'; URL.revokeObjectURL = () => undefined
+    answers.map.set('/jobs/job-1/changes/summary', { mode: 'SEND_LOG', outcome: null, counts: { ...counts, sent: 1, rejected: 1 }, spawnedJobs: [], sourceTrigger: null, sourceOrderNumber: null })
+    answers.map.set('/jobs/job-1/changes', { items: [line({})], nextCursor: null, hasMore: false, page: 1, pageSize: 25, totalCount: 1 })
+    await show('PRICE_INVENTORY_SYNC')
+    const chip = [...container.querySelectorAll<HTMLButtonElement>('.jc-chip')].find(button => button.textContent?.includes('Reddedilen'))!
+    await act(async () => { chip.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.includes('Excel’e Aktar'))!
+    await act(async () => { button.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(answers.calls).toContain('/jobs/job-1/changes/export.xlsx?groups=rejected')
   })
 })
 

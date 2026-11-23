@@ -38,6 +38,13 @@ describe('runOfferWrites', () => {
     await runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty')] })] }))
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ connectionId: 'ty', variantId: 'v1', listPrice: 100, salePrice: 80, followsPanelPrice: true, vatRate: 20, status: 'ACTIVE' }) }])
   })
+  it('writes the prices staged from Toplu Düzenle as one PATCH per variant, each at its loaded version and as its own Özel Fiyat', async () => {
+    await runOfferWrites(input({ product: product(['v1', 'v2']), rows: [row('v1', { platformStatuses: [status('ty')] }), row('v2', { platformStatuses: [status('ty', { offerId: 'o-v2', offerVersion: 5 })] })], channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: '180', salePrice: '140' }, 'v2:ty': { listPrice: '200', salePrice: '160' } } }))
+    expect(api.calls).toEqual([
+      { method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v1', listPrice: 180, salePrice: 140, followsPanelPrice: false }) },
+      { method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v5"', body: expect.objectContaining({ variantId: 'v2', listPrice: 200, salePrice: 160, followsPanelPrice: false }) }
+    ])
+  })
   it('creates a missing offer (POST) and writes a marketplace’s own card price', async () => {
     await runOfferWrites(input({ rows: [row('v1')], channelPricing: { ty: { listPrice: '130', salePrice: '111' } }, channelPriceDraft: () => ({ listPrice: '130', salePrice: '111' }), channelPriceEdited: () => true }))
     expect(api.calls).toEqual([{ method: 'POST', path: '/channel-offers', ifMatch: null, body: expect.objectContaining({ listPrice: 130, salePrice: 111, followsPanelPrice: false }) }])
