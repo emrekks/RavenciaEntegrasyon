@@ -142,7 +142,7 @@ public static class ApiErrorCatalog
         new("PROMOTION_OFFER_FILE_SIZE", 413, "Dosya en fazla 10 MiB olabilir."),
         new("PROMOTION_OFFER_FORM_REQUIRED", 400, "multipart/form-data biçiminde bir .xlsx dosyası gönderilmelidir."),
         new("QUESTION_REPORT_PLATFORM_INVALID", 400, "Soru bildirme kuralları için desteklenen platformu seçin."),
-        new("QUESTION_SYNC_PLATFORM_INVALID", 400, "Soru aktarımı için desteklenen platformu seçin."),
+        new("QUESTION_SYNC_PLATFORM_INVALID", 400, "Soru çekimi için desteklenen platformu seçin."),
         new("RATE_LIMITED", 429, "Çok fazla istek gönderildi. Kısa süre sonra yeniden deneyin."),
         new("REAUTHENTICATION_FAILED", 401, "Parola doğrulanamadı."),
         new("REAUTHENTICATION_REQUIRED", 400, "Bu işlem için parolanızı (iki adımlı doğrulama açıksa kodunuzu da) yeniden girin."),

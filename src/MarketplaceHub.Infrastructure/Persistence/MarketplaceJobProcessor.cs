@@ -41,7 +41,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled), cancellationToken))
             // Waiting for the first full import is not a failure: the job keeps its attempts (a day at most,
             // like any deferral) instead of ending Dead while the bootstrap runs.
-            return JobExecutionResult.Deferred("INITIAL_SYNC_PENDING", "İlk kapsamlı veri aktarımı tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
+            return JobExecutionResult.Deferred("INITIAL_SYNC_PENDING", "İlk kapsamlı veri çekimi tamamlanmadan artımlı senkronizasyon başlatılmayacak.", TimeSpan.FromSeconds(30));
         // A disabled connection may still be tested so it can be reactivated, but
         // no data sync or marketplace operation may execute while it is passive. A full reset only removes the panel's
         // own records and calls no marketplace, so it also runs on a passive connection.

@@ -52,7 +52,7 @@ public static class QuestionEndpoints
             if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             if (!HasIdempotencyKey(http)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key başlığı zorunludur.", 400);
             if (!string.IsNullOrWhiteSpace(request.PlatformCode) && !QuestionPlatforms.Contains(request.PlatformCode))
-                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "QUESTION_SYNC_PLATFORM_INVALID", "Soru aktarımı için desteklenen platformu seçin.", 400);
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "QUESTION_SYNC_PLATFORM_INVALID", "Soru çekimi için desteklenen platformu seçin.", 400);
             var db = http.RequestServices.GetRequiredService<AppDbContext>();
             var sales = http.RequestServices.GetRequiredService<IMarketplaceSalesService>();
             var connections = await db.PlatformConnections.AsNoTracking().Where(row => row.TenantId == tenant.TenantId

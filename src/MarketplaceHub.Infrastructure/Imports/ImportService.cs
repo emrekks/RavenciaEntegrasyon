@@ -53,7 +53,7 @@ public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, Cu
 
     public async Task<ServiceResult<Guid>> EnqueuePreviewAsync(Guid tenantId, Guid sessionId, string correlationId, CancellationToken cancellationToken)
     {
-        var session = await db.ImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken); if (session is null) return NotFound<Guid>(); if (session.SourceType == ImportSourceType.Marketplace) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Trendyol'dan içe aktarma bu bağlantıda henüz doğrulanmadığı için başlatılamadı. Önce bağlantıyı test edin.", 422); if (session.SourceAssetId is null || session.ColumnProfileId is null || session.Status != ImportSessionStatus.Created) return Conflict<Guid>("IMPORT_NOT_READY", "Preview için kaynak dosya, kolon eşlemesi ve CREATED durum gerekir.");
+        var session = await db.ImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken); if (session is null) return NotFound<Guid>(); if (session.SourceType == ImportSourceType.Marketplace) return ServiceResult<Guid>.Fail("CAPABILITY_UNKNOWN", "Trendyol'dan ürün çekimi bu bağlantıda henüz doğrulanmadığı için başlatılamadı. Önce bağlantıyı test edin.", 422); if (session.SourceAssetId is null || session.ColumnProfileId is null || session.Status != ImportSessionStatus.Created) return Conflict<Guid>("IMPORT_NOT_READY", "Preview için kaynak dosya, kolon eşlemesi ve CREATED durum gerekir.");
         var dedup = $"import-preview:{session.Id}:v{session.Version}";
         var payload = JsonSerializer.Serialize(new { sessionId = session.Id, operation = "PREVIEW" });
         // J4 (KUYRUK-8): a job with this key in any state is the job.

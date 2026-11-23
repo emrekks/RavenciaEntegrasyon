@@ -364,7 +364,7 @@ public sealed class JobChangesPostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
         Assert.Equal(page.TotalCount, table.Rows.Count);
         Assert.Equal(new[] { "Satış Fiyatı", "Stok" }, table.Rows.Select(x => x.Cells[5]).Order());
-        Assert.All(table.Rows, row => Assert.Equal("Pazaryeri İçe Aktarımı", row.Cells[9]));
+        Assert.All(table.Rows, row => Assert.Equal("Pazaryeri Çekimi", row.Cells[9]));
     }
 
     private static Infrastructure.Imports.XlsxTable Table(JobExportFile file)

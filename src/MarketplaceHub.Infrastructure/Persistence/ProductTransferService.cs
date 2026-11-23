@@ -776,7 +776,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             await transaction.RollbackAsync(CancellationToken.None);
             db.ModelMirrorReport.Clear();
             db.ChangeTracker.Clear();
-            return ServiceResult<ProductTransferApplyResult>.Fail(LockConflictCode, "Aynı modellerin ürünleri şu anda başka bir işlemde (Toplu Değer Ata, pazaryeri aktarımı) kaydediliyor; hiçbir değişiklik kaydedilmedi. Birkaç saniye sonra dosyayı yeniden yükleyin.", 409);
+            return ServiceResult<ProductTransferApplyResult>.Fail(LockConflictCode, "Aynı modellerin ürünleri şu anda başka bir işlemde (Toplu Değer Ata, pazaryeri çekimi) kaydediliyor; hiçbir değişiklik kaydedilmedi. Birkaç saniye sonra dosyayı yeniden yükleyin.", 409);
         }
         catch (ModelRuleException conflict)
         {

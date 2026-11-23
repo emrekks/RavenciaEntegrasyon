@@ -478,7 +478,7 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal(Title("Siyah"), card.Product.Title);
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_NEW_SIZES_NOT_IMPORTED");
             Assert.Equal(IssueStatus.Open, issue.Status);
-            Assert.Contains("1 yeni beden var; eklemek için Yeni Ürünleri Aktar ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
+            Assert.Contains("1 yeni beden var; eklemek için Yeni Ürünleri Çek ya da Mevcut Ürün Bilgilerini Güncelle ile çekin.", issue.Summary, StringComparison.Ordinal);
         }
         Assert.Equal(siyah.Media, await MediaRowsAsync(seed, onlyProductId: siyah.ProductId));
 

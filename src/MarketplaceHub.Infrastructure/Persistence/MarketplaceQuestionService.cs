@@ -465,7 +465,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Unknown, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = auditReason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
             await db.SaveChangesAsync(CancellationToken.None);
             logger.LogWarning(exception, "Soru bildiriminin uzak sonucu kesinleşmedi. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}", tenantId, question.ConnectionId, question.Id);
-            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_RESULT_UNKNOWN", "Bildirim isteği kesildi; sonuç bir sonraki soru aktarımında görünecek.", 409);
+            return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_RESULT_UNKNOWN", "Bildirim isteği kesildi; sonuç bir sonraki soru çekiminde görünecek.", 409);
         }
         if (!sent.IsSuccess)
         {

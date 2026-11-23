@@ -114,7 +114,7 @@ internal sealed partial class CatalogImportService
                 (variant.DefaultListPrice, variant.DefaultSalePrice) = (panelPrice.ListPrice, panelPrice.SalePrice);
                 // Ürün Hareketleri: the panel price the import gave the new variant, with its marketplace.
                 if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (null, null), (panelPrice.ListPrice, panelPrice.SalePrice), ProductChangeSources.MarketplaceImport, null,
-                        $"product-import:{connectionId:N}", now, "İlk içe aktarıldığı pazaryerinin fiyatı panel fiyatı olarak kaydedildi.") is { } priceEntry)
+                        $"product-import:{connectionId:N}", now, "İlk çekildiği pazaryerinin fiyatı panel fiyatı olarak kaydedildi.") is { } priceEntry)
                     db.ProductChangeEntries.Add(priceEntry);
             }
             db.ProductVariants.Add(variant);
@@ -454,7 +454,7 @@ internal sealed partial class CatalogImportService
 
     private Task RecordOfferVatUnknownAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
         RecordIssue(tenantId, $"offer-vat-unknown:{connectionId:N}", "OFFER_VAT_UNKNOWN",
-            "Pazar yeri ürün aktarımında KDV oranı bildirmedi ve ürünün modelinde de KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Modelin KDV oranını girin ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
+            "Pazar yeri ürün çekiminde KDV oranı bildirmedi ve ürünün modelinde de KDV yok; yeni açılan tekliflerin KDV oranı %0 yazıldı. Modelin KDV oranını girin ve tekliflerin KDV oranını kontrol edin.", cancellationToken);
 
     // The VAT an offer of a card takes when the marketplace reports none (review, 17 Nov 2026): the card's as every reader
     // reads it (EffectiveCatalog: its model's), and for a new colour card this import has not saved yet (whose copy is

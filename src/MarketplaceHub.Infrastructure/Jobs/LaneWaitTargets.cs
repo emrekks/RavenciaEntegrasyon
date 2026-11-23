@@ -55,7 +55,7 @@ public static class LaneWaitTargets
     public static string DisplayName(string lane) => lane switch
     {
         "user" => "Kullanıcı İşlemleri",
-        "initial-data-sync" => "İlk Aktarım",
+        "initial-data-sync" => "İlk Çekim",
         "order-status" => "Sipariş Durumu Taraması",
         "returns-read" => "İade Okuma",
         "product-catalog" => "Ürün Kataloğu",

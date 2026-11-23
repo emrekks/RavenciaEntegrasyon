@@ -25,7 +25,7 @@ internal static class ImportedListingProfiles
     // Said when a card has no profile on the connection. The update never makes one (owner decision 6 Nov 2026): a
     // product sync that reads the products' information makes it for a product already on the marketplace.
     public static string MissingPublicationMessage(string platformName) =>
-        $"Bu ürünün {platformName} yayın kaydı yok. Ürün bu mağazada zaten satışta ise Ürünler sayfasında İçe / Dışa Aktar > Platformdan Ürün Aktar ile bu mağaza için ürün bilgilerini okuyan bir aktarım çalıştırın (Mevcut Ürünleri Güncelle ya da Tam Katalog Taraması); aktarım yayın kaydını oluşturur, sonra güncellemeyi tekrar deneyin. Ürün orada yoksa önce Yayınla ile gönderin.";
+        $"Bu ürünün {platformName} yayın kaydı yok. Ürün bu mağazada zaten satışta ise Ürünler sayfasında İçe / Dışa Aktar > Platformdan Ürün Çek ile bu mağaza için ürün bilgilerini okuyan bir çekim çalıştırın (Mevcut Ürünleri Güncelle ya da Tam Katalog Taraması); çekim yayın kaydını oluşturur, sonra güncellemeyi tekrar deneyin. Ürün orada yoksa önce Yayınla ile gönderin.";
 
     public static bool Supported(string? platformCode) => platformCode?.Trim().ToUpperInvariant() is "TRENDYOL" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM";
 
