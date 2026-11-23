@@ -8,6 +8,7 @@ import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
+import { parseEditorNumber } from '../product-editor/editor-number'
 import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
@@ -47,7 +48,17 @@ function selectionChips(variants: Array<Pick<Variant, 'optionSignature' | 'sku'>
 }
 export type QuickEditMode = 'stock' | 'price'
 // The product editor's rows, given instead of saved products: the window edits them on screen only (see quick-edit-draft.ts).
-export type QuickEditDraft = { title: string; modelCode: string; rows: QuickEditDraftRow[]; onApply: (changes: QuickEditDraftChange[]) => void }
+// A marketplace of the editor as the window's value list shows it: the card's Özel Fiyat state (one switch for every variant)
+// and each variant's price there (null: no offer). The window only reads them and hands changed cells back as drafts; the
+// page's Kaydet writes them (the editor's own offer writes, no other path).
+export type QuickEditDraftChannel = { connectionId: string; name: string; platformCode: string; takesListPrice: boolean; custom: boolean; onToggleCustom: () => void }
+export type QuickEditChannelChange = { rowKey: string; connectionId: string; listPrice: string; salePrice: string }
+export type QuickEditDraft = {
+  title: string; modelCode: string; rows: QuickEditDraftRow[]; onApply: (changes: QuickEditDraftChange[]) => void
+  channels?: QuickEditDraftChannel[]; isNewProduct?: boolean
+  channelPrice?: (rowKey: string, connectionId: string) => { list: string; sale: string } | null
+  onApplyChannelPrices?: (changes: QuickEditChannelChange[]) => void
+}
 const DRAFT_PRODUCT_ID = 'editor-draft'
 // The editor's rows as the window's products: one card holding every row, so the colour groups and Renk / Beden
 // pickers work on them as on saved variants.
@@ -65,6 +76,11 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const [draftProducts] = useState(() => draft ? [draftProduct(draft)] : null)
   const products = draftProducts ?? savedProducts
   const [draftValues, setDraftValues] = useState<Record<string, QuickEditDraftValues>>(() => Object.fromEntries((draft?.rows ?? []).map(row => [row.key, quickEditDraftValues(row)])))
+  // The editor's marketplace prices typed here (per variant and marketplace) stay here until Varyantlara Uygula hands them over.
+  type ChannelCell = { list: string; sale: string }
+  const [channelDrafts, setChannelDrafts] = useState<Record<string, ChannelCell>>({})
+  const draftChannels = draft?.channels ?? []
+  const channelOriginal = (rowKey: string, connectionId: string): ChannelCell | null => draft && !draft.isNewProduct ? draft.channelPrice?.(rowKey, connectionId) ?? null : null
   const setDraftValue = (key: string, field: keyof QuickEditDraftValues, value: string) => { setNotice(''); setDraftValues(current => ({ ...current, [key]: { ...current[key], [field]: value } })) }
   // Typing in the table makes drafts only (owner, 18 Nov 2026): nothing is saved, and nothing goes to a marketplace, until
   // the person presses Kaydet in the bar and confirms. Tümüne Uygula fills drafts too.
@@ -108,9 +124,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const showStockColumn = true; const showPriceColumns = true
   // Which value the matrix edits: Stok, or one price (the panel's Satış / Liste, each marketplace's). The editor's own rows
   // (draft) edit Stok, Maliyet, Liste and Satış. Drafts of the tabs not shown are kept.
-  type ValueTab = { id: string; label: string; kind: 'stock' | 'price' | 'draft'; columnId?: string; field: 'stock' | 'sale' | 'list' | 'costPrice' | 'listPrice' | 'salePrice' }
+  type ValueTab = { id: string; label: string; kind: 'stock' | 'price' | 'draft' | 'draftChannel'; columnId?: string; field: 'stock' | 'sale' | 'list' | 'costPrice' | 'listPrice' | 'salePrice' }
   const valueTabs: ValueTab[] = draft
-    ? [{ id: 'stock', label: 'Stok', kind: 'draft', field: 'stock' }, { id: 'costPrice', label: 'Maliyet', kind: 'draft', field: 'costPrice' }, { id: 'listPrice', label: 'Liste Fiyatı', kind: 'draft', field: 'listPrice' }, { id: 'salePrice', label: 'Satış Fiyatı', kind: 'draft', field: 'salePrice' }]
+    ? [{ id: 'stock', label: 'Stok', kind: 'draft', field: 'stock' }, { id: 'costPrice', label: 'Maliyet', kind: 'draft', field: 'costPrice' }, { id: 'listPrice', label: 'Liste Fiyatı', kind: 'draft', field: 'listPrice' }, { id: 'salePrice', label: 'Satış Fiyatı', kind: 'draft', field: 'salePrice' },
+      ...draftChannels.flatMap((channel): ValueTab[] => channel.takesListPrice
+        ? [{ id: `${channel.connectionId}:sale`, label: `${channel.name} Satış Fiyatı`, kind: 'draftChannel', columnId: channel.connectionId, field: 'sale' }, { id: `${channel.connectionId}:list`, label: `${channel.name} Liste Fiyatı`, kind: 'draftChannel', columnId: channel.connectionId, field: 'list' }]
+        : [{ id: `${channel.connectionId}:sale`, label: `${channel.name} Fiyatı`, kind: 'draftChannel', columnId: channel.connectionId, field: 'sale' }])]
     : [
       ...(showStockColumn ? [{ id: 'stock', label: 'Stok', kind: 'stock', field: 'stock' } as ValueTab] : []),
       ...(showPriceColumns ? priceColumns.flatMap((column): ValueTab[] => {
@@ -127,7 +146,8 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   type Bulk = { list: string; sale: string; cost: string; stock: string }
   const emptyBulk: Bulk = { list: '', sale: '', cost: '', stock: '' }
   const [bulk, setBulk] = useState<Record<string, Bulk>>({})
-  const bulkKey = draft ? 'draft' : activeTab?.id ?? ''
+  const bulkKey = draft && activeTab?.kind !== 'draftChannel' ? 'draft' : activeTab?.id ?? ''
+  const activeDraftChannel = activeTab?.kind === 'draftChannel' ? draftChannels.find(channel => channel.connectionId === activeTab.columnId) : undefined
   const bulkNow = bulk[bulkKey] ?? emptyBulk
   const setBulkField = (field: keyof Bulk) => (value: string) => setBulk(current => ({ ...current, [bulkKey]: { ...(current[bulkKey] ?? emptyBulk), [field]: value } }))
   const { list: listPrice, sale: salePrice, cost: costAmount, stock: stockAmount } = bulkNow
@@ -184,14 +204,45 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const activeSelectedSet = selectedSet
   // Ticking a row, a column, the corner or one cell's mark adds or drops those variants (updateVariantGroupSelection).
   const selectIds = (ids: string[], checked: boolean) => setSelectionDraft(current => updateVariantGroupSelection(current, ids, checked))
+  // The editor's marketplace prices: the cells as typed plus the values typed for each marketplace on the ticked variants, checked as
+  // an offer price is (sale above 0, list not below it). Nothing is written here; the changes go to the editor's draft.
+  function collectChannelChanges(): { ok: true; changes: QuickEditChannelChange[] } | { ok: false; message: string } {
+    const changes: QuickEditChannelChange[] = []
+    if (!draft) return { ok: true, changes }
+    const targets = new Set(targetIds)
+    for (const channel of draftChannels) {
+      const typed = { list: bulk[`${channel.connectionId}:list`]?.list ?? '', sale: bulk[`${channel.connectionId}:sale`]?.sale ?? '' }
+      const hasTyped = typed.list.trim() !== '' || typed.sale.trim() !== ''
+      if (hasTyped && !channel.custom) return { ok: false, message: `${channel.name} panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat anahtarını açın.` }
+      const read = bulkEditValues({ showListPrice: channel.takesListPrice, listPrice: typed.list, salePrice: typed.sale, stockAmount: '' })
+      if (!read.ok) return { ok: false, message: `${channel.name}: ${read.message}` }
+      for (const row of draft.rows) {
+        const original = channelOriginal(row.key, channel.connectionId)
+        if (!original || !channel.custom) continue
+        const cell = channelDrafts[`${row.key}|${channel.connectionId}`] ?? original
+        const handEdited = cell.list !== original.list || cell.sale !== original.sale
+        const bulked = hasTyped && targets.has(row.key)
+        if (!handEdited && !bulked) continue
+        const prices = quickEditOfferPrices({ listPrice: parseEditorNumber(cell.list), salePrice: parseEditorNumber(cell.sale) }, bulked ? read.list : null, bulked ? read.sale : null)
+        if (!prices.ok) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${prices.message}` }
+        const listPrice = channel.takesListPrice ? prices.listPrice : prices.salePrice
+        changes.push({ rowKey: row.key, connectionId: channel.connectionId, listPrice: String(listPrice), salePrice: String(prices.salePrice) })
+      }
+    }
+    return { ok: true, changes }
+  }
   async function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (saving) return
     if (draft) {
       // The editor's rows: the cells as typed and the values below on the ticked rows, checked first, then given to
       // the editor's table. Nothing is saved or sent to a marketplace here; the editor's Kaydet does that.
-      const result = applyQuickEditDraft(draft.rows, draftValues, new Set(targetIds), { listPrice, salePrice, costPrice: costAmount, stockAction, stockAmount }, row => variantAxisParts(row.optionSignature).map(part => part.value).join(' · ') || row.sku || 'Varyant')
+      const panelBulk = bulk.draft ?? emptyBulk
+      const channelResult = collectChannelChanges()
+      if (!channelResult.ok) { setNotice(`Başarısız: ${channelResult.message}`); return }
+      const result = applyQuickEditDraft(draft.rows, draftValues, new Set(targetIds), { listPrice: panelBulk.list, salePrice: panelBulk.sale, costPrice: panelBulk.cost, stockAction, stockAmount: panelBulk.stock }, row => variantAxisParts(row.optionSignature).map(part => part.value).join(' · ') || row.sku || 'Varyant')
       if (!result.ok) { setNotice(`Başarısız: ${result.message}`); return }
       draft.onApply(result.changes)
+      if (channelResult.changes.length) draft.onApplyChannelPrices?.(channelResult.changes)
       onClose()
       return
     }
@@ -329,18 +380,31 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const valueHeading = valueKind === 'stock' ? 'Stok (Adet)' : valueKind === 'cost' ? 'Maliyet (₺)' : valueKind === 'list' ? 'Liste Fiyatı (₺)' : 'Satış Fiyatı (₺)'
   const stepTwoTitle = valueKind === 'stock' ? 'Stok Değerini Düzenle' : valueKind === 'cost' ? 'Maliyeti Düzenle' : valueKind === 'list' ? 'Liste Fiyatını Düzenle' : 'Satış Fiyatını Düzenle'
   const changeValue = (id: string) => setActiveTabId(id)
-  const valueBand = activeTab ? <>{activeChannel && <PlatformSquareMark code={connections.find(connection => connection.id === activeChannel.id)?.platformCode} name={activeChannel.label} size="sm" />}{activeChannel ? `${activeChannel.label} · ` : ''}{valueHeading}</> : null
+  const valueBand = activeTab ? <>{activeChannel && <PlatformSquareMark code={connections.find(connection => connection.id === activeChannel.id)?.platformCode} name={activeChannel.label} size="sm" />}{activeDraftChannel && <PlatformSquareMark code={activeDraftChannel.platformCode} name={activeDraftChannel.name} size="sm" />}{activeChannel ? `${activeChannel.label} · ` : activeDraftChannel ? `${activeDraftChannel.name} · ` : ''}{valueHeading}</> : null
   const priceField = (label: string, value: string, set: (value: string) => void, className?: string) => <label className={`rr-fld${className ? ` ${className}` : ''}`}><small>{label}</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={value} onChange={event => set(event.target.value)} placeholder="Değiştirme" aria-label={label} /></label>
   const valueFields = valueKind === 'stock' ? null : valueKind === 'cost' ? priceField(valueHeading, costAmount, setCostAmount, 'rr-qe-f140') : valueKind === 'list' ? priceField(valueHeading, listPrice, setListPrice, 'rr-qe-f140') : priceField(valueHeading, salePrice, setSalePrice, 'rr-qe-f140')
   const stockFields = <><label className="rr-fld rr-qe-f200"><small>Stok İşlemi</small><PanelSelect ariaLabel="Stok İşlemi" value={stockAction} onChange={setStockAction} options={[{ value: 'SET', label: 'Bu Sayıya Eşitle' }, { value: 'ADD', label: 'Bu Kadar Ekle (+)' }, { value: 'SUBTRACT', label: 'Bu Kadar Çıkar (−)' }]} /></label><label className="rr-fld rr-qe-f120"><small>Miktar (Adet)</small><input className="rr-in rr-num" type="text" inputMode="numeric" autoComplete="off" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" aria-label="Miktar (Adet)" /></label></>
-  const typedFor = (tab: ValueTab) => { const typed = bulk[draft ? 'draft' : tab.id] ?? emptyBulk; return (tab.field === 'stock' ? typed.stock : tab.field === 'costPrice' ? typed.cost : tab.field === 'listPrice' || tab.field === 'list' ? typed.list : typed.sale).trim() !== '' }
-  const tabHasDraft = (tab: ValueTab) => typedFor(tab) || (tab.kind === 'stock' ? stockDrafts.count > 0 : tab.kind === 'price' ? [...priceDrafts.entries].some(([key, entry]) => key.endsWith(`|${tab.columnId}`) && entry.value[tab.field as 'sale' | 'list'] !== entry.original[tab.field as 'sale' | 'list']) : false)
+  const typedFor = (tab: ValueTab) => { const typed = bulk[draft && tab.kind !== 'draftChannel' ? 'draft' : tab.id] ?? emptyBulk; return (tab.field === 'stock' ? typed.stock : tab.field === 'costPrice' ? typed.cost : tab.field === 'listPrice' || tab.field === 'list' ? typed.list : typed.sale).trim() !== '' }
+  const tabHasDraft = (tab: ValueTab) => typedFor(tab) || (tab.kind === 'draftChannel' && Object.entries(channelDrafts).some(([key, cell]) => { const [rowKey, connectionId] = key.split('|'); const original = channelOriginal(rowKey, connectionId); return connectionId === tab.columnId && original != null && (cell.list !== original.list || cell.sale !== original.sale) })) || (tab.kind === 'stock' ? stockDrafts.count > 0 : tab.kind === 'price' ? [...priceDrafts.entries].some(([key, entry]) => key.endsWith(`|${tab.columnId}`) && entry.value[tab.field as 'sale' | 'list'] !== entry.original[tab.field as 'sale' | 'list']) : false)
   // The one list of what can be edited, grouped by marketplace (the panel first); a value holding a draft carries a dot.
   const channelCodeOf = (columnId?: string) => connections.find(connection => connection.id === columnId)?.platformCode
   const valueText = (tab: ValueTab) => tab.kind === 'price' && !draft ? tab.label : tab.label
   const valueOptions: PanelSelectOption[] = (() => {
     const dot = (tab: ValueTab) => tabHasDraft(tab) ? <i className="rr-mx-dot" aria-label="Kaydedilmemiş değişiklik var" /> : null
-    if (draft) return valueTabs.map(tab => ({ value: tab.id, text: tab.label, label: <span className="rr-mx-opt">{tab.label}{dot(tab)}</span> }))
+    if (draft) {
+      const rows: PanelSelectOption[] = []
+      for (const tab of valueTabs) {
+        if (tab.kind === 'draft') { rows.push({ value: tab.id, text: tab.label, label: <span className="rr-mx-opt">{tab.label}{dot(tab)}</span> }); continue }
+        const channel = draftChannels.find(candidate => candidate.connectionId === tab.columnId)
+        if (!channel) continue
+        // A marketplace with no offer to edit (a new product, or no variant listed there) stays in the list, switched off, saying why.
+        const reason = draft.isNewProduct ? 'Önce ürünü kaydedin' : !draft.rows.some(row => channelOriginal(row.key, channel.connectionId)) ? 'Bu pazaryerinde teklif yok' : ''
+        if (!rows.some(option => option.value === `__group:${channel.connectionId}`)) rows.push({ value: `__group:${channel.connectionId}`, text: channel.name, label: <span className="rr-mx-group"><PlatformSquareMark code={channel.platformCode} name={channel.name} size="sm" />{channel.name}</span> })
+        const short = tab.field === 'list' ? 'Liste Fiyatı' : channel.takesListPrice ? 'Satış Fiyatı' : 'Fiyatı'
+        rows.push({ value: tab.id, text: `${channel.name} ${short}`, disabled: reason !== '', label: <span className="rr-mx-opt rr-mx-sub" title={reason || undefined}>{short}{reason ? <small className="rr-mx-why"> · {reason}</small> : null}{dot(tab)}</span> })
+      }
+      return rows
+    }
     const out: PanelSelectOption[] = []
     for (const tab of valueTabs) {
       if (tab.kind === 'stock') { out.push({ value: tab.id, text: tab.label, label: <span className="rr-mx-opt">{tab.label}{dot(tab)}</span> }); continue }
@@ -363,6 +427,21 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     const variant = item.variant
     const where = { 'data-mr': position.row, 'data-mc': position.col }
     const identity = `${variant.sku}${variant.barcode ? ` · ${variant.barcode}` : ''}`
+    if (activeTab.kind === 'draftChannel') {
+      const channel = activeDraftChannel
+      if (!channel) return null
+      const original = channelOriginal(variant.id, channel.connectionId)
+      const field = activeTab.field as 'sale' | 'list'
+      if (!original) return <span className="rr-mx-follow" title={draft?.isNewProduct ? `Önce ürünü kaydedin: pazaryeri fiyatı kayıttan sonra yazılır. · ${identity}` : `${channel.name}: bu varyantın bu pazaryerinde teklifi yok. · ${identity}`}>—</span>
+      if (!channel.custom) {
+        const panel = draftValues[variant.id]
+        return <span className="rr-mx-follow" title={`${channel.name} panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat’ı açın. · ${identity}`}>{formatPriceField(field === 'list' ? panel.listPrice : panel.salePrice) || '—'}</span>
+      }
+      const key = `${variant.id}|${channel.connectionId}`
+      const current = channelDrafts[key] ?? original
+      const drafted = channelDrafts[key] !== undefined && (channelDrafts[key].list !== original.list || channelDrafts[key].sale !== original.sale)
+      return <span className={`rr-mx-box${drafted ? ' rr-draft' : ''}`}><QuickPriceInput {...where} className="rr-in rr-num rr-mx-in" title={drafted ? `Kaydedilmedi · kayıtlı fiyat: ${original[field] || '—'} · ${identity}` : identity} aria-label={`${itemLabel(item)} ${channel.name} ${field === 'list' ? 'liste' : 'satış'} fiyatı`} value={current[field]} onValue={value => { setNotice(''); setChannelDrafts(cells => ({ ...cells, [key]: { ...current, [field]: value } })) }} /></span>
+    }
     if (activeTab.kind === 'draft') {
       const values = draftValues[variant.id]
       const field = activeTab.field as keyof QuickEditDraftValues
@@ -412,6 +491,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><small className="rr-lead">Düzenlenecek değeri listeden seçin. Renk kutusu o rengi, beden başlığı o bedeni, beden etiketi tek varyantı seçer.</small></header>
         <QuickEditColorRows rows={matrix.rows} sizes={matrix.sizes} cells={matrix.cells} idOf={item => item.variant.id} labelOf={itemLabel} selected={selectedSet} onSelect={selectIds} renderCell={renderCell} caption={`${contextTitle}: renk ve beden varyantları`} band={valueBand} bandKey={activeTab?.id} head={<div className="rr-mx-tabs"><div className="rr-mx-pickfld"><PanelSelect ariaLabel="Düzenlenen Değer" value={activeTab?.id ?? ''} onChange={changeValue} width={240} options={valueOptions} triggerLabel={<span className="rr-mx-trig"><span className="rr-mx-trigk">Değer:</span>{activeTab ? valueText(activeTab) : ''}{valueTabs.some(tabHasDraft) && <i className="rr-mx-dot" aria-label="Kaydedilmemiş değişiklik var" />}</span>} /></div>
+          {activeDraftChannel && <div className="rr-mx-switchrow"><label className={`rr-qt-custom${activeDraftChannel.custom ? ' rr-on' : ''}`} title={activeDraftChannel.custom ? `${activeDraftChannel.name}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${activeDraftChannel.name}: panel fiyatını izliyor; kendi fiyatını yazmak için açın.`}><input type="checkbox" role="switch" className="rr-qt-switch" checked={activeDraftChannel.custom} onChange={() => activeDraftChannel.onToggleCustom()} aria-label={`${activeDraftChannel.name} özel fiyat`} /><span>Özel Fiyat</span></label><small className="rr-note">Tüm varyantlar için{activeDraftChannel.custom ? ' · panel fiyatından farklı yazılan fiyat o varyantta Özel Fiyat olur' : ' · Panel fiyatını izliyor'}</small></div>}
           {activeChannel && <div className="rr-mx-switchrow" title={customChannels[activeChannel.id] ? undefined : 'Panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat’ı açın.'}><QuickEditCustomToggle column={activeChannel} custom={customChannels[activeChannel.id]} onChange={value => setCustomChannel(activeChannel.id, value)} compact /></div>}</div>} />
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{stepTwoTitle}<TitleHint label={stepTwoTitle}>{draft ? 'Tablodaki hücreleri tek tek değiştirebilir, buradaki değerleri işaretli varyantlara (hiçbiri işaretli değilse tümüne) verebilirsiniz. Uygula yalnız ürün düzenleyicideki varyant tablosunu değiştirir; kalıcı olması için sayfadaki Kaydet’e basın.' : 'Değer işaretli varyantlara uygulanır; hiçbir varyant işaretli değilse tümüne uygulanır.'}</TitleHint></div></header>
