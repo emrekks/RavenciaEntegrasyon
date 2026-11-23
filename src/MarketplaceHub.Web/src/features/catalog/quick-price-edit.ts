@@ -1,7 +1,7 @@
 // Where a quick price change on the products list goes: the offer the variant has on the channel the person picked
 // (at the version the list loaded), or a new offer on that channel. The channel is always the person's choice; the
 // screen never prices a channel it picked by itself.
-import { parseTrCount, parseTrEntry, trEntryHelp, trNumberInput } from '../../shared/tr-number'
+import { parseTrCount, parseTrEntry, parseTrMeasure, trEntryHelp, trNumberInput } from '../../shared/tr-number'
 import { queryKeys } from '../../shared/api/query-keys'
 
 export type QuickPriceOffer = {
@@ -154,7 +154,7 @@ export function editorCustomChannelPrices(variants: ReadonlyArray<QuickPriceVari
     const own = variants.map(variant => channelOffer(variant, connectionId)).find(offer => offer != null && !offerFollowsPanel(offer))
     if (!own) return []
     const salePrice = own.salePrice ?? own.listPrice ?? 0
-    return [[connectionId, { listPrice: String(own.listPrice ?? salePrice), salePrice: String(salePrice) }]]
+    return [[connectionId, { listPrice: priceFieldText(own.listPrice ?? salePrice), salePrice: priceFieldText(salePrice) }]]
   }))
 }
 
@@ -222,10 +222,12 @@ export function typedOfferPriceChoice(prices: { listPrice: number; salePrice: nu
 // is written by PATCH at the version the editor loaded, so a price set meanwhile elsewhere is refused, never overwritten.
 type EditorOfferState = { listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null }
 type EditorOfferCommand = { listPrice: number; salePrice: number; currency: string; vatRate: number; vatInclusion: string; roundingMode: string; safetyStock: number; status: string; followsPanelPrice: boolean }
-export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOfferCommand): boolean {
+// takesListPrice false (Hepsiburada, PttAVM: a sale price only): the list price is not the marketplace's, so a panel list
+// price apart from the stored one (list = sale there) never makes an untouched offer "changed" (review 23 Nov, iv).
+export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOfferCommand, takesListPrice = true): boolean {
   const sameNumber = (stored: number | null | undefined, sent: number) => stored != null && samePrice(stored, sent)
   const sameText = (stored: string | null | undefined, sent: string) => (stored ?? '').trim().toUpperCase() === sent.trim().toUpperCase()
-  return sameNumber(offer.listPrice, command.listPrice) && sameNumber(offer.salePrice, command.salePrice) && sameNumber(offer.vatRate, command.vatRate) && sameNumber(offer.safetyStock, command.safetyStock)
+  return (!takesListPrice || sameNumber(offer.listPrice, command.listPrice)) && sameNumber(offer.salePrice, command.salePrice) && sameNumber(offer.vatRate, command.vatRate) && sameNumber(offer.safetyStock, command.safetyStock)
     && sameText(offer.currency, command.currency) && sameText(offer.vatInclusion, command.vatInclusion) && sameText(offer.roundingMode, command.roundingMode)
     && (offer.offerStatus ?? '').trim() === command.status.trim() && offer.followsPanelPrice === command.followsPanelPrice
 }
@@ -306,15 +308,20 @@ export function panelPriceTarget(variant: { id: string; version?: number | null;
 // price takes the sale price. The fields are read as Turkish ("1.250" is 1250, "1.250,50" is 1250.5); a value that
 // could mean two things is refused, never guessed.
 export const unreadablePriceMessage = trEntryHelp
-export function inlinePrices(list: string, sale: string): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
+// loaded: the cells' texts as they opened (O2). A side still holding its loaded text reads as the stored value, a stored
+// 99.999 included; only a side the person typed goes through the typed rule (at most two decimals).
+export function inlinePrices(list: string, sale: string, loaded?: { list: string; sale: string }): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
+  const untouched = (text: string, start: string | undefined) => start !== undefined && text === start && text.trim() !== ''
+  const read = (text: string, start: string | undefined) => untouched(text, start) ? parseTrMeasure(text) : parseTrEntry(text)
   if (sale.trim() === '') return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const salePrice = parseTrEntry(sale)
+  const salePrice = read(sale, loaded?.sale)
   if (salePrice === null) return { ok: false, message: unreadablePriceMessage }
   if (salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const listPrice = list.trim() === '' ? salePrice : parseTrEntry(list)
+  const listPrice = list.trim() === '' ? salePrice : read(list, loaded?.list)
   if (listPrice === null) return { ok: false, message: unreadablePriceMessage }
   if (listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
-  if (!hasAtMostTwoDecimals(listPrice) || !hasAtMostTwoDecimals(salePrice)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
+  const typedTooPrecise = (value: number, text: string, start: string | undefined) => !untouched(text, start) && !hasAtMostTwoDecimals(value)
+  if (typedTooPrecise(listPrice, list, loaded?.list) || typedTooPrecise(salePrice, sale, loaded?.sale)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
   return { ok: true, listPrice, salePrice }
 }
 
@@ -330,7 +337,7 @@ export function bulkEditValues(input: { showListPrice: boolean; listPrice: strin
   let amount: number | null = null
   if (input.stockAmount.trim() !== '') {
     const count = parseTrCount(input.stockAmount)
-    if (!count.ok) return { ok: false, message: count.reason === 'fraction' ? 'Stok miktarı tam sayı olmalıdır; kesirli bir değer (ör. 2,5) girilemez.' : count.reason === 'negative' ? 'Stok miktarı negatif olamaz.' : 'Stok miktarı okunamadı; 1.250 gibi bir tam sayı girin.' }
+    if (!count.ok) return { ok: false, message: count.reason === 'tooLarge' ? 'Stok miktarı en çok 999.999 olabilir.' : count.reason === 'fraction' ? 'Stok miktarı tam sayı olmalıdır; kesirli bir değer (ör. 2,5) girilemez.' : count.reason === 'negative' ? 'Stok miktarı negatif olamaz.' : 'Stok miktarı okunamadı; 1.250 gibi bir tam sayı girin.' }
     amount = count.value
   }
   if ((list != null && (list < 0 || !hasAtMostTwoDecimals(list))) || (sale != null && (sale <= 0 || !hasAtMostTwoDecimals(sale))) || (list != null && sale != null && list < sale)) return { ok: false, message: 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat veya hatalı fiyat sıralaması kullanılamaz, fiyat en fazla iki ondalık basamak içerebilir.' }

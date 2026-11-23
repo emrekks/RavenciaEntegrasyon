@@ -1044,6 +1044,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // one brand is linked); outside the serializable delete for the same reason, a failure leaves only a stale model.
         try { await ProductModelLinks.ReconcileAsync(db, tenantId, modelKeys, timeProvider.GetUtcNow(), cancellationToken); }
         catch (Exception exception) when (exception is DbException or InvalidOperationException) { await ProductModelLinks.RecordLinkFailureAsync(db, tenantId, exception, timeProvider.GetUtcNow()); }
+        // Y5 (scan 23 Nov 2026): the open issues of the deleted cards' variants (Web Color, attribute values, offers, PttAVM
+        // links) are resolved now, outside the serializable delete; one a failure here leaves is closed by the daily pass.
+        try { await OrphanedOperationalIssues.ResolveAsync(db, tenantId, timeProvider.GetUtcNow(), batchSize: 500, maxBatches: 200, OrphanedOperationalIssues.DeleteActor, cancellationToken, subjectGoneOnly: true); }
+        catch (Exception exception) when (exception is DbException or InvalidOperationException) { }
         return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 

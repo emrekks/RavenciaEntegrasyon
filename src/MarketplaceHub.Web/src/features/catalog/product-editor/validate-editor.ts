@@ -9,10 +9,12 @@ import { missingRequiredEditorFields, type RequiredEditorField } from './require
 import { parseProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
 import { productMediaUrlIssue } from '../product-media-url'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
-import { draftBlockingIssues } from '../product-draft'
+import { draftBlockingIssues, unreadableNumberIssues } from '../product-draft'
 import { editorVatRateIssue } from '../product-editor-state'
 import { MAX_VARIANTS } from './editor-helpers'
-import { parseEditorNumber } from './editor-number'
+import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
+import { parseTrMeasure, trEntryHelp } from '../../../shared/tr-number'
+import { parseEditorNumber, unreadableMeasureMessage } from './editor-number'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -43,6 +45,10 @@ export type EditorSaveValidationInput = EditorValidationInput & {
   copySourceVariants: ReadonlyArray<{ sku: string; barcode: string | null }> | null
   // The marketplaces picked for publishing, with their name and the card's price there.
   selectedChannels: Array<{ id: string; name: string; draft: ChannelPricingDraft }>
+  // Every marketplace switched to Özel Fiyat (its card price is its own), selected or not.
+  customChannels?: Array<{ id: string; name: string; draft: ChannelPricingDraft; edited?: boolean }>
+  // Desi Hesapla is in use: its measures are sent, so an unreadable one stops the save.
+  calculateDesi?: boolean
 }
 
 export type EditorValidationMode =
@@ -78,9 +84,34 @@ const invalidMediaUrlIssue = (urls: string[]) => {
   return invalid ? `Görsel bağlantısı geçersiz: ${invalid} Ürün kaydedilmeden önce düzeltin veya kaldırın.` : null
 }
 
+// O1: a filled Özel Fiyat card price the typed rule refuses ("1.25") stops every save, a draft too, before anything is
+// written: otherwise the product was saved, its offers skipped with the wrong notice and the choice stored without a price.
+// An empty box stays with the existing rules; an untouched loaded price is never refused (seeded-fields.ts).
+// Review 23 Nov (b): a sale price the person emptied on an edited card stops the save too (it would store the choice
+// without a price). A box still as it opened, or empty since the switch went on, is never refused.
+export function customChannelFieldIssue(connectionId: string, field: 'listPrice' | 'salePrice', text: string, edited: boolean): 'unreadable' | 'missing' | null {
+  if (text.trim() !== '') return Number.isFinite(readMoneyField(channelFieldKey(connectionId, field), text)) ? null : 'unreadable'
+  return edited && field === 'salePrice' ? 'missing' : null
+}
+export const customChannelMissingSale = "Satış fiyatını girin ya da Özel Fiyat'ı kapatın."
+function customChannelIssues(input: EditorSaveValidationInput): string[] {
+  return (input.customChannels ?? []).flatMap(channel => {
+    const found = (['listPrice', 'salePrice'] as const).map(field => customChannelFieldIssue(channel.id, field, channel.draft[field], channel.edited ?? false))
+    return found.includes('unreadable') ? [`${channel.name} Özel Fiyat: ${trEntryHelp}`] : found.includes('missing') ? [`${channel.name} Özel Fiyat: ${customChannelMissingSale}`] : []
+  })
+}
+
+// Desi Hesapla's measures as the save sends them: one the Turkish rule cannot read stops the save (never saved as 0 or 1).
+const measureUnreadable = (form: EditorForm) => [form.weight, form.width, form.length, form.height].some(value => value.trim() !== '' && Number.isNaN(parseEditorNumber(value)))
+// A typed desi the rule cannot read ("1.5") is told so, not "above zero".
+export function desiIssueText(desi: string) {
+  return desi.trim() !== '' && parseTrMeasure(desi) === null ? 'Desi okunamadı; virgül kullanın (ör. 1,5).' : 'Desi sıfırdan büyük olmalıdır.'
+}
+
 // A draft is stopped only by values the server refuses (clashing codes, malformed prices or image links).
 function draftIssues(input: EditorSaveValidationInput) {
-  const issues = draftBlockingIssues(input.rows, input.form)
+  const issues = [...draftBlockingIssues(input.rows, input.form), ...customChannelIssues(input)]
+  if (input.calculateDesi && measureUnreadable(input.form)) issues.push(unreadableMeasureMessage)
   const media = invalidMediaUrlIssue(rowMediaUrls(input))
   if (media) issues.push(media)
   const warranty = warrantyIssue(input.form)
@@ -90,7 +121,7 @@ function draftIssues(input: EditorSaveValidationInput) {
 
 function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: boolean, requirePublicationReadiness: boolean) {
   const { form, rows, variantAttributeIds, webColor, webColorRequirement, attributeSelections, attributeTextValues } = input
-  const issues: string[] = []; const requirementList = input.requirements
+  const issues: string[] = [...customChannelIssues(input)]; const requirementList = input.requirements
   if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 seçenek başlığı kullanılabilir.')
   if (requireCompleteCatalog && !webColor.autoEnabled && (!webColorRequirement || !webColor.manualValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
   if (!webColor.autoEnabled && webColorRequirement && webColor.manualValueId && !webColorRequirement.attribute.values.some(value => value.id === webColor.manualValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')
@@ -122,11 +153,14 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (conflicts.barcodes) issues.push('Kaynak ürünün barkodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan barkodları değiştirin.')
     if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
   }
+  issues.push(...unreadableNumberIssues(rows))
+  if (!Number.isFinite(readCountField('safetyStock', form.safetyStock || 0)) || !Number.isFinite(readCountField('initialStock', form.initialStock || 0))) issues.push('Stok ve güvenlik stoğu 1.250 gibi sıfır veya pozitif bir tam sayı olmalıdır (en çok 999.999).')
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
   // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
   if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
   // A card none of whose variants has a desi opens with the field empty (no guessed 1) and may be saved so.
-  if (!(input.editing && input.initialDesi === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push('Desi sıfırdan büyük olmalıdır.')
+  if (!(input.editing && input.initialDesi === 0 && !form.desi.trim()) && (!form.desi.trim() || parseProductDesi(form.desi) <= 0)) issues.push(desiIssueText(form.desi))
+  if (input.calculateDesi && measureUnreadable(form)) issues.push(unreadableMeasureMessage)
   if (productDesiTooLarge(form.desi)) issues.push(productDesiTooLargeMessage)
   const warranty = warrantyIssue(form)
   if (warranty) issues.push(warranty)
@@ -139,7 +173,7 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
     if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
     for (const channel of input.selectedChannels) {
-      const listPrice = parseEditorNumber(channel.draft.listPrice); const salePrice = parseEditorNumber(channel.draft.salePrice)
+      const listPrice = readMoneyField(channelFieldKey(channel.id, 'listPrice'), channel.draft.listPrice); const salePrice = readMoneyField(channelFieldKey(channel.id, 'salePrice'), channel.draft.salePrice)
       if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || salePrice <= 0 || listPrice < salePrice) issues.push(`${channel.name} için liste fiyatı satış fiyatından küçük olamaz; satış fiyatı sıfırdan büyük olmalıdır.`)
     }
   }

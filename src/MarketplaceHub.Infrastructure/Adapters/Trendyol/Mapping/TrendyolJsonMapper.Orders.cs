@@ -13,7 +13,7 @@ public static partial class TrendyolJsonMapper
         var issues = new List<AdapterPageIssue>();
         foreach (var package in RequiredContent(root))
         {
-            var externalPackageId = Text(package, "id", "shipmentPackageId", "packageId"); var orderNumber = Text(package, "orderNumber");
+            var externalPackageId = PackageId(package); var orderNumber = Text(package, "orderNumber");
             if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber))
             {
                 var identity = string.IsNullOrWhiteSpace(externalPackageId) ? orderNumber : externalPackageId;
@@ -125,6 +125,23 @@ public static partial class TrendyolJsonMapper
             }
         }
         return new(rows, next, hasMore, null, issues);
+    }
+
+    // The package's own id: the first of id / shipmentPackageId / packageId that is not zero. A zero is the number Trendyol
+    // gives an order awaiting payment before the package exists: it is kept as the "0" placeholder (ShipmentPackageSupersession,
+    // superseded once the real package arrives) only when no field names a real id, so a zero "id" never hides a real
+    // shipmentPackageId (scan 23 Nov 2026, O8). None at all is "".
+    internal static string PackageId(JsonElement package)
+    {
+        var zero = false;
+        foreach (var name in new[] { "id", "shipmentPackageId", "packageId" })
+        {
+            var value = NullText(package, name)?.Trim();
+            if (string.IsNullOrEmpty(value)) continue;
+            if (value.Any(character => character != '0')) return value;
+            zero = true;
+        }
+        return zero ? MarketplaceHub.Domain.ShipmentPackageSupersession.PlaceholderExternalId : "";
     }
 
     // The package's sale, discount and net as Trendyol states them on the package; a total the package leaves out is

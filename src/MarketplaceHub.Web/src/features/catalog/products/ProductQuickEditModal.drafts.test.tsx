@@ -328,6 +328,18 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => call.body)).toEqual([{ listPrice: 500, salePrice: 4.5, reason: 'Hızlı varyant fiyat düzenleme' }])
   })
 
+  it('sets a first offer on a marketplace against the panel price in the confirmation', async () => {
+    const oneOffer: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: item.id === 'v1' ? [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: 'o-v1', offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice: false })] : [] })) }
+    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [oneOffer])
+    await pickValue('Trendyol', 'Satış')
+    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-2 Trendyol satış fiyatı"]')!
+    expect(sale.value).toBe('')
+    await act(async () => { sale.focus() })
+    await type(sale, '4,5')
+    await click(barButton('Kaydet'))
+    expect(bar()?.querySelector('[role="alert"]')?.textContent).toBe('1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 450,00 → 4,50')
+  })
+
   it('names no warning for an ordinary price change', async () => {
     await render('price')
     const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!
@@ -344,6 +356,42 @@ describe('ProductQuickEditModal drafts', () => {
     expect(enter.defaultPrevented).toBe(true)
     const tick = document.body.querySelector<HTMLInputElement>('input[aria-label$="varyantını seç"]')!
     expect(tick.tabIndex).toBe(0)
+  })
+
+  // B7: an emptied list cell is no list price for Kaydet (it takes the sale price); Uygula reads it the same way, so a
+  // sale price above the saved list price is not refused, and what is sent equals what Kaydet would send by hand.
+  it('Uygula reads an emptied list cell as Kaydet does', async () => {
+    await render('price')
+    await pickValue('Panel', 'Liste')
+    const list = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="liste fiyatı"]')!
+    await act(async () => { list.focus() })
+    await type(list, '')
+    await act(async () => { list.blur() })
+    await pickValue('Panel', 'Satış')
+    await type(bulkField('Satış Fiyatı (₺)'), '800')
+    await click(applyButton())
+    // SKU-2 keeps its saved list price 500 and is rightly refused; SKU-1, whose list cell was emptied, is not.
+    expect(document.body.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('SKU-1')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.filter(call => call.path === '/variants/v1/default-prices').map(call => call.body)).toEqual([{ listPrice: 800, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }])
+  })
+
+  // B2: the stock cell read "1.000" as 1, "1e3" as 1000 and "0x10" as 16 (Number()). Now Turkish whole numbers only.
+  it('sends "1.000" typed in a stock cell as 1000', async () => {
+    await render()
+    expect(stockBox('SKU-1').type).toBe('text')
+    await type(stockBox('SKU-1'), '1.000')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.map(call => [call.path, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 1000, 3]])
+  })
+  it.each(['1e3', '0x10', '2,5', '1,000', '-1'])('refuses "%s" in a stock cell and sends nothing', async typed => {
+    await render()
+    await type(stockBox('SKU-1'), typed)
+    expect(barButton('Kaydet').disabled).toBe(true)
+    await click(barButton('Kaydet'))
+    expect(sent).toEqual([])
   })
 
   it('closing without a draft closes at once', async () => {

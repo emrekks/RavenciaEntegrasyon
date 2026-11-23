@@ -8,16 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // carrier, tracking, its tracking link) and the first package as "İlk Paket"; no invoice actions or label print for it.
 // An exchange only the owner marked shows that Trendyol named no package.
 const order = (id: string, orderNumber: string, exchangeResend: unknown) => ({ id, orderNumber, derivedStatus: 'DELIVERED', currency: 'TRY', grossAmount: 100, discountAmount: 0, netAmount: 100, orderedAt: '2026-11-09T10:00:00Z', lineCount: 1, packageCount: 1, version: 1, connectionId: 'c1', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', customerName: 'Ayşe Yılmaz', customerTaxOrIdentityNumber: null, orderType: 'STANDARD', isMicroExport: false, shipmentAddress: null, shipmentDueAt: null, isDeadlineCritical: false, invoiceStatus: 'NONE', invoiceId: null, invoiceDocumentUrl: null, cargoProviderName: 'PTT Kargo', cargoTrackingNumber: 'OLD-TRK', primaryImageUrl: null, productQuantity: 1, lines: null,
-  packages: [{ id: `p-${id}`, orderId: id, orderNumber, externalPackageId: '4326271446', status: 'DELIVERED', rawStatus: 'Delivered', cargoTrackingNumber: 'OLD-TRK', cargoProviderName: 'PTT Kargo' }], exchangeResend })
+  packages: [{ id: `p-${id}`, orderId: id, orderNumber, externalPackageId: '2000000000', status: 'DELIVERED', rawStatus: 'Delivered', cargoTrackingNumber: 'OLD-TRK', cargoProviderName: 'PTT Kargo' }], exchangeResend })
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   const answer = async (path: string) => {
     if (path.startsWith('/orders?')) return { items: [
-      order('o1', '11805950639', { packageId: '4360616611', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'NEW-TRK', cargoTrackingLink: 'https://tracking.example.test/new', shipped: true }),
-      order('o2', '11805950640', { packageId: null, cargoProviderName: null, cargoTrackingNumber: null, cargoTrackingLink: null, shipped: false }),
-      order('o3', '11805950641', { packageId: '4360616612', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'WAIT-TRK', cargoTrackingLink: null, shipped: false, claimId: 'cl3', claimVersion: 4, shippedSource: null }),
-      order('o4', '11805950642', { packageId: '4360616613', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'HAND-TRK', cargoTrackingLink: null, shipped: true, claimId: 'cl4', claimVersion: 7, shippedSource: 'MANUAL' })
+      order('o1', '1000000001', { packageId: '2000000001', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'NEW-TRK', cargoTrackingLink: 'https://tracking.example.test/new', shipped: true }),
+      order('o2', '1000000002', { packageId: null, cargoProviderName: null, cargoTrackingNumber: null, cargoTrackingLink: null, shipped: false }),
+      order('o3', '1000000003', { packageId: '2000000002', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'WAIT-TRK', cargoTrackingLink: null, shipped: false, claimId: 'cl3', claimVersion: 4, shippedSource: null }),
+      order('o4', '1000000004', { packageId: '2000000003', cargoProviderName: 'Trendyol Express Marketplace', cargoTrackingNumber: 'HAND-TRK', cargoTrackingLink: null, shipped: true, claimId: 'cl4', claimVersion: 7, shippedSource: 'MANUAL' })
     ], nextCursor: null, hasMore: false, totalCount: 4, supportedFilters: ['labelPrinted'] }
     if (path.startsWith('/orders/facets')) return { platforms: {}, cargos: {} }
     if (path.startsWith('/orders/summary')) return {}
@@ -51,14 +51,14 @@ describe('OrdersPage exchange package', () => {
   it('shows the exchange package with the first package beside it, and a note when Trendyol named none', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/orders?status=RESENT']}><OrdersPage /></MemoryRouter></QueryClientProvider>) })
-    for (let index = 0; index < 20 && !container.textContent?.includes('11805950640'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    for (let index = 0; index < 20 && !container.textContent?.includes('1000000002'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
     const rows = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')]
-    const exchange = rows.find(row => row.textContent?.includes('11805950639'))!
-    const marked = rows.find(row => row.textContent?.includes('11805950640'))!
+    const exchange = rows.find(row => row.textContent?.includes('1000000001'))!
+    const marked = rows.find(row => row.textContent?.includes('1000000002'))!
     const orderCell = exchange.querySelector('.rr-ordercell')!.textContent!
-    expect(orderCell).toContain('4360616611')
+    expect(orderCell).toContain('2000000001')
     expect(orderCell).toContain('İlk Paket:')
-    expect(orderCell).toContain('4326271446')
+    expect(orderCell).toContain('2000000000')
     const cargo = exchange.querySelector('[data-l="Kargo"]')!
     expect(cargo.textContent).toContain('NEW-TRK')
     expect(cargo.querySelector('a[href="https://tracking.example.test/new"]')).not.toBeNull()
@@ -78,10 +78,10 @@ describe('OrdersPage exchange package shipped mark', () => {
     const { hubApi } = await import('../../../shared/api')
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/orders?status=RESENT']}><OrdersPage /></MemoryRouter></QueryClientProvider>) })
-    for (let index = 0; index < 20 && !container.textContent?.includes('11805950642'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    for (let index = 0; index < 20 && !container.textContent?.includes('1000000004'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
     const rows = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')]
-    const waiting = rows.find(row => row.textContent?.includes('11805950641'))!
-    const handMarked = rows.find(row => row.textContent?.includes('11805950642'))!
+    const waiting = rows.find(row => row.textContent?.includes('1000000003'))!
+    const handMarked = rows.find(row => row.textContent?.includes('1000000004'))!
     expect(waiting.querySelector('.rr-ordercell')!.textContent).toContain('Değişim: Kargoya Verilmesi Bekleniyor')
     expect(handMarked.querySelector('.rr-ordercell')!.textContent).toContain('Değişim: Kargoya Verildi (Elle)')
 

@@ -301,6 +301,31 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
         }
     }
 
+    // Scan 23 Nov 2026: the "Doldur" preview reads the whole catalogue on every call, so it has the gate of Doldur itself
+    // (POST channel-offers/panel-price-fill): the owner and administrators only.
+    [PostgreSqlFact]
+    public async Task Only_the_owner_and_administrators_read_the_panel_price_fill_preview()
+    {
+        using var host = Host();
+        const string path = "/api/v1/channel-offers/panel-price-fill-preview";
+        foreach (var role in new[] { MembershipRole.Operations, MembershipRole.Accounting, MembershipRole.ReadOnly })
+        {
+            var (client, _) = await SignInAsync(host, fixture, role);
+            using (client)
+            {
+                using var refused = await client.GetAsync(path);
+                Assert.True(refused.StatusCode == HttpStatusCode.Forbidden, $"{role}: {(int)refused.StatusCode}");
+                Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(refused)).GetProperty("code").GetString());
+            }
+        }
+        var (owner, _) = await SignInAsync(host, fixture, MembershipRole.Owner);
+        using (owner)
+        {
+            using var allowed = await owner.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+        }
+    }
+
     private static HttpRequestMessage Outbound(string method, string path, string csrf, object? body = null)
     {
         var request = ApiTestHost.Json(new HttpMethod(method), path, csrf, body ?? new { confirmed = true });

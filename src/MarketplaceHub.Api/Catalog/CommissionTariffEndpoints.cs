@@ -23,7 +23,7 @@ internal static class CommissionTariffEndpoints
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync).Produces<CommissionTariffFacets>();
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
-        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync).ProducesFile(ProductTransferEndpoints.XlsxMediaType).Idempotent("builds the tariff's export file; it changes nothing");
+        api.MapPost("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/export", ExportAsync).WithExportLimit().ProducesFile(ProductTransferEndpoints.XlsxMediaType).Idempotent("builds the tariff's export file; it changes nothing");
         // The seller's saved picks: read by every role, replaced (PUT, the operational roles) after each change on the page.
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SelectionAsync).Produces<CommissionTariffSelectionView>();
         api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/selection", SaveSelectionAsync).Produces<CommissionTariffSelectionView>().Idempotent(WriteReasons.Replaces);

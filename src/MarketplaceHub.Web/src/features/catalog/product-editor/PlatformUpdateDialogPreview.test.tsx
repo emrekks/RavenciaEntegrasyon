@@ -38,8 +38,10 @@ describe('PlatformUpdateDialog summary', () => {
     root = createRoot(host)
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => root?.render(<QueryClientProvider client={client}><PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('pz', 'PAZARAMA')]} selectedIds={['ty', 'hb']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={['product', 'shipping', 'sales']} onOpenGroupsChange={vi.fn()} submitting={false} onClose={vi.fn()} onSend={vi.fn()} previewCards={cards} previewUnsaved /></QueryClientProvider>))
-    for (let tick = 0; tick < 10; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    expect(hubApi).toHaveBeenCalledTimes(1)
+    // The summary is a lazily loaded chunk: on a busy machine its import outlasts a fixed number of ticks (the cause of the
+    // flaky failure). Wait for the request itself, then for the note, instead of counting ticks.
+    await vi.waitFor(() => expect(hubApi).toHaveBeenCalledTimes(1), { timeout: 4000, interval: 10 })
+    await vi.waitFor(() => expect(document.querySelector('.platform-update-preview-note.is-unsaved')).not.toBeNull(), { timeout: 4000, interval: 10 })
     expect(JSON.parse(hubApi.mock.calls[0][1].body)).toEqual({ targets: [{ connectionId: 'ty', productIds: ['siyah', 'bordo'] }, { connectionId: 'hb', productIds: ['siyah'] }], fields: ['TITLE'] })
     expect(document.querySelector('.platform-update-preview-note.is-unsaved')?.textContent).toContain('Kaydedilmemiş değişiklikler bu özette yok')
   })

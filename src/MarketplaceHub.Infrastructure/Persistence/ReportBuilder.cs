@@ -825,7 +825,7 @@ internal static class ReportBuilder
         ["FAKEPRODUCT"] = "Ürün orijinal değil",
         ["LATEINTDELIVERY"] = "Yurt dışı teslimat gecikti",
         ["OTHER"] = "Diğer",
-        // As Trendyol's seller panel names it (11805950639, owner's screenshot 18 Nov 2026): an exchange request.
+        // As Trendyol's seller panel names it (1000000001, owner's screenshot 18 Nov 2026): an exchange request.
         ["WRONGCHANGEREQUEST"] = "Yanlış gelen ürünümü değiştirmek istiyorum"
     };
 

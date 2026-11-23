@@ -501,8 +501,8 @@ packages only, no claim events.
   "Analiz Değişim" is a Trendyol (analysis) reason. The seller's reject reasons 2101 "Sipariş sorusundan gelen değişim
   talebi" and 1851 "Ürün değişimi yapıldı" (getClaimsIssueReasons, :7150-7162) are what the seller sends, not what the
   claim carries.
-- Live code: `customerClaimItemReason.code` WRONGCHANGEREQUEST (customer note "Trendyol Oto Not: Müşteri, yanlış ürünün
-  değişimini istiyor."), order 11805950639, claim of 12 Nov 2026, WaitingInAction; the owner called it an exchange
+- Live code: `customerClaimItemReason.code` WRONGCHANGEREQUEST (the customer note is Trendyol's automatic note
+  about an exchange), order 1000000001 (placeholder; the real number is not kept in this public repo), claim of 12 Nov 2026, WaitingInAction; the owner called it an exchange
   (18 Nov 2026). It is the only one among 255 live Trendyol claims (18 Nov 2026: BIGSIZE 100, SMALLSIZE 68, DISLIKE 51,
   UNDELIVERED 9, WRONGORDER 6, ABANDON 6, WRONGITEM 6, UNDELIVEREDINT 3, OTHER 2, DAMAGEDITEM 2, FAKEPRODUCT 1).
   The claim's raw JSON is not stored, so whether live claims carry `replacementOutboundpackageinfo` is **unverified**.
@@ -518,7 +518,7 @@ packages only, no claim events.
   2026). approveClaimLineItems (trendyol-api-son.md:7044-7084, "İade Siparişleri Onaylama") is documented for returns
   only, so the panel never approves an exchange request (`ReturnCustomerRequestPolicy.ApprovalBlocked`, error
   TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL; no bulk selection; a queued approval is not sent). createClaimIssue stays.
-- A made exchange comes back **Rejected** (11805950639, exchanged with "Değişim Yap", live Rejected 13:55Z 18 Nov 2026);
+- A made exchange comes back **Rejected** (1000000001, exchanged with "Değişim Yap", live Rejected 13:55Z 18 Nov 2026);
   a rejected claim never counts as a return. The owner (owner or admin) marks it "Değişim Onaylandı Olarak İşaretle"
   (POST `returns/{id}/exchange-approved`, panel only): ResolvedWith CHANGE, `ResolvedWithSource` MANUAL, audit
   RETURN_EXCHANGE_MARKED_APPROVED. It then lists in Onaylananlar (wire EXCHANGE_APPROVED, TabGroup APPROVED; one rule in
@@ -529,14 +529,14 @@ packages only, no claim events.
   (3/90 days by lastModifiedDate) brings it back. `CustomerRequest` is kept once known.
 - Exchange resend (owner, 18 Nov 2026): Siparişler › Yeniden Gönderimler listed only packages with `createdBy`
   transfer/resend/replacement and an origin package (`OrderQueryService.OrderList` RESENT, `ShipmentPackageClassification`),
-  which Trendyol's order reads never return (11 Nov diagnostic above), so 11805950639's exchange was not there. Now the
+  which Trendyol's order reads never return (11 Nov diagnostic above), so 1000000001's exchange was not there. Now the
   claim's `replacementOutboundpackageinfo` (package id not 0, carrier, tracking number and link) is stored on the claim
   (`ReturnClaim.Replacement*`, kept once read) and an order is in that tab when its exchange claim names the package or
   the owner marked it "Değişim Onaylandı"; it waits for the carrier until the package's tracking link is known. The
   row reads "Değişim". Whether live claims carry the block is **unverified**: the worker logs one Information line per
   exchange claim read ("replacementOutboundpackageinfo present=…, package id=…", no content).
 - Exchange package as an order package (18 Nov 2026): the 11 Nov diagnostic asked v2 `shipmentPackageIds=<resend>,<first>`
-  with a date window and got only the first package; whether an exchange package (11805950639 → 4360616611) comes back
+  with a date window and got only the first package; whether an exchange package (1000000001 → 2000000001) comes back
   is **unverified**. After a Trendyol recovery read each exchange package is read once read-only
   (`OrderReadService.RunExchangePackageDiagnosticOnce`, same queries as the 11 Nov one) and an Information line says per
   query whether the answer holds the package id ("Exchange package … diagnostic: …=200:package/none"); answers, buyer
@@ -544,15 +544,15 @@ packages only, no claim events.
   packages; until it is known, the Yeniden Gönderimler row shows the claim's package data (no label print, no invoice
   actions on it).
 - Diagnostic result (ran 18 Nov 2026 22:47Z, read 23 Nov 2026 from the resolved TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC issue
-  and cursor `TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC:4360616611`): v2 `orderNumber` with and without dates, v1
-  `orderNumber`, v2 `shipmentPackageIds` with dates and the stream page all answered 200 **without** package 4360616611;
+  and cursor `TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC:2000000001`): v2 `orderNumber` with and without dates, v1
+  `orderNumber`, v2 `shipmentPackageIds` with dates and the stream page all answered 200 **without** package 2000000001;
   only getClaims `orderNumber` held it. So **the order API does not return an exchange package**; only the claim names it.
   Its "Exchange package … diagnostic" log line is not in `docker logs` because each deploy recreates the worker
   container (logs start at the container's start), not because it did not run.
 - The live claim's block is spelt `replacementOutboundPackageInfo` (capital P) and holds only `items`, `packageId`,
   `cargoProviderName` and `cargoTrackingNumber` (a JSON number): **no `cargoTrackingLink` and no status** (same answer).
   The tracking number is there before the parcel leaves, so neither it nor the missing link says whether it was shipped.
-- Exchange resend closing (owner, 23 Nov 2026, order 11805950639 stuck at "Yeniden Gönderim · 1 Paket"): the row and the
+- Exchange resend closing (owner, 23 Nov 2026, order 1000000001 stuck at "Yeniden Gönderim · 1 Paket"): the row and the
   card's not-shipped count (`OrderQueryService.OrderList` RESENT + resentNotShipped) wait until the claim's tracking link
   is known or the owner marks it "Kargoya Verildi Olarak İşaretle" (POST `returns/{id}/replacement-shipped`, owner/admin,
   audit RETURN_REPLACEMENT_MARKED_SHIPPED, `ReturnClaim.ReplacementShippedAt`/`ReplacementShippedSource` MANUAL; panel

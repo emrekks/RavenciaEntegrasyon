@@ -102,7 +102,7 @@ async function setTrendyolOwnPrice() {
   const toggle = container.querySelector<HTMLInputElement>('input[aria-label="Trendyol Mağaza için özel fiyat"]')
   expect(toggle).not.toBeNull()
   act(() => toggle!.click())
-  const fields = container.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[type="number"]')
+  const fields = container.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')
   setValue(fields[0], '150')
   setValue(fields[1], '120')
   await settle(2)

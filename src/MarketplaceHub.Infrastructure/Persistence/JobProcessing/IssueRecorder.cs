@@ -38,6 +38,17 @@ internal sealed class IssueRecorder(AppDbContext db)
         if (stamps.HasFlag(IssueResolveStamps.LastSeenAt)) issue.LastSeenAt = now;
     }
 
+    // Resolves the open issue under its key, reading the clock only when there is one; onlyIf narrows it to the issue the
+    // caller's own check wrote (a key two writers may share). Says whether it resolved one.
+    public async Task<bool> ResolveIfOpenAsync(Guid tenantId, string key, TimeProvider clock, CancellationToken cancellationToken, Func<OperationalIssue, bool>? onlyIf = null)
+    {
+        var issue = await FindAsync(tenantId, key, cancellationToken);
+        if (issue is null || issue.Status == IssueStatus.Resolved || onlyIf?.Invoke(issue) == false) return false;
+        issue.Status = IssueStatus.Resolved;
+        issue.ResolvedAt = clock.GetUtcNow();
+        return true;
+    }
+
     // ISLEYICI-12 point 5 (16 Nov 2026): the issues of one code under one key prefix, by key, read in one query with those
     // this unit of work already holds: for a caller that opens and resolves many in one pass (the finance record issues),
     // which keeps its own open/resolve rules (a reopen counts only a resolved issue, the code never changes).

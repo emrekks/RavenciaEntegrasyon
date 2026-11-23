@@ -973,6 +973,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     {
         var staleAfter = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:StaleDays", 30), 7, 365));
         var resolvedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:ResolvedDays", 30), 7, 365));
+        var resolveOrphaned = configuration.GetValue("Worker:IssueRetention:ResolveOrphaned", true);
+        var orphanBatchSize = Math.Clamp(configuration.GetValue("Worker:IssueRetention:OrphanBatchSize", 500), 1, 2_000);
+        var orphanMaxBatches = Math.Clamp(configuration.GetValue("Worker:IssueRetention:OrphanMaxBatches", 10), 1, 100);
         return RunPeriodicAsync(TimeSpan.FromMinutes(15), TimeSpan.FromHours(24), async token =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -985,6 +988,24 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // Return lines reported as unlinked whose line has since been linked to its order line.
             var linked = await issues.ResolveLinkedReturnLineIssuesAsync(token);
             if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
+            // Y5: issues whose subject is gone (a deleted variant or connection) or whose writer's own guard no longer holds
+            // (OrphanedOperationalIssues: one rule per code, a code without a rule is never touched). Resolved, never
+            // deleted; Worker:IssueRetention:ResolveOrphaned=false turns it off. Batches of OrphanBatchSize (500), at most
+            // OrphanMaxBatches (10) per rule a pass; logged per code and reason. Its failure does not stop the deletion below.
+            if (resolveOrphaned)
+            {
+                try
+                {
+                    var orphaned = await issues.ResolveOrphanedAsync(orphanBatchSize, orphanMaxBatches, token);
+                    foreach (var ((code, reason), count) in orphaned.OrderBy(x => x.Key.Code, StringComparer.Ordinal).ThenBy(x => x.Key.Reason, StringComparer.Ordinal))
+                        logger.LogInformation("Issue retention resolved {Count} {Code} issue(s): {Reason}", count, code, reason);
+                    logger.LogInformation("Issue retention orphan pass resolved {Count} issue(s) in all", orphaned.Values.Sum());
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Issue retention could not run the orphaned issue pass; it tries again in the next pass");
+                }
+            }
             var deleted = await issues.DeleteResolvedAsync(resolvedRetention, token);
             if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
         }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken, "issue-retention");

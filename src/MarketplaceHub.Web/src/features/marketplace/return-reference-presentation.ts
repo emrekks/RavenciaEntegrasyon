@@ -47,7 +47,7 @@ const RETURN_REASON_LABELS: Record<string, string> = {
   undelivered: 'Teslim edilemeyen gönderi',
   undeliveredint: 'Müşterinin teslim almadığı gönderi',
   lateintdelivery: 'Sipariş geç teslim edildi',
-  // The reason's name as Trendyol's seller panel shows it for 11805950639 (owner's screenshot, 18 Nov 2026); the API's
+  // The reason's name as Trendyol's seller panel shows it for 1000000001 (owner's screenshot, 18 Nov 2026); the API's
   // own name is not stored (the claim's text is its customer note) and the official reason list has no codes.
   wrongchangerequest: 'Yanlış gelen ürünümü değiştirmek istiyorum',
 }
