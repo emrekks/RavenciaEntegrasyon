@@ -324,14 +324,14 @@ public static partial class MarketplaceEndpoints
         {
             // A known address (a closed definition's, or an old or wrong token of a known connection) is shown on its webhook
             // panel and logged, masked: the address's first 8 characters, never the token. The body stays unread; an address
-            // that names nothing leaves no trace (Caddy skips the hooks in its access log). A known address is noted at most
-            // once a minute: a marketplace retrying (or a flood) costs no database write or log line in between.
-            var cache = http.RequestServices.GetService<IMemoryCache>();
-            var throttleKey = (RefusalThrottle, connectionPublicId);
-            if (cache?.TryGetValue(throttleKey, out _) != true && await NoteRouteRefusedSafelyAsync(connectionPublicId, routeToken, http, service) is { } refusal)
+            // that names nothing leaves no trace (Caddy skips the hooks in its access log). The record is kept on every call
+            // (its writes are held to once a minute by their own conditions), so wrong-token calls cannot hide the calls to a
+            // closed definition; only the log line is held to once a minute per address and reason.
+            if (await NoteRouteRefusedSafelyAsync(connectionPublicId, routeToken, http, service) is { } refusal
+                && http.RequestServices.GetService<IMemoryCache>() is var cache && cache?.TryGetValue((RefusalThrottle, connectionPublicId, refusal), out _) != true)
             {
-                // Only known addresses are remembered (one entry per connection address), so random ids cannot fill the cache.
-                cache?.Set(throttleKey, true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1), Size = 1 });
+                // Only known addresses are remembered (one entry per address and reason), so random ids cannot fill the cache.
+                cache?.Set((RefusalThrottle, connectionPublicId, refusal), true, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1), Size = 1 });
                 http.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("MarketplaceHub.Webhooks")
                     .LogWarning("Webhook route refused with {Code} for address {AddressPrefix}…, path {EventPath}.", refusal, connectionPublicId.ToString("N")[..8], LoggedPath(eventPath));
             }
