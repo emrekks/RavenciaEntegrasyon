@@ -140,7 +140,11 @@ internal sealed partial class ReturnQueryService
         {
             ApprovedToday = group.Count(x => (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
                     || x.Status == ReturnClaimStatus.Rejected && x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
-                && (x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "APPROVE" && decision.CompletedAt >= dayStart))),
+                // An exchange the owner marked made counts on the Istanbul day he marked it (its audit row), not on the day the
+                // marketplace answered the claim Rejected (DecidedAt; scan, 23 Nov 2026).
+                && (x.ResolvedWithSource == ReturnCustomerRequestPolicy.ManualSource
+                    ? db.AuditLogs.Any(audit => audit.TenantId == tenantId && audit.Action == "RETURN_EXCHANGE_MARKED_APPROVED" && audit.TargetType == "ReturnClaim" && audit.TargetId == x.Id.ToString() && audit.CreatedAt >= dayStart)
+                    : x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "APPROVE" && decision.CompletedAt >= dayStart))),
             RejectedToday = group.Count(x => x.Status == ReturnClaimStatus.Rejected && !(x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
                 && (x.DecidedAt >= dayStart || db.ReturnDecisions.Any(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Status == "SUCCEEDED" && decision.Action == "REJECT" && decision.CompletedAt >= dayStart)))
         }).SingleOrDefaultAsync(cancellationToken);

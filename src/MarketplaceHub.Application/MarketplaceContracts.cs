@@ -1768,7 +1768,7 @@ public sealed record ReturnSummaryView(
 // handed to cargo (Trendyol rejectedPackageInfo without a tracking link); RejectedCargoUnknown: rejected returns whose
 // package state is not known (other marketplaces, or not read yet). TodayApproved/TodayRejected: returns approved or
 // rejected since 00:00 Istanbul, dated by the marketplace (ReturnClaim.DecidedAt) or by a panel decision confirmed
-// today; a return without either date is left out.
+// today (an exchange the owner marked made: the day of his mark); a return without either date is left out.
 public sealed record ReturnMetricCounts(int RejectedAwaitingCargo, int RejectedCargoUnknown, int TodayApproved, int TodayRejected);
 public sealed record ReturnPlatformOption(string PlatformCode, string DisplayName);
 // Value is the filter key (reason code, else text); the page labels it from code and text.

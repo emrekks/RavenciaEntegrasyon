@@ -291,6 +291,36 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
+    // Scan, 23 Nov 2026: "Bugün Onaylanan" dated an exchange the owner marked made by the day the marketplace answered the
+    // claim Rejected (DecidedAt): marked today after a rejection days ago it did not count today, and a claim rejected today
+    // that he marked days ago did. It counts on the Istanbul day of his mark.
+    [PostgreSqlFact]
+    public async Task Todays_approved_count_dates_a_marked_exchange_by_the_owners_mark()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var (late, lateConnection) = await SeedAsync();
+        var lateOrder = await SeedOrderAsync(late.Id, lateConnection.Id, "ex-today-1", claim => claim.DecidedAt = now.AddDays(-3));
+        var lateClaim = await ClaimIdAsync(late.Id, lateOrder);
+        await using (var db = fixture.CreateContext())
+        {
+            var version = (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == lateClaim)).Version;
+            Assert.True((await Service(db).MarkExchangeApprovedAsync(late.Id, Guid.NewGuid(), lateClaim, version, true, "corr-today", CancellationToken.None)).Succeeded);
+        }
+        var (early, earlyConnection) = await SeedAsync();
+        var earlyOrder = await SeedOrderAsync(early.Id, earlyConnection.Id, "ex-today-2", claim => { claim.DecidedAt = now; claim.ResolvedWith = ReturnCustomerRequestPolicy.Change; claim.ResolvedWithSource = ReturnCustomerRequestPolicy.ManualSource; });
+        var earlyClaim = await ClaimIdAsync(early.Id, earlyOrder);
+        await using (var db = fixture.CreateContext())
+        {
+            db.AuditLogs.Add(new AuditLog { TenantId = early.Id, ActorUserId = Guid.NewGuid(), Action = "RETURN_EXCHANGE_MARKED_APPROVED", TargetType = "ReturnClaim", TargetId = earlyClaim.ToString("D"), Reason = "test", CorrelationId = "corr-early", CreatedAt = now.AddDays(-3) });
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(1, (await Service(db).ReturnSummaryAsync(late.Id, new ReturnListQuery(), CancellationToken.None)).Metrics!.TodayApproved);
+            Assert.Equal(0, (await Service(db).ReturnSummaryAsync(early.Id, new ReturnListQuery(), CancellationToken.None)).Metrics!.TodayApproved);
+        }
+    }
+
     private async Task RunStatusSyncAsync(Guid tenantId, Guid connectionId, IReturnPort port)
     {
         await using var db = fixture.CreateContext();
