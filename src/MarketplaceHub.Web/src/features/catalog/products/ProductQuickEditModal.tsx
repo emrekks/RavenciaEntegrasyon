@@ -9,7 +9,7 @@ import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { parseTrEntry, trEntryHelp } from '../../../shared/tr-number'
-import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
+import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { applyQuickEditDraft, quickEditDraftValues, type QuickEditDraftChange, type QuickEditDraftRow, type QuickEditDraftValues } from './quick-edit-draft'
@@ -71,6 +71,12 @@ const noChange = async () => undefined
 type PriceDraft = { list: string; sale: string }
 const samePriceDraft = (left: PriceDraft, right: PriceDraft) => left.list === right.list && left.sale === right.sale
 const priceKey = (variantId: string, columnId: string) => `${variantId}|${columnId}`
+// A cell's draft as prices: each side as drafted, an empty side as saved; null when a drafted side cannot be read.
+function draftedPrices(drafted: PriceDraft, saved: { listPrice?: number | null; salePrice?: number | null }): { listPrice: number | null; salePrice: number | null } | null {
+  const read = (text: string, fallback: number | null | undefined) => text.trim() === '' ? { ok: true as const, value: fallback ?? null } : { ok: parseTrEntry(text) !== null, value: parseTrEntry(text) }
+  const list = read(drafted.list, saved.listPrice); const sale = read(drafted.sale, saved.salePrice)
+  return list.ok && sale.ok ? { listPrice: list.value, salePrice: sale.value } : null
+}
 export function ProductQuickEditModal({ products: savedProducts = [], connections = [], mode = 'stock', onChanged = noChange, onClose, onResult, draft }: { products?: Product[]; connections?: MarketplaceConnection[]; mode?: QuickEditMode; onChanged?: () => Promise<unknown>; onClose: () => void; onResult?: (title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext) => void; draft?: QuickEditDraft }) {
   // Opened from the editor, the rows are read once: what is typed here stays here until it is applied.
   const [draftProducts] = useState(() => draft ? [draftProduct(draft)] : null)
@@ -274,7 +280,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
           if (!column) throw new Error('fiyat kanalı bulunamadı')
           const target = priceConnectionId === PANEL_PRICE_CHOICE ? panelPriceTarget(variant) : quickPriceTarget(variant, priceConnectionId, connections.length)
           if (target.kind === 'blocked') throw new Error(target.reason)
-          const current = priceConnectionId === PANEL_PRICE_CHOICE ? panelPrices(variant, item.product) : target.kind === 'update' ? target.offer : {}
+          const saved = priceConnectionId === PANEL_PRICE_CHOICE ? panelPrices(variant, item.product) : target.kind === 'update' ? target.offer : {}
+          // Applied over the cell's draft when it has one (Y3): an earlier Uygula's list price stays when the sale price
+          // is applied next, and the list-not-below-sale check reads the drafted list price, not the saved one.
+          const drafted = priceDrafts.get(priceKey(variant.id, column.id))?.value
+          const current = drafted ? draftedPrices(drafted, saved) : saved
+          if (current == null) throw new Error(`taslaktaki fiyat okunamadı; ${unreadablePriceMessage}`)
           const prices = quickEditOfferPrices(current, list, sale)
           if (!prices.ok) throw new Error(prices.message)
           const shown = quickInlinePrices(column.id, variant, item.product)

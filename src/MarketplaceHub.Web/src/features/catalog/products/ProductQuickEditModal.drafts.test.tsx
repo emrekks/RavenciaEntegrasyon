@@ -58,6 +58,8 @@ async function type(input: HTMLInputElement, value: string) {
 const stockBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} stok"]`)!
 const bar = () => document.body.querySelector('.rr-m-foot')
 const barButton = (label: string) => Array.from(bar()!.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === label)!
+const bulkField = (label: string) => Array.from(document.body.querySelectorAll('label.rr-fld')).find(item => item.querySelector('small')?.textContent === label)!.querySelector('input')!
+const applyButton = () => document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!
 const footButton = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(button => button.textContent === label)!
 
 beforeEach(() => {
@@ -230,6 +232,43 @@ describe('ProductQuickEditModal drafts', () => {
     expect(document.body.querySelectorAll('button.rv-draftbar-save')).toHaveLength(1)
     expect(document.body.textContent).not.toContain('Tümüne Uygula')
     expect(document.body.querySelector('.rv-draftbar')).toBeNull()
+  })
+
+  // Y3 (scan 23 Nov 2026): Uygula twice in a row (Liste, then Satış) dropped the first draft's list price and refused the
+  // sale price against the saved list price. The second Uygula works over the first one's draft.
+  it('a second Uygula keeps the first one\'s draft and checks against it', async () => {
+    await render('price')
+    await pickValue('Panel', 'Liste')
+    await type(bulkField('Liste Fiyatı (₺)'), '1.000')
+    await click(applyButton())
+    await pickValue('Panel', 'Satış')
+    await type(bulkField('Satış Fiyatı (₺)'), '800')
+    await click(applyButton())
+    expect(document.body.querySelector('[role="alert"]')).toBeNull()
+    expect(bar()?.textContent).toContain('2 Değişiklik')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => [call.path, call.body])).toEqual([
+      ['/variants/v1/default-prices', { listPrice: 1000, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }],
+      ['/variants/v2/default-prices', { listPrice: 1000, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }],
+    ])
+  })
+
+  it('a second Uygula still refuses a sale price above the drafted list price, keeping the first draft', async () => {
+    await render('price')
+    await pickValue('Panel', 'Liste')
+    await type(bulkField('Liste Fiyatı (₺)'), '600')
+    await click(applyButton())
+    await pickValue('Panel', 'Satış')
+    await type(bulkField('Satış Fiyatı (₺)'), '700')
+    await click(applyButton())
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => call.body)).toEqual([
+      { listPrice: 600, salePrice: 450, reason: 'Hızlı varyant fiyat düzenleme' },
+      { listPrice: 600, salePrice: 450, reason: 'Hızlı varyant fiyat düzenleme' },
+    ])
   })
 
   it('closing without a draft closes at once', async () => {
