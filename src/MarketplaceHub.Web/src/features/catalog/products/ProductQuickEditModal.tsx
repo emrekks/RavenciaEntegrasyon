@@ -510,7 +510,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       const shown = quickStockCellValue(variant.onHand, savedStocks.current.get(variant.id) ?? null).value
       const drafted = stockDrafts.get(variant.id)?.value
       const error = cellError(`s:${variant.id}`)
-      return <span className={`rr-mx-box${drafted !== undefined ? ' rr-draft' : ''}`}><input {...where} className="rr-in rr-num rr-mx-in" aria-label={`${variant.sku} stok`} aria-invalid={error ? true : undefined} title={error || (drafted !== undefined ? `Kaydedilmedi · kayıtlı stok: ${shown} · ${identity}` : identity)} value={drafted ?? String(shown)} type="number" min="0" step="1"
+      return <span className={`rr-mx-box${drafted !== undefined ? ' rr-draft' : ''}`}><input {...where} className="rr-in rr-num rr-mx-in" aria-label={`${variant.sku} stok`} aria-invalid={error ? true : undefined} title={error || (drafted !== undefined ? `Kaydedilmedi · kayıtlı stok: ${shown} · ${identity}` : identity)} value={drafted ?? String(shown)} type="text" inputMode="numeric" autoComplete="off"
         onChange={event => { setNotice(''); clearRowError(`s:${variant.id}`); stockDrafts.set(variant.id, event.target.value, String(shown)) }}
         onKeyDown={event => { if (event.key === 'Escape' && drafted !== undefined) { event.preventDefault(); stockDrafts.revert(variant.id); clearRowError(`s:${variant.id}`) } }} /></span>
     }

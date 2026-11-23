@@ -346,6 +346,23 @@ describe('ProductQuickEditModal drafts', () => {
     expect(tick.tabIndex).toBe(0)
   })
 
+  // B2: the stock cell read "1.000" as 1, "1e3" as 1000 and "0x10" as 16 (Number()). Now Turkish whole numbers only.
+  it('sends "1.000" typed in a stock cell as 1000', async () => {
+    await render()
+    expect(stockBox('SKU-1').type).toBe('text')
+    await type(stockBox('SKU-1'), '1.000')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.map(call => [call.path, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 1000, 3]])
+  })
+  it.each(['1e3', '0x10', '2,5', '1,000', '-1'])('refuses "%s" in a stock cell and sends nothing', async typed => {
+    await render()
+    await type(stockBox('SKU-1'), typed)
+    expect(barButton('Kaydet').disabled).toBe(true)
+    await click(barButton('Kaydet'))
+    expect(sent).toEqual([])
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))
