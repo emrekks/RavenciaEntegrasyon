@@ -114,6 +114,16 @@ public sealed class JobWakeRouter
             }
     }
 
+    // Jobs that became leasable only because time passed (their AvailableAt, the end of a quota backoff) raise no
+    // notification: the lanes that can lease one of them are told they have work as a notification would (LaneNotified),
+    // so a lane whose slot was lent out wants it back for them too. Each lane once; the wake itself is WakeAll.
+    public void NoteDue(IReadOnlyCollection<(string JobType, int Priority)> jobs)
+    {
+        foreach (var (lane, _, _) in lanes)
+            if (jobs.Any(job => lane.Takes(job.JobType, job.Priority)))
+                LaneNotified?.Invoke(lane.Name);
+    }
+
     public void WakeAll()
     {
         foreach (var (_, signal, borrow) in lanes)

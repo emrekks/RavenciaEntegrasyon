@@ -298,6 +298,131 @@ public sealed class WorkerLanePoolTests
         Assert.True(pool.TryClaim("background", true));
     }
 
+    // Every interleaving of a small pool (hot 2 and user 1 protected, catalog 2 and background 1 not; 6 slots), explored
+    // breadth first over every reachable state: any own or borrowing slot claiming or ending, a lane told it has work or
+    // finding none. Each slot is bounded as on live (a lane's own slots, and pool less own borrowing slots).
+    //   - A protected lane with an idle own slot gets it at once, whatever ran before (Y1, 23 Nov scan: lenders taking
+    //     their slots back used to fill the order lanes' idle slots, so a new order read waited for the catalog reads).
+    //   - The unprotected lanes never run more than the pool less the protected slots.
+    //   - Mirror: an unprotected lane that wants its slot back is never overtaken by a borrower, and gets its slot at the
+    //     first end of an unprotected or borrowed job (no starvation behind borrowers while the protected slots stay idle).
+    [Fact]
+    public void EveryInterleavingKeepsTheProtectedSlotsAndNeverStarvesALenderBehindBorrowers()
+    {
+        string[] lanes = ["hot", "user", "product-catalog", "background"];
+        int[] slots = [2, 1, 2, 1];
+        bool[] isProtected = [true, true, false, false];
+        var total = slots.Sum();
+        var start = new PoolState(new int[4], new int[4], new bool[4], new bool[4]);
+        var seen = new HashSet<string> { start.Key };
+        var queue = new Queue<(PoolState State, List<PoolStep> Path)>();
+        queue.Enqueue((start, []));
+        var explored = 0;
+        while (queue.Count > 0)
+        {
+            var (state, path) = queue.Dequeue();
+            explored++;
+            foreach (var step in Steps(state))
+            {
+                var (pool, own, borrowed, noticed) = Replay(path);
+                var result = Apply(pool, own, borrowed, noticed, step);
+                var where = $"{string.Join(", ", path)} then {step} = {result}";
+                if (step.Kind == StepKind.ClaimOwn && isProtected[step.Lane])
+                    Assert.True(result, $"protected {lanes[step.Lane]} refused its idle own slot: {where}");
+                if (step.Kind == StepKind.ClaimBorrow && result)
+                    for (var lane = 0; lane < 4; lane++)
+                        if (lane != step.Lane && pool.Wants(lanes[lane]) && own[lane] < slots[lane])
+                            Assert.True(pool.Running + (slots[lane] - own[lane]) <= total, $"a borrower took the slot {lanes[lane]} wants back: {where}");
+                Assert.True(pool.Running <= total, where);
+                Assert.True(pool.UnprotectedRunning <= pool.UnprotectedCapacity, $"unprotected lanes ran into the protected slots: {where}");
+                // Mirror: a lender that wants its slot back gets it when an unprotected or borrowed job ends.
+                if (step.Kind is StepKind.ReleaseBorrow || (step.Kind == StepKind.ReleaseOwn && !isProtected[step.Lane]))
+                    for (var lane = 0; lane < 4; lane++)
+                        if (!isProtected[lane] && own[lane] < slots[lane] && state.Wanting[lane])
+                        {
+                            var (probe, probeOwn, probeBorrowed, probeNoticed) = Replay([.. path, step]);
+                            Assert.True(Apply(probe, probeOwn, probeBorrowed, probeNoticed, new PoolStep(StepKind.ClaimOwn, lane)),
+                                $"{lanes[lane]} wanted its slot back and did not get it after {where}");
+                        }
+                var next = new PoolState(own, borrowed, noticed, [.. lanes.Select(pool.Wants)]);
+                if (seen.Add(next.Key)) queue.Enqueue((next, [.. path, step]));
+            }
+        }
+        Assert.True(explored > 1000, $"only {explored} states explored");
+
+        IEnumerable<PoolStep> Steps(PoolState state)
+        {
+            for (var lane = 0; lane < 4; lane++)
+            {
+                if (state.Own[lane] < slots[lane]) yield return new PoolStep(StepKind.ClaimOwn, lane);
+                if (state.Borrowed[lane] < total - slots[lane]) yield return new PoolStep(StepKind.ClaimBorrow, lane);
+                if (state.Own[lane] > 0) yield return new PoolStep(StepKind.ReleaseOwn, lane);
+                if (state.Borrowed[lane] > 0) yield return new PoolStep(StepKind.ReleaseBorrow, lane);
+                // Protected lanes never fail their own claim, so whether they have work changes nothing.
+                if (!isProtected[lane])
+                {
+                    if (!state.Noticed[lane]) yield return new PoolStep(StepKind.NoteWork, lane);
+                    if (state.Noticed[lane] || state.Wanting[lane]) yield return new PoolStep(StepKind.NoteNoWork, lane);
+                }
+            }
+        }
+
+        (LaneSlotPool Pool, int[] Own, int[] Borrowed, bool[] Noticed) Replay(List<PoolStep> path)
+        {
+            var pool = new LaneSlotPool(lanes.Select((lane, index) => (lane, index)).ToDictionary(item => item.lane, item => slots[item.index]),
+                [.. lanes.Where((_, index) => isProtected[index])], clock: new ManualClock());
+            var own = new int[4];
+            var borrowed = new int[4];
+            var noticed = new bool[4];
+            foreach (var step in path) Apply(pool, own, borrowed, noticed, step);
+            return (pool, own, borrowed, noticed);
+        }
+
+        bool Apply(LaneSlotPool pool, int[] own, int[] borrowed, bool[] noticed, PoolStep step)
+        {
+            var lane = lanes[step.Lane];
+            switch (step.Kind)
+            {
+                case StepKind.ClaimOwn:
+                    if (!pool.TryClaim(lane, true)) return false;
+                    own[step.Lane]++;
+                    return true;
+                case StepKind.ClaimBorrow:
+                    if (!pool.TryClaim(lane, false)) return false;
+                    borrowed[step.Lane]++;
+                    return true;
+                case StepKind.ReleaseOwn:
+                    pool.Release(lane, true);
+                    own[step.Lane]--;
+                    return true;
+                case StepKind.ReleaseBorrow:
+                    pool.Release(lane, false);
+                    borrowed[step.Lane]--;
+                    return true;
+                case StepKind.NoteWork:
+                    pool.NoteWork(lane);
+                    noticed[step.Lane] = true;
+                    return true;
+                default:
+                    pool.NoteNoWork(lane);
+                    noticed[step.Lane] = false;
+                    return true;
+            }
+        }
+    }
+
+    private enum StepKind { ClaimOwn, ClaimBorrow, ReleaseOwn, ReleaseBorrow, NoteWork, NoteNoWork }
+
+    private sealed record PoolStep(StepKind Kind, int Lane)
+    {
+        public override string ToString() => $"{Kind}({Lane})";
+    }
+
+    private sealed record PoolState(int[] Own, int[] Borrowed, bool[] Noticed, bool[] Wanting)
+    {
+        public string Key => $"{string.Join(',', Own)}|{string.Join(',', Borrowed)}|{string.Join(',', Noticed)}|{string.Join(',', Wanting)}";
+    }
+
     [Fact]
     public void ANotificationWakesTheLanesBorrowingSlotsToo()
     {
@@ -331,6 +456,37 @@ public sealed class WorkerLanePoolTests
         router.Route(JobWakeRouter.Freed);
         router.WakeAll();
         Assert.Equal(["pazarama-orders"], noted);
+    }
+
+    [Fact]
+    public void AJobThatBecameDueMakesItsLaneWantItsLentSlotBack()
+    {
+        // Live lanes; seven catalog reads fill the unprotected part (three own, seven borrowed). A background retry's time
+        // comes: no notification names it, the due-time wake tells its lane (NoteDue) before it wakes every slot.
+        var router = new JobWakeRouter(WorkerLanes.All());
+        var pool = new LaneSlotPool(WorkerLanes.All().ToDictionary(lane => lane.Name, lane => lane.DefaultSlots),
+            LaneModelSettings.From(new ConfigurationBuilder().Build()).ProtectedLanes);
+        var noted = new List<string>();
+        router.LaneNotified += noted.Add;
+        router.LaneNotified += pool.NoteWork;
+        for (var own = 0; own < 3; own++) Assert.True(pool.TryClaim("product-catalog", true));
+        while (pool.TryClaim("product-catalog", false)) { }
+        Assert.Equal(7, pool.Borrowed("product-catalog"));
+
+        router.NoteDue([("TEST_DUE_RETRY", MarketplaceHub.Application.JobPriorityPolicy.Reconciliation)]);
+        Assert.Equal(["background"], noted);
+        Assert.False(pool.TryClaim("background", true));
+        Assert.True(pool.Wants("background"));
+        // The next catalog read to end hands its slot to the background lane, not to another catalog read.
+        pool.Release("product-catalog", false);
+        Assert.False(pool.TryClaim("product-catalog", false));
+        Assert.True(pool.TryClaim("background", true));
+        // Nothing due tells no one; jobs of several lanes tell each lane once.
+        noted.Clear();
+        router.NoteDue([]);
+        Assert.Empty(noted);
+        router.NoteDue([("TEST_DUE_RETRY", 4), ("TEST_DUE_OTHER", 3), (MarketplaceHub.Application.MarketplaceJobTypes.PazaramaOrderSync, 0)]);
+        Assert.Equal(["pazarama-orders", "background"], noted);
     }
 
     private sealed class ManualClock : TimeProvider
