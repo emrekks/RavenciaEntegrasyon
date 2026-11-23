@@ -33,6 +33,8 @@ const fixture = vi.hoisted(() => {
     // Answers the next PATCH with 412 without changing the product (a version raised by nothing the form shows).
     bumpVersionSilently: false,
     failUpload: false,
+    // O2: values stored with more precision than a person may type (prices and costs keep four decimals, a stock may be fractional).
+    precise: false,
     log: [] as Array<Record<string, unknown>>,
     toasts: [] as Array<Record<string, unknown>>
   })
@@ -40,7 +42,7 @@ const fixture = vi.hoisted(() => {
   const statusFor = (connectionId: string, platformCode: string, offerId: string, price: number) => ({ connectionId, platformCode, platform: platformCode === 'N11' ? 'N11' : 'Trendyol', isLinked: state.liveTy && platformCode !== 'N11', isMatched: state.liveTy && platformCode !== 'N11', status: 'ACTIVE', offerId, offerVersion: 3, listPrice: price, salePrice: price, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, offerStatus: 'ACTIVE', followsPanelPrice: true })
   const variant = (id: string, colour: string, size: string, sku: string, barcode: string) => ({
     id, version: 1, productId: 'p1', sku, barcode, modelCode: 'RYP006', optionSignature: `Renk: ${colour} | Beden: ${size}`, status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1,
-    costPrice: state.cost[id], onHand: state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: 100, defaultSalePrice: 90,
+    costPrice: state.precise && id === 'v1' ? 12.3456 : state.cost[id], onHand: state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90,
     currency: 'TRY', offerStatus: 'ACTIVE', priceVersion: 1, offerVersion: 3, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: state.variantMedia[id] ?? [], options: { Renk: colour, Beden: size }, attributes: [],
     platformStatuses: [statusFor('ty', 'TRENDYOL', `o-${id}`, 90), statusFor('n11', 'N11', `n-${id}`, 95)]
   })
@@ -49,7 +51,7 @@ const fixture = vi.hoisted(() => {
     variants: [variant('v1', 'Siyah', 'S', 'RYP006-SY-S', '8680000000011'), variant('v2', 'Siyah', 'M', 'RYP006-SY-M', '8680000000028'), variant('v3', 'Bordo', 'S', 'RYP006-BD-S', '8680000000035'), variant('v4', 'Bordo', 'M', 'RYP006-BD-M', '8680000000042')],
     primaryImageUrl: state.mediaUrls[0] ?? null, totalStock: 10, startingPrice: 90, currency: 'TRY', modelCode: 'RYP006', activePlatforms: ['TRENDYOL'], mediaUrls: state.mediaUrls, attributes: state.attributes, familyProductIds: ['p1'],
     familyVersions: { p1: state.familyVersion },
-    trendyolWebColorValueId: 'wc-siyah', warrantyMonths: 24, deliveryDays: 2, vatRate: 20, vatInclusion: 'INCLUDED', defaultListPrice: 100, defaultSalePrice: 90
+    trendyolWebColorValueId: 'wc-siyah', warrantyMonths: 24, deliveryDays: 2, vatRate: 20, vatInclusion: 'INCLUDED', defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90
   })
   const requirement = (attributeId: string, name: string, role: 'OPTION' | 'ATTRIBUTE', values: Array<{ id: string; value: string }>, extra: { isWebColor?: boolean; isRequired?: boolean; displayOrder?: number } = {}) => ({ attributeId, isRequired: extra.isRequired ?? false, allowsCustomValue: false, displayOrder: extra.displayOrder ?? (role === 'OPTION' ? 1 : 3), role, isWebColor: extra.isWebColor ?? false, attribute: { id: attributeId, version: 1, code: name.toUpperCase(), name, dataType: 'SINGLE_SELECT', values } })
   const renk = requirement('a-renk', 'Renk', 'OPTION', [{ id: 'r-siyah', value: 'Siyah' }, { id: 'r-bordo', value: 'Bordo' }, { id: 'r-mavi', value: 'Mavi' }])
@@ -366,6 +368,27 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     expect(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S satış fiyatı"]').getAttribute('aria-invalid')).toBe('true')
     await submit('save')
     expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+  })
+
+  // O2: a value stored with four decimals (99.999, 12.3456) is shown as held and an untouched save sends exactly what it
+  // sent before this branch: the stored numbers, nothing refused, no extra request.
+  it('saves an untouched record holding four-decimal prices and cost as it was', async () => {
+    const untouchedSave = async (precise: boolean) => {
+      fixture.state.precise = precise
+      await renderAt('/products/p1')
+      setValue(titleInput(), 'Yeni Ad')
+      await settle()
+      await submit('save')
+      const log = JSON.parse(JSON.stringify(fixture.state.log)) as Array<Record<string, unknown>>
+      act(() => root.unmount()); container.remove(); document.body.innerHTML = ''; localStorage.clear(); container = document.createElement('div'); document.body.append(container); root = createRoot(container)
+      Object.assign(fixture.state, fixture.initial())
+      return log
+    }
+    const plain = await untouchedSave(false)
+    const precise = await untouchedSave(true)
+    expect(precise.map(entry => [entry.method, entry.path])).toEqual(plain.map(entry => [entry.method, entry.path]))
+    const replaced = JSON.stringify(plain).split('"defaultListPrice":100,').join('"defaultListPrice":99.999,').split('"defaultSalePrice":90,').join('"defaultSalePrice":12.3456,')
+    expect(JSON.stringify(precise)).toBe(replaced)
   })
 
   it('update with a stock and cost change', async () => {

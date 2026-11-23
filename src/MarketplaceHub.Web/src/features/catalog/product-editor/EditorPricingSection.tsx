@@ -9,6 +9,7 @@ import { PanelSelect } from '../../../shared/PanelSelect'
 import { EditorFieldError, RequiredLabel } from './EditorBits'
 import type { EditorContext } from './editor-context'
 import { priceInputNumber } from './card-prices'
+import { channelFieldKey, readMoneyField } from './seeded-fields'
 import { channelFollowMix, priceFieldText } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 
@@ -19,7 +20,7 @@ export function EditorPricingSection({ editor }: { editor: EditorContext }) {
   const manyVariants = variantRows.length > 1
   const channelNote = (connectionId: string, name: string) => {
     if (!manyVariants || !(connectionId in channelPricing) || !channelPriceEdited(connectionId)) return null
-    const sale = priceInputNumber(channelPriceDraft(connectionId).salePrice)
+    const sale = readMoneyField(channelFieldKey(connectionId, 'salePrice'), channelPriceDraft(connectionId).salePrice)
     if (!(sale > 0)) return null
     const known = new Set(variantRows.flatMap(row => (row.platformStatuses ?? []).filter(status => status.connectionId === connectionId && status.salePrice != null).map(status => status.salePrice)))
     return <small className="marketplace-pricing-note" role="status">Kaydedince {name} pazaryerindeki {variantRows.length} varyantın fiyatı {formatMoney(sale)} olacak.{known.size > 1 && ' Şu an varyantlarda farklı fiyatlar var; bu fark silinir.'}</small>

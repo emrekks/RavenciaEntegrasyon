@@ -35,11 +35,11 @@ afterEach(() => {
 })
 
 // The pricing card's fields as the editor holds them.
-function Panel() {
+function Panel({ cost = '200' }: { cost?: string }) {
   const [sale, setSale] = useState('')
   const [list, setList] = useState('')
   return <section>
-    <PriceSuggestionLink fields={{ cost: '200', vatRate: '20', vatIncluded: true, listPrice: list }} onApply={prices => { setSale(prices.salePrice); setList(prices.listPrice) }} />
+    <PriceSuggestionLink fields={{ cost, vatRate: '20', vatIncluded: true, listPrice: list }} onApply={prices => { setSale(prices.salePrice); setList(prices.listPrice) }} />
     <label>Liste Fiyatı<input aria-label="Liste Fiyatı" value={list} readOnly /></label>
     <label>Satış Fiyatı<input aria-label="Satış Fiyatı" value={sale} readOnly /></label>
   </section>
@@ -47,8 +47,8 @@ function Panel() {
 
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === text)!
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
-const open = async () => {
-  act(() => root.render(<QueryClientProvider client={client}><Panel /></QueryClientProvider>))
+const open = async (cost?: string) => {
+  act(() => root.render(<QueryClientProvider client={client}><Panel cost={cost} /></QueryClientProvider>))
   act(() => button('Hesapla').click())
   await settle()
 }
@@ -65,6 +65,13 @@ function hint(label: string) {
 }
 
 describe('PriceSuggestionLink', () => {
+  // O2: the editor's loaded cost may hold four decimals (12,3456); the window reads it as it is, not as an unreadable entry.
+  it('reads a loaded four-decimal cost as it is', async () => {
+    await open('12,3456')
+    act(() => button('Fiyatı Uygula').click())
+    const expected = String(suggestPrice({ cost: 12.3456, targetRate: 65, basis: 'cost', commissionRate: 21.5, cargo: 100, serviceFee: 13.19, vatRate: 20, vatIncluded: true })!.price).replace('.', ',')
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Satış Fiyatı"]')!.value).toBe(expected)
+  })
   // B5: the cost read "1.250" as 1,25 (Number with the comma swapped). One rule now: 1250, and "1.25" is refused.
   it('reads a typed cost of "1.250" as 1250 and refuses "1.25"', async () => {
     await open()

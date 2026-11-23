@@ -20,8 +20,8 @@ export function TrNumberInput({ kind, value, onText, ...props }: Omit<InputHTMLA
   const [text, setText] = useState(() => shown(kind, value))
   const [mirrored, setMirrored] = useState<number | null>(value)
   if (!Object.is(value, mirrored)) { setMirrored(value); setText(shown(kind, value)) }
-  const read = readers[kind](text)
-  const invalid = read != null && !Number.isFinite(read)
+  // Unreadable only when the person typed it (mirrored holds NaN); a stored 99.999 or 2.5 shown as it is stays valid (O2).
+  const invalid = mirrored != null && Number.isNaN(mirrored)
   return <input {...props} type="text" inputMode={kind === 'count' ? 'numeric' : 'decimal'} autoComplete="off" value={text} aria-invalid={invalid || undefined}
     title={invalid ? (kind === 'count' ? 'Stok okunamadı; 1.250 gibi bir tam sayı girin.' : 'Fiyat okunamadı; nokta yalnız binlik ayırıcıdır, ondalık için virgül ve en çok iki hane kullanın (1.250 ya da 1.250,50).') : props.title}
     onChange={event => { const next = event.target.value; setText(next); setMirrored(readers[kind](next)); onText(next) }} />

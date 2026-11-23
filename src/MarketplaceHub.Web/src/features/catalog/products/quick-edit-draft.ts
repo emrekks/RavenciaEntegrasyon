@@ -15,7 +15,11 @@ export function quickEditDraftValues(row: QuickEditDraftRow): QuickEditDraftValu
 }
 
 type Read = { ok: true; value: number | null } | { ok: false; message: string }
-function readPrice(text: string, label: string, allowZero: boolean): Read {
+// loaded: the row's own value when the cell still holds the text it opened with (O2): a stored 99.999 or a fractional
+// stock is kept as it is, never refused for a rule only typed values follow.
+type Loaded = { value: number | null } | undefined
+function readPrice(text: string, label: string, allowZero: boolean, loaded?: Loaded): Read {
+  if (loaded) return { ok: true, value: loaded.value }
   if (text.trim() === '') return { ok: true, value: null }
   const value = parseTrEntry(text)
   if (value == null) return { ok: false, message: `${label}: ${unreadablePriceMessage}` }
@@ -23,7 +27,8 @@ function readPrice(text: string, label: string, allowZero: boolean): Read {
   if (!hasAtMostTwoDecimals(value)) return { ok: false, message: `${label} en fazla iki ondalık basamak içerebilir.` }
   return { ok: true, value }
 }
-function readCount(text: string): Read {
+function readCount(text: string, loaded?: Loaded): Read {
+  if (loaded) return { ok: true, value: loaded.value }
   if (text.trim() === '') return { ok: true, value: null }
   const count = parseTrCount(text)
   if (!count.ok) return { ok: false, message: count.reason === 'fraction' ? 'Stok tam sayı olmalıdır.' : count.reason === 'negative' ? 'Stok negatif olamaz.' : 'Stok okunamadı; 1.250 gibi bir tam sayı girin.' }
@@ -44,10 +49,12 @@ export function applyQuickEditDraft(rows: readonly QuickEditDraftRow[], values: 
     const cells = values[row.key] ?? quickEditDraftValues(row)
     const label = labelOf(row)
     const fail = (message: string) => ({ ok: false as const, message: `${label}: ${message}` })
-    const stock = readCount(cells.stock); if (!stock.ok) return fail(stock.message)
-    const list = readPrice(cells.listPrice, 'Liste fiyatı', false); if (!list.ok) return fail(list.message)
-    const sale = readPrice(cells.salePrice, 'Satış fiyatı', false); if (!sale.ok) return fail(sale.message)
-    const cost = readPrice(cells.costPrice, 'Maliyet', true); if (!cost.ok) return fail(cost.message)
+    const start = quickEditDraftValues(row)
+    const kept = (field: keyof QuickEditDraftValues, value: number | null): Loaded => cells[field] === start[field] && cells[field].trim() !== '' ? { value } : undefined
+    const stock = readCount(cells.stock, kept('stock', row.stock)); if (!stock.ok) return fail(stock.message)
+    const list = readPrice(cells.listPrice, 'Liste fiyatı', false, kept('listPrice', row.listPrice)); if (!list.ok) return fail(list.message)
+    const sale = readPrice(cells.salePrice, 'Satış fiyatı', false, kept('salePrice', row.salePrice)); if (!sale.ok) return fail(sale.message)
+    const cost = readPrice(cells.costPrice, 'Maliyet', true, kept('costPrice', row.costPrice)); if (!cost.ok) return fail(cost.message)
     let nextStock = stock.value ?? row.stock
     let nextList = list.value
     let nextSale = sale.value

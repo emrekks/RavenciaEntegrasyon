@@ -1,4 +1,4 @@
-import { priceInputNumber } from './card-prices'
+import { readMoneyField } from './seeded-fields'
 import { parseProductDesi } from '../product-desi'
 
 // The product editor's required fields (owner, 10 Nov 2026: "bunlar zorunlu alandır, boş olamazlar"). Every save but
@@ -26,7 +26,7 @@ export type RequiredFieldsForm = Record<'title' | 'brandId' | 'categoryId' | 'mo
 
 const filled = (value: string) => value.trim() !== ''
 const positiveDesi = (value: string) => parseProductDesi(value) > 0
-const positivePrice = (value: string) => priceInputNumber(value) > 0
+const positivePrice = (key: 'listPrice' | 'salePrice', value: string) => readMoneyField(key, value) > 0
 
 // The eleven required fields in the order the page shows them, the same order as the server's list
 // (ProductRequiredFields.Fields, src/MarketplaceHub.Application/ProductRequiredFields.cs; a test holds them equal).
@@ -47,8 +47,8 @@ export function missingRequiredEditorFields(form: RequiredFieldsForm, options: {
     warrantyMonths: filled(form.warrantyMonths),
     deliveryDays: filled(form.deliveryDays),
     // Prices must be above 0, not only filled.
-    listPrice: positivePrice(form.listPrice),
-    salePrice: positivePrice(form.salePrice)
+    listPrice: positivePrice('listPrice', form.listPrice),
+    salePrice: positivePrice('salePrice', form.salePrice)
   }
   return REQUIRED_EDITOR_FIELDS.filter(field => !given[field])
 }

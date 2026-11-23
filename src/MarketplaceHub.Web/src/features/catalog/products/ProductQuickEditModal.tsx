@@ -8,7 +8,7 @@ import { RrIcon, RrModal } from '../../../shared/ui/rr-components'
 import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
-import { parseTrEntry, trEntryHelp } from '../../../shared/tr-number'
+import { parseTrEntry, parseTrMeasure, trEntryHelp } from '../../../shared/tr-number'
 import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, channelFollowMix, offerFollowsPanel, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { priceJumps } from '../price-jump'
@@ -257,8 +257,10 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         if (!handEdited && !bulked) continue
         // A cell reads by the one rule of this window (parseTrEntry: "1.250" is 1250), the rule its formatted text is
         // shown by; a cell it refuses stops the apply instead of being sent as another number.
-        const cellList = cell.list.trim() === '' ? null : parseTrEntry(cell.list)
-        const cellSale = cell.sale.trim() === '' ? null : parseTrEntry(cell.sale)
+        // A side still as loaded reads as the stored value (O2: a stored 99.999 is not refused); a typed side by the rule.
+        const cellRead = (text: string, start: string) => text.trim() === '' ? null : text === start ? parseTrMeasure(text) : parseTrEntry(text)
+        const cellList = cellRead(cell.list, original.list)
+        const cellSale = cellRead(cell.sale, original.sale)
         if ((cell.list.trim() !== '' && cellList === null) || (cell.sale.trim() !== '' && cellSale === null)) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${trEntryHelp}` }
         const prices = quickEditOfferPrices({ listPrice: cellList, salePrice: cellSale }, bulked ? read.list : null, bulked ? read.sale : null)
         if (!prices.ok) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${prices.message}` }
@@ -389,7 +391,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         const item = byId.get(variantId); const column = priceColumns.find(candidate => candidate.id === columnId)
         if (!item || !column) continue
         if (column.id !== PANEL_PRICE_CHOICE && !customChannels[column.id]) { done.push(key); continue }
-        const result = await writePriceCell({ column, followers: column.id === PANEL_PRICE_CHOICE ? followerColumns : [], variant: item.variant, connectionCount: connections.length, list: entry.value.list, sale: entry.value.sale, offerCreateKey: offerCreateKey(key) })
+        const result = await writePriceCell({ column, followers: column.id === PANEL_PRICE_CHOICE ? followerColumns : [], variant: item.variant, connectionCount: connections.length, list: entry.value.list, sale: entry.value.sale, loaded: entry.original, offerCreateKey: offerCreateKey(key) })
         if (result.ok) { done.push(key); priceSaved += 1 } else { if (result.stale) anyStale = true; errors[`p:${key}`] = result.message; failures.push({ sku: item.variant.sku, message: `${column.label} fiyatı: ${result.message}` }) }
       }
       priceDrafts.remove(done)
@@ -409,7 +411,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // off while one exists, and each cell tells its own problem.
   const draftErrors: Record<string, string> = {}
   for (const [id, entry] of stockDrafts.entries) { const parsed = parseStockInput(entry.value); if (parsed.kind === 'empty') draftErrors[`s:${id}`] = 'Stok boş bırakılamaz.'; else if (parsed.kind === 'invalid') draftErrors[`s:${id}`] = 'Stok sıfır veya pozitif bir tam sayı olmalıdır.' }
-  for (const [key, entry] of priceDrafts.entries) { const column = priceColumns.find(candidate => candidate.id === key.split('|')[1]); const checked = inlinePrices(column?.takesListPrice === false ? entry.value.sale : entry.value.list, entry.value.sale); if (!checked.ok) draftErrors[`p:${key}`] = checked.message }
+  for (const [key, entry] of priceDrafts.entries) { const column = priceColumns.find(candidate => candidate.id === key.split('|')[1]); const checked = inlinePrices(column?.takesListPrice === false ? entry.value.sale : entry.value.list, entry.value.sale, column?.takesListPrice === false ? { list: entry.original.sale, sale: entry.original.sale } : entry.original); if (!checked.ok) draftErrors[`p:${key}`] = checked.message }
   const cellError = (key: string) => draftErrors[key] || rowErrors[key] || ''
   const firstDraftError = Object.values(draftErrors)[0] ?? ''
   useEffect(() => {
@@ -609,11 +611,11 @@ async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<Qu
 }
 // One price draft written: the panel price (and the offers of the marketplaces that follow it) or one "Özel Fiyat"
 // channel's offer, at the versions loaded; nothing else here decides what is saved. Returns the reason when refused.
-async function writePriceCell({ column, followers, variant, connectionCount, list, sale, offerCreateKey }: { column: QuickPriceColumn; followers: ReadonlyArray<QuickPriceColumn>; variant: Variant; connectionCount: number; list: string; sale: string; offerCreateKey: string }): Promise<{ ok: true } | { ok: false; message: string; stale: boolean }> {
+async function writePriceCell({ column, followers, variant, connectionCount, list, sale, loaded, offerCreateKey }: { column: QuickPriceColumn; followers: ReadonlyArray<QuickPriceColumn>; variant: Variant; connectionCount: number; list: string; sale: string; loaded?: PriceDraft; offerCreateKey: string }): Promise<{ ok: true } | { ok: false; message: string; stale: boolean }> {
   const isPanel = column.id === PANEL_PRICE_CHOICE
   const target = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, column.id, connectionCount)
   if (target.kind === 'blocked') return { ok: false, message: target.reason, stale: false }
-  const prices = inlinePrices(column.takesListPrice ? list : sale, sale)
+  const prices = inlinePrices(column.takesListPrice ? list : sale, sale, loaded && (column.takesListPrice ? loaded : { list: loaded.sale, sale: loaded.sale }))
   if (!prices.ok) return { ok: false, message: prices.message, stale: false }
   try {
     if (target.kind === 'panel') {

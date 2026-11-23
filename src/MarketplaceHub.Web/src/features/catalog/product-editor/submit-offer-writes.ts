@@ -8,6 +8,7 @@ import { channelTakesListPrice, editorChannelOfferPrices, editorOfferUnchanged, 
 import { channelOfferWriteConcurrency } from './editor-helpers'
 import { editorCount, parseEditorNumber } from './editor-number'
 import { priceInputNumber } from './card-prices'
+import { channelFieldKey, readMoneyField } from './seeded-fields'
 import { rowsBySku, skuKey } from './submit-media-step'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
@@ -76,7 +77,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     const offerPrices = editorChannelOfferPrices({
       custom: connectionId in channelPricing,
       panel: { listPrice: row.listPrice, salePrice: row.salePrice },
-      card: { listPrice: priceInputNumber(pricing.listPrice), salePrice: priceInputNumber(pricing.salePrice) },
+      card: { listPrice: readMoneyField(channelFieldKey(connectionId, 'listPrice'), pricing.listPrice), salePrice: readMoneyField(channelFieldKey(connectionId, 'salePrice'), pricing.salePrice) },
       cardEdited: input.channelPriceEdited(connectionId),
       variantPrice: !platformUpdate && variantPricing ? { listPrice: priceInputNumber(variantPricing.listPrice), salePrice: priceInputNumber(variantPricing.salePrice) } : null,
       offer: platform,

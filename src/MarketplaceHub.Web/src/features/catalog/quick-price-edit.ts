@@ -1,7 +1,7 @@
 // Where a quick price change on the products list goes: the offer the variant has on the channel the person picked
 // (at the version the list loaded), or a new offer on that channel. The channel is always the person's choice; the
 // screen never prices a channel it picked by itself.
-import { parseTrCount, parseTrEntry, trEntryHelp, trNumberInput } from '../../shared/tr-number'
+import { parseTrCount, parseTrEntry, parseTrMeasure, trEntryHelp, trNumberInput } from '../../shared/tr-number'
 import { queryKeys } from '../../shared/api/query-keys'
 
 export type QuickPriceOffer = {
@@ -306,15 +306,20 @@ export function panelPriceTarget(variant: { id: string; version?: number | null;
 // price takes the sale price. The fields are read as Turkish ("1.250" is 1250, "1.250,50" is 1250.5); a value that
 // could mean two things is refused, never guessed.
 export const unreadablePriceMessage = trEntryHelp
-export function inlinePrices(list: string, sale: string): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
+// loaded: the cells' texts as they opened (O2). A side still holding its loaded text reads as the stored value, a stored
+// 99.999 included; only a side the person typed goes through the typed rule (at most two decimals).
+export function inlinePrices(list: string, sale: string, loaded?: { list: string; sale: string }): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
+  const untouched = (text: string, start: string | undefined) => start !== undefined && text === start && text.trim() !== ''
+  const read = (text: string, start: string | undefined) => untouched(text, start) ? parseTrMeasure(text) : parseTrEntry(text)
   if (sale.trim() === '') return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const salePrice = parseTrEntry(sale)
+  const salePrice = read(sale, loaded?.sale)
   if (salePrice === null) return { ok: false, message: unreadablePriceMessage }
   if (salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const listPrice = list.trim() === '' ? salePrice : parseTrEntry(list)
+  const listPrice = list.trim() === '' ? salePrice : read(list, loaded?.list)
   if (listPrice === null) return { ok: false, message: unreadablePriceMessage }
   if (listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
-  if (!hasAtMostTwoDecimals(listPrice) || !hasAtMostTwoDecimals(salePrice)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
+  const typedTooPrecise = (value: number, text: string, start: string | undefined) => !untouched(text, start) && !hasAtMostTwoDecimals(value)
+  if (typedTooPrecise(listPrice, list, loaded?.list) || typedTooPrecise(salePrice, sale, loaded?.sale)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
   return { ok: true, listPrice, salePrice }
 }
 

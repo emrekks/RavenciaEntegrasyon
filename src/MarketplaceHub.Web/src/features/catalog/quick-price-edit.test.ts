@@ -70,6 +70,14 @@ describe('panel price choice', () => {
     expect(hasAtMostTwoDecimals(19.99)).toBe(true)
   })
 
+  // O2: a cell still holding its loaded text reads as the stored value (four decimals included); only typed text is checked.
+  it('reads an untouched side as stored and checks only typed text', () => {
+    expect(inlinePrices('99,999', '12,3456', { list: '99,999', sale: '12,3456' })).toEqual({ ok: true, listPrice: 99.999, salePrice: 12.3456 })
+    expect(inlinePrices('99,999', '50', { list: '99,999', sale: '40' })).toEqual({ ok: true, listPrice: 99.999, salePrice: 50 })
+    expect(inlinePrices('99,999', '12,3456')).toMatchObject({ ok: false })
+    expect(inlinePrices('99,999', '50,125', { list: '99,999', sale: '40' })).toMatchObject({ ok: false })
+  })
+
   it('reads the typed prices as Turkish: a thousands point is never a decimal point', () => {
     expect(inlinePrices('1.250', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
     expect(inlinePrices('1.250,50', '1.199,90')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1199.9 })

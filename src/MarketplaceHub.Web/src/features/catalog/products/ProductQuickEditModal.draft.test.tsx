@@ -37,6 +37,14 @@ describe('applyQuickEditDraft', () => {
     expect(applyQuickEditDraft(rows, cells(), new Set(['b-s']), { ...noBulk, stockAction: 'SUBTRACT', stockAmount: '4' })).toMatchObject({ ok: false, message: expect.stringContaining('sıfırın altına') })
   })
 
+  // O2: a row loaded with a stored 99.999 price, a 12.3456 cost and a 2.5 stock applies untouched as it is.
+  it('keeps untouched four-decimal prices and a fractional stock as stored', () => {
+    const precise = [row('p', 'Bej', 'S', { listPrice: 99.999, salePrice: 12.3456, costPrice: 12.3456, stock: 2.5 })]
+    expect(applyQuickEditDraft(precise, cells(precise), new Set(), noBulk)).toEqual({ ok: true, changes: [] })
+    const typed = { p: { ...quickEditDraftValues(precise[0]), salePrice: '13' } }
+    expect(applyQuickEditDraft(precise, typed, new Set(), noBulk)).toEqual({ ok: true, changes: [{ key: 'p', stock: 2.5, listPrice: 99.999, salePrice: 13, costPrice: 12.3456 }] })
+  })
+
   it('keeps an emptied cost unknown (null), never 0', () => {
     const typed = cells(); typed['s-s'] = { ...typed['s-s'], costPrice: '' }
     expect(applyQuickEditDraft(rows, typed, new Set(), noBulk)).toEqual({ ok: true, changes: [{ key: 's-s', stock: 3, listPrice: 120, salePrice: 100, costPrice: null }] })

@@ -55,7 +55,10 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
   function channelPriceEdited(connectionId: string) {
     const base = channelPricingBase.current[connectionId]
     const draft = channelPricing[connectionId]
-    return !base || !draft || priceInputNumber(base.listPrice) !== priceInputNumber(draft.listPrice) || priceInputNumber(base.salePrice) !== priceInputNumber(draft.salePrice)
+    if (!base || !draft) return true
+    // Text first (O2): an untouched box is never edited, a stored 99.999 included (its text reads as NaN by the typed rule).
+    if (base.listPrice === draft.listPrice && base.salePrice === draft.salePrice) return false
+    return priceInputNumber(base.listPrice) !== priceInputNumber(draft.listPrice) || priceInputNumber(base.salePrice) !== priceInputNumber(draft.salePrice)
   }
   function updateChannelPrice(connectionId: string, field: keyof ChannelPricingDraft, value: string) {
     setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? emptyChannelPricingDraft), [field]: value } }))

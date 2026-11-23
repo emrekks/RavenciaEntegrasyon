@@ -12,7 +12,7 @@ import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { draftBlockingIssues, unreadableNumberIssues } from '../product-draft'
 import { editorVatRateIssue } from '../product-editor-state'
 import { MAX_VARIANTS } from './editor-helpers'
-import { priceInputNumber } from './card-prices'
+import { channelFieldKey, readMoneyField } from './seeded-fields'
 import { editorCount } from './editor-number'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { VariantDraft } from './editor-types'
@@ -142,7 +142,7 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
     if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
     for (const channel of input.selectedChannels) {
-      const listPrice = priceInputNumber(channel.draft.listPrice); const salePrice = priceInputNumber(channel.draft.salePrice)
+      const listPrice = readMoneyField(channelFieldKey(channel.id, 'listPrice'), channel.draft.listPrice); const salePrice = readMoneyField(channelFieldKey(channel.id, 'salePrice'), channel.draft.salePrice)
       if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || salePrice <= 0 || listPrice < salePrice) issues.push(`${channel.name} için liste fiyatı satış fiyatından küçük olamaz; satış fiyatı sıfırdan büyük olmalıdır.`)
     }
   }

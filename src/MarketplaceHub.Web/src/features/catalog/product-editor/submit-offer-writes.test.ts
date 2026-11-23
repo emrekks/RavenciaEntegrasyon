@@ -17,6 +17,7 @@ import { EMPTY_EDITOR_FORM } from './editor-form'
 import { offerConnectionIdsFor, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
 import type { Product, VariantPlatformStatus } from '../shared'
 import type { VariantDraft } from './editor-types'
+import { resetSeededFields, seedChannelFields } from './seeded-fields'
 
 const status = (connectionId: string, extra: Partial<VariantPlatformStatus> = {}) => ({ connectionId, platformCode: 'TRENDYOL', offerId: `o-${connectionId}`, offerVersion: 3, listPrice: 100, salePrice: 90, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, followsPanelPrice: true, offerStatus: 'ACTIVE', ...extra }) as VariantPlatformStatus
 const row = (key: string, extra: Partial<VariantDraft> = {}): VariantDraft => ({ key, optionSignature: key, options: {}, attributeValueIds: {}, sku: `SKU-${key}`, barcode: '', stock: 0, salePrice: 90, listPrice: 100, costPrice: null, mediaRefs: [], ...extra })
@@ -81,6 +82,15 @@ describe('runOfferWrites', () => {
   it('writes "1.250" staged in the variant price table as 1250', async () => {
     await runOfferWrites(input({ channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: '1.250', salePrice: '1.250' } } }))
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1250 }) }])
+  })
+
+  // O2: a marketplace card loaded with a stored 99.999 sends it as it is while untouched (never NaN, never skipped).
+  it('sends an untouched card loaded with a four-decimal price as stored', async () => {
+    resetSeededFields()
+    seedChannelFields({ ty: { listPrice: '99,999', salePrice: '99,999' } })
+    await runOfferWrites(input({ rows: [row('v1')], channelPricing: { ty: { listPrice: '99,999', salePrice: '99,999' } }, channelPriceDraft: () => ({ listPrice: '99,999', salePrice: '99,999' }) }))
+    expect(api.calls).toEqual([{ method: 'POST', path: '/channel-offers', ifMatch: null, body: expect.objectContaining({ listPrice: 99.999, salePrice: 99.999 }) }])
+    resetSeededFields()
   })
 
   it('says which variants had no price to write', async () => {
