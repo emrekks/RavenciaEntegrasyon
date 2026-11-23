@@ -46,8 +46,10 @@ export function useUnsavedChangesGuard(active: boolean) {
 // on the left ("3 Değişiklik · Kaydedilmedi", "Değişiklik Yok"), "Vazgeç" (drops the drafts; "Kapat" when there are none) and the
 // primary "Kaydet" on the right. Kaydet first shows one confirmation (what will change, where it goes); leaving with a draft asks
 // in the same place. On a page (variant "strip") it is a sticky strip with the same words.
-export function DraftSaveBar({ variant = 'strip', count, busy = false, invalid = '', summary, notice, leaving = false, onSave, onDiscard, onStay, onLeave, onClose }: {
+export function DraftSaveBar({ variant = 'strip', count, busy = false, invalid = '', lead, summary, notice, leaving = false, onSave, onDiscard, onStay, onLeave, onClose }: {
   variant?: 'strip' | 'foot'
+  // A short phrase before the status on a phone ("5 Seçili"); it is not drawn on a wide screen.
+  lead?: string
   count: number
   busy?: boolean
   // Why Kaydet is off (a draft that does not pass its checks); empty when it can be saved.
@@ -76,7 +78,7 @@ export function DraftSaveBar({ variant = 'strip', count, busy = false, invalid =
     return wrap(<>{summary}{notice ? <small>{notice}</small> : null}</>, <><button type="button" className="rr-btn" onClick={() => setConfirming(false)} disabled={busy}>Geri Dön</button><button type="button" className="rr-btn rr-primary rv-draftbar-save" disabled={busy} onClick={() => { setConfirming(false); onSave() }}>Onayla ve Kaydet</button></>, ' rv-draftbar-confirm')
   }
   return wrap(
-    count ? <><b>{count} Değişiklik</b> · {invalid || 'Kaydedilmedi'}</> : <>Değişiklik Yok</>,
+    <>{lead ? <span className="rv-draftbar-lead">{lead} · </span> : null}{count ? <><b>{count} Değişiklik</b> · {invalid || 'Kaydedilmedi'}</> : <>Değişiklik Yok</>}</>,
     <><button type="button" className="rr-btn" onClick={count ? onDiscard : onClose} disabled={busy}>{count ? 'Vazgeç' : 'Kapat'}</button><button type="button" className="rr-btn rr-primary rv-draftbar-save" disabled={busy || !count || Boolean(invalid)} title={invalid || undefined} onClick={() => setConfirming(true)}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button></>
   )
 }
