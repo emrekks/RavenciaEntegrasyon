@@ -23,6 +23,8 @@ export function ExchangeResendShipDialog({ claim, platformCode, marked, onClose,
       onDone(marked ? 'Değişim paketi Kargoya Verildi olarak işaretlendi.' : 'Kargoya Verildi işareti kaldırıldı.', 'success')
       await client.invalidateQueries({ queryKey: queryKeys.orders() })
       await client.invalidateQueries({ queryKey: queryKeys.returns() })
+      // The return's own detail carries the claim's version for its "Değişim Onaylandı" mark (scan O6, 23 Nov 2026).
+      await client.invalidateQueries({ queryKey: queryKeys.return(claim.id) })
       onClose()
     },
     onError: error => onDone(notificationError(error, 'Kargoya verildi işareti kaydedilemedi.').message, 'error')
