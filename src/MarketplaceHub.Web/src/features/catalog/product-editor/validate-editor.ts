@@ -13,6 +13,7 @@ import { draftBlockingIssues, unreadableNumberIssues } from '../product-draft'
 import { editorVatRateIssue } from '../product-editor-state'
 import { MAX_VARIANTS } from './editor-helpers'
 import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
+import { trEntryHelp } from '../../../shared/tr-number'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -43,6 +44,8 @@ export type EditorSaveValidationInput = EditorValidationInput & {
   copySourceVariants: ReadonlyArray<{ sku: string; barcode: string | null }> | null
   // The marketplaces picked for publishing, with their name and the card's price there.
   selectedChannels: Array<{ id: string; name: string; draft: ChannelPricingDraft }>
+  // Every marketplace switched to Özel Fiyat (its card price is its own), selected or not.
+  customChannels?: Array<{ id: string; name: string; draft: ChannelPricingDraft }>
 }
 
 export type EditorValidationMode =
@@ -78,9 +81,17 @@ const invalidMediaUrlIssue = (urls: string[]) => {
   return invalid ? `Görsel bağlantısı geçersiz: ${invalid} Ürün kaydedilmeden önce düzeltin veya kaldırın.` : null
 }
 
+// O1: a filled Özel Fiyat card price the typed rule refuses ("1.25") stops every save, a draft too, before anything is
+// written: otherwise the product was saved, its offers skipped with the wrong notice and the choice stored without a price.
+// An empty box stays with the existing rules; an untouched loaded price is never refused (seeded-fields.ts).
+function customChannelIssues(input: EditorSaveValidationInput): string[] {
+  return (input.customChannels ?? []).flatMap(channel => (['listPrice', 'salePrice'] as const).some(field => channel.draft[field].trim() !== '' && !Number.isFinite(readMoneyField(channelFieldKey(channel.id, field), channel.draft[field])))
+    ? [`${channel.name} Özel Fiyat: ${trEntryHelp}`] : [])
+}
+
 // A draft is stopped only by values the server refuses (clashing codes, malformed prices or image links).
 function draftIssues(input: EditorSaveValidationInput) {
-  const issues = draftBlockingIssues(input.rows, input.form)
+  const issues = [...draftBlockingIssues(input.rows, input.form), ...customChannelIssues(input)]
   const media = invalidMediaUrlIssue(rowMediaUrls(input))
   if (media) issues.push(media)
   const warranty = warrantyIssue(input.form)
@@ -90,7 +101,7 @@ function draftIssues(input: EditorSaveValidationInput) {
 
 function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: boolean, requirePublicationReadiness: boolean) {
   const { form, rows, variantAttributeIds, webColor, webColorRequirement, attributeSelections, attributeTextValues } = input
-  const issues: string[] = []; const requirementList = input.requirements
+  const issues: string[] = [...customChannelIssues(input)]; const requirementList = input.requirements
   if (requireCompleteCatalog && (variantAttributeIds.length > 2 || variantAttributeIds.some(id => { const requirement = requirementList.find(item => item.attributeId === id); return !requirement || !isOptionRequirement(requirement) }))) issues.push('Varyant için en fazla 2 seçenek başlığı kullanılabilir.')
   if (requireCompleteCatalog && !webColor.autoEnabled && (!webColorRequirement || !webColor.manualValueId)) issues.push('Manuel Web Color aktarımı için gönderilecek panel renk değerini seçin.')
   if (!webColor.autoEnabled && webColorRequirement && webColor.manualValueId && !webColorRequirement.attribute.values.some(value => value.id === webColor.manualValueId)) issues.push('Manuel Web Color için seçilen değer geçerli değil.')

@@ -77,6 +77,15 @@ describe('validateEditor', () => {
     expect(validateEditor(input, { kind: 'save', requireCompleteCatalog: true, requirePublicationReadiness: false }).issues).toEqual([])
   })
 
+  // O1: an unreadable Özel Fiyat card price stops a draft and every save; an empty one is left to the existing rules.
+  it('stops a draft and a save on an unreadable Özel Fiyat card price, not on an empty one', () => {
+    const customChannels = [{ id: 'ty', name: 'Trendyol', draft: { listPrice: '1.25', salePrice: '' } }]
+    const message = expect.stringContaining('Trendyol Özel Fiyat: Fiyat okunamadı')
+    expect(validateEditor(saveInput({ form: { ...EMPTY_EDITOR_FORM, title: 'Taslak' }, customChannels }), { kind: 'draft' }).issues).toEqual([message])
+    expect(validateEditor(saveInput({ form: complete, customChannels }), { kind: 'save', requireCompleteCatalog: false, requirePublicationReadiness: false }).issues).toContainEqual(message)
+    expect(validateEditor(saveInput({ form: { ...EMPTY_EDITOR_FORM, title: 'Taslak' }, customChannels: [{ id: 'ty', name: 'Trendyol', draft: { listPrice: '', salePrice: '' } }] }), { kind: 'draft' }).issues).toEqual([])
+  })
+
   it('stops a draft only on what the server refuses', () => {
     expect(validateEditor(saveInput({ form: { ...EMPTY_EDITOR_FORM, title: 'Taslak' } }), { kind: 'draft' }).issues).toEqual([])
     expect(validateEditor(saveInput({ rows: [row({ sku: '' })], form: { ...EMPTY_EDITOR_FORM, warrantyMonths: '300' } }), { kind: 'draft' }).issues).toEqual([

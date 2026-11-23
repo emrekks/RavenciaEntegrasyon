@@ -405,6 +405,22 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     expect(JSON.stringify(writes)).not.toContain('onHand')
   })
 
+  // O1: "1.25" in an Özel Fiyat card let a plain Kaydet save the product and store the choice without a price. Now no
+  // request goes out at all, and the reason names the marketplace.
+  it.each(['1.25', '1,250'])('sends nothing when an Özel Fiyat card holds "%s"', async typed => {
+    await renderAt('/products/p1')
+    await click(q('button.marketplace-pricing-open'))
+    await click(q('input[aria-label="Trendyol Mağaza için özel fiyat"]'))
+    await settle()
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')]
+    setValue(inputs[0], typed)
+    setValue(inputs[1], '120')
+    await settle()
+    await submit('save')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+    expect(JSON.stringify(fixture.state.toasts)).toContain('Trendyol Mağaza Özel Fiyat: Fiyat okunamadı')
+  })
+
   it('update with a stock and cost change', async () => {
     await renderAt('/products/p1')
     setValue(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S stok"]'), '9')
