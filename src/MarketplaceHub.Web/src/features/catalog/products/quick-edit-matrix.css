@@ -96,17 +96,17 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-color::after { content: "Tümü"; padding: 0 8px; color: var(--rr-muted); font-size: 12.5px; font-weight: 500; line-height: 28px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-color:has(input:checked)::after { color: var(--rr-primary); font-weight: 600; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-color:has(input[data-mixed])::after { content: "Bir Kısmı"; color: var(--rr-primary); }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: stretch; gap: 8px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: stretch; gap: 6px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-gap { height: 1px; }
   /* Cell: label and box share one grid cell; the label is the prefix inside the box. */
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-pair { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 44px; gap: 0; padding: 0; background: none; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-pair > * { grid-area: 1 / 1; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-size { z-index: 1; align-self: stretch; justify-self: start; justify-content: center; width: 44px; min-height: 0; padding: 0; color: var(--rr-muted); font-size: 13px; font-weight: 600; line-height: 1; border-right: 1px solid var(--rr-line); border-radius: 7px 0 0 7px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-size { z-index: 1; align-self: stretch; justify-self: start; justify-content: center; width: 40px; min-height: 0; padding: 0; color: var(--rr-muted); font-size: 13px; font-weight: 600; line-height: 1; border-right: 1px solid var(--rr-line); border-radius: 7px 0 0 7px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row:not(.rr-cr-hrow) .rr-cr-pair.rr-on .rr-cr-size { color: var(--rr-primary); background: var(--rr-primary-soft); border-right-color: var(--rr-primary); }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair.rr-on .rr-mx-in { border-color: var(--rr-primary); }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-box { width: 100%; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in { width: 100%; height: 44px; padding: 0 10px 0 54px; font-size: 16px; text-align: right; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 100%; padding: 0 10px 0 54px; color: var(--rr-subtle); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 16px; line-height: 42px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in { width: 100%; height: 44px; padding: 0 8px 0 44px; font-size: 16px; text-align: right; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 100%; padding: 0 8px 0 44px; color: var(--rr-subtle); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 16px; line-height: 42px; }
   /* Head: value band as a small title, then one line of pills. */
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band { min-height: 28px; padding: 0 2px; background: none; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band > span { display: none; }

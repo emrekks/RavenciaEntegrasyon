@@ -510,10 +510,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
 function QuickEditCustomToggle({ column, custom, onChange, compact = false, className }: { column: QuickPriceColumn; custom: boolean; onChange: (custom: boolean) => void; compact?: boolean; className?: string }) {
   return <label className={`rr-qt-custom${custom ? ' rr-on' : ''}${className ? ` ${className}` : ''}`} title={custom ? `${column.label}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${column.label}: ana fiyatla satılır; panel fiyatı kaydedilince bu pazaryerinin fiyatı da aynı değere güncellenir.`}><input type="checkbox" role="switch" className="rr-qt-switch" checked={custom} onChange={event => onChange(event.currentTarget.checked)} aria-label={`${column.label} özel fiyat`} />{!compact && <b>{column.label}</b>}<span>Özel Fiyat</span></label>
 }
+// On a phone a whole price is shown without its ",00" so it fits a narrow cell (display only; the value is unchanged).
+const shortOnPhone = (text: string) => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches ? text.replace(/,00$/, '') : text
 // A price field: the number as typed while focused, Turkish money digits ("1.249,90") otherwise.
 function QuickPriceInput({ value, onValue, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & { value: string; onValue: (value: string) => void } & Record<string, unknown>) {
   const [focused, setFocused] = useState(false)
-  return <input {...props} type="text" inputMode="decimal" autoComplete="off" value={focused ? value : formatPriceField(value)} onFocus={event => { setFocused(true); props.onFocus?.(event) }} onBlur={event => { setFocused(false); props.onBlur?.(event) }} onChange={event => onValue(event.target.value)} />
+  return <input {...props} type="text" inputMode="decimal" autoComplete="off" value={focused ? value : shortOnPhone(formatPriceField(value))} onFocus={event => { setFocused(true); props.onFocus?.(event) }} onBlur={event => { setFocused(false); props.onBlur?.(event) }} onChange={event => onValue(event.target.value)} />
 }
 // The panel price written to the marketplaces that follow it (no "Özel Fiyat"): each existing offer of the variant
 // there, at the version loaded, through the same channel offer update as a marketplace's own cell. Returns what failed.

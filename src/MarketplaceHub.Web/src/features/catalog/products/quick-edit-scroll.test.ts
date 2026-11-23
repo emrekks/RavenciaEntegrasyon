@@ -25,10 +25,10 @@ describe('quick edit colour list styles', () => {
 
 describe('quick edit on a phone', () => {
   const phone = css.slice(css.lastIndexOf('@media (max-width: 760px) {'))
-  it('makes a cell one field: the size label is a 44 px prefix inside the 44 px box with the value on the right in 16 px', () => {
+  it('makes a cell one field: the size label is a 44 px prefix (40 px) inside the 44 px box with the value on the right in 16 px', () => {
     expect(phone).toContain('.rr-cr-pair > * { grid-area: 1 / 1; }')
-    expect(phone).toMatch(/\.rr-cr-size \{[^}]*width: 44px/)
-    expect(phone).toContain('height: 44px; padding: 0 10px 0 54px; font-size: 16px; text-align: right')
+    expect(phone).toMatch(/\.rr-cr-size \{[^}]*width: 40px/)
+    expect(phone).toContain('height: 44px; padding: 0 8px 0 44px; font-size: 16px; text-align: right')
   })
   it('draws no circles: the colour has a Tümü / Bir Kısmı word and the head is a line of pills', () => {
     expect(phone).toContain('.rr-cr-color::after { content: "Tümü"')
