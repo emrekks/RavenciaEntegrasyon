@@ -213,6 +213,19 @@ describe('ProductQuickEditModal price mode tabs', () => {
     expect(band()).toBe('Stok (Adet)')
   })
 
+  it('keeps what was typed for a value when another value is shown, and marks it with a dot', async () => {
+    await renderPrices()
+    const amount = () => document.body.querySelector<HTMLInputElement>('.rr-qe-applyrow input[aria-label="Satış Fiyatı (₺)"]')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(amount(), '150'); amount().dispatchEvent(new Event('input', { bubbles: true })) })
+    await pickValue('Panel', 'Liste')
+    expect(document.body.querySelector<HTMLInputElement>('.rr-qe-applyrow input[aria-label="Liste Fiyatı (₺)"]')!.value).toBe('')
+    await act(async () => { valueTrigger().click() })
+    expect(Array.from(document.body.querySelectorAll('.pm-pop .rr-mx-dot')).length).toBeGreaterThan(0)
+    await act(async () => { document.body.querySelector<HTMLElement>('.pm-pop [role="option"]')!.click() })
+    await pickValue('Panel', 'Satış')
+    expect(amount().value).toBe('150')
+  })
+
   it('puts the Özel Fiyat switch beside a marketplace value only', async () => {
     await renderPrices()
     expect(document.body.querySelector('.rr-mx-tabs input[role="switch"]')).toBeNull()

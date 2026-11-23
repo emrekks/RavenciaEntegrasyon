@@ -66,7 +66,6 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const products = draftProducts ?? savedProducts
   const [draftValues, setDraftValues] = useState<Record<string, QuickEditDraftValues>>(() => Object.fromEntries((draft?.rows ?? []).map(row => [row.key, quickEditDraftValues(row)])))
   const setDraftValue = (key: string, field: keyof QuickEditDraftValues, value: string) => { setNotice(''); setDraftValues(current => ({ ...current, [key]: { ...current[key], [field]: value } })) }
-  const [costAmount, setCostAmount] = useState('')
   // Typing in the table makes drafts only (owner, 18 Nov 2026): nothing is saved, and nothing goes to a marketplace, until
   // the person presses Kaydet in the bar and confirms. Tümüne Uygula fills drafts too.
   const stockDrafts = useDraftEdits<string>()
@@ -100,7 +99,6 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const colorLabels = sortedVariants.reduce<Record<string, string>>((result, item) => { const key = colorOf(item); result[key] ??= formatCatalogOptionLabel(colorLabelOf(item)); return result }, {})
   const colorOptions = Object.keys(groups).sort((left, right) => compareLabelsAlphabetically(colorLabels[left] || left, colorLabels[right] || right))
   const [selectionDraft, setSelectionDraft] = useState<string[]>([])
-  const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
   // Where a price change goes: the panel's own price (preset: it sends nothing to a marketplace) or one channel the
   // person picks (its offer updated, or created when the variant has none there). The screen never picks a channel.
@@ -124,6 +122,16 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     ]
   const [activeTabId, setActiveTabId] = useState(mode === 'price' ? `${PANEL_PRICE_CHOICE}:sale` : '')
   const activeTab = valueTabs.find(item => item.id === activeTabId) ?? valueTabs[0]
+  // What is typed in step 2 is kept per value: switching the value never loses it, and Uygula applies the shown value's only
+  // (the editor's window has one set, applied together). A dot on the value list marks the values holding a typed amount.
+  type Bulk = { list: string; sale: string; cost: string; stock: string }
+  const emptyBulk: Bulk = { list: '', sale: '', cost: '', stock: '' }
+  const [bulk, setBulk] = useState<Record<string, Bulk>>({})
+  const bulkKey = draft ? 'draft' : activeTab?.id ?? ''
+  const bulkNow = bulk[bulkKey] ?? emptyBulk
+  const setBulkField = (field: keyof Bulk) => (value: string) => setBulk(current => ({ ...current, [bulkKey]: { ...(current[bulkKey] ?? emptyBulk), [field]: value } }))
+  const { list: listPrice, sale: salePrice, cost: costAmount, stock: stockAmount } = bulkNow
+  const setListPrice = setBulkField('list'); const setSalePrice = setBulkField('sale'); const setCostAmount = setBulkField('cost'); const setStockAmount = setBulkField('stock')
   const activeColumn = activeTab?.kind === 'price' ? priceColumns.find(column => column.id === activeTab.columnId) : undefined
   const activeChannel = activeColumn && activeColumn.id !== PANEL_PRICE_CHOICE ? activeColumn : undefined
   const priceConnectionId = activeColumn?.id ?? PANEL_PRICE_CHOICE
@@ -320,13 +328,13 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const valueKind: 'stock' | 'cost' | 'list' | 'sale' = !activeTab || activeTab.field === 'stock' ? 'stock' : activeTab.field === 'costPrice' ? 'cost' : activeTab.field === 'list' || activeTab.field === 'listPrice' ? 'list' : 'sale'
   const valueHeading = valueKind === 'stock' ? 'Stok (Adet)' : valueKind === 'cost' ? 'Maliyet (₺)' : valueKind === 'list' ? 'Liste Fiyatı (₺)' : 'Satış Fiyatı (₺)'
   const stepTwoTitle = valueKind === 'stock' ? 'Stok Değerini Düzenle' : valueKind === 'cost' ? 'Maliyeti Düzenle' : valueKind === 'list' ? 'Liste Fiyatını Düzenle' : 'Satış Fiyatını Düzenle'
-  // A marketplace window applies one value at a time, so a typed amount does not carry over to the next value; the editor's window keeps what was typed (a dot marks the values holding one) and applies them together.
-  const changeValue = (id: string) => { setActiveTabId(id); if (!draft) { setListPrice(''); setSalePrice(''); setCostAmount(''); setStockAmount('') } }
+  const changeValue = (id: string) => setActiveTabId(id)
   const valueBand = activeTab ? <>{activeChannel && <PlatformSquareMark code={connections.find(connection => connection.id === activeChannel.id)?.platformCode} name={activeChannel.label} size="sm" />}{activeChannel ? `${activeChannel.label} · ` : ''}{valueHeading}</> : null
   const priceField = (label: string, value: string, set: (value: string) => void, className?: string) => <label className={`rr-fld${className ? ` ${className}` : ''}`}><small>{label}</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={value} onChange={event => set(event.target.value)} placeholder="Değiştirme" aria-label={label} /></label>
   const valueFields = valueKind === 'stock' ? null : valueKind === 'cost' ? priceField(valueHeading, costAmount, setCostAmount, 'rr-qe-f140') : valueKind === 'list' ? priceField(valueHeading, listPrice, setListPrice, 'rr-qe-f140') : priceField(valueHeading, salePrice, setSalePrice, 'rr-qe-f140')
   const stockFields = <><label className="rr-fld rr-qe-f200"><small>Stok İşlemi</small><PanelSelect ariaLabel="Stok İşlemi" value={stockAction} onChange={setStockAction} options={[{ value: 'SET', label: 'Bu Sayıya Eşitle' }, { value: 'ADD', label: 'Bu Kadar Ekle (+)' }, { value: 'SUBTRACT', label: 'Bu Kadar Çıkar (−)' }]} /></label><label className="rr-fld rr-qe-f120"><small>Miktar (Adet)</small><input className="rr-in rr-num" type="text" inputMode="numeric" autoComplete="off" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" aria-label="Miktar (Adet)" /></label></>
-  const tabHasDraft = (tab: ValueTab) => tab.kind === 'stock' ? stockDrafts.count > 0 : tab.kind === 'price' ? [...priceDrafts.entries].some(([key, entry]) => key.endsWith(`|${tab.columnId}`) && entry.value[tab.field as 'sale' | 'list'] !== entry.original[tab.field as 'sale' | 'list']) : (tab.field === 'stock' ? stockAmount : tab.field === 'costPrice' ? costAmount : tab.field === 'listPrice' ? listPrice : salePrice).trim() !== ''
+  const typedFor = (tab: ValueTab) => { const typed = bulk[draft ? 'draft' : tab.id] ?? emptyBulk; return (tab.field === 'stock' ? typed.stock : tab.field === 'costPrice' ? typed.cost : tab.field === 'listPrice' || tab.field === 'list' ? typed.list : typed.sale).trim() !== '' }
+  const tabHasDraft = (tab: ValueTab) => typedFor(tab) || (tab.kind === 'stock' ? stockDrafts.count > 0 : tab.kind === 'price' ? [...priceDrafts.entries].some(([key, entry]) => key.endsWith(`|${tab.columnId}`) && entry.value[tab.field as 'sale' | 'list'] !== entry.original[tab.field as 'sale' | 'list']) : false)
   // The one list of what can be edited, grouped by marketplace (the panel first); a value holding a draft carries a dot.
   const channelCodeOf = (columnId?: string) => connections.find(connection => connection.id === columnId)?.platformCode
   const valueText = (tab: ValueTab) => tab.kind === 'price' && !draft ? tab.label : tab.label
