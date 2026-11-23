@@ -437,7 +437,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
         public Task<ServiceResult<InstantNotificationView>> StatusAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<InstantNotificationView>> EnableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken, string? clientSecret = null) => throw new NotSupportedException();
-        public Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<InstantNotificationView>> RestorePreviousAsync(Guid tenantId, Guid connectionId, DateTimeOffset? expectedPreparedAt, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<InstantNotificationView>> AdoptFromInactiveAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<int> ReactivatePassiveAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<string?> PauseForInactiveConnectionAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken) => throw new NotSupportedException();
