@@ -43,7 +43,7 @@ const sources: Record<string, string> = {
   BULK_EDIT: 'Toplu Düzenleme',
   PRICE_EDIT: 'Fiyat Düzenleme',
   FILE_IMPORT: 'Excel',
-  MARKETPLACE_IMPORT: 'Pazaryeri İçe Aktarımı',
+  MARKETPLACE_IMPORT: 'Pazaryerinden Çekim',
   PUBLISH: 'Toplu Yayın',
   CLASSIC_IMPORT: 'İçe Aktarım',
   QUICK_UPDATE: 'Hızlı Güncelle',

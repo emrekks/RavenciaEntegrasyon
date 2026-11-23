@@ -39,7 +39,7 @@ const triggers: Record<string, string> = {
   ORDER: 'Sipariş',
   MANUAL_STOCK: 'Manuel Stok',
   PRICE_EDIT: 'Fiyat Değişikliği',
-  STOCK_IMPORT: 'Pazaryeri Stok Aktarımı',
+  STOCK_IMPORT: 'Pazaryeri Stok Çekimi',
   STOCK_CHANGE: 'Stok Değişikliği',
   RECONCILE: 'Kontrol Taraması',
   PANEL_SEND: 'Panelden Gönderim',
@@ -47,11 +47,11 @@ const triggers: Record<string, string> = {
 }
 
 // Otomatik: the panel sent it on its own after an order, a stock change or a check; Panelden: someone changed or sent
-// it by hand; Aktarım: stock read from a marketplace and passed on.
+// it by hand; Çekim: stock read from a marketplace and passed on.
 export const sendLogTriggerGroups: SendLogOptionGroup[] = [
   { label: 'Otomatik', values: ['ORDER', 'STOCK_CHANGE', 'AUTOMATIC', 'RECONCILE'] },
   { label: 'Panelden', values: ['PANEL_SEND', 'MANUAL_STOCK', 'PRICE_EDIT'] },
-  { label: 'Aktarım', values: ['STOCK_IMPORT'] }
+  { label: 'Çekim', values: ['STOCK_IMPORT'] }
 ]
 
 /** The result's label; an unknown code is shown as it came. */

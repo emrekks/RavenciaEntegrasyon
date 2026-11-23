@@ -4,10 +4,10 @@ import { productImportChoiceSummary, productImportModeDescription, productImport
 describe('product import price and stock choices', () => {
   it('writes the started toast as sentences, never a chain of fragments', () => {
     const message = productImportStartedMessage({ connectionCount: 1, scope: 'full', includeArchived: true, includeDrafts: false, includePendingApproval: true, contentChoice: false, priceStock: null })
-    expect(message).toBe('Mağazadaki tüm ürünler, arşivdekiler ve onay bekleyenler dahil, panele aktarılıyor. Paneldeki mevcut ürün bilgileri değişmeyecek. İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.')
+    expect(message).toBe('Mağazadaki tüm ürünler, arşivdekiler ve onay bekleyenler dahil, panele çekiliyor. Paneldeki mevcut ürün bilgileri değişmeyecek. İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.')
     expect(message).not.toContain('·')
     expect(productImportStartedMessage({ connectionCount: 2, scope: 'existing', includeArchived: false, includeDrafts: false, includePendingApproval: false, contentChoice: true, priceStock: { updatePrices: true, updateStock: false } }))
-      .toBe('2 mağazadaki mevcut ürünlerin bilgileri panele aktarılıyor. Paneldeki mevcut ürün bilgileri güncellenecek. Mevcut fiyatlar güncellenecek, mevcut stoklar korunacak. İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.')
+      .toBe('2 mağazadaki mevcut ürünlerin bilgileri panele çekiliyor. Paneldeki mevcut ürün bilgileri güncellenecek. Mevcut fiyatlar güncellenecek, mevcut stoklar korunacak. İlerlemeyi İşlem Takibi’nden izleyebilirsiniz.')
   })
 
   it('asks for confirmation only when something is overwritten, and names what', () => {
@@ -15,7 +15,7 @@ describe('product import price and stock choices', () => {
     expect(productImportOverwriteConfirmation(true, false)?.title).toBe('Panel Fiyatları Değiştirilsin mi?')
     // Prices only: no word of overwriting the stock; the new panel price goes to the other marketplaces with the next stock move.
     expect(productImportOverwriteConfirmation(true, false)?.message).not.toContain('Panel ana stoktur')
-    expect(productImportOverwriteConfirmation(true, false)?.message).toContain('Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine stokla birlikte bu fiyatla gider (bu aktarım stoğu da değiştiriyorsa hemen).')
+    expect(productImportOverwriteConfirmation(true, false)?.message).toContain('Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine stokla birlikte bu fiyatla gider (bu çekim stoğu da değiştiriyorsa hemen).')
     expect(productImportOverwriteConfirmation(true, true, { variants: 3617, otherOffers: 12000 })?.message).toContain('En çok 3.617 bedenin panel fiyatı değişecek; 12.000 pazaryeri kaydı panel fiyatına çekilecek.')
     expect(productImportOverwriteConfirmation(true, false, null)?.message).not.toContain('En çok')
     expect(productImportOverwriteConfirmation(false, true)?.title).toBe('Panel Stokları Değiştirilsin mi?')

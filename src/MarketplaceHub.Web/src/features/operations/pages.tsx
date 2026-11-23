@@ -226,7 +226,7 @@ function JobProgressSummary({ job, read }: { job: JobSummary; read: JobReadSumma
   return <section className="jobs-reference-progress-summary" aria-labelledby="job-progress-title">
     <div className="jobs-reference-progress-heading">
       <div>
-        <span className="jobs-reference-section-kicker">{productSync ? 'Ürün Aktarım Özeti' : 'İşlem İlerlemesi'}</span>
+        <span className="jobs-reference-section-kicker">{productSync ? 'Ürün Çekim Özeti' : 'İşlem İlerlemesi'}</span>
         <h3 id="job-progress-title">Pazaryerinden Alınan Kayıtların Sonucu</h3>
       </div>
       <strong>{percent === null ? '—' : `%${percent}`}</strong>
@@ -253,7 +253,7 @@ function JobFailureReasons({ job, reasons }: { job: JobSummary; reasons: JobFail
   const explained = reasons?.reduce((total, reason) => total + reason.affectedRecords, 0) ?? 0
   const unclassified = Math.max(0, job.progressFailed - explained)
   return <section className="jobs-reference-failure-reasons" aria-labelledby="job-failure-reasons-title">
-    <div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Hata İncelemesi</span><h3 id="job-failure-reasons-title">Ürünler Neden Aktarılamadı?</h3></div><span>{formatJobCount(job.progressFailed)} başarısız ürün</span></div>
+    <div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Hata İncelemesi</span><h3 id="job-failure-reasons-title">Ürünler Neden Çekilemedi?</h3></div><span>{formatJobCount(job.progressFailed)} başarısız ürün</span></div>
     {reasons?.length ? <>
       <div className="jobs-reference-failure-reason-list">{reasons.map(reason => <article key={reason.key}>
         <div className="jobs-reference-failure-reason-heading"><strong>{reason.title}</strong><b>{formatJobCount(reason.affectedRecords)} ürün</b></div>
@@ -261,7 +261,7 @@ function JobFailureReasons({ job, reasons }: { job: JobSummary; reasons: JobFail
         {reason.sampleProductIds.length > 0 && <small>Örnek pazaryeri ürün no: {reason.sampleProductIds.join(', ')}</small>}
         <details><summary>Teknik Ayrıntı</summary><code>{reason.technicalDetail}</code></details>
       </article>)}</div>
-      {unclassified > 0 && <p className="jobs-reference-failure-unclassified">{formatJobCount(unclassified)} ürün için ayrıntılı hata kaydı henüz bulunamadı. Hata sayısı, içe aktarılamayan ürün grupları ilerledikçe artar.</p>}
+      {unclassified > 0 && <p className="jobs-reference-failure-unclassified">{formatJobCount(unclassified)} ürün için ayrıntılı hata kaydı henüz bulunamadı. Hata sayısı, çekilemeyen ürün grupları ilerledikçe artar.</p>}
     </> : <p className="jobs-reference-failure-unclassified">Hata sayısı, ürünlerin model grupları veritabanına kaydedilirken yükseliyor. Bu işlem için ayrıntılı neden kaydı bulunamadı; sonraki denemelerde nedenler burada gösterilecek.</p>}
   </section>
 }

@@ -118,7 +118,7 @@ describe('JobChanges', () => {
 
     expect(text).toContain('Panelde Değişenler')
     expect(text).toContain('Fiyatı Değişen0')
-    expect(text).toContain('Bu aktarımda panelde fiyatı veya stoğu değişen varyant bulunmadı.')
+    expect(text).toContain('Bu çekimde panelde fiyatı veya stoğu değişen varyant bulunmadı.')
   })
 
   it('pages the list 25 at a time, filters by a count chip and goes back to page 1 when the filter changes', async () => {
@@ -171,7 +171,7 @@ describe('job-changes helpers', () => {
     expect(jobChangesOutcomeText(null)).toBeNull()
     expect(jobChangeSourceLabel({ source: 'MANUAL_STOCK', result: 'APPLIED' })).toBe('Elle Stok')
     expect(jobChangeSourceLabel({ source: 'ORDER', result: 'APPLIED' })).toBe('Sipariş')
-    expect(jobChangeSourceLabel({ source: 'MARKETPLACE_IMPORT', result: 'CHANGED' })).toBe('Pazaryeri İçe Aktarımı')
+    expect(jobChangeSourceLabel({ source: 'MARKETPLACE_IMPORT', result: 'CHANGED' })).toBe('Pazaryerinden Çekim')
   })
 
   it('shows a refusal with the marketplace’s reason and the difference with its sign', () => {
