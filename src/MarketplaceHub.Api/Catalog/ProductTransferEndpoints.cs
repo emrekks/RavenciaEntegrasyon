@@ -18,7 +18,7 @@ internal static class ProductTransferEndpoints
     public static RouteGroupBuilder MapProductTransferEndpoints(this RouteGroupBuilder api)
     {
         api.MapGet("/products/transfer/summary", SummaryAsync).Produces<ProductTransferSummaryView>();
-        api.MapGet("/products/transfer/export.xlsx", ExportAsync).ProducesFile(XlsxMediaType);
+        api.MapGet("/products/transfer/export.xlsx", ExportAsync).WithExportLimit().ProducesFile(XlsxMediaType);
         api.MapPost("/products/transfer/import", PreviewAsync).DisableAntiforgery().Produces<ProductTransferImportPreview>().Idempotent("reads the uploaded file and answers a preview; it stores nothing");
         api.MapPost("/products/transfer/apply", ApplyAsync).RequireIdempotencyKey().Produces<ProductTransferApplyResult>();
         return api;

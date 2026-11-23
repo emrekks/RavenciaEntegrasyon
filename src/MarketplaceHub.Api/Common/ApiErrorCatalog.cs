@@ -48,6 +48,7 @@ public static class ApiErrorCatalog
         new("EVIDENCE_TOO_LARGE", 413, "İade kanıtı en fazla 10 MiB olabilir."),
         new("EVIDENCE_TYPE_UNSUPPORTED", 415, "Yalnız gerçek PDF, JPEG veya PNG iade kanıtı kabul edilir."),
         new("EXPLICIT_CONFIRMATION_REQUIRED", 422, "Bu tek seferlik dış fatura iletimi için açık onay zorunludur."),
+        new("EXPORT_BUSY", 429, "Dışa Aktarım Sürüyor: aynı anda en fazla … Excel dosyası hazırlanabilir; biri bitince tekrar deneyin."),
         new("IDEMPOTENCY_IN_PROGRESS", 409, "Aynı idempotent istek eşzamanlı olarak işleniyor."),
         new("IDEMPOTENCY_KEY_CONFLICT", 400, "Idempotency-Key ile X-Idempotency-Key aynı değeri taşımalıdır."),
         new("IDEMPOTENCY_KEY_INVALID", 400, "Idempotency-Key en fazla 256 karakterdir."),
