@@ -11,6 +11,7 @@ import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockIn
 import { parseTrEntry, trEntryHelp } from '../../../shared/tr-number'
 import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, channelFollowMix, offerFollowsPanel, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
+import { priceJumps } from '../price-jump'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { applyQuickEditDraft, quickEditDraftValues, type QuickEditDraftChange, type QuickEditDraftRow, type QuickEditDraftValues } from './quick-edit-draft'
 import { PanelSelect, type PanelSelectOption } from '../../../shared/PanelSelect'
@@ -421,7 +422,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     return () => document.removeEventListener('keydown', press)
   }, [draft])
   const requestClose = () => { if (unsaved) setConfirmClose(true); else onClose() }
-  const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.</>
+  // A price falling below half or rising above three times its value is named in Kaydet's confirmation (priceJumps).
+  const jumpLines = priceJumps([...priceDrafts.entries].flatMap(([key, entry]) => (['sale', 'list'] as const).flatMap(field => {
+    const after = entry.value[field] === entry.original[field] ? null : parseTrEntry(entry.value[field])
+    return after == null ? [] : [{ key: key.split('|')[0], before: parseTrEntry(entry.original[field]), after }]
+  }))).lines
+  const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.{jumpLines.map(text => <span key={text} className="rv-draftbar-warn" role="alert">{text}</span>)}</>
   const canApply = stepValue === 'price' ? (showListPrice && listPrice.trim() !== '') || salePrice.trim() !== '' : stepValue === 'stock' ? stockAmount.trim() !== '' : true
   // What the boxes show now: one value, named in the band above the sizes, in step 2's title and in its field.
   const valueKind: 'stock' | 'cost' | 'list' | 'sale' = !activeTab || activeTab.field === 'stock' ? 'stock' : activeTab.field === 'costPrice' ? 'cost' : activeTab.field === 'list' || activeTab.field === 'listPrice' ? 'list' : 'sale'

@@ -317,6 +317,26 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent.map(call => [call.path, call.method, call.body])).toEqual([['/channel-offers/panel-price-follow', 'PUT', { connectionId: 'c1', variantIds: ['v2'], followsPanelPrice: false }]])
   })
 
+  it('names a price falling below half in Kaydet\'s confirmation and still saves on Onayla ve Kaydet', async () => {
+    await render('price')
+    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!
+    await act(async () => { sale.focus() })
+    await type(sale, '4,5')
+    await click(barButton('Kaydet'))
+    expect(bar()?.querySelector('[role="alert"]')?.textContent).toBe('1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 450,00 → 4,50')
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => call.body)).toEqual([{ listPrice: 500, salePrice: 4.5, reason: 'Hızlı varyant fiyat düzenleme' }])
+  })
+
+  it('names no warning for an ordinary price change', async () => {
+    await render('price')
+    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!
+    await act(async () => { sale.focus() })
+    await type(sale, '440')
+    await click(barButton('Kaydet'))
+    expect(bar()?.querySelector('[role="alert"]')).toBeNull()
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))
