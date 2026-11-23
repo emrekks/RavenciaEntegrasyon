@@ -30,6 +30,9 @@
 /* The lead column is 34 px: the badge (24) sits 12 px in and runs 2 px past the column, so the column gap (6) and the option cell's own 6 leave 10 up to the status dot; the "#" of the head sits over the badge. */
 html body .app-shell.stitch-shell main .product-add-page .variant-table-row > .variant-row-lead.variant-row-lead.variant-row-lead { justify-content: flex-start; padding-inline: 12px 0; overflow: visible; }
 html body .app-shell.stitch-shell main .product-add-page .variant-table-head > :first-child:first-child:first-child { display: grid; grid-template-columns: 24px; justify-content: start; place-items: center; padding-inline: 12px 0; overflow: visible; }
+/* The same 6 px gaps at every width (the narrower layouts used 8): column gap, and inside the option cell. */
+html body .app-shell.stitch-shell main .product-add-page :is(.variant-table-head, .variant-table-row) { column-gap: 6px; }
+html body .app-shell.stitch-shell main .product-add-page .variant-table-row > .variant-option-cell { gap: 6px; padding-inline: 6px; }
 /* Every head title with its pencil: one pair, 6 px apart, the pencil right after the text (never pushed to the column's end), 16 px icon in a 24 px target, the pair's left edge on the box below. */
 html body .app-shell.stitch-shell main .product-add-page .variant-table-head .variant-table-header-with-action { justify-content: flex-start; gap: 6px; padding-left: 0; margin-left: 0; }
 html body .app-shell.stitch-shell main .product-add-page .variant-table-head .variant-table-header-with-action > span:first-child { flex: 0 0 auto; white-space: nowrap; }

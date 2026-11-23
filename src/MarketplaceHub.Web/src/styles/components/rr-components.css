@@ -879,7 +879,13 @@ html:not([data-theme="light"]) .rr-wordmark > img[src$="/mark-trendyol.png"] { f
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-date .date-range-picker-trigger > svg { flex: none; }
 /* the preview photo fills its 2:3 frame */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview { overflow: hidden; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview > img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; object-fit: cover; }
+/* While the photo loads a ring turns in the frame (the photo covers it once painted); a photo that cannot load says so. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview { position: relative; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview[data-state="loading"]::before { content: ""; position: absolute; top: 50%; left: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border: 3px solid color-mix(in srgb, var(--rr-subtle) 35%, transparent); border-top-color: var(--rr-subtle); border-radius: 50%; animation: rr-turn .8s linear infinite; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview[data-state="failed"] { align-content: center; justify-items: center; gap: 8px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-img-fail { color: var(--rr-muted); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-img-preview[data-state="loading"]::before { animation: none; } }
 /* rows of the "İşlemler" menu are buttons in a menu: keep the panel's focus ring */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:focus-visible, :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:focus-visible { outline: 2px solid color-mix(in srgb, var(--rr-primary) 70%, transparent); outline-offset: -2px; }
 /* the drop zone opens the file picker */

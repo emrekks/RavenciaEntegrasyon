@@ -32,7 +32,7 @@
 /* Ürün Düzenleyici variant table: Liste Fiyatı (heading, pencil and bulk icon) was 96 px and wrapped to two lines while
    Seçenek and Barkod had room; every heading stays on one line and the table fits at 1280 px without sideways scroll. */
 @media (min-width: 1201px) {
-  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(894px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(116px, .9fr) minmax(116px, .9fr) 76px 112px 112px 112px 168px; }
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: calc(806px + var(--vopt-w, 170px)); column-gap: 6px; grid-template-columns: 34px minmax(var(--vopt-w, 170px), 1.1fr) minmax(104px, .9fr) minmax(104px, .9fr) 64px 92px 92px 100px 168px; }
   :root:root:root body .variant-table-editor .variant-table-head > * > span { white-space: nowrap; }
 }
 
@@ -147,10 +147,10 @@
   :root:root:root body .variant-table-editor .variant-option-cell { gap: 6px; }
 }
 
-/* Ürün Düzenleyici variant table: the table box is at most one screen high and scrolls in both directions, so its sideways
-   scrollbar is always on screen (it used to sit at the bottom of a box several screens tall); the head sticks inside the box. */
+/* Ürün Düzenleyici variant table: the box shows 15 whole rows under the head (border 2 + head 46 + 15 x 62) and scrolls inside
+   beyond them; the head sticks inside the box. At 1201 px and wider the columns (806 px + the option column) fit the box without sideways scroll. */
 @media (min-width: 1025px) {
-  :root:root:root body .variant-table-editor { max-height: max(420px, calc(100vh - 220px)); overflow: auto; }
+  :root:root:root body .variant-table-editor { max-height: calc(2px + 46px + 15 * 62px); overflow: auto; }
   :root:root:root:root body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { position: sticky; top: 0; z-index: 3; }
 }
 

@@ -102,6 +102,13 @@ public sealed class WorkerLanePoolTests
         Assert.True(flexible.Flexible);
         Assert.Equal(["user", "hot"], flexible.ProtectedLanes);
         Assert.Equal(["user"], LaneModelSettings.From(Config(("Worker:LaneModel", "flexible"), ("Worker:FlexibleLanes:ProtectedLanes", " user , "))).ProtectedLanes);
+        // With flexible lanes a lane may run more than its own slot count, so the marketplace classes take the isolation of one
+        // dedicated slot by default (per tenant and marketplace, priority 0..hot ceiling); the legacy model leaves them off.
+        var flexibleBulkhead = BulkheadSettings.From(new ConfigurationBuilder().Build(), flexibleLanes: true).For("pazarama-orders", 2)!;
+        Assert.Equal(WorkerBulkheads.DefaultClasses.Select(item => item.Name), flexibleBulkhead.ClassNames);
+        Assert.All(flexibleBulkhead.ClassCaps, cap => Assert.Equal(1, cap));
+        Assert.True(BulkheadSettings.From(new ConfigurationBuilder().Build()).For("pazarama-orders", 2)!.IsEmpty);
+        Assert.True(BulkheadSettings.From(Config(("Worker:Bulkhead:Classes:pazarama-orders", "0")), flexibleLanes: true).For("hot", 2)!.ClassNames.All(name => name != "pazarama-orders"));
         // The pool is as big as the lanes' slots add up to (today 20).
         Assert.Equal(WorkerLanes.All().Sum(lane => lane.DefaultSlots), new LaneSlotPool(WorkerLanes.All().ToDictionary(lane => lane.Name, lane => lane.DefaultSlots), flexible.ProtectedLanes).Total);
     }

@@ -46,21 +46,23 @@ internal sealed record FairnessSettings(bool Enabled, TimeSpan Aging)
 
 // Worker lanes step 2, per-marketplace bulkheads (WorkerBulkheads, JobBulkhead):
 //   Worker:Bulkhead:Enabled             default true; false = no class or lane cap
-//   Worker:Bulkhead:Classes:<class>     the class's cap per marketplace (0 = none); defaults in WorkerBulkheads.DefaultClasses
+//   Worker:Bulkhead:Classes:<class>     the class's cap per tenant and marketplace, jobs of priority 0..hot ceiling only
+//                                       (0 = none, the default with the legacy lane model; with Worker:LaneModel=flexible
+//                                       each class defaults to its isolation cap, 1: WorkerBulkheads)
 //   Worker:Bulkhead:LaneCaps:<lane>     at most this many jobs of one marketplace in the lane at once; default none
 internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string, int> ClassCaps, IReadOnlyDictionary<string, int> LaneCaps)
 {
-    public static BulkheadSettings From(IConfiguration configuration) => new(
+    public static BulkheadSettings From(IConfiguration configuration, bool flexibleLanes = false) => new(
         configuration.GetValue("Worker:Bulkhead:Enabled", true),
         MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.DefaultClasses.ToDictionary(item => item.Name,
-            item => Math.Clamp(configuration.GetValue($"Worker:Bulkhead:Classes:{item.Name}", item.DefaultCap), 0, 50)),
+            item => Math.Clamp(configuration.GetValue($"Worker:Bulkhead:Classes:{item.Name}", flexibleLanes ? item.IsolationCap : item.DefaultCap), 0, 50)),
         configuration.GetSection("Worker:Bulkhead:LaneCaps").GetChildren()
             .Select(child => (child.Key, Cap: int.TryParse(child.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var cap) ? cap : 0))
             .Where(item => item.Cap > 0)
             .ToDictionary(item => item.Key, item => Math.Min(item.Cap, 50)));
 
-    public Application.JobBulkhead? For(string lane) => Enabled
-        ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null)
+    public Application.JobBulkhead? For(string lane, int hotPriorityCeiling) => Enabled
+        ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null, hotPriorityCeiling)
         : null;
 }
 

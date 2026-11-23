@@ -47,10 +47,16 @@ public sealed record JobQuotaHold(IReadOnlyList<Guid> ConnectionIds, IReadOnlyLi
 // first, so no job waits for ever behind other connections. ConnectionIds[i] goes with LastLeasedAt[i].
 public sealed record JobFairness(TimeSpan Aging, IReadOnlyList<Guid> ConnectionIds, IReadOnlyList<DateTimeOffset> LastLeasedAt);
 
-// Per-marketplace bulkheads (worker lanes step 2): a job of a class (JobTypes[i] belongs to Classes[i]) is not leased while
-// ClassCaps[j] jobs of its class (ClassNames[j]) already run for the same marketplace, and with LaneCap set, while that many
-// jobs of the leasing lane run for the same marketplace. User actions and jobs without a connection are never limited.
-public sealed record JobBulkhead(IReadOnlyList<string> JobTypes, IReadOnlyList<string> Classes, IReadOnlyList<string> ClassNames, IReadOnlyList<int> ClassCaps, int? LaneCap)
+// Per-marketplace bulkheads (worker lanes step 2), counted per tenant and marketplace (a marketplace quota belongs to the
+// seller account, so one tenant never limits another):
+//   - a job of a class (JobTypes[i] belongs to Classes[i]) whose priority is within ClassMinimumPriority..ClassMaximumPriority
+//     is not leased while ClassCaps[j] jobs of its class (ClassNames[j]) in that priority range already run for the same
+//     tenant and marketplace; jobs of the class outside the range (a background recovery read, a first import) neither
+//     count nor are limited;
+//   - with LaneCap set, a job is not leased while that many jobs of the leasing lane run for the same tenant and marketplace.
+// User actions and jobs without a connection are never limited.
+public sealed record JobBulkhead(IReadOnlyList<string> JobTypes, IReadOnlyList<string> Classes, IReadOnlyList<string> ClassNames, IReadOnlyList<int> ClassCaps, int? LaneCap,
+    int ClassMinimumPriority = 0, int ClassMaximumPriority = JobQuotaHold.DefaultHeldAbovePriority)
 {
     public bool IsEmpty => (ClassNames.Count == 0 || JobTypes.Count == 0) && LaneCap is null;
 }

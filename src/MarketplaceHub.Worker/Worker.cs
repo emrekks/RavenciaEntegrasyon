@@ -32,9 +32,10 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private readonly QuotaAwareLeasingSettings quotaAwareLeasing = QuotaAwareLeasingSettings.From(configuration);
     // Worker lanes step 2: connection fairness and per-marketplace bulkheads (Worker:Fairness:*, Worker:Bulkhead:*).
     private readonly FairnessSettings fairnessSettings = FairnessSettings.From(configuration);
-    private readonly BulkheadSettings bulkheads = BulkheadSettings.From(configuration);
-    // Worker lanes step 3: legacy (own slots only) or flexible (LaneSlotPool) lanes (Worker:LaneModel).
+    // Worker lanes step 3: legacy (own slots only) or flexible (LaneSlotPool) lanes (Worker:LaneModel). With flexible lanes the
+    // bulkhead classes take their isolation caps by default (what each dedicated lane's single slot gave).
     private readonly LaneModelSettings laneModel = LaneModelSettings.From(configuration);
+    private readonly BulkheadSettings bulkheads = BulkheadSettings.From(configuration, LaneModelSettings.From(configuration).Flexible);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -82,7 +83,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             var slots = laneSlots[lane.Name];
             var laneWake = wakeRouter.SignalFor(lane.Name);
             var borrowWake = borrowWakes[lane.Name];
-            var bulkhead = bulkheads.For(lane.Name);
+            var bulkhead = bulkheads.For(lane.Name, hotPriorityCeiling);
             loops.AddRange(Lane(lane.Name, slots, slot => RunLeaseLaneAsync(slot, lane.MaximumPriority, lane.MinimumPriority, laneWake, stoppingToken,
                 includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], bulkhead: bulkhead, pool: pool, laneName: lane.Name, ownSlot: true,
                 leased: pool is null ? null : borrowWake.WakeOne)));

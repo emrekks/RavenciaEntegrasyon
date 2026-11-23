@@ -12,30 +12,32 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class WorkerLaneFairnessTests
 {
     [Fact]
-    public void TheDefaultBulkheadsMatchTheDedicatedLanesAndSettingsChangeOrDropThem()
+    public void BulkheadClassesAreOffWhileTheDedicatedLanesExistAndSettingsTurnThemOn()
     {
         var defaults = MarketplaceHub.Worker.BulkheadSettings.From(new ConfigurationBuilder().Build());
         Assert.True(defaults.Enabled);
         Assert.Empty(defaults.LaneCaps);
-        var hot = defaults.For("hot")!;
-        Assert.Null(hot.LaneCap);
-        Assert.Equal(["pazarama-orders", "pttavm-orders", "hepsiburada-orders", "hepsiburada-status", "order-status"], hot.ClassNames);
-        Assert.All(hot.ClassCaps, cap => Assert.Equal(1, cap));
-        // Each dedicated lane has one slot today: the class cap is the same isolation.
+        // Every class off by default: the lease gets an empty bulkhead and ignores it.
+        Assert.True(defaults.For("hot", 2)!.IsEmpty);
+        // The isolation cap a class takes when the lanes merge is the slot count of the lane it stands for.
         foreach (var bulkheadClass in WorkerBulkheads.DefaultClasses)
         {
             var lane = Assert.Single(WorkerLanes.All(), lane => lane.IncludedJobTypes.SequenceEqual(bulkheadClass.JobTypes));
-            Assert.Equal(lane.DefaultSlots, bulkheadClass.DefaultCap);
+            Assert.Equal(lane.DefaultSlots, bulkheadClass.IsolationCap);
+            Assert.Equal(0, bulkheadClass.DefaultCap);
         }
-        Assert.Equal(hot.JobTypes.Count, hot.Classes.Count);
 
         var configured = MarketplaceHub.Worker.BulkheadSettings.From(Config(
-            ("Worker:Bulkhead:Classes:order-status", "0"), ("Worker:Bulkhead:LaneCaps:hot", "2"), ("Worker:Bulkhead:LaneCaps:background", "x")));
-        var configuredHot = configured.For("hot")!;
-        Assert.DoesNotContain("order-status", configuredHot.ClassNames);
+            ("Worker:Bulkhead:Classes:pazarama-orders", "1"), ("Worker:Bulkhead:LaneCaps:hot", "2"), ("Worker:Bulkhead:LaneCaps:background", "x")));
+        var configuredHot = configured.For("hot", 2)!;
+        Assert.Equal(["pazarama-orders"], configuredHot.ClassNames);
+        Assert.Equal([1], configuredHot.ClassCaps);
+        Assert.Equal(configuredHot.JobTypes.Count, configuredHot.Classes.Count);
+        Assert.Equal((0, 2), (configuredHot.ClassMinimumPriority, configuredHot.ClassMaximumPriority));
+        Assert.Equal(4, configured.For("hot", 4)!.ClassMaximumPriority);
         Assert.Equal(2, configuredHot.LaneCap);
-        Assert.Null(configured.For("background")!.LaneCap);
-        Assert.Null(MarketplaceHub.Worker.BulkheadSettings.From(Config(("Worker:Bulkhead:Enabled", "false"))).For("hot"));
+        Assert.Null(configured.For("background", 2)!.LaneCap);
+        Assert.Null(MarketplaceHub.Worker.BulkheadSettings.From(Config(("Worker:Bulkhead:Enabled", "false"))).For("hot", 2));
     }
 
     [Fact]
@@ -152,39 +154,91 @@ public sealed class WorkerLaneFairnessPostgreSqlTests(PostgreSqlTenantIsolationF
     }
 
     [PostgreSqlFact]
-    public async Task AClassCapHoldsOnlyItsMarketplaceAndNeverAUserAction()
+    public async Task AClassCapHoldsOnlyItsTenantsMarketplaceInItsPriorityRangeAndNeverAUserAction()
     {
         await using var scenario = await Scenario.CreateAsync(fixture, "bulkhead-class");
         var running = await scenario.ConnectionAsync("PAZARAMA");
         var samePlatform = await scenario.ConnectionAsync("PAZARAMA");
         var otherPlatform = await scenario.ConnectionAsync("PTTAVM");
-        await scenario.RunningAsync(running, "orders");
-        var blocked = await scenario.QueuedAsync(samePlatform, priority: 0, minutesAgo: 3);
-        var other = await scenario.QueuedAsync(otherPlatform, priority: 0, minutesAgo: 1);
         var bulkhead = new JobBulkhead([scenario.JobType], ["test-class"], ["test-class"], [1], null);
+        var blocked = await scenario.QueuedAsync(samePlatform, priority: 0, minutesAgo: 3);
+        // A recovery read in the background lane (priority 3) and a first import (-1) of the class neither count nor are limited.
+        await scenario.RunningAsync(running, "recovery", priority: 3);
+        await scenario.RunningAsync(running, "initial", priority: JobPriorityPolicy.InitialDataSync);
+        Assert.Equal(blocked, await scenario.PeekAsync(null, bulkhead, onlyJobId: blocked));
+        var background = await scenario.QueuedAsync(samePlatform, priority: 3, minutesAgo: 3);
+        Assert.Equal(background, await scenario.PeekAsync(null, bulkhead, onlyJobId: background));
+        // Another tenant's new-order read of the same marketplace does not count either.
+        await using (var otherTenant = await Scenario.CreateAsync(fixture, "bulkhead-other", scenario.JobType))
+        {
+            await otherTenant.RunningAsync(await otherTenant.ConnectionAsync("PAZARAMA"), "orders", priority: 0);
+            Assert.Equal(blocked, await scenario.PeekAsync(null, bulkhead, onlyJobId: blocked));
+        }
+        // The tenant's own new-order read of that marketplace does: the class is full.
+        await scenario.RunningAsync(running, "orders", priority: 0);
+        var other = await scenario.QueuedAsync(otherPlatform, priority: 0, minutesAgo: 1);
         Assert.Null(await scenario.PeekAsync(null, bulkhead, onlyJobId: blocked));
-        Assert.Equal(other, await scenario.PeekAsync(null, bulkhead));
+        Assert.Equal(other, await scenario.PeekAsync(null, bulkhead, onlyJobId: other));
         Assert.Equal(blocked, await scenario.PeekAsync(null, bulkhead with { ClassCaps = [2] }, onlyJobId: blocked));
         var user = await scenario.QueuedAsync(samePlatform, priority: JobPriorityPolicy.UserAction, minutesAgo: 1);
         Assert.Equal(user, await scenario.PeekAsync(null, bulkhead, onlyJobId: user));
     }
 
     [PostgreSqlFact]
-    public async Task ALaneCapCountsTheLanesRunningJobsOfTheSameMarketplace()
+    public async Task ALaneCapCountsTheLanesRunningJobsOfTheSameTenantsMarketplace()
     {
         await using var scenario = await Scenario.CreateAsync(fixture, "bulkhead-lane");
         var running = await scenario.ConnectionAsync("TRENDYOL");
         var samePlatform = await scenario.ConnectionAsync("TRENDYOL");
-        await scenario.RunningAsync(running, "lane");
         var queued = await scenario.QueuedAsync(samePlatform, priority: 3, minutesAgo: 1);
         var none = new JobBulkhead([], [], [], [], null);
+        await using (var otherTenant = await Scenario.CreateAsync(fixture, "bulkhead-lane-other", scenario.JobType))
+        {
+            await otherTenant.RunningAsync(await otherTenant.ConnectionAsync("TRENDYOL"), "lane");
+            Assert.Equal(queued, await scenario.PeekAsync(null, none with { LaneCap = 1 }));
+        }
+        await scenario.RunningAsync(running, "lane");
         Assert.Equal(queued, await scenario.PeekAsync(null, none with { LaneCap = 2 }));
         Assert.Null(await scenario.PeekAsync(null, none with { LaneCap = 1 }));
         Assert.Equal(queued, await scenario.PeekAsync(null, null));
     }
 
-    // One test's tenant, connections and jobs of a job type of its own; the lease runs in a transaction that is rolled back,
-    // so a peek leases nothing.
+    [PostgreSqlFact]
+    public async Task JobsWithoutAConnectionKeepTheEarlierOrder()
+    {
+        await using var scenario = await Scenario.CreateAsync(fixture, "fair-no-connection");
+        var a = await scenario.ConnectionAsync("TRENDYOL");
+        var connected = await scenario.QueuedAsync(a, priority: 4, minutesAgo: 3);
+        var unconnected = await scenario.QueuedAsync(null, priority: 4, minutesAgo: 2);
+        var now = DateTimeOffset.UtcNow;
+        // The connection was served a moment ago, the job without one never: still the older job first, as before.
+        Assert.Equal(connected, await scenario.PeekAsync(new JobFairness(Aging, [a], [now])));
+        Assert.Equal(connected, await scenario.PeekAsync(null));
+        Assert.NotEqual(unconnected, connected);
+    }
+
+    [PostgreSqlFact]
+    public async Task WhileOneSlotLeasesAJobTheNextSlotDoesNotTakeTheSameLockGroupsNextJob()
+    {
+        await using var scenario = await Scenario.CreateAsync(fixture, "fair-group");
+        var a = await scenario.ConnectionAsync("TRENDYOL");
+        var b = await scenario.ConnectionAsync("HEPSIBURADA");
+        var first = await scenario.QueuedAsync(a, priority: 3, minutesAgo: 5, lockGroup: "orders");
+        var sameGroup = await scenario.QueuedAsync(a, priority: 3, minutesAgo: 4, lockGroup: "orders");
+        var otherConnection = await scenario.QueuedAsync(b, priority: 3, minutesAgo: 1);
+        var now = DateTimeOffset.UtcNow;
+        var fairness = new JobFairness(Aging, [a, b], [now.AddHours(-1), now]);
+        // Another slot holds the first job's row lock (it is leasing it right now).
+        await using var other = fixture.CreateContext();
+        await using var otherTransaction = await other.Database.BeginTransactionAsync();
+        await other.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM integration.jobs WHERE \"Id\" = {first} FOR UPDATE");
+        Assert.Equal(otherConnection, await scenario.PeekAsync(fairness));
+        await otherTransaction.RollbackAsync();
+        Assert.NotEqual(sameGroup, otherConnection);
+    }
+
+    // One test's tenant, connections and jobs of a job type of its own (a second scenario may share it: another tenant).
+    // A peek leases the job and puts it back in the queue.
     private sealed class Scenario : IAsyncDisposable
     {
         private readonly PostgreSqlTenantIsolationFixture fixture;
@@ -199,7 +253,7 @@ public sealed class WorkerLaneFairnessPostgreSqlTests(PostgreSqlTenantIsolationF
 
         public string JobType { get; }
 
-        public static async Task<Scenario> CreateAsync(PostgreSqlTenantIsolationFixture fixture, string code)
+        public static async Task<Scenario> CreateAsync(PostgreSqlTenantIsolationFixture fixture, string code, string? jobType = null)
         {
             var tenant = new Tenant
             {
@@ -215,7 +269,7 @@ public sealed class WorkerLaneFairnessPostgreSqlTests(PostgreSqlTenantIsolationF
             await using var db = fixture.CreateContext();
             db.Tenants.Add(tenant);
             await db.SaveChangesAsync();
-            return new Scenario(fixture, tenant, $"LANE_TEST_{Guid.NewGuid():N}"[..40]);
+            return new Scenario(fixture, tenant, jobType ?? $"LANE_TEST_{Guid.NewGuid():N}"[..40]);
         }
 
         public async Task<Guid> ConnectionAsync(string platform)
@@ -239,9 +293,9 @@ public sealed class WorkerLaneFairnessPostgreSqlTests(PostgreSqlTenantIsolationF
             return connection.Id;
         }
 
-        public async Task RunningAsync(Guid connectionId, string lockGroup)
+        public async Task RunningAsync(Guid connectionId, string lockGroup, int priority = 3)
         {
-            var job = NewJob(connectionId, 3, 60);
+            var job = NewJob(connectionId, priority, 60);
             job.LockGroup = $"running-{lockGroup}";
             job.Status = JobStatus.Leased;
             job.AttemptCount = 1;
@@ -252,11 +306,11 @@ public sealed class WorkerLaneFairnessPostgreSqlTests(PostgreSqlTenantIsolationF
             await db.SaveChangesAsync();
         }
 
-        // A queued job in a lock group of its own (so only the order decides), runnable for minutesAgo.
-        public async Task<Guid> QueuedAsync(Guid connectionId, int priority, double minutesAgo)
+        // A queued job, in a lock group of its own unless one is given (so only the order decides), runnable for minutesAgo.
+        public async Task<Guid> QueuedAsync(Guid? connectionId, int priority, double minutesAgo, string? lockGroup = null)
         {
             var job = NewJob(connectionId, priority, minutesAgo);
-            job.LockGroup = $"queued-{Guid.NewGuid():N}";
+            job.LockGroup = lockGroup ?? $"queued-{Guid.NewGuid():N}";
             await using var db = fixture.CreateContext();
             db.IntegrationJobs.Add(job);
             await db.SaveChangesAsync();
@@ -284,7 +338,7 @@ public sealed class WorkerLaneFairnessPostgreSqlTests(PostgreSqlTenantIsolationF
             return job.Id;
         }
 
-        private IntegrationJob NewJob(Guid connectionId, int priority, double minutesAgo)
+        private IntegrationJob NewJob(Guid? connectionId, int priority, double minutesAgo)
         {
             var at = DateTimeOffset.UtcNow.AddMinutes(-minutesAgo);
             var suffix = Guid.NewGuid().ToString("N");

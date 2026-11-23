@@ -10,10 +10,13 @@ namespace MarketplaceHub.Worker;
 //     a user action or a new order at once. They may borrow.
 //   - The pool never runs more jobs than the lanes' slots add up to, so no marketplace sees more requests than before; the
 //     quota limiter, lock groups, holds, fairness and bulkheads apply to every lease as before.
-// Replay of the live week (sim4): five tenants user p95 35 -> 3.9 s, first imports 549 -> 2 s, catalog 431 -> 16 s; six
-// stores activated together: first imports p95 6574 -> 1184 s; one tenant unchanged; no lane over its target that was
-// within it before. Capping a lane's borrowing at its own slot count lost most of that (five tenants catalog p95 170 s), so a
-// lane may borrow up to the whole pool.
+// Replay of the live week (sim4, with steps 1 and 2): five tenants user p95 35 -> 3.9 s, first imports 346 -> 0 s, catalog
+// 431 -> 16 s, jobs waiting over 30 min 41 -> 0; two tenants user 6.3 -> 3.9 s, catalog 114 -> 0 s; six stores activated
+// together: first imports p95 6574 -> 1184 s; one tenant, a full quota and a marketplace timing out for 20 min unchanged or
+// better; no lane over a target it met before. Lanes per job class instead of these lanes gave nothing more (fixed: the same
+// as today; pooled: first imports of six stores 1475 s), letting user and hot lend their slots delayed new orders by up to
+// 260 s, and capping a lane's borrowing at its own slot count lost most of the gain (five tenants catalog p95 170 s), so the
+// lanes keep their names, user and hot never lend, and a lane may borrow up to the whole pool.
 public sealed class LaneSlotPool
 {
     private readonly object gate = new();
