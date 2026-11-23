@@ -30,6 +30,30 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
             Assert.DoesNotContain(capture.Commands, command => Occurrences(command, "UNION ALL") > 0);
             await AssertCountersAreListTotals(service, seed.TenantId, new OrderListQuery(), summary);
             Assert.True(summary.All > 0 && summary.New > 0 && summary.Delivered > 0 && summary.Cancelled > 0 && summary.Resent > 0 && summary.Late > 0);
+            // Per store: the marketplace resend and both hand-added ones (waiting and shipped).
+            Assert.Equal(6, summary.Resent);
+        }
+        finally { await CleanAsync(seed); }
+    }
+
+    // The Yeniden Gönderim card (resends not handed to the carrier) counts a hand-added re-shipment until it is marked
+    // shipped, with and without a search term, as its list does.
+    [PostgreSqlFact]
+    public async Task TheResendCardCountsWaitingHandAddedResends_WithAndWithoutASearch()
+    {
+        var seed = await SeedAsync();
+        try
+        {
+            foreach (var (query, expected) in new[] { (new OrderListQuery(ResentNotShipped: true), 4), (new OrderListQuery(Search: "Ayşe", ResentNotShipped: true), 4), (new OrderListQuery(Search: "Mehmet", ResentNotShipped: true), 0), (new OrderListQuery(Search: "Mehmet"), 2) })
+            {
+                await using var db = Context(new CommandCapture());
+                var service = Service(db);
+                var summary = await service.OrderSummaryAsync(seed.TenantId, query, CancellationToken.None, ["RESENT"]);
+                var list = await service.OrdersAsync(seed.TenantId, 100, 1, null, query with { Status = "RESENT" }, CancellationToken.None);
+                Assert.Equal((expected, expected), (summary.Resent, list.TotalCount));
+                if (query.ResentNotShipped == true) Assert.DoesNotContain(list.Items, row => row.ManualResend is { Shipped: true });
+                else Assert.All(list.Items, row => Assert.True(row.ManualResend is { Shipped: true }));
+            }
         }
         finally { await CleanAsync(seed); }
     }
@@ -104,7 +128,8 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
     internal sealed record Seeded(Guid TenantId);
 
     // Orders of two stores in most tabs: new (one late), shipped, delivered, cancelled, returned, a resend, and a partly
-    // cancelled one; some named "Ayşe" and some with an "ELBISE" product, for the search.
+    // cancelled one; some named "Ayşe" and some with an "ELBISE" product, for the search. Each store also has two resends
+    // the owner added by hand: one waiting ("Ayşe", shipped tab) and one marked handed to the carrier ("Mehmet").
     private async Task<Seeded> SeedAsync()
     {
         var now = DateTimeOffset.UtcNow;
@@ -114,7 +139,7 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
         db.Tenants.Add(tenant);
         db.PlatformConnections.AddRange(stores);
         var index = 0;
-        void Add(PlatformConnection store, string derived, ShipmentPackageStatus status, string name, string title, bool late = false, bool resend = false, bool partlyCancelled = false)
+        void Add(PlatformConnection store, string derived, ShipmentPackageStatus status, string name, string title, bool late = false, bool resend = false, bool partlyCancelled = false, bool? manualResendShipped = null)
         {
             index++;
             var order = new Order
@@ -141,14 +166,18 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
             db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = store.Id, OrderId = order.Id, ExternalPackageId = $"sq-{index}", Status = status, RawStatus = status.ToString(), CargoProviderExternalId = index % 2 == 0 ? "ARAS" : "YURTICI", StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
             if (resend)
                 db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = store.Id, OrderId = order.Id, ExternalPackageId = $"sq-{index}-r", OriginExternalPackageId = $"sq-{index}", CreatedBy = "resend", Status = ShipmentPackageStatus.New, RawStatus = "Created", StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+            // A re-shipment the owner added by hand (ManualResendService): under Yeniden Gönderimler, and on the card until shipped.
+            if (manualResendShipped is { } shipped)
+                db.ManualResends.Add(new ManualResend { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, CreatedAt = now, ShippedAt = shipped ? now : null, UpdatedAt = now, Version = 1 });
         }
         foreach (var store in stores)
         {
             Add(store, "NEW", ShipmentPackageStatus.New, "Ayşe", "Kadın Elbise");
             Add(store, "NEW", ShipmentPackageStatus.New, "Mehmet", "Gömlek", late: true);
             Add(store, "NEW", ShipmentPackageStatus.New, "Mehmet", "Kadın Elbise", partlyCancelled: true);
-            Add(store, "SHIPPED", ShipmentPackageStatus.Shipped, "Ayşe", "Gömlek");
+            Add(store, "SHIPPED", ShipmentPackageStatus.Shipped, "Ayşe", "Gömlek", manualResendShipped: false);
             Add(store, "DELIVERED", ShipmentPackageStatus.Delivered, "Zeynep", "Kadın Elbise");
+            Add(store, "DELIVERED", ShipmentPackageStatus.Delivered, "Mehmet", "Kadın Elbise", manualResendShipped: true);
             Add(store, "DELIVERED", ShipmentPackageStatus.Delivered, "Ayşe", "Pantolon", resend: true);
             Add(store, "CANCELLED", ShipmentPackageStatus.Cancelled, "Ayşe", "Kadın Elbise");
             Add(store, "RETURNED", ShipmentPackageStatus.Returned, "Zeynep", "Gömlek");
@@ -161,6 +190,7 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
     {
         await using var db = fixture.CreateContext();
         await db.IntegrationOutboxEvents.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
+        await db.ManualResends.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
         await db.ShipmentPackages.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == seed.TenantId).ExecuteDeleteAsync();
