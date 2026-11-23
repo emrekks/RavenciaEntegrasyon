@@ -232,7 +232,7 @@ describe('the editor window with marketplace prices', () => {
     expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: sent, salePrice: expectedSale }])
   })
 
-  it.each(['1.25', '1250.50', '1,250.50'])('refuses "%s" in a marketplace cell and hands nothing to the editor', async typed => {
+  it.each(['1.25', '1250.50', '1,250.50', '1,250', '1,000'])('refuses "%s" in a marketplace cell and hands nothing to the editor', async typed => {
     const onApplyChannelPrices = await mount({ channels: channels(true) })
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })

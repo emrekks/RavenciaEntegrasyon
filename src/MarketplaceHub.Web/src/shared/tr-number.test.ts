@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTrCount, parseTrEntry, parseTrNumber, trNumberInput } from './tr-number'
+import { parseTrCount, parseTrEntry, parseTrMeasure, parseTrNumber, trNumberInput } from './tr-number'
 
 describe('parseTrNumber', () => {
   it('reads Turkish thousands points and decimal commas', () => {
@@ -40,8 +40,14 @@ describe('parseTrEntry (the product screens\' one rule)', () => {
   })
 
   it('refuses a point used as a decimal point and English grouping', () => {
-    for (const text of ['1.25', '12.5', '1250.50', '0.5', '1,250.50', '1.250.5', '0.125', '1e3', '12,5,0', ''])
+    for (const text of ['1.25', '12.5', '1250.50', '0.5', '1,250.50', '1.250.5', '0.125', '1e3', '12,5,0', '', '1,250', '1,000', '0,125', '1.250,505', '0x10'])
       expect(parseTrEntry(text), text).toBeNull()
+  })
+
+  it('reads measurements with any number of decimals, never a point used as a decimal point', () => {
+    expect(parseTrMeasure('0,125')).toBe(0.125)
+    expect(parseTrMeasure('1.250')).toBe(1250)
+    expect(parseTrMeasure('1.25')).toBeNull()
   })
 
   // Every price with two decimals up to 2 million, sampled: what a box shows (formatted, or as the field starts it)
