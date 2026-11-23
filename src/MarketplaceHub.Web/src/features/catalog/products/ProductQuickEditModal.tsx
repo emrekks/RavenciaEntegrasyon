@@ -73,10 +73,11 @@ const noChange = async () => undefined
 type PriceDraft = { list: string; sale: string }
 const samePriceDraft = (left: PriceDraft, right: PriceDraft) => left.list === right.list && left.sale === right.sale
 const priceKey = (variantId: string, columnId: string) => `${variantId}|${columnId}`
-// A cell's draft as prices: each side as drafted, an empty side as saved; null when a drafted side cannot be read.
+// A cell's draft as prices, by the rule Kaydet reads it with (inlinePrices): an emptied list price is no list price (B7):
+// it takes the sale price, the one being applied included; an emptied sale price is the saved one; null when a drafted side cannot be read.
 function draftedPrices(drafted: PriceDraft, saved: { listPrice?: number | null; salePrice?: number | null }): { listPrice: number | null; salePrice: number | null } | null {
   const read = (text: string, fallback: number | null | undefined) => text.trim() === '' ? { ok: true as const, value: fallback ?? null } : { ok: parseTrEntry(text) !== null, value: parseTrEntry(text) }
-  const list = read(drafted.list, saved.listPrice); const sale = read(drafted.sale, saved.salePrice)
+  const sale = read(drafted.sale, saved.salePrice); const list = read(drafted.list, null)
   return list.ok && sale.ok ? { listPrice: list.value, salePrice: sale.value } : null
 }
 export function ProductQuickEditModal({ products: savedProducts = [], connections = [], mode = 'stock', onChanged = noChange, onClose, onResult, draft }: { products?: Product[]; connections?: MarketplaceConnection[]; mode?: QuickEditMode; onChanged?: () => Promise<unknown>; onClose: () => void; onResult?: (title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext) => void; draft?: QuickEditDraft }) {

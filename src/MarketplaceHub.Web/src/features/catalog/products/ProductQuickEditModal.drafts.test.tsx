@@ -346,6 +346,25 @@ describe('ProductQuickEditModal drafts', () => {
     expect(tick.tabIndex).toBe(0)
   })
 
+  // B7: an emptied list cell is no list price for Kaydet (it takes the sale price); Uygula reads it the same way, so a
+  // sale price above the saved list price is not refused, and what is sent equals what Kaydet would send by hand.
+  it('Uygula reads an emptied list cell as Kaydet does', async () => {
+    await render('price')
+    await pickValue('Panel', 'Liste')
+    const list = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="liste fiyatı"]')!
+    await act(async () => { list.focus() })
+    await type(list, '')
+    await act(async () => { list.blur() })
+    await pickValue('Panel', 'Satış')
+    await type(bulkField('Satış Fiyatı (₺)'), '800')
+    await click(applyButton())
+    // SKU-2 keeps its saved list price 500 and is rightly refused; SKU-1, whose list cell was emptied, is not.
+    expect(document.body.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('SKU-1')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.filter(call => call.path === '/variants/v1/default-prices').map(call => call.body)).toEqual([{ listPrice: 800, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }])
+  })
+
   // B2: the stock cell read "1.000" as 1, "1e3" as 1000 and "0x10" as 16 (Number()). Now Turkish whole numbers only.
   it('sends "1.000" typed in a stock cell as 1000', async () => {
     await render()
