@@ -52,6 +52,8 @@ import { EmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 import { useCursorPager } from '../../../shared/list/useCursorPager'
 import { useListSelection } from '../../../shared/list/useListSelection'
+import { readFormCount } from '../../../shared/form-numbers'
+import { trNumberInput } from '../../../shared/tr-number'
 
 // Empty text of the tabs that list a special state, instead of the generic "sync the returns" line.
 const tabEmptyCopy: Record<string, [string, string]> = {
@@ -568,11 +570,17 @@ export function ReturnDetailPage() {
   async function disposition(event: FormEvent<HTMLFormElement>, line: ReturnLine) {
     event.preventDefault()
     if (!query.data || dispositionInFlight.current) return
-    dispositionInFlight.current = true
     const data = new FormData(event.currentTarget)
+    // A whole number of pieces read in Turkish (marketplaces return whole units; "1.000" is 1000, "1e3" refused), at most
+    // what is left; the box as it opened (the remaining quantity, fractional if the server holds it so) is taken as is.
+    const typed = String(data.get('quantity') ?? '')
+    const quantity = typed === trNumberInput(line.remainingQuantity) ? { ok: true as const, value: line.remainingQuantity } : readFormCount(typed, 'Adet', { min: 1 })
+    const refusal = !quantity.ok ? quantity.message : quantity.value > line.remainingQuantity ? `Adet en çok ${trNumberInput(line.remainingQuantity)} olabilir.` : ''
+    if (refusal || !quantity.ok) { notifyReturn(setNotice, refusal, 'error', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedilmedi', operation: 'İade stok kararı' }); return }
+    dispositionInFlight.current = true
     try {
       const kind = String(data.get('disposition'))
-      await dispositionRequest.mutateAsync({ lineId: line.id, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: Number(data.get('quantity')), reason: data.get('reason') }) })
+      await dispositionRequest.mutateAsync({ lineId: line.id, body: JSON.stringify({ returnLineId: line.id, disposition: kind, quantity: quantity.value, reason: data.get('reason') }) })
       notifyReturn(setNotice, kind === 'PASS' ? 'İade stok kararı kaydedildi; ürün stoğa eklendi.' : 'İade stok kararı kaydedildi; stok değişmedi.', 'success', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedildi', operation: 'İade stok kararı' })
       await Promise.all([client.invalidateQueries({ queryKey: queryKeys.return(id) }), ...(kind === 'PASS' ? [client.invalidateQueries({ queryKey: queryKeys.products() })] : [])])
     } catch (reason) { const failure = notificationError(reason, 'Stok kararı kaydedilemedi.'); notifyReturn(setNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(query.data), title: 'İade Stok Kararı Kaydedilemedi', operation: 'İade stok kararı', code: failure.code }) }
@@ -591,7 +599,7 @@ export function ReturnDetailPage() {
         (the server accepts stock decisions only for approved lines, so a line approved on its own takes stock while the others wait). A rejected return has nothing to put back. */}
     {(item.stockDispositionAvailable ? lines.some(line => line.remainingQuantity > 0) : returnGroup(item.status) !== 'REJECTED' && returnGroup(item.status) !== 'APPROVED') && <>
     <article><div className="rr-h3">İade Paketi Ürünleri ve Stok Kabulü</div><div className="rr-callout rr-warn"><RrIcon name="alert" /><span><b>Stok otomatik artmaz.</b> Ürün fiziksel olarak kontrol edildikten sonra “Satılabilir” seçilirse stok artar; Karantina, Hasarlı ve Teslim Alınmadı seçimleri stoğu artırmaz.</span></div>
-      {!lines.length ? <EmptyState icon="returns" title="İade Satırı Bulunamadı" /> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{(line.stockDispositionAvailable ?? item.stockDispositionAvailable) && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><DispositionSelect /><input className="rr-in rr-num" name="quantity" type="number" min="0.01" max={line.remainingQuantity} step="0.01" defaultValue={line.remainingQuantity} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.status?.toUpperCase() === 'REJECTED' ? 'Reddedildi' : line.stockPending ? 'Onay Kesinleşince Stoğa Eklenecek' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
+      {!lines.length ? <EmptyState icon="returns" title="İade Satırı Bulunamadı" /> : lines.map(line => <div className="rr-disp" key={line.id}><RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={line.quantity} large alt={line.title} /><span className="rr-ptext"><b>{line.title}</b><small>{line.sku}{line.barcode ? ` · ${line.barcode}` : ''}</small><small>{line.quantity} adet · kalan karar {line.remainingQuantity}</small></span>{(line.stockDispositionAvailable ?? item.stockDispositionAvailable) && line.remainingQuantity > 0 ? <form onSubmit={event => disposition(event, line)}><DispositionSelect /><input className="rr-in rr-num" name="quantity" type="text" inputMode="numeric" autoComplete="off" defaultValue={trNumberInput(line.remainingQuantity)} required aria-label="Adet" /><input className="rr-in" name="reason" placeholder="Kontrol notu" required aria-label="Kontrol notu" /><button type="submit" className="rr-btn rr-primary" disabled={dispositionRequest.isPending}>{dispositionRequest.isPending ? 'Kaydediliyor…' : 'Kararı Kaydet'}</button></form> : <div style={{ gridColumn: 2, display: 'flex', flexWrap: 'wrap', gap: 8 }}><RrBadge label={line.remainingQuantity === 0 ? 'Tamamlandı' : line.status?.toUpperCase() === 'REJECTED' ? 'Reddedildi' : line.stockPending ? 'Onay Kesinleşince Stoğa Eklenecek' : line.hasInventoryMapping ? 'Onay Bekliyor' : 'Stok Eşlemesi Gerekli'} /></div>}</div>)}
     </article>
     </>}
   </div></section>
