@@ -9,7 +9,7 @@ import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { parseTrEntry, trEntryHelp } from '../../../shared/tr-number'
-import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
+import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, channelFollowMix, offerFollowsPanel, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { applyQuickEditDraft, quickEditDraftValues, type QuickEditDraftChange, type QuickEditDraftRow, type QuickEditDraftValues } from './quick-edit-draft'
@@ -56,7 +56,8 @@ export type QuickEditChannelChange = { rowKey: string; connectionId: string; lis
 export type QuickEditDraft = {
   title: string; modelCode: string; rows: QuickEditDraftRow[]; onApply: (changes: QuickEditDraftChange[]) => void
   channels?: QuickEditDraftChannel[]; isNewProduct?: boolean
-  channelPrice?: (rowKey: string, connectionId: string) => { list: string; sale: string } | null
+  // follows: the variant's offer there follows the panel price (its Özel Fiyat is off); a staged own price does not.
+  channelPrice?: (rowKey: string, connectionId: string) => { list: string; sale: string; follows?: boolean } | null
   onApplyChannelPrices?: (changes: QuickEditChannelChange[]) => void
 }
 const DRAFT_PRODUCT_ID = 'editor-draft'
@@ -83,16 +84,21 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const products = draftProducts ?? savedProducts
   const [draftValues, setDraftValues] = useState<Record<string, QuickEditDraftValues>>(() => Object.fromEntries((draft?.rows ?? []).map(row => [row.key, quickEditDraftValues(row)])))
   // The editor's marketplace prices typed here (per variant and marketplace) stay here until Varyantlara Uygula hands them over.
-  type ChannelCell = { list: string; sale: string }
+  type ChannelCell = { list: string; sale: string; follows?: boolean }
   const [channelDrafts, setChannelDrafts] = useState<Record<string, ChannelCell>>({})
   const draftChannels = draft?.channels ?? []
   const channelOriginal = (rowKey: string, connectionId: string): ChannelCell | null => draft && !draft.isNewProduct ? draft.channelPrice?.(rowKey, connectionId) ?? null : null
+  // A marketplace of the editor where only some variants keep their own price (O1): its switch is on, but a variant that
+  // follows the panel shows the panel price read-only and gets no price from this window, as the editor's Kaydet keeps it.
+  const draftChannelMixed = (connectionId: string) => { const originals = (draft?.rows ?? []).map(row => channelOriginal(row.key, connectionId)).filter(cell => cell != null); return originals.some(cell => cell.follows === true) && originals.some(cell => cell.follows !== true) }
+  const followsInMixed = (rowKey: string, channel: QuickEditDraftChannel) => channel.custom && draftChannelMixed(channel.connectionId) && channelOriginal(rowKey, channel.connectionId)?.follows === true
   const setDraftValue = (key: string, field: keyof QuickEditDraftValues, value: string) => { setNotice(''); setDraftValues(current => ({ ...current, [key]: { ...current[key], [field]: value } })) }
   // Typing in the table makes drafts only (owner, 18 Nov 2026): nothing is saved, and nothing goes to a marketplace, until
   // the person presses Kaydet in the bar and confirms. Tümüne Uygula fills drafts too.
   const stockDrafts = useDraftEdits<string>()
   const priceDrafts = useDraftEdits<PriceDraft>(samePriceDraft)
-  const followDrafts = useDraftEdits<boolean>()
+  // A switch's draft; its original is 'mixed' on a marketplace where only some variants keep their own price (O1).
+  const followDrafts = useDraftEdits<boolean | 'mixed'>()
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const savedStocks = useRef(new Map<string, SavedStock>())
   const [confirmClose, setConfirmClose] = useState(false)
@@ -173,13 +179,21 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   if (derivedCustom == null && offersRead) setDerivedCustom(initialCustomChannels(variants, priceColumns))
   // The saved choices of this window's life (a saved switch keeps showing its value until the lists are read again).
   const [customOverrides, setCustomOverrides] = useState<Record<string, boolean>>({})
-  const customChannels: Record<string, boolean> = Object.fromEntries(channelColumns.map(column => [column.id, followDrafts.get(column.id)?.value ?? customOverrides[column.id] ?? derivedCustom?.[column.id] ?? true]))
+  const customChannels: Record<string, boolean> = Object.fromEntries(channelColumns.map(column => [column.id, followDrafts.get(column.id)?.value === false ? false : followDrafts.get(column.id) ? true : customOverrides[column.id] ?? derivedCustom?.[column.id] ?? true]))
+  // A marketplace where only some variants keep their own price, as loaded and not switched in this window (O1): shown as
+  // mixed, each variant with its own choice; a variant that follows the panel shows the panel price read-only, the price
+  // that goes (the server writes the panel price to it, PanelPriceOfferPolicy.FollowsOnPanelChange).
+  const mixedOwnCounts = () => Object.fromEntries(channelColumns.map(column => { const mix = channelFollowMix(variants.map(item => item.variant), column.id); return [column.id, mix.mixed ? mix.own : 0] }))
+  const [derivedMixedCounts, setDerivedMixedCounts] = useState<Record<string, number> | null>(() => offersRead ? mixedOwnCounts() : null)
+  if (derivedMixedCounts == null && offersRead) setDerivedMixedCounts(mixedOwnCounts())
+  const derivedMixed = { get: (connectionId: string) => derivedMixedCounts?.[connectionId] }
+  const channelMixed = (connectionId: string) => (derivedMixed.get(connectionId) ?? 0) > 0 && !followDrafts.get(connectionId) && customOverrides[connectionId] === undefined
   // A switch only makes a draft, as a price cell does (owner, 18 Nov 2026): Kaydet writes the choice to every offer of this
   // window's variants on that marketplace (no price changes). Turning a channel to "follows the panel price" drops the
   // price drafts of its cells, which turn read-only.
   function setCustomChannel(connectionId: string, custom: boolean) {
     setNotice(''); clearRowError(`f:${connectionId}`)
-    followDrafts.set(connectionId, custom, customOverrides[connectionId] ?? derivedCustom?.[connectionId] ?? true)
+    followDrafts.set(connectionId, custom, customOverrides[connectionId] ?? ((derivedMixed.get(connectionId) ?? 0) > 0 ? 'mixed' : derivedCustom?.[connectionId] ?? true))
     if (!custom) priceDrafts.remove([...priceDrafts.entries.keys()].filter(key => key.endsWith(`|${connectionId}`)))
   }
   const followerColumns = panelFollowerColumns(priceColumns, customChannels)
@@ -224,7 +238,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       if (!read.ok) return { ok: false, message: `${channel.name}: ${read.message}` }
       for (const row of draft.rows) {
         const original = channelOriginal(row.key, channel.connectionId)
-        if (!original || !channel.custom) continue
+        if (!original || !channel.custom || followsInMixed(row.key, channel)) continue
         const cell = channelDrafts[`${row.key}|${channel.connectionId}`] ?? original
         const handEdited = cell.list !== original.list || cell.sale !== original.sale
         const bulked = hasTyped && targets.has(row.key)
@@ -329,10 +343,11 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       const followDone: string[] = []
       for (const [connectionId, entry] of followDrafts.entries) {
         const label = channelColumns.find(column => column.id === connectionId)?.label ?? 'Pazaryeri'
-        const variantIds = panelFollowChoiceVariantIds(variants.map(item => item.variant), connectionId, !entry.value)
+        const custom = entry.value === true
+        const variantIds = panelFollowChoiceVariantIds(variants.map(item => item.variant), connectionId, !custom)
         try {
-          if (variantIds.length) await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice: !entry.value }) })
-          setCustomOverrides(current => ({ ...current, [connectionId]: entry.value }))
+          if (variantIds.length) await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice: !custom }) })
+          setCustomOverrides(current => ({ ...current, [connectionId]: custom }))
           followDone.push(connectionId); followSaved += 1
         } catch (error) {
           const message = error instanceof Error ? error.message : 'beklenmeyen hata.'
@@ -454,8 +469,9 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       const original = channelOriginal(variant.id, channel.connectionId)
       const field = activeTab.field as 'sale' | 'list'
       if (!original) return <span className="rr-mx-follow" title={draft?.isNewProduct ? `Önce ürünü kaydedin: pazaryeri fiyatı kayıttan sonra yazılır. · ${identity}` : `${channel.name}: bu varyantın bu pazaryerinde teklifi yok. · ${identity}`}>—</span>
-      if (!channel.custom) {
+      if (!channel.custom || followsInMixed(variant.id, channel)) {
         const panel = draftValues[variant.id]
+        if (channel.custom) return <span className="rr-mx-follow" title={`${channel.name}: bu varyantın Özel Fiyatı kapalı, panel fiyatıyla satılır. · ${identity}`}>{formatPriceField(field === 'list' ? panel.listPrice : panel.salePrice) || '—'}</span>
         return <span className="rr-mx-follow" title={`${channel.name} panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat’ı açın. · ${identity}`}>{formatPriceField(field === 'list' ? panel.listPrice : panel.salePrice) || '—'}</span>
       }
       const key = `${variant.id}|${channel.connectionId}`
@@ -491,6 +507,11 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       const value = field === 'list' ? panel.listPrice : panel.salePrice
       return <span className="rr-mx-follow" title={listed ? `${column.label} ana fiyatla satılır: panel fiyatı kaydedilince bu fiyat da güncellenir. · ${identity}` : `${column.label}: bu varyantın bu pazaryerinde fiyatı yok. · ${identity}`}>{listed && value != null ? formatPriceField(value) : '—'}</span>
     }
+    if (!isPanel && channelMixed(column.id) && channelOffer(variant, column.id) && offerFollowsPanel(channelOffer(variant, column.id))) {
+      const panel = panelPrices(variant, item.product)
+      const value = field === 'list' ? panel.listPrice : panel.salePrice
+      return <span className="rr-mx-follow" title={`${column.label}: bu varyantın Özel Fiyatı kapalı, panel fiyatıyla satılır. · ${identity}`}>{value != null ? formatPriceField(value) : '—'}</span>
+    }
     const shownPrices = quickInlinePrices(column.id, variant, item.product)
     const original: PriceDraft = { list: priceFieldText(shownPrices.listPrice), sale: priceFieldText(shownPrices.salePrice) }
     const key = priceKey(variant.id, column.id)
@@ -513,7 +534,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><small className="rr-lead"><span className="rr-lead-long">Düzenlenecek değeri listeden seçin. Renk kutusu o rengi, beden başlığı o bedeni, beden etiketi tek varyantı seçer.</span><span className="rr-lead-short">Etikete dokunarak seçin; kutuya değeri yazın.</span></small></header>
         <QuickEditColorRows rows={matrix.rows} sizes={matrix.sizes} cells={matrix.cells} idOf={item => item.variant.id} labelOf={itemLabel} selected={selectedSet} onSelect={selectIds} renderCell={renderCell} caption={`${contextTitle}: renk ve beden varyantları`} band={valueBand} bandKey={activeTab?.id} head={<div className="rr-mx-tabs"><div className="rr-mx-pickfld"><PanelSelect ariaLabel="Düzenlenen Değer" value={activeTab?.id ?? ''} onChange={changeValue} width={240} options={valueOptions} triggerLabel={<span className="rr-mx-trig"><span className="rr-mx-trigk">Değer:</span>{activeTab ? valueText(activeTab) : ''}{valueTabs.some(tabHasDraft) && <i className="rr-mx-dot" aria-label="Kaydedilmemiş değişiklik var" />}</span>} /></div>
           {activeDraftChannel && <div className="rr-mx-switchrow"><label className={`rr-qt-custom${activeDraftChannel.custom ? ' rr-on' : ''}`} title={activeDraftChannel.custom ? `${activeDraftChannel.name}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${activeDraftChannel.name}: panel fiyatını izliyor; kendi fiyatını yazmak için açın.`}><input type="checkbox" role="switch" className="rr-qt-switch" checked={activeDraftChannel.custom} onChange={() => activeDraftChannel.onToggleCustom()} aria-label={`${activeDraftChannel.name} özel fiyat`} /><span>Özel Fiyat</span></label><small className="rr-note">Tüm varyantlar için{activeDraftChannel.custom ? ' · panel fiyatından farklı yazılan fiyat o varyantta Özel Fiyat olur' : ' · Panel fiyatını izliyor'}</small></div>}
-          {activeChannel && <div className="rr-mx-switchrow" title={customChannels[activeChannel.id] ? undefined : 'Panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat’ı açın.'}><QuickEditCustomToggle column={activeChannel} custom={customChannels[activeChannel.id]} onChange={value => setCustomChannel(activeChannel.id, value)} compact /></div>}</div>} />
+          {activeChannel && <div className="rr-mx-switchrow" title={customChannels[activeChannel.id] ? undefined : 'Panel fiyatını izliyor; kendi fiyatını yazmak için Özel Fiyat’ı açın.'}><QuickEditCustomToggle column={activeChannel} custom={customChannels[activeChannel.id]} mixed={channelMixed(activeChannel.id) ? { own: derivedMixed.get(activeChannel.id) ?? 0, total: variants.filter(item => channelOffer(item.variant, activeChannel.id)).length } : null} onChange={value => setCustomChannel(activeChannel.id, value)} compact /></div>}</div>} />
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{stepTwoTitle}<TitleHint label={stepTwoTitle}>{draft ? 'Tablodaki hücreleri tek tek değiştirebilir, buradaki değerleri işaretli varyantlara (hiçbiri işaretli değilse tümüne) verebilirsiniz. Uygula yalnız ürün düzenleyicideki varyant tablosunu değiştirir; kalıcı olması için sayfadaki Kaydet’e basın.' : 'Değer işaretli varyantlara uygulanır; hiçbir varyant işaretli değilse tümüne uygulanır.'}</TitleHint></div></header>
         {activeSelection.length ? <div className="rr-chips">{selectionChips(variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => item.variant)).map(chip => <span key={chip} className="rr-chip">{chip}</span>)}</div> : null}
@@ -528,8 +549,11 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
 }
 // "Özel Fiyat" for one marketplace, a switch: on, its own prices are edited in its cells; unticked, it sells at the panel
 // price. Shown beside the column title on one line, and above the table on a phone, where the table becomes cards.
-function QuickEditCustomToggle({ column, custom, onChange, compact = false, className }: { column: QuickPriceColumn; custom: boolean; onChange: (custom: boolean) => void; compact?: boolean; className?: string }) {
-  return <label className={`rr-qt-custom${custom ? ' rr-on' : ''}${className ? ` ${className}` : ''}`} title={custom ? `${column.label}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${column.label}: ana fiyatla satılır; panel fiyatı kaydedilince bu pazaryerinin fiyatı da aynı değere güncellenir.`}><input type="checkbox" role="switch" className="rr-qt-switch" checked={custom} onChange={event => onChange(event.currentTarget.checked)} aria-label={`${column.label} özel fiyat`} />{!compact && <b>{column.label}</b>}<span>Özel Fiyat</span></label>
+// A mixed marketplace (only some variants keep their own price) shows the switch half-way, "Özel Fiyat · 2/5 Varyant";
+// turning it on gives every variant its own price (their prices unchanged), turning it on and off again lets all follow.
+function QuickEditCustomToggle({ column, custom, mixed = null, onChange, compact = false, className }: { column: QuickPriceColumn; custom: boolean; mixed?: { own: number; total: number } | null; onChange: (custom: boolean) => void; compact?: boolean; className?: string }) {
+  const on = custom && !mixed
+  return <label className={`rr-qt-custom${on ? ' rr-on' : ''}${mixed ? ' rr-mixed' : ''}${className ? ` ${className}` : ''}`} title={mixed ? `${column.label}: ${mixed.own} varyantta Özel Fiyat açık, diğerleri panel fiyatıyla satılır. Açarsanız tüm varyantlar kendi fiyatıyla satılır.` : custom ? `${column.label}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${column.label}: ana fiyatla satılır; panel fiyatı kaydedilince bu pazaryerinin fiyatı da aynı değere güncellenir.`}><input type="checkbox" role="switch" className="rr-qt-switch" checked={on} ref={element => { if (element) element.indeterminate = Boolean(mixed) }} onChange={event => onChange(event.currentTarget.checked)} aria-label={`${column.label} özel fiyat`} />{!compact && <b>{column.label}</b>}<span>Özel Fiyat{mixed ? ` · ${mixed.own}/${mixed.total} Varyant` : ''}</span></label>
 }
 // On a phone a whole price is shown without its ",00" so it fits a narrow cell (display only; the value is unchanged).
 const shortOnPhone = (text: string) => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches ? text.replace(/,00$/, '') : text

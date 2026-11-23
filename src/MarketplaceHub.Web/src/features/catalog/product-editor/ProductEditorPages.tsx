@@ -93,9 +93,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       channelPrice: (rowKey, connectionId) => {
         const staged = variantChannelPricing[`${rowKey}:${connectionId}`]
         const text = (value: string) => value.trim() === '' ? '' : priceFieldText(parseEditorNumber(value))
-        if (staged) return { list: text(staged.listPrice), sale: text(staged.salePrice) }
+        if (staged) return { list: text(staged.listPrice), sale: text(staged.salePrice), follows: false }
         const platform = variantRows.find(row => row.key === rowKey)?.platformStatuses?.find(item => item.connectionId === connectionId)
-        return platform?.offerId ? { list: priceFieldText(platform.listPrice), sale: priceFieldText(platform.salePrice) } : null
+        return platform?.offerId ? { list: priceFieldText(platform.listPrice), sale: priceFieldText(platform.salePrice), follows: platform.followsPanelPrice !== false } : null
       },
       // Staged as the editor's per-variant marketplace price drafts (variantChannelPricing): only the page's Kaydet writes them.
       onApplyChannelPrices: changes => {

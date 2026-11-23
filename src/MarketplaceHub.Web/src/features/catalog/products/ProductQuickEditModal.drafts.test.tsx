@@ -290,6 +290,33 @@ describe('ProductQuickEditModal drafts', () => {
     expect(sent.map(call => [call.path, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 11, 3], ['/inventory/v2/on-hand', 11, 3]])
   })
 
+  // O1 (scan 23 Nov 2026): Özel Fiyat on for only some variants. Shown as mixed, a following variant shows the panel price
+  // (what goes), and nothing is a change until the owner switches or types.
+  const mixedProduct = (): Product => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: item.id === 'v1' ? 600 : 520, salePrice: item.id === 'v1' ? 550 : 470, currency: 'TRY', followsPanelPrice: item.id === 'v1' ? false : true })] })) })
+  it('shows a mixed marketplace as mixed and has nothing to save untouched', async () => {
+    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [mixedProduct()])
+    await pickValue('Trendyol', 'Satış')
+    const toggle = document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!
+    expect(toggle.indeterminate).toBe(true)
+    expect(toggle.closest('label')?.textContent).toContain('Özel Fiyat · 1/2 Varyant')
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol satış fiyatı"]')?.value).toBe('550,00')
+    expect(document.body.querySelector('input[aria-label="SKU-2 Trendyol satış fiyatı"]')).toBeNull()
+    expect(Array.from(document.body.querySelectorAll('.rr-mx-follow')).map(item => item.textContent)).toEqual(['450,00'])
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
+    expect(barButton('Kaydet').disabled).toBe(true)
+    await click(footButton('Kapat'))
+    expect(sent).toEqual([])
+  })
+  it('switching a mixed marketplace on is a draft that turns only the following variants own', async () => {
+    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [mixedProduct()])
+    await pickValue('Trendyol', 'Satış')
+    await click(document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!)
+    expect(bar()?.textContent).toContain('1 Değişiklik')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.map(call => [call.path, call.method, call.body])).toEqual([['/channel-offers/panel-price-follow', 'PUT', { connectionId: 'c1', variantIds: ['v2'], followsPanelPrice: false }]])
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))

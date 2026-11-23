@@ -215,9 +215,11 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
         warnings.push(`Trendyol: ${trendyolMixedColours.join(', ')} bedenleri farklı görsellerle atanmış; Trendyol bir rengin bedenlerini tek görsel listesiyle tutar, bu renklerin güncellemesi reddedilebilir.`)
       const stockResult = await runStockStep(rows, product.variants)
       if (stockResult.warning) warnings.push(stockResult.warning)
+      // The marketplaces whose Özel Fiyat switch is as the editor opened it: their variants keep their own stored choice (O1).
+      const customBefore = new Set(initialCustomChannelIds.current)
       if (editProductId) initialCustomChannelIds.current = await runPanelFollowChoiceWrites({ connections: connectionItems, channelPricing, initialCustomChannelIds: initialCustomChannelIds.current, rows })
       const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
-      const { unpricedWarning } = await runOfferWrites({ product, rows, connectionIds: offerConnectionIdsFor(platformUpdate, targetConnectionIds, connectionItems), connections: connectionItems, form, platformUpdate, channelPricing, variantChannelPricing, channelPriceDraft, channelPriceEdited, connectionPlatformName, showProgress })
+      const { unpricedWarning } = await runOfferWrites({ product, rows, connectionIds: offerConnectionIdsFor(platformUpdate, targetConnectionIds, connectionItems), connections: connectionItems, form, platformUpdate, channelPricing, variantChannelPricing, channelPriceDraft, channelPriceEdited, choiceUntouched: connectionId => customBefore.has(connectionId), connectionPlatformName, showProgress })
       if (unpricedWarning) warnings.push(unpricedWarning)
       // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
       if (stockResult.saved.length > 0 || rows.some(row => !existingVariantIds.has(row.key) && editorOpeningStock(row.stock) > 0)) completed.push('stok')

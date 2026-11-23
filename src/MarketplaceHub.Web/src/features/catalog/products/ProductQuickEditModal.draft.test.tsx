@@ -209,6 +209,20 @@ describe('the editor window with marketplace prices', () => {
     expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('nokta yalnız binlik ayırıcıdır')
   })
 
+  // O1: a mixed marketplace of the editor (b-xl follows the panel): that variant shows the panel price read-only and a
+  // marketplace price typed for all goes to the variants with their own price only.
+  it('keeps a following variant of a mixed marketplace at the panel price', async () => {
+    const mixedOffers: Record<string, { list: string; sale: string; follows: boolean }> = { 'b-s': { list: '180', sale: '150', follows: false }, 'b-xl': { list: '180', sale: '150', follows: true } }
+    const onApplyChannelPrices = await mount({ channels: channels(true), channelPrice: key => mixedOffers[key] ?? null })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Satış Fiyatı'))[1].click() })
+    expect(document.body.querySelector('input[aria-label="Bej · XL Trendyol satış fiyatı"]')).toBeNull()
+    expect(document.body.querySelector('.rr-mx-follow')?.textContent).toBe('100,00')
+    await type(field('Satış Fiyatı (₺)'), '140')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '180', salePrice: '140' }])
+  })
+
   it('switches the marketplace off for a new product, saying to save first', async () => {
     await mount({ channels: channels(true), isNewProduct: true })
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })

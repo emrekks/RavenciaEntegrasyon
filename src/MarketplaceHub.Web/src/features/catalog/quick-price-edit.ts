@@ -132,6 +132,14 @@ export function offerFollowsPanel(offer: (Pick<QuickPriceOffer, 'followsPanelPri
 export function channelKeepsOwnPrice(items: ReadonlyArray<FollowItem>, connectionId: string): boolean {
   return items.some(item => !offerFollowsPanel(channelOffer(item.variant, connectionId)))
 }
+// How many of the variants' offers on a marketplace keep their own price (Özel Fiyat on) and how many follow the panel;
+// a variant without an offer there counts in neither. Both above zero is a mixed marketplace (O1, scan 23 Nov 2026): it is
+// shown as mixed and kept as it is, each variant with its own choice, until the owner switches it.
+export function channelFollowMix(variants: ReadonlyArray<QuickPriceVariant>, connectionId: string): { own: number; follows: number; mixed: boolean } {
+  let own = 0; let follows = 0
+  for (const variant of variants) { const offer = channelOffer(variant, connectionId); if (!offer) continue; if (offerFollowsPanel(offer)) follows += 1; else own += 1 }
+  return { own, follows, mixed: own > 0 && follows > 0 }
+}
 export function initialCustomChannels(items: ReadonlyArray<FollowItem>, columns: ReadonlyArray<QuickPriceColumn>): Record<string, boolean> {
   return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, channelKeepsOwnPrice(items, column.id)]))
 }
@@ -173,13 +181,19 @@ export type EditorChannelOfferInput = {
   card: { listPrice: number; salePrice: number }
   cardEdited: boolean
   variantPrice?: { listPrice: number; salePrice: number } | null
-  offer?: { listPrice?: number | null; salePrice?: number | null } | null
+  offer?: { listPrice?: number | null; salePrice?: number | null; followsPanelPrice?: boolean | null } | null
   takesListPrice?: boolean
+  // The marketplace's switch is as the editor opened it (not switched this session): each variant keeps its stored choice.
+  choiceUntouched?: boolean
 }
 export function editorChannelOfferPrices(input: EditorChannelOfferInput): { listPrice: number; salePrice: number; followsPanelPrice: boolean } {
   const followsPanelPrice = !input.custom
   if (input.variantPrice) return { ...input.variantPrice, followsPanelPrice: followsPanelPrice && typedOfferPriceChoice(input.variantPrice, input.panel, input.takesListPrice ?? true) !== false }
   if (!input.custom) return { ...input.panel, followsPanelPrice }
+  // A mixed marketplace (O1): its switch shows on because one variant keeps its own price, but a variant whose offer
+  // follows the panel keeps following it (the panel price, its stored choice) unless the owner switched the marketplace
+  // or typed its card price. Saving untouched so writes nothing new and turns no one's Özel Fiyat on.
+  if (input.choiceUntouched && !input.cardEdited && input.offer && offerFollowsPanel(input.offer)) return { ...input.panel, followsPanelPrice: true }
   const own = input.offer?.salePrice != null && input.offer.salePrice > 0 ? { listPrice: input.offer.listPrice ?? input.offer.salePrice, salePrice: input.offer.salePrice } : null
   return { ...(input.cardEdited || !own ? input.card : own), followsPanelPrice }
 }

@@ -47,6 +47,8 @@ export type OfferWritesInput = {
   variantChannelPricing: Record<string, ChannelPricingDraft>
   channelPriceDraft: (connectionId: string) => ChannelPricingDraft
   channelPriceEdited: (connectionId: string) => boolean
+  // The marketplace's Özel Fiyat switch is as the editor opened it, on (each variant keeps its stored choice there).
+  choiceUntouched?: (connectionId: string) => boolean
   connectionPlatformName: (connectionId: string) => string
   showProgress: (message: string) => void
 }
@@ -77,6 +79,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
       cardEdited: input.channelPriceEdited(connectionId),
       variantPrice: !platformUpdate && variantPricing ? { listPrice: parseEditorNumber(variantPricing.listPrice), salePrice: parseEditorNumber(variantPricing.salePrice) } : null,
       offer: platform,
+      choiceUntouched: input.choiceUntouched?.(connectionId) ?? false,
       takesListPrice: channelTakesListPrice(connections.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
     })
     // A variant without a panel price (0 or empty in the variant table, often a colour imported without one) has
