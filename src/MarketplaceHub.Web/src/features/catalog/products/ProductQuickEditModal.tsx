@@ -297,7 +297,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       }
       if (stockRequested && amount != null) {
         const expected = stockBaseline.current.get(variant.id) ?? variant.onHand
-        const target = stockTarget(stockAction, amount, expected)
+        // Bu Kadar Ekle / Çıkar works on the cell's draft when it has one (O4): applying +5 twice adds 10. A draft that is
+        // not a stock stops it for that variant rather than adding to the saved value.
+        const drafted = stockDrafts.get(variant.id)?.value
+        const parsedDraft = drafted === undefined ? null : parseStockInput(drafted)
+        if (stockAction !== 'SET' && parsedDraft && parsedDraft.kind !== 'value') { failures.push({ sku: variant.sku, message: 'taslaktaki stok okunamadı; önce hücreyi düzeltin.' }); continue }
+        const target = stockTarget(stockAction, amount, parsedDraft?.kind === 'value' ? parsedDraft.value : expected)
         if (target < 0) failures.push({ sku: variant.sku, message: 'stok sıfırın altına inemez.' })
         else nextStock.push([variant.id, String(target), String(quickStockCellValue(variant.onHand, savedStocks.current.get(variant.id) ?? null).value)])
       }

@@ -271,6 +271,25 @@ describe('ProductQuickEditModal drafts', () => {
     ])
   })
 
+  // O4 (scan 23 Nov 2026): Bu Kadar Ekle applied twice added once, since it worked on the saved stock, not the draft.
+  it('Bu Kadar Ekle applied twice adds twice, and Kaydet sends the sum against the saved stock', async () => {
+    await render()
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith('Bu Kadar Ekle'))!.click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '5')
+    await click(applyButton())
+    await click(applyButton())
+    expect(stockBox('SKU-1').value).toBe('13')
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith('Bu Kadar Çıkar'))!.click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '2')
+    await click(applyButton())
+    expect(stockBox('SKU-1').value).toBe('11')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(sent.map(call => [call.path, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 11, 3], ['/inventory/v2/on-hand', 11, 3]])
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))
