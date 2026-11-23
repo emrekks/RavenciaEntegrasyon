@@ -72,6 +72,7 @@ describe('daily order cards', () => {
     const channels = [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada' }]
     expect(storeCounts({ hb: 1, ty: 3, gone: 0 }, channels)).toEqual([{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', packages: 3 }, { key: 'hb', code: 'HEPSIBURADA', name: 'Hepsiburada', packages: 1 }])
     expect(storeCounts({}, channels)).toEqual([])
+    expect(storeCounts({ ty: 2 }, channels, { ty: 1 })).toEqual([{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', packages: 2, exchanges: 1 }])
     expect(storeCounts(null, channels)).toBeUndefined()
     const cancellations = [
       { connectionId: 'hb', cancelledOrders: 0, partialOrders: 1, cancelledUnits: 2, unknownTimeOrders: 0, unknownTimeUnits: 0, wholeUnits: 0, partialUnits: 2 },

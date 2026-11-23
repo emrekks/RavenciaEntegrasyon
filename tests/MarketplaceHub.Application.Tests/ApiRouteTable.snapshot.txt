@@ -286,6 +286,7 @@ GET    /api/v1/returns/{id:guid}/audits | gate=Working | sameOrigin=yes | anon=4
 POST   /api/v1/returns/{id:guid}/exchange-approved | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/returns/{id:guid}/received | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/returns/{id:guid}/rejection-reasons | gate=Working | sameOrigin=yes | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=403 CROSS_SITE_REQUEST_REFUSED
+POST   /api/v1/returns/{id:guid}/replacement-shipped | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/returns/{id:guid}/return-shipment-companies | gate=Working | sameOrigin=yes | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=403 CROSS_SITE_REQUEST_REFUSED
 POST   /api/v1/returns/{id:guid}/stock-dispositions | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/settings/ai/ | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

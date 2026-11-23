@@ -2041,6 +2041,9 @@ export type OrderExchangeResendView = {
   cargoTrackingNumber?: null | string
   shipped: boolean
   cargoTrackingLink?: null | string
+  claimId?: null | string
+  claimVersion: number
+  shippedSource?: null | string
 }
 
 export type OrderFacetsView = {
@@ -2173,6 +2176,7 @@ export type OrderSummaryView = {
   processingByConnection?: null | Record<string, number>
   pendingByConnection?: null | Record<string, number>
   pendingUnitsByConnection?: null | Record<string, number>
+  resentExchangeByConnection?: null | Record<string, number>
 }
 
 export type OrderSyncCommand = {
@@ -9373,6 +9377,26 @@ export interface ApiOperations {
       "If-Match": string
     }
     body: never
+    status: 200
+    response: ReturnDetailView
+    errorStatus: 400 | 401 | 403 | 404 | 409 | 412 | 422 | 428 | 429 | 500
+  }
+  postReturnsByIdReplacementShipped: {
+    method: "POST"
+    path: "/api/v1/returns/{id}/replacement-shipped"
+    pathParams: {
+      id: string
+    }
+    query: Record<string, never>
+    headers: {
+      /** The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks). */
+      "X-CSRF-TOKEN": string
+      /** Required: the write is refused without one (400 IDEMPOTENCY_KEY_REQUIRED); up to 256 characters. The same key replays the first answer. */
+      "Idempotency-Key": string
+      /** The version read ("v{version}", the ETag of the read). Required: 428 PRECONDITION_REQUIRED without it. */
+      "If-Match": string
+    }
+    body: ReturnExchangeMarkCommand
     status: 200
     response: ReturnDetailView
     errorStatus: 400 | 401 | 403 | 404 | 409 | 412 | 422 | 428 | 429 | 500

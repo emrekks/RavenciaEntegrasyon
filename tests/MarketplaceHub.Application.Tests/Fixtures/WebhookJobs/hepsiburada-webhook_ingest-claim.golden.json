@@ -163,6 +163,8 @@
           "ReplacementCargoTrackingLink": null,
           "ReplacementCargoTrackingNumber": null,
           "ReplacementPackageId": null,
+          "ReplacementShippedAt": null,
+          "ReplacementShippedSource": null,
           "RequestedAt": "T-3000.21:56:42.3240000",
           "ResolvedWith": null,
           "ResolvedWithSource": null,

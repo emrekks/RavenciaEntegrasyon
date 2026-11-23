@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using static MarketplaceHub.Infrastructure.Persistence.InvoiceLabelPolicy;
 using static MarketplaceHub.Infrastructure.Persistence.OrderSnapshotReader;
@@ -107,6 +108,14 @@ internal sealed partial class OrderQueryService
         // tab over the resends not handed to the carrier (resentNotShipped=true); the tab counters skip them otherwise.
         var lateStores = !includeMicro && requested.Contains("LATE") && Count("LATE") > 0 ? await TabOrdersByConnectionAsync(tenantId, options, "LATE", cancellationToken) : null;
         var resentStores = !includeMicro && options.ResentNotShipped == true && requested.Contains("RESENT") ? await TabOrdersByConnectionAsync(tenantId, options, "RESENT", cancellationToken) : null;
+        // Of those, the exchanges whose package is not known to be handed to the carrier (the card's hover says what it counts).
+        var resentExchangeStores = resentStores is null ? null : await FilteredOrders(tenantId, options with { Status = "RESENT", Sort = null })
+            .Where(order => db.ReturnClaims.Any(claim => claim.TenantId == order.TenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled
+                && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
+                && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
+                && claim.ReplacementCargoTrackingLink == null && claim.ReplacementShippedAt == null))
+            .GroupBy(order => order.ConnectionId).Select(group => new { ConnectionId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.ConnectionId.ToString("D"), row => row.Count, cancellationToken);
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits, processingUnits,
             lateStores ?? (requested.Contains("LATE") && !includeMicro ? new Dictionary<string, int>() : null), resentStores,
@@ -115,7 +124,8 @@ internal sealed partial class OrderQueryService
             !includeMicro && requested.Contains("NEW") ? await TabOrdersByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null,
             !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
             !includeMicro && requested.Contains("PENDING") ? await TabOrdersByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null,
-            !includeMicro && requested.Contains("PENDING") ? await TabUnitsByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null);
+            !includeMicro && requested.Contains("PENDING") ? await TabUnitsByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null,
+            resentExchangeStores);
     }
 
 

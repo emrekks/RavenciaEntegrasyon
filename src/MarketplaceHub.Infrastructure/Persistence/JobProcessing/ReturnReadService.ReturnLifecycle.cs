@@ -290,7 +290,10 @@ internal sealed partial class ReturnReadService
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.Ordinal))
             return await SyncHepsiburadaOpenReturns(tenantId, connectionId, correlationId, cancellationToken);
         if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+        {
             await DateTrendyolReturnRequestsAsync(tenantId, connectionId, correlationId, cancellationToken);
+            await RereadTrendyolExchangeResendsAsync(tenantId, connectionId, correlationId, cancellationToken);
+        }
         var batchSize = configuration.GetValue("MarketplaceSync:ReturnLifecycle:BatchSize", 25);
         var (incompleteCargoBudget, completeCargoBudget) = ReturnLifecycleBatchPolicy.SplitBatch(batchSize);
         var incompleteCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_MISSING", cancellationToken);
@@ -395,6 +398,56 @@ internal sealed partial class ReturnReadService
             await db.SaveChangesAsync(cancellationToken);
         }
         cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // Owner, 23 Nov 2026: an exchange's claim is closed (Rejected once the exchange is made) and was read again only while
+    // RETURN_SYNC / RETURN_RECONCILIATION brought it back, so a tracking link Trendyol gives later never reached the
+    // Yeniden Gönderimler row. Its claims whose package is not known to be handed to the carrier (no tracking link, no owner
+    // mark) are read again by claimIds, one request at most an hour per connection, for 30 days after Trendyol last changed
+    // the claim. Only what the read says is stored (UpsertReturn: a link closes the row); nothing is inferred from a
+    // missing field. A refusal stops this step only.
+    internal const int ExchangeResendRereadDays = 30;
+    internal static readonly TimeSpan ExchangeResendRereadSpacing = TimeSpan.FromHours(1);
+    internal const string ExchangeResendRereadCursor = "RETURN_EXCHANGE_RESEND";
+
+    private async Task RereadTrendyolExchangeResendsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        if (returns is not IReturnBatchReadPort batchReader) return;
+        var now = timeProvider.GetUtcNow();
+        var since = now.AddDays(-ExchangeResendRereadDays);
+        var ids = await db.ReturnClaims.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status != ReturnClaimStatus.Cancelled
+                && x.CustomerRequest == ReturnCustomerRequestPolicy.Change
+                && (x.ReplacementPackageId != null || x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
+                && x.ReplacementCargoTrackingLink == null && x.ReplacementShippedAt == null
+                && (x.LastRemoteModifiedAt ?? x.UpdatedAt) >= since)
+            .OrderBy(x => x.Id).Select(x => x.ExternalClaimId).Take(ReturnLifecycleBatchPolicy.ClaimIdsPerRequest).ToListAsync(cancellationToken);
+        ids = ids.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return;
+        var cursor = await Cursor(tenantId, connectionId, ExchangeResendRereadCursor, cancellationToken);
+        if (cursor.LastAttemptAt is { } lastAttempt && now - lastAttempt < ExchangeResendRereadSpacing) return;
+        cursor.LastAttemptAt = now;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        TrackRequest();
+        var many = await batchReader.GetManyAsync(Context(tenantId, connectionId, correlationId, $"exchange-resend-reread:{ids[0]}:{ids.Count}"), ids, cancellationToken);
+        if (!many.IsSuccess)
+        {
+            TrackResultFailure(many.Error);
+            cursor.LastError = many.Error?.Code;
+            cursor.LastErrorAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+        foreach (var claim in many.Value!)
+        {
+            TrackReceived();
+            await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        cursor.LastSuccessAt = timeProvider.GetUtcNow();
+        cursor.LastError = null;
         await db.SaveChangesAsync(cancellationToken);
     }
 

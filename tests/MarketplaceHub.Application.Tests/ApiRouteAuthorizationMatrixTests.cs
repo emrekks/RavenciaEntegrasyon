@@ -308,6 +308,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/returns/{id:guid}/audits Working",
         "POST   /api/v1/returns/{id:guid}/received Operations",
         "POST   /api/v1/returns/{id:guid}/exchange-approved Elevated",
+        "POST   /api/v1/returns/{id:guid}/replacement-shipped Elevated",
         "GET    /api/v1/returns/{id:guid}/rejection-reasons Working",
         "GET    /api/v1/returns/{id:guid}/return-shipment-companies Working",
         "POST   /api/v1/returns/{id:guid}/stock-dispositions Operations",

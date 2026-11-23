@@ -204,7 +204,7 @@ export function OrdersPage() {
   const channels = lateOrdersQuery.data?.channels
   const lateStores = storeCounts(summary.data?.lateByConnection, channels)
   const cancelStores = cancellationStores(cancellationsToday.data?.stores, channels)
-  const resentStores = storeCounts(resentNotShipped.data?.resentByConnection, channels)
+  const resentStores = storeCounts(resentNotShipped.data?.resentByConnection, channels, resentNotShipped.data?.resentExchangeByConnection)
   const resendReminder = useResendReminder()
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
   const connections = useQuery(connectionQueries.list<Connection>())

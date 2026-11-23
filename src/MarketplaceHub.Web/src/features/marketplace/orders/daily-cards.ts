@@ -83,10 +83,11 @@ const storeOf = (channels: Channels, connectionId: string) => {
 }
 
 // The Geciken and Yeniden Gönderim cards' hover: their orders per store, the biggest first; [] when there are none and
-// undefined while unread (or from an older API).
-export function storeCounts(byConnection: Record<string, number> | null | undefined, channels: Channels) {
+// undefined while unread (or from an older API). exchanges: of those, the exchange resends per store (the Yeniden
+// Gönderim card's resentExchangeByConnection), so its hover says what it counts.
+export function storeCounts(byConnection: Record<string, number> | null | undefined, channels: Channels, exchanges?: Record<string, number> | null) {
   if (!byConnection) return undefined
-  return Object.entries(byConnection).filter(([, value]) => value > 0).map(([connectionId, packages]) => ({ ...storeOf(channels, connectionId), packages }))
+  return Object.entries(byConnection).filter(([, value]) => value > 0).map(([connectionId, packages]) => ({ ...storeOf(channels, connectionId), packages, ...(exchanges ? { exchanges: exchanges[connectionId] ?? 0 } : {}) }))
     .sort((left, right) => right.packages - left.packages || left.name.localeCompare(right.name, 'tr-TR'))
 }
 

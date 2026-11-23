@@ -15,6 +15,8 @@ public sealed partial class MarketplaceSalesService
         ReturnDecisions.MarkReturnReceivedAsync(tenantId, userId, claimId, expectedVersion, idempotencyKey, correlationId, cancellationToken);
     public Task<ServiceResult<ReturnDetailView>> MarkExchangeApprovedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, bool marked, string correlationId, CancellationToken cancellationToken) =>
         ReturnDecisions.MarkExchangeApprovedAsync(tenantId, userId, claimId, expectedVersion, marked, correlationId, cancellationToken);
+    public Task<ServiceResult<ReturnDetailView>> MarkReplacementShippedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, bool marked, string correlationId, CancellationToken cancellationToken) =>
+        ReturnDecisions.MarkReplacementShippedAsync(tenantId, userId, claimId, expectedVersion, marked, correlationId, cancellationToken);
     public Task<ServiceResult<ReturnDetailView>> ProcessReturnActionInstantAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
         ReturnDecisions.ProcessReturnActionInstantAsync(tenantId, userId, claimId, expectedVersion, command, idempotencyKey, correlationId, cancellationToken);
     public Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
