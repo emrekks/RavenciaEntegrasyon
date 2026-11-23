@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { cleanup, click, flush, key, render, type } from '../../../test/render'
 import { parseResendReminder } from './resend-reminder'
-import { cancelRowText, microCountryRows, OrderMetricCards } from './OrderMetricCards'
+import { cancelRowText, microCountryRows, OrderMetricCards, resentTipText } from './OrderMetricCards'
 
 afterEach(cleanup)
 
@@ -69,6 +69,8 @@ describe('order summary cards', () => {
     open(host, 'İptal')
     const chip = host.querySelector<HTMLButtonElement>('.rr-metric-chip')!
     expect(chip.textContent).toBe('1 Kısmi İptal | 2 Adet Ürün')
+    // The units are their own span (hidden on a phone, where the chip is one "N Kısmi İptal" line) and sit in the chip's tip too.
+    expect(chip.querySelector('.rr-metric-adet')?.textContent).toContain('2 Adet Ürün')
     chip.click()
     open(host, 'Yeniden Gönderim')
     open(host, 'Mikro İhracat Sipariş')
@@ -314,5 +316,15 @@ describe('order summary cards', () => {
     expect(card(busy.host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(false)
     const on = render(<OrderMetricCards {...props({ microExport: metric(0), activeCard: 'micro' })} />)
     expect(card(on.host, 'Mikro İhracat Sipariş').querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(false)
+  })
+})
+
+// Owner, 23 Nov 2026: the Yeniden Gönderim hover says what it counts.
+describe('resend card hover', () => {
+  it('names the exchanges among the resends waiting for the carrier', () => {
+    expect(resentTipText({ packages: 1, exchanges: 1 })).toBe('1 paket · değişim, kargoya verilmesi bekleniyor')
+    expect(resentTipText({ packages: 3, exchanges: 1 })).toBe('3 paket · 1 değişim')
+    expect(resentTipText({ packages: 2, exchanges: 0 })).toBe('2 paket')
+    expect(resentTipText({ packages: 2 })).toBe('2 paket')
   })
 })

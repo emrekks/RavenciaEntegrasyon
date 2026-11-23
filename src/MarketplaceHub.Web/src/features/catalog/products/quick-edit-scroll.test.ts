@@ -22,3 +22,16 @@ describe('quick edit colour list styles', () => {
     expect(css).not.toContain('rr-cr-sticky')
   })
 })
+
+describe('quick edit on a phone', () => {
+  const phone = css.slice(css.lastIndexOf('@media (max-width: 760px) {'))
+  it('lays the sizes out in equal columns (3, 4 from 414 px) with 44 px boxes in 16 px type', () => {
+    expect(phone).toMatch(/\.rr-cr-sizes \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/)
+    expect(css).toMatch(/min-width: 414px\) \{[^}]*repeat\(4, minmax\(0, 1fr\)\)/)
+    expect(phone).toMatch(/\.rr-mx-in \{[^}]*width: 100%; height: 44px; font-size: 16px/)
+  })
+  it('puts the head on one scrolling line and gives the list no frame of its own', () => {
+    expect(phone).toMatch(/\.rr-cr-hrow \{[^}]*display: flex[^}]*overflow-x: auto/)
+    expect(phone).toMatch(/\.rr-cr-list \{[^}]*border: 0/)
+  })
+})

@@ -33,7 +33,7 @@ const read: JobReadSummary = {
 
 describe('JobReadRecords', () => {
   it('lists what the read pulled with its numbers, outcome and reason, and the records beyond the cap', () => {
-    act(() => root.render(<JobReadRecords read={read} recordsKept />))
+    act(() => root.render(<JobReadRecords jobId="job-1" read={read} recordsKept />))
     const text = container.textContent ?? ''
     expect(text).toContain('Çekilen Kayıtlar')
     expect(text).toContain('Talep No')
@@ -47,9 +47,9 @@ describe('JobReadRecords', () => {
   })
 
   it('says plainly when an older job did not record its records, and stays out of types that never record', () => {
-    act(() => root.render(<JobReadRecords read={null} recordsKept />))
+    act(() => root.render(<JobReadRecords jobId="job-1" read={null} recordsKept />))
     expect(container.textContent).toContain('kayıt bazında ayrıntı tutulmadan önce çalıştı')
-    act(() => root.render(<JobReadRecords read={null} recordsKept={false} />))
+    act(() => root.render(<JobReadRecords jobId="job-1" read={null} recordsKept={false} />))
     expect(container.textContent).toBe('')
   })
 })

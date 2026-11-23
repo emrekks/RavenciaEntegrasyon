@@ -5575,6 +5575,86 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         }
     }
 
+    // Live 19-23 Nov 2026: the definition Hepsiburada delivered to was closed (Webhook'u Kapat) and "Önceki Tanımı Geri
+    // Yükle" brought back a newer one that had never received anything, so Hepsiburada's calls kept ending in 404.
+    [PostgreSqlFact]
+    public async Task InstantNotifications_HepsiburadaRestoresTheDefinitionThatReceivedNotificationsNotTheNewestOne()
+    {
+        var tenant = NewTenant("hb-restore-used");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = "HEPSIBURADA";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Marketplace:PublicBaseUrl"] = "https://panel.ravencia.com" }).Build();
+        var hasher = new TokenHasher(new byte[32]);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new InstantNotificationService(db, new RecordingWebhookPort(), hasher, new EphemeralDataProtectionProvider(), configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
+            // Whole seconds: PostgreSQL keeps microseconds.
+            var lastNotification = DateTimeOffset.FromUnixTimeSeconds(fixture.TimeProvider.GetUtcNow().AddDays(-4).ToUnixTimeSeconds());
+            async Task<Guid> PrepareAndCloseAsync(string name, DateTimeOffset? receivedAt)
+            {
+                // Version 7 ids order by the millisecond they were made in.
+                await Task.Delay(5);
+                Assert.Null((await service.EnableAsync(tenant.Id, connection.Id, name, CancellationToken.None)).Error);
+                var id = await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id && x.Status == "ACTIVE").Select(x => x.Id).SingleAsync();
+                if (receivedAt is not null)
+                    await db.WebhookSubscriptions.Where(x => x.Id == id).ExecuteUpdateAsync(x => x.SetProperty(row => row.LastReceivedAt, receivedAt));
+                db.ChangeTracker.Clear();
+                Assert.Null((await service.DisableAsync(tenant.Id, connection.Id, $"{name}-close", CancellationToken.None)).Error);
+                return id;
+            }
+            var older = await PrepareAndCloseAsync("unused-older", null);
+            var used = await PrepareAndCloseAsync("used", lastNotification);
+            var newest = await PrepareAndCloseAsync("unused-newest", null);
+            db.ChangeTracker.Clear();
+
+            // Off, three closed definitions: the one Hepsiburada delivered to is offered and restored, not the newest.
+            var offered = (await service.StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!;
+            Assert.Equal("OFF", offered.State);
+            Assert.Equal(InstantNotificationService.PreparedAt(used), offered.PreviousPreparedAt);
+            Assert.Equal(lastNotification, offered.PreviousLastReceivedAt);
+            var restored = await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore", CancellationToken.None);
+            Assert.Null(restored.Error);
+            Assert.Equal(used, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
+            // It receives: it is not swapped for another one.
+            Assert.Equal(409, (await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-in-use", CancellationToken.None)).Error?.Status);
+
+            // An unused definition is active (older than the used one): the used one is still offered and restored.
+            await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.Status, row => row.Id == older ? "ACTIVE" : "DELETED"));
+            db.ChangeTracker.Clear();
+            Assert.Equal(InstantNotificationService.PreparedAt(used), (await service.StatusAsync(tenant.Id, connection.Id, "status-older", CancellationToken.None)).Value!.PreviousPreparedAt);
+            Assert.Null((await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-over-older", CancellationToken.None)).Error);
+            Assert.Equal(used, (await db.WebhookSubscriptions.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Status == "ACTIVE")).Id);
+
+            // The live state of 23 Nov: the newest unused one was restored by mistake; pressing again brings the used one back.
+            await db.WebhookSubscriptions.Where(x => x.TenantId == tenant.Id).ExecuteUpdateAsync(x => x.SetProperty(row => row.Status, row => row.Id == newest ? "ACTIVE" : "DELETED"));
+            db.ChangeTracker.Clear();
+            Assert.Null((await service.RestorePreviousAsync(tenant.Id, connection.Id, "restore-over-newest", CancellationToken.None)).Error);
+            var rows = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
+            Assert.Equal("ACTIVE", rows[used]);
+            Assert.Equal("DELETED", rows[newest]);
+            Assert.Equal("DELETED", rows[older]);
+
+            // Another tenant does not reach the connection.
+            Assert.Equal(404, (await service.RestorePreviousAsync(Guid.NewGuid(), connection.Id, "restore-other-tenant", CancellationToken.None)).Error?.Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     private sealed class RecordingWebhookPort : IWebhookRegistrationPort
     {
         public string? CreatedUrl { get; private set; }

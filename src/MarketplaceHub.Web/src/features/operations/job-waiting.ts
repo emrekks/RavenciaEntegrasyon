@@ -51,7 +51,7 @@ export function queuedWait(job: Pick<JobLike, 'status' | 'lastErrorCode'>): Queu
   if (job.status !== 'PENDING' && job.status !== 'RETRY_SCHEDULED') return null
   const code = job.lastErrorCode?.trim().toUpperCase() ?? ''
   if (turnCodes.has(code)) return { label: 'Sırada', ...turnWait }
-  if (code === 'INITIAL_SYNC_PENDING') return { label: 'Sırada', line: 'ilk veri aktarımı bitince başlayacak', description: 'İlk kapsamlı veri aktarımı tamamlanmadan bu işlem başlamaz; aktarım bitince otomatik çalıştırılacak. Bu bir hata değil.' }
+  if (code === 'INITIAL_SYNC_PENDING') return { label: 'Sırada', line: 'ilk veri çekimi bitince başlayacak', description: 'İlk kapsamlı veri çekimi tamamlanmadan bu işlem başlamaz; aktarım bitince otomatik çalıştırılacak. Bu bir hata değil.' }
   if (code === 'LOCAL_QUOTA_WAIT' || code.endsWith('_LOCAL_QUOTA_WAIT')) return { label: 'Kota Bekleniyor', line: 'platform istek kotası dolunca yeniden denenecek', description: 'Platformun istek kotası dolu olduğu için istek gönderilmedi; kota yenilenince otomatik çalıştırılacak. Bu bir hata değil.' }
   return null
 }

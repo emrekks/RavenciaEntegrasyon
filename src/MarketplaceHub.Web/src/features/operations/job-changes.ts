@@ -26,7 +26,7 @@ const outcomes: Record<string, string> = {
 /** Why the list is empty (or what the job is waiting for), as the job recorded it; null when it said nothing. */
 export function jobChangesOutcomeText(outcome: string | null | undefined, productImport = false) {
   if (!outcome) return null
-  if (outcome === 'NO_CHANGES' && productImport) return 'Bu aktarımda panelde fiyatı veya stoğu değişen varyant bulunmadı.'
+  if (outcome === 'NO_CHANGES' && productImport) return 'Bu çekimde panelde fiyatı veya stoğu değişen varyant bulunmadı.'
   return outcomes[outcome] ?? outcome
 }
 
@@ -71,7 +71,7 @@ export function jobChangeSourceLabel(line: Pick<JobChangeLine, 'source' | 'resul
   if (line.source === 'ORDER') return orderNumber ? `Sipariş #${orderNumber}` : 'Sipariş'
   if (line.source === 'RECONCILE') return 'Uzlaştırma'
   if (line.source === 'MANUAL_STOCK') return 'Elle Stok'
-  if (line.source === 'STOCK_IMPORT') return 'Aktarım'
+  if (line.source === 'STOCK_IMPORT') return 'Çekim'
   return sendLogTriggerLabel(line.source)
 }
 

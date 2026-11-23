@@ -85,8 +85,11 @@ export function QuickEditColorRows<T>({ rows, sizes, cells, idOf, labelOf, selec
         if (next) { next.focus(); next.select?.(); return }
       }
     }
+    // On a phone the keyboard covers the lower half: the box in focus is brought to the middle of the visible area.
+    const reveal = (event: FocusEvent) => { const target = event.target; if (target instanceof HTMLInputElement && target.dataset.mr !== undefined && window.matchMedia?.('(max-width: 760px)').matches) window.setTimeout(() => target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250) }
     element.addEventListener('keydown', move)
-    return () => element.removeEventListener('keydown', move)
+    element.addEventListener('focusin', reveal)
+    return () => { element.removeEventListener('keydown', move); element.removeEventListener('focusin', reveal) }
   }, [rowCount, sizeCount])
   const layout = colorRowsLayout(rows, sizes)
   return <div className="rr-cr" style={{ '--cr-color': `${layout.colorPx}px`, '--cr-label': `${layout.labelPx}px`, '--cr-cell': `${layout.cellPx}px` } as CSSProperties}>

@@ -1200,7 +1200,10 @@ public sealed record InstantNotificationView(
     WebhookAdoptableDefinition? AdoptableFrom = null,
     // A Shopify webhook opened without the app's secret key: its deliveries are admitted by the secret address and the
     // store name alone (no signature). The panel asks the seller to reopen it with the key.
-    bool RouteOnly = false);
+    bool RouteOnly = false,
+    // When the definition PreviousPreparedAt names last received a notification (null: it never did), so the panel
+    // says which definition comes back.
+    DateTimeOffset? PreviousLastReceivedAt = null);
 
 public sealed record WebhookAdoptableDefinition(string ConnectionName, string Environment, DateTimeOffset PreparedAt);
 
@@ -1443,8 +1446,11 @@ public sealed record OrderListView(
     // The exchange this order is a resend for (owner, 18 Nov 2026): its claim names Trendyol's exchange package or the owner
     // marked it made. Null when it is no such exchange.
     OrderExchangeResendView? ExchangeResend = null);
-// PackageId and the carrier as Trendyol named them (null: not named); Shipped once the package's tracking link is known.
-public sealed record OrderExchangeResendView(string? PackageId, string? CargoProviderName, string? CargoTrackingNumber, bool Shipped, string? CargoTrackingLink = null);
+// PackageId and the carrier as Trendyol named them (null: not named). Shipped once the package's tracking link is known
+// (ShippedSource MARKETPLACE) or the owner marked it handed to the carrier (MANUAL, owner 23 Nov 2026); a tracking number
+// alone is not "shipped". ClaimId and ClaimVersion address that mark (POST /returns/{id}/replacement-shipped, If-Match).
+public sealed record OrderExchangeResendView(string? PackageId, string? CargoProviderName, string? CargoTrackingNumber, bool Shipped, string? CargoTrackingLink = null,
+    Guid? ClaimId = null, long ClaimVersion = 0, string? ShippedSource = null);
 // The buyer kind of an order, decided by the same rule the invoice uses (TrendyolEFaturamCanonicalPayload.ResolveBuyerType,
 // report item 12): Individual, Corporate, or CorporateTaxIdMissing (a corporate buyer without a tax number: the invoice
 // stops and asks the owner). Reason is a short Turkish explanation of what decided it.
@@ -1544,7 +1550,10 @@ public sealed record OrderSummaryView(
     // it); null when that tab was not counted. The menu badge and the overview's Bekleyen Siparişler card both read them
     // from one request, so the badge, the card and the tab always say the same number.
     IReadOnlyDictionary<string, int>? PendingByConnection = null,
-    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null);
+    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null,
+    // Of ResentByConnection, the exchange resends per store id (Trendyol's exchange package not known to be handed to the
+    // carrier), for the Yeniden Gönderim card's hover; null when ResentByConnection is.
+    IReadOnlyDictionary<string, int>? ResentExchangeByConnection = null);
 public sealed record OrderCargoCountView(string Cargo, int Orders, decimal Units);
 public sealed record OrderLineView(
     Guid Id,
@@ -1809,6 +1818,7 @@ public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, st
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 // Marked: true sets the owner's "Değişim Onaylandı" mark, false removes it (POST /returns/{id}/exchange-approved).
+// Also the owner's "Kargoya Verildi" mark of an exchange package (POST /returns/{id}/replacement-shipped).
 public sealed record ReturnExchangeMarkCommand(bool Marked);
 
 public interface IMarketplaceSalesService
@@ -1848,6 +1858,8 @@ public interface IMarketplaceSalesService
     Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     // Owner, 18 Nov 2026: marks (or unmarks) a Trendyol exchange request Trendyol answered Rejected as an exchange made; panel only.
     Task<ServiceResult<ReturnDetailView>> MarkExchangeApprovedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, bool marked, string correlationId, CancellationToken cancellationToken);
+    // Owner, 23 Nov 2026: marks (or unmarks) an exchange resend's package as handed to the carrier; panel only.
+    Task<ServiceResult<ReturnDetailView>> MarkReplacementShippedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, bool marked, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ProcessReturnActionInstantAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, ReturnDecisionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
 }

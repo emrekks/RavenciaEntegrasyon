@@ -274,12 +274,14 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
     };
 
     // Owner, 18 Nov 2026: the "Değişim Onaylandı" mark takes a return out of the invoice's returns, so only the owner and
-    // administrators set or remove it.
-    [PostgreSqlFact]
-    public async Task Only_the_owner_and_administrators_mark_an_exchange_approved()
+    // administrators set or remove it. So is the exchange package's "Kargoya Verildi" mark (owner, 23 Nov 2026).
+    [PostgreSqlTheory]
+    [InlineData("exchange-approved")]
+    [InlineData("replacement-shipped")]
+    public async Task Only_the_owner_and_administrators_mark_an_exchange_approved(string mark)
     {
         using var host = Host();
-        var path = $"/api/v1/returns/{Guid.NewGuid():D}/exchange-approved";
+        var path = $"/api/v1/returns/{Guid.NewGuid():D}/{mark}";
         foreach (var role in new[] { MembershipRole.Operations, MembershipRole.Accounting })
         {
             var (client, csrf) = await SignInAsync(host, fixture, role);

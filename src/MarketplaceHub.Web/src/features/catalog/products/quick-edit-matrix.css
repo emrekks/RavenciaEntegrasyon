@@ -73,3 +73,45 @@
 @media (max-width: 640px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band > span { display: none; }
 }
+
+/* Phones (≤ 760 px), one layout for Hızlı Stok, Hızlı Fiyat and the editor's Toplu Düzenle:
+   a colour is one block — its name on a line of its own (44 px to tap), its sizes under it in equal columns (3; 4 from 414 px),
+   each cell a small "○ L" label over a box that fills the whole cell (44 px high, 16 px type: no zoom on focus). Every cell has
+   the same left edge and width. The head is one line: "Tümünü Seç" and the size shortcuts in a row that scrolls sideways. One
+   frame only: the list has no box of its own, colours are told apart by a thin line. Step 2 stacks full width, scope text first. */
+@media (max-width: 760px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-m-body { padding: 12px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-step { padding-inline: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-pickfld { flex: 1 1 100%; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-list { border: 0; border-radius: 0; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 1px 0 1px; background: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-row + .rr-cr-row { border-top: 1px solid var(--rr-line); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-color { min-height: 32px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: stretch; gap: 8px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-pair { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 0; padding: 0 4px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-size { justify-content: flex-start; text-align: left; min-height: 18px; line-height: 18px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-gap { height: 1px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-box { width: 100%; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-in { width: 100%; height: 44px; font-size: 16px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mx-follow { width: 100%; font-size: 16px; line-height: 44px; }
+  /* The head: one line, sideways scroll for the shortcuts; the value band is a plain line above it. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band { min-height: 32px; padding: 0 4px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band > span { display: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow .rr-cr-hcolor { flex: none; min-height: 44px; white-space: nowrap; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow .rr-cr-sizes { display: flex; flex: none; gap: 12px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow .rr-cr-hpair { display: flex; flex: none; padding: 0; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-hrow .rr-cr-hpair > span[aria-hidden] { display: none; }
+  /* Step 2: stacked, full width, the scope text over the button. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-fld, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-f120, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-f140, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-f200 { width: 100%; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-in { height: 44px; font-size: 16px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-scope { order: -1; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-apply { width: 100%; height: 44px; }
+  /* The foot keeps the home-indicator inset. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-m-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 760px) and (min-width: 414px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

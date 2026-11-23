@@ -70,7 +70,7 @@ export function productImportOptionVisibility(options: {
       showOptionsSection: false
     }
   }
-  // A single product (Tek Ürün Aktarımı) offers the same choices as an update of existing products (owner, 5 Nov 2026).
+  // A single product (Tek Ürün Çekimi) offers the same choices as an update of existing products (owner, 5 Nov 2026).
   const updateScope = isBulk ? options.mode === 'EXISTING_ONLY' : true
   const showUpdateExisting = updateScope && anyContent
   const showPriceStock = updateScope && anyPriceStock
@@ -83,7 +83,7 @@ export function productImportOptionVisibility(options: {
   // Every mode reads archived listings only when asked, Ürün Eşleme too (owner, 12 Nov 2026: "Arşiv ürünlerini dahil et
   // de olması lazım bunun gelişmiş seçeneklerinde"); the API no longer forces it on for mapping.
   const showArchived = true
-  // The API reads listings awaiting approval only in Tam Katalog Taraması, Yeni Ürünleri Aktar and Ürün Eşleme
+  // The API reads listings awaiting approval only in Tam Katalog Taraması, Yeni Ürünleri Çek and Ürün Eşleme
   // (MarketplaceSalesService.EnqueueProductSyncAsync drops it for Mevcut Ürünleri Güncelle), so it is offered there only.
   const showPendingApproval = isBulk && options.supportsPendingApproval && options.mode !== 'EXISTING_ONLY'
 
@@ -117,7 +117,7 @@ export function productImportModeDescription(mode: ProductImportMode, platformCo
   return ''
 }
 
-// The three choices of Mevcut Ürünleri Güncelle (and Tek Ürün Aktarımı), owner 12 Nov 2026: "Mevcut Ürün Bilgilerini
+// The three choices of Mevcut Ürünleri Güncelle (and Tek Ürün Çekimi), owner 12 Nov 2026: "Mevcut Ürün Bilgilerini
 // Güncelle" takes every attribute and the model's new variants; without it, only the ticked prices and/or stock change.
 export type ProductImportChoices = { updateExisting: boolean; updatePrices: boolean; updateStock: boolean }
 
@@ -151,7 +151,7 @@ export function productImportOverwriteConfirmation(updatePrices: boolean, update
   if (!updatePrices && !updateStock) return null
   const counts = preview ? ` En çok ${preview.variants.toLocaleString('tr-TR')} bedenin panel fiyatı değişecek; ${preview.otherOffers.toLocaleString('tr-TR')} pazaryeri kaydı panel fiyatına çekilecek.` : ''
   const stockNote = ' Değişen stoklar, otomatik gönderimi açık olan diğer pazaryerlerine de gönderilir.'
-  const priceNote = ' Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine stokla birlikte bu fiyatla gider (bu aktarım stoğu da değiştiriyorsa hemen).'
+  const priceNote = ' Panel fiyatı değişen ürünler, otomatik gönderimi açık diğer pazaryerlerine stokla birlikte bu fiyatla gider (bu çekim stoğu da değiştiriyorsa hemen).'
   if (updatePrices && updateStock) {
     return {
       title: 'Panel Fiyat ve Stokları Değiştirilsin mi?',
@@ -190,11 +190,11 @@ function joinWords(parts: string[]) {
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ve ${parts[parts.length - 1]}` : parts[0] ?? ''
 }
 
-/** The body of the "Ürün Aktarımı Başladı" toast, written as sentences instead of a chain of fragments. */
+/** The body of the "Ürün Çekimi Başladı" toast, written as sentences instead of a chain of fragments. */
 export function productImportStartedMessage(input: ProductImportStartedInput): string {
   const included = [input.includeArchived ? (input.includeDrafts ? 'arşivdekiler ve taslaklar' : 'arşivdekiler') : '', input.includePendingApproval ? 'onay bekleyenler' : ''].filter(Boolean)
   const where = input.connectionCount === 1 ? 'Mağazadaki' : `${input.connectionCount} mağazadaki`
-  const first = `${where} ${importScopeWords[input.scope]}${included.length ? `, ${joinWords(included)} dahil,` : ''} panele aktarılıyor.`
+  const first = `${where} ${importScopeWords[input.scope]}${included.length ? `, ${joinWords(included)} dahil,` : ''} panele çekiliyor.`
   const kept: string[] = []
   if (input.contentChoice !== null) kept.push(`Paneldeki mevcut ürün bilgileri ${input.contentChoice ? 'güncellenecek' : 'değişmeyecek'}.`)
   if (input.priceStock) kept.push(`Mevcut fiyatlar ${input.priceStock.updatePrices ? 'güncellenecek' : 'korunacak'}, mevcut stoklar ${input.priceStock.updateStock ? 'güncellenecek' : 'korunacak'}.`)

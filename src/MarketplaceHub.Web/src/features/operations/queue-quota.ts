@@ -18,7 +18,7 @@ export const queueWindowOptions: Array<{ value: QueueWindow; label: string }> = 
 // The worker's lanes (WorkerLanes): which work each runs, in plain words.
 const laneLabels: Record<string, { label: string; hint: string }> = {
   USER: { label: 'Kullanıcı İşlemleri', hint: 'Panelden başlatılan işler; toplu işler de burada sıraya girer.' },
-  INITIAL: { label: 'İlk Aktarım', hint: 'Yeni bağlanan mağazanın ilk veri çekimi.' },
+  INITIAL: { label: 'İlk Çekim', hint: 'Yeni bağlanan mağazanın ilk veri çekimi.' },
   ORDER_STATUS: { label: 'Sipariş Durumu Taraması', hint: 'Açık siparişlerin durumlarının yeniden okunması.' },
   RETURNS_READ: { label: 'İade Okuma', hint: 'Pazaryerlerinden iade talepleri ve durumları.' },
   PRODUCT_CATALOG: { label: 'Ürün Kataloğu', hint: 'Ürün listesi eşitleme ve yayın kontrolleri.' },

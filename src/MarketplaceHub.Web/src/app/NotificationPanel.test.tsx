@@ -88,3 +88,32 @@ describe('opening the panel', () => {
     }
   })
 })
+
+describe('the box head, filter and empty state', () => {
+  const sample = (patch: Partial<AppNotification>): AppNotification => ({ id: patch.id ?? 'x', message: 'Mesaj', title: 'Başlık', kind: 'info', createdAt: now, read: false, ...patch })
+
+  it('has two icon-only actions with names, and asks before clearing', () => {
+    const cleared = vi.fn()
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host)
+    act(() => root?.render(<NotificationPanel notifications={[sample({})]} onNavigate={vi.fn()} onCleared={cleared} />))
+    const markAll = host.querySelector<HTMLButtonElement>('button[aria-label="Tümünü Okundu Yap"]')!
+    const clear = host.querySelector<HTMLButtonElement>('button[aria-label="Temizle"]')!
+    expect(markAll.textContent).toBe(''); expect(clear.textContent).toBe('')
+    act(() => clear.click())
+    expect(cleared).not.toHaveBeenCalled()
+    expect(host.querySelector('.rv-notification-confirm')?.textContent).toContain('temizlensin mi')
+    act(() => host!.querySelector<HTMLButtonElement>('.rv-notification-confirm .is-danger')!.click())
+    expect(cleared).toHaveBeenCalledTimes(1)
+  })
+
+  it('filters in three equal parts with their counts and says plainly when a part is empty', () => {
+    const panel = render([sample({ id: 'a' }), sample({ id: 'b', kind: 'error', read: true })])
+    const parts = Array.from(panel.querySelectorAll('.rv-notification-filters > button')).map(button => button.textContent)
+    expect(parts).toEqual(['Tümü2', 'Okunmamış1', 'Hatalar1'])
+    act(() => panel.querySelectorAll<HTMLButtonElement>('.rv-notification-filters > button')[2].click())
+    expect(panel.querySelectorAll('.rv-notification-history-item')).toHaveLength(1)
+    act(() => root?.render(<NotificationPanel notifications={[]} onNavigate={vi.fn()} onCleared={() => undefined} />))
+    expect(panel.querySelector('.rv-notification-history-empty')?.textContent).toContain('Bildirim Yok')
+    expect(panel.querySelector('.rv-notification-history-empty')?.textContent).toContain('Yeni sipariş, fatura ve hata bildirimleri burada görünür.')
+  })
+})

@@ -30,7 +30,7 @@ import './order-metrics.css'
 type Metric = { value: number | undefined; loading: boolean; error?: boolean }
 type Store = { key: string; code: string; name: string }
 type UnitRow = Store & { units: number; packages?: number }
-type PackageRow = Store & { packages: number }
+type PackageRow = Store & { packages: number; exchanges?: number }
 type CancelRow = Store & { packages: number; units?: number; partial: number; partialUnits?: number }
 type TipRow = Store & { value: ReactNode }
 
@@ -170,6 +170,14 @@ function UnitsCard({ title, icon, tone, packages, units, rows, cargo }: { title:
 
 const packageTip = (rows: PackageRow[]) => rows.map(row => ({ ...row, value: `${count(row.packages)} paket` }))
 
+// A Yeniden Gönderim store row says what it counts (owner, 23 Nov 2026): "1 paket · değişim, kargoya verilmesi bekleniyor"
+// when all are exchanges (Trendyol names their package but no tracking link), "3 paket · 1 değişim" when some are.
+export function resentTipText(row: { packages: number; exchanges?: number }) {
+  const exchanges = row.exchanges ?? 0
+  if (exchanges <= 0) return `${count(row.packages)} paket`
+  return exchanges >= row.packages ? `${count(row.packages)} paket · değişim, kargoya verilmesi bekleniyor` : `${count(row.packages)} paket · ${count(exchanges)} değişim`
+}
+
 // Touch screens: a tap on a card shows its stores (the shared tap handler opens the breakdown) and never switches the
 // list's tab; a computer opens the card's list as before.
 
@@ -211,14 +219,14 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, proce
     <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', 'rr-metric-tipped', cancelIdle && 'rr-metric-idle', (activeCard === 'cancelled' || activeCard === 'partial') && 'rr-metric-on')}>
       <CardBackgroundIcon name="packageX" tone={positive(cancelled) ? 'bad' : undefined} />
       <button type="button" className="rr-metric-open" title={cancelStores.length > 0 ? undefined : 'Bugün iptal edilen siparişler'} aria-pressed={activeCard === 'cancelled'} disabled={cancelIdle} onClick={() => openOnPointer('cancelled')}><small>İptal</small><Packages packages={cancelled} units={undefined} /></button>
-      {partial > 0 && <button type="button" className={tipped('rr-metric-chip rr-metric-chip-alert', activeCard === 'partial' && 'rr-metric-on')} aria-pressed={activeCard === 'partial'} title={cancelStores.length > 0 ? undefined : `Bugün kısmen iptal edilen ${count(partial)} sipariş`} onClick={() => openOnPointer('partial')}><b>{count(partial)}</b> Kısmi İptal{partialUnits !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}<b>{count(partialUnits)}</b> Adet Ürün</>}</button>}
+      {partial > 0 && <button type="button" className={tipped('rr-metric-chip rr-metric-chip-alert', activeCard === 'partial' && 'rr-metric-on')} aria-pressed={activeCard === 'partial'} title={cancelStores.length > 0 ? (partialUnits !== undefined ? `${count(partialUnits)} adet ürün` : undefined) : `Bugün kısmen iptal edilen ${count(partial)} sipariş${partialUnits !== undefined ? ` · ${count(partialUnits)} adet ürün` : ''}`} onClick={() => openOnPointer('partial')}><b>{count(partial)}</b> Kısmi İptal{partialUnits !== undefined && <span className="rr-metric-adet">{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}<b>{count(partialUnits)}</b> Adet Ürün</span>}</button>}
       {<StoreTip rows={cancelStores.map(row => ({ ...row, value: cancelRowText(row) }))} />}
     </article>
     <article className={tipped(positive(resentShown) && 'rr-warn', 'rr-metric-link', 'rr-metric-tipped', resentIdle && 'rr-metric-idle', activeCard === 'resent' && 'rr-metric-on')}>
       <CardBackgroundIcon name="refresh" />
       <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Elle girilen hatırlatıcı: kargoya verilmemiş yeniden gönderimler (sağ üstteki ayar simgesiyle değiştirilir)'} aria-pressed={activeCard === 'resent'} disabled={resentIdle} onClick={() => openOnPointer('resent')}><small>Yeniden Gönderim</small><Packages packages={resentShown} units={undefined} reminder={resentReminder} /></button>
       {onSaveResentReminder && <ResendReminderEditor count={resentReminder} onSave={onSaveResentReminder} />}
-      {<StoreTip rows={packageTip(resentStores)} />}
+      {<StoreTip rows={resentStores.map(row => ({ ...row, value: resentTipText(row) }))} />}
     </article>
   </div>
 }

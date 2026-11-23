@@ -122,11 +122,16 @@ internal sealed partial class OrderQueryService
                 .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
                     && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
                     && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
-                .Select(claim => new { claim.OrderId, claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink })
+                .Select(claim => new { claim.Id, claim.Version, claim.OrderId, claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt })
                 .ToListAsync(cancellationToken))
             .GroupBy(claim => claim.OrderId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(claim => claim.ReplacementPackageId != null).Select(claim =>
-                new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink != null, claim.ReplacementCargoTrackingLink)).First());
+            {
+                // Handed to the carrier: Trendyol's tracking link, or the owner's mark (ExchangeResendRules).
+                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt);
+                return new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, shippedSource is not null, claim.ReplacementCargoTrackingLink,
+                    claim.Id, claim.Version, shippedSource);
+            }).First());
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
@@ -423,11 +428,12 @@ internal sealed partial class OrderQueryService
                         && (!resentNotShipped || ResentNotShippedStatuses.Contains(package.Status)))
                         // An exchange (owner, 18 Nov 2026): Trendyol's order reads never return its new package, so an order
                         // is a resend too when its exchange claim names the package (getClaims replacementOutboundpackageinfo)
-                        // or the owner marked the exchange made; it waits for the carrier until the package's tracking link comes.
+                        // or the owner marked the exchange made; it waits for the carrier until the package's tracking link comes
+                        // or the owner marks it handed to the carrier (ExchangeResendRules; a tracking number alone does not).
                         || db.ReturnClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
                             && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
                             && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
-                            && (!resentNotShipped || claim.ReplacementCargoTrackingLink == null)),
+                            && (!resentNotShipped || (claim.ReplacementCargoTrackingLink == null && claim.ReplacementShippedAt == null))),
                     // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
                     _ => x => x.DerivedStatus == status
                 };

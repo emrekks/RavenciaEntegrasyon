@@ -403,6 +403,12 @@ public sealed class ReturnClaim
     public string? ReplacementCargoProviderName { get; set; }
     public string? ReplacementCargoTrackingNumber { get; set; }
     public string? ReplacementCargoTrackingLink { get; set; }
+    // Owner, 23 Nov 2026: the exchange package handed to the carrier by the owner's word (Siparişler › Yeniden Gönderimler,
+    // "Kargoya Verildi Olarak İşaretle"): when he marked it, and its source MANUAL. Trendyol's claim names the package's
+    // tracking number but no tracking link or status (live, 18 Nov 2026), so nothing else tells the panel it left. Null:
+    // not marked (unknown, never "not shipped"). Panel only; nothing is sent to the marketplace.
+    public DateTimeOffset? ReplacementShippedAt { get; set; }
+    public string? ReplacementShippedSource { get; set; }
     // When the customer asked for the return, as the marketplace dates the claim: Trendyol claimDate, Hepsiburada
     // claimDate (Istanbul local), n11 requestDate, Pazarama refundDate, Shopify return createdAt. Null when the
     // marketplace gives none (PTT AVM) or the claim was not read again since the field came; never guessed.

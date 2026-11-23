@@ -51,6 +51,167 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         Assert.DoesNotContain(shipped.Unshipped, order => order.Id == withPackage);
     }
 
+    // Owner, 23 Nov 2026 ("yeniden gönderimi kargoya verdim ve kapanması lazım ama kapatamadım"): Trendyol names the exchange
+    // package's tracking number but no link, so only the owner's "Kargoya Verildi" mark takes the row out of the count.
+    [PostgreSqlFact]
+    public async Task The_owners_shipped_mark_takes_an_exchange_out_of_the_count_and_removing_it_puts_it_back()
+    {
+        var (tenant, connection) = await SeedAsync();
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "ex-ship", claim =>
+        {
+            claim.ReplacementPackageId = "4360616611";
+            claim.ReplacementCargoProviderName = "Trendyol Express Marketplace";
+            claim.ReplacementCargoTrackingNumber = "7330000000000001";
+            claim.ResolvedWith = ReturnCustomerRequestPolicy.Change;
+            claim.ResolvedWithSource = ReturnCustomerRequestPolicy.ManualSource;
+        });
+        var claimId = await ClaimIdAsync(tenant.Id, order);
+
+        // A tracking number alone is not "handed to the carrier": it is still counted, and its store's hover says it is an exchange.
+        var before = await CountsAsync(tenant.Id, order);
+        Assert.Equal((1, true, false, (string?)null), (before.Count, before.Unshipped, before.Row.Shipped, before.Row.ShippedSource));
+        Assert.Equal(claimId, before.Row.ClaimId);
+        Assert.Equal(1, before.ExchangeStores[connection.Id.ToString("D")]);
+
+        await using (var db = fixture.CreateContext())
+        {
+            var result = await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, before.Row.ClaimVersion, true, "corr-ship", CancellationToken.None);
+            Assert.True(result.Succeeded, result.Error?.Message);
+            Assert.Equal(1, await db.AuditLogs.CountAsync(x => x.TenantId == tenant.Id && x.Action == "RETURN_REPLACEMENT_MARKED_SHIPPED" && x.TargetId == claimId.ToString("D")));
+        }
+        var marked = await CountsAsync(tenant.Id, order);
+        Assert.Equal((0, false, true, (string?)ReturnCustomerRequestPolicy.ManualSource), (marked.Count, marked.Unshipped, marked.Row.Shipped, marked.Row.ShippedSource));
+        Assert.True(marked.InResent);
+        Assert.Empty(marked.ExchangeStores);
+
+        // Marking it twice, or with an old version, is refused.
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(409, (await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, marked.Row.ClaimVersion, true, "corr-again", CancellationToken.None)).Error!.Status);
+            Assert.Equal(412, (await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, before.Row.ClaimVersion, false, "corr-stale", CancellationToken.None)).Error!.Status);
+        }
+
+        await using (var db = fixture.CreateContext())
+            Assert.True((await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), claimId, marked.Row.ClaimVersion, false, "corr-unship", CancellationToken.None)).Succeeded);
+        var removed = await CountsAsync(tenant.Id, order);
+        Assert.Equal((1, true, false), (removed.Count, removed.Unshipped, removed.Row.Shipped));
+        await using (var db = fixture.CreateContext())
+        {
+            var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId);
+            Assert.Equal((null, null), (claim.ReplacementShippedAt, claim.ReplacementShippedSource));
+            Assert.Equal(1, await db.AuditLogs.CountAsync(x => x.TenantId == tenant.Id && x.Action == "RETURN_REPLACEMENT_SHIP_MARK_REMOVED"));
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task Another_tenant_cannot_mark_the_package_and_a_plain_request_takes_no_mark()
+    {
+        var (tenant, connection) = await SeedAsync();
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "ex-foreign", claim => claim.ReplacementPackageId = "28717255");
+        var plain = await SeedOrderAsync(tenant.Id, connection.Id, "ex-plain2", _ => { });
+        var claimId = await ClaimIdAsync(tenant.Id, order);
+        await using var db = fixture.CreateContext();
+        var foreign = await Service(db).MarkReplacementShippedAsync(Guid.NewGuid(), Guid.NewGuid(), claimId, 0, true, "corr-foreign", CancellationToken.None);
+        Assert.Equal(404, foreign.Error!.Status);
+        var plainClaim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.OrderId == plain);
+        var notExchange = await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), plainClaim.Id, plainClaim.Version, true, "corr-plain", CancellationToken.None);
+        Assert.Equal((409, ReturnDecisionService.ReplacementShipMarkNotAllowedCode), (notExchange.Error!.Status, notExchange.Error.Code));
+        Assert.Null((await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId)).ReplacementShippedAt);
+    }
+
+    // RETURN_STATUS_SYNC reads a closed exchange claim again while its package is not known to be shipped: a tracking link
+    // in the answer closes the row by itself; an answer with the tracking number only leaves it waiting.
+    [PostgreSqlFact]
+    public async Task A_tracking_link_from_the_reread_closes_the_row_and_a_tracking_number_alone_does_not()
+    {
+        var (tenant, connection) = await SeedAsync();
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "ex-reread", claim =>
+        {
+            claim.ReplacementPackageId = "28717256";
+            claim.LastRemoteModifiedAt = fixture.Now.AddDays(-5);
+            // Dated, so the request-date read (which asks by claimIds too) leaves it alone.
+            claim.RequestedAt = fixture.Now.AddDays(-10);
+        });
+        var port = new ClaimPort("claim-ex-reread", "ex-reread", null);
+        await RunStatusSyncAsync(tenant.Id, connection.Id, port);
+        Assert.Equal(1, port.ManyCalls);
+        var numberOnly = await CountsAsync(tenant.Id, order);
+        Assert.Equal((1, true, false), (numberOnly.Count, numberOnly.Unshipped, numberOnly.Row.Shipped));
+        Assert.Equal("7330000000000002", numberOnly.Row.CargoTrackingNumber);
+
+        // Within the hour no request goes out again.
+        await RunStatusSyncAsync(tenant.Id, connection.Id, port);
+        Assert.Equal(1, port.ManyCalls);
+
+        await using (var db = fixture.CreateContext())
+            await db.SyncCursors.Where(x => x.TenantId == tenant.Id && x.ResourceType == "RETURN_EXCHANGE_RESEND")
+                .ExecuteUpdateAsync(x => x.SetProperty(c => c.LastAttemptAt, fixture.Now.AddHours(-2)));
+        var linked = new ClaimPort("claim-ex-reread", "ex-reread", "https://tracking.example.test/exchange-reread");
+        await RunStatusSyncAsync(tenant.Id, connection.Id, linked);
+        Assert.Equal(1, linked.ManyCalls);
+        var closed = await CountsAsync(tenant.Id, order);
+        Assert.Equal((0, false, true, (string?)"MARKETPLACE"), (closed.Count, closed.Unshipped, closed.Row.Shipped, closed.Row.ShippedSource));
+
+        // Closed: nothing is asked any more.
+        await using (var db = fixture.CreateContext())
+            await db.SyncCursors.Where(x => x.TenantId == tenant.Id && x.ResourceType == "RETURN_EXCHANGE_RESEND")
+                .ExecuteUpdateAsync(x => x.SetProperty(c => c.LastAttemptAt, fixture.Now.AddHours(-2)));
+        await RunStatusSyncAsync(tenant.Id, connection.Id, linked);
+        Assert.Equal(1, linked.ManyCalls);
+    }
+
+    private async Task RunStatusSyncAsync(Guid tenantId, Guid connectionId, ClaimPort port)
+    {
+        await using var db = fixture.CreateContext();
+        var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, port, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+        var result = await processor.ProcessAsync(tenantId, connectionId, MarketplaceJobTypes.ReturnStatusSync, "{}", $"exchange-reread-{Guid.NewGuid():N}", CancellationToken.None);
+        Assert.True(result.Succeeded, result.ErrorCode);
+    }
+
+    private async Task<Guid> ClaimIdAsync(Guid tenantId, Guid orderId)
+    {
+        await using var db = fixture.CreateContext();
+        return await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == orderId).Select(x => x.Id).SingleAsync();
+    }
+
+    private async Task<(int Count, bool InResent, bool Unshipped, OrderExchangeResendView Row, IReadOnlyDictionary<string, int> ExchangeStores)> CountsAsync(Guid tenantId, Guid orderId)
+    {
+        await using var db = fixture.CreateContext();
+        var service = Service(db);
+        var resent = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "RESENT"), CancellationToken.None);
+        var unshipped = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "RESENT", ResentNotShipped: true), CancellationToken.None);
+        var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(ResentNotShipped: true), CancellationToken.None, ["RESENT"]);
+        var row = Assert.Single(resent.Items, order => order.Id == orderId).ExchangeResend!;
+        return (summary.Resent, resent.Items.Any(order => order.Id == orderId), unshipped.Items.Any(order => order.Id == orderId), row, summary.ResentExchangeByConnection!);
+    }
+
+    // getClaims by claimIds answering the exchange claim, Rejected, with its package's tracking number and (when given) link.
+    private sealed class ClaimPort(string claimId, string orderNumber, string? link) : IReturnPort, IReturnBatchReadPort
+    {
+        // The re-read requests only (the lifecycle and request-date reads ask by claimIds too).
+        public int ManyCalls { get; private set; }
+
+        private RemoteReturnClaim Claim() => new(claimId, orderNumber, "Rejected", "WRONGCHANGEREQUEST", null, null, null,
+            [new RemoteReturnLine("ci-1", $"{orderNumber}-1", 1, RawStatus: "Rejected")], "{}",
+            ReplacementPackage: new RemoteReplacementPackage("28717256", "Trendyol Express Marketplace", "7330000000000002", link), ReplacementInfoPresent: true);
+
+        public Task<AdapterResult<IReadOnlyList<RemoteReturnClaim>>> GetManyAsync(AdapterContext context, IReadOnlyList<string> externalReturnIds, CancellationToken cancellationToken)
+        {
+            if (context.IdempotencyKey.Contains("exchange-resend-reread", StringComparison.Ordinal)) ManyCalls++;
+            IReadOnlyList<RemoteReturnClaim> claims = externalReturnIds.Contains(claimId) ? [Claim()] : [];
+            return Task.FromResult(AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Success(claims));
+        }
+
+        public Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteReturnClaim>.Success(Claim()));
+
+        public Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new([], null, false)));
+
+        public Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
     [Fact]
     public void A_read_keeps_a_known_exchange_package_and_fills_only_what_it_names()
     {

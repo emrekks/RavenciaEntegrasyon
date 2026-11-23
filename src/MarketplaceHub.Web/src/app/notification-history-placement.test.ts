@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { followNotificationBell, notificationHistoryPlacement } from './notification-history-placement'
 
 describe('notificationHistoryPlacement', () => {
-  it('sits under the bell with right edges aligned, 440 px wide on a wide window', () => {
-    expect(notificationHistoryPlacement({ right: 1200, bottom: 50 }, 1300)).toEqual({ top: 60, left: 760, width: 440 })
+  it('sits under the bell with right edges aligned, 400 px wide on a wide window', () => {
+    expect(notificationHistoryPlacement({ right: 1200, bottom: 50 }, 1300)).toEqual({ top: 60, left: 800, width: 400 })
   })
 
   it('stays 16 px inside a narrow window', () => {
@@ -31,7 +31,7 @@ describe('followNotificationBell', () => {
     const { bell, panel, runFrames, move } = setup()
     const stop = followNotificationBell(() => bell, () => panel)
     expect(panel.style.top).toBe('60px')
-    expect(panel.style.width).toBe(`${Math.min(440, window.innerWidth - 32)}px`)
+    expect(panel.style.width).toBe(`${Math.min(400, window.innerWidth - 32)}px`)
 
     move({ right: 1200, bottom: 80 })
     for (let i = 0; i < 5; i += 1) document.dispatchEvent(new Event('scroll'))

@@ -116,7 +116,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         switch (area)
         {
             // The panel-only "Değişim Onaylandı" mark of a return takes it out of the invoice's returns (owner, 18 Nov 2026).
-            case "returns" when last == "exchange-approved":
+            // So is the panel-only "Kargoya Verildi" mark of an exchange package (owner, 23 Nov 2026).
+            case "returns" when last is "exchange-approved" or "replacement-shipped":
                 return ElevatedRoles;
             // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,

@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
 import { queryKeys } from '../../shared/api/query-keys'
-import { Button } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
@@ -10,15 +9,18 @@ import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-su
 import { ProductThumb } from './ProductThumb'
 import {
   formatCount, isProductImportJob, jobChangeCountItems, jobChangeDifference, jobChangeKindLabel, jobChangeResult, jobChangeSourceLabel, jobChangeValues,
-  jobChangeVariant, jobChangesOutcomeText, jobChangesQueryString, spawnedJobStatusLabel,
+  jobChangeVariant, jobChangesOutcomeText, spawnedJobStatusLabel,
   type JobChangeLine, type JobChangesPage, type JobChangesSummary
 } from './job-changes'
 import type { ValueChange } from './price-stock-send-log'
+import { ExcelExportButton, JobListPager, jobListPageSize } from './job-list-paging'
 import './job-changes.css'
 
 // İş detayı › Gidenler ve Değişenler: the lines a price/stock job sent (old → new, the marketplace's answer) or the
 // variants a product import changed in the panel. Display only: it sends nothing and changes no setting.
 const searchDelayMs = 350
+// The count chips that filter the list (the server's groups); Taranan and Gönderilen only count.
+const chipGroups: Record<string, string> = { applied: 'applied', unchanged: 'unchanged', pending: 'pending', rejected: 'rejected', uncertain: 'uncertain', price: 'priceChanged', stock: 'stockChanged' }
 const timeOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }
 
 function ValueText({ value, difference }: { value: ValueChange; difference: string | null }) {
@@ -63,6 +65,10 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
   const productImport = isProductImportJob(jobType)
   const [searchText, setSearchText] = useState('')
   const [search, setSearch] = useState('')
+  const [groups, setGroups] = useState<string[]>([])
+  const [page, setPage] = useState(1)
+  // Another search or another group goes back to the first page.
+  useEffect(() => { setPage(1) }, [search, groups])
   useEffect(() => {
     const timeout = window.setTimeout(() => setSearch(searchText.trim()), searchDelayMs)
     return () => window.clearTimeout(timeout)
@@ -72,17 +78,14 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
     queryKey: queryKeys.job(jobId, 'changes', 'summary'),
     queryFn: ({ signal }) => hubPoll<JobChangesSummary>(`/jobs/${jobId}/changes/summary`, { signal })
   })
-  const list = useInfiniteQuery({
-    queryKey: queryKeys.job(jobId, 'changes', search),
-    queryFn: context => hubPoll<JobChangesPage>(`/jobs/${jobId}/changes${jobChangesQueryString(search, context.pageParam)}`, { signal: context.signal }),
-    initialPageParam: null as string | null,
-    getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
+  const groupText = groups.join(',')
+  const list = useQuery({
+    queryKey: queryKeys.job(jobId, 'changes', search, groupText, page),
+    queryFn: ({ signal }) => hubPoll<JobChangesPage>(`/jobs/${jobId}/changes?${new URLSearchParams({ page: String(page), pageSize: String(jobListPageSize), ...(search ? { search } : {}), ...(groupText ? { groups: groupText } : {}) })}`, { signal }),
     placeholderData: keepPreviousData
   })
-  const lines = useMemo(() => {
-    const seen = new Set<string>()
-    return (list.data?.pages ?? []).flatMap(page => page.items).filter(line => !seen.has(line.id) && Boolean(seen.add(line.id)))
-  }, [list.data])
+  const lines = list.data?.items ?? []
+  const totalCount = list.data?.totalCount ?? 0
 
   const head = summary.data
   const counts = head ? jobChangeCountItems(head) : []
@@ -93,13 +96,14 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
     <div className="jc-heading">
       <div><span className="jobs-reference-section-kicker">{productImport ? 'Panelde Değişenler' : 'Pazaryerine Gidenler'}</span><h3 id="job-changes-title">Gidenler ve Değişenler</h3></div>
       {head?.sourceOrderNumber && <span className="jc-origin">Kaynak: Sipariş #{head.sourceOrderNumber}</span>}
+      <ExcelExportButton path={`/jobs/${jobId}/changes/export.xlsx`} query={{ search, groups: groupText }} fallbackName={`is-${jobId}-degisiklikler.xlsx`} disabled={!totalCount} />
     </div>
     {summary.isLoading ? <Busy text="Özet yükleniyor…" /> : summary.isError ? <p role="alert" className="jc-note is-error">Özet alınamadı.</p> : <>
       <ul className="jc-counts" aria-label="Gidenler ve değişenler özeti">
-        {counts.map(item => <li key={item.key}><small>{item.label}</small><strong>{formatCount(item.value)}</strong></li>)}
+        {counts.map(item => { const group = chipGroups[item.key]; const on = group !== undefined && groups.includes(group); return <li key={item.key}>{group ? <button type="button" className={`jc-chip${on ? ' is-on' : ''}`} aria-pressed={on} title={on ? 'Süzgeci kaldır' : `Yalnız ${item.label} satırlarını göster`} onClick={() => setGroups(current => on ? current.filter(value => value !== group) : [...current, group])}><small>{item.label}</small><strong>{formatCount(item.value)}</strong></button> : <><small>{item.label}</small><strong>{formatCount(item.value)}</strong></>}</li> })}
       </ul>
       {outcome && <p className="jc-note" role="status">{outcome}</p>}
-      {productImport && <p className="jc-hint">Liste, bu aktarımın çalıştığı süre içinde aynı mağazadan panele işlenen stok ve mağaza fiyatı değişikliklerinden oluşur (Ürün Hareketleri).</p>}
+      {productImport && <p className="jc-hint">Liste, bu çekimin çalıştığı süre içinde aynı mağazadan panele işlenen stok ve mağaza fiyatı değişikliklerinden oluşur (Ürün Hareketleri).</p>}
       {spawned.length > 0 && <nav className="jc-spawned" aria-label="Doğan gönderim işleri">
         <small>Doğan Gönderim İşleri</small>
         {spawned.map(job => <button key={job.id} type="button" className="jc-spawned-link" onClick={() => onOpenJob?.(job.id)} disabled={!onOpenJob}>
@@ -115,11 +119,8 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
       {lines.length > 0 ? <>
         <div className="jc-columns" aria-hidden="true"><span>Ürün</span><span>Tür</span><span>Eski → Yeni</span><span>Neden</span><span>Sonuç</span><span>Zaman</span></div>
         <ul className="jc-lines">{lines.map(line => <LineRow key={line.id} line={line} orderNumber={head?.sourceOrderNumber} />)}</ul>
-      </> : <p className="jc-empty">{searching ? 'Aramayla eşleşen satır bulunamadı.' : outcome ? 'Bu işte listelenecek satır yok.' : 'Bu iş için kayıtlı satır bulunamadı.'}</p>}
-      {lines.length > 0 && <div className="jc-footer">
-        <small>{list.hasNextPage ? `${lines.length.toLocaleString('tr-TR')} satır gösteriliyor, devamı var` : `Toplam ${lines.length.toLocaleString('tr-TR')} satır`}</small>
-        {list.hasNextPage && <Button variant="secondary" className="jc-more" loading={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Sonraki 50 Satır</Button>}
-      </div>}
+      </> : <p className="jc-empty">{searching || groups.length ? 'Aramayla ve süzgeçle eşleşen satır bulunamadı.' : outcome ? 'Bu işte listelenecek satır yok.' : 'Bu iş için kayıtlı satır bulunamadı.'}</p>}
+      {totalCount > 0 && <JobListPager page={page} total={totalCount} shown={lines.length} onPage={setPage} />}
     </>}
   </section>
 }
