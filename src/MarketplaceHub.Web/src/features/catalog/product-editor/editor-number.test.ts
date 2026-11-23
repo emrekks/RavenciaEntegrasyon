@@ -12,7 +12,7 @@ describe('parseEditorNumber (measurements, VAT, attributes)', () => {
     expect(parseEditorNumber('549,90')).toBe(549.9)
     expect(parseEditorNumber('1.250')).toBe(1250)
     expect(parseEditorNumber('1.249,90')).toBe(1249.9)
-    expect(parseEditorNumber('1 249,90')).toBe(1249.9)
+    expect(parseEditorNumber('1 249,90')).toBeNaN()
     expect(parseEditorNumber('0,125')).toBe(0.125)
     expect(parseEditorNumber('-3')).toBe(-3)
   })

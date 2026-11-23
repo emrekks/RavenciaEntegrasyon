@@ -45,7 +45,7 @@ export type EditorSaveValidationInput = EditorValidationInput & {
   // The marketplaces picked for publishing, with their name and the card's price there.
   selectedChannels: Array<{ id: string; name: string; draft: ChannelPricingDraft }>
   // Every marketplace switched to Özel Fiyat (its card price is its own), selected or not.
-  customChannels?: Array<{ id: string; name: string; draft: ChannelPricingDraft }>
+  customChannels?: Array<{ id: string; name: string; draft: ChannelPricingDraft; edited?: boolean }>
 }
 
 export type EditorValidationMode =
@@ -84,9 +84,18 @@ const invalidMediaUrlIssue = (urls: string[]) => {
 // O1: a filled Özel Fiyat card price the typed rule refuses ("1.25") stops every save, a draft too, before anything is
 // written: otherwise the product was saved, its offers skipped with the wrong notice and the choice stored without a price.
 // An empty box stays with the existing rules; an untouched loaded price is never refused (seeded-fields.ts).
+// Review 23 Nov (b): a sale price the person emptied on an edited card stops the save too (it would store the choice
+// without a price). A box still as it opened, or empty since the switch went on, is never refused.
+export function customChannelFieldIssue(connectionId: string, field: 'listPrice' | 'salePrice', text: string, edited: boolean): 'unreadable' | 'missing' | null {
+  if (text.trim() !== '') return Number.isFinite(readMoneyField(channelFieldKey(connectionId, field), text)) ? null : 'unreadable'
+  return edited && field === 'salePrice' ? 'missing' : null
+}
+export const customChannelMissingSale = "Satış fiyatını girin ya da Özel Fiyat'ı kapatın."
 function customChannelIssues(input: EditorSaveValidationInput): string[] {
-  return (input.customChannels ?? []).flatMap(channel => (['listPrice', 'salePrice'] as const).some(field => channel.draft[field].trim() !== '' && !Number.isFinite(readMoneyField(channelFieldKey(channel.id, field), channel.draft[field])))
-    ? [`${channel.name} Özel Fiyat: ${trEntryHelp}`] : [])
+  return (input.customChannels ?? []).flatMap(channel => {
+    const found = (['listPrice', 'salePrice'] as const).map(field => customChannelFieldIssue(channel.id, field, channel.draft[field], channel.edited ?? false))
+    return found.includes('unreadable') ? [`${channel.name} Özel Fiyat: ${trEntryHelp}`] : found.includes('missing') ? [`${channel.name} Özel Fiyat: ${customChannelMissingSale}`] : []
+  })
 }
 
 // A draft is stopped only by values the server refuses (clashing codes, malformed prices or image links).

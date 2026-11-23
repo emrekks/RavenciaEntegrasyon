@@ -81,6 +81,43 @@ describe('parseTrEntry (the product screens\' one rule)', () => {
   })
 })
 
+// Review 23 Nov (Y1): the one rule of price and stock boxes, as a table. Accepted: optional thousands points grouped
+// right (1.250, 12.500, 1.250.000), an optional decimal comma with at most two digits, whitespace and one ₺/TL/% only
+// around the number. Everything else is refused (null), never turned into another number.
+describe('parseTrEntry table', () => {
+  const table: Array<[string, number | null]> = [
+    ['0', 0], ['5', 5], ['1250', 1250], ['1.250', 1250], ['12.500', 12500], ['125.000', 125000], ['1.250.000', 1250000],
+    ['1.250,50', 1250.5], ['1.250,5', 1250.5], ['1250,50', 1250.5], ['12,5', 12.5], ['0,5', 0.5], ['0,05', 0.05],
+    ['631,10', 631.1], [' 1.250 ', 1250], [' 1.250,50 ', 1250.5], ['1.250 ₺', 1250], ['₺1.250,50', 1250.5],
+    ['1.250 TL', 1250], ['1.250tl', 1250], ['12,5 %', 12.5],
+    // A space, a sign or a letter inside the number.
+    ['1, 250', null], ['1 ,250', null], ['1,25 0', null], ['1 250', null], ['1 250', null], ['1.250, 50', null],
+    ['1₺250', null], ['1%250', null], ['12a', null], ['abc', null], ['1e3', null], ['0x10', null], ['Infinity', null],
+    // A point that is not a rightly grouped thousands point, or English writing.
+    ['1.25', null], ['12.5', null], ['1250.50', null], ['0.5', null], ['0.125', null], ['1.2500', null], ['12.50.000', null],
+    ['1..250', null], ['1.250.5', null], ['1,250.50', null], ['.250', null], ['1.', null],
+    // Commas: more than two decimals, two commas, nothing on one side.
+    ['1,250', null], ['1,000', null], ['0,125', null], ['631,104', null], ['1.250,505', null], ['1,2,3', null],
+    ['12,5,0', null], [',5', null], ['1250,', null], ['1.250,', null],
+    // Signs and emptiness.
+    ['-5', null], ['−1.250', null], ['-0,5', null], ['+5', null], ['', null], [' ', null], ['₺', null], ['TL', null]
+  ]
+  it.each(table)('%j -> %s', (text, expected) => {
+    expect(parseTrEntry(text)).toBe(expected)
+  })
+  it('has at least 40 rows', () => expect(table.length).toBeGreaterThanOrEqual(40))
+  // Shown = saved: the number a box shows formatted (tr-TR, two decimals) reads back as the number that is sent.
+  it.each(table.filter(([, expected]) => expected !== null))('shows %j as the number it saves', text => {
+    const value = parseTrEntry(text)!
+    const shown = value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    expect(parseTrEntry(shown)).toBe(value)
+  })
+  it('refuses the same inside-number spaces and signs in measurements and filters', () => {
+    for (const text of ['1, 250', '1 250', '1₺250', '1%250', '1,25 0'])
+      for (const parse of [parseTrMeasure, parseTrNumber]) expect(parse(text), `${parse.name} ${text}`).toBeNull()
+  })
+})
+
 describe('parseTrCount', () => {
   it('reads whole numbers with thousands points', () => {
     expect(parseTrCount('1.250')).toEqual({ ok: true, value: 1250 })

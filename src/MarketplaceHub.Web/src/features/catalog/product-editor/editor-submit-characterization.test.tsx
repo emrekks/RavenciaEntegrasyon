@@ -37,6 +37,8 @@ const fixture = vi.hoisted(() => {
     precise: false,
     // A stock stored fractional (the server allows it); the form shows it as it is.
     fractionalStock: false,
+    // (c) Trendyol on its own price (Özel Fiyat) stored with three decimals (631.104) on every variant.
+    ownPrice631: false,
     log: [] as Array<Record<string, unknown>>,
     toasts: [] as Array<Record<string, unknown>>
   })
@@ -46,7 +48,7 @@ const fixture = vi.hoisted(() => {
     id, version: 1, productId: 'p1', sku, barcode, modelCode: 'RYP006', optionSignature: `Renk: ${colour} | Beden: ${size}`, status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1,
     costPrice: state.precise && id === 'v1' ? 12.3456 : state.cost[id], onHand: state.fractionalStock && id === 'v1' ? 2.5 : state.onHand[id], available: state.onHand[id], inventoryVersion: state.onHand[id], offerId: `o-${id}`, listPrice: 100, salePrice: 90, defaultListPrice: state.precise ? 99.999 : 100, defaultSalePrice: state.precise ? 12.3456 : 90,
     currency: 'TRY', offerStatus: 'ACTIVE', priceVersion: 1, offerVersion: 3, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: state.variantMedia[id] ?? [], options: { Renk: colour, Beden: size }, attributes: [],
-    platformStatuses: [statusFor('ty', 'TRENDYOL', `o-${id}`, 90), statusFor('n11', 'N11', `n-${id}`, 95)]
+    platformStatuses: [state.ownPrice631 ? { ...statusFor('ty', 'TRENDYOL', `o-${id}`, 631.104), followsPanelPrice: false } : statusFor('ty', 'TRENDYOL', `o-${id}`, 90), statusFor('n11', 'N11', `n-${id}`, 95)]
   })
   const product = () => ({
     id: 'p1', version: state.version, title: state.title, description: '<p>Yeterince uzun bir açıklama metni burada yer alır.</p>', brandId: state.brandId, categoryId: state.categoryId, status: state.status, updatedAt: '2026-11-01T10:00:00Z',
@@ -416,9 +418,44 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     setValue(inputs[0], typed)
     setValue(inputs[1], '120')
     await settle()
+    // (b) review 23 Nov: the box itself is marked, with what to type under the card.
+    expect(inputs.map(input => input.getAttribute('aria-invalid'))).toEqual(['true', 'false'])
+    expect(q('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] .product-field-error').textContent).toContain('1.250,50 biçiminde yazın')
     await submit('save')
     expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
     expect(JSON.stringify(fixture.state.toasts)).toContain('Trendyol Mağaza Özel Fiyat: Fiyat okunamadı')
+  })
+
+  // (b) review 23 Nov: an Özel Fiyat card whose sale price the owner emptied stops the save before any request.
+  it('sends nothing when the sale price of an Özel Fiyat card was emptied', async () => {
+    fixture.state.ownPrice631 = true
+    await renderAt('/products/p1')
+    await click(q('button.marketplace-pricing-open'))
+    await settle()
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')]
+    setValue(inputs[1], '')
+    await settle()
+    expect(inputs[1].getAttribute('aria-invalid')).toBe('true')
+    await submit('save')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+    expect(JSON.stringify(fixture.state.toasts)).toContain("Trendyol Mağaza Özel Fiyat: Satış fiyatını girin ya da Özel Fiyat'ı kapatın.")
+  })
+
+  // (c) review 23 Nov: an Özel Fiyat price stored with three decimals (631.104) counted as changed, so an untouched
+  // Kaydet wrote it to the marketplace. Untouched, it is compared by the rule it is shown with: no offer request.
+  it('sends no offer request for an untouched Özel Fiyat price stored with three decimals (631.104)', async () => {
+    fixture.state.ownPrice631 = true
+    await renderAt('/products/p1')
+    await click(q('button.marketplace-pricing-open'))
+    await settle()
+    setValue(titleInput(), 'Yeni Ad')
+    await settle()
+    await submit('save')
+    const writes = fixture.state.log.filter(entry => entry.method !== 'GET')
+    expect(writes.map(entry => [entry.method, entry.path])).toEqual([['PATCH', '/products/p1']])
+    expect(fixture.state.toasts.filter(toast => toast.kind === 'error')).toEqual([])
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input:not([type="checkbox"])')]
+    expect(inputs.map(input => input.value)).toEqual(['631,104', '631,104'])
   })
 
   it('update with a stock and cost change', async () => {
