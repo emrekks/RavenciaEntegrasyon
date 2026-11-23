@@ -37,6 +37,20 @@ export const scenarios = [
       await page.locator('.rr-modal.rr-qe-modal .rr-qtable tbody tr').first().waitFor()
     },
   },
+  // The quick edit window with a typed panel price far below the saved one and Kaydet pressed: the draft cell and the
+  // price-jump line in the confirmation, in both themes (a colour slip in one theme went live once).
+  ...['dark', 'light'].map(theme => ({
+    name: `products-quick-edit-confirm-${theme}`, path: '/products', widths: [375, 1280],
+    act: async page => {
+      if (theme === 'light') { await page.locator('.rv-topbar-theme').click(); await page.locator('html[data-theme="light"]').waitFor() }
+      await page.locator('.rr-qbtn[title="Fiyatı hızlı düzenle"]').first().click()
+      const cell = page.locator('.rr-modal.rr-qe-modal .rr-cr-body input.rr-mx-in').first()
+      await cell.waitFor()
+      await cell.focus(); await cell.fill('4,5'); await cell.blur()
+      await page.locator('.rr-modal.rr-qe-modal .rv-draftbar-save').click()
+      await page.locator('.rr-modal.rr-qe-modal .rv-draftbar-warn').waitFor()
+    },
+  })),
   {
     name: 'product-image-zoom', path: '/products/p1', widths: [375, 1280],
     act: async page => {

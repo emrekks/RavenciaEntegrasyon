@@ -3,7 +3,9 @@
 // flight so a refetch meanwhile is no refill, and asks for the reseed after its own refetch. The steps themselves are
 // separate (WEB-SAYFALAR-10): the product write (submit-product-payload.ts), the pictures (submit-media-step.ts), the
 // stock (submit-stock-step.ts), the marketplace prices (submit-offer-writes.ts) and the sends (editor-marketplace-sends.ts).
-import { type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
+import { priceJumps } from '../price-jump'
+import { editorPriceChanges } from './editor-price-jumps'
 import { ApiRequestError } from '../../../shared/api'
 import { appendNotification, productNotificationSubject } from '../../../shared/notifications'
 import { followJobOutcomes, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
@@ -46,6 +48,21 @@ import { sendToMarketplaces } from './editor-marketplace-sends'
 
 export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult & EditorChecksResult) {
   const { editProductId, publishOnly, client, navigate, setError, setNotice, operationToasts, setFeedback, setSubmitting, calculateDesi, form, attributeSelections, attributeTextValues, variantAttributeIds, setVariantRows, selectedChannelIds, blockedPublishCards, channelPricing, variantChannelPricing, wizardStep, setWizardStep, pendingPlatformUpdate, mediaFiles, setMediaFiles, pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals, familyMediaOrderDirty, setFamilyMediaOrderDirty, sizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, chartKey, removedVariantIds, setRemovedVariantIds, removedVariantRows, setRemovedVariantRows, replacedPlaceholderIds, setReplacedPlaceholderIds, requestBaseline, webColorAutoEnabled, manualWebColorValueId, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, setProductAtSave, setVariantCodeConflicts, mediaFilesKeptOnReseed, initialCustomChannelIds, setFieldErrors, productCreateKey, leavingAfterSave, initialEditModelCode, initialEditVariantMediaRefs, showFeedback, mediaAutoSave, editorDirty, productToEdit, connections, requirements, fallbackListPrice, fallbackSalePrice, missingRequiredFields, desi, mediaUrls, mappedRequirements, webColorRequirement, setReseedRequest, draftCodeSaveBlock, codeRuleSaveBlock, modelCodeHolder, blockedByVariantCodeRules, draftMediaKeys, pendingRemovalMediaKeys, mediaStrip, trendyolMixedColours, channelPriceDraft, channelPriceEdited, rowsForSubmit, validate, draftBlockingIssues, stopOnRequiredFields, vatRateIssue } = c
+  // The price-jump confirmation (price-jump.ts; owner's safeguard of 23 Nov 2026): a save that would put a price below half
+  // or above three times what the variant had waits for Onayla ve Kaydet, then runs as it was pressed.
+  const [priceJumpConfirm, setPriceJumpConfirm] = useState<{ lines: string[]; submitter: HTMLElement | null; platformUpdate: typeof pendingPlatformUpdate.current } | null>(null)
+  const priceJumpConfirmed = useRef(false)
+  function confirmPriceJump() {
+    const pending = priceJumpConfirm
+    setPriceJumpConfirm(null)
+    const formElement = document.getElementById('product-creation-form')
+    if (!pending || !(formElement instanceof HTMLFormElement)) return
+    priceJumpConfirmed.current = true
+    pendingPlatformUpdate.current = pending.platformUpdate
+    const button = pending.submitter instanceof HTMLButtonElement && pending.submitter.type === 'submit' && pending.submitter.form === formElement ? pending.submitter : undefined
+    formElement.requestSubmit(button)
+  }
+  const cancelPriceJump = () => setPriceJumpConfirm(null)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const platformUpdate = pendingPlatformUpdate.current
@@ -89,6 +106,11 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       setWizardStep(2)
       return
     }
+    if (editProductId && !saveDraft && !priceJumpConfirmed.current) {
+      const jumps = priceJumps(editorPriceChanges({ rows: c.variantRows, saved: productToEdit.data, channelPricing, variantChannelPricing, channelPriceDraft, channelPriceEdited }))
+      if (jumps.lines.length) { setPriceJumpConfirm({ lines: jumps.lines, submitter: submitter instanceof HTMLElement ? submitter : null, platformUpdate }); return }
+    }
+    priceJumpConfirmed.current = false
     // Whether the product itself had edits to write: the result says "Ürün bilgileri kaydedildi" only then.
     const productChangedAtSubmit = editorDirty
     // The pending toast names what this press does: publishing (Yayınla), updating the stores, or only saving.
@@ -215,9 +237,11 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
         warnings.push(`Trendyol: ${trendyolMixedColours.join(', ')} bedenleri farklı görsellerle atanmış; Trendyol bir rengin bedenlerini tek görsel listesiyle tutar, bu renklerin güncellemesi reddedilebilir.`)
       const stockResult = await runStockStep(rows, product.variants)
       if (stockResult.warning) warnings.push(stockResult.warning)
+      // The marketplaces whose Özel Fiyat switch is as the editor opened it: their variants keep their own stored choice (O1).
+      const customBefore = new Set(initialCustomChannelIds.current)
       if (editProductId) initialCustomChannelIds.current = await runPanelFollowChoiceWrites({ connections: connectionItems, channelPricing, initialCustomChannelIds: initialCustomChannelIds.current, rows })
       const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
-      const { unpricedWarning } = await runOfferWrites({ product, rows, connectionIds: offerConnectionIdsFor(platformUpdate, targetConnectionIds, connectionItems), connections: connectionItems, form, platformUpdate, channelPricing, variantChannelPricing, channelPriceDraft, channelPriceEdited, connectionPlatformName, showProgress })
+      const { unpricedWarning } = await runOfferWrites({ product, rows, connectionIds: offerConnectionIdsFor(platformUpdate, targetConnectionIds, connectionItems), connections: connectionItems, form, platformUpdate, channelPricing, variantChannelPricing, channelPriceDraft, channelPriceEdited, choiceUntouched: connectionId => customBefore.has(connectionId), connectionPlatformName, showProgress })
       if (unpricedWarning) warnings.push(unpricedWarning)
       // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
       if (stockResult.saved.length > 0 || rows.some(row => !existingVariantIds.has(row.key) && editorOpeningStock(row.stock) > 0)) completed.push('stok')
@@ -353,6 +377,6 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
     } finally { editorSaveInFlight.current = false; setProductAtSave(null); setSubmitting(false) }
   }
 
-  return { submit }
+  return { submit, priceJumpConfirm, confirmPriceJump, cancelPriceJump }
 }
 export type EditorSubmitResult = ReturnType<typeof useEditorSubmit>

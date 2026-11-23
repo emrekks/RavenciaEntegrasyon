@@ -1,4 +1,4 @@
-import { parseTrCount, parseTrNumber } from '../../../shared/tr-number'
+import { parseTrCount, parseTrEntry } from '../../../shared/tr-number'
 import { hasAtMostTwoDecimals, priceFieldText, unreadablePriceMessage } from '../quick-price-edit'
 
 // The product editor's Toplu Düzenle: the same window as the products list's, working on the editor's unsaved variant
@@ -17,7 +17,7 @@ export function quickEditDraftValues(row: QuickEditDraftRow): QuickEditDraftValu
 type Read = { ok: true; value: number | null } | { ok: false; message: string }
 function readPrice(text: string, label: string, allowZero: boolean): Read {
   if (text.trim() === '') return { ok: true, value: null }
-  const value = parseTrNumber(text)
+  const value = parseTrEntry(text)
   if (value == null) return { ok: false, message: `${label}: ${unreadablePriceMessage}` }
   if (value < 0 || (!allowZero && value === 0)) return { ok: false, message: `${label} ${allowZero ? 'negatif olamaz' : 'sıfırdan büyük olmalıdır'}.` }
   if (!hasAtMostTwoDecimals(value)) return { ok: false, message: `${label} en fazla iki ondalık basamak içerebilir.` }
