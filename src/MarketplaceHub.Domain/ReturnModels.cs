@@ -233,14 +233,14 @@ public static class ReturnCustomerRequestPolicy
     }
 
     // Trendyol's claim reason code (customerClaimItemReason.code) for "Müşteri, yanlış ürünün değişimini istiyor": live
-    // claim of order 11805950639 (12 Nov 2026), which the owner named an exchange (18 Nov 2026). The official reason list
+    // claim of order 1000000001 (12 Nov 2026), which the owner named an exchange (18 Nov 2026). The official reason list
     // (trendyol-api-son.md "İade Sebepleri") gives ids and names only, no codes.
     public const string TrendyolExchangeReasonCode = "WRONGCHANGEREQUEST";
 
     // A Trendyol exchange request is handled in Trendyol's seller panel ("Değişim Yap"), an action its API does not
     // document: approveClaimLineItems (PUT claims/{claimId}/items/approve) is documented for returns only
     // (trendyol-api-son.md "İade Siparişleri Onaylama"), so what it would do to an exchange is unknown and the panel never
-    // sends it (owner's screenshot of 11805950639, 18 Nov 2026). The seller's issue (createClaimIssue) stays: Trendyol
+    // sends it (owner's screenshot of 1000000001, 18 Nov 2026). The seller's issue (createClaimIssue) stays: Trendyol
     // reviews it, and its reasons name exchange cases (2101).
     public const string TrendyolExchangeApproveBlockedCode = "TRENDYOL_EXCHANGE_APPROVE_IN_SELLER_PANEL";
     public const string TrendyolExchangeApproveBlockedMessage = "Değişim talebi Trendyol satıcı panelinden “Değişim Yap” ile işlenir; panelden iade onayı gönderilmez.";

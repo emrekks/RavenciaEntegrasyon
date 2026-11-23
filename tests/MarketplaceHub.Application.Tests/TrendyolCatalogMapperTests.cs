@@ -465,7 +465,7 @@ public sealed class TrendyolCatalogMapperTests
         Assert.Equal("https://tracking.example.test/7330037747126806", claim.CargoTrackingLink);
     }
 
-    // Owner, 18 Nov 2026 (11805950639): the exchange request comes from the claim's explicit data only, the reason code
+    // Owner, 18 Nov 2026 (1000000001): the exchange request comes from the claim's explicit data only, the reason code
     // WRONGCHANGEREQUEST only (review, 18 Nov 2026: a replacement package may cover one item, so it makes no whole claim an
     // exchange); any other reason, an unknown code or a replacement block is no known request (null), never a refund.
     [Theory]
@@ -489,7 +489,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [
             {
-              "claimId": "claim-exchange-1", "orderNumber": "11805950639", "orderDate": 1782998302000, {{replacementField}}
+              "claimId": "claim-exchange-1", "orderNumber": "1000000001", "orderDate": 1782998302000, {{replacementField}}
               "items": [ { "orderLine": { "id": 1, "price": 10 }, "claimItems": [ { "id": "ci-1", "claimItemStatus": { "name": "WaitingInAction" }{{reason}}, "customerNote": "Trendyol Oto Not: değişim" } ] } ]
             }
           ],
@@ -522,7 +522,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [
             {
-              "claimId": "claim-made-1", "orderNumber": "11805950639", "orderDate": 1782998302000, {{replacementField}}
+              "claimId": "claim-made-1", "orderNumber": "1000000001", "orderDate": 1782998302000, {{replacementField}}
               "items": [ { "orderLine": { "id": 1, "price": 10 }, "claimItems": [ { "id": "ci-1", "claimItemStatus": { "name": "Rejected" }, "customerClaimItemReason": { "id": "1", "name": "Sebep", "code": "WRONGCHANGEREQUEST" }{{reason}} } ] } ]
             }
           ],
@@ -553,7 +553,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [
             {
-              "claimId": "claim-pkg-1", "orderNumber": "11805950639", "orderDate": 1782998302000, {{replacementField}}
+              "claimId": "claim-pkg-1", "orderNumber": "1000000001", "orderDate": 1782998302000, {{replacementField}}
               "items": [ { "orderLine": { "id": 1, "price": 10 }, "claimItems": [ { "id": "ci-1", "claimItemStatus": { "name": "Rejected" }, "customerClaimItemReason": { "id": "1", "name": "Sebep", "code": "WRONGCHANGEREQUEST" } } ] } ]
             }
           ],
