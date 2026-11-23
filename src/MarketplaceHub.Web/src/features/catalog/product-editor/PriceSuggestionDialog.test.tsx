@@ -65,6 +65,23 @@ function hint(label: string) {
 }
 
 describe('PriceSuggestionLink', () => {
+  // B5: the cost read "1.250" as 1,25 (Number with the comma swapped). One rule now: 1250, and "1.25" is refused.
+  it('reads a typed cost of "1.250" as 1250 and refuses "1.25"', async () => {
+    await open()
+    const cost = document.querySelector<HTMLInputElement>('.price-suggestion-modal input')!
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+    act(() => { setter.call(cost, '1.250'); cost.dispatchEvent(new Event('input', { bubbles: true })) })
+    act(() => button('Fiyatı Uygula').click())
+    const expected = String(suggestPrice({ cost: 1250, targetRate: 65, basis: 'cost', commissionRate: 21.5, cargo: 100, serviceFee: 13.19, vatRate: 20, vatIncluded: true })!.price).replace('.', ',')
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Satış Fiyatı"]')!.value).toBe(expected)
+    act(() => button('Hesapla').click())
+    await settle()
+    const again = document.querySelector<HTMLInputElement>('.price-suggestion-modal input')!
+    act(() => { setter.call(again, '1.25'); again.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(button('Fiyatı Uygula').disabled).toBe(true)
+    expect(document.querySelector('.price-suggestion-modal')?.textContent).toContain('nokta yalnız binlik ayırıcıdır')
+  })
+
   it('opens the window from Hesapla and Fiyatı Uygula fills Satış Fiyatı', async () => {
     await open()
     const modal = document.querySelector('.price-suggestion-modal')!

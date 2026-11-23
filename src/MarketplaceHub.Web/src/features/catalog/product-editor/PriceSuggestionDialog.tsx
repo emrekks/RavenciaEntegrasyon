@@ -1,5 +1,6 @@
 import { useId, useMemo, useState, type ReactNode } from 'react'
 import { TitleHint } from '../../../shared/components'
+import { parseTrEntry, trEntryHelp } from '../../../shared/tr-number'
 import { RrModal } from '../../../shared/ui/rr-components'
 import { DEFAULT_CARGO, DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
 import { cargoHint, commissionHint, serviceFeeHint, type HintContent } from './price-assumptions'
@@ -8,7 +9,8 @@ import './price-suggestion.css'
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const money = (value: number) => `${value < 0 ? '−' : ''}${twoDecimals.format(Math.abs(value))} ₺`
 const percent = (value: number | null) => value === null ? '—' : `%${value < 0 ? '−' : ''}${twoDecimals.format(Math.abs(value))}`
-const numberOf = (value: string) => { const parsed = Number(value.replace(',', '.')); return value.trim() === '' || !Number.isFinite(parsed) ? null : parsed }
+// Read by the one rule of typed prices (parseTrEntry, B5): "1.250" is 1250, "12,5" is 12.5; "1.25" and "1,250" are refused (null).
+const numberOf = (value: string) => value.trim() === '' ? null : parseTrEntry(value)
 
 // The commission and cargo a user typed last are kept in this browser (a product not on a store has no tariff yet).
 // v2 (10 Nov 2026): the defaults moved to 21,5 % commission and 100 TL cargo; a value kept under the old key was most
@@ -73,7 +75,7 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
     return suggestPrice({ cost: values.cost!, targetRate: values.targetRate!, basis, targetKind, commissionRate: values.commissionRate!, cargo: values.cargo!, serviceFee: values.serviceFee!, vatRate, vatIncluded: fields.vatIncluded })
   }, [cost, targetRate, targetAmount, targetKind, assumptions, basis, vatRate, fields.vatIncluded])
 
-  const missing = numberOf(cost) === null || numberOf(cost)! <= 0 ? 'Maliyeti girin.' : numberOf(targetKind === 'amount' ? targetAmount : targetRate) === null ? (targetKind === 'amount' ? 'Hedef kâr tutarını girin.' : 'Hedef kâr oranını girin.') : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
+  const missing = cost.trim() !== '' && numberOf(cost) === null ? `Maliyet: ${trEntryHelp}` : numberOf(cost) === null || numberOf(cost)! <= 0 ? 'Maliyeti girin.' : numberOf(targetKind === 'amount' ? targetAmount : targetRate) === null ? (targetKind === 'amount' ? 'Hedef kâr tutarını girin.' : 'Hedef kâr oranını girin.') : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
   const footer = <>
     <span className="rr-note" />
     <button type="button" className="rr-btn" onClick={onClose}>İptal</button>

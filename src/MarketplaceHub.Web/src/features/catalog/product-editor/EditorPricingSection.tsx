@@ -9,7 +9,7 @@ import { PanelSelect } from '../../../shared/PanelSelect'
 import { EditorFieldError, RequiredLabel } from './EditorBits'
 import type { EditorContext } from './editor-context'
 import { priceInputNumber } from './card-prices'
-import { channelFollowMix } from '../quick-price-edit'
+import { channelFollowMix, priceFieldText } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 
 export function EditorPricingSection({ editor }: { editor: EditorContext }) {
@@ -30,7 +30,7 @@ export function EditorPricingSection({ editor }: { editor: EditorContext }) {
           <div className="editor-section-title"><span>2</span><div className="price-suggestion-title"><h2>Fiyat, Stok ve Vergi<TitleHint label="Fiyat, Stok ve Vergi">Başlangıç değerleri varyantlara uygulanır.</TitleHint></h2>
             {/* On the new and the edit page alike. A card with variants takes the suggested price on every variant row too
                 (each row's list price is raised to it only when lower); the cost comes from the card or its first costed row. */}
-            <PriceSuggestionLink fields={{ cost: form.costPrice.trim() !== '' ? form.costPrice : String(variantRows.find(row => row.costPrice != null && row.costPrice > 0)?.costPrice ?? ''), vatRate: form.vatRate, vatIncluded: form.vatIncluded !== 'EXCLUDED', listPrice: form.listPrice }} onApply={prices => {
+            <PriceSuggestionLink fields={{ cost: form.costPrice.trim() !== '' ? form.costPrice : priceFieldText(variantRows.find(row => row.costPrice != null && row.costPrice > 0)?.costPrice), vatRate: form.vatRate, vatIncluded: form.vatIncluded !== 'EXCLUDED', listPrice: form.listPrice }} onApply={prices => {
               updateField('salePrice', prices.salePrice); updateField('listPrice', prices.listPrice)
               const sale = priceInputNumber(prices.salePrice)
               if (variantRows.length && Number.isFinite(sale)) setVariantRows(rows => rows.map(row => ({ ...row, salePrice: sale, listPrice: row.listPrice >= sale ? row.listPrice : sale })))
