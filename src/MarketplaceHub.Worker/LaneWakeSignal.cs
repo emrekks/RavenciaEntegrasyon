@@ -83,6 +83,9 @@ public sealed class JobWakeRouter
 
     public LaneWakeSignal SignalFor(string laneName) => lanes.First(entry => entry.Lane.Name == laneName).Signal;
 
+    // Raised for each lane a job notification names (not for "freed" or a wake of every slot).
+    public event Action<string>? LaneNotified;
+
     public void Route(string? payload)
     {
         if (string.Equals(payload, Freed, StringComparison.Ordinal))
@@ -96,8 +99,13 @@ public sealed class JobWakeRouter
             return;
         }
         // Every lane that could lease it (a job may fit more than one): one slot each. A job no lane takes wakes no one.
+        // LaneNotified tells the flexible pool which lanes now have work (LaneSlotPool.NoteWork).
         foreach (var (lane, signal) in lanes)
-            if (lane.Takes(job.JobType, job.Priority)) signal.WakeOne();
+            if (lane.Takes(job.JobType, job.Priority))
+            {
+                LaneNotified?.Invoke(lane.Name);
+                signal.WakeOne();
+            }
     }
 
     public void WakeAll()

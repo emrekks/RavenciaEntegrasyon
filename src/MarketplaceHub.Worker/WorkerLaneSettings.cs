@@ -47,14 +47,15 @@ internal sealed record FairnessSettings(bool Enabled, TimeSpan Aging)
 // Worker lanes step 2, per-marketplace bulkheads (WorkerBulkheads, JobBulkhead):
 //   Worker:Bulkhead:Enabled             default true; false = no class or lane cap
 //   Worker:Bulkhead:Classes:<class>     the class's cap per tenant and marketplace, jobs of priority 0..hot ceiling only
-//                                       (0 = none, the default while the dedicated lanes exist; WorkerBulkheads)
+//                                       (0 = none, the default with the legacy lane model; with Worker:LaneModel=flexible
+//                                       each class defaults to its isolation cap, 1: WorkerBulkheads)
 //   Worker:Bulkhead:LaneCaps:<lane>     at most this many jobs of one marketplace in the lane at once; default none
 internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string, int> ClassCaps, IReadOnlyDictionary<string, int> LaneCaps)
 {
-    public static BulkheadSettings From(IConfiguration configuration) => new(
+    public static BulkheadSettings From(IConfiguration configuration, bool flexibleLanes = false) => new(
         configuration.GetValue("Worker:Bulkhead:Enabled", true),
         MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.DefaultClasses.ToDictionary(item => item.Name,
-            item => Math.Clamp(configuration.GetValue($"Worker:Bulkhead:Classes:{item.Name}", item.DefaultCap), 0, 50)),
+            item => Math.Clamp(configuration.GetValue($"Worker:Bulkhead:Classes:{item.Name}", flexibleLanes ? item.IsolationCap : item.DefaultCap), 0, 50)),
         configuration.GetSection("Worker:Bulkhead:LaneCaps").GetChildren()
             .Select(child => (child.Key, Cap: int.TryParse(child.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var cap) ? cap : 0))
             .Where(item => item.Cap > 0)
@@ -63,4 +64,37 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
     public Application.JobBulkhead? For(string lane, int hotPriorityCeiling) => Enabled
         ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null, hotPriorityCeiling)
         : null;
+}
+
+// Worker lanes step 3 (19 Nov 2026), the lane model (LaneSlotPool):
+//   Worker:LaneModel                         legacy (default): each lane leases only on its own slots, as before;
+//                                            flexible: the same lanes and slots, and a lane whose own slots are all busy
+//                                            borrows another lane's idle slot (never more jobs in all than the slots add up to)
+//   Worker:FlexibleLanes:ProtectedLanes      lanes whose idle slots are never lent; default every lane that reads new orders or
+//                                            order states and the user lane: user, hot, hepsiburada-orders, pazarama-orders,
+//                                            pttavm-orders, hepsiburada-status, order-status (a catalog read borrowed for up to
+//                                            52 minutes on live, 3148 s, must never sit in the slot a new order needs)
+//   Worker:FlexibleLanes:BorrowLimits:<lane> at most this many borrowed slots for the lane; default none: limiting the long
+//                                            lanes (catalog, first import) to 4 or 2 borrowed slots lost most of the gain in
+//                                            the replay (five tenants catalog p95 75 -> 119 / 282 s, six stores' first imports
+//                                            1779 -> 2675 / 3875 s) and new orders wait no longer without it (their lanes never lend)
+// Legacy stays the default for the first release: the owner turns flexible on with Worker__LaneModel=flexible (worker and api:
+// the api reads it to show borrowed slots).
+internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> ProtectedLanes, IReadOnlyDictionary<string, int> BorrowLimits)
+{
+    public const string Legacy = "legacy";
+    public const string FlexibleModel = "flexible";
+    public const string DefaultProtectedLanes = "user,hot,hepsiburada-orders,pazarama-orders,pttavm-orders,hepsiburada-status,order-status";
+
+    public static LaneModelSettings From(IConfiguration configuration) => new(
+        IsFlexible(configuration),
+        [.. (configuration["Worker:FlexibleLanes:ProtectedLanes"] ?? DefaultProtectedLanes)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+        configuration.GetSection("Worker:FlexibleLanes:BorrowLimits").GetChildren()
+            .Select(child => (child.Key, Limit: int.TryParse(child.Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) ? limit : -1))
+            .Where(item => item.Limit >= 0)
+            .ToDictionary(item => item.Key, item => Math.Min(item.Limit, 100)));
+
+    public static bool IsFlexible(IConfiguration? configuration) =>
+        string.Equals(configuration?["Worker:LaneModel"]?.Trim(), FlexibleModel, StringComparison.OrdinalIgnoreCase);
 }
