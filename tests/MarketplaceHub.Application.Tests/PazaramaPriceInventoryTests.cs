@@ -307,6 +307,26 @@ public sealed class PazaramaPriceInventoryTests
         Assert.True(status.Lines.Single().Succeeded);
     }
 
+    // O2 (scan of 23 Nov 2026): the same refusal can come in the batch result for one barcode (status 2 with that detail);
+    // it is up to date there too, so it does not send the batch to manual review. Another refusal still fails.
+    [Fact]
+    public void A_batch_result_refusing_a_value_Pazarama_already_holds_is_up_to_date_not_failed()
+    {
+        var row = Parse("""{"code":"B1","price":{"status":2,"operationDetail":"İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz"},"stock":null,"operationStatusText":"Hata oluştu"}""");
+        var held = new PazaramaBatchMapper.BatchItem("B1", PazaramaBatchMapper.State(row), "İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz");
+        Assert.Equal(PazaramaBatchMapper.BatchState.Failed, held.State);
+
+        var status = PazaramaBatchMapper.Merge("op", [
+            (new("p", "pid", 2), [held, new PazaramaBatchMapper.BatchItem("B2", PazaramaBatchMapper.BatchState.Failed, "Fiyat geçersiz")]),
+            (new("s", "sid", 2), [new PazaramaBatchMapper.BatchItem("B1", PazaramaBatchMapper.BatchState.Succeeded, null), new PazaramaBatchMapper.BatchItem("B2", PazaramaBatchMapper.BatchState.Succeeded, null)])]);
+
+        Assert.Equal("COMPLETED", status.Status);
+        var b1 = status.Lines.Single(x => x.ExternalKey == "B1");
+        Assert.True(b1.Succeeded);
+        Assert.Null(b1.ErrorCode);
+        Assert.Equal(PazaramaBatchMapper.PriceRejected, status.Lines.Single(x => x.ExternalKey == "B2").ErrorCode);
+    }
+
     // ---- a request refused over one value Pazarama already holds (audit C2) ----
 
     private const string HeldMessage = "Pazarama isteği reddetti: İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz";
