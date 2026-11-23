@@ -104,6 +104,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "settings" when segments.Length > 3 && segments[3].Equals("ai", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
             // Ayarlar › Kullanıcılar (who has an account, their roles and second factors) is the owner's and administrators'.
             "settings" when segments.Length > 3 && segments[3].Equals("users", StringComparison.OrdinalIgnoreCase) => ElevatedRoles,
+            // The "Doldur" preview reads the whole catalogue on every call; it is for those who may run Doldur (scan
+            // 23 Nov 2026), the same gate as POST channel-offers/panel-price-fill.
+            "channel-offers" when last == "panel-price-fill-preview" => ElevatedRoles,
             _ => null
         };
     }

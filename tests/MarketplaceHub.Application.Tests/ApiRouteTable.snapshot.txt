@@ -43,7 +43,7 @@ GET    /api/v1/catalog/model-codes/holder | gate=SignedIn | sameOrigin=no | anon
 POST   /api/v1/catalog/variant-codes/taken | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=200 | ownerIfMatch=200
 POST   /api/v1/channel-offers | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 POST   /api/v1/channel-offers/panel-price-fill | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
-GET    /api/v1/channel-offers/panel-price-fill-preview | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+GET    /api/v1/channel-offers/panel-price-fill-preview | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/channel-offers/panel-price-follow | gate=Operations | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=422 VALIDATION_FAILED | ownerIfMatch=422 VALIDATION_FAILED
 GET    /api/v1/channel-offers/price-import-preview | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=200 | cross=200
 GET    /api/v1/channel-offers/{id:guid} | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
