@@ -3,7 +3,7 @@ import type { InstantNotificationStatus } from '../marketplace/instant-notificat
 import { webhookCell } from './integration-health'
 
 const status = (state: InstantNotificationStatus['state'], extra: Partial<InstantNotificationStatus> = {}): InstantNotificationStatus =>
-  ({ state, endpoint: null, registeredAt: null, lastReceivedAt: null, receivedLast24Hours: 0, message: null, setup: null, lastRejectedAt: null, lastRejectedReason: null, previousPreparedAt: null, adoptableFrom: null, routeOnly: false, ...extra })
+  ({ state, endpoint: null, registeredAt: null, lastReceivedAt: null, receivedLast24Hours: 0, message: null, setup: null, lastRejectedAt: null, lastRejectedReason: null, previousPreparedAt: null, previousLastReceivedAt: null, adoptableFrom: null, routeOnly: false, ...extra })
 const since = (value: string | null) => value ? '3 dk önce' : null
 
 describe('webhookCell', () => {

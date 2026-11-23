@@ -1200,7 +1200,10 @@ public sealed record InstantNotificationView(
     WebhookAdoptableDefinition? AdoptableFrom = null,
     // A Shopify webhook opened without the app's secret key: its deliveries are admitted by the secret address and the
     // store name alone (no signature). The panel asks the seller to reopen it with the key.
-    bool RouteOnly = false);
+    bool RouteOnly = false,
+    // When the definition PreviousPreparedAt names last received a notification (null: it never did), so the panel
+    // says which definition comes back.
+    DateTimeOffset? PreviousLastReceivedAt = null);
 
 public sealed record WebhookAdoptableDefinition(string ConnectionName, string Environment, DateTimeOffset PreparedAt);
 

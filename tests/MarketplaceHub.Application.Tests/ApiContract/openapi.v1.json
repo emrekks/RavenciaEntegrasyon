@@ -28304,6 +28304,13 @@
           "routeOnly": {
             "type": "boolean",
             "default": false
+          },
+          "previousLastReceivedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
