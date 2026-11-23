@@ -38,13 +38,15 @@ internal sealed class IssueRecorder(AppDbContext db)
         if (stamps.HasFlag(IssueResolveStamps.LastSeenAt)) issue.LastSeenAt = now;
     }
 
-    // Resolves the open issue under its key, reading the clock only when there is one.
-    public async Task ResolveIfOpenAsync(Guid tenantId, string key, TimeProvider clock, CancellationToken cancellationToken)
+    // Resolves the open issue under its key, reading the clock only when there is one; onlyIf narrows it to the issue the
+    // caller's own check wrote (a key two writers may share). Says whether it resolved one.
+    public async Task<bool> ResolveIfOpenAsync(Guid tenantId, string key, TimeProvider clock, CancellationToken cancellationToken, Func<OperationalIssue, bool>? onlyIf = null)
     {
         var issue = await FindAsync(tenantId, key, cancellationToken);
-        if (issue is null || issue.Status == IssueStatus.Resolved) return;
+        if (issue is null || issue.Status == IssueStatus.Resolved || onlyIf?.Invoke(issue) == false) return false;
         issue.Status = IssueStatus.Resolved;
         issue.ResolvedAt = clock.GetUtcNow();
+        return true;
     }
 
     // ISLEYICI-12 point 5 (16 Nov 2026): the issues of one code under one key prefix, by key, read in one query with those

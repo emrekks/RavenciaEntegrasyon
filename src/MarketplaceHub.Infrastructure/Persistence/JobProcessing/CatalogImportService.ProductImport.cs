@@ -435,6 +435,7 @@ internal sealed partial class CatalogImportService
         // products it wrote without that write throwing, once their model is saved (Y5 review, 23 Nov 2026: twelve stayed
         // open after later imports). Read once.
         var importFailurePrefix = $"product-sync-import:{connectionId}:";
+        var writesWholeProducts = !newOnly && !existingOnly && !focusedPriceStock && !mappingOnly && !optionsOnly;
         var openImportFailures = (await db.OperationalIssues.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.Code == "PRODUCT_IMPORT_FAILED" && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(importFailurePrefix))
                 .Select(x => x.DedupeKey)
@@ -461,8 +462,10 @@ internal sealed partial class CatalogImportService
             var attemptCounters = (run.ImportProcessedCount, run.ImportSkippedCount, run.AlreadyInPanelCount, run.NewProductCount, run.NewSizeCount, run.UnaddedSizeCount, run.UnchangedVariantCount);
             List<string> attemptAddedProductIds = [];
             List<string> attemptAddedVariantIds = [];
-            // The products this attempt wrote (stored or mapped): only those settle an earlier import failure; one the run
-            // skipped (new-only, existing-only, unchanged) or refused (a code clash) proves nothing about it.
+            // The products this attempt wrote whole: only those settle an earlier import failure. A run that writes a part of
+            // a product (new sizes only, existing products only, prices and stock only, links only, options only), a plain
+            // pull that leaves a linked card as it is, a skipped product or a refused one (a code clash) proves nothing about
+            // the write that failed (review 24 Nov 2026).
             List<string> attemptWrittenProductIds = [];
             run.CatalogStockReadAt = stagingRows.Min(row => row.CreatedAt);
             try
@@ -473,7 +476,6 @@ internal sealed partial class CatalogImportService
                     if (mappingOnly)
                     {
                         var mapped = await MapExistingCatalogProduct(tenantId, connectionId, snapshot, isShopify, cancellationToken, crossMatchCodes: flatCatalog, reportUnmatched: flatCatalog, seedOffers: flatCatalog, inventoryPolicy: inventoryPolicy, seedSource: isPazarama ? "PAZARAMA" : isPttAvm ? "PTTAVM" : "N11", pttAvm: isPttAvm);
-                        if (mapped) attemptWrittenProductIds.Add(snapshot.ExternalProductId);
                         if (!mapped) run.ImportSkippedCount++;
                         else run.ImportProcessedCount++;
                         continue;
@@ -559,7 +561,7 @@ internal sealed partial class CatalogImportService
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
                             if (existingVariantExternalIds.Add(Short(variant.ExternalVariantId, 256))) attemptAddedVariantIds.Add(Short(variant.ExternalVariantId, 256));
-                    if (changed) attemptWrittenProductIds.Add(snapshot.ExternalProductId);
+                    if (changed && writesWholeProducts && (updateExistingProducts || !productAlreadyLinked)) attemptWrittenProductIds.Add(snapshot.ExternalProductId);
                     if (changed) run.ImportProcessedCount++;
                     else run.ImportSkippedCount++;
                     if (run.ImportSummaryMode == ImportSummaryMode.NewOnly)

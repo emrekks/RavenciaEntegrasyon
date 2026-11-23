@@ -36,10 +36,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await ScheduledReadSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
-        // Reads asked for by hand that wait in review on refused credentials, once a later run of the same read got through.
+        // Reads asked for by hand that wait in review on refused credentials run again once a later run of the same read got through.
         try
         {
-            await ScheduledReadSupersession.CloseCredentialReviewsAsync(db, timeProvider.GetUtcNow(), cancellationToken);
+            await ScheduledReadSupersession.RetryCredentialReviewsAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException) { LogMaintenanceFailure(exception); }
         // Old publish and approval failures of a product that a later publish or approval on the same connection has

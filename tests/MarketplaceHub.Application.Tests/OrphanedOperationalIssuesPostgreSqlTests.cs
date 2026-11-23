@@ -278,14 +278,27 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         {
             var predicted = await PredictAsync(db, seed.Tenant.Id);
             var counts = await PassAsync(db, seed.Tenant.Id);
-            // The prediction query and the pass agree, code by code and reason by reason.
-            Assert.Equal(predicted.OrderBy(x => x.Key).ToList(), counts.OrderBy(x => x.Key).ToList());
-            Assert.Equal(closes.Count, counts.Values.Sum());
-            Assert.Equal(2, counts[("PRODUCT_MAPPING_UNMATCHED", OrphanedOperationalIssues.ConditionCleared)]);
-            Assert.Equal(1, counts[("LISTING_VERIFY_OBSERVE", OrphanedOperationalIssues.ConditionCleared)]);
-            Assert.Equal(1, counts[("LISTING_VERIFY_OBSERVE", OrphanedOperationalIssues.SubjectGone)]);
-            Assert.Equal(2, counts[("PRODUCT_IMPORT_FAILED", OrphanedOperationalIssues.SubjectGone)]);
-            Assert.All(counts.Keys, key => Assert.Contains(key.Code, OrphanedOperationalIssues.Codes));
+            // Written by hand from the issues above, not from the rules (review 24 Nov 2026): what must close, by code and
+            // reason. The pass and the prediction query are each held to it.
+            const string Gone = OrphanedOperationalIssues.SubjectGone, Cleared = OrphanedOperationalIssues.ConditionCleared;
+            var expected = new Dictionary<(string Code, string Reason), int>
+            {
+                [("PRODUCT_WEBCOLOR_MAPPING_REQUIRED", Gone)] = 1,
+                [("PRODUCT_WEBCOLOR_VALUE_UNMAPPED", Gone)] = 1,
+                [("PRODUCT_ATTRIBUTE_VALUE_UNMAPPED", Gone)] = 1,
+                [("CHANNEL_OFFER_INVALID", Gone)] = 1,
+                [("MODEL_CODE_CHANGE_IN_USE", Gone)] = 1,
+                [("PRODUCT_MAPPING_UNMATCHED", Gone)] = 3,
+                [("PRODUCT_MAPPING_UNMATCHED", Cleared)] = 2,
+                [("LISTING_VERIFY_OBSERVE", Cleared)] = 1,
+                [("LISTING_VERIFY_OBSERVE", Gone)] = 1,
+                [("PRODUCT_BARCODE_CONFLICT", Gone)] = 1,
+                [("PRODUCT_IMPORT_FAILED", Gone)] = 2,
+                [("PTTAVM_PRODUCT_CODE_NOT_MODEL", Gone)] = 1
+            };
+            Assert.Equal(closes.Count, expected.Values.Sum());
+            Assert.Equal(expected.OrderBy(x => x.Key).ToList(), counts.OrderBy(x => x.Key).ToList());
+            Assert.Equal(expected.OrderBy(x => x.Key).ToList(), predicted.OrderBy(x => x.Key).ToList());
         }
 
         await using (var check = fixture.CreateContext())
@@ -414,28 +427,39 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
                 new RemoteCatalogVariant("N11-V1", "PRB-A1", null, null, new Dictionary<string, string>(), false, 500m, null, 10m, 1m, "TRY", "{}"),
                 new RemoteCatalogVariant("N11-V2", "PRB-A2", null, null, new Dictionary<string, string>(), false, 500m, null, 10m, 1m, "TRY", "{}")
             ], "{}");
-        async Task ImportAsync()
+        // Another listing of the store whose only code is the first listing's first code (one card holds it: no clash).
+        var sharing = new RemoteCatalogProduct("N11-LISTING-2", null, "Liste 2", "", null, null, null, null, [],
+            [new RemoteCatalogVariant("N11-V9", "PRB-A1", null, null, new Dictionary<string, string>(), false, 500m, null, 10m, 1m, "TRY", "{}")], "{}");
+        async Task ImportAsync(RemoteCatalogProduct listing)
         {
             await using var db = fixture.CreateContext();
             var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
             var upsert = typeof(CatalogImportService).GetMethod("UpsertCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
             await (Task<bool>)upsert.Invoke(processor.CatalogImport,
-                [seed.Tenant.Id, seed.N11.Id, snapshot, null, null, CancellationToken.None, true, false, true, false, false, true, false, false, false, false, true, "N11", null, false, null, false])!;
+                [seed.Tenant.Id, seed.N11.Id, listing, null, null, CancellationToken.None, true, false, true, false, false, true, false, false, false, false, true, "N11", null, false, null, false])!;
             await db.SaveChangesAsync();
         }
         var key = $"product-sync-barcode-conflict:{seed.N11.Id}:PRB-A1";
+        async Task<IssueStatus> StatusAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key)).Status;
+        }
 
-        await ImportAsync();
+        await ImportAsync(snapshot);
+        Assert.Equal(IssueStatus.Open, await StatusAsync());
+        // Review 24 Nov 2026: the other listing shares the key but not the clash; it leaves the first listing's warning open.
+        await ImportAsync(sharing);
+        Assert.Equal(IssueStatus.Open, await StatusAsync());
         await using (var db = fixture.CreateContext())
         {
-            Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key)).Status);
             Assert.Empty(await PassAsync(db, seed.Tenant.Id));
             Assert.Equal(IssueStatus.Open, (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key)).Status);
             // The owner moves the second code off the other card.
             await db.ProductVariants.Where(x => x.Id == onSecondCard.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Sku, "PRB-Z2").SetProperty(x => x.SkuNormalized, "PRB-Z2"));
         }
 
-        await ImportAsync();
+        await ImportAsync(snapshot);
         await using var check = fixture.CreateContext();
         var issue = await check.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.DedupeKey == key);
         Assert.Equal(IssueStatus.Resolved, issue.Status);

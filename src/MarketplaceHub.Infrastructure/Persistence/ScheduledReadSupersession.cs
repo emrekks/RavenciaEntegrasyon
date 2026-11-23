@@ -64,39 +64,38 @@ public static class ScheduledReadSupersession
 
     // Scan 23 Nov 2026: a read the user asked for (not a scheduled one) that stopped in manual review because the
     // marketplace refused the store's credentials waits there for ever once the credentials work again (3 Pazarama
-    // question reads of 17 Nov, every later question read of the store succeeded). It is closed when a later run of the
-    // same read type on the same connection succeeded: the refusal was the store's, and that run got through. Only the
-    // credential codes below qualify; the read is closed, not run again (the scheduled reads cover its data).
+    // question reads of 17 Nov; every later question read of the store succeeded). Such a read is run again, never closed
+    // (review 24 Nov 2026: a hand-started read may cover a window no scheduled read covers, a recovery sweep of old orders,
+    // so closing it would leave that window unread): once a run of the same read type on the same connection succeeded
+    // after the read went to review, it goes back to the queue as an operator retry would put it (JobStateMachine.Retry),
+    // with its own payload. A scheduled read stays with CloseAsync (same series, a later window covers it). Only the
+    // credential codes below qualify; a read that fails again waits for a success after that failure.
     internal static readonly IReadOnlySet<string> CredentialReviewCodes = new HashSet<string>(StringComparer.Ordinal) { "PAZARAMA_TOKEN_INVALID" };
 
-    internal const string CredentialsRecoveredSummary =
-        "Mağazanın kimlik bilgisi sonradan çalıştı (aynı okumanın sonraki çalışması başarılı); bu okuma kapatıldı, yeniden çalıştırılmadı.";
-
     public static bool CredentialsRecovered(
-        (Guid ConnectionId, string JobType, JobStatus Status, string? ErrorCode, DateTimeOffset CreatedAt) failed,
+        (Guid ConnectionId, string JobType, string DedupKey, JobStatus Status, string? ErrorCode, DateTimeOffset InReviewSince) failed,
         (Guid ConnectionId, string JobType, JobStatus Status, DateTimeOffset CreatedAt) later) =>
         failed.Status == JobStatus.ManualReview && failed.ErrorCode is not null && CredentialReviewCodes.Contains(failed.ErrorCode)
         && ReadJobTypes.Contains(failed.JobType)
+        && !IsScheduledRead(failed.JobType, failed.DedupKey)
         && later.Status == JobStatus.Succeeded
         && failed.ConnectionId == later.ConnectionId
         && string.Equals(failed.JobType, later.JobType, StringComparison.Ordinal)
-        && later.CreatedAt > failed.CreatedAt;
+        && later.CreatedAt > failed.InReviewSince;
 
-    // Closes the reads CredentialsRecovered names; returns how many.
-    internal static async Task<int> CloseCredentialReviewsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    // Runs again the reads CredentialsRecovered names; returns how many.
+    internal static async Task<int> RetryCredentialReviewsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var types = ReadJobTypes.ToArray();
         var codes = CredentialReviewCodes.ToArray();
-        var waiting = await db.IntegrationJobs.AsNoTracking()
+        var waiting = await db.IntegrationJobs
             .Where(x => x.Status == JobStatus.ManualReview && x.LastErrorCode != null && codes.Contains(x.LastErrorCode)
                 && x.ConnectionId != null && types.Contains(x.JobType))
             .OrderBy(x => x.CreatedAt)
-            .Select(x => new { x.Id, x.TenantId, ConnectionId = x.ConnectionId!.Value, x.JobType, x.Status, x.LastErrorCode, x.CreatedAt })
-            .Take(500)
+            .Take(200)
             .ToListAsync(cancellationToken);
-        var closed = 0;
-        var byTenant = new Dictionary<Guid, int>();
-        foreach (var group in waiting.GroupBy(x => (x.TenantId, x.ConnectionId, x.JobType)))
+        var retried = 0;
+        foreach (var group in waiting.GroupBy(x => (x.TenantId, ConnectionId: x.ConnectionId!.Value, x.JobType)))
         {
             var latest = await db.IntegrationJobs.AsNoTracking()
                 .Where(x => x.TenantId == group.Key.TenantId && x.ConnectionId == group.Key.ConnectionId && x.JobType == group.Key.JobType && x.Status == JobStatus.Succeeded)
@@ -105,18 +104,15 @@ public static class ScheduledReadSupersession
                 .FirstOrDefaultAsync(cancellationToken);
             if (latest is null) continue;
             foreach (var job in group.Where(x => CredentialsRecovered(
-                         (x.ConnectionId, x.JobType, x.Status, x.LastErrorCode, x.CreatedAt),
+                         (group.Key.ConnectionId, x.JobType, x.JobDedupKey, x.Status, x.LastErrorCode, x.CompletedAt ?? x.CreatedAt),
                          (group.Key.ConnectionId, group.Key.JobType, JobStatus.Succeeded, latest.Value))))
             {
-                var one = await Jobs.JobStateMachine.CancelWhereAsync(
-                    db.IntegrationJobs.Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode),
-                    now, Code, CredentialsRecoveredSummary, keepEarlierCompletedAt: true, cancellationToken);
-                closed += one;
-                byTenant[job.TenantId] = byTenant.GetValueOrDefault(job.TenantId) + one;
+                Jobs.JobStateMachine.Retry(db, job, now, Jobs.JobEvent.Publish);
+                retried++;
             }
         }
-        await Jobs.JobStateMachine.PublishBulkAsync(db, byTenant, now, JobStatus.Cancelled, cancellationToken);
-        return closed;
+        if (retried > 0) await db.SaveChangesAsync(cancellationToken);
+        return retried;
     }
 
     // Closes the superseded failures; returns how many. Each pass looks at a bounded number of failures.

@@ -95,6 +95,50 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // Review 24 Nov 2026: a recovery sweep started by hand that went to review on a refused Pazarama token is run again with
+    // its own window once a later run of the same read succeeded; it is never closed unread.
+    [PostgreSqlFact]
+    public async Task AHandStartedRecoveryReadInReviewOnARefusedToken_RunsAgainWithItsWindow_NotClosed()
+    {
+        var tenant = NewTenant("bg-token");
+        var connection = NewConnection(tenant);
+        var now = DateTimeOffset.UtcNow;
+        var failed = NewJob(tenant.Id, MarketplaceJobTypes.PazaramaOrderRecoverySync);
+        failed.ConnectionId = connection.Id;
+        failed.PayloadJson = """{"from":"2026-09-01","to":"2026-10-01"}""";
+        failed.Status = JobStatus.ManualReview;
+        failed.LastErrorCode = "PAZARAMA_TOKEN_INVALID";
+        failed.CompletedAt = now.AddHours(-2);
+        var later = NewJob(tenant.Id, MarketplaceJobTypes.PazaramaOrderRecoverySync);
+        later.ConnectionId = connection.Id;
+        later.Status = JobStatus.Succeeded;
+        later.CreatedAt = now.AddHours(-1);
+        later.CompletedAt = now.AddHours(-1);
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.PlatformConnections.Add(connection);
+            setup.IntegrationJobs.AddRange(failed, later);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True(await ScheduledReadSupersession.RetryCredentialReviewsAsync(db, now, CancellationToken.None) >= 1);
+
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == failed.Id);
+            Assert.Equal(JobStatus.RetryScheduled, stored.Status);
+            Assert.Equal(failed.PayloadJson, stored.PayloadJson);
+            Assert.Null(stored.LastErrorCode);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TheLeaseChecksTheLockGroupStoredOnTheJob()
     {

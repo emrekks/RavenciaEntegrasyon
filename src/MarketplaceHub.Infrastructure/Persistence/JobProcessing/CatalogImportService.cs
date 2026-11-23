@@ -46,7 +46,7 @@ internal sealed partial class CatalogImportService(
     private static readonly string[] ListingIssuePrefixes = ["product-sync-barcode-conflict:", "product-mapping-unmatched:"];
     private readonly Dictionary<Guid, HashSet<string>> openListingIssueKeys = [];
 
-    private async Task ResolveOpenListingIssue(Guid tenantId, Guid connectionId, string key, CancellationToken cancellationToken)
+    private async Task ResolveOpenListingIssue(Guid tenantId, Guid connectionId, string key, CancellationToken cancellationToken, Func<OperationalIssue, bool>? onlyIf = null)
     {
         if (!openListingIssueKeys.TryGetValue(connectionId, out var open))
         {
@@ -59,8 +59,8 @@ internal sealed partial class CatalogImportService(
                 .ToHashSet(StringComparer.Ordinal);
             openListingIssueKeys[connectionId] = open;
         }
-        if (!open.Remove(key)) return;
-        await issues.ResolveIfOpenAsync(tenantId, key, timeProvider, cancellationToken);
+        if (!open.Contains(key)) return;
+        if (await issues.ResolveIfOpenAsync(tenantId, key, timeProvider, cancellationToken, onlyIf)) open.Remove(key);
     }
 
     private Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) =>
