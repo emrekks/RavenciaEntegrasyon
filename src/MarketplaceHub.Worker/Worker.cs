@@ -33,6 +33,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // Worker lanes step 2: connection fairness and per-marketplace bulkheads (Worker:Fairness:*, Worker:Bulkhead:*).
     private readonly FairnessSettings fairnessSettings = FairnessSettings.From(configuration);
     private readonly BulkheadSettings bulkheads = BulkheadSettings.From(configuration);
+    // Worker lanes step 3: legacy (own slots only) or flexible (LaneSlotPool) lanes (Worker:LaneModel).
+    private readonly LaneModelSettings laneModel = LaneModelSettings.From(configuration);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -55,18 +57,40 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // independently (FOR UPDATE SKIP LOCKED); jobs that collide on the same connection
         // lock group are deferred without consuming an attempt.
         var loops = new List<Task>();
-        var totalSlots = 0;
         var lanes = MarketplaceHub.Infrastructure.Jobs.WorkerLanes.All(hotPriorityCeiling);
         wakeRouter = new JobWakeRouter(lanes);
+        var laneSlots = lanes.ToDictionary(lane => lane.Name, lane => LaneSlots(configuration, lane.Name, lane.DefaultSlots));
+        var totalSlots = laneSlots.Values.Sum();
+        // Worker lanes step 3: with the flexible model the lanes' slots form one pool (LaneSlotPool); each lane also runs
+        // borrowing slots, which lease only while the pool lends them a free slot.
+        var pool = laneModel.Flexible ? new LaneSlotPool(laneSlots, laneModel.ProtectedLanes) : null;
+        // Borrowing slots wait on a signal of their own: a lane's notification goes to its own slots first (a borrowing slot
+        // that may not borrow would use the wake up and leave the job to the idle poll). They are woken when a slot is freed
+        // and when one of the lane's own slots found work (there may be more).
+        var borrowWakes = lanes.ToDictionary(lane => lane.Name, _ => new LaneWakeSignal());
+        if (pool is not null)
+            pool.SlotFreed += freedFor =>
+            {
+                foreach (var lane in freedFor)
+                {
+                    wakeRouter.SignalFor(lane).WakeOne();
+                    borrowWakes[lane].WakeOne();
+                }
+            };
         foreach (var lane in lanes)
         {
-            var slots = LaneSlots(configuration, lane.Name, lane.DefaultSlots);
-            totalSlots += slots;
+            var slots = laneSlots[lane.Name];
             var laneWake = wakeRouter.SignalFor(lane.Name);
+            var borrowWake = borrowWakes[lane.Name];
             var bulkhead = bulkheads.For(lane.Name);
             loops.AddRange(Lane(lane.Name, slots, slot => RunLeaseLaneAsync(slot, lane.MaximumPriority, lane.MinimumPriority, laneWake, stoppingToken,
-                includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], bulkhead: bulkhead)));
+                includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], bulkhead: bulkhead, pool: pool, laneName: lane.Name, ownSlot: true,
+                leased: pool is null ? null : borrowWake.WakeOne)));
+            if (pool is not null)
+                loops.AddRange(Enumerable.Range(1, totalSlots - slots).Select(borrow => RunLeaseLaneAsync($"{lane.Name}+{borrow}", lane.MaximumPriority, lane.MinimumPriority, borrowWake, stoppingToken,
+                    includedJobTypes: [.. lane.IncludedJobTypes], excludedJobTypes: [.. lane.ExcludedJobTypes], bulkhead: bulkhead, pool: pool, laneName: lane.Name, ownSlot: false)));
         }
+        LogLaneModel(pool);
         await WarnWhenPoolIsTooSmallAsync(totalSlots, stoppingToken);
         StartQuotaAwareLeasing();
         LogFairnessAndBulkheads();
@@ -322,21 +346,65 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
     }
 
-    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, LaneWakeSignal laneWake, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null)
+    private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, LaneWakeSignal laneWake, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null, JobBulkhead? bulkhead = null,
+        LaneSlotPool? pool = null, string? laneName = null, bool ownSlot = true, Action? leased = null)
     {
-        await RunSlotAsync(laneWake, async token =>
+        await RunSlotAsync(laneWake, token => LeaseThroughPoolAsync(pool, laneName ?? lane, ownSlot, async () =>
         {
             var job = await LeaseNextAsync(maximumPriority, minimumPriority, token, onlyJobType, reapExpiredLeases, includedJobTypes, excludedJobTypes, bulkhead);
             // Health is refreshed only after a successful lease database cycle.
             // A live process that cannot reach the database must not remain healthy.
             TouchHealthFile();
-            if (job is null) return null;
-            return async () =>
+            if (job is not null) leased?.Invoke();
+            return job;
+        }, async job =>
+        {
+            RecordQueueWait(job, lane);
+            await ExecuteLeasedJobAsync(job, stoppingToken);
+        }), exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
+    }
+
+    // A slot leases only with room in the pool (flexible lane model; no pool: always), and gives the room back when it found
+    // nothing, failed, or its job ended.
+    internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run)
+    {
+        if (pool is not null && !pool.TryClaim(lane, ownSlot)) return null;
+        LeasedJob? job;
+        try
+        {
+            job = await lease();
+        }
+        catch
+        {
+            pool?.Release(lane, ownSlot);
+            throw;
+        }
+        if (job is null)
+        {
+            pool?.Release(lane, ownSlot);
+            return null;
+        }
+        return async () =>
+        {
+            try
             {
-                RecordQueueWait(job, lane);
-                await ExecuteLeasedJobAsync(job, stoppingToken);
-            };
-        }, exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
+                await run(job);
+            }
+            finally
+            {
+                pool?.Release(lane, ownSlot);
+            }
+        };
+    }
+
+    // The startup log names the lane model, so a switch (Worker__LaneModel) shows in the logs.
+    private void LogLaneModel(LaneSlotPool? pool)
+    {
+        if (pool is null)
+            logger.LogInformation("Lane model is legacy: each lane leases on its own slots only (Worker:LaneModel=flexible lets a busy lane borrow idle slots)");
+        else
+            logger.LogInformation("Lane model is flexible: {Total} slots in one pool, each lane keeps its own slots and borrows idle ones; lanes that never lend: {Protected}",
+                pool.Total, string.Join(", ", pool.ProtectedLanes));
     }
 
     // One lease slot of a lane: lease and run jobs until none is left, then wait for a wake of its lane (or the idle delay)

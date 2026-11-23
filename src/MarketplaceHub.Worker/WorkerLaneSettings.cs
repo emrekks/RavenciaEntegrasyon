@@ -63,3 +63,20 @@ internal sealed record BulkheadSettings(bool Enabled, IReadOnlyDictionary<string
         ? MarketplaceHub.Infrastructure.Jobs.WorkerBulkheads.For(ClassCaps, LaneCaps.TryGetValue(lane, out var cap) ? cap : null)
         : null;
 }
+
+// Worker lanes step 3 (19 Nov 2026), the lane model (LaneSlotPool):
+//   Worker:LaneModel                         legacy (default): each lane leases only on its own slots, as before;
+//                                            flexible: the same lanes and slots, and a lane whose own slots are all busy
+//                                            borrows another lane's idle slot (never more jobs in all than the slots add up to)
+//   Worker:FlexibleLanes:ProtectedLanes      default "user,hot": lanes whose idle slots are never lent
+// Legacy stays the default for the first release: the owner turns flexible on with Worker__LaneModel=flexible on the worker.
+internal sealed record LaneModelSettings(bool Flexible, IReadOnlyList<string> ProtectedLanes)
+{
+    public const string Legacy = "legacy";
+    public const string FlexibleModel = "flexible";
+
+    public static LaneModelSettings From(IConfiguration configuration) => new(
+        string.Equals(configuration["Worker:LaneModel"]?.Trim(), FlexibleModel, StringComparison.OrdinalIgnoreCase),
+        [.. (configuration["Worker:FlexibleLanes:ProtectedLanes"] ?? "user,hot")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)]);
+}

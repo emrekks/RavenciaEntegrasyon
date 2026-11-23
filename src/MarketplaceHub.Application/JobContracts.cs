@@ -259,8 +259,11 @@ public sealed record JobCountView(string Status, string JobType, int Count);
 //   WaitStatus            OK, OVER_TARGET (missed at this look) or ALERT (missed for ten minutes on end: an open operational
 //                         issue QUEUE_WAIT_TARGET_EXCEEDED, which closes itself after ten minutes within target);
 //   AlertSince            when the open alert was raised (null without one).
+// Worker lanes step 3 (19 Nov 2026): Borrowed, how many jobs the lane runs now beyond its own slots, on idle slots of other
+// lanes (Worker:LaneModel=flexible; always 0 with the legacy model). Counted over every tenant, like Slots: "3 / 2 (+1 ödünç)".
 public sealed record LaneMetricView(string Lane, int Attempts, double? AverageWaitSeconds, double? P95WaitSeconds, int Queued, int Running, int Slots = 0,
-    double? TargetSeconds = null, double? RecentP95WaitSeconds = null, double? OldestWaitSeconds = null, string WaitStatus = LaneWaitStatus.Ok, DateTimeOffset? AlertSince = null);
+    double? TargetSeconds = null, double? RecentP95WaitSeconds = null, double? OldestWaitSeconds = null, string WaitStatus = LaneWaitStatus.Ok, DateTimeOffset? AlertSince = null,
+    int? Borrowed = null);
 
 public static class LaneWaitStatus
 {

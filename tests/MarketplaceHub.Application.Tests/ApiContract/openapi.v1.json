@@ -30999,7 +30999,8 @@
           "queued",
           "running",
           "slots",
-          "waitStatus"
+          "waitStatus",
+          "borrowed"
         ],
         "type": "object",
         "properties": {
@@ -31068,6 +31069,11 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "borrowed": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },

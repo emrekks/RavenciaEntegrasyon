@@ -50,6 +50,12 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
         var monitor = new LaneWaitMonitor(db, timeProvider, configuration);
         var waits = await monitor.SnapshotAsync(tenantId, LaneWaitTargets.Window(configuration), cancellationToken);
         var alerts = await monitor.OpenAlertsAsync(tenantId, cancellationToken);
+        // Worker lanes step 3: the lane's running jobs over every tenant, so the slots it borrowed show (flexible lane model).
+        var running = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.Status == Domain.JobStatus.Leased && job.LeaseExpiresAt > now)
+            .GroupBy(job => new { job.JobType, job.Priority })
+            .Select(group => new { group.Key.JobType, group.Key.Priority, Count = group.Count() })
+            .ToListAsync(cancellationToken);
         return lanes.Select(definition =>
         {
             var code = LaneCode(definition.Name);
@@ -59,7 +65,8 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             var alertSince = alerts.TryGetValue(definition.Name, out var since) ? since : (DateTimeOffset?)null;
             var status = alertSince is not null ? LaneWaitStatus.Alert : wait?.Breached == true ? LaneWaitStatus.OverTarget : LaneWaitStatus.Ok;
             return new LaneMetricView(code, attempt?.Attempts ?? 0, Round(attempt?.AverageWaitSeconds), Round(attempt?.P95WaitSeconds), depth.Where(row => !row.Running).Sum(row => row.Count), depth.Where(row => row.Running).Sum(row => row.Count), LaneSlots(definition),
-                LaneWaitTargets.For(configuration, definition.Name).TotalSeconds, wait?.RecentP95WaitSeconds, wait?.OldestWaitSeconds, status, alertSince);
+                LaneWaitTargets.For(configuration, definition.Name).TotalSeconds, wait?.RecentP95WaitSeconds, wait?.OldestWaitSeconds, status, alertSince,
+                Math.Max(0, running.Where(row => WorkerLanes.LaneFor(row.JobType, row.Priority, hotPriorityCeiling) == definition.Name).Sum(row => row.Count) - LaneSlots(definition)));
         }).ToList();
     }
 

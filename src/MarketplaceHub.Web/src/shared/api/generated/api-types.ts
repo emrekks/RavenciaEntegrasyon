@@ -1650,6 +1650,7 @@ export type LaneMetricView = {
   oldestWaitSeconds?: null | number
   waitStatus: string
   alertSince?: null | string
+  borrowed: number
 }
 
 export type LinkRevocationRequest = {
