@@ -81,10 +81,14 @@ public sealed class LaneSlotPool
             if (!reserved.TryGetValue(lane, out var floor)) return false;
             if (ownSlot)
             {
-                if (running >= Total)
+                // Every claim, an unprotected lane's own slot included, leaves the idle own slots of the other protected
+                // lanes free (lanes that want theirs back do not block each other: only borrowers leave those free too). So
+                // the unprotected lanes never run more than the pool less the protected lanes' slots, and a protected lane
+                // always has its own slots at once: a lane whose slot was lent out takes it back from the unprotected part only.
+                if (running + Kept(lane, includeWanting: false) >= Total)
                 {
-                    // Every slot is busy (some lent out). A lane known to have work wants its slot back, so borrowers take
-                    // nothing new; a lane that only polls idly does not hold the next free slot up.
+                    // No room. A lane known to have work wants its slot back, so borrowers take nothing new; a lane that only
+                    // polls idly does not hold the next free slot up.
                     if (workNoticed.TryGetValue(lane, out var noticed) && clock.GetUtcNow() - noticed <= WorkNoticeTtl) wanting.Add(lane);
                     return false;
                 }
@@ -97,14 +101,31 @@ public sealed class LaneSlotPool
             // lane may need now: the idle own slots of protected lanes and of lanes that want theirs stay free.
             if (own.GetValueOrDefault(lane) < floor) return false;
             if (borrowLimits.TryGetValue(lane, out var limit) && borrowed.GetValueOrDefault(lane) >= limit) return false;
-            var keep = reserved.Where(item => item.Key != lane && (protectedLanes.Contains(item.Key) || wanting.Contains(item.Key)))
-                .Sum(item => Math.Max(0, item.Value - own.GetValueOrDefault(item.Key)));
-            if (running + keep >= Total) return false;
+            if (running + Kept(lane, includeWanting: true) >= Total) return false;
             borrowed[lane] = borrowed.GetValueOrDefault(lane) + 1;
             running++;
             return true;
         }
     }
+
+    // The idle own slots a claim of the lane must leave free: the other protected lanes', and with includeWanting those of the
+    // lanes that want theirs back. Called under the lock.
+    private int Kept(string lane, bool includeWanting) =>
+        reserved.Where(item => item.Key != lane && (protectedLanes.Contains(item.Key) || (includeWanting && wanting.Contains(item.Key))))
+            .Sum(item => Math.Max(0, item.Value - own.GetValueOrDefault(item.Key)));
+
+    // Jobs running in unprotected lanes (own and borrowed) and the most they may ever be: the pool less the protected slots.
+    internal int UnprotectedRunning
+    {
+        get
+        {
+            lock (gate)
+                return own.Where(item => !protectedLanes.Contains(item.Key)).Sum(item => item.Value)
+                    + borrowed.Where(item => !protectedLanes.Contains(item.Key)).Sum(item => item.Value);
+        }
+    }
+
+    internal int UnprotectedCapacity => Total - reserved.Where(item => protectedLanes.Contains(item.Key)).Sum(item => item.Value);
 
     public void Release(string lane, bool ownSlot)
     {

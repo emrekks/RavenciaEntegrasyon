@@ -167,7 +167,11 @@ public sealed class WorkerLanePoolTests
         // The background lane lent its slot to a long read: its job waits for the next job to end, then gets the slot first.
         pool.NoteWork("background");
         Assert.False(pool.TryClaim("background", true));
+        // The Pazarama slot frees up: it is not the background lane's to take (order lanes never lend), it waits on.
         pool.Release("pazarama-orders", true);
+        Assert.False(pool.TryClaim("background", true));
+        // The long catalog read on its slot ends: the slot goes back to the background lane, not to another catalog read.
+        pool.Release("product-catalog", false);
         Assert.False(pool.TryClaim("product-catalog", false));
         Assert.True(pool.TryClaim("background", true));
     }
@@ -183,34 +187,129 @@ public sealed class WorkerLanePoolTests
     }
 
     [Fact]
-    public async Task ManyThreadsClaimingAndReleasingNeverRunMoreThanThePool()
+    public async Task ManyThreadsClaimingAndReleasingNeverRunMoreThanThePoolNorTakeTheProtectedSlots()
     {
-        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 2, ["product-catalog"] = 2, ["background"] = 2, ["returns-read"] = 1 }, ["hot"]);
-        string[] lanes = ["hot", "product-catalog", "background", "returns-read"];
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 2, ["user"] = 1, ["product-catalog"] = 2, ["background"] = 2, ["returns-read"] = 1 }, ["hot", "user"]);
+        string[] lanes = ["hot", "user", "product-catalog", "background", "returns-read"];
         var active = 0;
         var peak = 0;
         var claims = 0;
+        var breaches = 0;
         await Task.WhenAll(Enumerable.Range(0, 8).Select(thread => Task.Run(() =>
         {
             var random = new Random(thread);
+            var held = new List<(string Lane, bool Own)>();
             for (var step = 0; step < 20_000; step++)
             {
+                if (held.Count > 0 && random.Next(2) == 0)
+                {
+                    var index = random.Next(held.Count);
+                    var (heldLane, heldOwn) = held[index];
+                    held.RemoveAt(index);
+                    Interlocked.Decrement(ref active);
+                    pool.Release(heldLane, heldOwn);
+                    continue;
+                }
                 var lane = lanes[random.Next(lanes.Length)];
                 var ownSlot = random.Next(2) == 0;
                 if (random.Next(3) == 0) pool.NoteWork(lane);
                 if (!pool.TryClaim(lane, ownSlot)) continue;
+                held.Add((lane, ownSlot));
                 var now = Interlocked.Increment(ref active);
                 int seen;
                 while ((seen = Volatile.Read(ref peak)) < now && Interlocked.CompareExchange(ref peak, now, seen) != seen) { }
                 Interlocked.Increment(ref claims);
+                // The unprotected lanes never run more than the pool less the protected lanes' slots.
+                if (pool.UnprotectedRunning > pool.UnprotectedCapacity) Interlocked.Increment(ref breaches);
+            }
+            foreach (var (heldLane, heldOwn) in held)
+            {
                 Interlocked.Decrement(ref active);
-                pool.Release(lane, ownSlot);
+                pool.Release(heldLane, heldOwn);
             }
         })));
         Assert.True(claims > 0);
         Assert.True(peak <= pool.Total, $"peak {peak} > {pool.Total}");
+        Assert.Equal(0, breaches);
         Assert.Equal(0, pool.Running);
         Assert.All(lanes, lane => Assert.Equal(0, pool.Borrowed(lane)));
+    }
+
+    [Fact]
+    public void AProtectedLaneAlwaysGetsItsOwnSlotsAtOnceWhateverTheOtherLanesDid()
+    {
+        var slots = new Dictionary<string, int> { ["hot"] = 2, ["user"] = 1, ["product-catalog"] = 2, ["background"] = 2, ["returns-read"] = 1 };
+        var protectedLanes = new HashSet<string> { "hot", "user" };
+        var pool = new LaneSlotPool(slots, protectedLanes);
+        var random = new Random(7);
+        var held = new List<(string Lane, bool Own)>();
+        var ownHeld = slots.Keys.ToDictionary(lane => lane, _ => 0);
+        for (var step = 0; step < 50_000; step++)
+        {
+            if (held.Count > 0 && random.Next(3) == 0)
+            {
+                var index = random.Next(held.Count);
+                var (lane, own) = held[index];
+                held.RemoveAt(index);
+                if (own) ownHeld[lane]--;
+                pool.Release(lane, own);
+                continue;
+            }
+            var claimLane = slots.Keys.ElementAt(random.Next(slots.Count));
+            var ownSlot = random.Next(2) == 0;
+            if (random.Next(2) == 0) pool.NoteWork(claimLane);
+            var claimed = pool.TryClaim(claimLane, ownSlot);
+            if (ownSlot && protectedLanes.Contains(claimLane) && ownHeld[claimLane] < slots[claimLane])
+                Assert.True(claimed, $"protected {claimLane} refused its own slot at step {step}");
+            if (!claimed) continue;
+            held.Add((claimLane, ownSlot));
+            if (ownSlot) ownHeld[claimLane]++;
+            Assert.True(pool.UnprotectedRunning <= pool.UnprotectedCapacity);
+        }
+    }
+
+    [Fact]
+    public void ALenderTakingItsSlotBackNeverTakesTheIdleSlotsOfTheOrderLanes()
+    {
+        // Live lanes and slots (20), order lanes protected (10). "Pull every store's products": seven catalog reads.
+        var pool = new LaneSlotPool(WorkerLanes.All().ToDictionary(lane => lane.Name, lane => lane.DefaultSlots),
+            LaneModelSettings.From(new ConfigurationBuilder().Build()).ProtectedLanes);
+        for (var own = 0; own < 3; own++) Assert.True(pool.TryClaim("product-catalog", true));
+        var borrowed = 0;
+        while (pool.TryClaim("product-catalog", false)) borrowed++;
+        Assert.Equal(7, borrowed);
+        Assert.Equal(10, pool.Running);
+        // Hot and the user lane are idle. Background, returns and first imports now want their own slots back: none may take
+        // the order lanes' idle slots, they wait for a catalog read to end.
+        foreach (var lane in new[] { "background", "returns-read", "initial-data-sync" })
+        {
+            pool.NoteWork(lane);
+            Assert.False(pool.TryClaim(lane, true));
+            Assert.True(pool.Wants(lane));
+        }
+        Assert.Equal(10, pool.Running);
+        // Every order lane, the user lane and hot get all their slots at once.
+        foreach (var (lane, slots) in new[] { ("user", 2), ("hot", 3), ("hepsiburada-orders", 1), ("pazarama-orders", 1), ("pttavm-orders", 1), ("hepsiburada-status", 1), ("order-status", 1) })
+            for (var slot = 0; slot < slots; slot++) Assert.True(pool.TryClaim(lane, true), lane);
+        Assert.Equal(20, pool.Running);
+        // A catalog read ends: the freed slot goes to a lane that wants it back, not to another catalog read.
+        pool.Release("product-catalog", false);
+        Assert.False(pool.TryClaim("product-catalog", false));
+        Assert.True(pool.TryClaim("background", true));
+    }
+
+    [Fact]
+    public void ANotificationWakesTheLanesBorrowingSlotsToo()
+    {
+        var router = new JobWakeRouter(WorkerLanes.All());
+        var borrow = router.BorrowSignalFor("hot").Register();
+        var own = router.SignalFor("hot").Register();
+        router.Route(JobWakeRouter.Payload(MarketplaceHub.Application.MarketplaceJobTypes.WebhookIngest, 0));
+        Assert.True(borrow.Woken.IsCompleted);
+        Assert.True(own.Woken.IsCompleted);
+        var other = router.BorrowSignalFor("background").Register();
+        router.WakeAll();
+        Assert.True(other.Woken.IsCompleted);
     }
 
     [Fact]

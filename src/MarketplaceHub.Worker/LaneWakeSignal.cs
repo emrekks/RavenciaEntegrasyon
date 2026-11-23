@@ -76,12 +76,17 @@ public sealed class JobWakeRouter
     public const string JobPrefix = "job:";
     public const string Freed = "freed";
 
-    private readonly IReadOnlyList<(WorkerLane Lane, LaneWakeSignal Signal)> lanes;
+    private readonly IReadOnlyList<(WorkerLane Lane, LaneWakeSignal Signal, LaneWakeSignal Borrow)> lanes;
 
     public JobWakeRouter(IEnumerable<WorkerLane> lanes) =>
-        this.lanes = [.. lanes.Select(lane => (lane, new LaneWakeSignal()))];
+        this.lanes = [.. lanes.Select(lane => (lane, new LaneWakeSignal(), new LaneWakeSignal()))];
 
     public LaneWakeSignal SignalFor(string laneName) => lanes.First(entry => entry.Lane.Name == laneName).Signal;
+
+    // The lane's borrowing slots (flexible lane model) wait on a signal of their own, so a borrowing slot that may not borrow
+    // never uses up the wake its lane's own slots need. A notification wakes one of them too: with the lane's own slots all
+    // busy (hot 3/3), a new webhook is leased on a free pool slot at once instead of after the borrowing slot's idle wait.
+    public LaneWakeSignal BorrowSignalFor(string laneName) => lanes.First(entry => entry.Lane.Name == laneName).Borrow;
 
     // Raised for each lane a job notification names (not for "freed" or a wake of every slot).
     public event Action<string>? LaneNotified;
@@ -90,7 +95,7 @@ public sealed class JobWakeRouter
     {
         if (string.Equals(payload, Freed, StringComparison.Ordinal))
         {
-            foreach (var (_, signal) in lanes) signal.WakeOne();
+            foreach (var (_, signal, _) in lanes) signal.WakeOne();
             return;
         }
         if (Parse(payload) is not { } job)
@@ -100,17 +105,22 @@ public sealed class JobWakeRouter
         }
         // Every lane that could lease it (a job may fit more than one): one slot each. A job no lane takes wakes no one.
         // LaneNotified tells the flexible pool which lanes now have work (LaneSlotPool.NoteWork).
-        foreach (var (lane, signal) in lanes)
+        foreach (var (lane, signal, borrow) in lanes)
             if (lane.Takes(job.JobType, job.Priority))
             {
                 LaneNotified?.Invoke(lane.Name);
                 signal.WakeOne();
+                borrow.WakeOne();
             }
     }
 
     public void WakeAll()
     {
-        foreach (var (_, signal) in lanes) signal.WakeAll();
+        foreach (var (_, signal, borrow) in lanes)
+        {
+            signal.WakeAll();
+            borrow.WakeOne();
+        }
     }
 
     public static string Payload(string jobType, int priority) => $"{JobPrefix}{jobType}:{priority}";

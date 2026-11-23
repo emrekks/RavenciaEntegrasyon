@@ -68,8 +68,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         if (pool is not null) wakeRouter.LaneNotified += pool.NoteWork;
         // Borrowing slots wait on a signal of their own: a lane's notification goes to its own slots first (a borrowing slot
         // that may not borrow would use the wake up and leave the job to the idle poll). They are woken when a slot is freed
-        // and when one of the lane's own slots found work (there may be more).
-        var borrowWakes = lanes.ToDictionary(lane => lane.Name, _ => new LaneWakeSignal());
+        // and when one of the lane's own slots found work (there may be more), and by the lane's notifications (JobWakeRouter).
+        var borrowWakes = lanes.ToDictionary(lane => lane.Name, lane => wakeRouter.BorrowSignalFor(lane.Name));
         if (pool is not null)
             pool.SlotFreed += freedFor =>
             {
