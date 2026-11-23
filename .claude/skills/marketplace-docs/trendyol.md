@@ -543,3 +543,20 @@ packages only, no claim events.
   fields removed, are kept as a resolved TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC issue. Nothing is written to orders or
   packages; until it is known, the Yeniden Gönderimler row shows the claim's package data (no label print, no invoice
   actions on it).
+- Diagnostic result (ran 18 Nov 2026 22:47Z, read 23 Nov 2026 from the resolved TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC issue
+  and cursor `TRENDYOL_EXCHANGE_PACKAGE_DIAGNOSTIC:4360616611`): v2 `orderNumber` with and without dates, v1
+  `orderNumber`, v2 `shipmentPackageIds` with dates and the stream page all answered 200 **without** package 4360616611;
+  only getClaims `orderNumber` held it. So **the order API does not return an exchange package**; only the claim names it.
+  Its "Exchange package … diagnostic" log line is not in `docker logs` because each deploy recreates the worker
+  container (logs start at the container's start), not because it did not run.
+- The live claim's block is spelt `replacementOutboundPackageInfo` (capital P) and holds only `items`, `packageId`,
+  `cargoProviderName` and `cargoTrackingNumber` (a JSON number): **no `cargoTrackingLink` and no status** (same answer).
+  The tracking number is there before the parcel leaves, so neither it nor the missing link says whether it was shipped.
+- Exchange resend closing (owner, 23 Nov 2026, order 11805950639 stuck at "Yeniden Gönderim · 1 Paket"): the row and the
+  card's not-shipped count (`OrderQueryService.OrderList` RESENT + resentNotShipped) wait until the claim's tracking link
+  is known or the owner marks it "Kargoya Verildi Olarak İşaretle" (POST `returns/{id}/replacement-shipped`, owner/admin,
+  audit RETURN_REPLACEMENT_MARKED_SHIPPED, `ReturnClaim.ReplacementShippedAt`/`ReplacementShippedSource` MANUAL; panel
+  only, "İşareti Kaldır" undoes it). A tracking number alone closes nothing. RETURN_STATUS_SYNC reads such closed claims
+  again by claimIds (`RereadTrendyolExchangeResendsAsync`, cursor RETURN_EXCHANGE_RESEND, one request an hour at most,
+  30 days after the claim's lastModifiedDate), so a link Trendyol adds later closes the row by itself. The card's gear is
+  a separate typed reminder (`orders-resend-reminder`, live 0): typing 0 there never removed the exchange row.
