@@ -1,5 +1,6 @@
-// The "Yeniden Gönderim" card's manual reminder: Trendyol never returns resend packages, so the owner types the number
-// of resends waiting. It is kept per tenant on the server (every device shows it), never in this browser.
+// The "Yeniden Gönderim" card's old manual reminder: until 23 Nov 2026 the owner typed the number of resends waiting.
+// Since then the gear keeps records (manual-resends.ts); a count typed before cannot become records, so it is shown as
+// "Eski Hatırlatma: N" until the owner clears it (the server refuses a higher number). Kept per tenant on the server.
 import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, settingsIfMatch } from '../../../shared/api'
@@ -7,15 +8,6 @@ import { queryKeys } from '../../../shared/api/query-keys'
 
 export type ResendReminderEnvelope = { count: number; version: number }
 export const resendReminderQueryKey = queryKeys.settings('resend-reminder')
-export const maxResendReminder = 100_000
-
-// What the field holds -> the number to save; undefined for anything that is not a whole number from 0 to the maximum.
-export function parseResendReminder(text: string): number | undefined {
-  const trimmed = text.trim()
-  if (!/^\d{1,6}$/.test(trimmed)) return undefined
-  const value = Number(trimmed)
-  return value <= maxResendReminder ? value : undefined
-}
 
 export function useResendReminder() {
   const client = useQueryClient()
@@ -25,17 +17,17 @@ export function useResendReminder() {
     staleTime: 60_000,
     refetchOnWindowFocus: true
   })
-  async function save(count: number) {
+  async function clear() {
     // A stored setting is written only over the version read (If-Match); one not read yet is read first.
     const current = client.getQueryData<ResendReminderEnvelope>(resendReminderQueryKey)
       ?? await client.fetchQuery({ queryKey: resendReminderQueryKey, queryFn: ({ signal }) => hubApi<ApiAnswer<'getSettingsResendReminder'>>('/settings/resend-reminder', { signal }) })
     try {
-      const saved = await hubApi<ApiAnswer<'putSettingsResendReminder'>>('/settings/resend-reminder', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify({ count }) })
+      const saved = await hubApi<ApiAnswer<'putSettingsResendReminder'>>('/settings/resend-reminder', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify({ count: 0 }) })
       client.setQueryData(resendReminderQueryKey, saved)
     } catch (error) {
       void client.invalidateQueries({ queryKey: resendReminderQueryKey })
       throw error
     }
   }
-  return { count: query.data?.count ?? 0, loaded: query.data !== undefined, save }
+  return { count: query.data?.count ?? 0, loaded: query.data !== undefined, clear }
 }

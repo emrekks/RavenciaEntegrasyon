@@ -169,6 +169,10 @@ POST   /api/v1/jobs/{id:guid}/invoice-delivery-once | gate=Elevated | sameOrigin
 GET    /api/v1/jobs/{id:guid}/read-records | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/jobs/{id:guid}/read-records/export.xlsx | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/jobs/{id:guid}/retry | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+GET    /api/v1/manual-resends | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+POST   /api/v1/manual-resends | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+DELETE /api/v1/manual-resends/{id:guid} | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
+POST   /api/v1/manual-resends/{id:guid}/shipped | gate=Elevated | sameOrigin=no | anon=403 PERMISSION_DENIED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 GET    /api/v1/mappings/attribute-name-hints | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/mappings/attribute-value-progress | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 GET    /api/v1/mappings/attribute-values | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR

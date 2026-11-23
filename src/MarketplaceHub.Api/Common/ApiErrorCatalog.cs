@@ -154,6 +154,7 @@ public static class ApiErrorCatalog
         new("REQUEST_TOO_LARGE", 413, "İstek gövdesi izin verilen boyutu aşıyor."),
         new("REQUEST_VERIFICATION_FAILED", 400, "İstek doğrulanamadı; sayfayı yenileyip yeniden deneyin."),
         new("RESEND_REMINDER_INVALID", 400, "Yeniden gönderim sayısı 0 ile … arasında bir tam sayı olmalıdır."),
+        new("RESEND_REMINDER_RECORDS_ONLY", 409, "Yeniden gönderimler artık Platform ve Sipariş No ile kayıt olarak eklenir; eski hatırlatma yalnız temizlenebilir."),
         new("RESOURCE_NOT_FOUND", 404, "Kayıt bulunamadı."),
         new("REVENUE_RANGE_INVALID", 400, "Tarihler yyyy-AA-gg biçiminde olmalıdır."),
         new("SAVE_CONFLICT_RETRY", 409, "Kayıt aynı anda başka bir işlemle çakıştı; tekrar deneyin."),

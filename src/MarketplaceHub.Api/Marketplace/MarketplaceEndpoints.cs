@@ -257,6 +257,7 @@ public static partial class MarketplaceEndpoints
                 ? WithEtag(http, await service.MarkReplacementShippedAsync(tenant.TenantId, tenant.UserId, id, version, command.Marked, OperationCorrelation(http), http.RequestAborted), x => x.Version)
                 : failure!;
         }).RequireGate(ApiGate.Elevated).RequireIdempotencyKey().Produces<ReturnDetailView>().IfMatch();
+        MapManualResendEndpoints(api);
         api.MapPost("/files/return-evidence", UploadReturnEvidenceAsync).DisableAntiforgery().RequireIdempotencyKey().Produces<ReturnEvidenceView>(StatusCodes.Status201Created);
 
         api.MapGet("/connections/{id:guid}/instant-notifications", async (Guid id, HttpContext http, IInstantNotificationService service) => Tenant(http) is { } tenant ? Result(await service.StatusAsync(tenant.TenantId, id, OperationCorrelation(http), http.RequestAborted), Results.Ok) : Unauthorized(http)).LiveMarketplaceRead().Produces<InstantNotificationView>();

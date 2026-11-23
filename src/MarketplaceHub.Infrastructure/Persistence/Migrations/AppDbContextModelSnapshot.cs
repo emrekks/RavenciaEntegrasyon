@@ -3369,6 +3369,42 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("manual_order_invoice_documents", "billing");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.ManualResend", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ShippedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "OrderId")
+                        .IsUnique();
+
+                    b.ToTable("manual_resends", "sales");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.MappingTemplateDismissal", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8420,6 +8456,16 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "PackageId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ManualResend", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Order", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "OrderId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.MarketplaceCargoInvoiceItem", b =>

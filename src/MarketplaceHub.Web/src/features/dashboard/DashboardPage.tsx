@@ -4,7 +4,6 @@ import { Link } from 'react-router'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, hubPoll } from '../../shared/api'
 import { resentPendingParams } from '../marketplace/orders/daily-cards'
-import { useResendReminder } from '../marketplace/orders/resend-reminder'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
@@ -164,10 +163,10 @@ export function DashboardPage() {
     window.addEventListener('scroll', close, { passive: true })
     return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', close) }
   }, [breakdownOpen])
-  // The Yeniden Gönderim card: the same query and the same figure as the Siparişler page's card (resends not handed to the carrier + the typed reminder).
+  // The Yeniden Gönderim card: the same query and the same figure as the Siparişler page's card (resends not handed to the carrier,
+  // hand-added ones included; an old typed count is not added since 23 Nov 2026).
   const resentSummary = useQuery({ queryKey: queryKeys.orders('summary', 'resent-not-shipped'), queryFn: ({ signal }) => hubPoll<ApiAnswer<'getOrdersSummary'>>(`/orders/summary?${resentPendingParams()}`, { signal }), staleTime: 30_000, refetchInterval: 60_000 })
-  const resendReminder = useResendReminder()
-  const resentWaiting = resentSummary.isError || resentSummary.data === undefined ? undefined : (resentSummary.data.resent ?? 0) + resendReminder.count
+  const resentWaiting = resentSummary.isError || resentSummary.data === undefined ? undefined : resentSummary.data.resent ?? 0
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)

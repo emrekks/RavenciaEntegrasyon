@@ -122,6 +122,9 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             // So is the panel-only "Kargoya Verildi" mark of an exchange package (owner, 23 Nov 2026).
             case "returns" when last is "exchange-approved" or "replacement-shipped":
                 return ElevatedRoles;
+            // The hand-added re-shipments of Siparişler › Yeniden Gönderimler and their "Kargoya Verildi" mark (owner, 23 Nov 2026).
+            case "manual-resends":
+                return ElevatedRoles;
             // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
             // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,
             // previews, uploads and status reads stay invoice work.
