@@ -28583,6 +28583,13 @@
           "adoptFromInactive": {
             "type": "boolean",
             "default": false
+          },
+          "restorePreparedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -28672,6 +28679,20 @@
             "default": false
           },
           "previousLastReceivedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "previousLastRefusedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "previousClosedByHandAt": {
             "type": [
               "null",
               "string"

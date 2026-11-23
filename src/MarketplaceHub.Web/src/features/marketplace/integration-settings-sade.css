@@ -311,7 +311,7 @@
 .instant-notifications-status strong { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
 .instant-notifications-status strong > i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rv-color-subtle); }
 .instant-notifications-status[data-state="ACTIVE"] strong > i { background: var(--rv-color-accent); box-shadow: 0 0 0 3px var(--rv-color-accent-soft); }
-.instant-notifications-status:is([data-state="PASSIVE"], [data-state="MISSING"], [data-state="UNKNOWN"], [data-state="QUIET"], [data-state="CONNECTION_INACTIVE"]) strong > i { background: var(--rv-color-warning); box-shadow: 0 0 0 3px var(--rv-color-warning-soft); }
+.instant-notifications-status:is([data-state="PASSIVE"], [data-state="MISSING"], [data-state="UNKNOWN"], [data-state="QUIET"], [data-state="CONNECTION_INACTIVE"], [data-state="CALLED_WHILE_OFF"]) strong > i { background: var(--rv-color-warning); box-shadow: 0 0 0 3px var(--rv-color-warning-soft); }
 .instant-notifications-status[data-state="WAITING"] strong > i { background: var(--rv-color-primary); box-shadow: 0 0 0 3px var(--rv-color-primary-soft); }
 .instant-notifications-actions { display: flex; flex: none; gap: 8px; }
 .instant-notifications-actions > button { min-height: 36px; }
@@ -320,8 +320,9 @@
 .instant-notifications-facts dt { color: var(--rv-color-muted); font-size: 12px; }
 .instant-notifications-facts dd { margin: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
 .instant-notifications-message { margin: 10px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
-/* A delivery the panel turned away (old address, wrong password): the marketplace calls but is refused. */
-.instant-notifications-message.is-danger { color: var(--rv-color-danger); }
+/* A delivery the panel turned away (old address, wrong password, a closed definition): the marketplace calls but is
+   refused. Inside the settings pane it must outrank the pane's muted paragraph rule above (line 103), which kept it grey. */
+.instant-notifications-message.is-danger, .app-shell.stitch-shell main .cs-workspace .cs-pane .panel > .instant-notifications-message.is-danger { color: var(--rv-color-danger); }
 @media (max-width: 760px) {
   .instant-notifications-status { flex-wrap: wrap; }
   .instant-notifications-actions, .instant-notifications-actions > button { width: 100%; }

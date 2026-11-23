@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTrCount, parseTrNumber, trNumberInput } from './tr-number'
+import { parseTrCount, parseTrEntry, parseTrNumber, trNumberInput } from './tr-number'
 
 describe('parseTrNumber', () => {
   it('reads Turkish thousands points and decimal commas', () => {
@@ -30,6 +30,40 @@ describe('parseTrNumber', () => {
   })
 })
 
+describe('parseTrEntry (the product screens\' one rule)', () => {
+  it('reads the four Turkish forms', () => {
+    expect(parseTrEntry('1.250')).toBe(1250)
+    expect(parseTrEntry('1.250,50')).toBe(1250.5)
+    expect(parseTrEntry('1250,5')).toBe(1250.5)
+    expect(parseTrEntry('12,5')).toBe(12.5)
+    expect(parseTrEntry('1.000.000')).toBe(1000000)
+  })
+
+  it('refuses a point used as a decimal point and English grouping', () => {
+    for (const text of ['1.25', '12.5', '1250.50', '0.5', '1,250.50', '1.250.5', '0.125', '1e3', '12,5,0', ''])
+      expect(parseTrEntry(text), text).toBeNull()
+  })
+
+  // Every price with two decimals up to 2 million, sampled: what a box shows (formatted, or as the field starts it)
+  // reads back as the same number, and the formatted text of that number is the same text again.
+  it('round-trips display -> parse -> display for many prices', () => {
+    const format = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    let seed = 7
+    const next = () => { seed = (seed * 48271) % 2147483647; return seed }
+    const samples = [0, 0.01, 0.1, 1, 1.25, 9.99, 12.5, 999.99, 1000, 1250, 1250.5, 99999.99, 1000000, 1999999.99]
+    for (let index = 0; index < 3000; index++) samples.push((next() % 200000000) / 100)
+    for (const value of samples) {
+      const shown = format(value)
+      expect(parseTrEntry(shown), shown).toBe(value)
+      expect(format(parseTrEntry(shown)!), shown).toBe(shown)
+      expect(parseTrEntry(trNumberInput(value)), String(value)).toBe(value)
+      // The integer part with thousands points and no decimals ("1.250") reads as the whole number.
+      const whole = Math.trunc(value)
+      expect(parseTrEntry(whole.toLocaleString('tr-TR')), String(whole)).toBe(whole)
+    }
+  })
+})
+
 describe('parseTrCount', () => {
   it('reads whole numbers with thousands points', () => {
     expect(parseTrCount('1.250')).toEqual({ ok: true, value: 1250 })
@@ -39,7 +73,7 @@ describe('parseTrCount', () => {
   it('says why a value is not a count', () => {
     expect(parseTrCount('')).toEqual({ ok: false, reason: 'empty' })
     expect(parseTrCount('2,5')).toEqual({ ok: false, reason: 'fraction' })
-    expect(parseTrCount('2.5')).toEqual({ ok: false, reason: 'fraction' })
+    expect(parseTrCount('2.5')).toEqual({ ok: false, reason: 'invalid' })
     expect(parseTrCount('-3')).toEqual({ ok: false, reason: 'negative' })
     expect(parseTrCount('üç')).toEqual({ ok: false, reason: 'invalid' })
   })
