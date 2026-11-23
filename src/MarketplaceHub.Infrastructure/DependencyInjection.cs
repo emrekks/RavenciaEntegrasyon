@@ -182,6 +182,7 @@ public static class DependencyInjection
         services.AddScoped<IOperationalDataMaintenanceService, OperationalDataMaintenanceService>();
         services.AddScoped<IPanelFactoryResetService, PanelFactoryResetService>();
         services.AddScoped<IMarketplaceSalesService, MarketplaceSalesService>();
+        services.AddScoped<IManualResendService, ManualResendService>();
         services.AddScoped<IMarketplaceQuestionService, MarketplaceQuestionService>();
         services.AddScoped<IMarketplaceWebhookService, MarketplaceWebhookService>();
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler>();

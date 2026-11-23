@@ -37,6 +37,39 @@ export const scenarios = [
       await page.locator('.rr-modal.rr-qe-modal .rr-qtable tbody tr').first().waitFor()
     },
   },
+  // The quick edit window with a typed panel price far below the saved one and Kaydet pressed: the draft cell and the
+  // price-jump line in the confirmation, in both themes (a colour slip in one theme went live once).
+  ...['dark', 'light'].map(theme => ({
+    name: `products-quick-edit-confirm-${theme}`, path: '/products', widths: [375, 1280],
+    act: async page => {
+      if (theme === 'light') { await page.locator('.rv-topbar-theme').click(); await page.locator('html[data-theme="light"]').waitFor() }
+      await page.locator('.rr-qbtn[title="Fiyatı hızlı düzenle"]').first().click()
+      const cell = page.locator('.rr-modal.rr-qe-modal .rr-cr-body input.rr-mx-in').first()
+      await cell.waitFor()
+      await cell.focus(); await cell.fill('4,5'); await cell.blur()
+      await page.locator('.rr-modal.rr-qe-modal .rv-draftbar-save').click()
+      await page.locator('.rr-modal.rr-qe-modal .rv-draftbar-warn').waitFor()
+    },
+  })),
+  // The product editor's price, cost and stock boxes as Turkish text boxes (B1), "1.250" typed in a variant's sale price
+  // and "1.25" in its list price (marked unreadable), in both themes.
+  ...['dark', 'light'].map(theme => ({
+    name: `product-editor-number-boxes-${theme}`, path: '/products/p1', widths: [375, 1280],
+    act: async page => {
+      if (theme === 'light') { await page.locator('.rv-topbar-theme').click(); await page.locator('html[data-theme="light"]').waitFor() }
+      // The card's own Satış Fiyatı (shown at every width), then the variant table where it is shown (not on a phone).
+      const card = page.locator('label:has(> span:text-is("Satış Fiyatı")) input, label:has-text("Satış Fiyatı") input[inputmode="decimal"]').first()
+      await card.waitFor()
+      await card.fill('1.250')
+      const sale = page.locator('input[aria-label$=" satış fiyatı"]').first()
+      if (await sale.isVisible()) {
+        await sale.fill('1.250')
+        await page.locator('input[aria-label$=" liste fiyatı"]').first().fill('1.25')
+        await page.locator('input[aria-label$=" liste fiyatı"][aria-invalid="true"]').first().waitFor()
+        await sale.evaluate(element => element.scrollIntoView({ block: 'center' }))
+      } else await card.evaluate(element => element.scrollIntoView({ block: 'center' }))
+    },
+  })),
   {
     name: 'product-image-zoom', path: '/products/p1', widths: [375, 1280],
     act: async page => {

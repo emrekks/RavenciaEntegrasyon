@@ -125,6 +125,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ShipmentDocumentAttempt> ShipmentDocumentAttempts => Set<ShipmentDocumentAttempt>();
     public DbSet<CargoProviderMapping> CargoProviderMappings => Set<CargoProviderMapping>();
     public DbSet<ReturnClaim> ReturnClaims => Set<ReturnClaim>();
+    public DbSet<ManualResend> ManualResends => Set<ManualResend>();
     public DbSet<ReturnLine> ReturnLines => Set<ReturnLine>();
     public DbSet<ReturnDecision> ReturnDecisions => Set<ReturnDecision>();
     public DbSet<ReturnEvidence> ReturnEvidence => Set<ReturnEvidence>();
@@ -166,6 +167,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureQuestionModels();
         builder.ConfigureCommissionTariffModels();
         builder.ConfigureMarketplaceFinanceModels();
+        builder.ConfigureManualResendModels();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

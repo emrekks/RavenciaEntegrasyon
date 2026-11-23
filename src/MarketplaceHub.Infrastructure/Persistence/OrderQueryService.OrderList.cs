@@ -144,6 +144,10 @@ internal sealed partial class OrderQueryService
                 return new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, shippedSource is not null, claim.ReplacementCargoTrackingLink,
                     claim.Id, claim.Version, shippedSource);
             }).First());
+        // The orders' hand-added re-shipments (ManualResendService), one per order.
+        var manualResends = await db.ManualResends.AsNoTracking()
+            .Where(record => record.TenantId == tenantId && pageOrderIds.Contains(record.OrderId))
+            .ToDictionaryAsync(record => record.OrderId, record => new OrderManualResendView(record.Id, record.Version, record.ShippedAt != null, record.ShippedAt), cancellationToken);
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
@@ -209,7 +213,8 @@ internal sealed partial class OrderQueryService
                 UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []),
                 AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? [])),
                 buyer.BuyerType,
-                exchangeResends.GetValueOrDefault(order.Id));
+                exchangeResends.GetValueOrDefault(order.Id),
+                manualResends.GetValueOrDefault(order.Id));
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -444,7 +449,10 @@ internal sealed partial class OrderQueryService
                         // Not handed over: ExchangeResendRules.NotShipped (a Hepsiburada exchange closes when its exchange line ships).
                         || exchangeClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
                             && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
-                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
+                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
+                        // A re-shipment the owner added by hand (owner, 23 Nov 2026; ManualResendService), "Elle Eklendi",
+                        // waiting until he marks it handed to the carrier.
+                        || db.ManualResends.Any(record => record.TenantId == x.TenantId && record.OrderId == x.Id && (!resentNotShipped || record.ShippedAt == null)),
                     // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
                     _ => x => x.DerivedStatus == status
                 };

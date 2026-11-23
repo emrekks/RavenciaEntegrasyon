@@ -3,6 +3,7 @@
 // only the chosen field is written and nothing goes to a marketplace. The selection goes out in chunks of whole models
 // (at most 500 records each), so one model is never split over two requests.
 import type { ChunkRunResult } from './bulk-status-run'
+import { parseTrCount, parseTrMeasure } from '../../shared/tr-number'
 import { requiredFieldsSkipNotice, type RequiredFieldsSkipped } from './required-fields-skip'
 import { TURKISH_VAT_RATES } from './product-editor-state'
 import { isProductDeliveryDays, maxProductDeliveryDays } from './product-editor/product-delivery-days'
@@ -40,7 +41,10 @@ export const bulkMaxSafetyStock = 100_000
 export const bulkMaxDescriptionLength = 60_000
 
 const wholeNumber = (text: string) => /^\d+$/.test(text) ? Number(text) : null
-const decimalNumber = (text: string) => /^\d+([.,]\d+)?$/.test(text) ? Number(text.replace(',', '.')) : null
+// Read in Turkish (shared/tr-number.ts): "1.250" is 1250 and "0,5" a half; a point used as a decimal point ("1.25") is
+// refused, never read as 1.25. The same readers give the value the API takes.
+const decimalNumber = (text: string) => parseTrMeasure(text)
+const countNumber = (text: string) => { const count = parseTrCount(text); return count.ok ? count.value : null }
 const plainText = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim()
 
 // Why the value cannot be applied, or null when it can.
@@ -62,7 +66,7 @@ export function bulkFieldIssue(field: BulkFieldKey, value: string): string | nul
     }
     case 'deliveryDays': return isProductDeliveryDays(text) ? null : `Teslimat süresi 1-${maxProductDeliveryDays} gün arasında tam sayı olmalıdır.`
     case 'safetyStock': {
-      const stock = wholeNumber(text)
+      const stock = countNumber(text)
       return stock != null && stock <= bulkMaxSafetyStock ? null : 'Güvenlik stoğu 0 veya daha büyük bir tam sayı olmalıdır.'
     }
     case 'description': {
@@ -76,7 +80,8 @@ export function bulkFieldIssue(field: BulkFieldKey, value: string): string | nul
 // The value the API takes: a decimal comma as a point, the description cleaned as the editor cleans it.
 export function bulkFieldPayloadValue(field: BulkFieldKey, value: string): string {
   if (field === 'description') return sanitizeRichText(value).trim()
-  if (field === 'desi') return String(Number(value.trim().replace(',', '.')))
+  if (field === 'desi') return String(decimalNumber(value.trim()) ?? Number.NaN)
+  if (field === 'safetyStock') return String(countNumber(value.trim()) ?? Number.NaN)
   return value.trim()
 }
 

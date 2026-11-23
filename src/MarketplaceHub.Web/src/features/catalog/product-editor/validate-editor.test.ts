@@ -77,6 +77,32 @@ describe('validateEditor', () => {
     expect(validateEditor(input, { kind: 'save', requireCompleteCatalog: true, requirePublicationReadiness: false }).issues).toEqual([])
   })
 
+  // O1: an unreadable Özel Fiyat card price stops a draft and every save; an empty one is left to the existing rules.
+  it('stops a draft and a save on an unreadable Özel Fiyat card price, not on an empty one', () => {
+    const customChannels = [{ id: 'ty', name: 'Trendyol', draft: { listPrice: '1.25', salePrice: '' } }]
+    const message = expect.stringContaining('Trendyol Özel Fiyat: Fiyat okunamadı')
+    expect(validateEditor(saveInput({ form: { ...EMPTY_EDITOR_FORM, title: 'Taslak' }, customChannels }), { kind: 'draft' }).issues).toEqual([message])
+    expect(validateEditor(saveInput({ form: complete, customChannels }), { kind: 'save', requireCompleteCatalog: false, requirePublicationReadiness: false }).issues).toContainEqual(message)
+    expect(validateEditor(saveInput({ form: { ...EMPTY_EDITOR_FORM, title: 'Taslak' }, customChannels: [{ id: 'ty', name: 'Trendyol', draft: { listPrice: '', salePrice: '' } }] }), { kind: 'draft' }).issues).toEqual([])
+  })
+
+  // (b) review 23 Nov: an edited card whose sale price was emptied stops the save; a card still empty since switched on does not.
+  // ORTA-3 (review 23 Nov): an unreadable Desi Hesapla measure stops the save; a desi typed with a point says "virgül".
+  it('stops a save on an unreadable calculator measure and names a desi written with a point', () => {
+    const save = { kind: 'save', requireCompleteCatalog: false, requirePublicationReadiness: false } as const
+    const measured = { ...complete, desi: '2,5', width: '12.5', length: '10', height: '20' }
+    expect(validateEditor(saveInput({ form: measured, calculateDesi: true }), save).issues).toContain('Ölçü okunamadı; 12,5 biçiminde yazın (ondalık için virgül).')
+    expect(validateEditor(saveInput({ form: measured, calculateDesi: true }), { kind: 'draft' }).issues).toContain('Ölçü okunamadı; 12,5 biçiminde yazın (ondalık için virgül).')
+    expect(validateEditor(saveInput({ form: { ...complete, desi: '1.5' } }), save).issues).toContain('Desi okunamadı; virgül kullanın (ör. 1,5).')
+    expect(validateEditor(saveInput({ form: { ...complete, desi: '0' } }), save).issues).toContain('Desi sıfırdan büyük olmalıdır.')
+  })
+
+  it('stops a save on an Özel Fiyat card whose sale price was emptied after editing', () => {
+    const emptied = [{ id: 'ty', name: 'Trendyol', draft: { listPrice: '130', salePrice: '' }, edited: true }]
+    expect(validateEditor(saveInput({ form: complete, customChannels: emptied }), { kind: 'save', requireCompleteCatalog: false, requirePublicationReadiness: false }).issues).toContainEqual("Trendyol Özel Fiyat: Satış fiyatını girin ya da Özel Fiyat'ı kapatın.")
+    expect(validateEditor(saveInput({ form: complete, customChannels: [{ ...emptied[0], edited: false }] }), { kind: 'save', requireCompleteCatalog: false, requirePublicationReadiness: false }).issues.join(' ')).not.toContain('Özel Fiyat')
+  })
+
   it('stops a draft only on what the server refuses', () => {
     expect(validateEditor(saveInput({ form: { ...EMPTY_EDITOR_FORM, title: 'Taslak' } }), { kind: 'draft' }).issues).toEqual([])
     expect(validateEditor(saveInput({ rows: [row({ sku: '' })], form: { ...EMPTY_EDITOR_FORM, warrantyMonths: '300' } }), { kind: 'draft' }).issues).toEqual([

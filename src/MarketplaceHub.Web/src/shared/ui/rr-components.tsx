@@ -131,14 +131,14 @@ export function RrWordmark({ code, name }: { code: string | null | undefined; na
   const mark = marks[(code ?? '').toUpperCase()]
   // A platform without a cropped mark (PttAVM) shows its logo at the marks' height instead of plain text.
   const logo = mark ? null : orderPlatformLogoSource(code)
-  if (!mark) return logo ? <span className="rr-wordmark" role="img" aria-label={name} style={{ height: MARK_MAX_H - 4 }}><img src={logo} alt="" style={{ position: 'static', height: '100%', width: 'auto', maxWidth: MARK_MAX_W, objectFit: 'contain' }} /></span> : <span className="rr-wordmark-text">{name}</span>
+  if (!mark) return logo ? <span className="rr-wordmark" role="img" aria-label={name} style={{ height: MARK_MAX_H - 4, '--rr-mark-h': `${MARK_MAX_H - 4}px` } as CSSProperties}><img src={logo} alt="" style={{ position: 'static', height: '100%', width: 'auto', maxWidth: MARK_MAX_W, objectFit: 'contain' }} /></span> : <span className="rr-wordmark-text">{name}</span>
   const ratio = mark.w / mark.h
   let height = Math.sqrt(MARK_AREA / ratio) * mark.weight
   height = Math.min(height, MARK_MAX_H, MARK_MAX_W / ratio)
   const box = { w: Math.round(height * ratio), h: Math.round(height) }
   const scale = Math.min(box.w / mark.w, box.h / mark.h)
   const dy = Math.round((mark.y0 + mark.h / 2 - mark.fy) * scale * 2) / 2
-  return <span className="rr-wordmark" role="img" aria-label={name} style={{ width: box.w, height: box.h, '--rr-mark-dy': `${dy}px` } as CSSProperties}>
+  return <span className="rr-wordmark" role="img" aria-label={name} style={{ width: box.w, height: box.h, '--rr-mark-dy': `${dy}px`, '--rr-mark-h': `${box.h}px` } as CSSProperties}>
     <img src={`/platforms/returns/mark-${mark.key}.png`} alt="" style={{ width: mark.nw * scale, height: mark.nh * scale, left: -mark.x0 * scale, top: (box.h - mark.h * scale) / 2 - mark.y0 * scale }} />
   </span>
 }

@@ -50,7 +50,26 @@ public sealed class WebhookSubscription
     // The connection public id in the address the marketplace calls, when it is not this connection's own: a
     // Hepsiburada definition prepared on another (test) connection and moved here keeps the address it was given.
     public Guid? RoutePublicId { get; set; }
+    // Why and when a closed definition was closed (WebhookCloseReasons); null on rows closed before 23 Nov 2026 and on
+    // open ones.
+    public string? ClosedReason { get; set; }
+    public DateTimeOffset? ClosedAt { get; set; }
+    // The last call the marketplace made to this definition's address while it was closed (refused with 404, kept at
+    // most once a minute): the marketplace still uses it.
+    public DateTimeOffset? LastRefusedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+public static class WebhookCloseReasons
+{
+    // Webhook'u Kapat (or Bağlantıyı Sil) by the user.
+    public const string Manual = "MANUAL";
+    // Closed by Önceki Tanımı Geri Yükle, which made an older definition the active one.
+    public const string RestoredOver = "RESTORED_OVER";
+    // Closed when another connection's definition was moved here (Test Mağazasının Tanımını Kullan).
+    public const string Replaced = "REPLACED";
+    // A definition Pasife Al had closed, retired once another webhook was open.
+    public const string Retired = "RETIRED";
 }
 
 public sealed class SyncCursor

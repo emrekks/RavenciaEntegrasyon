@@ -70,14 +70,24 @@ describe('panel price choice', () => {
     expect(hasAtMostTwoDecimals(19.99)).toBe(true)
   })
 
+  // O2: a cell still holding its loaded text reads as the stored value (four decimals included); only typed text is checked.
+  it('reads an untouched side as stored and checks only typed text', () => {
+    expect(inlinePrices('99,999', '12,3456', { list: '99,999', sale: '12,3456' })).toEqual({ ok: true, listPrice: 99.999, salePrice: 12.3456 })
+    expect(inlinePrices('99,999', '50', { list: '99,999', sale: '40' })).toEqual({ ok: true, listPrice: 99.999, salePrice: 50 })
+    expect(inlinePrices('99,999', '12,3456')).toMatchObject({ ok: false })
+    expect(inlinePrices('99,999', '50,125', { list: '99,999', sale: '40' })).toMatchObject({ ok: false })
+  })
+
   it('reads the typed prices as Turkish: a thousands point is never a decimal point', () => {
     expect(inlinePrices('1.250', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
     expect(inlinePrices('1.250,50', '1.199,90')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1199.9 })
-    expect(inlinePrices('1250,5', '1250.50')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1250.5 })
+    expect(inlinePrices('1250,5', '1250,50')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1250.5 })
+    expect(inlinePrices('', '1250.50')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
+    expect(inlinePrices('', '1.25')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(inlinePrices('', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
-    expect(inlinePrices('1,250.50', '100')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
-    expect(inlinePrices('', '0.125')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
-    expect(inlinePrices('', '12abc')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
+    expect(inlinePrices('1,250.50', '100')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
+    expect(inlinePrices('', '0.125')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
+    expect(inlinePrices('', '12abc')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(hasAtMostTwoDecimals(0.1 + 0.2)).toBe(true)
     expect(hasAtMostTwoDecimals(1.234)).toBe(false)
   })
@@ -269,7 +279,9 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
   })
 
   it('formats prices outside editing and reads a Turkish decimal comma', () => {
-    expect(formatPriceField('1249.9')).toBe('1.249,90')
+    expect(formatPriceField('1249,9')).toBe('1.249,90')
+    // A point used as a decimal point is refused, so it is shown as typed, never as another number.
+    expect(formatPriceField('1249.9')).toBe('1249.9')
     expect(formatPriceField('')).toBe('')
     expect(formatPriceField(1249.9)).toBe('1.249,90')
     expect(formatPriceField('1.250')).toBe('1.250,00')
@@ -287,7 +299,8 @@ describe('Toplu Fiyat/Stok values', () => {
 
   it('reads prices and stock as Turkish', () => {
     expect(values('1.250', '1.199,90', '1.250')).toEqual({ ok: true, list: 1250, sale: 1199.9, amount: 1250 })
-    expect(values('', '1250.50', '')).toEqual({ ok: true, list: null, sale: 1250.5, amount: null })
+    expect(values('', '1250,50', '')).toEqual({ ok: true, list: null, sale: 1250.5, amount: null })
+    expect(values('', '1250.50', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(values('999', '1.250', '', false)).toEqual({ ok: true, list: 1250, sale: 1250, amount: null })
   })
 
@@ -299,7 +312,7 @@ describe('Toplu Fiyat/Stok values', () => {
   })
 
   it('refuses an unreadable or wrong price', () => {
-    expect(values('1,250.50', '100', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
+    expect(values('1,250.50', '100', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde yazın (nokta yalnız binlik ayırıcıdır, kuruş için virgül ve en çok iki hane; en çok 9.999.999,99).' })
     expect(values('100', '150', '')).toMatchObject({ ok: false })
     expect(values('', '0', '')).toMatchObject({ ok: false })
   })

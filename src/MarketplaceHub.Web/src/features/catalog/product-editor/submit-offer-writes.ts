@@ -7,8 +7,9 @@ import { editorOfferPriceReason, platformUpdateWritesOffers } from './platform-u
 import { channelTakesListPrice, editorChannelOfferPrices, editorOfferUnchanged, offerHasSalePrice, panelFollowChoiceVariantIds, unpricedOfferWarning } from '../quick-price-edit'
 import { channelOfferWriteConcurrency } from './editor-helpers'
 import { parseEditorNumber } from './editor-number'
+import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
 import { rowsBySku, skuKey } from './submit-media-step'
-import type { ChannelPricingDraft } from './marketplace-channel-pricing'
+import type { ChannelPricingDraft, StagedOfferPrices } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
 import type { ProductUpdateRequest, VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -44,9 +45,11 @@ export type OfferWritesInput = {
   form: Pick<EditorForm, 'currency' | 'vatRate' | 'vatIncluded' | 'safetyStock'>
   platformUpdate: ProductUpdateRequest | null
   channelPricing: Record<string, ChannelPricingDraft>
-  variantChannelPricing: Record<string, ChannelPricingDraft>
+  variantChannelPricing: Record<string, StagedOfferPrices>
   channelPriceDraft: (connectionId: string) => ChannelPricingDraft
   channelPriceEdited: (connectionId: string) => boolean
+  // The marketplace's Özel Fiyat switch is as the editor opened it, on (each variant keeps its stored choice there).
+  choiceUntouched?: (connectionId: string) => boolean
   connectionPlatformName: (connectionId: string) => string
   showProgress: (message: string) => void
 }
@@ -70,27 +73,29 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     const variantPricing = input.variantChannelPricing[`${row.key}:${connectionId}`]
     // A marketplace that follows the panel takes this variant's own panel price; the card price is only the price
     // of a marketplace switched to "Özel Fiyat".
+    const takesListPrice = channelTakesListPrice(connections.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
     const offerPrices = editorChannelOfferPrices({
       custom: connectionId in channelPricing,
       panel: { listPrice: row.listPrice, salePrice: row.salePrice },
-      card: { listPrice: parseEditorNumber(pricing.listPrice), salePrice: parseEditorNumber(pricing.salePrice) },
+      card: { listPrice: readMoneyField(channelFieldKey(connectionId, 'listPrice'), pricing.listPrice), salePrice: readMoneyField(channelFieldKey(connectionId, 'salePrice'), pricing.salePrice) },
       cardEdited: input.channelPriceEdited(connectionId),
-      variantPrice: !platformUpdate && variantPricing ? { listPrice: parseEditorNumber(variantPricing.listPrice), salePrice: parseEditorNumber(variantPricing.salePrice) } : null,
+      variantPrice: !platformUpdate && variantPricing ? { listPrice: variantPricing.listPrice, salePrice: variantPricing.salePrice } : null,
       offer: platform,
-      takesListPrice: channelTakesListPrice(connections.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
+      choiceUntouched: input.choiceUntouched?.(connectionId) ?? false,
+      takesListPrice
     })
     // A variant without a panel price (0 or empty in the variant table, often a colour imported without one) has
     // no price to write: the server refuses a sale price of zero, and one such row used to stop the whole save
     // after the card was written (owner 7.11.2026, MZ052BOD: "Satış fiyatı sıfırdan büyük olmalıdır").
     if (!offerHasSalePrice(offerPrices)) { unpricedOfferSkus.add(row.sku); return }
-    const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: parseEditorNumber(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: parseEditorNumber(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
+    const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: parseEditorNumber(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: readCountField('safetyStock', form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
     // An offer the variant already has is written at the version this form loaded (PATCH + If-Match), so a price
     // changed meanwhile elsewhere is refused instead of overwritten; one the write would leave as it is is skipped.
     // POST only creates: the server refuses it over an offer this form did not know of.
     try {
       if (platform?.offerId) {
         if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
-        if (!editorOfferUnchanged(platform, offerCommand)) await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
+        if (!editorOfferUnchanged(platform, offerCommand, takesListPrice)) await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
       } else {
         await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
       }

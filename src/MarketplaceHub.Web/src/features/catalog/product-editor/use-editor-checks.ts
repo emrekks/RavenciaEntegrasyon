@@ -24,7 +24,7 @@ import type { PlatformUpdateResult } from './use-platform-update'
 import type { ChannelPricingResult } from './use-channel-pricing'
 
 export function useEditorChecks(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult & VariantActionsResult & VariantCodeActionsResult & EditorMediaActionsResult & PlatformUpdateResult & ChannelPricingResult) {
-  const { editProductId, publishOnly, duplicateProductId, setError, setNotice, operationToasts, form, attributeSelections, attributeTextValues, variantAttributeIds, variantRows, selectedChannelIds, automaticBarcodeGeneration, setWizardStep, mediaFiles, removedVariantIds, webColorAutoEnabled, manualWebColorValueId, setRequiredErrors, lastFieldReveal, initialEditDesi, showFeedback, productToCopy, connections, cardPriceDefaults, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, missingRequiredFields, mediaUrls, mappedRequirements, colorOptionRequirement, webColorRequirement, channelPriceDraft } = c
+  const { channelPricing, editProductId, publishOnly, duplicateProductId, setError, setNotice, operationToasts, form, attributeSelections, attributeTextValues, variantAttributeIds, variantRows, selectedChannelIds, automaticBarcodeGeneration, setWizardStep, mediaFiles, removedVariantIds, webColorAutoEnabled, manualWebColorValueId, setRequiredErrors, lastFieldReveal, initialEditDesi, showFeedback, productToCopy, connections, cardPriceDefaults, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, missingRequiredFields, mediaUrls, mappedRequirements, colorOptionRequirement, webColorRequirement, channelPriceDraft, channelPriceEdited, calculateDesi } = c
   function rowsForSubmit(requireCompleteCatalog = true) {
     if (requireCompleteCatalog && variantAttributeIds.length && !variantRows.length) throw new Error('Varyant özellikleri seçili. Önce “Ürünleri Ekle” ile varyantları oluşturun.')
     if (editProductId && !variantRows.length) {
@@ -41,7 +41,9 @@ export function useEditorChecks(c: EditorProps & EditorStateResult & EditorMedia
       form, automaticBarcodes: automaticBarcodeGeneration, hasVariants: variantRows.length > 1, rows, editing: Boolean(editProductId), initialDesi: initialEditDesi.current, cardPriceIssue: cardPriceDefaults.issue,
       variantAttributeIds, requirements: mappedRequirements, colorOptionRequirement, webColorRequirement, webColor: { autoEnabled: webColorAutoEnabled, manualValueId: manualWebColorValueId }, attributeSelections, attributeTextValues,
       mediaUrls, mediaFileCount: mediaFiles.length, copySourceVariants: duplicateProductId && productToCopy.data ? productToCopy.data.variants : null,
-      selectedChannels: selectedChannelIds.map(connectionId => ({ id: connectionId, name: (connections.data?.items ?? []).find(item => item.id === connectionId)?.displayName ?? 'Seçili kanal', draft: channelPriceDraft(connectionId) }))
+      selectedChannels: selectedChannelIds.map(connectionId => ({ id: connectionId, name: (connections.data?.items ?? []).find(item => item.id === connectionId)?.displayName ?? 'Seçili kanal', draft: channelPriceDraft(connectionId) })),
+      customChannels: Object.entries(channelPricing).map(([connectionId, draft]) => ({ id: connectionId, name: (connections.data?.items ?? []).find(item => item.id === connectionId)?.displayName ?? 'Pazaryeri', draft, edited: channelPriceEdited(connectionId) })),
+      calculateDesi
     }
   }
   function validate(rows: VariantDraft[], requireCompleteCatalog = true, requirePublicationReadiness = true) {

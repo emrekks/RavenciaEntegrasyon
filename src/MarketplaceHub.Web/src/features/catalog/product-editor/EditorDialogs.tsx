@@ -10,7 +10,12 @@ import type { EditorContext } from './editor-context'
 
 export function EditorDialogs({ editor }: { editor: EditorContext }) {
   const { form, variantRows, barcodeSkuMenuOpen, barcodeSkuActionRef, barcodePasteMenuOpen, barcodePasteActionRef, pendingVariantCodeGeneration, setPendingVariantCodeGeneration, mediaRemovalConfirmation, setMediaRemovalConfirmation, variantDeleteConfirmation, setVariantDeleteConfirmation, barcodeRowCount, emptySkuBarcodeRowCount, emptyBarcodeRowCount, skuRowCount, emptySkuRowCount, pendingVariantCodeConfirm, variantCodeGenerationPreview, confirmVariantRowRemoval, applyBarcodeToSku, requestVariantCodeChange, confirmVariantCodeGeneration, pasteBarcodesFromClipboard, confirmMediaRemoval } = editor
+  const { priceJumpConfirm, confirmPriceJump, cancelPriceJump } = editor
   return <>
+    {priceJumpConfirm && <RrModal role="alertdialog" describedBy="price-jump-confirm-description" crumb="Kaydet" title="Fiyat Değişikliğini Onaylayın" size="md" modalClass="price-jump-confirm-modal" onClose={cancelPriceJump}
+      foot={<><span className="rr-note" /><button type="button" className="rr-btn" data-autofocus onClick={cancelPriceJump}>Geri Dön</button><button type="button" className="rr-btn rr-solid" onClick={confirmPriceJump}>Onayla ve Kaydet</button></>}>
+      <div id="price-jump-confirm-description" className="editor-confirm-text">{priceJumpConfirm.lines.map(line => <p key={line} className="price-jump-line"><b>{line}</b></p>)}<p>Kayıt engellenmez; fiyatlar doğruysa onaylayın. Yanlışsa Geri Dön ile düzeltin.</p></div>
+    </RrModal>}
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef} label="Barkod işlemleri">
       <VariantCodeMenu noun="Barkod" rowCount={variantRows.length} emptyCount={emptyBarcodeRowCount} filledCount={barcodeRowCount} canGenerate={Boolean(form.modelCode.trim())} generatePreview={variantCodeGenerationPreview('barcode')}
         onGenerate={scope => void requestVariantCodeChange('barcode', scope)} onPaste={scope => void pasteBarcodesFromClipboard(scope)} onClear={() => void requestVariantCodeChange('barcode', 'clear')} />

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Owner, 18 Nov 2026: Trendyol claim of order 11805950639 (reason code WRONGCHANGEREQUEST) is an exchange, yet the
+// Owner, 18 Nov 2026: Trendyol claim of order 1000000001 (reason code WRONGCHANGEREQUEST) is an exchange, yet the
 // panel showed it as a plain return: the Trendyol mapper never filled CustomerRequest. A later read of a claim stored
 // before the fix fills it and leaves the outcome (ResolvedWith, status) alone; the invoice's return rule counts an accepted
 // Trendyol exchange request as a return as before (only Hepsiburada's exchanges take no unit back; review 18 Nov 2026).

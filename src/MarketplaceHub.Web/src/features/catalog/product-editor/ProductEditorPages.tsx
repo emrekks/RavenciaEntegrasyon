@@ -41,7 +41,7 @@ import { EditorSubmitBar } from './EditorSubmitBar'
 import { EditorDialogs } from './EditorDialogs'
 import { EditorWindows } from './EditorWindows'
 import { EditorOptionsSection } from './EditorOptionsSection'
-import { channelTakesListPrice } from '../quick-price-edit'
+import { channelTakesListPrice, priceFieldText } from '../quick-price-edit'
 export { BulkVariantPlatformPricingModal } from './BulkVariantPlatformPricingModal'
 export { PublishPlatformCard, cardLookupKey, publishCardState } from './PublishPlatformCard'
 
@@ -88,11 +88,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // The marketplaces of the card: the same Özel Fiyat state as the card's switch, and each variant's offer price there (a staged draft first).
       isNewProduct: !editor.editProductId,
       channels: editor.platformCards.map(card => ({ connectionId: card.connection.id, name: card.name, platformCode: card.connection.platformCode, takesListPrice: channelTakesListPrice(card.connection.platformCode), custom: card.connection.id in editor.channelPricing, onToggleCustom: () => editor.toggleCustomChannelPrice(card.connection.id) })),
+      // As Turkish text ("1250,5") with the numbers it was made from: a side left as loaded goes back as that number.
       channelPrice: (rowKey, connectionId) => {
         const staged = variantChannelPricing[`${rowKey}:${connectionId}`]
-        if (staged) return { list: staged.listPrice, sale: staged.salePrice }
+        if (staged) return { list: priceFieldText(staged.listPrice), sale: priceFieldText(staged.salePrice), follows: false, values: { list: staged.listPrice, sale: staged.salePrice } }
         const platform = variantRows.find(row => row.key === rowKey)?.platformStatuses?.find(item => item.connectionId === connectionId)
-        return platform?.offerId ? { list: platform.listPrice == null ? '' : String(platform.listPrice), sale: platform.salePrice == null ? '' : String(platform.salePrice) } : null
+        return platform?.offerId ? { list: priceFieldText(platform.listPrice), sale: priceFieldText(platform.salePrice), follows: platform.followsPanelPrice !== false, values: { list: platform.listPrice ?? null, sale: platform.salePrice ?? null } } : null
       },
       // Staged as the editor's per-variant marketplace price drafts (variantChannelPricing): only the page's Kaydet writes them.
       onApplyChannelPrices: changes => {
@@ -105,7 +106,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setVariantRows(rows => rows.map(row => { const change = byKey.get(row.key); return change ? { ...row, stock: change.stock, listPrice: change.listPrice, salePrice: change.salePrice, costPrice: change.costPrice } : row }))
       if (changes.length) showFeedback('Toplu Düzenleme Uygulandı', `${changes.length} varyantın değerleri tabloya yazıldı. Kalıcı olması için Kaydet’e basın.`, 'success')
     } }} /></Suspense>}
-    {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} />}
+    {variantPlatformPricing && selectedVariantPlatformRow && <BulkVariantPlatformPricingModal row={selectedVariantPlatformRow} rows={variantRows} platforms={selectedVariantPlatformRow.platformStatuses?.length ? selectedVariantPlatformRow.platformStatuses : variantPricingPlatforms} savedDrafts={variantChannelPricing} productName={form.title} modelCode={form.modelCode} filterGroups={variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))} matchesFilterValue={rowMatchesVariantMediaValue} saving={variantPlatformPricingSaving} onClose={() => setVariantPlatformPricing(null)} onSave={drafts => void saveVariantPlatformPricingMatrix(drafts)} confirmWrites={Boolean(editProductId)} />}
     {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-steptabs rv-tabs rv-view-tabs" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span className="rv-tab-label"><span className="rv-step-num">1</span><span>Ürün Bilgileri<span className="product-step-label-more"> ve Varyantlar</span></span></span></button><button type="button" className={wizardStep === 2 ? 'is-active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span className="rv-tab-label"><span className="rv-step-num">2</span><span>Yayınlama</span></span></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || submitting || undefined} inert={editorHydrating || submitting || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <EditorBasicsSection editor={editor} />

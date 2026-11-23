@@ -7,15 +7,15 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class ExchangePackageDiagnosticTests
 {
     [Theory]
-    [InlineData("""{ "content": [ { "shipmentPackageId": 4360616611, "lines": [] } ] }""", true)]
-    [InlineData("""{ "content": [ { "id": "4360616611" } ] }""", true)]
-    [InlineData("""{ "content": [ { "replacementOutboundpackageinfo": { "packageid": 4360616611 } } ] }""", true)]
-    [InlineData("""{ "content": [ { "shipmentPackageId": 4326271446, "orderNumber": "4360616611" } ] }""", false)]
+    [InlineData("""{ "content": [ { "shipmentPackageId": 2000000001, "lines": [] } ] }""", true)]
+    [InlineData("""{ "content": [ { "id": "2000000001" } ] }""", true)]
+    [InlineData("""{ "content": [ { "replacementOutboundpackageinfo": { "packageid": 2000000001 } } ] }""", true)]
+    [InlineData("""{ "content": [ { "shipmentPackageId": 2000000000, "orderNumber": "2000000001" } ] }""", false)]
     [InlineData("""{ "content": [] }""", false)]
     [InlineData("not json", false)]
     [InlineData(null, false)]
     public void An_answer_holds_the_package_only_by_its_id(string? body, bool holds) =>
-        Assert.Equal(holds, ExchangePackageDiagnostic.Holds(body, "4360616611"));
+        Assert.Equal(holds, ExchangePackageDiagnostic.Holds(body, "2000000001"));
 
     // Scan, 23 Nov 2026: a failed diagnostic read was asked again after every recovery read; it waits six hours now.
     [Fact]

@@ -15,7 +15,7 @@ describe('the unsaved-changes check, field by field', () => {
 
   it('counts the marketplace prices, the Web Color, the size chart and waiting files', () => {
     expect(changed(fields({ channelPricing: { ty: { listPrice: '150', salePrice: '120' } } }), fields())).toEqual(['channelPricing'])
-    expect(changed(fields({ variantChannelPricing: { 'v1:ty': { listPrice: '150', salePrice: '150' } } }), fields())).toEqual(['variantChannelPricing'])
+    expect(changed(fields({ variantChannelPricing: { 'v1:ty': { listPrice: 150, salePrice: 150 } } }), fields())).toEqual(['variantChannelPricing'])
     expect(changed(fields({ webColorAutoEnabled: false, manualWebColorValueId: 'wc1' }), fields())).toEqual(['webColor'])
     expect(changed(fields({ sizeChartUrl: 'https://cdn/c.jpg' }), fields())).toEqual(['sizeChartUrl'])
     expect(changed(fields({ mediaFiles: [{ id: 'f1', file: new File([], 'a.jpg') }] }), fields())).toEqual(['pendingMediaFileCount'])

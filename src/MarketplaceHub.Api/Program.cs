@@ -96,6 +96,7 @@ builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Ai.IClaudeClient, Ma
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Ai.AiSettingsService>();
 // One size chart per product and two Claude runs per tenant at once; a 24-hour spend ceiling (Ai:DailySpendLimitUsd).
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Ai.AiRunGate>();
+builder.Services.AddSingleton<MarketplaceHub.Api.Common.ExportGate>();
 builder.Services.AddSingleton(MarketplaceHub.Infrastructure.Ai.AiSpendLimit.From(builder.Configuration));
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Ai.ClaudeService>();
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.SizeCharts.SizeChartService>();

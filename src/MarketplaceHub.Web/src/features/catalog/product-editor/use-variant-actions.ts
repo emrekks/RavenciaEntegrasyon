@@ -18,7 +18,8 @@ import type { VariantRowDragResult } from './use-variant-row-drag'
 import type { VariantMediaAutoSaveResult } from './use-variant-media-autosave'
 import type { EditorViewResult } from './use-editor-view'
 import type { AttributeActionsResult } from './use-attribute-actions'
-import { parseEditorNumber } from './editor-number'
+import { editorCount } from './editor-number'
+import { priceInputNumber } from './card-prices'
 
 export function useVariantActions(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult & EditorSeedResult & VariantRowDragResult & VariantMediaAutoSaveResult & EditorViewResult & AttributeActionsResult) {
   const { editProductId, setNotice, form, attributeSelections, variantAttributeIds, variantRows, setVariantRows, automaticBarcodeGeneration, variantMediaModal, setVariantMediaModal, variantBulkEdit, setVariantBulkEdit, variantBulkEditFilterSelections, setVariantBulkEditFilterSelections, setRemovedVariantIds, setRemovedVariantRows, variantDeleteConfirmation, setVariantDeleteConfirmation, setReplacedPlaceholderIds, showFeedback, productToEdit, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, mappedRequirements, requestVariantMediaSave, mediaStrip, rowSize, rowColour, mediaChoices, bulkMediaGroups, variantBulkEditFilterGroups, hasVariantBulkEditFilters } = c
@@ -89,7 +90,7 @@ export function useVariantActions(c: EditorProps & EditorStateResult & EditorMed
     const message = `${label} varyantı Kaydet’te silinecek.`
     setNotice(message); showFeedback('Varyant Silinecek', message, 'info')
   }
-  function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : parseEditorNumber(value)) : field === 'stock' || field === 'salePrice' || field === 'listPrice' ? parseEditorNumber(value || 0) : value })) }
+  function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : priceInputNumber(value)) : field === 'stock' ? editorCount(value) : field === 'salePrice' || field === 'listPrice' ? priceInputNumber(value) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
   function openVariantBulkEdit(field: VariantBulkEditField) {
     setVariantBulkEditFilterSelections({})
@@ -107,7 +108,7 @@ export function useVariantActions(c: EditorProps & EditorStateResult & EditorMed
       setVariantBulkEdit(current => current ? { ...current, error: 'Seçili filtreyle eşleşen varyant bulunamadı.' } : current)
       return
     }
-    const value = parseEditorNumber(variantBulkEdit.value)
+    const value = variantBulkEdit.field === 'stock' ? editorCount(variantBulkEdit.value) : priceInputNumber(variantBulkEdit.value)
     const issue = variantBulkEditIssue(variantBulkEdit.field, value)
     if (issue) {
       setVariantBulkEdit(current => current ? { ...current, error: issue } : current)

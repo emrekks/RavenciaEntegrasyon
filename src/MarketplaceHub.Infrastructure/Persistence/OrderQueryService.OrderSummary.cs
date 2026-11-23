@@ -85,7 +85,16 @@ internal sealed partial class OrderQueryService
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId).SumAsync(x => (long)x.Version, cancellationToken);
         return $"{orders?.Count}|{orders?.Changed:O}|{orders?.LabelPrinted:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}"
             + $"|{invoices?.Count}|{invoices?.Changed:O}|{invoices?.Versions}|{deliveryStates?.Count}|{deliveryStates?.Changed:O}|{deliveries?.Count}|{deliveries?.Completed:O}"
-            + $"|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
+            + $"|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}"
+            + await ManualResendStampAsync(tenantId, cancellationToken);
+    }
+
+    // The hand-added re-shipments move the Yeniden Gönderimler counter (added, removed, marked shipped).
+    private async Task<string> ManualResendStampAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var manual = await db.ManualResends.AsNoTracking().Where(x => x.TenantId == tenantId).GroupBy(_ => 1)
+            .Select(group => new { Count = group.Count(), Changed = group.Max(x => (DateTimeOffset?)x.UpdatedAt), Versions = group.Sum(x => x.Version) }).SingleOrDefaultAsync(cancellationToken);
+        return $"|{manual?.Count}|{manual?.Changed:O}|{manual?.Versions}";
     }
 
     private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)

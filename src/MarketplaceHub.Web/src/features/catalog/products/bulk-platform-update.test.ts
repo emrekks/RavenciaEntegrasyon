@@ -102,6 +102,13 @@ describe('productRequiredGaps', () => {
     // 15 Nov 2026: Garanti Süresi 0 is "no warranty" (given); an empty one is missing and held back.
     expect(productRequiredGaps(product({ warrantyMonths: null }))).toEqual(['warrantyMonths'])
   })
+  // ORTA-2 (review 23 Nov): String(0.5) and String(99.9) were read by the Turkish rule ("0.5" refused), so a product
+  // with desi 0,5 or a price of 99,90 was held back as missing Desi / Liste Fiyatı. Stored numbers are compared as they are.
+  it('holds back no product for a fractional desi or price', () => {
+    for (const desi of [0.5, 1.5, 12.25]) expect(productRequiredGaps(product({ variants: [variant({ desi })] })), String(desi)).toEqual([])
+    expect(productRequiredGaps(product({ defaultListPrice: 99.9, defaultSalePrice: 89.9 }))).toEqual([])
+    expect(productRequiredGaps(product({ defaultListPrice: 631.104, defaultSalePrice: 12.5 }))).toEqual([])
+  })
   it('asks no card codes of a product with variants (each row holds its own)', () => {
     expect(productRequiredGaps(product({ variants: [variant({ sku: '', barcode: null }), variant({ sku: 'RYP-2' })] }))).toEqual([])
   })

@@ -62,7 +62,7 @@ describe('BulkVariantPlatformPricingModal', () => {
     expect(document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Trendyol satış fiyatı"]')!.value).toBe('85')
     expect(saveButton().disabled).toBe(false)
     act(() => saveButton().click())
-    expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: '100', salePrice: '85' } })
+    expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: 100, salePrice: 85 } })
   })
 
   it('clears only the saved cell when the rows come back after one price of many was written', () => {
@@ -82,7 +82,7 @@ describe('BulkVariantPlatformPricingModal', () => {
     expect(shopify().value).toBe('80')
     expect(trendyol().value).toBe('85')
     act(() => saveButton().click())
-    expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: '100', salePrice: '85' } })
+    expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: 100, salePrice: 85 } })
   })
 
   it('shows the marketplaces in the panel order', () => {
@@ -106,5 +106,49 @@ describe('BulkVariantPlatformPricingModal', () => {
     expect(document.querySelector('input[aria-label="Renk: Kırmızı Shopify satış fiyatı"]')).toBeNull()
     expect(document.querySelector('input[aria-label="Renk: Kırmızı Trendyol liste fiyatı"]')).toBeNull()
     expect(document.querySelector('input[aria-label="Renk: Kırmızı Trendyol satış fiyatı"]')).not.toBeNull()
+  })
+
+  // ORTA-4 (review 23 Nov): on an edited card the window wrote at once, without the editor's confirmation, and read the
+  // untouched side "631,104" by the typed rule (NaN), refusing with "Liste fiyatı satış fiyatından küçük olamaz".
+  describe('writing at once on an edited card', () => {
+    const stored = () => [{ platform: 'Trendyol', platformCode: 'TRENDYOL', isLinked: true, connectionId: 'ty', offerId: 'o1', offerVersion: 3, listPrice: 631.104, salePrice: 631.104 }] as Props['platforms']
+    const draw = (onSave: Props['onSave']) => act(() => {
+      const storedRows = [{ ...row, platformStatuses: stored() }] as Props['rows']
+      root.render(<BulkVariantPlatformPricingModal row={storedRows[0]} rows={storedRows} platforms={stored()} savedDrafts={{}} productName="Elbise" modelCode="RYP" filterGroups={[]} matchesFilterValue={() => true} saving={false} onClose={vi.fn()} onSave={onSave} confirmWrites />)
+    })
+    const cell = (field: 'liste' | 'satış') => document.querySelector<HTMLInputElement>(`input[aria-label="Renk: Kırmızı Trendyol ${field} fiyatı"]`)!
+    const confirmButton = () => [...document.querySelectorAll<HTMLButtonElement>('.price-jump-confirm-modal button')].find(button => button.textContent === 'Onayla ve Kaydet')
+
+    it('keeps an untouched 631.104 side as the stored number and asks first', () => {
+      const onSave = vi.fn()
+      draw(onSave)
+      expect(cell('liste').value).toBe('631,104')
+      type(cell('satış'), '600')
+      act(() => saveButton().click())
+      expect(onSave).not.toHaveBeenCalled()
+      expect(document.querySelector('.price-jump-confirm-modal')?.textContent).toContain('1 pazaryeri fiyatı hemen pazaryerine yazılacak.')
+      act(() => confirmButton()!.click())
+      expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: 631.104, salePrice: 600 } })
+    })
+
+    it('names a price falling below half in the confirmation', () => {
+      const onSave = vi.fn()
+      draw(onSave)
+      type(cell('satış'), '63,10')
+      act(() => saveButton().click())
+      expect(document.querySelector('.price-jump-confirm-modal')?.textContent).toContain('1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 631,10 → 63,10')
+    })
+
+    it('refuses an unreadable price with its real reason and marks the cell, writing nothing', () => {
+      const onSave = vi.fn()
+      draw(onSave)
+      type(cell('satış'), '1.25')
+      act(() => saveButton().click())
+      expect(onSave).not.toHaveBeenCalled()
+      expect(document.querySelector('.price-jump-confirm-modal')).toBeNull()
+      expect(cell('satış').getAttribute('aria-invalid')).toBe('true')
+      expect(document.querySelector('footer [role="alert"]')?.textContent).toContain('1.250,50 biçiminde yazın')
+      expect(document.querySelector('footer [role="alert"]')?.textContent).not.toContain('küçük olamaz')
+    })
   })
 })

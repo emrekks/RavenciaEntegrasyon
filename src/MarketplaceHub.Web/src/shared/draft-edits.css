@@ -13,3 +13,5 @@
 :is(main, .rr-layer) .rr-draft :is(.rr-in, input) { box-shadow: inset 0 0 0 1px var(--rv-color-accent, #7c5cff); border-color: var(--rv-color-accent, #7c5cff); }
 .rv-draftbar-lead { display: none; }
 @media (max-width: 760px) { .rv-draftbar-lead { display: inline; } }
+/* A price jump named in the save confirmation (price-jump.ts): never blocks the save, said in red. */
+.rv-draftbar-warn { color: var(--rv-color-danger, #d64545); font-size: 12px; font-weight: 600; }
