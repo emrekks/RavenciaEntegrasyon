@@ -5597,7 +5597,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         {
             await using var db = fixture.CreateContext();
             var service = new InstantNotificationService(db, new RecordingWebhookPort(), hasher, new EphemeralDataProtectionProvider(), configuration, fixture.TimeProvider, NullLogger<InstantNotificationService>.Instance);
-            var lastNotification = fixture.TimeProvider.GetUtcNow().AddDays(-4);
+            // Whole seconds: PostgreSQL keeps microseconds.
+            var lastNotification = DateTimeOffset.FromUnixTimeSeconds(fixture.TimeProvider.GetUtcNow().AddDays(-4).ToUnixTimeSeconds());
             async Task<Guid> PrepareAndCloseAsync(string name, DateTimeOffset? receivedAt)
             {
                 // Version 7 ids order by the millisecond they were made in.
