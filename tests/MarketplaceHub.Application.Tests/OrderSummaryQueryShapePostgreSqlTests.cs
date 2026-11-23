@@ -34,6 +34,40 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
         finally { await CleanAsync(seed); }
     }
 
+    // A search term is matched once per summary (the customer-snapshot pattern, ~*, ran over every order once per tab),
+    // and every counter stays its list's total under the same search, the filtered cards' figures included.
+    [PostgreSqlFact]
+    public async Task ASearchIsMatchedOnce_AndTheCountersStayTheListTotals()
+    {
+        var seed = await SeedAsync();
+        try
+        {
+            foreach (var query in new[] { new OrderListQuery(Search: "Ayşe"), new OrderListQuery(Search: "elbise", Cargo: "ARAS"), new OrderListQuery(Search: "Mehmet", Platform: "TRENDYOL"), new OrderListQuery(Search: "Ayşe", ResentNotShipped: true) })
+            {
+                var capture = new CommandCapture();
+                await using var db = Context(capture);
+                var service = Service(db);
+                var summary = await service.OrderSummaryAsync(seed.TenantId, query, CancellationToken.None);
+                Assert.Single(capture.Commands, command => command.Contains("~*", StringComparison.Ordinal));
+                await AssertCountersAreListTotals(service, seed.TenantId, query, summary);
+                // The cards' store figures under the same search are the tab lists' orders per store.
+                var expected = await ExpectedCardsAsync(service, seed.TenantId, query);
+                Assert.Equal(expected.NewByConnection, summary.NewByConnection);
+                if (query.ResentNotShipped == true) Assert.Equal(expected.ResentByConnection, summary.ResentByConnection);
+            }
+        }
+        finally { await CleanAsync(seed); }
+    }
+
+    // Per store, the orders each tab lists under the query: what the cards show.
+    private static async Task<(IReadOnlyDictionary<string, int> NewByConnection, IReadOnlyDictionary<string, int> ResentByConnection)> ExpectedCardsAsync(MarketplaceSalesService service, Guid tenantId, OrderListQuery query)
+    {
+        async Task<IReadOnlyDictionary<string, int>> PerStore(string tab) =>
+            (await service.OrdersAsync(tenantId, 100, 1, null, query with { Status = tab }, CancellationToken.None)).Items
+                .GroupBy(order => order.ConnectionId).ToDictionary(group => group.Key.ToString()!, group => group.Count());
+        return (await PerStore("NEW"), await PerStore("RESENT"));
+    }
+
     private static async Task AssertCountersAreListTotals(MarketplaceSalesService service, Guid tenantId, OrderListQuery query, OrderSummaryView summary)
     {
         var byTab = new Dictionary<string, int>

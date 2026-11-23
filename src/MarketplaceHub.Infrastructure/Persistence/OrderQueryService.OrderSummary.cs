@@ -93,20 +93,21 @@ internal sealed partial class OrderQueryService
         // One small query per tab, one after the other. They were one query of 16 tab queries joined by UNION ALL: EF
         // compiles such a query the first time it meets it, and the union took 9-12 s on live right after every deploy
         // (18 s on a seeded copy, where the 16 tab queries alone compile in under 0.5 s together and count in ~130 ms).
+        var orders = await SummaryOrdersAsync(tenantId, options, cancellationToken);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var tab in requested)
-            counts[tab] = await FilteredOrders(tenantId, options with { Status = tab, Sort = null }).CountAsync(cancellationToken);
+            counts[tab] = await orders(options with { Status = tab }).CountAsync(cancellationToken);
         int Count(string tab) => counts.GetValueOrDefault(tab);
         // The micro-export card counts them in the one tab it asked for, under the same filters.
-        var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options with { Status = requested[0] }, cancellationToken) : (0, null);
-        var newUnits = !includeMicro && requested.Contains("NEW") ? await TabUnitsByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null;
-        var processingUnits = !includeMicro && requested.Contains("PROCESSING") ? await TabUnitsByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null;
+        var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(orders, options with { Status = requested[0] }, cancellationToken) : (0, null);
+        var newUnits = !includeMicro && requested.Contains("NEW") ? await TabUnitsByConnectionAsync(orders, options, "NEW", cancellationToken) : null;
+        var processingUnits = !includeMicro && requested.Contains("PROCESSING") ? await TabUnitsByConnectionAsync(orders, options, "PROCESSING", cancellationToken) : null;
         // The Geciken card's stores (the late orders per store), and the Yeniden Gönderim card's, which asks for the RESENT
         // tab over the resends not handed to the carrier (resentNotShipped=true); the tab counters skip them otherwise.
-        var lateStores = !includeMicro && requested.Contains("LATE") && Count("LATE") > 0 ? await TabOrdersByConnectionAsync(tenantId, options, "LATE", cancellationToken) : null;
-        var resentStores = !includeMicro && options.ResentNotShipped == true && requested.Contains("RESENT") ? await TabOrdersByConnectionAsync(tenantId, options, "RESENT", cancellationToken) : null;
+        var lateStores = !includeMicro && requested.Contains("LATE") && Count("LATE") > 0 ? await TabOrdersByConnectionAsync(orders, options, "LATE", cancellationToken) : null;
+        var resentStores = !includeMicro && options.ResentNotShipped == true && requested.Contains("RESENT") ? await TabOrdersByConnectionAsync(orders, options, "RESENT", cancellationToken) : null;
         // Of those, the exchanges whose package is not known to be handed to the carrier (the card's hover says what it counts).
-        var resentExchangeStores = resentStores is null ? null : await FilteredOrders(tenantId, options with { Status = "RESENT", Sort = null })
+        var resentExchangeStores = resentStores is null ? null : await orders(options with { Status = "RESENT" })
             .Where(order => db.ReturnClaims.Any(claim => claim.TenantId == order.TenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled
                 && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
                 && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
@@ -116,20 +117,31 @@ internal sealed partial class OrderQueryService
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits, processingUnits,
             lateStores ?? (requested.Contains("LATE") && !includeMicro ? new Dictionary<string, int>() : null), resentStores,
-            !includeMicro && requested.Contains("NEW") ? await TabByCargoAsync(tenantId, options, "NEW", cancellationToken) : null,
-            !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
-            !includeMicro && requested.Contains("NEW") ? await TabOrdersByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null,
-            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
-            !includeMicro && requested.Contains("PENDING") ? await TabOrdersByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null,
-            !includeMicro && requested.Contains("PENDING") ? await TabUnitsByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null,
+            !includeMicro && requested.Contains("NEW") ? await TabByCargoAsync(tenantId, orders, options, "NEW", cancellationToken) : null,
+            !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, orders, options, "PROCESSING", cancellationToken) : null,
+            !includeMicro && requested.Contains("NEW") ? await TabOrdersByConnectionAsync(orders, options, "NEW", cancellationToken) : null,
+            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(orders, options, "PROCESSING", cancellationToken) : null,
+            !includeMicro && requested.Contains("PENDING") ? await TabOrdersByConnectionAsync(orders, options, "PENDING", cancellationToken) : null,
+            !includeMicro && requested.Contains("PENDING") ? await TabUnitsByConnectionAsync(orders, options, "PENDING", cancellationToken) : null,
             resentExchangeStores);
     }
 
 
-    // The orders a tab lists under the same filters by the cargo company of their current package, with their products.
-    private async Task<IReadOnlyList<OrderCargoCountView>> TabByCargoAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken)
+    // The orders a counter counts: the list's filters with the counter's own (its tab, the micro-export card's). A search
+    // term is matched once, over the list without a tab, and the counters take its orders: it is one more filter of every
+    // counter, so they count the same orders. Matched in each tab query instead, the customer-snapshot pattern ran over
+    // every order once per tab: 2-7 s per summary on live (19 and 23 Nov 2026), 1.3-3.5 s on a seeded copy.
+    private async Task<Func<OrderListQuery, IQueryable<Order>>> SummaryOrdersAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
-        var orders = FilteredOrders(tenantId, options with { Status = tab, Sort = null });
+        if (string.IsNullOrWhiteSpace(options.Search)) return tabOptions => FilteredOrders(tenantId, tabOptions with { Sort = null });
+        var matched = await FilteredOrders(tenantId, options with { Status = null, Sort = null }).Select(order => order.Id).ToListAsync(cancellationToken);
+        return tabOptions => FilteredOrders(tenantId, tabOptions with { Search = null, Sort = null }).Where(order => matched.Contains(order.Id));
+    }
+
+    // The orders a tab lists under the same filters by the cargo company of their current package, with their products.
+    private async Task<IReadOnlyList<OrderCargoCountView>> TabByCargoAsync(Guid tenantId, Func<OrderListQuery, IQueryable<Order>> tabOrders, OrderListQuery options, string tab, CancellationToken cancellationToken)
+    {
+        var orders = tabOrders(options with { Status = tab });
         var pairs = await CurrentShipmentPackages()
             .Where(package => package.TenantId == tenantId && orders.Any(order => order.Id == package.OrderId))
             .Select(package => new { package.OrderId, Cargo = package.CargoProviderExternalId ?? "" })
@@ -147,16 +159,16 @@ internal sealed partial class OrderQueryService
             .OrderByDescending(x => x.Orders).ThenBy(x => x.Cargo, StringComparer.Ordinal).ToList();
     }
     // The orders a tab lists under the same filters, per store.
-    private async Task<IReadOnlyDictionary<string, int>> TabOrdersByConnectionAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken) =>
-        await FilteredOrders(tenantId, options with { Status = tab, Sort = null })
+    private async Task<IReadOnlyDictionary<string, int>> TabOrdersByConnectionAsync(Func<OrderListQuery, IQueryable<Order>> tabOrders, OrderListQuery options, string tab, CancellationToken cancellationToken) =>
+        await tabOrders(options with { Status = tab })
             .GroupBy(order => order.ConnectionId).Select(group => new { ConnectionId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.ConnectionId.ToString("D"), row => row.Count, cancellationToken);
 
     // The products of the orders a tab (Yeni, İşleme Alınanlar, Bekleyen) lists under the same filters, per store: each line's
     // ordered quantity less what was cancelled of it (the rule of the overview's Bekleyen Ürün Adedi).
-    private async Task<IReadOnlyDictionary<string, decimal>> TabUnitsByConnectionAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken)
+    private async Task<IReadOnlyDictionary<string, decimal>> TabUnitsByConnectionAsync(Func<OrderListQuery, IQueryable<Order>> tabOrders, OrderListQuery options, string tab, CancellationToken cancellationToken)
     {
-        var orders = FilteredOrders(tenantId, options with { Status = tab, Sort = null });
+        var orders = tabOrders(options with { Status = tab });
         var rows = await (
             from order in orders
             join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
@@ -166,9 +178,9 @@ internal sealed partial class OrderQueryService
         return rows.ToDictionary(row => row.ConnectionId.ToString("D"), row => row.Units);
     }
 
-    private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
+    private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Func<OrderListQuery, IQueryable<Order>> tabOrders, OrderListQuery options, CancellationToken cancellationToken)
     {
-        var rows = await FilteredOrders(tenantId, options with { Sort = null, MicroExport = true })
+        var rows = await tabOrders(options with { MicroExport = true })
             .Select(order => new { order.InvoiceAddressSnapshotJson, order.StoreFrontCode }).ToListAsync(cancellationToken);
         return (rows.Count, MicroExportCountryCounts(rows.Select(row => (row.InvoiceAddressSnapshotJson, row.StoreFrontCode))));
     }
