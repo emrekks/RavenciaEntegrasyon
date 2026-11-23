@@ -33,3 +33,7 @@ html body .jobs-reference-drawer-body .jobs-write-heading .jobs-reference-relate
 .jobs-reference-drawer-body .publication-job-read th { position: static; background: var(--rv-color-table-head, var(--rv-color-surface-soft, var(--rv-color-surface))); }
 .jobs-reference-drawer-body .publication-job-read table { width: 100%; table-layout: auto; }
 .jobs-reference-drawer-body .publication-job-read td:nth-child(3) { white-space: nowrap; }
+/* The head and the row lines run to the card's own edges (its 14 px padding and 1 px border are bled over); the text keeps the card's inset. */
+.jobs-reference-drawer-body .publication-job-read .publication-job-variants-scroll { margin-inline: -15px; }
+.jobs-reference-drawer-body .publication-job-read :is(th, td):first-child { padding-left: 15px; }
+.jobs-reference-drawer-body .publication-job-read :is(th, td):last-child { padding-right: 15px; }

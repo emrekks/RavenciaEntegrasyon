@@ -148,8 +148,8 @@ export const problemTotal = (counts: ProblemCounts) => counts.invalidOffers + co
 
 // The Sorun cell's window: the title count is the cell's number; a tab per kind of problem, each with its own count.
 export function PriceStockProblemDialog({ connectionId, displayName, counts, onClose, onOpenJob }: { connectionId: string; displayName: string; counts: ProblemCounts; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
-  // A job opened from here closes this window first: the job's detail then opens over the page that was already open.
-  const openJob = onOpenJob ? (jobId: string) => { onClose(); onOpenJob(jobId) } : undefined
+  // A job opened from here opens over this window, which stays as it is underneath (page, search and scroll kept).
+  const openJob = onOpenJob
   const tabs = [
     { id: 'invalid', label: 'Gönderilemeyen Teklif', count: counts.invalidOffers },
     { id: 'failed', label: 'Başarısız Gönderim', count: counts.failedPushes },
@@ -172,7 +172,7 @@ export function PriceStockProblemDialog({ connectionId, displayName, counts, onC
 
 // The Hata Oranı and Hız Sınırı cells' window: the four numbers behind the rate, the formula, then the failed attempts.
 export function ApiHealthAttemptsDialog({ connectionId, displayName, kind, onClose, onOpenJob }: { connectionId: string; displayName: string; kind: 'errorRate' | 'rateLimit'; onClose: () => void; onOpenJob?: (jobId: string) => void }) {
-  const openJob = onOpenJob ? (jobId: string) => { onClose(); onOpenJob(jobId) } : undefined
+  const openJob = onOpenJob
   const [side, setSide] = useState(kind === 'rateLimit' ? 'rateLimited' : ''); const [page, setPage] = useState(1)
   const query = useQuery({ queryKey: queryKeys.apiHealthSignals('attempts', connectionId, side, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<Attempts>(`/api-health-signals/${connectionId}/attempts?${qs({ class: side, page, pageSize: PAGE_SIZE })}`, { signal }) })
