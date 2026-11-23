@@ -154,7 +154,7 @@ export function editorCustomChannelPrices(variants: ReadonlyArray<QuickPriceVari
     const own = variants.map(variant => channelOffer(variant, connectionId)).find(offer => offer != null && !offerFollowsPanel(offer))
     if (!own) return []
     const salePrice = own.salePrice ?? own.listPrice ?? 0
-    return [[connectionId, { listPrice: String(own.listPrice ?? salePrice), salePrice: String(salePrice) }]]
+    return [[connectionId, { listPrice: priceFieldText(own.listPrice ?? salePrice), salePrice: priceFieldText(salePrice) }]]
   }))
 }
 

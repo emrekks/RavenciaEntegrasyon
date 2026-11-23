@@ -9,7 +9,7 @@ import { parseTrEntry } from '../../../shared/tr-number'
 // 549.9, "1.250" is 1250, "1.249,90" is 1249.9. A point used as a decimal point ("549.9") could mean two things and is
 // NaN, as is text that is not a number; empty is 0 (not filled). The editor fills the boxes as Turkish text
 // (priceFieldText), so a loaded price reads back unchanged.
-export const priceInputNumber = (value: string): number => value.trim() === '' ? 0 : parseTrEntry(value) ?? Number.NaN
+export const priceInputNumber = (value: string | number): number => typeof value === 'number' ? value : value.trim() === '' ? 0 : parseTrEntry(value) ?? Number.NaN
 
 export type CardPrices = { listPrice: number; salePrice: number; issue: string | null }
 

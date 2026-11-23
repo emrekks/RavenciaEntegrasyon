@@ -4,7 +4,7 @@
 // person typed, which goes to each variant's offer there. A new variant (nothing saved) has no previous value.
 import { panelPrices } from '../quick-price-edit'
 import type { PriceChange } from '../price-jump'
-import { parseEditorNumber } from './editor-number'
+import { priceInputNumber } from './card-prices'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
 import type { VariantDraft } from './editor-types'
@@ -33,8 +33,8 @@ export function editorPriceChanges(input: EditorPriceJumpInput): PriceChange[] {
       const staged = input.variantChannelPricing[`${row.key}:${status.connectionId}`]
       const typed = staged ?? (status.connectionId in input.channelPricing && input.channelPriceEdited(status.connectionId) ? input.channelPriceDraft(status.connectionId) : null)
       if (!typed) continue
-      push(row.key, status.salePrice, parseEditorNumber(typed.salePrice))
-      push(row.key, status.listPrice, parseEditorNumber(typed.listPrice))
+      push(row.key, status.salePrice, priceInputNumber(typed.salePrice))
+      push(row.key, status.listPrice, priceInputNumber(typed.listPrice))
     }
   }
   return changes

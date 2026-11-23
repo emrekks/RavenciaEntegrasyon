@@ -1,6 +1,7 @@
+import { priceFieldText } from '../quick-price-edit'
 import type { ApiAnswer } from '../../../shared/api/api-answer'
 import type { VariantPlatformStatus } from '../shared'
-import { parseEditorNumber } from './editor-number'
+import { priceInputNumber } from './card-prices'
 
 // Pazaryerlerine Özel Fiyat on a new card: a marketplace with an entry has its own price, one without sells at the
 // main (panel) price. Every switch starts off and its two inputs show 0 until the user turns it on and types a price.
@@ -21,7 +22,7 @@ export function copiedChannelPricing(platforms: VariantPlatformStatus[], listPri
     const platformList = platform.listPrice ?? listPrice
     const platformSale = platform.salePrice ?? salePrice
     if (platformList === listPrice && platformSale === salePrice) return []
-    return [[platform.connectionId, { listPrice: String(platformList), salePrice: String(platformSale) }] as const]
+    return [[platform.connectionId, { listPrice: priceFieldText(platformList), salePrice: priceFieldText(platformSale) }] as const]
   }))
 }
 
@@ -48,7 +49,7 @@ export function channelOfferPostKey(store: Map<string, { key: string; body: stri
   return key
 }
 
-const samePrice = (left: string, right: string) => left.trim() === right.trim() || (left.trim() !== '' && right.trim() !== '' && parseEditorNumber(left) === parseEditorNumber(right))
+const samePrice = (left: string, right: string) => left.trim() === right.trim() || (left.trim() !== '' && right.trim() !== '' && priceInputNumber(left) === priceInputNumber(right))
 
 // The price table's drafts after its rows were read again (each saved offer is written into the rows at once): a
 // typed cell whose stored price now equals what was typed was saved and starts clean; every other typed cell keeps

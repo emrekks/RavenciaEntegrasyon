@@ -66,6 +66,16 @@ describe('runOfferWrites', () => {
     expect(api.calls.map(call => [call.path, call.body?.salePrice, call.body?.followsPanelPrice])).toEqual([['/channel-offers/o-v1', 125, false], ['/channel-offers/o-v2', 125, false]])
   })
 
+  // B1: the marketplace card and the per-variant price table are Turkish text boxes; "1.250" goes as 1250.
+  it('writes "1.250" typed in a marketplace card price as 1250', async () => {
+    await runOfferWrites(input({ channelPricing: { ty: { listPrice: '1.250', salePrice: '1.200,50' } }, channelPriceDraft: () => ({ listPrice: '1.250', salePrice: '1.200,50' }), channelPriceEdited: () => true }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1200.5, followsPanelPrice: false }) }])
+  })
+  it('writes "1.250" staged in the variant price table as 1250', async () => {
+    await runOfferWrites(input({ channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: '1.250', salePrice: '1.250' } } }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1250 }) }])
+  })
+
   it('says which variants had no price to write', async () => {
     const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 0, listPrice: 0 })] }))
     expect(api.calls).toEqual([])

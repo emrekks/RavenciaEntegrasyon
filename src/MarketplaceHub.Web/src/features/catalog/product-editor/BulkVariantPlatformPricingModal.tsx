@@ -7,7 +7,8 @@ import { VariantPlatformStatus } from '../shared'
 import { VariantMediaGroup, VariantDraft } from './editor-types'
 import { pricingVariantLabel, sortVariantsAlphabetically, displayVariantOptionSignature, touchScreen, marketplacePlatformName, pricingPlatformRank } from './editor-helpers'
 import { VariantFilterDropdown } from './VariantFilterDropdown'
-import { parseEditorNumber } from './editor-number'
+import { priceInputNumber } from './card-prices'
+import { priceFieldText } from '../quick-price-edit'
 
 export function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
   // The columns follow the marketplaces in the panel's order (Trendyol, Hepsiburada, N11, Pazarama, PttAVM, Shopify).
@@ -20,7 +21,7 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   const initialMatrixDrafts = () => Object.fromEntries(sortedRows.flatMap(item => platforms.map(platform => {
     const status = item.platformStatuses?.find(value => value.connectionId === platform.connectionId)
     const saved = platform.connectionId ? savedDrafts[`${item.key}:${platform.connectionId}`] : undefined
-    return [`${item.key}:${platformKey(platform)}`, { listPrice: String(saved?.listPrice ?? status?.listPrice ?? platform.listPrice ?? item.listPrice ?? ''), salePrice: String(saved?.salePrice ?? status?.salePrice ?? platform.salePrice ?? item.salePrice ?? '') }]
+    return [`${item.key}:${platformKey(platform)}`, { listPrice: saved?.listPrice ?? priceFieldText(status?.listPrice ?? platform.listPrice ?? item.listPrice), salePrice: saved?.salePrice ?? priceFieldText(status?.salePrice ?? platform.salePrice ?? item.salePrice) }]
   }))) as Record<string, ChannelPricingDraft>
   const [matrixDrafts, setMatrixDrafts] = useState<Record<string, ChannelPricingDraft>>(initialMatrixDrafts)
   const [dirtyMatrixDraftKeys, setDirtyMatrixDraftKeys] = useState<string[]>([])
@@ -57,7 +58,7 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   const openMatrixBulkEdit = (platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, label: string) => setMatrixBulkEdit({ platform, field, label, value: matrixDraft(matchingRows[0] ?? row, platform)[field], error: '' })
   const applyMatrixBulkEdit = () => {
     if (!matrixBulkEdit) return
-    const value = parseEditorNumber(matrixBulkEdit.value)
+    const value = priceInputNumber(matrixBulkEdit.value)
     if (!matrixBulkEdit.value.trim() || !Number.isFinite(value) || value < 0) {
       setMatrixBulkEdit(current => current ? { ...current, error: 'Sıfır veya daha büyük geçerli bir fiyat girin.' } : current)
       return
@@ -100,7 +101,7 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
                   <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong title={displayVariantOptionSignature(item.optionSignature, item.options, true)}>{rowLabel(item)}</strong><small>{item.barcode || item.sku}</small></div>,
                   ...shownPlatforms.flatMap(platform => {
                     const draft = matrixDraft(item, platform)
-                    return shownFields.map(field => <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:${field.id === 'listPrice' ? 'list' : 'sale'}`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} ${field.value.toLocaleLowerCase('tr-TR')}`} type="number" min="0" step="0.01" value={draft[field.id]} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, field.id, event.target.value)} /></div>)
+                    return shownFields.map(field => <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:${field.id === 'listPrice' ? 'list' : 'sale'}`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} ${field.value.toLocaleLowerCase('tr-TR')}`} type="text" inputMode="decimal" autoComplete="off" value={draft[field.id]} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, field.id, event.target.value)} /></div>)
                   })
                 ])}
               </div>
@@ -113,7 +114,7 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
     {matrixBulkEdit && <RrModal crumb="Platform Fiyatları" title={`${marketplacePlatformName(matrixBulkEdit.platform)} ${matrixBulkEdit.label} Toplu Değiştir`} hint={<>Değer, seçili renk ve bedenlerdeki varyantların bu platformdaki {matrixBulkEdit.label.toLocaleLowerCase('tr-TR')} alanına uygulanır. Uygula yalnız taslağı değiştirir; kalıcı olması için ana penceredeki Kaydet’e basın.</>} size="md" modalClass="variant-platform-pricing-bulk-modal" onClose={() => setMatrixBulkEdit(null)}
       foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={() => setMatrixBulkEdit(null)}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={applyMatrixBulkEdit} disabled={!matchingRows.length}>Uygula</button></>}>
       <p className="variant-bulk-edit-target"><span>Uygulanacak Varyant</span><strong>{matchingRows.length.toLocaleString('tr-TR')} satır</strong></p>
-      <label className="rr-fld" htmlFor="variant-platform-pricing-bulk-value"><small>Yeni Fiyat</small><input id="variant-platform-pricing-bulk-value" className="rr-in" data-autofocus={touchScreen ? undefined : true} type="number" min="0" step="0.01" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>
+      <label className="rr-fld" htmlFor="variant-platform-pricing-bulk-value"><small>Yeni Fiyat</small><input id="variant-platform-pricing-bulk-value" className="rr-in" data-autofocus={touchScreen ? undefined : true} type="text" inputMode="decimal" autoComplete="off" value={matrixBulkEdit.value} aria-describedby={matrixBulkEdit.error ? 'variant-platform-pricing-bulk-error' : undefined} onChange={event => setMatrixBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>
       {matrixBulkEdit.error && <p className="rr-callout rr-danger" id="variant-platform-pricing-bulk-error" role="alert">{matrixBulkEdit.error}</p>}
     </RrModal>}
   </>

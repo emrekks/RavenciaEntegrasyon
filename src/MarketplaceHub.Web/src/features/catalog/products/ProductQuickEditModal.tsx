@@ -263,7 +263,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         const prices = quickEditOfferPrices({ listPrice: cellList, salePrice: cellSale }, bulked ? read.list : null, bulked ? read.sale : null)
         if (!prices.ok) return { ok: false, message: `${channel.name} · ${row.sku || 'Varyant'}: ${prices.message}` }
         const listPrice = channel.takesListPrice ? prices.listPrice : prices.salePrice
-        changes.push({ rowKey: row.key, connectionId: channel.connectionId, listPrice: String(listPrice), salePrice: String(prices.salePrice) })
+        changes.push({ rowKey: row.key, connectionId: channel.connectionId, listPrice: priceFieldText(listPrice), salePrice: priceFieldText(prices.salePrice) })
       }
     }
     return { ok: true, changes }

@@ -323,13 +323,49 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     await click(q('button.marketplace-pricing-open'))
     await click(q('input[aria-label="Trendyol Mağaza için özel fiyat"]'))
     await settle()
-    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[type="number"]')]
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('fieldset[aria-label="Trendyol Mağaza pazaryeri fiyatlandırması"] input[inputmode="decimal"]')]
     expect(inputs).toHaveLength(2)
     setValue(inputs[0], '130')
     setValue(inputs[1], '111')
     await settle()
     await submit('save')
     expect(outcome()).toMatchSnapshot()
+  })
+
+  // B1 (23 Nov 2026): the editor's number boxes were type="number"; a tr-TR browser gave "1.250" as 1.25. Each is now a
+  // Turkish text box: what is typed is what the request carries, or the save is refused.
+  const sentBodies = () => JSON.stringify(fixture.state.log)
+  async function confirmJump() {
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('.price-jump-confirm-modal button')].find(button => button.textContent === 'Onayla ve Kaydet')
+    expect(confirm, 'price-jump confirmation').toBeDefined()
+    await click(confirm!)
+    await settle()
+  }
+  it('sends "1.250" typed in the variant table as 1250, after naming the jump', async () => {
+    await renderAt('/products/p1')
+    for (const [box, typed] of [['satış fiyatı', '1.200'], ['liste fiyatı', '1.250'], ['maliyeti', '1.000,50'], ['stok', '1.000']]) {
+      const input = q<HTMLInputElement>(`input[aria-label="Renk:Siyah_Beden:S ${box}"]`)
+      expect(input.type).toBe('text')
+      setValue(input, typed)
+    }
+    await settle()
+    await submit('save')
+    expect(document.querySelector('.price-jump-confirm-modal')?.textContent).toContain('Üç Katından Fazla Artıyor: 90,00 → 1.200,00')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
+    await confirmJump()
+    expect(sentBodies()).toContain('"defaultSalePrice":1200')
+    expect(sentBodies()).toContain('"defaultListPrice":1250')
+    expect(sentBodies()).toContain('"costPrice":1000.5')
+    expect(sentBodies()).toContain('"onHand":1000')
+    expect(sentBodies()).not.toMatch(/:1\.2[05]?[,}]/)
+  })
+  it.each(['1.25', '1,250', '1250.50'])('refuses "%s" typed in the variant table and sends no price', async typed => {
+    await renderAt('/products/p1')
+    setValue(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S satış fiyatı"]'), typed)
+    await settle()
+    expect(q<HTMLInputElement>('input[aria-label="Renk:Siyah_Beden:S satış fiyatı"]').getAttribute('aria-invalid')).toBe('true')
+    await submit('save')
+    expect(fixture.state.log.filter(entry => entry.method !== 'GET')).toEqual([])
   })
 
   it('update with a stock and cost change', async () => {

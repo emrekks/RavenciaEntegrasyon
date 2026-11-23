@@ -50,7 +50,7 @@ describe('buildCreatePayload', () => {
     expect(buildCreatePayload(input([row('a')], { webColor: { autoEnabled: false, manualValueId: 'wc1' } })).trendyolWebColorValueId).toBe('wc1')
   })
   it('sends the calculator’s measurements and desi when it was used', () => {
-    const measured = { ...form, weight: '1.5', width: '30', height: '20', length: '10' }
+    const measured = { ...form, weight: '1,5', width: '30', height: '20', length: '10' }
     const payload = buildCreatePayload(input([row('a')], { form: measured, variant: { form: measured, calculateDesi: true, calculatedDesi: 2, optionRequirements: [] } }))
     expect(payload.variants[0]).toMatchObject({ weight: 1.5, width: 30, height: 20, length: 10, desi: 2 })
   })

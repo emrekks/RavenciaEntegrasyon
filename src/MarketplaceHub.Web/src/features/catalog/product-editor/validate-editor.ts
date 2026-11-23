@@ -9,10 +9,11 @@ import { missingRequiredEditorFields, type RequiredEditorField } from './require
 import { parseProductDesi, productDesiTooLarge, productDesiTooLargeMessage } from '../product-desi'
 import { productMediaUrlIssue } from '../product-media-url'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
-import { draftBlockingIssues } from '../product-draft'
+import { draftBlockingIssues, unreadableNumberIssues } from '../product-draft'
 import { editorVatRateIssue } from '../product-editor-state'
 import { MAX_VARIANTS } from './editor-helpers'
-import { parseEditorNumber } from './editor-number'
+import { priceInputNumber } from './card-prices'
+import { editorCount } from './editor-number'
 import type { ChannelPricingDraft } from './marketplace-channel-pricing'
 import type { VariantDraft } from './editor-types'
 import type { EditorForm } from './editor-form'
@@ -122,6 +123,8 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (conflicts.barcodes) issues.push('Kaynak ürünün barkodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan barkodları değiştirin.')
     if (conflicts.skus) issues.push('Kaynak ürünün stok kodları zaten kayıtlı. Yeni ürünü oluşturmak için çakışan stok kodlarını değiştirin.')
   }
+  issues.push(...unreadableNumberIssues(rows))
+  if (!Number.isFinite(editorCount(form.safetyStock || 0)) || !Number.isFinite(editorCount(form.initialStock || 0))) issues.push('Stok ve güvenlik stoğu 1.250 gibi sıfır veya pozitif bir tam sayı olmalıdır.')
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
   // Owner, 10 Nov 2026 ("0 olmayacak onlarda"): a variant's list and sale price are above 0, like the card's.
   if (rows.some(row => !(row.salePrice > 0) || !(row.listPrice > 0))) issues.push('Her varyantta liste ve satış fiyatı 0\'dan büyük olmalı.')
@@ -139,7 +142,7 @@ function saveIssues(input: EditorSaveValidationInput, requireCompleteCatalog: bo
     if (publicMediaUrls.some(url => !url.startsWith('https://'))) issues.push('Tüm görsel adresleri HTTPS olmalıdır.')
     if (rows.some(row => !row.barcode.trim() || !/^[a-zA-Z0-9._-]+$/.test(row.barcode.trim()))) issues.push('Trendyol yayını için her varyantta geçerli ve benzersiz barkod zorunludur.'); if (rows.some(row => row.salePrice <= 0)) issues.push('Trendyol yayını için satış fiyatı sıfırdan büyük olmalıdır.')
     for (const channel of input.selectedChannels) {
-      const listPrice = parseEditorNumber(channel.draft.listPrice); const salePrice = parseEditorNumber(channel.draft.salePrice)
+      const listPrice = priceInputNumber(channel.draft.listPrice); const salePrice = priceInputNumber(channel.draft.salePrice)
       if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || salePrice <= 0 || listPrice < salePrice) issues.push(`${channel.name} için liste fiyatı satış fiyatından küçük olamaz; satış fiyatı sıfırdan büyük olmalıdır.`)
     }
   }

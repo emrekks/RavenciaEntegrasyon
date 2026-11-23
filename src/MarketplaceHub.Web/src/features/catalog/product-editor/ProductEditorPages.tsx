@@ -42,7 +42,7 @@ import { EditorDialogs } from './EditorDialogs'
 import { EditorWindows } from './EditorWindows'
 import { EditorOptionsSection } from './EditorOptionsSection'
 import { channelTakesListPrice, priceFieldText } from '../quick-price-edit'
-import { parseEditorNumber } from './editor-number'
+import { priceInputNumber } from './card-prices'
 export { BulkVariantPlatformPricingModal } from './BulkVariantPlatformPricingModal'
 export { PublishPlatformCard, cardLookupKey, publishCardState } from './PublishPlatformCard'
 
@@ -92,7 +92,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // As Turkish text ("1250,5"), the one way the window reads a typed price; a staged draft holds a number field's value.
       channelPrice: (rowKey, connectionId) => {
         const staged = variantChannelPricing[`${rowKey}:${connectionId}`]
-        const text = (value: string) => value.trim() === '' ? '' : priceFieldText(parseEditorNumber(value))
+        const text = (value: string) => value.trim() === '' ? '' : priceFieldText(priceInputNumber(value))
         if (staged) return { list: text(staged.listPrice), sale: text(staged.salePrice), follows: false }
         const platform = variantRows.find(row => row.key === rowKey)?.platformStatuses?.find(item => item.connectionId === connectionId)
         return platform?.offerId ? { list: priceFieldText(platform.listPrice), sale: priceFieldText(platform.salePrice), follows: platform.followsPanelPrice !== false } : null

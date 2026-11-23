@@ -32,12 +32,14 @@ describe('Excel import fields', () => {
 })
 
 describe('a half desi', () => {
-  it('reads 0.5 and 0,5 alike and keeps the required Desi satisfied', () => {
-    expect(parseProductDesi('0.5')).toBe(0.5)
+  it('reads 0,5 as a half and keeps the required Desi satisfied; 0.5 and 1.250 are never guessed', () => {
+    // B1: a point used as a decimal point could mean two things: 0 (the required Desi asks again); 1.250 is 1250.
+    expect(parseProductDesi('0.5')).toBe(0)
+    expect(parseProductDesi('1.250')).toBe(1250)
     expect(parseProductDesi('0,5')).toBe(0.5)
     expect(parseProductDesi('')).toBe(0)
     expect(parseProductDesi('abc')).toBe(0)
-    const form = { title: 'a', brandId: 'b', categoryId: 'c', modelCode: 'm', baseSku: 's', barcode: 'x', listPrice: '10', salePrice: '9', warrantyMonths: '0', deliveryDays: '1', desi: '0.5' }
+    const form = { title: 'a', brandId: 'b', categoryId: 'c', modelCode: 'm', baseSku: 's', barcode: 'x', listPrice: '10', salePrice: '9', warrantyMonths: '0', deliveryDays: '1', desi: '0,5' }
     const options = { automaticBarcodes: false }
     expect(missingRequiredEditorFields(form, options)).toEqual([])
     expect(missingRequiredEditorFields({ ...form, desi: '0,5' }, options)).toEqual([])

@@ -217,9 +217,9 @@ describe('the editor window with marketplace prices', () => {
   // editor carries the number shown, and a point used as a decimal point is refused, never guessed.
   it.each([
     ['1.250', '1250'],
-    ['1.250,50', '1250.5'],
-    ['1250,5', '1250.5'],
-    ['12,5', '12.5'],
+    ['1.250,50', '1250,5'],
+    ['1250,5', '1250,5'],
+    ['12,5', '12,5'],
     ['149', '149'],
   ])('hands "%s" typed into a marketplace cell to the editor as %s', async (typed, sent) => {
     const onApplyChannelPrices = await mount({ channels: channels(true) })
@@ -227,7 +227,7 @@ describe('the editor window with marketplace prices', () => {
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Liste Fiyatı'))[1].click() })
     await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol liste fiyatı"]')!, typed)
     await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
-    const expectedSale = Number(sent) < 150 ? null : '150'
+    const expectedSale = Number(sent.replace(',', '.')) < 150 ? null : '150'
     if (expectedSale == null) { expect(onApplyChannelPrices).not.toHaveBeenCalled(); expect(document.body.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz'); return }
     expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: sent, salePrice: expectedSale }])
   })

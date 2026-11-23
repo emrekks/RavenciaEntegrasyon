@@ -20,7 +20,8 @@ import type { EditorStateResult } from './use-editor-state'
 import type { EditorMediaPointerResult } from './use-editor-media-pointer'
 import type { EditorDirtyStateResult } from './use-editor-dirty-state'
 import type { VariantCodeMenusResult } from './use-variant-code-menus'
-import { parseEditorNumber } from './editor-number'
+import { editorCount, parseEditorNumber } from './editor-number'
+import { priceInputNumber } from './card-prices'
 
 export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult) {
   const { editProductId, duplicateProductId, form, setVariantAttributeIds, variantRows, automaticBarcodeGeneration, seededProductId, sizeChartPicking, chartKey, requiredErrors } = c
@@ -40,7 +41,7 @@ export function useEditorData(c: EditorProps & EditorStateResult & EditorMediaPo
   const requirements = useQuery({ queryKey: queryKeys.categoryRequirements(form.categoryId), queryFn: async ({ signal }) => readCategoryRequirements(await hubApi<ApiAnswer<'getCatalogCategoriesByIdAttributeRequirements'>>(`/catalog/categories/${form.categoryId}/attribute-requirements`, { signal })), enabled: !!form.categoryId, retry: false, staleTime: categoryRequirementsStaleTimeMs })
   const leafCategories = (categories.data?.items ?? []).filter(item => item.isLeaf && item.isActive); const activeBrands = (brands.data?.items ?? []).filter(item => item.isActive)
   // The card's Liste/Satış (decimal comma read): a new variant row's first prices (buildVariantGenerationDefaults).
-  const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : parseEditorNumber(form.costPrice); const initialStock = parseEditorNumber(form.initialStock || 0)
+  const cardPriceDefaults = cardPrices(form.listPrice, form.salePrice); const fallbackListPrice = cardPriceDefaults.listPrice; const fallbackSalePrice = cardPriceDefaults.salePrice; const fallbackCostPrice = form.costPrice.trim() === '' ? null : priceInputNumber(form.costPrice); const initialStock = editorCount(form.initialStock || 0)
   // Required fields left empty (required-fields.ts): a save stops on them; a saved card that opens with one is framed red.
   // KDV Oranı is checked beside them (vatRateIssue): required on every card but a draft (validate-editor.ts).
   const { missingRequired: missingRequiredFields, vatRateIssue } = validateEditor({ form, automaticBarcodes: automaticBarcodeGeneration, hasVariants: variantRows.length > 1 }, { kind: 'live' })
