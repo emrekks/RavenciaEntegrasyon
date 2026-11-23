@@ -107,7 +107,7 @@ public static class PanelFactoryResetInventory
         D("sales.order_financial_allocations", Orders), D("sales.order_lines", Orders), D("sales.order_status_history", Orders), D("sales.orders", Orders),
         D("sales.package_line_allocations", Orders), D("sales.shipment_document_attempts", Orders), D("sales.shipment_documents", Orders), D("sales.shipment_packages", Orders),
         D("sales.return_claims", Orders), D("sales.return_decisions", Orders), D("sales.return_evidence", Orders), D("sales.return_lines", Orders), D("sales.return_stock_dispositions", Orders),
-        D("sales.marketplace_invoice_reference_history", Orders),
+        D("sales.marketplace_invoice_reference_history", Orders), D("sales.manual_resends", Orders),
         D("sales.marketplace_questions", Questions), D("integration.marketplace_question_sync_states", Questions),
         D("sales.marketplace_cargo_invoice_items", Finance), D("sales.marketplace_finance_transactions", Finance), D("sales.marketplace_payout_orders", Finance),
         D("integration.marketplace_finance_sync_states", Finance),

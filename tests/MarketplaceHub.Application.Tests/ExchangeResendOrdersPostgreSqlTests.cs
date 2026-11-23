@@ -59,7 +59,7 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         var (tenant, connection) = await SeedAsync();
         var order = await SeedOrderAsync(tenant.Id, connection.Id, "ex-ship", claim =>
         {
-            claim.ReplacementPackageId = "4360616611";
+            claim.ReplacementPackageId = "2000000001";
             claim.ReplacementCargoProviderName = "Trendyol Express Marketplace";
             claim.ReplacementCargoTrackingNumber = "7330000000000001";
             claim.ResolvedWith = ReturnCustomerRequestPolicy.Change;

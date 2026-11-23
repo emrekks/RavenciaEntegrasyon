@@ -114,7 +114,7 @@ export function BulkFieldDialog({ groups, cardCount, variantCount, onClose, onDo
       control = <input className="rr-in" aria-label={label} aria-invalid={invalid} value={value} disabled={busy} onChange={event => update(event.target.value)} type="number" min="1" max="30" step="1" inputMode="numeric" placeholder="1-30" />
       break
     case 'safetyStock':
-      control = <input className="rr-in" aria-label={label} aria-invalid={invalid} value={value} disabled={busy} onChange={event => update(event.target.value)} type="number" min="0" step="1" inputMode="numeric" placeholder="0" />
+      control = <input className="rr-in" aria-label={label} aria-invalid={invalid} value={value} disabled={busy} onChange={event => update(event.target.value)} type="text" inputMode="numeric" autoComplete="off" placeholder="0" />
       break
     case 'description':
       control = <div className="bf-desc">

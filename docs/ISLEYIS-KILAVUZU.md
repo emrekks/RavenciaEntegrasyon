@@ -470,7 +470,7 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   fiyatı bilinen değer olarak saklar (fark bir sonraki stok hareketinde gider); Özel Fiyat açıksa teklif pazaryerinin
   fiyatını alır. **Fiyat ve Stokları Güncelle** (onaylı üzerine yazma) ise mevcut bedenin panel fiyatını o pazaryerinin
   okunan fiyatıyla günceller (0/boş okunan fiyat güncellemez); Özel Fiyat'ı kapalı öbür teklifler yeni panel fiyatına
-  çekilir, eski fiyatları bilinen değer olarak kalır, fark her bedenin bir sonraki stok hareketinde gider; aktarım fiyat işi
+  çekilir, eski fiyatları bilinen değer olarak kalır, fark her bedenin bir sonraki stok hareketinde gider; çekim fiyat işi
   açmaz. Özel Fiyat açık teklifte yalnız o teklif güncellenir, panel fiyatı değişmez. Onay penceresi bunu söyler. PttAVM yayını ve fiyat-stok gönderimi taban/farkı aynı geçerli fiyat fonksiyonundan hesaplar.
   Shopify fiyatı reddederse stok yine yazılır (`SHOPIFY_STOCK_ONLY_APPLIED`), fiyat sonraki gönderimde
   yeniden denenir. Gönderilmiş işaretleri kayıtlı teklif fiyatından hesaplanır: yalnız panel fiyatı değişince
@@ -480,7 +480,7 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   teklif sayısını gösterir. Risk: pazaryerinde kampanya için elle değiştirilmiş fiyat, o bedenin ilk stok hareketinde
   panelin fiyatıyla ezilir (`PanelPriceOfferPolicy.InForce`, `PriceInventoryComposer`).
 - **Panel fiyatı ilk pazaryerinden** (sahip kararı, 18 Kas 2026): bir varyant ilk kez bir pazaryerinden içe aktarılırken
-  panel liste ve satış fiyatı o pazaryerinin fiyatıyla kaydedilir (fiyat boş ya da 0 ise yazılmaz); sonraki aktarımlar
+  panel liste ve satış fiyatı o pazaryerinin fiyatıyla kaydedilir (fiyat boş ya da 0 ise yazılmaz); sonraki çekimler
   mevcut panel fiyatını değiştirmez (`PanelPriceOfferPolicy.ImportedPanelPrices`). Kayıtlı panel fiyatı olmayan mevcut
   bedenler kendiliğinden doldurulmaz. **Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur** (Ürünler › Ürünleri İçe /
   Dışa Aktar; yalnız sahip/yönetici): önizleme kaç bedenin hangi pazaryerinden dolacağını, kaçının boş kalacağını (0 TL,
@@ -657,14 +657,14 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
   henüz olmayan marka kod tutmaz. Son korumalar `ProductModelLinks` içinde (kod yayılımı ve eşleştirme).
 - **"Kod kullanımda mı" kuralı eşleştirmeyle aynıdır** (`ProductModelLinks.LinkBrand`): markasız kart için kod, markasız bir
   kart onu tutuyorsa ya da kodun tek bir markalı modeli varsa (kart oraya katılırdı) kullanımdadır; iki marka tutuyorsa serbesttir.
-  Yeni Ürün alanı ("Kullanımda: …"), editör/Excel kod değişikliği ve pazaryeri aktarımının kod değişikliği aynı kuralı sorar
+  Yeni Ürün alanı ("Kullanımda: …"), editör/Excel kod değişikliği ve pazaryeri çekiminin kod değişikliği aynı kuralı sorar
   (`ModelCodeOwnership.cs`).
-- **Pazaryerinden ürün aktarımı** var olan modeli değiştirmez: farklı değerle gelen renk modelin değerini alır (kopyası geri
+- **Pazaryerinden ürün çekimi** var olan modeli değiştirmez: farklı değerle gelen renk modelin değerini alır (kopyası geri
   yazılır). Yalnız modelde henüz olmayan (bilinmeyen) bir değeri doldurabilir. Fark yalnız **KDV** içinse
   `PRODUCT_MODEL_VALUES_DIFFER` uyarısı açılır (model, renk, iki değer; fatura modelin KDV'siyle kesilir); ad, açıklama, desi,
   kategori, garanti, teslimat ve marka farkı uyarı açmaz. Boş ya da bilinmeyen gelen değer fark sayılmaz.
 - **Yeni model** değerlerini **ilk getirilen karttan** alır; o kartın bilmediği alan, onu bilen sonraki karttan gelir; oylama
-  yapılmaz. Sıra belirlidir: daha önce çekilmiş kartlar önce (oluşturma zamanı), sonra bu aktarımda pazaryerinin gönderdiği
+  yapılmaz. Sıra belirlidir: daha önce çekilmiş kartlar önce (oluşturma zamanı), sonra bu çekimde pazaryerinin gönderdiği
   sayfa/satır sırası, sonra renk anahtarı, dış kimlik ve kart kimliği; aynı katalog sıfırdan iki kez çekilirse aynı model
   oluşur (`ProductModelLinks.cs:558-570` `FirstBroughtIn`; `ProductModelValues.cs` `ModelDesi`).
 - **Otomatik yollar** (deploy yenilemesi, Worker açılış geçişi, gece model taraması) bu sekiz alanın hiçbirini yazmaz ve
@@ -674,7 +674,7 @@ kelimesiyle değişir ("Kadın Bordo …" → "Kadın Siyah …"). Kategori öze
   (`ModelMirror.cs` `ReportGapsAsync`).
 - **Eşzamanlı kayıt**: model alanı veren kayıt, kart yazmadan önce ilgili model satırlarını kimlik sırasıyla kilitler; iki
   kardeş renk kaydı sırayla çalışır. Yine de kilitlenme (deadlock) olursa Toplu Değer Ata ve Excel modeli "İşlem sırasında başka
-  bir kayıtla değişti" diye atlar, pazaryeri aktarımı modeli yeniden dener (`ProductModelLinks.cs:200-215`
+  bir kayıtla değişti" diye atlar, pazaryeri çekimi modeli yeniden dener (`ProductModelLinks.cs:200-215`
   `LockPendingModelsAsync`; `CatalogImportService.ProductImport.cs:576-583`). Model satırını bekleyen kayıt en çok 30 sn bekler
   (55P03); editör (Yeni Ürün dahil) ve diğer API yolları bunu `SAVE_CONFLICT_RETRY` 409 "Tekrar deneyin" diye yanıtlar, 500 değil
   (`CatalogService.SaveConflict`, `ApiExceptionHandler`).
@@ -777,7 +777,7 @@ Eksik alanla açılan kart yine açılır, alan kırmızı çerçeveli kalır.
   (0 = garanti yok), teslimat 1–30 gün tam sayı; geçersiz değer satırı hatalı yapar, boş hücre ya da sütunsuz dosya garanti 0 ve
   varsayılan teslimat günüyle açılır (`ImportFileReader.cs:281-284`; `ImportJobProcessor.cs:249-250`; şablon
   `imports/import-template.ts`).
-- **Platformdan Ürün Aktar** yeni ürünü zorunlu alan denetimi olmadan **normal (satışa açık) kaydeder, taslak açmaz** (sahip
+- **Platformdan Ürün Çek** yeni ürünü zorunlu alan denetimi olmadan **normal (satışa açık) kaydeder, taslak açmaz** (sahip
   kararı, 13 Kas); eksik alan sonradan düzenleyicide tamamlanır, kayıt satışta olduğu için düzenleyicide Kaydet eksik alan varken
   durur (`CatalogImportService.ProductImportUpsert.cs` `UpsertCatalogProduct`).
 
@@ -787,7 +787,7 @@ Eksik alanla açılan kart yine açılır, alan kırmızı çerçeveli kalır.
   '{ürün}' ürününde kullanılıyor. Yeni renk veya beden eklemek için o ürünü düzenleyin." (`MODEL_CODE_IN_USE`,
   `ModelCodeUniquenessPolicy.cs:3-8`). Bu denetim markaya bakmaz. Düzenleyici kaydı ya da Excel yüklemesi model kodunu başka
   ürünün koduna çevirirse de reddedilir (`MODEL_CODE_CHANGE_IN_USE`); düzenleyicinin kendi kodu altında satır eklemesi ve
-  pazaryeri aktarımları denetlenmez. Değişen model kodu modelin bütün renklerine geçer. En çok 160 karakter.
+  pazaryeri çekimleri denetlenmez. Değişen model kodu modelin bütün renklerine geçer. En çok 160 karakter.
 - **Stok kodu** her varyantta olmalı ve hesap içinde benzersiz (`SKU_CONFLICT_REVIEW_REQUIRED`, `CatalogService.cs:1044,1598`).
 - **Barkod** ürün içinde ve katalogda benzersiz (`BARCODE_CONFLICT_REVIEW_REQUIRED`, `CatalogService.cs:1046-1048,1600-1602`).
 - Karşılaştırmada aksanlar düşer, ı→I, büyük harf, diğer karakter dizileri tek tire (`platform-code-rules.ts:70-71`).
@@ -812,7 +812,7 @@ Kolon menüleri: **Boş Barkodlara Yapıştır**, **Tüm Barkodları Panodan De�
 
 ### 3.4 Ürünler listesi
 
-Başlık "Ürünler"; üst düğmeler **İçe / Dışa Aktar** (dar ekranda "Excel"), **Platformdan Ürün Aktar** ("Ürün Aktar"),
+Başlık "Ürünler"; üst düğmeler **İçe / Dışa Aktar** (dar ekranda "Excel"), **Platformdan Ürün Çek** ("Ürün Çek"),
 **Yeni Ürün Ekle**. Özet kartları: Toplam Ürün, Stok Adeti, Aktif Ürün, Taslak Ürün, Stoksuz Ürün, Düşük Stok.
 Filtreler: **Ürün Ara** (ad, stok kodu, barkod), **Stok Durumu**, **Sıralama**, **Platform Durumu** (her platform için
 Aktif = tüm varyantlar eşleşti / Kısmi / eşleşme yok), **Temizle**, **Filtrele** (`ProductsPage.tsx:765-812`).
@@ -834,7 +834,7 @@ Aktif = tüm varyantlar eşleşti / Kısmi / eşleşme yok), **Temizle**, **Filt
 - Ürünün bekleyen yayın ya da fiyat-stok işi iptal edilir; pazaryerine o an yazan bir iş varsa birkaç saniye beklenir, hâlâ
   yazıyorsa silme "birkaç saniye sonra tekrar deneyin" diye reddedilir; başka ürünleri de taşıyan bekleyen toplu fiyat-stok
   gönderimi silmeyi engeller.
-- Kartı kalmayan model aynı işlemde silinir ve açık model uyarıları kapanır; yeniden aktarım eski modeli kullanmaz.
+- Kartı kalmayan model aynı işlemde silinir ve açık model uyarıları kapanır; yeniden çekim eski modeli kullanmaz.
 - Ürün yeniden aktarılınca, her sipariş eşitlemesi bağlantının varyantsız sipariş satırlarını barkod/stok koduyla panele yeniden
   eşler ve geç okunmuş satır gibi stoktan düşer; karşılığı bulunamayan kod için açık sorun kaydı tutulur
   (`OrderIngestionService.OrderLineAllocation.cs:91-104` `RematchUnmatchedOrderLines`).
@@ -946,7 +946,7 @@ Hepsi **Eşleştirmeler** sayfasında yönetilir.
 | Varlık | Oluşturma | Kaldırma | Kurallar |
 |---|---|---|---|
 | **Kategori** | Kategori Eşleme › "1. Yeni Kategori Ekle" › **Kategori Ekle**; ekran yalnız **kök** kategori ekler | **Silme yok**; "Kategoriyi kaldır" pasif yapar | ad 1–160; aynı üstte aynı ad `CATEGORY_DUPLICATE`; pasif aynı ad yeniden etkinleşir (`CatalogService.cs:26-71`). Ürüne yalnız etkin yaprak kategori. Kategori başına ≤2 seçenek grubu (`CatalogService.cs:407-409`) |
-| **Marka** | Marka Eşleme › "1. Yeni Marka Ekle" › **Marka Ekle**; ayrıca Platformdan Ürün Aktar, klasik içe aktarma ve Excel'in **Marka** sütunu ada göre bulur ya da açar (tek kural, `PanelBrandByName.cs`) | pasif | ad 1–160; "Bu marka zaten var." (`CatalogService.cs:79-107`). Üç yolda da aynı ad aynı markaya iner ("Gümüş Moda", "GUMUS-MODA" tek marka); kapalı marka yeniden açılmaz, yanına ikincisi de açılmaz |
+| **Marka** | Marka Eşleme › "1. Yeni Marka Ekle" › **Marka Ekle**; ayrıca Platformdan Ürün Çek, klasik içe aktarma ve Excel'in **Marka** sütunu ada göre bulur ya da açar (tek kural, `PanelBrandByName.cs`) | pasif | ad 1–160; "Bu marka zaten var." (`CatalogService.cs:79-107`). Üç yolda da aynı ad aynı markaya iner ("Gümüş Moda", "GUMUS-MODA" tek marka); kapalı marka yeniden açılmaz, yanına ikincisi de açılmaz |
 | **Seçenek** (Renk, Beden) | "3. Ürün Seçenekleri" › Yeni Seçenek Başlığı | pasif | ad Renk/Beden/Size/Web Color ise seçenek sayılır |
 | **Özellik** | "4. Kategori Özellikleri ve Değerleri" › Yeni Özellik Başlığı | pasif; değerleri de pasifleşir | değer varsa liste, yoksa metin; yeniden adlandırma yalnız özellikte (`CatalogService.cs:109-322`) |
 | **Değer** | virgülle çoklu ekleme | pasif | `ATTRIBUTE_VALUE_DUPLICATE`; A–Z/Z–A sıralama |
@@ -984,7 +984,7 @@ Eşleşmeler; mevcut kayıtlar silinmez (`MappingPages.tsx`).
 | **Tüm Değerleri Eşle** | Eşlenmiş başlıklarda aynı adlı değerleri eşler. |
 | **Platform Varsayılanları [n]** | Alan boş kaldığında gidecek sabit değer (aşağıda). Trendyol, Hepsiburada, N11 ve Pazarama'da görünür (N11'de kilitli "Marka" alanı listelenmez; `CategoryAttributeWorkspace.tsx:550`). |
 | **Gözden Geçirilecek [n]** | Çakışmalar (aşağıda). |
-| **Seçenekleri Eşitle** | Yalnız Trendyol; ürün aktarım işini kuyruğa alır. |
+| **Seçenekleri Eşitle** | Yalnız Trendyol; ürün çekim işini kuyruğa alır. |
 | **Pazaryerinden Güncelle** | Kategori alan listesini yeniler. |
 
 Alan grupları "Zorunlu" / "İsteğe Bağlı"; durum Tamam / Değerleri Eksik / Eşlenmedi; altta **Sonraki Eksik**, **Kaydet**.
@@ -993,8 +993,8 @@ Alan grupları "Zorunlu" / "İsteğe Bağlı"; durum Tamam / Değerleri Eksik / 
 Değerleri Oluştur**, **Listeyi Yenile**, **Diğer Kategorilerde de Kullan**, **Onay Bekleyen Öneriler › Tümünü Onayla**.
 
 **Marka Eşleme**: 1. **Yeni Marka Ekle**; 2. **Yeni Marka Eşleme** (Panel Markası ↔ {Platform} Markası, **Eşleştir**,
-**Senkronize Et**, **Eşleştirmeyi Kaydet**) ve altında **Eşlenmemiş {Platform} Markaları**: ürün aktarımı markaları
-kendisi eşler; burada yalnız **aktarımın eşleyemediği** markalar listelenir (eşlendiği panel markası kapalı, birden fazla
+**Senkronize Et**, **Eşleştirmeyi Kaydet**) ve altında **Eşlenmemiş {Platform} Markaları**: ürün çekimi markaları
+kendisi eşler; burada yalnız **çekimin eşleyemediği** markalar listelenir (eşlendiği panel markası kapalı, birden fazla
 panel markasına eşli ya da aynı adlı panel markası başka bir markaya eşli); birini seçip panel markasını belirleyin ve
 kaydedin (3.11); 3. **Kayıtlı Marka Eşleştirmeleri**. Marka seçici yalnız sunucuda arar
 ("Marka adı veya marka no ara..."); **otomatik seçim ve öneri yoktur** (`brand-reference.tsx:1-27`).
@@ -1037,18 +1037,18 @@ alan değerleri. Zamanlayıcı günde bir çalışır; son 24 saatte alınmış 
 Trendyol ve Pazarama'da** çekilir ve **tam liste** alınır, ada göre arama yapılmaz (`ConnectionReferencePlan.cs:20`). Alan ve
 değer listeleri yalnız eşlenmiş kategoriler için okunur.
 
-### 3.11 Platformdan Ürün Aktar
+### 3.11 Platformdan Ürün Çek
 
-Pencere **Platformdan Ürün Aktarımı** (`ProductsPage.tsx:814-830`). Desteklenen bağlantılar: Trendyol, Shopify,
-Hepsiburada, N11, Pazarama, PttAVM; durum `ACTIVE` ya da `VERIFIED`. Yöntem: **Toplu Aktarım** (varsayılan) / **Tek Ürün
-Aktarımı** (Trendyol'da ürün linki ya da model kodu, HB'de ürün ID, Pazarama/PttAVM'de barkod, N11'de model kodu).
+Pencere **Platformdan Ürün Çekme** (`ProductsPage.tsx:814-830`). Desteklenen bağlantılar: Trendyol, Shopify,
+Hepsiburada, N11, Pazarama, PttAVM; durum `ACTIVE` ya da `VERIFIED`. Yöntem: **Toplu Çekim** (varsayılan) / **Tek Ürün
+Çekimi** (Trendyol'da ürün linki ya da model kodu, HB'de ürün ID, Pazarama/PttAVM'de barkod, N11'de model kodu).
 
 **Modlar** (`product-import-options.ts:1`):
 
 | Ekran adı | Dokunduğu | Dokunmadığı |
 |---|---|---|
 | **Tam Katalog Taraması** (varsayılan) | Trendyol'da tüm katalog okunur. Yeni ürünler tam açılır. Mevcut üründe içerik yazılmaz; yalnız boş desi doldurulur, yeni bedenler eklenmez ve "Eklenmeyen yeni beden" diye raporlanır (`CatalogImportService.ProductImportVariants.cs` `FillMissingImportedDesi`; `CatalogImportService.ProductImportUpsert.cs` `RemoteVariantsMissingFromPanel`; `CatalogImportService.ProductImport.cs` `UnaddedSizesNote`). Pencerenin kip altı açıklaması da bunu söyler ("içeriği, fiyatı ve stoğu değişmez"); yalnız Hepsiburada seçiliyse yeni ürün de açmaz (`product-import-options.ts:93-100`). | mevcut ürünün içeriği, fiyatı, stoğu |
-| **Yeni Ürünleri Aktar** | Panelde olmayan ürünleri tümüyle açar (varyant, seçenek, özellik, kategori, marka, görsel, fiyat, stok, bağ). Mevcut ürüne **yalnız yeni bedenleri** ekler. | mevcut ürünün adı, açıklaması, markası, kategorisi, görselleri |
+| **Yeni Ürünleri Çek** | Panelde olmayan ürünleri tümüyle açar (varyant, seçenek, özellik, kategori, marka, görsel, fiyat, stok, bağ). Mevcut ürüne **yalnız yeni bedenleri** ekler. | mevcut ürünün adı, açıklaması, markası, kategorisi, görselleri |
 | **Mevcut Ürünleri Güncelle** | Yalnız panelde eşleşen ürünler; asla yeni ürün açmaz ("Panelde eşleşen ürün yok; yalnız mevcut ürünler güncelleniyordu."). Alt kutulara göre yazar. Seçenek yalnız seçili bağlantılardan biri fiyat/stok yazan bir pazaryeriyse (Trendyol, Shopify) sunulur; yalnız Hepsiburada, N11, Pazarama ya da PttAVM seçiliyse gizlenir, çünkü bunlarda yazılacak bir şey yoktur (`product-import-options.ts:32-42,67`). | kutusu işaretlenmemiş her şey |
 | **Ürün Eşleme** | Yalnız pazaryeri **bağlarını** kurar; tam okur. N11/Pazarama/PttAVM'de teklifi olmayan varyantlara uzak fiyattan teklif açar. Arşiv ürünleri, her kipte olduğu gibi, **Arşiv Ürünlerini Dahil Et** işaretliyse okunur (sahip kararı, 12 Kas). | ürün, marka, kategori, içerik, görsel, fiyat, stok |
 
@@ -1073,47 +1073,47 @@ yok · Çakışma.
   siler (`SalesJobService.Jobs.cs` `EnqueueProductSyncAsync`). Pencere bunu artık baştan söyler: yalnız bu platformlar seçiliyse ilgili
   kutuları hiç göstermez, karışık seçimde "Yalnız Trendyol ve Shopify'da uygulanır." notunu yazar; gözlem kipindeki platform
   için "panelde var olan ürünün bilgisi, fiyatı ve stoğu yazılmaz" notu çıkar (`product-import-options.ts:62-90`).
-- Trendyol'da Mevcut Ürünleri Güncelle modunda hiçbir kutu işaretli değilse **Aktarımı Başlat** pasif olur.
-- Bir bağlantıda aynı anda tek aktarım çalışır (`PRODUCT_SYNC_ALREADY_RUNNING`).
+- Trendyol'da Mevcut Ürünleri Güncelle modunda hiçbir kutu işaretli değilse **Çekimi Başlat** pasif olur.
+- Bir bağlantıda aynı anda tek ürün çekimi çalışır (`PRODUCT_SYNC_ALREADY_RUNNING`).
 - **Yerel düzenleme koruması**: panelde gönderilmemiş değişiklik varsa içerik korunur ve bağ `LOCAL_CHANGES_PENDING` olur;
   bu korumayı yalnız Mevcut Ürün Bilgilerini Güncelle aşar (`SynchronizationPolicies.cs:473-478`).
 
-**Aktarımda kategori, özellik, seçenek, marka** (sahip kararı 13 Kas 2026: aktarım kategori ve markayı kendisi kurar ve
+**Çekimde kategori, özellik, seçenek, marka** (sahip kararı 13 Kas 2026: çekim kategori ve markayı kendisi kurar ve
 eşler; Shopify dışındaki her pazaryerinde):
 
 - **Kategori**: önce kullanıcının kategori eşlemesi; yoksa ada/yola göre kök panel kategorisi; yoksa yeni kök yaprak
   kategori ve doğrulanmış eşleme açılır (`CatalogAttributeService.Attributes.cs` `EnsureMappedCategory`). Bu, gözlem kipindeki
-  Hepsiburada, N11, Pazarama ve PttAVM'de de yapılır; aktarımın **açtığı** ürün eşlenen kategoriyi alır, var olan ürünün
+  Hepsiburada, N11, Pazarama ve PttAVM'de de yapılır; çekimin **açtığı** ürün eşlenen kategoriyi alır, var olan ürünün
   kategorisine dokunulmaz (`ObservedProductCategory`). Kök kategori adları tekildir (aynı adla ikinci kök açılmaz;
   `RootCategoryNamesUnique`, 13 Kas 2026).
 - **Özellik**: aynı adlı etkin panel özelliği kullanılır, yoksa açılır; değerler Trendyol listesinden yazılır. "Web Color"
   değerleri panel değeri olarak eklenmez.
 - **Seçenek**: Renk/Beden panel seçeneği ve değerleri açılır ya da yeniden kullanılır.
 - **Marka** (sahip kararı 12 Kas 2026; 28 Ekim'deki "yalnız kullanıcı eşlemesini oku" kuralının yerine; canlı 12 Kas
-  19:10Z, `ac24f253c`): aktarım ilanın markasını **kategori gibi kendisi kurar**, pazaryerine ayrıca soru sormadan, yalnız
+  19:10Z, `ac24f253c`): çekim ilanın markasını **kategori gibi kendisi kurar**, pazaryerine ayrıca soru sormadan, yalnız
   ilanın taşıdığından (`ImportedBrandRule.cs:5-10`; `CatalogImportService.ProductImportUpsert.cs` `ImportBrandId`):
   1. bu bağlantıda ilanın marka numarasına bir eşleme varsa o panel markası (doğrulanmamışsa doğrulanır);
   2. yoksa **aynı adlı panel markası** alınır ve eşlenir;
-  3. o da yoksa ilanın adıyla **yeni panel markası açılır** ve eşlenir (doğrulanmış, kaynağı "aktarım").
+  3. o da yoksa ilanın adıyla **yeni panel markası açılır** ve eşlenir (doğrulanmış, kaynağı "çekim").
   - Eşleme yalnız marka numarası taşıyan ilanda yazılır (Trendyol). Hepsiburada, N11, Pazarama, PttAVM ve Shopify ilanları
-    yalnız marka adı taşır (PttAVM hiç taşımaz): aktarımın açtığı üründe marka panelde ada göre bulunur ya da açılır,
+    yalnız marka adı taşır (PttAVM hiç taşımaz): çekimin açtığı üründe marka panelde ada göre bulunur ya da açılır,
     **eşleme yazılmaz**.
   - Kapatılmış panel markası yeniden açılmaz; bir pazaryeri markası iki panel markasına eşliyse ya da aynı adlı panel
     markası başka bir markaya eşliyse ürün markasız kalır ve marka **Eşlenmemiş {Platform} Markaları** listesine düşer
-    ("…aktarımda eşlenemedi: … Eşleştirme Ayarları › Marka Eşleme'de kontrol edin.", `ImportedBrandRule.cs:19-24`).
-  - Marka bir model alanıdır (3.1): aktarım **var olan** modelin markasını değiştirmez; farklı markayla gelen renk modelin
+    ("…çekimde eşlenemedi: … Eşleştirmeler › Marka Eşleme'de kontrol edin.", `ImportedBrandRule.cs:19-24`).
+  - Marka bir model alanıdır (3.1): çekim **var olan** modelin markasını değiştirmez; farklı markayla gelen renk modelin
     markasını alır. Marka kuralı yalnız yeni açılan modelde (ilk getirilen kart) ya da markası boş modelde işler. Yalnız
     fiyat/stok ve **Ürün Eşleme** markaya hiç dokunmaz.
 - Shopify, HB, N11, Pazarama, PttAVM **yalnız gözlem** modundadır: mevcut ürünün içeriğine, markasına ve kategorisine
   dokunmaz, yalnız eşleşen panel ürününe bağlanır; panelde olmayan ürünü açarken marka ve eşlenen kategoriyi verir.
   Varyantlarının hepsi başka panel ürünlerine çıktığı için açılmayan ürünün yeni markası da açılmaz.
 - İş türleri: `PRODUCT_SYNC`, `SHOPIFY_PRODUCT_SYNC`, `HEPSIBURADA_PRODUCT_SYNC`; her seçili bağlantıya ayrı iş. İlerleme
-  kartı **Devam Eden Aktarımlar** (Alınan / İşlenen / Atlanan / Hatalı; **Durdur**). Bir ürün grubu hata verirse
+  kartı **Devam Eden Çekimler** (Alınan / İşlenen / Atlanan / Hatalı; **Durdur**). Bir ürün grubu hata verirse
   `PRODUCT_IMPORT_FAILED` yazılır ve devam edilir; hepsi başarısızsa iş incelemeye düşer.
 - (canlı) `ops.operational_issues` içinde 22 Ekim'den kalma 261 `PRODUCT_IMPORT_FAILED` kaydı var.
 
 **Klasik içe aktarma** (`/imports`, CSV/XLSX; `ImportPages.tsx`) bu akış değildir ama marka kuralı aynıdır: dosyadaki marka
-adı panel markasına `PanelBrandByName` ile (Platformdan Ürün Aktar'ın ada göre adımıyla ve Excel'in Marka sütunuyla aynı kod)
+adı panel markasına `PanelBrandByName` ile (Platformdan Ürün Çek'in ada göre adımıyla ve Excel'in Marka sütunuyla aynı kod)
 çözülür ve gerekirse açılır; kapalı marka açılmaz, uyarı "markasız ve taslak olarak oluşturulur" der
 (`ImportJobProcessor.cs`; `PanelBrandByName.cs:7-18`). Zorunlu alanı eksik ürünün durumu için 3.2.
 
@@ -1596,7 +1596,7 @@ https ise açılır.
   (`StockShortfallNotices.cs:17`; `InventoryService.cs:74,142`; `ProductTransferService.cs:511`).
   (canlı: 371 kayıt, hepsi çözülmüş; son 11 Kas 08:30Z.)
 
-**Hareket türleri**: eldeki stoğu değiştirenler — sipariş, elle düzeltme, pazaryeri stoğu aktarımı, açılış stoğu, iade
+**Hareket türleri**: eldeki stoğu değiştirenler — sipariş, elle düzeltme, pazaryeri stoğu çekimi, açılış stoğu, iade
 stoğa ekleme; yalnız iz bırakanlar — eksik adet, sipariş baz çizgisi, kargo ilerlemesi, rezervasyon bırakma, iade
 karantina/hasarlı/teslim alınmadı (`ProductActivityContracts.cs:132-144`). Ekranda: İşlem Takibi › Loglar › Ürün
 Hareketleri (3.14).
@@ -1988,7 +1988,7 @@ kurtarma 6.
 | hot | 3 | Öncelik 0–2 diğer işler (webhook, yeni sipariş, yazmalar) |
 | background | 2 | Öncelik ≥3 diğer işler |
 
-Toplam 20 yuva, veritabanı havuzu 55 (18 Kas 2026 ölçümü: katalog ve ilk aktarım 1→3). Yeni iş eklenince boştaki şeritler hemen uyanır (`Worker.cs:691-720`).
+Toplam 20 yuva, veritabanı havuzu 55 (18 Kas 2026 ölçümü: katalog ve ilk çekim 1→3). Yeni iş eklenince boştaki şeritler hemen uyanır (`Worker.cs:691-720`).
 
 **Elle müdahale** (İşlem Takibi › iş ayrıntısı; yalnız Sahip ve Yönetici görür ve yapabilir; `operations/pages.tsx:341`):
 
@@ -2050,7 +2050,7 @@ işlenmiş 30 gün, en geç 90 gün; kota kullanım satırları 2 gün. (canlı,
 #### 6.4.1 İşleri kim çalıştırır: işleyiciler (ISLEYICI-9, son durum 17 Kas 2026)
 
 Pazaryeri işlerini `MarketplaceJobProcessor.ProcessAsync` alır ve artık yalnız şunları yapar: ön kontroller (bağlantı,
-kapsam, ilk aktarım, pasif bağlantı, otomatik yeniden test), bağlantının yürütme kilidi, akış telemetrisi ve çekilen
+kapsam, ilk çekim, pasif bağlantı, otomatik yeniden test), bağlantının yürütme kilidi, akış telemetrisi ve çekilen
 kayıtlar, sonra işi yönlendirme (`MarketplaceJobProcessor.cs`; `MarketplaceJobProcessor.Dispatch.cs`). İşin mantığı
 işlemcide değil; iki yoldan birindedir:
 
@@ -2552,7 +2552,7 @@ Ekranda geçen ad kalın yazılıdır. "Kaçınılacak" sütunu, aynı şey içi
 | **Platform Varsayılanları** | Alan boşsa gidecek bağlantı geneli sabit değer. Veri temizliğinde kategori adı **Varsayılan Özellik Değerleri**. | — (iki ad aynı şey) |
 | Eşleme şablonu (**Şablon** rozeti) | Bağlantı geneli alan/değer kararı; yeni kategorileri doldurur, eşlemeyi ezmez | "otomatik eşleme" |
 | Beden tablosu | Kartın daima son görseli olan ölçü görseli | — |
-| **Tam Katalog Taraması** / **Yeni Ürünleri Aktar** / **Mevcut Ürünleri Güncelle** / **Ürün Eşleme** | Platformdan Ürün Aktar modları | "full sync" |
+| **Tam Katalog Taraması** / **Yeni Ürünleri Çek** / **Mevcut Ürünleri Güncelle** / **Ürün Eşleme** | Platformdan Ürün Çek modları | "full sync" |
 | **Mevcut Ürün Bilgilerini Güncelle** | Mevcut ürünün içeriğini pazaryerinden (yerel değişiklikleri de ezerek) yazan kutu | "Mevcut Ürünleri Güncelle" (o mod adı) |
 | **Yayınla** | Yeni ilan açan gönderim (fiyat/stok dahil) | "güncelle" |
 | **Hızlı Güncelle** | Kayıtlı ayarla, pencere açmadan gönderim; ayar yoksa fiyat + stok; ayar hesap başına sunucuda | "otomatik güncelleme" |
@@ -2696,11 +2696,11 @@ Sahibin verdiği ve sistemin uyduğu kararlar. Bir değişiklik bunlardan birine
    de **anılmaz**. Yalnız silinmiş bir bağlantının ayarları bağlantıyla birlikte kalkar (7.2 d; `PanelFactoryResetInventory.cs`).
 4. **Marka listesi çekimi tam listedir, ad araması yoktur.** Marka listesi Trendyol ve Pazarama'dan bütün olarak indirilir;
    hiçbir pazaryerinde ada göre marka aranmaz. Eşleştirmeler › Marka Eşleme'de otomatik seçim ve öneri yoktur; elle eşlemeyi
-   kullanıcı yapar (3.10; `brand-reference.tsx:1-27`). Ürün aktarımı, klasik içe aktarma ve Excel için kural 5 geçerlidir.
-5. **12 Kasım kararı — ürün aktarımında marka, kategori ve özellik gibi kendiliğinden kurulur**: önce bağlantıdaki eşleme,
+   kullanıcı yapar (3.10; `brand-reference.tsx:1-27`). Ürün çekimi, klasik içe aktarma ve Excel için kural 5 geçerlidir.
+5. **12 Kasım kararı — ürün çekiminde marka, kategori ve özellik gibi kendiliğinden kurulur**: önce bağlantıdaki eşleme,
    yoksa panelde aynı adlı marka, o da yoksa yeni panel markası; Trendyol'da eşleme de yazılır (3.11; `ImportedBrandRule.cs:5-10`).
    Değişiklik 12 Kas 19:10Z'de canlıya çıktı (`ac24f253c`). Aynı kural artık üç yolda tek kodla işler (`PanelBrandByName.cs`):
-   Platformdan Ürün Aktar, klasik içe aktarma ve Excel'in **Marka** sütunu markayı **ada göre** bulur ya da açar; bir ad
+   Platformdan Ürün Çek, klasik içe aktarma ve Excel'in **Marka** sütunu markayı **ada göre** bulur ya da açar; bir ad
    her yolda aynı markaya iner, kapalı marka yeniden açılmaz (3.9, 3.11, 3.12).
 6. **Bağlantının Tam Sıfırlaması eşleme şablonlarını ve varsayılan özellik değerlerini (Platform Varsayılanları) de siler**
    (12 Kas 2026; `OperationalDataMaintenanceService.FullReset.cs:166-170`). Pencere metni de bunu söyler.
@@ -2751,7 +2751,7 @@ Sahibin verdiği ve sistemin uyduğu kararlar. Bir değişiklik bunlardan birine
    - Var olan hesap çalışma alanına eklenmez, davet edilir; kabul edene kadar yetki almaz (16 Kas; 7.5).
    - Hepsiburada'da `11111111111` tek başına bireysel değildir; belirsiz alıcı türünde fatura durur (16 Kas; 4.2).
    - **Model = marka + model kodu**; ad, açıklama, KDV, desi, teslimat, garanti, marka ve kategori modelindir, her renk
-     modelden alır. Yeni model ilk getirilen karttan değer alır; aktarım var olan modeli değiştirmez, yalnız KDV farkı uyarı
+     modelden alır. Yeni model ilk getirilen karttan değer alır; çekim var olan modeli değiştirmez, yalnız KDV farkı uyarı
      açar; otomatik yollar bu alanları yazmaz (17 Kas; 3.1).
    - Fatura linki: Trendyol, Hepsiburada ve Shopify'a E-Faturam'ın kalıcı linki, N11, Pazarama ve PttAVM'ye panel linki; E-Faturam
      linki yoksa iletim durur, panel linkine geçilmez (17 Kas; 4.4).

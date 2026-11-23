@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act } from 'react'
-import { cleanup, click, flush, key, render, type } from '../../../test/render'
-import { parseResendReminder } from './resend-reminder'
+import { cleanup, click, render } from '../../../test/render'
 import { cancelRowText, microCountryRows, OrderMetricCards, resentTipText } from './OrderMetricCards'
 
 afterEach(cleanup)
@@ -223,88 +221,36 @@ describe('order summary cards', () => {
     expect(cancelRowText({ packages: 2, units: undefined, partial: 0, partialUnits: undefined })).toBe('2 paket')
   })
 
-  describe('Yeniden Gönderim reminder', () => {
-    const gear = (host: HTMLElement) => card(host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('button[aria-label="Yeniden Gönderim Sayısını Düzenle"]')!
-    const popover = (host: HTMLElement) => host.querySelector<HTMLFormElement>('.rr-reminder-pop')
+  // Owner, 23 Nov 2026: the gear keeps records (marketplace + order number) instead of a typed count.
+  describe('Yeniden Gönderim gear', () => {
+    const gear = (host: HTMLElement) => card(host, 'Yeniden Gönderim').querySelector<HTMLButtonElement>('button[aria-label="Yeniden Gönderim Ekle"]')
     const figure = (host: HTMLElement) => card(host, 'Yeniden Gönderim').querySelector('.rr-metric-pk')?.textContent
 
-    it('has no gear without a way to save and adds the typed number to the detected resends', () => {
+    it('has no gear without a window to open, and opens it without touching the card', () => {
       const plain = render(<OrderMetricCards {...props()} />).host
-      expect(card(plain, 'Yeniden Gönderim').querySelector('.rr-reminder')).toBeNull()
-      expect(figure(plain)).toContain('3')
+      expect(gear(plain)).toBeNull()
       cleanup()
-      const { host } = render(<OrderMetricCards {...props({ resentReminder: 4, onSaveResentReminder: async () => undefined })} />)
-      expect(figure(host)).toContain('7')
-      expect(card(host, 'Yeniden Gönderim').querySelector('.rr-metric-open')!.getAttribute('title')).toContain('Elle girilen hatırlatıcı')
-      // an unknown count stays unknown, the reminder is not shown over it
-      cleanup()
-      const unknown = render(<OrderMetricCards {...props({ resent: metric(undefined, true), resentReminder: 4, onSaveResentReminder: async () => undefined })} />).host
-      expect(figure(unknown)).not.toContain('4')
-    })
-
-    it('opens a popover from the gear without touching the card, saves a whole number and closes', async () => {
+      const onOpen = vi.fn()
       const onOpenDay = vi.fn()
-      const onSave = vi.fn().mockResolvedValue(undefined)
-      const { host } = render(<OrderMetricCards {...props({ resentReminder: 2, onSaveResentReminder: onSave, onOpenDay })} />)
-      expect(popover(host)).toBeNull()
-      click(gear(host))
+      const { host } = render(<OrderMetricCards {...props({ onOpenResentRecords: onOpen, onOpenDay })} />)
+      click(gear(host)!)
+      expect(onOpen).toHaveBeenCalledTimes(1)
       expect(onOpenDay).not.toHaveBeenCalled()
-      const input = popover(host)!.querySelector('input')!
-      expect(input.value).toBe('2')
-      type(input, '9')
-      act(() => { popover(host)!.requestSubmit() })
-      await flush()
-      expect(onSave).toHaveBeenCalledWith(9)
-      expect(popover(host)).toBeNull()
     })
 
-    it('keeps the panel under its gear with a numeric keypad, a Done key and no autofocus on a touch screen', () => {
-      const { host } = render(<OrderMetricCards {...props({ resentReminder: 2, onSaveResentReminder: async () => undefined })} />)
-      click(gear(host))
-      const input = popover(host)!.querySelector('input')!
-      expect(popover(host)!.closest('.rr-reminder')).not.toBeNull()
-      expect(input.getAttribute('inputmode')).toBe('numeric')
-      expect(input.getAttribute('enterkeyhint')).toBe('done')
-      expect(document.activeElement).not.toBe(input)
-    })
-
-    it('refuses what is not a whole number and sets it back to 0 with Sıfırla', async () => {
-      const onSave = vi.fn().mockResolvedValue(undefined)
-      const { host } = render(<OrderMetricCards {...props({ resentReminder: 5, onSaveResentReminder: onSave })} />)
-      click(gear(host))
-      type(popover(host)!.querySelector('input')!, '-2')
-      act(() => { popover(host)!.requestSubmit() })
-      expect(popover(host)!.querySelector('[role="alert"]')).not.toBeNull()
-      expect(onSave).not.toHaveBeenCalled()
-      const reset = Array.from(popover(host)!.querySelectorAll('button')).find(button => button.textContent === 'Sıfırla')!
-      click(reset)
-      await flush()
-      expect(onSave).toHaveBeenCalledWith(0)
-      expect(popover(host)).toBeNull()
-    })
-
-    it('closes on Escape and on a press outside, and shows a failed save', async () => {
-      const { host } = render(<OrderMetricCards {...props({ onSaveResentReminder: async () => { throw new Error('Yetkiniz yok.') } })} />)
-      click(gear(host))
-      key(popover(host)!.querySelector('input')!, 'Escape')
-      expect(popover(host)).toBeNull()
-      click(gear(host))
-      act(() => { document.body.dispatchEvent(new Event('pointerdown', { bubbles: true })) })
-      expect(popover(host)).toBeNull()
-      click(gear(host))
-      act(() => { popover(host)!.requestSubmit() })
-      await flush()
-      expect(popover(host)!.querySelector('[role="alert"]')?.textContent).toBe('Yetkiniz yok.')
-    })
-
-    it('parses only whole numbers from 0 to 100.000', () => {
-      expect(['0', ' 12 ', '100000'].map(parseResendReminder)).toEqual([0, 12, 100000])
-      expect(['', '-1', '1.5', 'abc', '100001', '1234567'].map(parseResendReminder)).toEqual([undefined, undefined, undefined, undefined, undefined, undefined])
+    it('counts the listed rows only; an old typed count is named beside the figure, never added to it', () => {
+      const { host } = render(<OrderMetricCards {...props({ resentReminder: 4, onOpenResentRecords: () => undefined })} />)
+      expect(figure(host)).toContain('3 Paket')
+      expect(figure(host)).toContain('Eski Hatırlatma: 4')
+      expect(figure(host)).not.toContain('7')
+      cleanup()
+      const zero = render(<OrderMetricCards {...props({ resent: metric(0), resentReminder: 0, onOpenResentRecords: () => undefined })} />).host
+      expect(figure(zero)).not.toContain('Eski Hatırlatma')
     })
   })
 
   it('a card that counts a known zero is not a button to press (disabled, no highlight); above zero or while its list is open it stays pressable', () => {
-    const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), resent: metric(0), onSaveResentReminder: async () => undefined })} />)
+    const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), resent: metric(0), onOpenResentRecords: () => undefined })} />)
     for (const title of ['Mikro İhracat Sipariş', 'İptal', 'Yeniden Gönderim']) {
       expect(card(host, title).classList.contains('rr-metric-idle')).toBe(true)
       expect(card(host, title).querySelector<HTMLButtonElement>('.rr-metric-open')!.disabled).toBe(true)

@@ -8,7 +8,11 @@ describe('Toplu Değer Ata', () => {
 
   it('checks each value as the product editor does', () => {
     expect(bulkFieldIssue('desi', '0,5')).toBeNull()
-    expect(bulkFieldIssue('desi', '0.5')).toBeNull()
+    // A point is a thousands point, never a decimal point: "0.5" is refused, "1.250" is 1250 and "12.500" over the limit.
+    expect(bulkFieldIssue('desi', '0.5')).not.toBeNull()
+    expect(bulkFieldIssue('desi', '1.250')).toBeNull()
+    expect(bulkFieldIssue('desi', '12.500')).not.toBeNull()
+    expect(bulkFieldPayloadValue('desi', '1.250,5')).toBe('1250.5')
     expect(bulkFieldIssue('desi', '0')).not.toBeNull()
     expect(bulkFieldIssue('desi', '0,555')).not.toBeNull()
     expect(bulkFieldIssue('desi', '')).not.toBeNull()
@@ -18,6 +22,9 @@ describe('Toplu Değer Ata', () => {
     expect(bulkFieldIssue('deliveryDays', '0')).not.toBeNull()
     expect(bulkFieldIssue('deliveryDays', '30')).toBeNull()
     expect(bulkFieldIssue('safetyStock', '0')).toBeNull()
+    expect(bulkFieldIssue('safetyStock', '1.000')).toBeNull()
+    expect(bulkFieldPayloadValue('safetyStock', '1.000')).toBe('1000')
+    for (const text of ['1e3', '0x10', '2,5', '1,000']) expect(bulkFieldIssue('safetyStock', text), text).not.toBeNull()
     expect(bulkFieldIssue('safetyStock', '-1')).not.toBeNull()
     expect(bulkFieldIssue('vatRate', '18')).not.toBeNull()
     expect(bulkFieldIssue('vatRate', '10')).toBeNull()

@@ -302,7 +302,7 @@ public static partial class CatalogEndpoints
         // The "Özel Fiyat" choice of the variants' offers on one connection, stored without a price change.
         // Owner rule of 18 Nov 2026: what "Panel Fiyatlarını İlk Pazaryeri Fiyatından Doldur" would write (read only).
         api.MapGet("/channel-offers/panel-price-fill-preview", async (HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.PanelPriceFillPreviewAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).Produces<PanelPriceFillPreview>();
+            Tenant(http) is { } tenant ? Results.Ok(await service.PanelPriceFillPreviewAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http)).RequireGate(ApiGate.Elevated).Produces<PanelPriceFillPreview>();
         // "Fiyat ve Stokları Güncelle" confirmation: how many sizes' panel prices may change (read only).
         api.MapGet("/channel-offers/price-import-preview", async (HttpContext http, IInventoryService service, string? connectionIds) =>
             Tenant(http) is { } tenant

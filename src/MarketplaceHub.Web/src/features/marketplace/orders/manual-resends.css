@@ -1,0 +1,50 @@
+/* Siparişler › Yeniden Gönderim Ekle (ManualResendDialog): Platform, Sipariş No and Ekle on one line while they fit, the
+   hand-added records under it. Controls 36 px, radii 7 / 12 px; the global button min-height is reset on them. */
+.rr-layer.rr-layer .rr-mresend-modal { width: min(640px, calc(100vw - 32px)); }
+.rr-layer.rr-layer .rr-mresend { display: grid; gap: 12px; min-width: 0; }
+.rr-layer.rr-layer .rr-mresend .rr-btn { height: 36px; min-height: 0; padding: 0 14px; border-radius: 7px; white-space: nowrap; }
+
+.rr-layer.rr-layer .rr-mresend-form { display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
+.rr-layer.rr-layer .rr-mresend-form .rr-fld { display: grid; gap: 6px; min-width: 0; margin: 0; }
+.rr-layer.rr-layer .rr-mresend-form .rr-fld > small { color: var(--rr-muted); font-size: 13px; font-weight: 500; line-height: 18px; white-space: nowrap; }
+/* Wide enough for a store's full name, so its list opens exactly as wide as the bar. */
+.rr-layer.rr-layer .rr-mresend-store { flex: 0 0 280px; }
+.rr-layer.rr-layer .rr-mresend-store .pm-select, .rr-layer.rr-layer .rr-mresend-store .pm-anchor, .rr-layer.rr-layer .rr-mresend-store .rr-trigger { width: 100%; }
+.rr-layer.rr-layer .rr-mresend-store .rr-trigger { height: 36px; min-height: 0; border-radius: 7px; }
+.rr-layer.rr-layer .rr-mresend-number { flex: 1 1 auto; }
+.rr-layer.rr-layer .rr-mresend-number .rr-in { width: 100%; height: 36px; min-height: 0; border-radius: 7px; }
+.rr-layer.rr-layer .rr-mresend-add { flex: none; }
+.rr-layer.rr-layer .rr-mresend-opt { display: inline-flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+
+.rr-layer.rr-layer .rr-mresend-msg { margin: 0; color: var(--rr-ok, var(--rr-ink)); font-size: 13px; line-height: 18px; }
+.rr-layer.rr-layer .rr-mresend-msg.is-error { color: var(--rr-bad); }
+.rr-layer.rr-layer .rr-mresend-note { margin: 0; color: var(--rr-muted); font-size: 12px; line-height: 18px; }
+
+.rr-layer.rr-layer .rr-mresend-legacy { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: var(--rr-surface-2, var(--rr-surface)); border: 1px solid var(--rr-line-strong); border-radius: 12px; }
+.rr-layer.rr-layer .rr-mresend-legacy > span { display: grid; gap: 2px; min-width: 0; }
+.rr-layer.rr-layer .rr-mresend-legacy b { color: var(--rr-ink); font-size: 14px; font-weight: 600; }
+.rr-layer.rr-layer .rr-mresend-legacy small { color: var(--rr-muted); font-size: 12px; line-height: 16px; }
+
+.rr-layer.rr-layer .rr-mresend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.rr-layer.rr-layer .rr-mresend-head small { color: var(--rr-muted); font-size: 12px; white-space: nowrap; }
+.rr-layer.rr-layer .rr-mresend-empty { margin: 0; color: var(--rr-muted); font-size: 13px; }
+.rr-layer.rr-layer .rr-mresend-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; border: 1px solid var(--rr-line); border-radius: 12px; }
+.rr-layer.rr-layer .rr-mresend-list > li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 12px; }
+.rr-layer.rr-layer .rr-mresend-list > li + li { border-top: 1px solid var(--rr-line); }
+.rr-layer.rr-layer .rr-mresend-main { display: grid; flex: 1 1 auto; gap: 2px; min-width: 0; }
+.rr-layer.rr-layer .rr-mresend-main b { color: var(--rr-ink); font-size: 14px; font-weight: 600; }
+.rr-layer.rr-layer .rr-mresend-main small { overflow: hidden; color: var(--rr-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.rr-layer.rr-layer .rr-mresend-state { flex: none; color: var(--rr-warn, var(--rr-muted)); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.rr-layer.rr-layer .rr-mresend-state.is-shipped { color: var(--rr-ok, var(--rr-muted)); }
+
+/* Phones: the fields stack, Ekle takes the whole width; a record keeps its number, store and state on two lines. */
+@media (max-width: 560px) {
+  .rr-layer.rr-layer .rr-mresend-form { flex-wrap: wrap; }
+  .rr-layer.rr-layer .rr-mresend-store, .rr-layer.rr-layer .rr-mresend-number { flex: 1 1 100%; }
+  .rr-layer.rr-layer .rr-mresend-add { flex: 1 1 100%; }
+  .rr-layer.rr-layer .rr-mresend-list > li { flex-wrap: wrap; }
+  .rr-layer.rr-layer .rr-mresend-main { flex-basis: calc(100% - 40px); }
+  .rr-layer.rr-layer .rr-mresend-state { margin-left: 34px; }
+  .rr-layer.rr-layer .rr-mresend-remove { margin-left: auto; }
+  .rr-layer.rr-layer .rr-mresend-legacy { flex-wrap: wrap; }
+}

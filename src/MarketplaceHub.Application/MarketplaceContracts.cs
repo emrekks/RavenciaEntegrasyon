@@ -1450,7 +1450,9 @@ public sealed record OrderListView(
     OrderBuyerTypeView? BuyerType = null,
     // The exchange this order is a resend for (owner, 18 Nov 2026): its claim names Trendyol's exchange package or the owner
     // marked it made. Null when it is no such exchange.
-    OrderExchangeResendView? ExchangeResend = null);
+    OrderExchangeResendView? ExchangeResend = null,
+    // The re-shipment the owner added by hand for this order (owner, 23 Nov 2026: "Elle Eklendi"); null when none.
+    OrderManualResendView? ManualResend = null);
 // PackageId and the carrier as Trendyol named them (null: not named). Shipped once the package's tracking link is known
 // (ShippedSource MARKETPLACE) or the owner marked it handed to the carrier (MANUAL, owner 23 Nov 2026); a tracking number
 // alone is not "shipped". ClaimId and ClaimVersion address that mark (POST /returns/{id}/replacement-shipped, If-Match).

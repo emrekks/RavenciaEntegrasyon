@@ -24,6 +24,6 @@ describe('marketplace channel pricing', () => {
       { platform: 'Hepsiburada', platformCode: 'HEPSIBURADA', isLinked: true, connectionId: 'hb', listPrice: 749.9, salePrice: 599.9 },
       { platform: 'N11', platformCode: 'N11', isLinked: true, connectionId: null, listPrice: 1, salePrice: 1 }
     ]
-    expect(copiedChannelPricing(platforms, 699.9, 549.9)).toEqual({ hb: { listPrice: '749.9', salePrice: '599.9' } })
+    expect(copiedChannelPricing(platforms, 699.9, 549.9)).toEqual({ hb: { listPrice: '749,9', salePrice: '599,9' } })
   })
 })

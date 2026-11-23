@@ -17,6 +17,7 @@ import { EMPTY_EDITOR_FORM } from './editor-form'
 import { offerConnectionIdsFor, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
 import type { Product, VariantPlatformStatus } from '../shared'
 import type { VariantDraft } from './editor-types'
+import { resetSeededFields, seedChannelFields } from './seeded-fields'
 
 const status = (connectionId: string, extra: Partial<VariantPlatformStatus> = {}) => ({ connectionId, platformCode: 'TRENDYOL', offerId: `o-${connectionId}`, offerVersion: 3, listPrice: 100, salePrice: 90, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, followsPanelPrice: true, offerStatus: 'ACTIVE', ...extra }) as VariantPlatformStatus
 const row = (key: string, extra: Partial<VariantDraft> = {}): VariantDraft => ({ key, optionSignature: key, options: {}, attributeValueIds: {}, sku: `SKU-${key}`, barcode: '', stock: 0, salePrice: 90, listPrice: 100, costPrice: null, mediaRefs: [], ...extra })
@@ -39,7 +40,7 @@ describe('runOfferWrites', () => {
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ connectionId: 'ty', variantId: 'v1', listPrice: 100, salePrice: 80, followsPanelPrice: true, vatRate: 20, status: 'ACTIVE' }) }])
   })
   it('writes the prices staged from Toplu Düzenle as one PATCH per variant, each at its loaded version and as its own Özel Fiyat', async () => {
-    await runOfferWrites(input({ product: product(['v1', 'v2']), rows: [row('v1', { platformStatuses: [status('ty')] }), row('v2', { platformStatuses: [status('ty', { offerId: 'o-v2', offerVersion: 5 })] })], channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: '180', salePrice: '140' }, 'v2:ty': { listPrice: '200', salePrice: '160' } } }))
+    await runOfferWrites(input({ product: product(['v1', 'v2']), rows: [row('v1', { platformStatuses: [status('ty')] }), row('v2', { platformStatuses: [status('ty', { offerId: 'o-v2', offerVersion: 5 })] })], channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: 180, salePrice: 140 }, 'v2:ty': { listPrice: 200, salePrice: 160 } } }))
     expect(api.calls).toEqual([
       { method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v1', listPrice: 180, salePrice: 140, followsPanelPrice: false }) },
       { method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v5"', body: expect.objectContaining({ variantId: 'v2', listPrice: 200, salePrice: 160, followsPanelPrice: false }) }
@@ -61,9 +62,47 @@ describe('runOfferWrites', () => {
     await runOfferWrites(input({ ...mixed, rows: [mixedRows[0], row('v2', { salePrice: 85, platformStatuses: mixedRows[1].platformStatuses })], choiceUntouched: () => true }))
     expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v2', listPrice: 100, salePrice: 85, followsPanelPrice: true }) }])
   })
+  // B6 (pinned as is; the coordinator decides): a following variant whose offer drifted from the panel price (offer 160,
+  // panel 150) gets the panel price on an untouched save, by the owner's rule "Özel Fiyat açık değilse panel".
+  it('pins: an untouched mixed save writes the panel price to a following variant whose offer drifted (160 -> 150)', async () => {
+    const drifted = row('v2', { salePrice: 150, listPrice: 150, platformStatuses: [status('ty', { offerId: 'o-v2', listPrice: 160, salePrice: 160, followsPanelPrice: true })] })
+    await runOfferWrites(input({ ...mixed, rows: [mixedRows[0], drifted], choiceUntouched: () => true }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-v2', ifMatch: '"v3"', body: expect.objectContaining({ variantId: 'v2', listPrice: 150, salePrice: 150, followsPanelPrice: true }) }])
+  })
   it('a mixed marketplace whose card price the owner typed gives every variant that price as its own', async () => {
     await runOfferWrites(input({ ...mixed, channelPriceDraft: () => ({ listPrice: '140', salePrice: '125' }), channelPriceEdited: () => true, choiceUntouched: () => true }))
     expect(api.calls.map(call => [call.path, call.body?.salePrice, call.body?.followsPanelPrice])).toEqual([['/channel-offers/o-v1', 125, false], ['/channel-offers/o-v2', 125, false]])
+  })
+
+  // B1: the marketplace card and the per-variant price table are Turkish text boxes; "1.250" goes as 1250.
+  it('writes "1.250" typed in a marketplace card price as 1250', async () => {
+    await runOfferWrites(input({ channelPricing: { ty: { listPrice: '1.250', salePrice: '1.200,50' } }, channelPriceDraft: () => ({ listPrice: '1.250', salePrice: '1.200,50' }), channelPriceEdited: () => true }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1200.5, followsPanelPrice: false }) }])
+  })
+  it('writes "1.250" staged in the variant price table as 1250', async () => {
+    await runOfferWrites(input({ channelPricing: { ty: { listPrice: '0', salePrice: '0' } }, variantChannelPricing: { 'v1:ty': { listPrice: 1250, salePrice: 1250 } } }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ listPrice: 1250, salePrice: 1250 }) }])
+  })
+
+  // O2: a marketplace card loaded with a stored 99.999 sends it as it is while untouched (never NaN, never skipped).
+  it('sends an untouched card loaded with a four-decimal price as stored', async () => {
+    resetSeededFields()
+    seedChannelFields({ ty: { listPrice: '99,999', salePrice: '99,999' } })
+    await runOfferWrites(input({ rows: [row('v1')], channelPricing: { ty: { listPrice: '99,999', salePrice: '99,999' } }, channelPriceDraft: () => ({ listPrice: '99,999', salePrice: '99,999' }) }))
+    expect(api.calls).toEqual([{ method: 'POST', path: '/channel-offers', ifMatch: null, body: expect.objectContaining({ listPrice: 99.999, salePrice: 99.999 }) }])
+    resetSeededFields()
+  })
+
+  // Review 23 Nov (iv): Hepsiburada takes a sale price only and stores list = sale (90 / 90); the panel list price (100)
+  // made the untouched offer "changed" and a Platformlarda Güncelle or Kaydet wrote it again.
+  it('writes nothing for an untouched Hepsiburada offer whose stored list price is its sale price', async () => {
+    const hb = [{ id: 'hb', platformCode: 'HEPSIBURADA' }]
+    await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], rows: [row('v1', { platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
+    await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], platformUpdate: { connectionIds: ['hb'], fields: ['PRICE'] }, rows: [row('v1', { platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
+    expect(api.calls).toEqual([])
+    // A sale price change still goes.
+    await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], rows: [row('v1', { salePrice: 85, platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
+    expect(api.calls.map(call => [call.method, call.body?.salePrice])).toEqual([['PATCH', 85]])
   })
 
   it('says which variants had no price to write', async () => {

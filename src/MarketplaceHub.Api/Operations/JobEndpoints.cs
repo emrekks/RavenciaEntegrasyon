@@ -78,7 +78,7 @@ public static class JobEndpoints
         api.MapGet("/{id:guid}/changes/export.xlsx", async (Guid id, HttpContext http, IJobChangesService service, string? search, string? groups) =>
             Tenant(http) is { } tenant
                 ? File(http, await service.ExportAsync(tenant.TenantId, id, ChangesQuery(null, null, search, null, null, groups), http.RequestAborted))
-                : Unauthorized(http)).ProducesFile(Catalog.ProductTransferEndpoints.XlsxMediaType);
+                : Unauthorized(http)).WithExportLimit().ProducesFile(Catalog.ProductTransferEndpoints.XlsxMediaType);
         // Çekilen Kayıtlar: the products a product read pulled, as it stored them (problems first). { kind, items, page,
         // pageSize, totalCount, storedCount, receivedCount, omittedCount, counts }; storedCount below receivedCount: the
         // read kept only part of its list. onlyProblems keeps the skipped and failed; search names a model code or barcode.
@@ -89,7 +89,7 @@ public static class JobEndpoints
         api.MapGet("/{id:guid}/read-records/export.xlsx", async (Guid id, HttpContext http, IJobReadRecordsService service, bool? onlyProblems, string? search) =>
             Tenant(http) is { } tenant
                 ? File(http, await service.ExportAsync(tenant.TenantId, id, ReadRecordsQuery(onlyProblems, search, null, null), http.RequestAborted))
-                : Unauthorized(http)).ProducesFile(Catalog.ProductTransferEndpoints.XlsxMediaType);
+                : Unauthorized(http)).WithExportLimit().ProducesFile(Catalog.ProductTransferEndpoints.XlsxMediaType);
         api.MapGet("/{id:guid}/changes/summary", async (Guid id, HttpContext http, IJobChangesService service) =>
             Tenant(http) is { } tenant
                 ? Result(http, await service.SummaryAsync(tenant.TenantId, id, http.RequestAborted))

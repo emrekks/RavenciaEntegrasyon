@@ -11,6 +11,8 @@ import { takePendingCreateMedia } from './pending-create-media'
 import { editorStatusFor } from '../product-draft'
 import { withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { editorCustomChannelPrices, panelPrices, priceFieldText } from '../quick-price-edit'
+import { trNumberInput } from '../../../shared/tr-number'
+import { resetSeededFields, seedChannelFields, seedField } from './seeded-fields'
 import { editorDataStamp, editorSeedKey, editorOpenedDesi, editorVat } from '../product-editor-state'
 import { baselineWithWebColor } from './editor-reducer'
 import { copiedChannelPricing } from './marketplace-channel-pricing'
@@ -58,7 +60,8 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
     initialEditModelCode.current = initialModelCode.trim()
     const openedDesi = editorOpenedDesi(product.variants)
     initialEditDesi.current = openedDesi ?? 0
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: openedDesi == null ? '' : String(openedDesi), warrantyMonths: editorWarrantyText(product.warrantyMonths), deliveryDays: String(product.deliveryDays ?? 1), listPrice: priceFieldText(initialListPrice), salePrice: priceFieldText(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: editorStatusFor(product.status) })
+    resetSeededFields()
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: trNumberInput(primary?.weight), width: trNumberInput(primary?.width), length: trNumberInput(primary?.length), height: trNumberInput(primary?.height), desi: openedDesi == null ? '' : trNumberInput(openedDesi), warrantyMonths: editorWarrantyText(product.warrantyMonths), deliveryDays: String(product.deliveryDays ?? 1), listPrice: priceFieldText(initialListPrice), salePrice: priceFieldText(initialSalePrice), costPrice: priceFieldText(primary?.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: trNumberInput(primary?.onHand ?? 0), safetyStock: trNumberInput(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: editorStatusFor(product.status) })
     // An existing product opens with each marketplace's stored choice (else what its offer prices say): a marketplace
     // with its own price has its switch on and shows that price; a card with variants is on as soon as one variant's
     // offer there keeps its own price, and shows the first such variant's price.
@@ -66,9 +69,12 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
       const customPrices = editorCustomChannelPrices(sortedVariants, product)
       setChannelPricing(customPrices)
       channelPricingBase.current = customPrices
+      seedChannelFields(customPrices)
       initialCustomChannelIds.current = new Set(Object.keys(customPrices))
     }
-    if (!editProductId && duplicateProductId) setChannelPricing(copiedChannelPricing(primary?.platformStatuses ?? [], initialListPrice, initialSalePrice))
+    if (!editProductId && duplicateProductId) { const copied = copiedChannelPricing(primary?.platformStatuses ?? [], initialListPrice, initialSalePrice); seedChannelFields(copied); setChannelPricing(copied) }
+    // Each box's loaded text (seeded-fields.ts): an untouched box reads as the value it was filled with.
+    seedField('listPrice', priceFieldText(initialListPrice)); seedField('salePrice', priceFieldText(initialSalePrice)); seedField('costPrice', priceFieldText(primary?.costPrice)); seedField('initialStock', trNumberInput(primary?.onHand ?? 0)); seedField('safetyStock', trNumberInput(primary?.safetyStock ?? 0))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     // A copy starts without a size chart; an edit opens with the one the card has.
     const seededSizeChartUrl = editProductId ? familySizeChartUrl(product.familyGalleries, product.sizeChartUrl ?? null) : null

@@ -17,7 +17,7 @@ describe('card prices', () => {
     expect(cardPrices('', '549,90')).toEqual({ listPrice: 549.9, salePrice: 549.9, issue: null })
     expect(cardPrices('699,90', '549,90')).toEqual({ listPrice: 699.9, salePrice: 549.9, issue: null })
     expect(cardPrices('500', '549,90').issue).toBe('Liste fiyatı satış fiyatından küçük olamaz.')
-    expect(cardPrices('-1', '0').issue).toBe('Fiyatlar negatif olamaz.')
+    expect(cardPrices('-1', '0').issue).toMatch(/okunamadı; 1.250,50 biçiminde yazın/)
     expect(cardPrices('x', '10').issue).toMatch(/okunamadı/)
   })
 })
