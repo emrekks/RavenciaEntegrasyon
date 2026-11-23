@@ -534,6 +534,181 @@ public sealed class WorkerLanePoolTests
         Assert.False(pool.Wants("returns-read"));
     }
 
+    [Fact]
+    public async Task AnEmptyPollWakesNoOneAndOnlyAJobThatRanFreesASlotForTheBusyLanes()
+    {
+        // 24 Nov: every empty poll's release woke the lanes whose own slots were all busy, and those are mostly busy because
+        // they poll too: each empty poll woke the next ones, and every idle wait was cut back to one second.
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["returns-read"] = 1, ["background"] = 1 }, ["hot"]);
+        var freed = new List<IReadOnlyList<string>>();
+        pool.SlotFreed += lanes => freed.Add(lanes);
+        Assert.True(pool.TryClaim("hot", true));
+        Assert.Null(await WorkerService.LeaseThroughPoolAsync(pool, "returns-read", true, () => Task.FromResult<LeasedJob?>(null), _ => Task.CompletedTask));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => WorkerService.LeaseThroughPoolAsync(pool, "background", true, () => throw new InvalidOperationException(), _ => Task.CompletedTask));
+        Assert.Empty(freed);
+        Assert.Equal(1, pool.Running);
+        // A job that ran ends: the busy hot lane is told, as before.
+        var run = await WorkerService.LeaseThroughPoolAsync(pool, "background", true, () => Task.FromResult<LeasedJob?>(Job()), _ => Task.CompletedTask);
+        await run!();
+        Assert.Equal(["hot"], Assert.Single(freed));
+        // A lane with known work that found no room is woken by the next release, an empty poll's too (and only once).
+        var small = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["product-catalog"] = 1, ["background"] = 1 }, []);
+        var smallFreed = new List<IReadOnlyList<string>>();
+        small.SlotFreed += lanes => smallFreed.Add(lanes);
+        Assert.True(small.TryClaim("hot", true));
+        Assert.True(small.TryClaim("product-catalog", true));
+        Assert.True(small.TryClaim("background", true));
+        small.NoteWork("hot");
+        Assert.False(small.TryClaim("hot", false));
+        small.Release("background", true, ranJob: false);
+        Assert.Equal(["hot"], Assert.Single(smallFreed));
+        Assert.True(small.TryClaim("background", true));
+        small.Release("background", true, ranJob: false);
+        Assert.Single(smallFreed);
+    }
+
+    [Fact]
+    public async Task ANotificationDuringAnEmptyPollIsNotLostWhateverTheOrder()
+    {
+        // The poll read the queue before the job's row was committed, the notification came while it ran: its stale "nothing"
+        // must not mark the lane quiet, or the lane's borrowing slot (woken by the notification) takes no slot and the job waits
+        // for an own slot (hot 3/3 running hour-long reads). Two threads, the order forced: poll starts, notification, poll ends.
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["background"] = 2 }, []);
+        Assert.True(pool.TryClaim("hot", true));
+        var polled = new SemaphoreSlim(0);
+        var notified = new SemaphoreSlim(0);
+        var borrowPoll = Task.Run(() => WorkerService.LeaseThroughPoolAsync(pool, "hot", false, async () =>
+        {
+            polled.Release();
+            await notified.WaitAsync();
+            return null;
+        }, _ => Task.CompletedTask));
+        var notification = Task.Run(async () =>
+        {
+            await polled.WaitAsync();
+            pool.NoteWork("hot");
+            notified.Release();
+        });
+        await Task.WhenAll(borrowPoll, notification);
+        Assert.Null(await borrowPoll);
+        Assert.False(pool.IsQuiet("hot"));
+        Assert.True(pool.TryClaim("hot", false));
+        // The other order (the notification before the poll began): the poll's "nothing" stands, the lane is quiet.
+        var later = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["background"] = 2 }, []);
+        Assert.True(later.TryClaim("hot", true));
+        later.NoteWork("hot");
+        Assert.Null(await WorkerService.LeaseThroughPoolAsync(later, "hot", false, () => Task.FromResult<LeasedJob?>(null), _ => Task.CompletedTask));
+        Assert.True(later.IsQuiet("hot"));
+        Assert.False(later.TryClaim("hot", false));
+        // A stale answer changes nothing; a current one does.
+        var epoch = later.Epoch("hot");
+        later.NoteWork("hot");
+        Assert.False(later.NoteNoWork("hot", epoch));
+        Assert.True(later.NoteNoWork("hot", later.Epoch("hot")));
+    }
+
+    [Fact]
+    public void ALaneQuietWhileJobsAreHeldForTheirQuotaIsQuietForFifteenSecondsAtMostAndNotAfterTheHoldEnds()
+    {
+        var clock = new ManualClock();
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["product-catalog"] = 1, ["background"] = 3 }, [], clock: clock);
+        Assert.True(pool.TryClaim("product-catalog", true));
+        // The borrowing slot's poll found only held jobs.
+        Assert.True(pool.TryClaim("product-catalog", false));
+        pool.NoteNoWork("product-catalog", heldWork: true);
+        pool.Release("product-catalog", false, ranJob: false);
+        Assert.False(pool.TryClaim("product-catalog", false));
+        // The hold ends (a full bucket emptied its waiters): the held jobs are taken at once, not after the own slot's job.
+        pool.QuotaReleased();
+        Assert.True(pool.TryClaim("product-catalog", false));
+        pool.NoteNoWork("product-catalog", heldWork: true);
+        pool.Release("product-catalog", false, ranJob: false);
+        // A hold that ends by time (the job runnable longer than the hold allows) raises nothing: 15 s at most.
+        clock.Advance(LaneSlotPool.QuietWhileHeld - TimeSpan.FromSeconds(1));
+        Assert.False(pool.TryClaim("product-catalog", false));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(pool.TryClaim("product-catalog", false));
+        // Nothing held: quiet until work comes, however long.
+        pool.NoteNoWork("product-catalog");
+        pool.Release("product-catalog", false, ranJob: false);
+        clock.Advance(TimeSpan.FromHours(1));
+        pool.QuotaReleased();
+        Assert.False(pool.TryClaim("product-catalog", false));
+    }
+
+    [Fact]
+    public async Task ManyThreadsOnTheLiveLanesKeepEveryInvariantAtEveryStep()
+    {
+        // The live lanes and slots (20) and protected lanes. Each protected lane's own slots are claimed by one thread only, so
+        // that thread knows how many it holds: with fewer than the lane's slots its claim must succeed at once, every time.
+        var slots = WorkerLanes.All().ToDictionary(lane => lane.Name, lane => lane.DefaultSlots);
+        var protectedLanes = LaneModelSettings.From(new ConfigurationBuilder().Build()).ProtectedLanes;
+        var pool = new LaneSlotPool(slots, protectedLanes);
+        Assert.Equal(20, pool.Total);
+        var lanes = slots.Keys.ToArray();
+        var guarded = protectedLanes.ToArray();
+        Assert.True(guarded.Length <= 8);
+        var violations = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var claims = 0;
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(thread => Task.Run(() =>
+        {
+            var random = new Random(1000 + thread);
+            var mine = thread < guarded.Length ? guarded[thread] : null;
+            var held = new List<(string Lane, bool Own)>();
+            for (var step = 0; step < 20_000; step++)
+            {
+                var action = random.Next(10);
+                if (held.Count > 0 && action < 4)
+                {
+                    var index = random.Next(held.Count);
+                    var (heldLane, heldOwn) = held[index];
+                    held.RemoveAt(index);
+                    pool.Release(heldLane, heldOwn, ranJob: random.Next(2) == 0);
+                }
+                else if (mine is not null && action == 4)
+                {
+                    var holding = held.Count(item => item.Lane == mine && item.Own);
+                    if (holding < slots[mine])
+                    {
+                        if (pool.TryClaim(mine, true)) held.Add((mine, true));
+                        else violations.Enqueue($"protected {mine} refused its idle own slot ({holding} of {slots[mine]} held)");
+                    }
+                }
+                else if (action == 5)
+                {
+                    var lane = lanes[random.Next(lanes.Length)];
+                    var epoch = pool.Epoch(lane);
+                    if (random.Next(2) == 0) pool.NoteWork(lane);
+                    pool.NoteNoWork(lane, epoch, heldWork: random.Next(2) == 0);
+                }
+                else if (action == 6)
+                {
+                    if (random.Next(20) == 0) pool.QuotaReleased();
+                    else pool.NoteWork(lanes[random.Next(lanes.Length)]);
+                }
+                else
+                {
+                    // Own claims only for unprotected lanes (a protected lane's own slots belong to its thread).
+                    var lane = lanes[random.Next(lanes.Length)];
+                    var ownSlot = !protectedLanes.Contains(lane) && random.Next(2) == 0;
+                    if (pool.TryClaim(lane, ownSlot))
+                    {
+                        held.Add((lane, ownSlot));
+                        Interlocked.Increment(ref claims);
+                    }
+                }
+                if (pool.Violation() is { } violation) violations.Enqueue($"thread {thread} step {step}: {violation}");
+            }
+            foreach (var (heldLane, heldOwn) in held) pool.Release(heldLane, heldOwn, ranJob: true);
+        })));
+        Assert.Empty(violations);
+        Assert.True(claims > 1_000);
+        // No slot leaks: every claim was given back.
+        Assert.Equal(0, pool.Running);
+        Assert.All(lanes, lane => Assert.Equal(0, pool.Borrowed(lane)));
+        Assert.Null(pool.Violation());
+    }
+
     private sealed class ManualClock : TimeProvider
     {
         private DateTimeOffset now = new(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);

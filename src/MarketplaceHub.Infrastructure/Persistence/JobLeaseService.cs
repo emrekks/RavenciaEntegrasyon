@@ -31,7 +31,12 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var fairLeasedAt = fairness?.LastLeasedAt.ToArray() ?? [];
         var agedBefore = fairness is null ? DateTimeOffset.MinValue : now - fairness.Aging;
         var candidateLimit = fair ? FairCandidateLimit : CandidateLimit;
-        // Bulkheads (JobBulkhead): at most N running jobs of a class, or of the leasing lane, per marketplace.
+        // Bulkheads (JobBulkhead): at most N running jobs of a class, or of the leasing lane, per marketplace. The count is read
+        // under READ COMMITTED, so two slots leasing at the same instant may both see N - 1 and run N + 1 for a moment. Left so
+        // (24 Nov 2026): a class's jobs of one connection share a lock group (the busy check and the processor's advisory lock
+        // keep them apart), live has one connection per tenant and marketplace (no overlapping class job in 7 days), and the
+        // marketplace's request rate is kept by its quota limiter, not by this cap. Serialising the lease (an advisory lock
+        // and a recount) would cost every lease a round trip for a case that cannot happen today.
         var bulk = bulkhead is { IsEmpty: false } ? bulkhead : null;
         var bulkJobTypes = bulk?.JobTypes.ToArray() ?? [];
         var bulkClasses = bulk?.Classes.ToArray() ?? [];
