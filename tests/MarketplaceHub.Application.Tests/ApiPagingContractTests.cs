@@ -99,7 +99,7 @@ public sealed class ApiPagingContractTests(ApiPipelineHost fixture) : IClassFixt
         var sendLog = (OpenApiParameter)document.Paths["/api/v1/price-stock-send-log"].Operations![HttpMethod.Get].Parameters!.Single(parameter => parameter.Name == "limit");
         Assert.Null(sendLog.Schema!.Maximum);
         Assert.Contains("brings any other value", sendLog.Description, StringComparison.Ordinal);
-        Assert.Equal(5, PagingContract.PagedLists.Values.Count(format => format.TakesCursor));
+        Assert.Equal(6, PagingContract.PagedLists.Values.Count(format => format.TakesCursor));
     }
 
     [Fact]

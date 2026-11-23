@@ -94,7 +94,16 @@ public static class PagingContract
         ["/api/v1/shipments"] = Format(Cursor, ("limit", CheckedLimit)),
         // 1. Cursor, limit brought into range by the service (JobListQuery, PanelNotificationQuery, PriceStockSendLogQuery, ProductActivityQuery).
         ["/api/v1/jobs/page"] = Format(Cursor, ("limit", new(1, JobListQuery.MaximumLimit, JobListQuery.DefaultLimit, Refused: false))),
-        ["/api/v1/jobs/{id}/changes"] = Format(Cursor, ("limit", new(1, JobChangesQuery.MaximumLimit, JobChangesQuery.DefaultLimit, Refused: false))),
+        // İş detayı › Gidenler ve Değişenler: the cursor (limit + after) as before, and page numbers (page + pageSize,
+        // default 25) next to it; both in the same total order (time, then id), with totalCount on either.
+        ["/api/v1/jobs/{id}/changes"] = Format(PagePageSizeWithCursor,
+            ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)),
+            ("pageSize", new(1, JobChangesQuery.MaximumPageSize, JobChangesQuery.DefaultPageSize)),
+            ("limit", new(1, JobChangesQuery.MaximumLimit, JobChangesQuery.DefaultLimit, Refused: false))),
+        // İş detayı › Çekilen Kayıtlar: page numbers over the read's stored records.
+        ["/api/v1/jobs/{id}/read-records"] = Format(PagePageSize,
+            ("page", new(1, EndpointHelpers.MaximumPageNumber, 1)),
+            ("pageSize", new(1, JobReadRecordsQuery.MaximumPageSize, JobReadRecordsQuery.DefaultPageSize))),
         ["/api/v1/notifications"] = Format(Cursor, ("limit", new(1, 100, 50, Refused: false))),
         ["/api/v1/price-stock-send-log"] = Format(Cursor, ("limit", new(1, PriceStockSendLogQuery.MaximumLimit, PriceStockSendLogQuery.DefaultLimit, Refused: false))),
         ["/api/v1/product-activity"] = Format(Cursor, ("limit", new(1, ProductActivityQuery.MaximumLimit, ProductActivityQuery.DefaultLimit, Refused: false))),

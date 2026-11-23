@@ -22,6 +22,18 @@ public sealed class JobReadRecorderTests
     }
 
     [Fact]
+    public void A_product_read_keeps_every_product_and_other_reads_the_first_hundred()
+    {
+        var recorder = new JobReadRecorder();
+        for (var i = 0; i < 250; i++) recorder.Add("PRODUCT", new($"M-{i}", $"869{i} +1", "2 varyant", JobReadOutcomes.Unchanged));
+        var (counts, kept, omitted) = recorder.MergeWith(JobReadCounts.Zero, [], 0, JobReadRecorder.Cap("PRODUCT"));
+
+        Assert.Equal((250, 250, 0), (counts.Received, kept.Count, omitted));
+        Assert.Equal(JobReadRecorder.MaxRecords, JobReadRecorder.Cap("ORDER"));
+        Assert.Equal(JobReadRecorder.MaxProductRecords, JobReadRecorder.Cap("PRODUCT"));
+    }
+
+    [Fact]
     public void Merged_slices_keep_problems_first_and_cap_the_list()
     {
         var recorder = new JobReadRecorder();

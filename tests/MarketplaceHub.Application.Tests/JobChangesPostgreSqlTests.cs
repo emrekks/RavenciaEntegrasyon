@@ -218,6 +218,197 @@ public sealed class JobChangesPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Empty(lines.Value!.Items);
     }
 
+    [PostgreSqlFact]
+    public async Task Numbered_pages_hold_the_cursor_lists_lines_once_each_with_their_total()
+    {
+        var seed = await Seed();
+        var now = DateTimeOffset.UtcNow;
+        var job = await AddJob(seed, MarketplaceJobTypes.PriceInventorySync, JobStatus.Succeeded, now.AddMinutes(-10), now.AddMinutes(-1), "corr-numbered");
+        // Seven lines, two of them at the very same moment (the id breaks the tie).
+        await AddLines(seed, job.Id, now.AddMinutes(-9), (0, PriceStockSendResults.Applied, null), (1, PriceStockSendResults.Rejected, "Fiyat aralık dışında"), (2, PriceStockSendResults.Failed, null), (3, PriceStockSendResults.Applied, null));
+        await AddLines(seed, job.Id, now.AddMinutes(-8), (0, PriceStockSendResults.Applied, null), (1, PriceStockSendResults.Unchanged, null), (2, PriceStockSendResults.Applied, null));
+        await AddLines(seed, job.Id, now.AddMinutes(-8), (1, PriceStockSendResults.Applied, null));
+        await using var db = fixture.CreateContext();
+        var service = Service(db);
+
+        var walked = new List<Guid>();
+        string? after = null;
+        do
+        {
+            var cursor = (await service.PageAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(Limit: 2, After: after), CancellationToken.None)).Value!;
+            Assert.Equal(8, cursor.TotalCount);
+            Assert.Null(cursor.Page);
+            walked.AddRange(cursor.Items.Select(x => x.Id));
+            after = cursor.NextCursor;
+        }
+        while (after is not null);
+        var pages = new List<JobChangesPageView>();
+        for (var number = 1; number <= 4; number++)
+            pages.Add((await service.PageAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(Page: number, PageSize: 3), CancellationToken.None)).Value!);
+        var byDefault = (await service.PageAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(Page: 1), CancellationToken.None)).Value!;
+
+        Assert.Equal(8, walked.Count);
+        Assert.Equal(walked, pages.SelectMany(x => x.Items).Select(x => x.Id));
+        Assert.Equal(new[] { 3, 3, 2, 0 }, pages.Select(x => x.Items.Count));
+        Assert.All(pages, page => Assert.Equal((8, 3, (string?)null), (page.TotalCount, page.PageSize!.Value, page.NextCursor)));
+        Assert.Equal(new[] { true, true, false, false }, pages.Select(x => x.HasMore));
+        Assert.Equal((1, 25, 8), (byDefault.Page!.Value, byDefault.PageSize!.Value, byDefault.Items.Count));
+        Assert.Equal(25, new JobChangesQuery(Page: 1).EffectivePageSize);
+        Assert.Equal(200, new JobChangesQuery(PageSize: 500).EffectivePageSize);
+    }
+
+    [PostgreSqlFact]
+    public async Task Search_and_the_summary_groups_narrow_the_pages_and_their_total()
+    {
+        var seed = await Seed();
+        var now = DateTimeOffset.UtcNow;
+        var job = await AddJob(seed, MarketplaceJobTypes.PriceInventorySync, JobStatus.Succeeded, now.AddMinutes(-10), now.AddMinutes(-1), "corr-groups");
+        await AddLines(seed, job.Id, now.AddMinutes(-9), (0, PriceStockSendResults.Applied, null), (1, PriceStockSendResults.Rejected, "Fiyat aralık dışında"), (2, PriceStockSendResults.Failed, null), (3, PriceStockSendResults.Unknown, null));
+        await AddLines(seed, job.Id, now.AddMinutes(-8), (2, PriceStockSendResults.Applied, null));
+        await using var db = fixture.CreateContext();
+        var service = Service(db);
+        async Task<JobChangesPageView> Page(JobChangesQuery query) => (await service.PageAsync(seed.Tenant.Id, job.Id, query, CancellationToken.None)).Value!;
+
+        var summary = (await service.SummaryAsync(seed.Tenant.Id, job.Id, CancellationToken.None)).Value!;
+        var rejected = await Page(new JobChangesQuery(Page: 1, Groups: ["REJECTED"]));
+        var cursorRejected = await Page(new JobChangesQuery(Groups: ["rejected", "uncertain"]));
+        var searched = await Page(new JobChangesQuery(Page: 1, PageSize: 1, Search: seed.Variants[2].Barcode));
+        var searchedApplied = await Page(new JobChangesQuery(Page: 1, Search: seed.Variants[2].Barcode, Groups: [JobChangeGroups.Applied]));
+        var otherMode = await Page(new JobChangesQuery(Page: 1, Groups: [JobChangeGroups.StockChanged]));
+        var unknown = await Page(new JobChangesQuery(Groups: ["nope"]));
+
+        Assert.Equal((summary.Counts.Rejected!.Value, 2), (rejected.TotalCount, rejected.Items.Count));
+        Assert.All(rejected.Items, line => Assert.Contains(line.Result, new[] { PriceStockSendResults.Rejected, PriceStockSendResults.Failed }));
+        Assert.Equal(3, cursorRejected.TotalCount);
+        Assert.Equal((2, 1, true), (searched.TotalCount, searched.Items.Count, searched.HasMore));
+        Assert.Equal(seed.Variants[2].Barcode, Assert.Single(searchedApplied.Items).Barcode);
+        Assert.Equal((0, 0), (otherMode.TotalCount, unknown.TotalCount));
+    }
+
+    [PostgreSqlFact]
+    public async Task A_product_imports_lines_page_by_number_and_by_group()
+    {
+        var seed = await Seed();
+        var now = DateTimeOffset.UtcNow;
+        var job = await AddJob(seed, MarketplaceJobTypes.ProductSync, JobStatus.Succeeded, now.AddMinutes(-20), now.AddMinutes(-10), "import-numbered");
+        await AddImportChanges(seed, now);
+        await using var db = fixture.CreateContext();
+        var service = Service(db);
+        async Task<JobChangesPageView> Page(JobChangesQuery query) => (await service.PageAsync(seed.Tenant.Id, job.Id, query, CancellationToken.None)).Value!;
+
+        var cursor = await Page(new JobChangesQuery());
+        var first = await Page(new JobChangesQuery(Page: 1, PageSize: 1));
+        var second = await Page(new JobChangesQuery(Page: 2, PageSize: 1));
+        var stock = await Page(new JobChangesQuery(Page: 1, Groups: [JobChangeGroups.StockChanged]));
+        var sendGroup = await Page(new JobChangesQuery(Page: 1, Groups: [JobChangeGroups.Applied]));
+
+        Assert.Equal((2, 2), (cursor.TotalCount, cursor.Items.Count));
+        Assert.Equal(cursor.Items.Select(x => x.Id), first.Items.Concat(second.Items).Select(x => x.Id));
+        Assert.Equal((2, true, false), (first.TotalCount, first.HasMore, second.HasMore));
+        Assert.Equal(JobChangeLineKinds.Stock, Assert.Single(stock.Items).Kind);
+        Assert.Equal(1, stock.TotalCount);
+        Assert.Equal(0, sendGroup.TotalCount);
+    }
+
+    [PostgreSqlFact]
+    public async Task The_export_holds_the_lists_lines_as_numbers_with_formula_text_escaped()
+    {
+        var seed = await Seed();
+        var now = DateTimeOffset.UtcNow;
+        var job = await AddJob(seed, MarketplaceJobTypes.PriceInventorySync, JobStatus.Succeeded, now.AddMinutes(-10), now.AddMinutes(-1), "corr-export");
+        await AddLines(seed, job.Id, now.AddMinutes(-9), (0, PriceStockSendResults.Applied, null), (1, PriceStockSendResults.Rejected, "=HYPERLINK(\"x\")"), (2, PriceStockSendResults.Applied, null));
+        await using (var write = fixture.CreateContext())
+        {
+            await write.Products.Where(x => x.Id == seed.Variants[0].ProductId).ExecuteUpdateAsync(x => x.SetProperty(p => p.Title, "=1+1"));
+        }
+        await using var db = fixture.CreateContext();
+        var service = Service(db);
+
+        var page = (await service.PageAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(Page: 1), CancellationToken.None)).Value!;
+        var export = await service.ExportAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(), CancellationToken.None);
+        var searched = await service.ExportAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(Search: seed.Variants[2].Barcode), CancellationToken.None);
+        var stranger = await Seed();
+        var foreign = await service.ExportAsync(stranger.Tenant.Id, job.Id, new JobChangesQuery(), CancellationToken.None);
+
+        Assert.Equal(("JOB_NOT_FOUND", 404), (foreign.Error!.Code, foreign.Error.Status));
+        Assert.Matches(@"^price-inventory-sync-degisenler-\d{8}\.xlsx$", export.Value!.FileName);
+        var table = Table(export.Value);
+        Assert.Equal(new[] { "Ürün", "Model Kodu", "Barkod", "Stok Kodu", "Varyant", "Alan", "Eski Değer", "Yeni Değer", "Fark", "Kaynak / İş Türü", "Pazaryeri", "Sonuç", "Zaman" }, table.Headers);
+        // Each send line carried a stock and a sale price (the list price did not move): two rows a line.
+        Assert.Equal(2 * page.TotalCount, table.Rows.Count);
+        Assert.Equal(page.TotalCount, table.Rows.Select(x => x.Cells[2]).Distinct().Count());
+        var stockRow = table.Rows.First(x => x.Cells[2] == seed.Variants[2].Barcode && x.Cells[5] == "Stok");
+        static decimal Number(string text) => decimal.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(("6", "5", "-1"), (stockRow.Cells[6], stockRow.Cells[7], stockRow.Cells[8]));
+        var priceRow = table.Rows.First(x => x.Cells[2] == seed.Variants[2].Barcode && x.Cells[5] == "Satış Fiyatı");
+        Assert.Equal((130m, 120m, -10m), (Number(priceRow.Cells[6]), Number(priceRow.Cells[7]), Number(priceRow.Cells[8])));
+        Assert.Matches(@"^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$", priceRow.Cells[12]);
+        Assert.All(table.Rows, row => Assert.Empty(row.FormulaColumns));
+        Assert.Contains(table.Rows, row => row.Cells[0] == "'=1+1");
+        Assert.Contains(table.Rows, row => row.Cells[11] == "Reddedildi: =HYPERLINK(\"x\")");
+        Assert.Equal(2, Table(searched.Value!).Rows.Count);
+    }
+
+    [PostgreSqlFact]
+    public async Task A_product_imports_export_has_one_row_a_line()
+    {
+        var seed = await Seed();
+        var now = DateTimeOffset.UtcNow;
+        var job = await AddJob(seed, MarketplaceJobTypes.ProductSync, JobStatus.Succeeded, now.AddMinutes(-20), now.AddMinutes(-10), "import-export");
+        await AddImportChanges(seed, now);
+        await using var db = fixture.CreateContext();
+        var service = Service(db);
+
+        var page = (await service.PageAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(Page: 1), CancellationToken.None)).Value!;
+        var table = Table((await service.ExportAsync(seed.Tenant.Id, job.Id, new JobChangesQuery(), CancellationToken.None)).Value!);
+
+        Assert.Equal(page.TotalCount, table.Rows.Count);
+        Assert.Equal(new[] { "Satış Fiyatı", "Stok" }, table.Rows.Select(x => x.Cells[5]).Order());
+        Assert.All(table.Rows, row => Assert.Equal("Pazaryeri İçe Aktarımı", row.Cells[9]));
+    }
+
+    private static Infrastructure.Imports.XlsxTable Table(JobExportFile file)
+    {
+        using var content = file.Content;
+        return Infrastructure.Imports.ImportFileReader.ReadXlsxTable(content, 50 * 1024 * 1024);
+    }
+
+    // A stock change (3 → 5 on hand) and a store price change (120 → 110) of the seed's connection, 15 and 12 minutes ago.
+    private async Task AddImportChanges(Seeded seed, DateTimeOffset now)
+    {
+        await using var write = fixture.CreateContext();
+        write.StockLedgerEntries.Add(new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InventoryItemId = seed.Inventory[0].Id,
+            MovementType = MarketplaceStockImportPolicy.MovementType,
+            QuantityDelta = 2m,
+            SourceType = MarketplaceStockImportPolicy.SourceType,
+            SourceId = seed.Connection.Id.ToString("D"),
+            SourceEventId = $"catalog-stock:{Guid.NewGuid():N}",
+            IdempotencyKey = $"catalog-stock:{Guid.NewGuid():N}",
+            OccurredAt = now.AddMinutes(-15),
+            RecordedAt = now.AddMinutes(-15),
+            CorrelationId = $"catalog-import:{seed.Connection.Id:N}"
+        });
+        ChannelPriceHistory Price(long version, decimal sale, DateTimeOffset at) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            OfferId = seed.Offers[1].Id,
+            PriceVersion = version,
+            ListPrice = 150m,
+            SalePrice = sale,
+            Currency = "TRY",
+            Reason = "N11_CATALOG_IMPORT",
+            ActorSource = "SYSTEM:N11",
+            EffectiveAt = at
+        };
+        write.ChannelPriceHistory.AddRange(Price(1, 120m, now.AddHours(-3)), Price(2, 110m, now.AddMinutes(-12)));
+        await write.SaveChangesAsync();
+    }
+
     private JobChangesService Service(AppDbContext db) => new(db, new PriceStockSendLogService(db), new ProductActivityService(db), fixture.TimeProvider);
 
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, string Tag, IReadOnlyList<ProductVariant> Variants, IReadOnlyList<InventoryItem> Inventory, IReadOnlyList<ChannelOffer> Offers);
