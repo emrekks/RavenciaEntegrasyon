@@ -27,12 +27,12 @@ public sealed class TrendyolWriteContractTests
     {
         var handler = new Script(new HttpResponseMessage(HttpStatusCode.OK));
 
-        var result = await Client(handler).ExecutePackageActionAsync(Account(), Context(), new PackageActionCommand("4052072376", "TRACKING_NUMBER", """{"cargoSenderNumber":"7330029000000","providerCode":"YKMP"}""", stored), CancellationToken.None);
+        var result = await Client(handler).ExecutePackageActionAsync(Account(), Context(), new PackageActionCommand("4050000001", "TRACKING_NUMBER", """{"cargoSenderNumber":"7330029000000","providerCode":"YKMP"}""", stored), CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Error?.Code);
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Put, request.Method);
-        Assert.Equal("https://apigw.example.test/integration/order/sellers/seller-1/shipment-packages/4052072376/tracking-details", request.Uri.AbsoluteUri);
+        Assert.Equal("https://apigw.example.test/integration/order/sellers/seller-1/shipment-packages/4050000001/tracking-details", request.Uri.AbsoluteUri);
         Assert.Equal(expected, request.StoreFront);
     }
 
@@ -59,13 +59,13 @@ public sealed class TrendyolWriteContractTests
         var handler = new Script(new HttpResponseMessage(HttpStatusCode.OK));
 
         var result = await Client(handler).ExecutePackageActionAsync(Account(), Context(),
-            new PackageActionCommand("4052072376", "CANCEL_ITEMS", """{"lines":[{"lineId":"11","quantity":1,"extra":true},{"lineId":12,"quantity":2}],"reasonId":500,"note":"x"}""", "SA"),
+            new PackageActionCommand("4050000001", "CANCEL_ITEMS", """{"lines":[{"lineId":"11","quantity":1,"extra":true},{"lineId":12,"quantity":2}],"reasonId":500,"note":"x"}""", "SA"),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Error?.Code);
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Put, request.Method);
-        Assert.EndsWith("/shipment-packages/4052072376/items/unsupplied", request.Uri.AbsolutePath, StringComparison.Ordinal);
+        Assert.EndsWith("/shipment-packages/4050000001/items/unsupplied", request.Uri.AbsolutePath, StringComparison.Ordinal);
         Assert.Equal("""{"lines":[{"lineId":11,"quantity":1},{"lineId":12,"quantity":2}],"reasonId":500}""", request.Body);
         Assert.Equal("SA", request.StoreFront);
     }
@@ -84,7 +84,7 @@ public sealed class TrendyolWriteContractTests
     {
         var handler = new Script();
 
-        var result = await Client(handler).ExecutePackageActionAsync(Account(), Context(), new PackageActionCommand("4052072376", "CANCEL_ITEMS", payload), CancellationToken.None);
+        var result = await Client(handler).ExecutePackageActionAsync(Account(), Context(), new PackageActionCommand("4050000001", "CANCEL_ITEMS", payload), CancellationToken.None);
 
         Assert.Equal("TRENDYOL_CANCEL_ITEMS_INVALID", result.Error?.Code);
         Assert.Equal(AdapterErrorClass.Validation, result.Error!.Class);
@@ -104,7 +104,7 @@ public sealed class TrendyolWriteContractTests
         var handler = new Script(new HttpResponseMessage(HttpStatusCode.Created));
 
         var result = await Client(handler).DeliverAsync(Account(), Context(explicitInvoiceDelivery: true),
-            new InvoiceDeliveryCommand("4052072376", "LINK", """{"invoiceLink":"https://panel.example.test/invoice.pdf","shipmentPackageId":4052072376}""", "hash", "AE"),
+            new InvoiceDeliveryCommand("4050000001", "LINK", """{"invoiceLink":"https://panel.example.test/invoice.pdf","shipmentPackageId":4050000001}""", "hash", "AE"),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Error?.Code);

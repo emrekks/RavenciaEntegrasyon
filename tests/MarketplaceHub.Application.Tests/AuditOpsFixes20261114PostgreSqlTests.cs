@@ -15,7 +15,7 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    // Live, 14 Nov 2026: PTT-1C2OSLF2R-120926 was refused at its first import (a cancelled line made the package check
+    // Live, 14 Nov 2026: PTT-0TEST0001-120926 was refused at its first import (a cancelled line made the package check
     // fail) and PttAVM's two-day reads never brought it back. After the fix an order read of this connection reads it
     // again by number from its open notice, imports it and closes the notice; a window read of an order with a
     // cancelled line imports it too.
@@ -23,7 +23,7 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
     public async Task ThePttAvmOrderRefusedAtItsImportIsReadAgainFromItsNoticeAndImported()
     {
         var (tenant, connection) = await SeedAsync("PTTAVM");
-        const string lost = "PTT-1C2OSLF2R-120926";
+        const string lost = "PTT-0TEST0001-120926";
         var notice = $"package-quantity:{connection.Id}:order:{lost}:1789229541000";
         await using (var db = fixture.CreateContext())
         {
@@ -34,14 +34,14 @@ public sealed class AuditOpsFixes20261114PostgreSqlTests(PostgreSqlTenantIsolati
         await using (var db = fixture.CreateContext())
         {
             // The job's own order is the documented partly cancelled one; the lost order answers with the same shape.
-            var port = new PttOrderPort(read, id => Renumbered(SampleOrder("PTT-A1712HP2E-071024"), id));
+            var port = new PttOrderPort(read, id => Renumbered(SampleOrder("PTT-ATEST0001-071024"), id));
             var result = await Processor(db, port).ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.PttAvmOrderSync,
-                JsonSerializer.Serialize(new { connectionId = connection.Id, externalOrderId = "PTT-A1712HP2E-071024" }), "audit-1114-ptt", CancellationToken.None);
+                JsonSerializer.Serialize(new { connectionId = connection.Id, externalOrderId = "PTT-ATEST0001-071024" }), "audit-1114-ptt", CancellationToken.None);
             Assert.True(result.Succeeded, result.ErrorSummary);
         }
-        Assert.Equal(["PTT-A1712HP2E-071024", lost], read);
+        Assert.Equal(["PTT-ATEST0001-071024", lost], read);
         await using var verification = fixture.CreateContext();
-        foreach (var number in new[] { "PTT-A1712HP2E-071024", lost })
+        foreach (var number in new[] { "PTT-ATEST0001-071024", lost })
         {
             var order = await verification.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ExternalOrderId == number);
             var lines = await verification.OrderLines.AsNoTracking().Where(x => x.OrderId == order.Id).OrderBy(x => x.ExternalLineId).ToListAsync();

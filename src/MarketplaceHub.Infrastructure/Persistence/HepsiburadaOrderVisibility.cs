@@ -8,7 +8,8 @@ internal static class HepsiburadaOrderVisibility
         this IQueryable<Order> query,
         AppDbContext db,
         Guid tenantId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool keepManualResends = false)
     {
         var verificationCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(now);
         // Only an unpackaged order that still looks open can no longer be
@@ -16,10 +17,12 @@ internal static class HepsiburadaOrderVisibility
         // keeps its final status and stays listed. A fresh claim-only order
         // (UNVERIFIED) stays listed too until that month has passed. Unpackaged means without a live
         // package: one the panel unpacked (UNPACKED_BY_PANEL) or a cancelled one does not count (O14),
-        // the same rule as the order tabs.
+        // the same rule as the order tabs. keepManualResends (the Yeniden Gönderimler tab and the summary's search match): an
+        // order the owner added by hand as a resend (ManualResendService) stays listed there whatever its state.
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db);
         return query.Where(order =>
-            !db.PlatformConnections.Any(connection => connection.TenantId == tenantId
+            keepManualResends && db.ManualResends.Any(record => record.TenantId == tenantId && record.OrderId == order.Id)
+            || !db.PlatformConnections.Any(connection => connection.TenantId == tenantId
                 && connection.Id == order.ConnectionId
                 && connection.PlatformCode == "HEPSIBURADA")
             || !(order.OrderedAt < verificationCutoff

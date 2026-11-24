@@ -5,16 +5,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-// One-time, read-only diagnostic (owner, 11 Nov 2026): Trendyol order 11805932340 has a resend ("Yeniden Gönderim")
-// package 4337242198 that no order read brought. After a Trendyol recovery read, the order's number queries and the
+// One-time, read-only diagnostic (owner, 11 Nov 2026): Trendyol order 11800000001 has a resend ("Yeniden Gönderim")
+// package 4330000001 that no order read brought. After a Trendyol recovery read, the order's number queries and the
 // stream window around 13:56Z are read once and their answers (buyer fields removed) are kept as a resolved
 // operational issue. No order, package, line, invoice or report row is touched; a cursor keeps it to one run.
 internal sealed partial class OrderReadService
 {
     internal const string ResendDiagnosticCursor = "TRENDYOL_RESEND_DIAGNOSTIC_2";
     internal const string ResendDiagnosticIssueCode = "TRENDYOL_RESEND_DIAGNOSTIC";
-    internal const string ResendDiagnosticOrderNumber = "11805932340";
-    internal static readonly string[] ResendDiagnosticPackageIds = ["4337242198", "4326252839"];
+    internal const string ResendDiagnosticOrderNumber = "11800000001";
+    internal static readonly string[] ResendDiagnosticPackageIds = ["4330000001", "4320000001"];
     internal static readonly DateTimeOffset ResendDiagnosticStreamStart = new(2026, 11, 11, 13, 50, 0, TimeSpan.Zero);
     internal static readonly DateTimeOffset ResendDiagnosticStreamEnd = new(2026, 11, 11, 14, 10, 0, TimeSpan.Zero);
 

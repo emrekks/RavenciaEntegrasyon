@@ -14,7 +14,7 @@ vi.mock('../../shared/api', () => ({
 
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
 
-const trendyol: InvoiceLinkRevocation = { deliveryStateId: 'state-ty', packageId: 'pkg-1', platformCode: 'TRENDYOL', platformName: 'Trendyol', packageNumber: '4052072376', status: 'REVOCATION_REQUIRED', errorCode: null, mode: 'AUTOMATIC', instructions: 'Trendyol fatura linkini silme servisi sunuyor.', canAct: true, blockedReason: null, updatedAt: '2026-10-20T10:00:00Z' }
+const trendyol: InvoiceLinkRevocation = { deliveryStateId: 'state-ty', packageId: 'pkg-1', platformCode: 'TRENDYOL', platformName: 'Trendyol', packageNumber: '4050000001', status: 'REVOCATION_REQUIRED', errorCode: null, mode: 'AUTOMATIC', instructions: 'Trendyol fatura linkini silme servisi sunuyor.', canAct: true, blockedReason: null, updatedAt: '2026-10-20T10:00:00Z' }
 const hepsiburada: InvoiceLinkRevocation = { ...trendyol, deliveryStateId: 'state-hb', platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada', packageNumber: 'HB-1', mode: 'VERIFY_ONLY', instructions: 'Hepsiburada Satıcı Paneli’nde faturayı kaldırın.' }
 const n11: InvoiceLinkRevocation = { ...trendyol, deliveryStateId: 'state-n11', platformCode: 'N11', platformName: 'n11', packageNumber: 'N11-1', mode: 'MANUAL', canAct: false, instructions: 'n11 fatura linkini silme servisi sunmuyor.' }
 
@@ -63,7 +63,7 @@ describe('InvoiceLinkRevocationPanel', () => {
     await act(async () => { button('Fatura Linkini Kaldır').click() })
     expect(calls.requests).toHaveLength(0)
     expect(document.body.textContent).toContain('Bu işlem geri alınamaz')
-    expect(document.body.textContent).toContain('4052072376')
+    expect(document.body.textContent).toContain('4050000001')
 
     await act(async () => { button('Linki Kaldır').click() })
     await settle()

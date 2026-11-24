@@ -11,7 +11,7 @@ const hour = 3_600_000
 const order = (id: string, orderNumber: string, derivedStatus: string, dueInHours: number | null, extra: Record<string, unknown> = {}) => ({
   id, orderNumber, derivedStatus, currency: 'TRY', grossAmount: 100, discountAmount: 0, netAmount: 100, orderedAt: new Date(Date.now() - 30 * hour).toISOString(), lineCount: 1, packageCount: 1,
   platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', shipmentDueAt: dueInHours === null ? null : new Date(Date.now() + dueInHours * hour).toISOString(),
-  packages: [{ id: `p-${id}`, orderId: id, orderNumber, externalPackageId: '3189204417', status: derivedStatus, rawStatus: 'Created', cargoTrackingNumber: null, cargoProviderName: null }], ...extra })
+  packages: [{ id: `p-${id}`, orderId: id, orderNumber, externalPackageId: '3180000008', status: derivedStatus, rawStatus: 'Created', cargoTrackingNumber: null, cargoProviderName: null }], ...extra })
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
@@ -21,7 +21,7 @@ vi.mock('../../../shared/api', async importOriginal => {
       order('o2', '10000000002', 'NEW', 8),
       order('o3', '10000000003', 'PROCESSING', -50),
       order('o4', '10000000004', 'RETURNED', -50),
-      order('o5', 'PTTEM-U43FJA722-181026', 'NEW', 40, { platformCode: 'PTTAVM', platformDisplayName: 'PttAVM' })
+      order('o5', 'PTTEM-UTEST0001-181026', 'NEW', 40, { platformCode: 'PTTAVM', platformDisplayName: 'PttAVM' })
     ], nextCursor: null, hasMore: false, totalCount: 5, supportedFilters: ['labelPrinted'] }
     if (path.startsWith('/orders/facets')) return { platforms: {}, cargos: {} }
     if (path.startsWith('/orders/summary')) return {}
@@ -67,7 +67,7 @@ describe('OrdersPage deadline line', () => {
     expect(due('10000000003')!.className).not.toContain('is-soon')
     expect(due('10000000004')).toBeNull()
     expect(rows.find(row => row.textContent?.includes('10000000004'))!.querySelector('.rr-ordercell')!.textContent).not.toContain('gün gecikti')
-    expect(rows.find(row => row.textContent?.includes('PTTEM-U43FJA722-181026'))!.querySelector('.rr-on-no')!.className).toContain('rr-on-long')
+    expect(rows.find(row => row.textContent?.includes('PTTEM-UTEST0001-181026'))!.querySelector('.rr-on-no')!.className).toContain('rr-on-long')
     expect(rows.find(row => row.textContent?.includes('10000000001'))!.querySelector('.rr-on-no')!.className).not.toContain('rr-on-long')
   })
 })

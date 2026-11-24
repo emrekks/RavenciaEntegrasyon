@@ -230,12 +230,15 @@ internal sealed partial class OrderQueryService
 
     // The order list's rows for these options: orders of active connections, without the stale
     // unpackaged Hepsiburada ones, through every list filter (status tab included). The tab
-    // counters run the same query per tab, so a counter always equals its tab's list total.
-    internal IQueryable<Order> FilteredOrders(Guid tenantId, OrderListQuery options)
+    // counters run the same query per tab, so a counter always equals its tab's list total. A hand-added resend stays in the
+    // Yeniden Gönderimler tab even when it is such a Hepsiburada order; keepManualResends keeps it in the summary's search
+    // match too, which runs without a tab and feeds every tab (each other tab still drops it by this rule).
+    internal IQueryable<Order> FilteredOrders(Guid tenantId, OrderListQuery options, bool keepManualResends = false)
     {
         var query = db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
-        query = ExcludeStaleUnpackagedHepsiburadaOrders(query, tenantId);
+        query = ExcludeStaleUnpackagedHepsiburadaOrders(query, tenantId,
+            keepManualResends || string.Equals(options.Status?.Trim(), "RESENT", StringComparison.OrdinalIgnoreCase));
         ApplyOrderFilters(ref query, options, tenantId);
         return query;
     }

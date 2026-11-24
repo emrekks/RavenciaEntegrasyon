@@ -16,7 +16,7 @@ export type ShippingLabelBlock = {
   text: string
   fontSize?: number
   rotation?: number
-  // Each field on one line ("Paket Numarası: 4293901515") instead of its caption above its value. Kept for designs
+  // Each field on one line ("Paket Numarası: 4290000002") instead of its caption above its value. Kept for designs
   // saved before captionStyle; captionStyle wins when both are set.
   inline?: boolean
   captionStyle?: ShippingLabelCaptionStyle

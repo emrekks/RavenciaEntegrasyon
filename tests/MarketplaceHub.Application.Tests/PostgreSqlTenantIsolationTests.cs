@@ -1857,7 +1857,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         await transaction.RollbackAsync();
     }
 
-    // Live 2 Nov 2026: refusals of Trendyol split parents kept recurring (4084999185, whose child 4085035430 was read) or
+    // Live 2 Nov 2026: refusals of Trendyol split parents kept recurring (4080000001, whose child 4080000002 was read) or
     // stayed open for a parent Trendyol removed (4040543346). Superseded or no longer listed, they are resolved.
     [PostgreSqlFact]
     public async Task OperationalIssueRetention_ResolvesQuantityRefusalsOfSupersededOrRemovedTrendyolPackages()
@@ -2905,8 +2905,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
-        const string externalOrderId = "11697863999";
-        const string packageNumber = "4234395999";
+        const string externalOrderId = "11600000006";
+        const string packageNumber = "4230000002";
         var createdAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddMinutes(-30).ToUnixTimeSeconds());
         var modifiedAt = createdAt.AddMinutes(5);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
@@ -2983,8 +2983,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
-        const string externalOrderId = "11721560099";
-        const string packageNumber = "4254315999";
+        const string externalOrderId = "11700000002";
+        const string packageNumber = "4250000002";
         var claimAt = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddDays(-9).ToUnixTimeMilliseconds());
         var packageReadAt = claimAt.AddSeconds(-4);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
@@ -3004,7 +3004,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
 
         async Task SyncAsync()
         {
-            var remotePackage = new RemotePackage(packageNumber, null, "Returned", packageReadAt, "Trendyol Express", "7330038117226099",
+            var remotePackage = new RemotePackage(packageNumber, null, "Returned", packageReadAt, "Trendyol Express", "7330000000000014",
                 [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m);
             var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, claimAt.AddDays(-5), packageReadAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
                 [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Returned")], [remotePackage], "{}");
@@ -3027,7 +3027,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                 var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
                 Assert.Equal(ShipmentPackageStatus.Returned, package.Status);
                 Assert.Equal("Returned", package.RawStatus);
-                Assert.Equal("7330038117226099", package.CargoTrackingNumber);
+                Assert.Equal("7330000000000014", package.CargoTrackingNumber);
                 Assert.Equal("Trendyol Express", package.CargoProviderExternalId);
                 // The return is not dated before the undelivered status it ends.
                 Assert.Equal(claimAt, package.StatusOccurredAt);
@@ -3055,7 +3055,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     // An older read that cannot change the status still fills the tracking number and carrier a package lacks, and
     // never replaces one the package already holds.
     [PostgreSqlTheory]
-    [InlineData(null, "7330038117226011")]
+    [InlineData(null, "7330000000000012")]
     [InlineData("7330000000000000", "7330000000000000")]
     public async Task TrendyolOrderSync_AnOlderReadFillsOnlyMissingCargoDetails(string? storedTracking, string expectedTracking)
     {
@@ -3064,8 +3064,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
-        const string externalOrderId = "11721560098";
-        const string packageNumber = "4254315998";
+        const string externalOrderId = "11700000001";
+        const string packageNumber = "4250000001";
         var deliveredAt = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddDays(-9).ToUnixTimeMilliseconds());
         var packageReadAt = deliveredAt.AddSeconds(-4);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
@@ -3085,7 +3085,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
 
         try
         {
-            var remotePackage = new RemotePackage(packageNumber, null, "Delivered", packageReadAt, "Aras Kargo", "7330038117226011",
+            var remotePackage = new RemotePackage(packageNumber, null, "Delivered", packageReadAt, "Aras Kargo", "7330000000000012",
                 [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m)], GrossAmount: 100m, NetAmount: 100m);
             var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, deliveredAt.AddDays(-3), packageReadAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
                 [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Delivered")], [remotePackage], "{}");
@@ -3124,8 +3124,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
-        const string externalOrderId = "11697864001";
-        const string packageNumber = "4234396001";
+        const string externalOrderId = "11600000007";
+        const string packageNumber = "4230000003";
         var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
         var createdEventAt = orderedAt.AddSeconds(2);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
@@ -3222,9 +3222,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var createdEventAt = orderedAt.AddSeconds(2);
         var deliveredEventAt = orderedAt.AddSeconds(5);
         var cancelledEventAt = orderedAt.AddSeconds(6);
-        const string cancelledOrderId = "11697864101";
+        const string cancelledOrderId = "11600000008";
         const string cancelledPackage = "order:PTT-CANCEL-1";
-        const string deliveredOrderId = "11697864102";
+        const string deliveredOrderId = "11600000009";
         const string deliveredPackage = "order:PTT-DELIVERED-1";
         var cancelledLineId = Guid.CreateVersion7();
         var deliveredLineId = Guid.CreateVersion7();
@@ -3292,7 +3292,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
         var seenAt = fixture.Now.AddDays(-1);
         var createdEventAt = orderedAt.AddSeconds(2);
-        const string externalOrderId = "11697864103";
+        const string externalOrderId = "11600000010";
         const string packageNumber = "order:PTT-TWO-LINES-1";
         var (orderId, packageId, keptLineId, cancelledLineId) = (Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
         var eventId = PackageIngestionSafety.EventId(packageNumber, createdEventAt);
@@ -3347,7 +3347,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     }
 
     // Pazarama dates its package event by the items' latest history entry, and an item can change status without a new
-    // entry (live 674544454). One item of a delivered order is returned (10) while the other stays delivered: the package
+    // entry (live 674000001). One item of a delivered order is returned (10) while the other stays delivered: the package
     // keeps its status and its event, and the returned item's quantity still follows the read.
     [PostgreSqlFact]
     public async Task OrderSync_APazaramaItemReturnedUnderTheSameEventIsProjected()
@@ -3357,8 +3357,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         connection.PlatformCode = "PAZARAMA";
         var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-10).ToUnixTimeSeconds());
         var eventAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
-        const string externalOrderId = "674544499";
-        const string packageNumber = "order:674544499";
+        const string externalOrderId = "674000002";
+        const string packageNumber = "order:674000002";
         var (orderId, packageId, keptLineId, returnedLineId) = (Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7());
         var eventId = PackageIngestionSafety.EventId(packageNumber, eventAt);
 
@@ -3421,7 +3421,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-10).ToUnixTimeSeconds());
         var seenAt = fixture.Now.AddDays(-2);
         var eventAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-3).ToUnixTimeSeconds());
-        const string externalOrderId = "11697864104";
+        const string externalOrderId = "11600000011";
         const string packageNumber = "3399001";
         var lineId = Guid.CreateVersion7();
 
@@ -3511,7 +3511,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         }
     }
 
-    // 11738971444: built from a return claim (sale 1.598, discount 0), then completed by the order read. The Delivered
+    // 11700000003: built from a return claim (sale 1.598, discount 0), then completed by the order read. The Delivered
     // event was already recorded, so the package kept the claim's amounts and the order totals rebuilt from it showed
     // "İndirim 0". The order read's amounts are not a status: they replace the claim's.
     [PostgreSqlFact]
@@ -3521,8 +3521,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var connection = NewQuestionConnection(tenant);
         var orderId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
-        const string externalOrderId = "11738971444";
-        const string packageNumber = "4268578123";
+        const string externalOrderId = "11700000003";
+        const string packageNumber = "4260000001";
         var deliveredAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-4).ToUnixTimeSeconds());
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: true, fixture.Now);
         order.GrossAmount = 1598m;
@@ -3596,7 +3596,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
         var returnedLineId = Guid.CreateVersion7();
-        const string externalOrderId = "11456630182";
+        const string externalOrderId = "11400000001";
         const string packageNumber = "4198765432";
         var deliveredAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-4).ToUnixTimeSeconds());
         var eventId = PackageIngestionSafety.EventId(packageNumber, deliveredAt);
@@ -3708,14 +3708,14 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
         var packageId = Guid.CreateVersion7();
-        const string packageNumber = "4302382330";
+        const string packageNumber = "4300000001";
         var current = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddHours(-2).ToUnixTimeMilliseconds());
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         await db.Database.ExecuteSqlRawAsync("DROP INDEX sales.\"IX_package_line_allocations_TenantId_PackageId_OrderLineId\"");
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
-        db.Orders.Add(NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "11781312790", isReturnClaim: false, fixture.Now));
+        db.Orders.Add(NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "11700000012", isReturnClaim: false, fixture.Now));
         db.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Shipped", Version = 1 });
         db.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Shipped, RawStatus = "Shipped", StatusOccurredAt = current, CreatedAt = current, UpdatedAt = current, Version = 1 });
         PackageLineAllocation Row(string eventId, decimal shipped) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = shipped, SourceEventId = eventId };
@@ -6182,15 +6182,15 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var tenant = NewTenant("trendyol-package-first-sync");
         var connection = NewQuestionConnection(tenant);
         connection.ApiVersion = "V2";
-        const string externalOrderId = "116483573775";
-        const string packageNumber = "419428742";
+        const string externalOrderId = "116000000001";
+        const string packageNumber = "419000001";
         var package = new RemotePackage(
             packageNumber,
             null,
             "Shipped",
             fixture.Now.AddDays(-2),
             "TRENDYOL_EXPRESS",
-            "7330037500176178",
+            "7330000000000010",
             [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 0m, 0m)],
             GrossAmount: 454.31m,
             NetAmount: 454.31m);
@@ -6244,7 +6244,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Equal(externalOrderId, persistedOrder.OrderNumber);
             var persistedPackage = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.ExternalPackageId == packageNumber);
             Assert.Equal(persistedOrder.Id, persistedPackage.OrderId);
-            Assert.Equal("7330037500176178", persistedPackage.CargoTrackingNumber);
+            Assert.Equal("7330000000000010", persistedPackage.CargoTrackingNumber);
         }
         finally
         {
@@ -6310,7 +6310,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var tenant = NewTenant("trendyol-sibling-totals");
         var connection = NewQuestionConnection(tenant);
         connection.ApiVersion = "V2";
-        const string externalOrderId = "116483579001";
+        const string externalOrderId = "116000000002";
         RemoteOrder Page(string packageNumber, string lineId, decimal amount, DateTimeOffset at) => new(
             externalOrderId, externalOrderId, fixture.Now.AddDays(-1), at, "TRY", amount, 0m, amount, "{}", "{}", "{}",
             [new RemoteOrderLine(lineId, $"SKU-{lineId}", $"BC-{lineId}", "Test ürün", 1m, amount, 10m, "Created")],
@@ -6359,7 +6359,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var tenant = NewTenant("trendyol-refused-transition");
         var connection = NewQuestionConnection(tenant);
         connection.ApiVersion = "V2";
-        const string externalOrderId = "116483579002";
+        const string externalOrderId = "116000000003";
         var shippedAt = fixture.Now.AddHours(-3);
         var cancelledAt = fixture.Now.AddHours(-1);
         RemoteOrder Read(string status, DateTimeOffset at, string? tracking) => new(
@@ -6408,22 +6408,22 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
     }
 
     // A Trendyol split parent (UnPacked) lists lines beyond what the order still holds; it is not quantity-checked,
-    // carries no allocation, and the refusal it caused before is resolved (live: 4084999185 refused 19 times).
+    // carries no allocation, and the refusal it caused before is resolved (live: 4080000001 refused 19 times).
     [PostgreSqlFact]
     public async Task TrendyolOrderSync_SkipsTheQuantityCheckOfASplitParentAndResolvesItsRefusal()
     {
         var tenant = NewTenant("ty-split-parent");
         var connection = NewQuestionConnection(tenant);
         var orderId = Guid.CreateVersion7();
-        const string externalOrderId = "11515777689";
+        const string externalOrderId = "11500000002";
         var occurredAt = fixture.Now.AddMinutes(-10);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
         order.LastRemoteModifiedAt = occurredAt.AddMinutes(-5);
         var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Created", Version = 1 };
-        var oldRefusal = NewIssue(tenant.Id, $"package-quantity:{connection.Id}:4084999185:1787028283965");
+        var oldRefusal = NewIssue(tenant.Id, $"package-quantity:{connection.Id}:4080000001:1787028283965");
         oldRefusal.Code = OperationalIssueRetentionService.PackageQuantityRejectedCode;
-        var parent = new RemotePackage("4084999185", null, "UnPacked", occurredAt, null, null, [new RemotePackageAllocation("line-1", 2m, 0m, 0m, 0m, 0m)], GrossAmount: 200m, NetAmount: 200m);
-        var child = new RemotePackage("4085035430", "4084999185", "Delivered", occurredAt, null, null, [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+        var parent = new RemotePackage("4080000001", null, "UnPacked", occurredAt, null, null, [new RemotePackageAllocation("line-1", 2m, 0m, 0m, 0m, 0m)], GrossAmount: 200m, NetAmount: 200m);
+        var child = new RemotePackage("4080000002", "4080000001", "Delivered", occurredAt, null, null, [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m)], GrossAmount: 100m, NetAmount: 100m);
         var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, occurredAt.AddDays(-1), occurredAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
             [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Delivered")], [parent, child], "{}");
         var orderPort = new ReadOnlyOrderTestPort(child, externalOrderId: externalOrderId, directOrderResult: remoteOrder);
@@ -6447,7 +6447,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                     null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
                     new ConfigurationBuilder().Build(), fixture.TimeProvider);
                 var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
-                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"4085035430"}""", "trendyol-split-parent", CancellationToken.None);
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"4080000002"}""", "trendyol-split-parent", CancellationToken.None);
                 Assert.True(result.Succeeded, result.ErrorSummary);
             }
 
@@ -6455,9 +6455,9 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             var issues = await verifyDb.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.Code == OperationalIssueRetentionService.PackageQuantityRejectedCode).ToListAsync();
             Assert.Equal(IssueStatus.Resolved, Assert.Single(issues).Status);
             var packages = await verifyDb.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.OrderId == orderId).ToDictionaryAsync(x => x.ExternalPackageId);
-            Assert.Equal(ShipmentPackageStatus.Cancelled, packages["4084999185"].Status);
-            Assert.Equal(ShipmentPackageStatus.Delivered, packages["4085035430"].Status);
-            Assert.False(await verifyDb.PackageLineAllocations.AnyAsync(x => x.TenantId == tenant.Id && x.PackageId == packages["4084999185"].Id));
+            Assert.Equal(ShipmentPackageStatus.Cancelled, packages["4080000001"].Status);
+            Assert.Equal(ShipmentPackageStatus.Delivered, packages["4080000002"].Status);
+            Assert.False(await verifyDb.PackageLineAllocations.AnyAsync(x => x.TenantId == tenant.Id && x.PackageId == packages["4080000001"].Id));
             var persistedOrder = await verifyDb.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == orderId);
             Assert.Equal("DELIVERED", persistedOrder.DerivedStatus);
             Assert.Equal(1m, (await verifyDb.OrderLines.AsNoTracking().SingleAsync(x => x.Id == line.Id)).DeliveredQuantity);
@@ -6468,8 +6468,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         }
     }
 
-    // O8: a split parent Trendyol lists again under another status than UnPacked (live: 4084999185, 4110933059,
-    // 4144008059, 4148938175, refused on every run) is known by the stored child that names it as its origin: the read is
+    // O8: a split parent Trendyol lists again under another status than UnPacked (live: 4080000001, 4110000001,
+    // 4140000001, 4148938175, refused on every run) is known by the stored child that names it as its origin: the read is
     // skipped without a refusal, the parent is not opened and the order keeps its quantities.
     [PostgreSqlFact]
     public async Task TrendyolOrderSync_SkipsAKnownSplitParentQuietly()
@@ -6479,11 +6479,11 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var orderId = Guid.CreateVersion7();
         var lineId = Guid.CreateVersion7();
         var childId = Guid.CreateVersion7();
-        const string externalOrderId = "11547099440";
+        const string externalOrderId = "11500000003";
         var occurredAt = fixture.Now.AddMinutes(-10);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
         order.LastRemoteModifiedAt = occurredAt.AddMinutes(-5);
-        var parent = new RemotePackage("4110933059", null, "Cancelled", occurredAt, null, null, [new RemotePackageAllocation("line-1", 2m, 0m, 0m, 0m, 0m)], GrossAmount: 200m, NetAmount: 200m);
+        var parent = new RemotePackage("4110000001", null, "Cancelled", occurredAt, null, null, [new RemotePackageAllocation("line-1", 2m, 0m, 0m, 0m, 0m)], GrossAmount: 200m, NetAmount: 200m);
         var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, occurredAt.AddDays(-1), occurredAt, "TRY", 200m, 0m, 200m, "{}", "{}", "{}",
             [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 2m, 100m, 10m, "Cancelled")], [parent], "{}");
 
@@ -6494,8 +6494,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             seedDb.Orders.Add(order);
             // The line as the child's delivered allocation projected it; the skipped parent must leave it so.
             seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
-            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = childId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = "4111016887", OriginExternalPackageId = "4110933059", GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = occurredAt.AddMinutes(-5), CreatedAt = occurredAt.AddMinutes(-5), UpdatedAt = occurredAt.AddMinutes(-5), Version = 1 });
-            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = childId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId("4111016887", occurredAt.AddMinutes(-5)) });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = childId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = "4110000002", OriginExternalPackageId = "4110000001", GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = occurredAt.AddMinutes(-5), CreatedAt = occurredAt.AddMinutes(-5), UpdatedAt = occurredAt.AddMinutes(-5), Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = childId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId("4110000002", occurredAt.AddMinutes(-5)) });
             await seedDb.SaveChangesAsync();
         }
 
@@ -6514,7 +6514,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
 
             await using var verifyDb = fixture.CreateContext();
             Assert.False(await verifyDb.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.Code == OperationalIssueRetentionService.PackageQuantityRejectedCode));
-            Assert.Equal(["4111016887"], await verifyDb.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.OrderId == orderId).Select(x => x.ExternalPackageId).ToListAsync());
+            Assert.Equal(["4110000002"], await verifyDb.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.OrderId == orderId).Select(x => x.ExternalPackageId).ToListAsync());
             var line = await verifyDb.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
             Assert.Equal((1m, 1m), (line.OrderedQuantity, line.DeliveredQuantity));
             Assert.Equal(1, await verifyDb.PackageLineAllocations.CountAsync(x => x.TenantId == tenant.Id));
@@ -6607,8 +6607,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var lineId = Guid.CreateVersion7();
         var legacyPackageId = Guid.CreateVersion7();
         var currentPackageId = Guid.CreateVersion7();
-        const string externalOrderId = "11697863851";
-        const string currentPackageNumber = "4234395651";
+        const string externalOrderId = "11600000005";
+        const string currentPackageNumber = "4230000001";
         var occurredAt = fixture.Now.AddMinutes(-10);
         var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
         order.DerivedStatus = "ON_HOLD";
@@ -6799,7 +6799,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var connection = NewQuestionConnection(tenant);
         var now = fixture.Now;
         var heldOrderId = Guid.CreateVersion7();
-        var heldOrder = NewInvoiceTestOrder(tenant.Id, connection.Id, heldOrderId, "11763229493", isReturnClaim: false, now);
+        var heldOrder = NewInvoiceTestOrder(tenant.Id, connection.Id, heldOrderId, "11700000007", isReturnClaim: false, now);
         heldOrder.DerivedStatus = "PAYMENT_PENDING";
         var heldPlaceholder = NewInvoiceTestPackage(tenant.Id, connection.Id, heldOrderId, Guid.CreateVersion7(), "0", now);
         heldPlaceholder.Status = ShipmentPackageStatus.OnHold;
@@ -6861,7 +6861,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                 Assert.False(await verifyDb.OperationalIssues.AnyAsync(issue => issue.TenantId == tenant.Id && issue.Code == "ORDER_PACKAGE_ID_CONFLICT"));
             }
             Assert.Equal("0", Assert.Single(await PackagesOf(newOrderNumber)).ExternalPackageId);
-            Assert.Equal(ShipmentPackageStatus.OnHold, Assert.Single(await PackagesOf("11763229493")).Status);
+            Assert.Equal(ShipmentPackageStatus.OnHold, Assert.Single(await PackagesOf("11700000007")).Status);
 
             orderPort.PollItems = [awaiting with
             {
@@ -6875,7 +6875,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Equal(2, packages.Count);
             Assert.Equal(realPackageNumber, Assert.Single(ShipmentPackageSupersession.Current(packages)).ExternalPackageId);
             Assert.Equal(ShipmentPackageStatus.Cancelled, packages.Single(package => package.ExternalPackageId == "0").Status);
-            Assert.Equal(ShipmentPackageStatus.OnHold, Assert.Single(await PackagesOf("11763229493")).Status);
+            Assert.Equal(ShipmentPackageStatus.OnHold, Assert.Single(await PackagesOf("11700000007")).Status);
         }
         finally
         {
@@ -9135,10 +9135,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         {
             var content = request.RequestUri!.AbsolutePath.EndsWith("/v2/orders", StringComparison.Ordinal)
                 ? """
-                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
+                  {"content":[{"shipmentPackageId":4050000001,"orderNumber":"11400000002","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
                   """
                 : """
-                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","cargoTrackingNumber":62755229958101,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
+                  {"content":[{"shipmentPackageId":4050000001,"orderNumber":"11400000002","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","cargoTrackingNumber":62700000000001,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
                   """;
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -9171,16 +9171,16 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                 NullLogger<TrendyolHttpClient>.Instance);
             var context = new AdapterContext(tenant.Id, connection.Id, "trendyol-package-readback-contract", "contract-test", anchor.AddMinutes(1));
 
-            var result = await client.GetShipmentPackageAsync(context, "4052072376", occurredAt, CancellationToken.None);
+            var result = await client.GetShipmentPackageAsync(context, "4050000001", occurredAt, CancellationToken.None);
 
             Assert.True(result.IsSuccess, result.Error?.SafeMessage);
             Assert.Equal("hepsiJET", result.Value!.Package.CargoProviderExternalId);
-            Assert.Equal("62755229958101", result.Value.Package.CargoTrackingNumber);
+            Assert.Equal("62700000000001", result.Value.Package.CargoTrackingNumber);
             Assert.Equal("Invoiced", result.Value.Package.Invoice?.RawStatus);
             Assert.Equal("INV-42", result.Value.Package.Invoice?.InvoiceNumber);
             Assert.Equal(2, requests.Requests.Count);
             Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", requests.Requests[0].AbsolutePath);
-            Assert.Equal("4052072376", QueryValue(requests.Requests[0], "shipmentPackageIds"));
+            Assert.Equal("4050000001", QueryValue(requests.Requests[0], "shipmentPackageIds"));
             Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "startDate"));
             Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(requests.Requests[0], "endDate"));
             Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", requests.Requests[1].AbsolutePath);
@@ -9232,7 +9232,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             storeFrontCodes.Add(storeFrontCode);
             var content = storeFrontCode == "AE"
                 ? """
-                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
+                  {"content":[{"shipmentPackageId":419000001,"orderNumber":"116000000001","status":"Shipped","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
                   """
                 : """
                   {"content":[],"page":0,"totalPages":0}
@@ -9268,43 +9268,43 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
                 NullLogger<TrendyolHttpClient>.Instance);
             var context = new AdapterContext(tenant.Id, connection.Id, "trendyol-international-package-readback-contract", "contract-test", anchor.AddMinutes(1));
 
-            var result = await client.GetShipmentPackageAsync(context, "419428742", CancellationToken.None);
+            var result = await client.GetShipmentPackageAsync(context, "419000001", CancellationToken.None);
 
             Assert.True(result.IsSuccess, result.Error?.SafeMessage);
-            Assert.Equal("116483573775", result.Value!.OrderSnapshot!.ExternalOrderId);
-            Assert.Equal("419428742", result.Value.Package.ExternalPackageId);
+            Assert.Equal("116000000001", result.Value!.OrderSnapshot!.ExternalOrderId);
+            Assert.Equal("419000001", result.Value.Package.ExternalPackageId);
             Assert.Equal(["TR", "AE"], storeFrontCodes);
             Assert.Equal(2, requests.Requests.Count);
             Assert.All(requests.Requests, uri => Assert.Equal("/integration/order/sellers/seller-contract-test/v2/orders", uri.AbsolutePath));
-            Assert.All(requests.Requests, uri => Assert.Equal("419428742", QueryValue(uri, "shipmentPackageIds")));
+            Assert.All(requests.Requests, uri => Assert.Equal("419000001", QueryValue(uri, "shipmentPackageIds")));
             Assert.All(requests.Requests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
             Assert.All(requests.Requests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
 
             var orderLookupStart = requests.Requests.Count;
-            var orderResult = await client.GetAsync(context, "116483573775", CancellationToken.None);
+            var orderResult = await client.GetAsync(context, "116000000001", CancellationToken.None);
 
             Assert.True(orderResult.IsSuccess, orderResult.Error?.SafeMessage);
-            Assert.Equal("116483573775", orderResult.Value!.ExternalOrderId);
+            Assert.Equal("116000000001", orderResult.Value!.ExternalOrderId);
             var orderLookupRequests = requests.Requests.Skip(orderLookupStart).ToArray();
             // The quoted order number is tried only after a 400, so a miss costs one request per storefront.
             Assert.Equal(["TR", "AE"], storeFrontCodes.Skip(2));
             Assert.Equal("AE", orderResult.Value.StoreFrontCode);
-            Assert.All(orderLookupRequests, uri => Assert.Equal("116483573775", QueryValue(uri, "orderNumber")));
+            Assert.All(orderLookupRequests, uri => Assert.Equal("116000000001", QueryValue(uri, "orderNumber")));
             Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.AddDays(-14).ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "startDate")));
             Assert.All(orderLookupRequests, uri => Assert.Equal(anchor.ToUnixTimeMilliseconds().ToString(), QueryValue(uri, "endDate")));
 
             // A known order is asked for in its own storefront only.
             storeFrontCodes.Clear();
             var knownOrder = new OrderLookupHint(anchor.AddDays(-3), anchor.AddDays(-1), "AE");
-            Assert.True((await client.GetAsync(context, "116483573775", knownOrder, CancellationToken.None)).IsSuccess);
-            Assert.True((await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(anchor.AddDays(-1), knownOrder, InvoiceOnly: true), CancellationToken.None)).IsSuccess);
+            Assert.True((await client.GetAsync(context, "116000000001", knownOrder, CancellationToken.None)).IsSuccess);
+            Assert.True((await client.GetShipmentPackageAsync(context, "419000001", new PackageLookup(anchor.AddDays(-1), knownOrder, InvoiceOnly: true), CancellationToken.None)).IsSuccess);
             Assert.Equal(["AE", "AE"], storeFrontCodes);
 
             // An order older than Order V2's month is read from the stream around its last change.
             storeFrontCodes.Clear();
             var streamLookupStart = requests.Requests.Count;
             var oldOrder = new OrderLookupHint(anchor.AddDays(-40), anchor.AddDays(-35), "AE");
-            var oldResult = await client.GetAsync(context, "116483573775", oldOrder, CancellationToken.None);
+            var oldResult = await client.GetAsync(context, "116000000001", oldOrder, CancellationToken.None);
             Assert.True(oldResult.IsSuccess, oldResult.Error?.SafeMessage);
             var streamRequest = Assert.Single(requests.Requests.Skip(streamLookupStart));
             Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", streamRequest.AbsolutePath);
@@ -9315,7 +9315,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             // ADAPTOR-TY-HB-3 step 2: a package of that order with no status time is looked for in the stream around the
             // order's last change, as the order itself is.
             var packageStreamStart = requests.Requests.Count;
-            var undated = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(null, oldOrder), CancellationToken.None);
+            var undated = await client.GetShipmentPackageAsync(context, "419000001", new PackageLookup(null, oldOrder), CancellationToken.None);
             Assert.True(undated.IsSuccess, undated.Error?.SafeMessage);
             var packageStream = Assert.Single(requests.Requests.Skip(packageStreamStart));
             Assert.Equal("/integration/order/sellers/seller-contract-test/orders/stream", packageStream.AbsolutePath);
@@ -9329,7 +9329,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             foreach (var (statusTime, order) in new (DateTimeOffset?, OrderLookupHint)[] { (null, oldestOrder), (anchor.AddMonths(-4), oldOrder) })
             {
                 var unaddressableStart = requests.Requests.Count;
-                var unaddressable = await client.GetShipmentPackageAsync(context, "419428742", new PackageLookup(statusTime, order), CancellationToken.None);
+                var unaddressable = await client.GetShipmentPackageAsync(context, "419000001", new PackageLookup(statusTime, order), CancellationToken.None);
                 Assert.Equal(unaddressableStart, requests.Requests.Count);
                 Assert.False(unaddressable.IsSuccess);
                 Assert.Equal(TrendyolHttpClient.PackageNotAddressableCode, unaddressable.Error!.Code);

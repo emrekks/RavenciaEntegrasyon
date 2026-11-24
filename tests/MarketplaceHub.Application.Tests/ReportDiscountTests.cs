@@ -34,7 +34,7 @@ public sealed class ReportDiscountTests
         Assert.Equal(0m, report.PreviousSummary.DiscountAmount);
     }
 
-    // Live, order 11772267262: Trendyol's discount (lineTyDiscount, per unit) is read from the line; a line without
+    // Live, order 11700000010: Trendyol's discount (lineTyDiscount, per unit) is read from the line; a line without
     // the field leaves it unknown, never 0.
     [Fact]
     public void The_trendyol_mapper_reads_trendyols_own_discount_per_unit_and_leaves_a_missing_one_unknown()

@@ -21,8 +21,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
     {
         var tenant = NewTenant("ty-noop-sync");
         var connection = NewQuestionConnection(tenant);
-        const string externalOrderId = "11697864111";
-        const string packageNumber = "4234396111";
+        const string externalOrderId = "11600000012";
+        const string packageNumber = "4230000004";
         var createdAt = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddMinutes(-30).ToUnixTimeMilliseconds());
         var modifiedAt = createdAt.AddMinutes(5);
         await using (var seedDb = fixture.CreateContext())

@@ -1506,6 +1506,7 @@ export type JobReadRecord = {
   st?: null | string
   o: string
   why?: null | string
+  b?: null | string[]
 }
 
 export type JobReadRecordCounts = {

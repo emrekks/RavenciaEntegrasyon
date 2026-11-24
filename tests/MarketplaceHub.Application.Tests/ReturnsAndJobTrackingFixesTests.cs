@@ -180,7 +180,7 @@ public sealed class ReturnsAndJobTrackingFixesTests
         foreach (var write in new[] { MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.StockReconciliation, MarketplaceJobTypes.ShipmentAction, MarketplaceJobTypes.ReturnAction, InvoicingJobTypes.InvoiceSubmit, InvoicingJobTypes.MarketplaceDelivery })
             Assert.False(ScheduledReadSupersession.Supersedes(failed with { Item2 = write }, later with { Item2 = write }));
         // A targeted or user read is not a scheduled read.
-        Assert.False(ScheduledReadSupersession.Supersedes(failed with { Item3 = $"trendyol_order_sync:{connection}:116483573775" }, later));
+        Assert.False(ScheduledReadSupersession.Supersedes(failed with { Item3 = $"trendyol_order_sync:{connection}:116000000001" }, later));
         Assert.False(ScheduledReadSupersession.IsScheduledRead(MarketplaceJobTypes.OrderSync, $"trendyol_order_sync:{connection}"));
         // An earlier success, another connection, another type or another series (a daily reconciliation against an hourly one) do not count.
         Assert.False(ScheduledReadSupersession.Supersedes(failed, later with { Item5 = Now.AddDays(-3) }));

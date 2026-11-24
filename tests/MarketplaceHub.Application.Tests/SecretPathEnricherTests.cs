@@ -36,7 +36,7 @@ public sealed class SecretPathEnricherTests
 
     [Theory]
     [InlineData("/api/v1/public/product-media/0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/content")]
-    [InlineData("/api/v1/orders/4736002251")]
+    [InlineData("/api/v1/orders/4730000001")]
     [InlineData("/api/v1/connections/" + Connection + "/instant-notifications")]
     [InlineData("/api/v1/hooks/" + Connection)]
     [InlineData("/health/ready")]

@@ -5,10 +5,10 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // The Returns page shows the amounts the marketplace wrote for the returned lines, never ones calculated from the
-// order's totals (owner, 30 Oct 2026: Trendyol return 11738971444 reads Satış 1.598,00 · İndirim 80,98 · Faturalanmış 1.517,02).
+// order's totals (owner, 30 Oct 2026: Trendyol return 11700000003 reads Satış 1.598,00 · İndirim 80,98 · Faturalanmış 1.517,02).
 public sealed class ReturnMarketplaceAmountsTests
 {
-    // Live order line snapshots of Trendyol order 11738971444 (trimmed to the amount fields).
+    // Live order line snapshots of Trendyol order 11700000003 (trimmed to the amount fields).
     private const string TrendyolFirstLine = """{"quantity":1,"amount":799.00,"lineGrossAmount":799.00,"discount":40.49,"lineTotalDiscount":40.49,"discountDetails":[{"lineItemId":"6972938408","lineItemPrice":758.51,"lineItemDiscount":40.49}],"price":758.51,"lineUnitPrice":758.51}""";
     private const string TrendyolSecondLine = """{"quantity":1,"amount":799.00,"lineGrossAmount":799.00,"discount":40.49,"lineTotalDiscount":40.49,"discountDetails":[{"lineItemId":"6972938410","lineItemPrice":758.51,"lineItemDiscount":40.49}],"price":758.51,"lineUnitPrice":758.51}""";
 
@@ -38,7 +38,7 @@ public sealed class ReturnMarketplaceAmountsTests
     [Fact]
     public void Trendyol_line_built_from_a_claim_knows_only_the_invoiced_price()
     {
-        const string claimLine = """{"id":5758367855,"barcode":"RYP00117","price":442.21,"vatBaseAmount":10,"vatRate":10,"lineItems":null}""";
+        const string claimLine = """{"id":5750000001,"barcode":"RYP00117","price":442.21,"vatBaseAmount":10,"vatRate":10,"lineItems":null}""";
 
         Assert.Equal(new ReturnAmountsView(null, null, 442.21m, null), ReturnMarketplaceAmounts.Line("TRENDYOL", claimLine, 1, "c"));
     }
@@ -46,12 +46,12 @@ public sealed class ReturnMarketplaceAmountsTests
     [Fact]
     public void Hepsiburada_reads_the_claims_refund_amount_only_from_that_claim()
     {
-        const string claim = """{"number":"714708387","status":"Refunded","quantity":1,"refundAmount":865.72,"refundCurrency":"TRY","priceAmount":865.72}""";
+        const string claim = """{"number":"714000001","status":"Refunded","quantity":1,"refundAmount":865.72,"refundCurrency":"TRY","priceAmount":865.72}""";
 
-        Assert.Equal(new ReturnAmountsView(null, null, null, 865.72m), ReturnMarketplaceAmounts.Line("HEPSIBURADA", claim, 1, "714708387"));
+        Assert.Equal(new ReturnAmountsView(null, null, null, 865.72m), ReturnMarketplaceAmounts.Line("HEPSIBURADA", claim, 1, "714000001"));
         Assert.Null(ReturnMarketplaceAmounts.Line("HEPSIBURADA", claim, 1, "999999999"));
         // An order line (no claim number) says nothing about the refund.
-        Assert.Null(ReturnMarketplaceAmounts.Line("HEPSIBURADA", """{"lineItemId":"1","totalPrice":{"amount":865.72}}""", 1, "714708387"));
+        Assert.Null(ReturnMarketplaceAmounts.Line("HEPSIBURADA", """{"lineItemId":"1","totalPrice":{"amount":865.72}}""", 1, "714000001"));
     }
 
     [Fact]

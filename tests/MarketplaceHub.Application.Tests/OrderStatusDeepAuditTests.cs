@@ -121,11 +121,11 @@ public sealed class OrderStatusDeepAuditTests
     [Fact]
     public void An_older_read_fills_only_missing_cargo_details()
     {
-        var remote = new RemotePackage("p1", "origin-1", "Returned", DateTimeOffset.UnixEpoch, " Trendyol Express ", "7330038117226058", []);
+        var remote = new RemotePackage("p1", "origin-1", "Returned", DateTimeOffset.UnixEpoch, " Trendyol Express ", "7330000000000013", []);
         var empty = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "UnDelivered" };
         Assert.True(PackageIngestionSafety.FillMissingCargoMetadata(empty, remote));
         Assert.Equal("Trendyol Express", empty.CargoProviderExternalId);
-        Assert.Equal("7330038117226058", empty.CargoTrackingNumber);
+        Assert.Equal("7330000000000013", empty.CargoTrackingNumber);
         Assert.Equal("origin-1", empty.OriginExternalPackageId);
         Assert.False(PackageIngestionSafety.FillMissingCargoMetadata(empty, remote));
 

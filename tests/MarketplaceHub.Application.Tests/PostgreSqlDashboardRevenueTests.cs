@@ -211,7 +211,7 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
         var tenant = NewTenant("rev-hbd");
         var hepsiburada = NewConnection(tenant.Id, "HEPSIBURADA", "ACTIVE");
         var trendyol = NewConnection(tenant.Id, "TRENDYOL", "ACTIVE");
-        // Live 4091991027: 1,094.15 paid, Hepsiburada's discount 194.85 (credited 212.57 with VAT at 20 % instead of 10 %).
+        // Live 4090000001: 1,094.15 paid, Hepsiburada's discount 194.85 (credited 212.57 with VAT at 20 % instead of 10 %).
         var hbOrder = NewOrder(tenant.Id, hepsiburada.Id, "hbd", Noon, 1094.15m, "DELIVERED");
         var hbLine = NewLine(hbOrder, "hbd-line", 1094.15m, 1m);
         hbLine.PlatformDiscount = 194.85m;

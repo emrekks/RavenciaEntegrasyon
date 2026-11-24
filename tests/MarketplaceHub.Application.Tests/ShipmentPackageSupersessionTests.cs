@@ -146,14 +146,14 @@ public sealed class ShipmentPackageSupersessionTests
         Assert.Equal((200m, 0m, 200m), OrderAmountProjectionPolicy.FromPackages([cancelled], new HashSet<string>(StringComparer.Ordinal)));
     }
 
-    // 11763229493: the payment-pending package "0" and the real package are the same order; it counts once.
+    // 11700000007: the payment-pending package "0" and the real package are the same order; it counts once.
     [Fact]
     public void Order_totals_leave_out_the_trendyol_payment_placeholder_once_the_real_package_is_stored()
     {
         var placeholder = Package("0", ShipmentPackageStatus.PaymentPending, "Awaiting", gross: 899m, net: 865.01m);
-        var real = Package("4287472684", ShipmentPackageStatus.New, "Created", gross: 899m, net: 865.01m);
+        var real = Package("4280000002", ShipmentPackageStatus.New, "Created", gross: 899m, net: 865.01m);
 
-        Assert.Equal((899m, 33.99m, 865.01m), OrderAmountProjectionPolicy.FromPackages([placeholder, real], new HashSet<string>(["4287472684"], StringComparer.Ordinal)));
+        Assert.Equal((899m, 33.99m, 865.01m), OrderAmountProjectionPolicy.FromPackages([placeholder, real], new HashSet<string>(["4280000002"], StringComparer.Ordinal)));
         Assert.Equal((899m, 33.99m, 865.01m), OrderAmountProjectionPolicy.FromPackages([placeholder], new HashSet<string>(["0"], StringComparer.Ordinal)));
     }
 

@@ -101,7 +101,7 @@ const payouts: ApiAnswer<'getReportsPayouts'> = {
   paidUnread: 0, paidUnreadRecords: 0, otherCurrencies: null,
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0, pendingDelivery: 1450.5, pendingDeliveryOrders: 3,
   next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED', estimates: null, carried: null },
-  lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null },
+  lastPaid: { key: 'payout:store-1:78500001', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null },
   platforms: [{ platformCode: 'TRENDYOL', expected: 1080, records: 3, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1450.5, pendingDeliveryOrders: 3 }, { platformCode: 'PAZARAMA', expected: 100, records: 1, nextDay: '2026-11-05', nextAmount: 100, unknown: 0, pendingDelivery: 0, pendingDeliveryOrders: 0 }],
   regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1050.5, pendingDeliveryOrders: 2 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: -50, pendingDelivery: 400, pendingDeliveryOrders: 1 }],
   upcoming: [
@@ -110,7 +110,7 @@ const payouts: ApiAnswer<'getReportsPayouts'> = {
     { key: 'due:store-1:2026-11-12:EUROPE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null },
     { key: 'due:store-1:2026-11-04:EUROPE:OVERDUE', kind: 'OVERDUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-04', amount: 240, linesAmount: null, records: 1, status: 'EXPECTED', estimates: null, carried: null }
   ],
-  past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null }],
+  past: [{ key: 'payout:store-1:78500001', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID', estimates: null, carried: null }],
   coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
 }
 const payoutLines: ApiAnswer<'getReportsPayoutsLines'> = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
@@ -538,7 +538,7 @@ describe('ReportsPage', () => {
   })
 
   it('tells a fee invoice of a payout not read yet as covered by the estimate and takes it off nowhere', async () => {
-    // 5 Nov 2026: payout 78619772's 448,01 of withholding tax before its lines were read. Its orders carry the estimate.
+    // 5 Nov 2026: payout 78600001's 448,01 of withholding tax before its lines were read. Its orders carry the estimate.
     const costs = withFinance.costs!
     const page = await open('', { ...withFinance, costs: { ...costs, coveredByEstimate: [{ category: 'STOPPAGE', label: 'Stopaj', isCost: true, amount: 448.01, records: 1 }] } })
     const tip = [...page.querySelectorAll('.reports-costlines li')].find(line => line.textContent?.startsWith('Stopaj'))?.querySelector('.reports-hover-tip')?.textContent

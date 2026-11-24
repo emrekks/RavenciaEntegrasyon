@@ -298,7 +298,7 @@ public sealed class WebhookEventPathTests
     [InlineData("lineitems/b17553de/cancel", true)]
     [InlineData("packages/013105889/intransit", true)]
     [InlineData("packages/013105889/undeliver", true)]
-    [InlineData("orders/869304129/shippingaddress", true)]
+    [InlineData("orders/869000001/shippingaddress", true)]
     [InlineData("claims", false)]
     [InlineData("claims/packages", false)]
     [InlineData("claims/awaitingpreapproval", false)]
@@ -310,7 +310,7 @@ public sealed class WebhookEventPathTests
     [Fact]
     public void AnOrderEventIsIdentifiedByItsPathAndContent()
     {
-        var body = System.Text.Encoding.UTF8.GetBytes("""{"orderNumber":"4736002251","packages":[{"packageNumber":"57b1850c"}]}""");
+        var body = System.Text.Encoding.UTF8.GetBytes("""{"orderNumber":"4730000001","packages":[{"packageNumber":"57b1850c"}]}""");
         var cancel = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "lineitems/b17553de/cancel");
         var deliver = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create(body, "packages/57b1850c/deliver");
         var preApproval = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaWebhookIdentity.Create("""{"notice":"x"}"""u8.ToArray(), "claims/awaitingpreapproval");
@@ -319,7 +319,7 @@ public sealed class WebhookEventPathTests
         Assert.Equal("ORDER_EVENT", cancel!.ResourceType);
         Assert.NotEqual(cancel.ExternalMessageId, deliver!.ExternalMessageId);
         using var document = System.Text.Json.JsonDocument.Parse(body);
-        Assert.Equal("4736002251", MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindString(document.RootElement, "OrderNumber"));
+        Assert.Equal("4730000001", MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindString(document.RootElement, "OrderNumber"));
         Assert.Equal("57b1850c", MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindString(document.RootElement, "packageNumber"));
     }
 
@@ -350,8 +350,8 @@ public sealed class WebhookEventPathTests
         Assert.Null(MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.HepsiburadaEventReference("orders"));
         Assert.Null(MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.OrderEventPath("returns:claim-1:ABC"));
 
-        using var unpack = System.Text.Json.JsonDocument.Parse("""{"packageNumber":"57b1850c","orderNumbers":["4736002251","4736002252"]}""");
-        Assert.Equal(["4736002251", "4736002252"], MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindStrings(unpack.RootElement, "orderNumbers"));
+        using var unpack = System.Text.Json.JsonDocument.Parse("""{"packageNumber":"57b1850c","orderNumbers":["4730000001","4730000002"]}""");
+        Assert.Equal(["4730000001", "4730000002"], MarketplaceHub.Infrastructure.Persistence.WebhookIngestService.FindStrings(unpack.RootElement, "orderNumbers"));
     }
 }
 
@@ -371,12 +371,12 @@ public sealed class HepsiburadaCancellationPolicyTests
     [Fact]
     public void CancelledLinesWithoutAnOrderNumberAreSkipped()
     {
-        using var document = System.Text.Json.JsonDocument.Parse("""{"totalCount":2,"items":[{"orderNumber":"4736002251","lineItemId":"l-1","cancelDate":"2026-10-18T10:00:00Z","cancelledBy":"Customer"},{"lineItemId":"l-2"}]}""");
+        using var document = System.Text.Json.JsonDocument.Parse("""{"totalCount":2,"items":[{"orderNumber":"4730000001","lineItemId":"l-1","cancelDate":"2026-10-18T10:00:00Z","cancelledBy":"Customer"},{"lineItemId":"l-2"}]}""");
         var (items, total) = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.CancelledOrderLines(document.RootElement);
 
         Assert.Equal(2, total);
         var line = Assert.Single(items);
-        Assert.Equal("4736002251", line.OrderNumber);
+        Assert.Equal("4730000001", line.OrderNumber);
         Assert.Equal("l-1", line.LineItemId);
     }
 }
@@ -442,21 +442,21 @@ public sealed class HepsiburadaOpenPackageRowTests
     {
         // The documented open-package list row: no top-level order number, items carry it.
         using var document = System.Text.Json.JsonDocument.Parse("""
-            {"id":"6ad4ab08-2a36-562c-3232-45d406060606","packageNumber":"5528399494","orderDate":"2026-10-18T14:18:00","status":"Packaged",
-             "items":[{"lineItemId":"l-1","orderNumber":"4588521195","hbSku":"HBCV000084MLD6","merchantSku":"MZ005S24","productName":"Anne Penye Bluz","quantity":1,"price":{"amount":525,"currency":"TRY"},"totalPrice":{"amount":525,"currency":"TRY"},"vatRate":10}]}
+            {"id":"6ad4ab08-2a36-562c-3232-45d406060606","packageNumber":"5520000001","orderDate":"2026-10-18T14:18:00","status":"Packaged",
+             "items":[{"lineItemId":"l-1","orderNumber":"4580000001","hbSku":"HBCV000084MLD6","merchantSku":"MZ005S24","productName":"Anne Penye Bluz","quantity":1,"price":{"amount":525,"currency":"TRY"},"totalPrice":{"amount":525,"currency":"TRY"},"vatRate":10}]}
             """);
         var package = MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.OrderPackage(document.RootElement);
 
-        Assert.Equal("4588521195", package.ExternalOrderId);
-        Assert.Equal("5528399494", package.Package.ExternalPackageId);
+        Assert.Equal("4580000001", package.ExternalOrderId);
+        Assert.Equal("5520000001", package.Package.ExternalPackageId);
     }
 
     [Fact]
     public void ARowWithoutAPackageNumberStillNamesItsOrder()
     {
-        using var document = System.Text.Json.JsonDocument.Parse("""{"id":"6ad4ab08","items":[{"orderNumber":"4091991027"}]}""");
+        using var document = System.Text.Json.JsonDocument.Parse("""{"id":"6ad4ab08","items":[{"orderNumber":"4090000001"}]}""");
 
         Assert.Throws<System.Text.Json.JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.OrderPackage(document.RootElement));
-        Assert.Equal("4091991027", MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.PackageOrderNumber(document.RootElement));
+        Assert.Equal("4090000001", MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaJsonMapper.PackageOrderNumber(document.RootElement));
     }
 }

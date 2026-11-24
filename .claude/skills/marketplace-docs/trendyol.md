@@ -275,7 +275,7 @@ purpose (`TurkeyTime.cs`).
 - An order awaiting payment (`Awaiting`) carries package id `0` until Trendyol creates the real package, so several
   orders of one store hold `0` at once: the unique package index skips `0` (`ShipmentPackageSupersession.
   PlaceholderExternalId`, migration `AllowTrendyolZeroPackagePlaceholders`) and the `0` row is superseded once the
-  order has a real package. Source: live ORDER_PACKAGE_ID_CONFLICT on order 11763229493, 6 Nov 2026.
+  order has a real package. Source: live ORDER_PACKAGE_ID_CONFLICT on order 11700000007, 6 Nov 2026.
 - A line without `vatRate` gets the rate of its siblings; no invoice until the rate is known.
 - Every shipment package carries `orderDate` (Turkey wall-clock epoch ms) and `currencyCode`; live never had a 1970
   order. Since 5 Nov 2026 a package without `orderDate` is refused (no `lastModifiedDate`/1970 fallback) and one
@@ -441,12 +441,12 @@ packages only, no claim events.
 - Returns page sort and filter (11 Nov 2026): `ReturnClaim.RequestedAt` is the claim request date the İadeler page sorts by (default "En Yeni İade Talebi") and its "İade Talep Tarihi" range filters by (Istanbul days; an undated claim is left out while a range is set); a claim without it lists last, never guessed. Trendyol: getClaims `claimDate` only (GMT epoch ms; `createdDate`/`requestDate` are not taken). Claims stored before it are dated by RETURN_LIFECYCLE, one claimIds request of 20 undated claims per run (`DateTrendyolReturnRequestsAsync`, cursor RETURN_REQUESTED_AT); claim-built orders' snapshot claimDate dated 23 older claims in migration AddReturnClaimRequestedAt (`TrendyolJsonMapper.Returns`).
 
 ## Resend packages ("Yeniden Gönderim", 11 Nov 2026, live read-only)
-- A resend opened after a missing-item request on a delivered order (11805932340: original package 4326252839
-  Delivered 11 Nov 11:40Z; resend 4337242198, 2 lines, Trendyol Express 7330038976334420, seller panel → Yeniden
+- A resend opened after a missing-item request on a delivered order (11800000001: original package 4320000001
+  Delivered 11 Nov 11:40Z; resend 4330000001, 2 lines, Trendyol Express 7330000000000015, seller panel → Yeniden
   Gönderimler, "Sipariş Tarihi" 16:56 = 13:56Z) is **not returned by any order read**: v2 `orders?orderNumber=` (with
-  and without dates), v1 `orders?orderNumber=`, v2 `shipmentPackageIds=4337242198,4326252839` and the stream window
-  13:50–14:10Z all answered only 4326252839 (`createdBy` "order-creation", `originPackageIds` null). No webhook brought it,
-  and getClaims `orderNumber=11805932340` answered no claim (totalElements 0, read again 17:10Z): the missing-item
+  and without dates), v1 `orders?orderNumber=`, v2 `shipmentPackageIds=4330000001,4320000001` and the stream window
+  13:50–14:10Z all answered only 4320000001 (`createdBy` "order-creation", `originPackageIds` null). No webhook brought it,
+  and getClaims `orderNumber=11800000001` answered no claim (totalElements 0, read again 17:10Z): the missing-item
   request is not a claim in the API either.
 - The only trace in the API: the original package's `lastModifiedDate` moved to the resend's moment (13:56:41Z) with no
   new `packageHistories` entry and no status change; its lines carry no resend or claim marker
