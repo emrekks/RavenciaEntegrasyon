@@ -21,53 +21,41 @@ export const badgeText = (count: number) => count > 99 ? '99+' : String(count)
 
 export function useDockHostState(phone: boolean) {
   const [actionsEl, setActionsEl] = useState<HTMLElement | null>(null)
-  const [noteEl, setNoteEl] = useState<HTMLElement | null>(null)
   const [stripEl, setStripEl] = useState<HTMLElement | null>(null)
-  const [tabsEl, setTabsEl] = useState<HTMLElement | null>(null)
   const [entries, setEntries] = useState<Array<{ id: string; hasInfo: boolean }>>([])
-  const [tabEntries, setTabEntries] = useState<string[]>([])
   const register = useCallback((id: string, hasInfo: boolean) => {
     setEntries(current => [...current.filter(entry => entry.id !== id), { id, hasInfo }])
     return () => setEntries(current => current.filter(entry => entry.id !== id))
   }, [])
-  const registerTabs = useCallback((id: string) => {
-    setTabEntries(current => [...current.filter(entry => entry !== id), id])
-    return () => setTabEntries(current => current.filter(entry => entry !== id))
-  }, [])
   const top = entries[entries.length - 1]
-  const tabsTopId = tabEntries[tabEntries.length - 1] ?? null
-  // The page's status text goes to the strip in the top row; where the top row holds the page's tabs it goes next to the buttons.
-  const infoEl = tabsTopId ? noteEl : stripEl
-  const host = useMemo<DockHost>(() => ({ phone, actionsEl, infoEl, topId: top?.id ?? null, register, tabsEl, tabsTopId, registerTabs }), [phone, actionsEl, infoEl, top?.id, register, tabsEl, tabsTopId, registerTabs])
-  return { host, taskActive: Boolean(top), hasInfo: Boolean(top?.hasInfo), tabsActive: Boolean(tabsTopId), setActionsEl, setNoteEl, setStripEl, setTabsEl }
+  const host = useMemo<DockHost>(() => ({ phone, actionsEl, infoEl: stripEl, topId: top?.id ?? null, register }), [phone, actionsEl, stripEl, top?.id, register])
+  return { host, taskActive: Boolean(top), hasInfo: Boolean(top?.hasInfo), setActionsEl, setStripEl }
 }
 
 export { DockContext }
 
-const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: boolean }> = [
+const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }> = [
   { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true },
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
   { to: '/products', icon: 'products', label: 'Ürünler' },
+  { to: '/questions', icon: 'questions', label: 'Sorular', aria: 'Ürün Soruları', noun: 'cevaplanmamış' },
 ]
 
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
-// Two floors in one panel: the top row holds the open page's tabs (or, in task mode, the status strip), the bottom row the four
-// targets - or, in task mode, a Menü button and the page's buttons.
-export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, tabsActive, unread, unreadError, setActionsEl, setNoteEl, setStripEl, setTabsEl, menuSlotRef, onToggleMenu, onNavigate, onOpenNotifications }: {
+// The panel: the bottom row holds the four targets - or, in task mode, a Menü button and the page's buttons; in task mode
+// the status strip is a top row above it.
+export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, unread, unreadError, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate, onOpenNotifications }: {
   menuOpen: boolean
   menuCount: number
   // The pending count drawn on a page's own target ("/orders": 9).
   slotCounts: Record<string, number>
   taskActive: boolean
   hasInfo: boolean
-  tabsActive: boolean
   // Unread notifications (the pill above the dock, or the bell at the end of the strip) and whether one is an error.
   unread: number
   unreadError: boolean
   setActionsEl: (element: HTMLElement | null) => void
-  setNoteEl: (element: HTMLElement | null) => void
   setStripEl: (element: HTMLElement | null) => void
-  setTabsEl: (element: HTMLElement | null) => void
   menuSlotRef: RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
   // Leaves the open menu for a page (replaces the menu's history entry).
@@ -76,9 +64,8 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
 }) {
   const { pathname } = useLocation()
   const task = taskActive && !menuOpen
-  const tabs = tabsActive && !menuOpen
-  const strip = !tabs && task && (hasInfo || unread > 0)
-  const rows = tabs || strip ? 2 : 1
+  const strip = task && (hasInfo || unread > 0)
+  const rows = strip ? 2 : 1
   const [infoHidden, setInfoHidden] = useState(false)
   useEffect(() => {
     let last = window.scrollY
@@ -99,10 +86,10 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     event.preventDefault()
     onNavigate(to)
   }
-  const slot = (page: { to: string; icon: UiIconName; label: string; end?: boolean }) => {
+  const slot = (page: { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }) => {
     const active = isActive(page.to, page.end)
     const count = slotCounts[page.to] ?? 0
-    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? page.label + ', ' + count + ' bekleyen' : page.label} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
+    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? (page.aria ?? page.label) + ', ' + count + ' ' + (page.noun ?? 'bekleyen') : (page.aria ?? page.label)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
       <span className="rv-dock-icon"><UiIcon name={page.icon} size={20} />{count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null}</span><span className="rv-dock-label">{page.label}</span>
     </Link>
   }
@@ -110,8 +97,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   const showStripBell = strip && unread > 0
   const bellLabel = 'Bildirimler, ' + unread + ' okunmamış'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
-    <div className="rv-dock-top" data-top={tabs ? 'tabs' : strip ? 'info' : 'none'} inert={rows === 1 || undefined}>
-      <div className="rv-dock-tabs" ref={setTabsEl} />
+    <div className="rv-dock-top" data-top={strip ? 'info' : 'none'} inert={rows === 1 || undefined}>
       <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
         <div className="rv-dock-info-slot" ref={setStripEl} />
         {showStripBell ? <button type="button" className={'rv-dock-bell' + (unreadError ? ' is-error' : '')} aria-label={bellLabel} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={14} />{badgeText(unread)}</button> : null}
@@ -127,7 +113,6 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
       </nav>
       <div className="rv-taskbar" inert={!task || undefined}>
         <button type="button" className="rv-taskbar-menu" aria-label="Menüyü Aç" aria-haspopup="dialog" onClick={onToggleMenu}><UiIcon name="menu" size={20} />{menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</button>
-        <div className="rv-taskbar-note" ref={setNoteEl} />
         <div className="rv-taskbar-actions" ref={setActionsEl} />
       </div>
     </div>
@@ -207,11 +192,11 @@ export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, 
     <div className="rv-fullmenu-body">
       {shown.map(group => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}><h3>{group.label}</h3><div className="rv-fullmenu-list">{group.entries.map(row)}</div></section>)}
       {!shown.length ? <p className="rv-fullmenu-empty" role="status">Eşleşen Sayfa Yok</p> : null}
-    </div>
     <footer className="rv-fullmenu-foot">
       <span className="rv-fullmenu-store" title={storeName}>{storeName}</span>
       <button type="button" className="rv-fullmenu-action is-danger" onClick={onLogout}><UiIcon name="logout" size={18} />Çıkış</button>
     </footer>
+    </div>
   </div>
 }
 

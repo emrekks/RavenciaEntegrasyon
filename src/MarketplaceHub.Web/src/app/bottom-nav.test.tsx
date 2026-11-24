@@ -21,6 +21,7 @@ const groups: MenuGroup[] = [
     { to: '/orders', icon: 'orders', label: 'Siparişler', count: 2, showZero: true, noun: 'bekleyen sipariş' },
     { to: '/returns', icon: 'returns', label: 'İadeler', count: 0, showZero: true },
     { to: '/invoices', icon: 'invoice', label: 'Faturalar', count: 3, showZero: true, warn: true },
+    { to: '/questions', icon: 'questions', label: 'Ürün Soruları', count: 7, showZero: true, noun: 'cevaplanmamış' },
   ] },
   { label: 'Sistem', entries: [{ to: '/settings', icon: 'settings', label: 'Sistem Ayarları', end: true }] },
 ]
@@ -36,7 +37,7 @@ function Harness({ phone = true, count = 0, unread = 0, slotCounts = {}, childre
   return <DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
     {menu.open && <FullScreenMenu unread={unread} unreadError={false} onOpenNotifications={() => undefined} onSearch={() => undefined} groups={groups} storeName="Mağaza" theme="light" onToggleTheme={() => undefined} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
-    <BottomDock unread={unread} unreadError={false} onOpenNotifications={() => undefined} menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} tabsActive={dock.tabsActive} setActionsEl={dock.setActionsEl} setNoteEl={dock.setNoteEl} setStripEl={dock.setStripEl} setTabsEl={dock.setTabsEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
+    <BottomDock unread={unread} unreadError={false} onOpenNotifications={() => undefined} menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
     {children}
   </DockContext.Provider>
 }
@@ -58,10 +59,12 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toMatch(/\.rv-dock-layer \{[^}]*bottom: var\(--rv-dock-bottom\)/)
     expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 52px/)
     expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 40px; \}/)
-    // The tab chips scroll sideways by the common strip rule: no touch-action.
-    expect(phone).toMatch(/\.rv-dock-tabs \{[^}]*overflow-y: hidden[^}]*overscroll-behavior-x: contain/)
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
+    // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
+    expect(phone).toContain(".rv-notification-history { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px;")
+    expect(phone).toContain("max-height: min(75dvh")
+    expect(phone).toContain('translateY(-28px)')
   })
 })
 
@@ -69,7 +72,7 @@ describe('Ravencia Dock', () => {
   it('has Ana Sayfa, Siparişler, Ara, Ürünler and Menü; the open page is the active slot and shows its label', () => {
     const { host } = mount('/orders')
     const dock = host.querySelector('.rv-dock')!
-    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Menü'])
+    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Ürün Soruları', 'Menü'])
     expect(dock.querySelector('.rv-dock-search')).toBeNull()
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
     const current = dock.querySelectorAll('[aria-current="page"]')
@@ -77,7 +80,7 @@ describe('Ravencia Dock', () => {
     expect(current[0].getAttribute('aria-label')).toBe('Siparişler')
     expect(current[0].textContent).toBe('Siparişler')
     // Every target shows its label, active or not.
-    expect([...dock.querySelectorAll('.rv-dock-label')].map(label => label.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Menü'])
+    expect([...dock.querySelectorAll('.rv-dock-label')].map(label => label.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Sorular', 'Menü'])
   })
 
   it('shows the Menü badge from 1 to 99 and as 99+ above, and none at 0', () => {
@@ -86,10 +89,17 @@ describe('Ravencia Dock', () => {
     expect(mount('/orders', { count: 7 }).host.querySelector('.rv-dock .rv-dock-badge')?.textContent).toBe('7')
     cleanup()
     expect(mount('/orders', { count: 120 }).host.querySelector('.rv-dock .rv-dock-badge')?.textContent).toBe('99+')
-    expect(menuPendingTotal(groups)).toBe(5)
-    expect(menuPendingTotal(groups, ['/orders'])).toBe(3)
+    expect(menuPendingTotal(groups)).toBe(12)
+    expect(menuPendingTotal(groups, ['/orders'])).toBe(10)
+    // Pages with a target of their own in the dock are not counted twice in the Menü badge.
+    expect(menuPendingTotal(groups, ['/orders', '/questions'])).toBe(3)
     cleanup()
-    expect(mount('/dashboard', { slotCounts: { '/orders': 9 } }).host.querySelector('a[href="/orders"] .rv-dock-badge')?.textContent).toBe('9')
+    const counted = mount('/dashboard', { slotCounts: { '/orders': 9, '/questions': 120 } }).host
+    expect(counted.querySelector('a[href="/orders"] .rv-dock-badge')?.textContent).toBe('9')
+    expect(counted.querySelector('a[href="/questions"] .rv-dock-badge')?.textContent).toBe('99+')
+    expect(counted.querySelector('a[href="/questions"]')?.getAttribute('aria-label')).toBe('Ürün Soruları, 120 cevaplanmamış')
+    cleanup()
+    expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
   })
 
   it('opens the full-screen menu from the Menü slot (which becomes Kapat) and closes it again from the same slot', () => {
@@ -127,6 +137,9 @@ describe('Ravencia Dock', () => {
     typeInto(input, 'fat')
     expect([...document.querySelectorAll('.rv-fullmenu-row')].map(row => row.querySelector('.rv-fullmenu-name')?.textContent)).toEqual(['Faturalar'])
     expect(document.querySelector('.rv-fullmenu-row .rv-fullmenu-count')?.textContent).toBe('3')
+    // The user and Çıkış are the last item of the scrolling list, not a bar of their own.
+    expect(document.querySelector('.rv-fullmenu-body > .rv-fullmenu-foot .rv-fullmenu-action')?.textContent).toBe('Çıkış')
+    expect(document.querySelector('.rv-fullmenu > .rv-fullmenu-foot')).toBeNull()
     typeInto(input, 'iade')
     expect(document.querySelector('.rv-fullmenu-row .rv-fullmenu-count')).toBeNull()
     typeInto(input, 'fat')
@@ -156,32 +169,23 @@ describe('notification pill', () => {
   })
 })
 
-describe('page tabs in the dock', () => {
-  const tabs = (value: string, onChange: (value: string) => void) => <MemoryRouter initialEntries={['/orders']}><Harness><Tabs dock ariaLabel="Sipariş durumları" value={value} onChange={onChange} items={[{ value: 'ALL', label: 'Tümü', count: 140 }, { value: 'NEW', label: 'Yeni', count: 8 }]} /></Harness></MemoryRouter>
-  it('draws the page tabs as chips in the dock top row instead of in the page, and a chip changes the page tab', () => {
+describe('page tabs stay in the page', () => {
+  it('draws a page tab strip in the page on a phone as well, and the dock has no tab row', () => {
     const picked: string[] = []
-    const { host } = render(tabs('ALL', value => picked.push(value)))
-    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('2')
-    expect(host.querySelector('.rv-dock-top')?.getAttribute('data-top')).toBe('tabs')
-    expect(host.querySelector('.rv-tabs')).toBeNull()
-    const chips = [...host.querySelectorAll<HTMLButtonElement>('.rv-dock-tab')]
-    expect(chips.map(chip => chip.textContent)).toEqual(['Tümü140', 'Yeni8'])
-    expect(chips[0].getAttribute('aria-selected')).toBe('true')
-    click(chips[1])
+    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness><Tabs ariaLabel="Sipariş durumları" value="ALL" onChange={value => picked.push(value)} items={[{ value: 'ALL', label: 'Tümü', count: 140 }, { value: 'NEW', label: 'Yeni', count: 8 }]} /></Harness></MemoryRouter>)
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
+    expect(host.querySelector('.rv-dock-tab, .rv-dock-tabs')).toBeNull()
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('.rv-tabs [role="tab"]')]
+    expect(tabs).toHaveLength(2)
+    click(tabs[1])
     expect(picked).toEqual(['NEW'])
   })
-  it('keeps the strip in the page where there is no dock, and a page without tabs has one row', () => {
-    const wide = render(<MemoryRouter><Harness phone={false}><Tabs dock ariaLabel="Sekmeler" value="A" onChange={() => undefined} items={[{ value: 'A', label: 'A' }]} /></Harness></MemoryRouter>)
-    expect(wide.host.querySelector('.rv-tabs')).not.toBeNull()
-    cleanup()
-    expect(mount('/dashboard').host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
-  })
-  it('puts the tabs on the top row and the action bar on the bottom row together, the status text beside the buttons', () => {
-    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness><Tabs dock ariaLabel="Sipariş durumları" value="ALL" onChange={() => undefined} items={[{ value: 'ALL', label: 'Tümü' }]} /><StickyActionBar label="Toplu işlemler" lead={<span>2 sipariş seçildi</span>}><button type="button">Sil</button></StickyActionBar></Harness></MemoryRouter>)
-    expect(host.querySelector('.rv-dock-top')?.getAttribute('data-top')).toBe('tabs')
+  it('keeps the dock one row beside a selection bar: the buttons in the dock, the status in the strip above', () => {
+    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness><Tabs ariaLabel="Sipariş durumları" value="ALL" onChange={() => undefined} items={[{ value: 'ALL', label: 'Tümü' }]} /><StickyActionBar label="Toplu işlemler" lead={<span>2 sipariş seçildi</span>}><button type="button">Sil</button></StickyActionBar></Harness></MemoryRouter>)
+    expect(host.querySelector('.rv-tabs')).not.toBeNull()
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-mode')).toBe('task')
     expect(host.querySelector('.rv-taskbar-actions')?.textContent).toBe('Sil')
-    expect(host.querySelector('.rv-taskbar-note')?.textContent).toBe('2 sipariş seçildi')
+    expect(host.querySelector('.rv-dock-info-start')?.textContent).toBe('2 sipariş seçildi')
   })
 })
 

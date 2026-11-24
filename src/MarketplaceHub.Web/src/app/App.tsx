@@ -5,7 +5,7 @@ import { BrandSymbol } from '../shared/components/BrandSymbol'
 import { BrandWordmark } from '../shared/components/BrandWordmark'
 import { createPortal } from 'react-dom'
 import { closeAllDismissables, useDismissable } from '../shared/hooks/useDismissable'
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
 import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, setWriteTimeoutHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
@@ -34,6 +34,7 @@ import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
 import { queryKeys } from '../shared/api/query-keys'
 import './bottom-nav.css'
+import { shouldResetScroll } from './page-scroll'
 import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useDockHostState, useMenuHistory, useNotificationHistory, type MenuEntry, type MenuGroup } from './BottomDock'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
@@ -109,12 +110,6 @@ function Shell({ me }: { me: Me }) {
   // brings the tab back from its cache (iPhone browsers kept a stale lock until a reload), a lock style that no overlay
   // holds any more is cleared.
   useEffect(() => { releaseOrphanedScrollLock() }, [location.pathname, location.search])
-  // A new page always opens at its top (owner, 12 Nov); filters and tabs on the same page keep the scroll position.
-  useEffect(() => {
-    if (navigator.userAgent.includes('jsdom')) return
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
-    mainRef.current?.scrollTo?.({ top: 0, left: 0, behavior: 'instant' })
-  }, [location.pathname])
   useEffect(() => {
     const onReturn = () => { if (document.visibilityState === 'visible') releaseOrphanedScrollLock() }
     document.addEventListener('visibilitychange', onReturn)
@@ -142,6 +137,20 @@ function Shell({ me }: { me: Me }) {
   const menuSlotRef = useRef<HTMLButtonElement>(null)
   // Notifications: a dropdown under the bell on wide screens; on a phone a sheet above the dock (an entry of the history).
   const notificationSheet = useNotificationHistory()
+  // A new page opens at its top (page-scroll.ts): the window is what scrolls on every screen size.
+  const navigationType = useNavigationType()
+  const scrolledFor = useRef<string | null>(null)
+  const pageLocked = (phone && fullMenu.open) || notificationSheet.open
+  useEffect(() => {
+    if (navigator.userAgent.includes('jsdom')) return
+    if (!shouldResetScroll({ pathname: location.pathname, lastPathname: scrolledFor.current, locked: pageLocked, navigationType })) { if (!pageLocked && navigationType === 'POP') scrolledFor.current = location.pathname; return }
+    scrolledFor.current = location.pathname
+    // Once at once, and again on the next frames: the page lock that just went (the menu) gives the old offset back when it lets go.
+    const toTop = () => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); mainRef.current?.scrollTo?.({ top: 0, left: 0, behavior: 'instant' }) }
+    toTop()
+    let frame = requestAnimationFrame(() => { toTop(); frame = requestAnimationFrame(toTop) })
+    return () => cancelAnimationFrame(frame)
+  }, [location.pathname, pageLocked, navigationType])
   const notificationOpener = useRef<HTMLElement | null>(null)
   const menuWasOpen = useRef(false)
   // Closing the menu (Esc, back button, Kapat) hands the focus back to the Menü slot that opened it.
@@ -304,7 +313,7 @@ function Shell({ me }: { me: Me }) {
     </main>
     {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
     {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} storeName={displayName} theme={visualTheme} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} onSearch={() => setQuickSearchOpen(true)} onToggleTheme={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
-    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} tabsActive={dock.tabsActive} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} setActionsEl={dock.setActionsEl} setNoteEl={dock.setNoteEl} setStripEl={dock.setStripEl} setTabsEl={dock.setTabsEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
+    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders', '/questions'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0), '/questions': Math.max(0, questionWaitingSummary.data?.totalCount ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
     </div></DockContext.Provider>
 }
 
