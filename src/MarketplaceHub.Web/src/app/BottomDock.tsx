@@ -113,21 +113,18 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
 }
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-const turkishKey = (value: string) => value.toLocaleLowerCase('tr-TR')
 
 // The full-screen menu: the page's own colour over the top bar, rising from the bottom; the dock stays below it.
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
-export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigate, onSearch, pathname }: {
+export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigate, pathname }: {
   groups: MenuGroup[]
   storeName: string
-  onSearch: () => void
   onLogout: () => void
   onClose: () => void
   onNavigate: (to: string) => void
   pathname: string
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const [query, setQuery] = useState('')
   useScrollLock(true)
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true })
@@ -156,8 +153,6 @@ export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigat
     document.addEventListener('keydown', listener)
     return () => document.removeEventListener('keydown', listener)
   })
-  const needle = turkishKey(query.trim())
-  const shown = groups.map(group => ({ ...group, entries: needle ? group.entries.filter(entry => turkishKey(entry.label).includes(needle)) : group.entries })).filter(group => group.entries.length)
   const row = (entry: MenuEntry): ReactNode => {
     const hasCount = typeof entry.count === 'number' && entry.count > 0
     const active = entry.end ? pathname === entry.to : pathname === entry.to || pathname.startsWith(`${entry.to}/`)
@@ -171,17 +166,15 @@ export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigat
     </Link>
   }
   return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
-    <header className="rv-fullmenu-head"><h2>Menü</h2><div className="rv-fullmenu-tools">
-      <button type="button" className="rv-fullmenu-tool" aria-label="Ara" aria-haspopup="dialog" onClick={onSearch}><UiIcon name="search" size={18} /></button>
-    </div></header>
-    <div className="rv-fullmenu-search"><UiIcon name="search" size={18} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Sayfa Ara" aria-label="Sayfa Ara" autoComplete="off" enterKeyHint="search" /></div>
+    <header className="rv-fullmenu-head"><h2>Menü</h2></header>
     <div className="rv-fullmenu-body">
-      {shown.map(group => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}><h3>{group.label}</h3><div className="rv-fullmenu-list">{group.entries.map(row)}</div></section>)}
-      {!shown.length ? <p className="rv-fullmenu-empty" role="status">Eşleşen Sayfa Yok</p> : null}
-    <footer className="rv-fullmenu-foot">
-      <span className="rv-fullmenu-store" title={storeName}>{storeName}</span>
-      <button type="button" className="rv-fullmenu-action is-danger" onClick={onLogout}><UiIcon name="logout" size={18} />Çıkış</button>
-    </footer>
+      {groups.map((group, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
+        <h3>{group.label}{index === groups.length - 1 ? <span className="rv-fullmenu-store" title={storeName}>{storeName}</span> : null}</h3>
+        <div className="rv-fullmenu-list">
+          {group.entries.map(row)}
+          {index === groups.length - 1 ? <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={20} /><span className="rv-fullmenu-name">Çıkış</span></button> : null}
+        </div>
+      </section>)}
     </div>
   </div>
 }

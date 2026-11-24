@@ -115,16 +115,13 @@
 
   /* Full-screen menu: the page's colour over the top bar (z 85 on a phone); the dock (87) stays above it, sheets and dialogs (900+) above both. */
   .rv-fullmenu { position: fixed; inset: 0; z-index: 86; display: flex; flex-direction: column; box-sizing: border-box; padding: calc(14px + env(safe-area-inset-top, 0px)) 0 calc(var(--rv-dock-bottom) + 52px + 14px); color: var(--rv-color-ink); background: var(--rv-color-bg); outline: 0; animation: rv-fullmenu-in 200ms cubic-bezier(.2, .8, .2, 1) both; }
-  .rv-fullmenu-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px 10px; }
+  .rv-fullmenu-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px 12px; }
   .rv-fullmenu-head h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
-  .rv-fullmenu-tools { display: flex; gap: 8px; }
-  .rv-fullmenu-tool { position: relative; display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
-  .rv-fullmenu-store { flex: 1; min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-fullmenu-search { display: flex; flex: none; align-items: center; gap: 8px; box-sizing: border-box; height: 36px; margin: 0 16px 4px; padding: 0 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
-  .rv-fullmenu-search:focus-within { border-color: var(--rv-color-primary); }
-  .rv-fullmenu-search input { flex: 1; min-width: 0; height: 34px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: none; border: 0; border-radius: 0; outline: 0; box-shadow: none; font: inherit; font-size: 16px; -webkit-appearance: none; appearance: none; }
-  .rv-fullmenu-search input::-webkit-search-cancel-button { display: none; }
-  .rv-fullmenu-body { flex: 1; min-height: 0; padding: 0 16px 12px; overflow-y: auto; overscroll-behavior: contain; }
+  .rv-fullmenu-store { float: right; max-width: 60%; overflow: hidden; margin-right: 12px; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  .rv-fullmenu-body { flex: 1; min-height: 0; padding: 0 16px 12px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .rv-fullmenu-body::-webkit-scrollbar { display: none; }
+  .rv-fullmenu-row.is-danger { width: 100%; color: var(--rv-color-danger); background: none; border: 0; font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
+  .rv-fullmenu-row.is-danger > .ui-icon { color: inherit; }
   .rv-fullmenu-group h3 { margin: 14px 0 6px 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; line-height: 1.2; }
   .rv-fullmenu-list { display: flex; flex-direction: column; }
   .rv-fullmenu-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; min-width: 0; height: 48px; padding: 0 12px; color: var(--rv-color-ink); border-radius: 12px; font-size: 14px; font-weight: 500; text-decoration: none; -webkit-tap-highlight-color: transparent; }
@@ -136,13 +133,7 @@
   .rv-fullmenu-row.is-current > .ui-icon { color: inherit; }
   .rv-fullmenu-count { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 10px; font-size: 11px; font-weight: 700; }
   .rv-fullmenu-count.is-warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
-  .rv-fullmenu-empty { margin: 24px 0; color: var(--rv-color-muted); font-size: 14px; text-align: center; }
-  /* The user and Çıkış are the last item of the one scrolling list, not a bar of their own. */
-  .rv-fullmenu-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 4px 0; border-top: 1px solid var(--rv-color-border); }
-  .rv-fullmenu-action { display: inline-flex; flex: none; min-width: 120px; align-items: center; justify-content: center; gap: 8px; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-  .rv-fullmenu-action.is-danger { color: var(--rv-color-danger); }
   .rv-fullmenu :is(a, button):focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
-  html body .rv-fullmenu .rv-fullmenu-search input:focus, html body .rv-fullmenu .rv-fullmenu-search input:focus-visible { border: 0; outline: 0; box-shadow: none; }
   @keyframes rv-fullmenu-in { from { transform: translateY(100%); } }
 
   /* Notifications: a panel dropping from just under the top bar (12 px in from the sides), at most 75% of the screen,

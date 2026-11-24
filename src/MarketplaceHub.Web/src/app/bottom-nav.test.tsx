@@ -36,17 +36,13 @@ function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone
   pathNow = location.pathname
   return <DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
-    {menu.open && <FullScreenMenu onSearch={() => undefined} groups={groups} storeName="Mağaza" onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
+    {menu.open && <FullScreenMenu groups={groups} storeName="Mağaza" onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
     <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
     {children}
   </DockContext.Provider>
 }
 const mount = (path: string, props: Parameters<typeof Harness>[0] = {}) => render(<MemoryRouter initialEntries={[path]}><Harness {...props} /></MemoryRouter>)
 const click = (element: Element | null) => act(() => { (element as HTMLElement).click() })
-const typeInto = (input: HTMLInputElement, value: string) => act(() => {
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
-  input.dispatchEvent(new Event('input', { bubbles: true }))
-})
 
 describe('phone bottom navigation (CSS)', () => {
   it('is drawn only up to 768 px, where the hamburger and the top bar search go away and the page keeps room under its content', () => {
@@ -133,20 +129,24 @@ describe('Ravencia Dock', () => {
     expect(pathNow).toBe('/orders')
   })
 
-  it('filters the entries with Sayfa Ara and leaves the menu for a page by replacing its history entry', () => {
+  it('is the title, the groups and, at the end of the Sistem group, the user and Çıkış as a danger row; no search field, no footer', () => {
     const { host } = mount('/orders')
     click(host.querySelector('button[aria-label^="Menü"]'))
-    const input = document.querySelector<HTMLInputElement>('.rv-fullmenu-search input')!
-    typeInto(input, 'fat')
-    expect([...document.querySelectorAll('.rv-fullmenu-row')].map(row => row.querySelector('.rv-fullmenu-name')?.textContent)).toEqual(['Faturalar'])
-    expect(document.querySelector('.rv-fullmenu-row .rv-fullmenu-count')?.textContent).toBe('3')
-    // The user and Çıkış are the last item of the scrolling list, not a bar of their own.
-    expect(document.querySelector('.rv-fullmenu-body > .rv-fullmenu-foot .rv-fullmenu-action')?.textContent).toBe('Çıkış')
-    expect(document.querySelector('.rv-fullmenu > .rv-fullmenu-foot')).toBeNull()
-    typeInto(input, 'iade')
-    expect(document.querySelector('.rv-fullmenu-row .rv-fullmenu-count')).toBeNull()
-    typeInto(input, 'fat')
-    typeInto(input, '')
+    expect(document.querySelector('.rv-fullmenu-head')?.textContent).toBe('Menü')
+    expect(document.querySelector('.rv-fullmenu-search, .rv-fullmenu-foot, .rv-fullmenu-tools, input')).toBeNull()
+    const system = document.querySelector('.rv-fullmenu-group[aria-label="Sistem"]')!
+    expect(system.querySelector('h3 .rv-fullmenu-store')?.textContent).toBe('Mağaza')
+    const rows = [...system.querySelectorAll('.rv-fullmenu-row')]
+    expect(rows.map(row => row.textContent)).toEqual(['Sistem Ayarları', 'Çıkış'])
+    expect(rows[1].classList.contains('is-danger')).toBe(true)
+    expect(rows[1].querySelector('.rv-fullmenu-chev')).toBeNull()
+    // Only pages with something pending show a count (0 shows none).
+    expect([...document.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
+  })
+
+  it('leaves the menu for a page by replacing its history entry, so back returns to the page it was opened on', () => {
+    const { host } = mount('/orders')
+    click(host.querySelector('button[aria-label^="Menü"]'))
     click([...document.querySelectorAll('.rv-fullmenu-row')].find(row => row.textContent?.startsWith('Faturalar')) ?? null)
     expect(pathNow).toBe('/invoices')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
@@ -156,11 +156,11 @@ describe('Ravencia Dock', () => {
 })
 
 describe('no bell in the dock or the menu', () => {
-  it('has neither a pill above the dock nor a bell or theme button in the menu header (the phone bar has them)', () => {
+  it('has neither a pill above the dock nor a bell, theme or search button in the menu header', () => {
     const { host } = mount('/orders')
     expect(host.querySelector('.rv-dock-pill-bell, .rv-dock-bell')).toBeNull()
     click(host.querySelector('button[aria-label^="Menü"]'))
-    expect([...document.querySelectorAll('.rv-fullmenu-tool')].map(tool => tool.getAttribute('aria-label'))).toEqual(['Ara'])
+    expect(document.querySelectorAll('.rv-fullmenu-head button')).toHaveLength(0)
   })
 })
 
