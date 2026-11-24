@@ -90,7 +90,7 @@ public sealed class CatalogAndOrderIngestionFixesTests
         Assert.Equal(2, byLine.Count);
         Assert.Equal("4300000001:1793876113007", byLine.Values.Single(x => x.PackageId == package).SourceEventId);
         Assert.Equal(1793876113007, OrderIngestionService.PackageEventInstant("4300000001:1793876113007"));
-        Assert.Equal(1789229541000, OrderIngestionService.PackageEventInstant("order:PTT-TEST00002-120926:1789229541000"));
+        Assert.Equal(1789229541000, OrderIngestionService.PackageEventInstant("order:PTT-0TEST0001-120926:1789229541000"));
         Assert.Equal(long.MinValue, OrderIngestionService.PackageEventInstant("seed"));
     }
 

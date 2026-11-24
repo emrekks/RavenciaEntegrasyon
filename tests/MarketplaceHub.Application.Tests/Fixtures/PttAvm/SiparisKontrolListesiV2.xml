@@ -29,7 +29,7 @@
           <a:SiparisAdresi>Fake Teslimat Sokak 2</a:SiparisAdresi>
           <a:SiparisIlce>Keçiören</a:SiparisIlce>
           <a:SiparisIli>Ankara</a:SiparisIli>
-          <a:SiparisNo>PTT-TEST00001-071024</a:SiparisNo>
+          <a:SiparisNo>PTT-ATEST0001-071024</a:SiparisNo>
           <a:SiparisUrunler>
             <a:SiparisUrun>
               <a:IndirimPttavm>2.71</a:IndirimPttavm>
@@ -66,7 +66,7 @@
           <a:KargoBarkod/>
           <a:MusteriAdi>Test</a:MusteriAdi>
           <a:MusteriSoyadi>Musteri</a:MusteriSoyadi>
-          <a:SiparisNo>PTT-TEST00003-211024</a:SiparisNo>
+          <a:SiparisNo>PTT-LTEST0001-211024</a:SiparisNo>
           <a:SiparisUrunler>
             <a:SiparisUrun>
               <a:IndirimToplam>3.72</a:IndirimToplam>

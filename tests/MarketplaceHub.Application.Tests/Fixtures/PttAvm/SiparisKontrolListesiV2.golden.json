@@ -2,8 +2,8 @@
   "page": {
     "Items": [
       {
-        "ExternalOrderId": "PTT-TEST00001-071024",
-        "OrderNumber": "PTT-TEST00001-071024",
+        "ExternalOrderId": "PTT-ATEST0001-071024",
+        "OrderNumber": "PTT-ATEST0001-071024",
         "OrderedAt": "2024-10-07T14:38:29+00:00",
         "LastModifiedAt": "2024-10-07T14:38:36+00:00",
         "Currency": "TRY",
@@ -51,7 +51,7 @@
             "UnitPrice": 36.63,
             "VatRate": 10,
             "RawStatus": "Returned",
-            "SourceSnapshotJson": "<raw 281 chars sha256:73e43e94a85b>",
+            "SourceSnapshotJson": "<raw 281 chars sha256:e4b6774c55da>",
             "CancelledQuantity": 0,
             "CancelledAt": null,
             "PlatformDiscount": null
@@ -65,7 +65,7 @@
             "UnitPrice": 41.25,
             "VatRate": 10,
             "RawStatus": "Cancelled",
-            "SourceSnapshotJson": "<raw 200 chars sha256:7c50f92b4ce5>",
+            "SourceSnapshotJson": "<raw 200 chars sha256:bfa2702f96aa>",
             "CancelledQuantity": 1,
             "CancelledAt": null,
             "PlatformDiscount": null
@@ -73,7 +73,7 @@
         ],
         "Packages": [
           {
-            "ExternalPackageId": "order:PTT-TEST00001-071024",
+            "ExternalPackageId": "order:PTT-ATEST0001-071024",
             "OriginExternalPackageId": null,
             "RawStatus": "Returned",
             "OccurredAt": "2024-10-07T14:38:36+00:00",
@@ -109,7 +109,7 @@
             "CargoBarcode": null
           }
         ],
-        "RawJson": "<raw 567 chars sha256:c85aea813636>",
+        "RawJson": "<raw 567 chars sha256:abc4089260f9>",
         "ShipmentDueAt": null,
         "PaymentStatus": "UNKNOWN",
         "CancellationStatus": "UNKNOWN",
@@ -120,8 +120,8 @@
         "StoreFrontCode": null
       },
       {
-        "ExternalOrderId": "PTT-TEST00003-211024",
-        "OrderNumber": "PTT-TEST00003-211024",
+        "ExternalOrderId": "PTT-LTEST0001-211024",
+        "OrderNumber": "PTT-LTEST0001-211024",
         "OrderedAt": "2024-10-21T11:48:46+00:00",
         "LastModifiedAt": "2024-10-21T11:48:52+00:00",
         "Currency": "TRY",
@@ -145,7 +145,7 @@
             "UnitPrice": 53.38,
             "VatRate": 1,
             "RawStatus": "Cancelled",
-            "SourceSnapshotJson": "<raw 222 chars sha256:2d9baaac4e84>",
+            "SourceSnapshotJson": "<raw 222 chars sha256:e23bd940d31a>",
             "CancelledQuantity": 1,
             "CancelledAt": null,
             "PlatformDiscount": null
@@ -153,7 +153,7 @@
         ],
         "Packages": [
           {
-            "ExternalPackageId": "order:PTT-TEST00003-211024",
+            "ExternalPackageId": "order:PTT-LTEST0001-211024",
             "OriginExternalPackageId": null,
             "RawStatus": "Cancelled",
             "OccurredAt": "2024-10-21T11:48:52+00:00",
@@ -181,7 +181,7 @@
             "CargoBarcode": null
           }
         ],
-        "RawJson": "<raw 118 chars sha256:4c24dce1d779>",
+        "RawJson": "<raw 118 chars sha256:bf75c7ec535e>",
         "ShipmentDueAt": null,
         "PaymentStatus": "UNKNOWN",
         "CancellationStatus": "UNKNOWN",
@@ -347,10 +347,10 @@
   },
   "returns": [
     {
-      "ExternalOrderId": "PTT-TEST00001-071024",
+      "ExternalOrderId": "PTT-ATEST0001-071024",
       "claim": {
-        "ExternalClaimId": "iade:PTT-TEST00001-071024",
-        "ExternalOrderId": "PTT-TEST00001-071024",
+        "ExternalClaimId": "iade:PTT-ATEST0001-071024",
+        "ExternalOrderId": "PTT-ATEST0001-071024",
         "RawStatus": "Completed",
         "ReasonCode": null,
         "ReasonText": null,
@@ -371,7 +371,7 @@
             "StockCode": null
           }
         ],
-        "RawJson": "<raw 195 chars sha256:41323a66d793>",
+        "RawJson": "<raw 195 chars sha256:57c2120002f0>",
         "CargoProviderName": "PTT Kargo",
         "CargoTrackingNumber": "2710000000001",
         "CargoTrackingLink": null,
@@ -387,7 +387,7 @@
       }
     },
     {
-      "ExternalOrderId": "PTT-TEST00003-211024",
+      "ExternalOrderId": "PTT-LTEST0001-211024",
       "claim": null
     },
     {

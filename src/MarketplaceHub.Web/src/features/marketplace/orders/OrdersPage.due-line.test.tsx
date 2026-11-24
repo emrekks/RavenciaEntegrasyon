@@ -21,7 +21,7 @@ vi.mock('../../../shared/api', async importOriginal => {
       order('o2', '10000000002', 'NEW', 8),
       order('o3', '10000000003', 'PROCESSING', -50),
       order('o4', '10000000004', 'RETURNED', -50),
-      order('o5', 'PTTEM-TEST00004-181026', 'NEW', 40, { platformCode: 'PTTAVM', platformDisplayName: 'PttAVM' })
+      order('o5', 'PTTEM-UTEST0001-181026', 'NEW', 40, { platformCode: 'PTTAVM', platformDisplayName: 'PttAVM' })
     ], nextCursor: null, hasMore: false, totalCount: 5, supportedFilters: ['labelPrinted'] }
     if (path.startsWith('/orders/facets')) return { platforms: {}, cargos: {} }
     if (path.startsWith('/orders/summary')) return {}
@@ -67,7 +67,7 @@ describe('OrdersPage deadline line', () => {
     expect(due('10000000003')!.className).not.toContain('is-soon')
     expect(due('10000000004')).toBeNull()
     expect(rows.find(row => row.textContent?.includes('10000000004'))!.querySelector('.rr-ordercell')!.textContent).not.toContain('gün gecikti')
-    expect(rows.find(row => row.textContent?.includes('PTTEM-TEST00004-181026'))!.querySelector('.rr-on-no')!.className).toContain('rr-on-long')
+    expect(rows.find(row => row.textContent?.includes('PTTEM-UTEST0001-181026'))!.querySelector('.rr-on-no')!.className).toContain('rr-on-long')
     expect(rows.find(row => row.textContent?.includes('10000000001'))!.querySelector('.rr-on-no')!.className).not.toContain('rr-on-long')
   })
 })

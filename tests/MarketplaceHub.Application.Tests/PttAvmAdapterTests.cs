@@ -54,7 +54,7 @@ public sealed class PttAvmAdapterTests
                        <a:IslemTarihi>2024-10-21T14:48:46</a:IslemTarihi>
                        <a:KargoBarkod/>
                        <a:KargoTutari>222.3</a:KargoTutari>
-                       <a:SiparisNo>PTT-TEST00003-211024</a:SiparisNo>
+                       <a:SiparisNo>PTT-LTEST0001-211024</a:SiparisNo>
                        <a:SiparisUrunler>
                           <a:SiparisUrun>
                              <a:KdvDahilToplamTutar>49.66</a:KdvDahilToplamTutar>
@@ -258,7 +258,7 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(("123456", "abcdef"), PttAvmHttpClient.Supplier(supplierResult!));
         Assert.Null(ordersError);
         var order = Assert.Single(PttAvmHttpClient.ContractItems(ordersResult!, "TedarikciSiparisKontrolV2"));
-        Assert.Equal("PTT-TEST00003-211024", PttAvmHttpClient.ContractValue(order, "SiparisNo"));
+        Assert.Equal("PTT-LTEST0001-211024", PttAvmHttpClient.ContractValue(order, "SiparisNo"));
         Assert.Null(PttAvmHttpClient.ContractValue(order, "VergiNo"));
         var line = order.Elements().Single(x => x.Name.LocalName == "SiparisUrunler").Elements().Single();
         Assert.Equal("232000001", PttAvmHttpClient.ContractValue(line, "LineItemId"));
@@ -272,7 +272,7 @@ public sealed class PttAvmAdapterTests
 
         Assert.Null(PttAvmHttpClient.Supplier(nil));
         Assert.Equal("PTTAVM_SOAP_CONTRACT_INVALID", wrongOperation!.Code);
-        Assert.DoesNotContain("PTT-TEST00003", wrongOperation.SafeMessage);
+        Assert.DoesNotContain("PTT-LTEST0001", wrongOperation.SafeMessage);
     }
 
     [Fact]
@@ -459,7 +459,7 @@ public sealed class PttAvmAdapterTests
                        <a:SiparisAdresi>Teslimat Sokak 2</a:SiparisAdresi>
                        <a:SiparisIlce>Keçiören</a:SiparisIlce>
                        <a:SiparisIli>Ankara</a:SiparisIli>
-                       <a:SiparisNo>PTT-TEST00001-071024</a:SiparisNo>
+                       <a:SiparisNo>PTT-ATEST0001-071024</a:SiparisNo>
                        <a:SiparisUrunler>
                           <a:SiparisUrun>
                              <a:IndirimPttavm>2.71</a:IndirimPttavm>
@@ -496,7 +496,7 @@ public sealed class PttAvmAdapterTests
                        <a:KargoBarkod/>
                        <a:MusteriAdi>test</a:MusteriAdi>
                        <a:MusteriSoyadi>test</a:MusteriSoyadi>
-                       <a:SiparisNo>PTT-TEST00003-211024</a:SiparisNo>
+                       <a:SiparisNo>PTT-LTEST0001-211024</a:SiparisNo>
                        <a:SiparisUrunler>
                           <a:SiparisUrun>
                              <a:IndirimToplam>3.72</a:IndirimToplam>
@@ -552,7 +552,7 @@ public sealed class PttAvmAdapterTests
 
         Assert.True(result.IsSuccess, result.Error?.SafeMessage);
         Assert.False(result.Value!.HasMore);
-        Assert.Equal(["PTT-TEST00001-071024", "PTT-TEST00003-211024", "PTT-OPEN12345-211026"], result.Value.Items.Select(x => x.ExternalOrderId));
+        Assert.Equal(["PTT-ATEST0001-071024", "PTT-LTEST0001-211024", "PTT-OPEN12345-211026"], result.Value.Items.Select(x => x.ExternalOrderId));
         var request = Assert.Single(handler.Requests);
         Assert.Equal("\"http://tempuri.org/IService/SiparisKontrolListesiV2\"", request.Headers["SOAPAction"]);
         XNamespace tem = PttAvmHttpClient.ServiceNamespace;
@@ -565,7 +565,7 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void AnOrderKeepsItsLinesCustomerAddressesAndCargoBarcode()
     {
-        var order = OrderFromList("PTT-TEST00001-071024");
+        var order = OrderFromList("PTT-ATEST0001-071024");
 
         // IslemTarihi carries no offset: Turkey time.
         Assert.Equal(new DateTimeOffset(2024, 10, 7, 14, 38, 29, TimeSpan.Zero), order.OrderedAt);
@@ -583,7 +583,7 @@ public sealed class PttAvmAdapterTests
         Assert.Equal(2.71m, order.DiscountAmount);
         Assert.Equal(33.92m, order.NetAmount);
         var package = Assert.Single(order.Packages);
-        Assert.Equal("order:PTT-TEST00001-071024", package.ExternalPackageId);
+        Assert.Equal("order:PTT-ATEST0001-071024", package.ExternalPackageId);
         Assert.Equal("Returned", package.RawStatus);
         Assert.Equal("PTT Kargo", package.CargoProviderExternalId);
         Assert.Equal("2710000000001", package.CargoTrackingNumber);
@@ -610,7 +610,7 @@ public sealed class PttAvmAdapterTests
         Assert.NotEqual(OrderListAnswer, withoutRate);
         var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, withoutRate, PttAvmHttpClient.Orders);
 
-        var lines = PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-TEST00001-071024").Lines;
+        var lines = PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-ATEST0001-071024").Lines;
 
         Assert.Null(lines[0].VatRate);
         Assert.Equal(10m, lines[1].VatRate);
@@ -651,7 +651,7 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void AFullyCancelledOrderKeepsTheValueItWasPlacedWith()
     {
-        var order = OrderFromList("PTT-TEST00003-211024");
+        var order = OrderFromList("PTT-LTEST0001-211024");
 
         Assert.Equal("Cancelled", Assert.Single(order.Packages).RawStatus);
         Assert.Equal(53.38m, order.GrossAmount);
@@ -720,14 +720,14 @@ public sealed class PttAvmAdapterTests
     }
 
     [Theory]
-    [InlineData("PTT-TEST00001-071024", 2024, 10, 7)]
-    [InlineData("PTT-TEST00003-211024", 2024, 10, 21)]
+    [InlineData("PTT-ATEST0001-071024", 2024, 10, 7)]
+    [InlineData("PTT-LTEST0001-211024", 2024, 10, 21)]
     public void TheOrderNumberNamesTheOrderDay(string orderNumber, int year, int month, int day) =>
         Assert.Equal(new DateTime(year, month, day), PttAvmOrderMapper.OrderDay(orderNumber));
 
     [Theory]
-    [InlineData("PTT-TEST00001")]
-    [InlineData("PTT-TEST00001-991324")]
+    [InlineData("PTT-ATEST0001")]
+    [InlineData("PTT-ATEST0001-991324")]
     [InlineData("")]
     public void AnOrderNumberWithoutADayNamesNone(string orderNumber) => Assert.Null(PttAvmOrderMapper.OrderDay(orderNumber));
 
@@ -1027,10 +1027,10 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void ReturnedOrderLinesBecomeOneCompletedReturn()
     {
-        var claim = PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-TEST00001-071024"))!;
+        var claim = PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-ATEST0001-071024"))!;
 
-        Assert.Equal("iade:PTT-TEST00001-071024", claim.ExternalClaimId);
-        Assert.Equal("PTT-TEST00001-071024", claim.ExternalOrderId);
+        Assert.Equal("iade:PTT-ATEST0001-071024", claim.ExternalClaimId);
+        Assert.Equal("PTT-ATEST0001-071024", claim.ExternalOrderId);
         Assert.Equal(ReturnClaimStatus.Completed, MarketplaceReturnStatus.Canonicalize(claim.RawStatus, null));
         // Only the returned line, not the cancelled one.
         var line = Assert.Single(claim.Lines);
@@ -1044,7 +1044,7 @@ public sealed class PttAvmAdapterTests
     public void AnOrderWithoutReturnedLinesHasNoReturn()
     {
         Assert.Null(PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-OPEN12345-211026")));
-        Assert.Null(PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-TEST00003-211024")));
+        Assert.Null(PttAvmHttpClient.ReturnClaim(OrderFromList("PTT-LTEST0001-211024")));
     }
 
     [Fact]
@@ -1060,7 +1060,7 @@ public sealed class PttAvmAdapterTests
         Assert.True(ScheduledJobProducer.SupportsPttAvmScheduledPolicy("RETURNS"));
     }
 
-    private const string InvoicePayload = """{"invoiceLink":"https://panel.ravencia.com/api/v1/public/invoices/abc/document","invoiceNumber":"RVC2026000001","orderNumber":"PTT-TEST00001-071024","lineItemIds":["229000001","229000001","x"]}""";
+    private const string InvoicePayload = """{"invoiceLink":"https://panel.ravencia.com/api/v1/public/invoices/abc/document","invoiceNumber":"RVC2026000001","orderNumber":"PTT-ATEST0001-071024","lineItemIds":["229000001","229000001","x"]}""";
 
     [Fact]
     public void AnInvoiceRequestCarriesThePdfLinkTheOrderAndItsLines()
@@ -1074,7 +1074,7 @@ public sealed class PttAvmAdapterTests
         var body = XDocument.Parse(envelope).Descendants(tem + "SaveInvoince").Single();
         Assert.Equal(["lineItemId", "orderId", "content", "url"], body.Elements().Select(x => x.Name.LocalName));
         Assert.Equal("229000001", body.Element(tem + "lineItemId")!.Element(arr + "int")!.Value);
-        Assert.Equal("PTT-TEST00001-071024", body.Element(tem + "orderId")!.Value);
+        Assert.Equal("PTT-ATEST0001-071024", body.Element(tem + "orderId")!.Value);
         Assert.Equal(request.Link, body.Element(tem + "url")!.Value);
     }
 
@@ -1113,12 +1113,12 @@ public sealed class PttAvmAdapterTests
     public void TheOrderLinesTellWhetherAnInvoiceIsHeld()
     {
         // Lines without the flag answer nothing; the cancelled line never counts.
-        Assert.Null(PttAvmInvoiceMapper.Invoiced(OrderFromList("PTT-TEST00001-071024")));
+        Assert.Null(PttAvmInvoiceMapper.Invoiced(OrderFromList("PTT-ATEST0001-071024")));
         Assert.False(PttAvmInvoiceMapper.Invoiced(WithLiveLineInvoiceFlag("false")));
         Assert.True(PttAvmInvoiceMapper.Invoiced(WithLiveLineInvoiceFlag("true")));
 
         // The order sync carries only a yes: a false flag proves nothing (an invoice uploaded in PTT AVM's panel leaves it).
-        Assert.Null(OrderFromList("PTT-TEST00001-071024").Packages.Single().Invoice);
+        Assert.Null(OrderFromList("PTT-ATEST0001-071024").Packages.Single().Invoice);
         Assert.Null(WithLiveLineInvoiceFlag("false").Packages.Single().Invoice);
         Assert.Equal("INVOICED", WithLiveLineInvoiceFlag("true").Packages.Single().Invoice?.RawStatus);
     }
@@ -1135,15 +1135,15 @@ public sealed class PttAvmAdapterTests
 
         var page = PttAvmOrderMapper.Page(result!);
 
-        var order = Assert.Single(page.Items, order => order.ExternalOrderId == "PTT-TEST00001-071024");
+        var order = Assert.Single(page.Items, order => order.ExternalOrderId == "PTT-ATEST0001-071024");
         Assert.DoesNotContain(order.Lines, line => line.ExternalLineId == "229000002");
         var package = Assert.Single(order.Packages);
         Assert.Equal(1, package.UnreadableLineCount);
         Assert.DoesNotContain(package.Allocations, allocation => allocation.ExternalLineId == "229000002");
         Assert.Null(package.Invoice);
-        Assert.Contains(page.Items, order => order.ExternalOrderId == "PTT-TEST00003-211024");
+        Assert.Contains(page.Items, order => order.ExternalOrderId == "PTT-LTEST0001-211024");
         Assert.Equal(
-            new[] { ("ORDER_PACKAGE_LINE_INVALID", "order:PTT-TEST00001-071024:229000002"), ("ORDER_AMOUNT_MAY_BE_INCOMPLETE", "order:PTT-TEST00001-071024") },
+            new[] { ("ORDER_PACKAGE_LINE_INVALID", "order:PTT-ATEST0001-071024:229000002"), ("ORDER_AMOUNT_MAY_BE_INCOMPLETE", "order:PTT-ATEST0001-071024") },
             page.Issues!.Select(issue => (issue.Code, issue.Identity)).ToArray());
     }
 
@@ -1169,7 +1169,7 @@ public sealed class PttAvmAdapterTests
     {
         var answer = OrderListAnswer.Replace("<a:IndirimPttavm>2.71</a:IndirimPttavm>", $"<a:IndirimPttavm>2.71</a:IndirimPttavm><a:IsInvoice>{flag}</a:IsInvoice>", StringComparison.Ordinal);
         var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, answer, PttAvmHttpClient.Orders);
-        return PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-TEST00001-071024");
+        return PttAvmOrderMapper.Page(result!).Items.Single(x => x.ExternalOrderId == "PTT-ATEST0001-071024");
     }
 
     [Fact]

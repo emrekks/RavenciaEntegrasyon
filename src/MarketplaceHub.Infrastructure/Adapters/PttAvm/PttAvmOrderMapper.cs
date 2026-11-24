@@ -174,7 +174,7 @@ public static class PttAvmOrderMapper
         _ => 0
     });
 
-    // The order number ends with the order day: PTT-TEST00001-071024 was placed on 7 October 2024.
+    // The order number ends with the order day: PTT-ATEST0001-071024 was placed on 7 October 2024.
     internal static DateTime? OrderDay(string orderNumber)
     {
         var separator = orderNumber.LastIndexOf('-');

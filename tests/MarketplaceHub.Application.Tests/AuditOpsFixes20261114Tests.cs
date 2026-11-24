@@ -24,10 +24,10 @@ public sealed class AuditOpsFixes20261114Tests
     // The window read merges each order's copies (MarketplaceJobProcessor.UpsertOrders → MergeOrderPackages). It took a
     // line's ordered quantity from its packages' active units only, so PttAVM's cancelled line (0 active, 1 cancelled)
     // became 0 ordered with 1 cancelled and the package check refused the whole order: PACKAGE_QUANTITY_INVARIANT_REJECTED
-    // (live: PTT-TEST00002-120926). The documented sample's partly and fully cancelled orders show it.
+    // (live: PTT-0TEST0001-120926). The documented sample's partly and fully cancelled orders show it.
     [Theory]
-    [InlineData("PTT-TEST00001-071024")]
-    [InlineData("PTT-TEST00003-211024")]
+    [InlineData("PTT-ATEST0001-071024")]
+    [InlineData("PTT-LTEST0001-211024")]
     [InlineData("PTT-OPEN12345-211026")]
     public void PttAvmOrdersWithACancelledLinePassThePackageCheckAfterTheMerge(string orderNumber)
     {
@@ -56,7 +56,7 @@ public sealed class AuditOpsFixes20261114Tests
     {
         var connection = Guid.Parse("01a15fda-b767-714d-ab0c-d40636b79aec");
         // The live notice of the order that was lost.
-        Assert.Equal("PTT-TEST00002-120926", OrderIngestionService.RefusedOrderIdOf($"package-quantity:{connection}:order:PTT-TEST00002-120926:1789229541000", connection));
+        Assert.Equal("PTT-0TEST0001-120926", OrderIngestionService.RefusedOrderIdOf($"package-quantity:{connection}:order:PTT-0TEST0001-120926:1789229541000", connection));
         Assert.Equal("4001", OrderIngestionService.RefusedOrderIdOf($"order-coverage:{connection}:4001:1789229541000", connection));
         Assert.Equal("4001", OrderIngestionService.RefusedOrderIdOf($"order-lines:{connection}:4001:1", connection));
         Assert.Equal("PTT-X-010126", OrderIngestionService.RefusedOrderIdOf(OrderIngestionService.OrderNotImportedKey(connection, "PTT-X-010126"), connection));

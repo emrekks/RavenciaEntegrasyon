@@ -3,7 +3,7 @@ import { formatPackageLabel } from './package-label'
 
 describe('formatPackageLabel', () => {
   it('drops the virtual order: prefix', () => {
-    expect(formatPackageLabel('order:PTTEM-TEST00004-181026')).toBe('PTTEM-TEST00004-181026')
+    expect(formatPackageLabel('order:PTTEM-UTEST0001-181026')).toBe('PTTEM-UTEST0001-181026')
   })
 
   it('keeps a real package number as it is', () => {
