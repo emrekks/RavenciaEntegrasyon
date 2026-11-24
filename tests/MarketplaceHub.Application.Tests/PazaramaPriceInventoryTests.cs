@@ -312,12 +312,14 @@ public sealed class PazaramaPriceInventoryTests
     [Fact]
     public void A_batch_result_refusing_a_value_Pazarama_already_holds_is_up_to_date_not_failed()
     {
-        var row = Parse("""{"code":"B1","price":{"status":2,"operationDetail":"İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz"},"stock":null,"operationStatusText":"Hata oluştu"}""");
-        var held = new PazaramaBatchMapper.BatchItem("B1", PazaramaBatchMapper.State(row), "İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz");
-        Assert.Equal(PazaramaBatchMapper.BatchState.Failed, held.State);
+        // Read from the result rows as Pazarama sends them, so the detail comes from the price section's operationDetail.
+        var page = PazaramaBatchMapper.Page(Parse(Result(
+            $"{Row("B1", Status(2, "İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz"), text: "Hata oluştu")},{Row("B2", Status(2, "Fiyat geçersiz"), text: "Hata oluştu")}")));
+        var held = page.Items.Single(x => x.Code == "B1");
+        Assert.Equal((PazaramaBatchMapper.BatchState.Failed, "İndirimli fiyat, liste fiyatı ve stok sayısı önceki değerleriyle aynı olamaz"), (held.State, held.Detail));
 
         var status = PazaramaBatchMapper.Merge("op", [
-            (new("p", "pid", 2), [held, new PazaramaBatchMapper.BatchItem("B2", PazaramaBatchMapper.BatchState.Failed, "Fiyat geçersiz")]),
+            (new("p", "pid", 2), page.Items),
             (new("s", "sid", 2), [new PazaramaBatchMapper.BatchItem("B1", PazaramaBatchMapper.BatchState.Succeeded, null), new PazaramaBatchMapper.BatchItem("B2", PazaramaBatchMapper.BatchState.Succeeded, null)])]);
 
         Assert.Equal("COMPLETED", status.Status);

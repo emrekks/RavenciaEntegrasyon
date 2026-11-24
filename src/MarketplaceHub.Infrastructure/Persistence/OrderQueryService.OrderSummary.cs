@@ -41,14 +41,17 @@ internal sealed partial class OrderQueryService
         if (requested.Contains("LATE"))
         {
             if (requested.Length == 1) return await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
-            var others = await CachedOrderSummaryAsync(tenantId, options, requested.Where(tab => tab != "LATE").ToArray(), includeMicro: false, cancellationToken);
-            var late = await CountOrderSummaryAsync(tenantId, options, ["LATE"], includeMicro: false, cancellationToken);
+            // The cached tabs (when counted again) and the Geciken tab share one match of the search term.
+            Task<Func<OrderListQuery, IQueryable<Order>>>? matched = null;
+            Task<Func<OrderListQuery, IQueryable<Order>>> SharedOrders() => matched ??= SummaryOrdersAsync(tenantId, options, cancellationToken);
+            var others = await CachedOrderSummaryAsync(tenantId, options, requested.Where(tab => tab != "LATE").ToArray(), includeMicro: false, cancellationToken, SharedOrders);
+            var late = await CountOrderSummaryAsync(tenantId, options, ["LATE"], includeMicro: false, cancellationToken, SharedOrders);
             return others with { Late = late.Late, LateByConnection = late.LateByConnection };
         }
         return await CachedOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
     }
 
-    private async Task<OrderSummaryView> CachedOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
+    private async Task<OrderSummaryView> CachedOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken, Func<Task<Func<OrderListQuery, IQueryable<Order>>>>? summaryOrders = null)
     {
         var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
         var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
@@ -59,7 +62,7 @@ internal sealed partial class OrderQueryService
         {
             // A request that waited behind an identical one takes its answer.
             if (OrderSummaryCache.TryGetValue(key, out cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
-            var view = await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
+            var view = await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken, summaryOrders);
             if (OrderSummaryCache.Count > 1000) OrderSummaryCache.Clear();
             OrderSummaryCache[key] = (DateTimeOffset.UtcNow, stamp, view);
             return view;
@@ -97,12 +100,13 @@ internal sealed partial class OrderQueryService
         return $"|{manual?.Count}|{manual?.Changed:O}|{manual?.Versions}";
     }
 
-    private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
+    // summaryOrders: the orders a caller already matched for the same options (SummaryOrdersAsync), shared between counts.
+    private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken, Func<Task<Func<OrderListQuery, IQueryable<Order>>>>? summaryOrders = null)
     {
         // One small query per tab, one after the other. They were one query of 16 tab queries joined by UNION ALL: EF
         // compiles such a query the first time it meets it, and the union took 9-12 s on live right after every deploy
         // (18 s on a seeded copy, where the 16 tab queries alone compile in under 0.5 s together and count in ~130 ms).
-        var orders = await SummaryOrdersAsync(tenantId, options, cancellationToken);
+        var orders = summaryOrders is null ? await SummaryOrdersAsync(tenantId, options, cancellationToken) : await summaryOrders();
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var tab in requested)
             counts[tab] = await orders(options with { Status = tab }).CountAsync(cancellationToken);

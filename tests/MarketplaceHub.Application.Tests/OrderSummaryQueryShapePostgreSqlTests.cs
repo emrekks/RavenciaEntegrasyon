@@ -83,6 +83,25 @@ public sealed class OrderSummaryQueryShapePostgreSqlTests(PostgreSqlTenantIsolat
         finally { await CleanAsync(seed); }
     }
 
+    // The menu's cached summary counts the Geciken tab fresh beside the cached tabs: both share one match of the search.
+    [PostgreSqlFact]
+    public async Task TheCachedSummaryWithTheLateTab_MatchesTheSearchOnce()
+    {
+        var seed = await SeedAsync();
+        try
+        {
+            var query = new OrderListQuery(Search: "Mehmet");
+            var capture = new CommandCapture();
+            await using var db = Context(capture);
+            var service = Service(db);
+            var summary = await service.OrderSummaryAsync(seed.TenantId, query, CancellationToken.None, Tabs, allowCached: true);
+            Assert.Single(capture.Commands, command => command.Contains("~*", StringComparison.Ordinal));
+            await AssertCountersAreListTotals(service, seed.TenantId, query, summary);
+            Assert.True(summary.Late > 0);
+        }
+        finally { await CleanAsync(seed); }
+    }
+
     // Per store, the orders each tab lists under the query: what the cards show.
     private static async Task<(IReadOnlyDictionary<string, int> NewByConnection, IReadOnlyDictionary<string, int> ResentByConnection)> ExpectedCardsAsync(MarketplaceSalesService service, Guid tenantId, OrderListQuery query)
     {

@@ -75,6 +75,49 @@ public sealed class PazaramaSamePriceNotSentPostgreSqlTests(PostgreSqlTenantIsol
         Assert.False(line.PriceOmitted);
     }
 
+    // Review of 24 Nov 2026: Pazarama confirmed 300 TL (mark at version 1); the owner typed 30 TL (version 2) and sent it, its
+    // batch result still out; then back to 300 TL (version 3). Pazarama may hold 30 TL once that result lands, so the
+    // 300 TL is not taken as held: it goes, and the mark is not moved on without a send.
+    [PostgreSqlFact]
+    public async Task ABackAndForthPrice_WithAnotherPriceInBetween_SendsThePriceAgain()
+    {
+        var seed = await SeedAsync(vatOnlyChange: true, stockChanged: false, confirmed: 300m, salesByVersion: [300m, 30m, 300m]);
+        var (line, payload) = await SingleLineAsync(seed);
+        Assert.Equal((true, false, 300m, 3L), (line.QuantityOmitted, line.PriceOmitted, line.SalePrice, line.PriceVersion));
+        Assert.Contains("300", payload);
+        await using var read = fixture.CreateContext();
+        var offer = await read.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == seed.OfferId);
+        Assert.Equal(PazaramaPriceInventoryRules.PriceHash(330m, 300m, 1), offer.LastPriceHash);
+    }
+
+    // The same without a confirmed value (the stored price the mark names): the price goes too.
+    [PostgreSqlFact]
+    public async Task ABackAndForthPrice_WithoutAConfirmation_SendsThePriceAgain()
+    {
+        var seed = await SeedAsync(vatOnlyChange: true, stockChanged: false, salesByVersion: [300m, 30m, 300m]);
+        var (line, _) = await SingleLineAsync(seed);
+        Assert.Equal((false, 300m), (line.PriceOmitted, line.SalePrice));
+    }
+
+    // The history cannot prove the price stayed (a version missing from it): unknown, so the price goes.
+    [PostgreSqlFact]
+    public async Task AVatOnlyPriceVersion_MissingFromTheHistory_SendsThePrice()
+    {
+        var seed = await SeedAsync(vatOnlyChange: true, stockChanged: false, confirmed: 300m, missingHistoryVersion: 2);
+        var (line, _) = await SingleLineAsync(seed);
+        Assert.False(line.PriceOmitted);
+    }
+
+    // Several VAT-only versions after the mark keep the price known: still nothing goes.
+    [PostgreSqlFact]
+    public async Task SeveralVatOnlyPriceVersions_SendNothing()
+    {
+        var seed = await SeedAsync(vatOnlyChange: true, stockChanged: false, confirmed: 300m, salesByVersion: [300m, 300m, 300m, 300m]);
+        await using var db = fixture.CreateContext();
+        var build = await new PriceInventoryComposer(db).BuildAsync(seed.TenantId, seed.ConnectionId, CancellationToken.None, automatic: true);
+        Assert.False(build.Succeeded && build.Value!.Lines.Count > 0);
+    }
+
     private sealed record Seed(Guid TenantId, Guid ConnectionId, Guid OfferId);
 
     private async Task<(PriceInventoryPushLine Line, string Payload)> SingleLineAsync(Seed seed)
@@ -86,9 +129,12 @@ public sealed class PazaramaSamePriceNotSentPostgreSqlTests(PostgreSqlTenantIsol
     }
 
     // A Pazarama offer read at 330 / 300 TL with VAT 20 % included, marked at price version 1. Then either its VAT rate alone
-    // was saved (10 %, version 2, the same outbound price) or its price (320 TL, version 2).
-    private async Task<Seed> SeedAsync(bool vatOnlyChange, bool stockChanged, decimal? confirmed = null, bool marked = true)
+    // was saved (10 %, version 2, the same outbound price) or its price (320 TL, version 2). salesByVersion gives the sale
+    // price of every version instead (the last is the current one); the price history records each version, but
+    // missingHistoryVersion.
+    private async Task<Seed> SeedAsync(bool vatOnlyChange, bool stockChanged, decimal? confirmed = null, bool marked = true, decimal[]? salesByVersion = null, long? missingHistoryVersion = null)
     {
+        salesByVersion ??= vatOnlyChange ? [300m, 300m] : [300m, 320m];
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"pz-same-{Guid.NewGuid():N}", DisplayName = "pazarama same price", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "PAZARAMA", Environment = "PRODUCTION", DisplayName = "Pazarama", ExternalStoreId = "store-pz", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{\"ExternalWritesEnabled\":true}", Version = 1 };
@@ -104,9 +150,12 @@ public sealed class PazaramaSamePriceNotSentPostgreSqlTests(PostgreSqlTenantIsol
         offer.LastStockProjectionVersion = stockChanged ? 5 : 6;
         if (confirmed is { } price) (offer.LastSentCode, offer.LastSentSalePrice, offer.LastSentListPrice, offer.LastSentQuantity) = (barcode, price, 330m, 7m);
         if (vatOnlyChange) offer.VatRate = 10m;
-        else offer.SalePrice = 320m;
-        offer.PriceVersion = 2;
+        offer.SalePrice = salesByVersion[^1];
+        offer.PriceVersion = salesByVersion.Length;
         await using var db = fixture.CreateContext();
+        for (var version = 1; version <= salesByVersion.Length; version++)
+            if (version != missingHistoryVersion)
+                db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OfferId = offer.Id, PriceVersion = version, ListPrice = 330m, SalePrice = salesByVersion[version - 1], Currency = "TRY", Reason = "test", ActorSource = "SYSTEM:TEST", EffectiveAt = now });
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
         db.Products.Add(product);
