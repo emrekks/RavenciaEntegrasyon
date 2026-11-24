@@ -21,6 +21,7 @@ const groups: MenuGroup[] = [
     { to: '/orders', icon: 'orders', label: 'Siparişler', count: 2, showZero: true, noun: 'bekleyen sipariş' },
     { to: '/returns', icon: 'returns', label: 'İadeler', count: 0, showZero: true },
     { to: '/invoices', icon: 'invoice', label: 'Faturalar', count: 3, showZero: true, warn: true },
+    { to: '/questions', icon: 'questions', label: 'Ürün Soruları', count: 7, showZero: true, noun: 'cevaplanmamış' },
   ] },
   { label: 'Sistem', entries: [{ to: '/settings', icon: 'settings', label: 'Sistem Ayarları', end: true }] },
 ]
@@ -60,6 +61,10 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 40px; \}/)
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
+    // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
+    expect(phone).toContain(".rv-notification-history { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px;")
+    expect(phone).toContain("max-height: min(75dvh")
+    expect(phone).toContain('translateY(-28px)')
   })
 })
 
@@ -67,7 +72,7 @@ describe('Ravencia Dock', () => {
   it('has Ana Sayfa, Siparişler, Ara, Ürünler and Menü; the open page is the active slot and shows its label', () => {
     const { host } = mount('/orders')
     const dock = host.querySelector('.rv-dock')!
-    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Menü'])
+    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Ürün Soruları', 'Menü'])
     expect(dock.querySelector('.rv-dock-search')).toBeNull()
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
     const current = dock.querySelectorAll('[aria-current="page"]')
@@ -75,7 +80,7 @@ describe('Ravencia Dock', () => {
     expect(current[0].getAttribute('aria-label')).toBe('Siparişler')
     expect(current[0].textContent).toBe('Siparişler')
     // Every target shows its label, active or not.
-    expect([...dock.querySelectorAll('.rv-dock-label')].map(label => label.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Menü'])
+    expect([...dock.querySelectorAll('.rv-dock-label')].map(label => label.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Sorular', 'Menü'])
   })
 
   it('shows the Menü badge from 1 to 99 and as 99+ above, and none at 0', () => {
@@ -84,10 +89,17 @@ describe('Ravencia Dock', () => {
     expect(mount('/orders', { count: 7 }).host.querySelector('.rv-dock .rv-dock-badge')?.textContent).toBe('7')
     cleanup()
     expect(mount('/orders', { count: 120 }).host.querySelector('.rv-dock .rv-dock-badge')?.textContent).toBe('99+')
-    expect(menuPendingTotal(groups)).toBe(5)
-    expect(menuPendingTotal(groups, ['/orders'])).toBe(3)
+    expect(menuPendingTotal(groups)).toBe(12)
+    expect(menuPendingTotal(groups, ['/orders'])).toBe(10)
+    // Pages with a target of their own in the dock are not counted twice in the Menü badge.
+    expect(menuPendingTotal(groups, ['/orders', '/questions'])).toBe(3)
     cleanup()
-    expect(mount('/dashboard', { slotCounts: { '/orders': 9 } }).host.querySelector('a[href="/orders"] .rv-dock-badge')?.textContent).toBe('9')
+    const counted = mount('/dashboard', { slotCounts: { '/orders': 9, '/questions': 120 } }).host
+    expect(counted.querySelector('a[href="/orders"] .rv-dock-badge')?.textContent).toBe('9')
+    expect(counted.querySelector('a[href="/questions"] .rv-dock-badge')?.textContent).toBe('99+')
+    expect(counted.querySelector('a[href="/questions"]')?.getAttribute('aria-label')).toBe('Ürün Soruları, 120 cevaplanmamış')
+    cleanup()
+    expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
   })
 
   it('opens the full-screen menu from the Menü slot (which becomes Kapat) and closes it again from the same slot', () => {

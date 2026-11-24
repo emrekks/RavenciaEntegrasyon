@@ -34,10 +34,11 @@ export function useDockHostState(phone: boolean) {
 
 export { DockContext }
 
-const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: boolean }> = [
+const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }> = [
   { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true },
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
   { to: '/products', icon: 'products', label: 'Ürünler' },
+  { to: '/questions', icon: 'questions', label: 'Sorular', aria: 'Ürün Soruları', noun: 'cevaplanmamış' },
 ]
 
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
@@ -85,10 +86,10 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     event.preventDefault()
     onNavigate(to)
   }
-  const slot = (page: { to: string; icon: UiIconName; label: string; end?: boolean }) => {
+  const slot = (page: { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }) => {
     const active = isActive(page.to, page.end)
     const count = slotCounts[page.to] ?? 0
-    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? page.label + ', ' + count + ' bekleyen' : page.label} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
+    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? (page.aria ?? page.label) + ', ' + count + ' ' + (page.noun ?? 'bekleyen') : (page.aria ?? page.label)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
       <span className="rv-dock-icon"><UiIcon name={page.icon} size={20} />{count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null}</span><span className="rv-dock-label">{page.label}</span>
     </Link>
   }

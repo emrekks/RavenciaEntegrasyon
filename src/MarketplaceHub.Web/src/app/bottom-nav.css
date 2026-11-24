@@ -1,7 +1,7 @@
 /*
  * Phone navigation (owner, 24 Nov 2026; "İki Katlı Dock"): up to 768 px one floating panel sits at the bottom, 8 px up and 12 px in
  * from the edges, radius 14, the page cards' opaque surface and 1 px border (BottomDock.tsx).
- *  - Bottom row, 52 px: Ana Sayfa, Siparişler, Ürünler, Menü - icon and 11 px label always shown, the open page tinted.
+ *  - Bottom row, 52 px: Ana Sayfa, Siparişler, Ürünler, Sorular, Menü - icon and 11 px label always shown, the open page tinted.
  *    The Menü target opens a full-screen list menu (and becomes Kapat while it is open).
  *  - Top row, 40 px, only in task mode: the page's status strip. Otherwise the dock is one row.
  *  - Task mode ("Görev Kipi"): while a page has bottom actions (StickyActionBar, DraftSaveBar) the bottom row is a 40 px Menü
@@ -37,7 +37,7 @@
   .rv-dock, .rv-taskbar { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; transition: opacity 180ms ease, visibility 180ms; }
   .rv-dock-layer[data-mode="task"] .rv-dock, .rv-dock-layer[data-mode="dock"] .rv-taskbar { visibility: hidden; opacity: 0; pointer-events: none; }
 
-  /* Bottom row: four targets, icon over label. */
+  /* Bottom row: five targets, icon over label. */
   .rv-dock { padding: 0 8px; }
   .rv-dock-slot { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-sizing: border-box; min-width: 0; height: 48px; min-height: 0; margin: 0; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 12px; font: inherit; font-size: 11px; font-weight: 600; line-height: 14px; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .rv-dock-slot.is-active { color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); }
@@ -128,10 +128,10 @@
   html body .rv-fullmenu .rv-fullmenu-search input:focus, html body .rv-fullmenu .rv-fullmenu-search input:focus-visible { border: 0; outline: 0; box-shadow: none; }
   @keyframes rv-fullmenu-in { from { transform: translateY(100%); } }
 
-  /* Notifications: a sheet rising from above the dock, at most 75% of the screen; the dimmed page behind only closes it. */
-  html body .rv-notification-history { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 52px + var(--rv-dock-extra) + 10px); left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - var(--rv-dock-bottom) - 52px - var(--rv-dock-extra) - 22px - env(safe-area-inset-top, 0px))); border-radius: 14px; outline: 0; transform-origin: bottom center; animation: rv-sheet-up 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
-  html body .rv-notification-history::before { content: ""; flex: none; align-self: center; width: 36px; height: 4px; margin: 8px 0 0; background: var(--rv-color-border-strong); border-radius: 2px; }
-  @keyframes rv-sheet-up { from { transform: translateY(28px); opacity: 0; } }
+  /* Notifications: a panel dropping from the top edge (safe area + 8 px, 12 px in from the sides), at most 75% of the screen,
+     over the full-screen menu too; the dimmed page behind only closes it. Wherever it is opened from, it opens here. */
+  html body .rv-notification-history { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 20px)); border-radius: 14px; outline: 0; transform-origin: top center; animation: rv-sheet-down 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
+  @keyframes rv-sheet-down { from { transform: translateY(-28px); opacity: 0; } }
   /* The live toast keeps its behaviour and shows above the dock (and its pill) instead of at the top. */
   html body .app-toast-stack, html body .app-toast:not(.app-toast-stack > *) { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 52px + var(--rv-dock-extra) + 56px); left: 12px; width: auto; }
   @media (prefers-reduced-motion: reduce) {
