@@ -1318,3 +1318,9 @@ main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl .rr-reasoncell > small { -
   html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no { column-gap: 2px; font-size: 13px; }
   html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > .rr-on-no > .rr-buyer-tag { padding-inline: 5px; font-size: 11px; }
 }
+
+/* Phones: the current page of a pager reads "3/12" (the numbers around it are hidden, so the line stays one line). */
+@media (max-width: 760px) {
+  html body .rr-pager .rr-pages > .rr-on[data-of] { grid-auto-flow: column; column-gap: 0; white-space: nowrap; }
+  html body .rr-pager .rr-pages > .rr-on[data-of]::after { content: "/" attr(data-of); }
+}

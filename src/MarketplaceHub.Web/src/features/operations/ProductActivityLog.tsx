@@ -8,7 +8,9 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
-import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
+import { RrIcon, RrLogo, RrPageSize } from '../../shared/ui/rr-components'
+import { storedPageSize } from '../../shared/sticky-sort'
+import { logPageSizes, logDefaultPageSize } from './log-page-sizes'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { relativeAgeText } from '../marketplace/integrations/integration-helpers'
 import { jobTimeRangeOptions } from './job-list-query'
@@ -98,6 +100,7 @@ export type KeptActivityView = { filters: ActivityFilters; searchText: string }
 export function ProductActivityLog({ platformOptions, kept }: { platformOptions: string[]; kept?: { current: KeptActivityView | null } }) {
   const [filters, setFilters] = useState<ActivityFilters>(() => kept?.current?.filters ?? emptyActivityFilters)
   const [searchText, setSearchText] = useState(() => kept?.current?.searchText ?? '')
+  const [pageSize, setPageSize] = useState(() => storedPageSize('product-activity', logPageSizes, logDefaultPageSize))
   useEffect(() => { if (kept) kept.current = { filters, searchText } }, [kept, filters, searchText])
   useEffect(() => {
     const timeout = window.setTimeout(() => setFilters(current => current.search === searchText ? current : { ...current, search: searchText }), searchDelayMs)
@@ -119,8 +122,8 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
   const summary = useMemo(() => counts.data ? activityKindCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
-    queryKey: queryKeys.productActivity(filters),
-    queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam)}`, { signal: context.signal }),
+    queryKey: queryKeys.productActivity(filters, pageSize),
+    queryFn: context => hubPoll<ProductActivityPage>(`/product-activity${activityQueryString(filters, context.pageParam, pageSize)}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -151,6 +154,7 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
         </span>)}
       </div>
       <div className="jobs-reference-toolbar-actions">
+        <span className="rr ops-psize"><RrPageSize remember="product-activity" value={pageSize} sizes={[...logPageSizes]} onChange={setPageSize} /></span>
         <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Ürün hareketlerini yenile" onClick={() => { void list.refetch(); void counts.refetch() }}><UiIcon name="refresh" size={16} /></button>
       </div>
     </div>
