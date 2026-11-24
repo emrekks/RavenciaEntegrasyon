@@ -453,6 +453,37 @@ describe('ProductQuickEditModal price conflicts and per-offer following', () => 
     expect(calls).toHaveLength(1)
   })
 
+  it('drops a price draft whose sides all equal the stored prices read again, counting and sending nothing', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Satış')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol satış fiyatı"]')!, '470')
+    expect(bar()?.textContent).toContain('1 Değişiklik')
+    // Another user saved the same 470 meanwhile.
+    await redraw([ownOffer(2, 470)])
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
+    expect(barButton('Kaydet').disabled).toBe(true)
+    expect(calls).toEqual([])
+  })
+
+  // An Özel Fiyat switch saved by an earlier Kaydet of this window does not decide later saves: another user may have
+  // turned one variant's Özel Fiyat on since, and that offer keeps its own price.
+  it('leaves an offer turned own meanwhile alone after an earlier Kaydet switched the marketplace to follow', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Satış')
+    await click(document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!)
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.map(call => [call.path, call.method, call.body.followsPanelPrice])).toEqual([['/channel-offers/panel-price-follow', 'PUT', true]])
+    // Read again: both follow now, but another user turned SKU-1's Özel Fiyat on (550).
+    const after = ownOffer(2, 450)
+    await redraw([{ ...after, variants: after.variants.map(item => ({ ...item, platformStatuses: item.platformStatuses!.map(status => item.id === 'v1' ? { ...status, salePrice: 550, listPrice: 600, followsPanelPrice: false } : { ...status, followsPanelPrice: true }) })) }])
+    await pickValue('Panel', 'Satış')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Panel Fiyatı satış fiyatı"]')!, '480')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.slice(1).map(call => [call.path, call.method])).toEqual([['/variants/v1/default-prices', 'PATCH']])
+  })
+
   // BUG 2: one Trendyol variant keeps Özel Fiyat, the other follows the panel; the follower's panel price change reaches its offer.
   it('writes a panel price to the following offer of a marketplace where another variant keeps its own price', async () => {
     const mixed: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `x-${item.id}`, offerVersion: 3, listPrice: item.id === 'v1' ? 600 : 500, salePrice: item.id === 'v1' ? 550 : 450, currency: 'TRY', followsPanelPrice: item.id === 'v1' ? false : null })] })) }

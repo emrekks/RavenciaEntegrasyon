@@ -232,11 +232,6 @@ export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOff
     && (offer.offerStatus ?? '').trim() === command.status.trim() && offer.followsPanelPrice === command.followsPanelPrice
 }
 
-// The marketplaces that follow the panel price: every marketplace column not ticked "Özel Fiyat".
-export function panelFollowerColumns(columns: ReadonlyArray<QuickPriceColumn>, custom: Readonly<Record<string, boolean>>) {
-  return columns.filter(column => column.id !== PANEL_PRICE_CHOICE && !custom[column.id])
-}
-
 // What a panel price saved for one variant writes to the marketplaces that follow it: the variant's existing offer
 // on each, at the version loaded, with the same list and sale price (a sale-price-only marketplace takes list = sale).
 // An offer already at that price is left alone, and a marketplace where the variant has no offer gets none: creating

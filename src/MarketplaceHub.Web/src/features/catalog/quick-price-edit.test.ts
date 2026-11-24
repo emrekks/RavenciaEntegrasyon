@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bulkEditValues, offerHasSalePrice, unpricedOfferWarning,channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget, rebasedPriceDraft } from './quick-price-edit'
+import { bulkEditValues, offerHasSalePrice, unpricedOfferWarning,channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget, rebasedPriceDraft } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -255,11 +255,6 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
   it('marks a typed variant offer price apart from the panel price as its own', () => {
     expect(typedOfferPriceChoice({ listPrice: 400, salePrice: 350 }, { listPrice: 300, salePrice: 250 }, true)).toBe(false)
     expect(typedOfferPriceChoice({ listPrice: 300, salePrice: 250 }, { listPrice: 300, salePrice: 250 }, true)).toBeUndefined()
-  })
-
-  it('lists the unticked marketplaces, never the panel column', () => {
-    expect(panelFollowerColumns(columns, { 'c-n11': true }).map(column => column.id)).toEqual(['c-ty', 'c-hb'])
-    expect(panelFollowerColumns(columns, { 'c-ty': true, 'c-hb': true, 'c-n11': true })).toEqual([])
   })
 
   it('writes a panel save to each following offer, list = sale on a sale-only marketplace, nothing new created', () => {

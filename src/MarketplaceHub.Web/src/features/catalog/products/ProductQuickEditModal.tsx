@@ -135,6 +135,12 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   const livePriceDraft = (key: string, entry: { value: PriceDraft; original: PriceDraft }) => { const [variantId, columnId] = key.split('|'); const item = itemById.get(variantId); return item ? rebasedPriceDraft(entry.value, entry.original, freshPriceTexts(item, columnId)) : { value: entry.value, loaded: entry.original } }
   // A draft set against the fresh texts: one kept from before a refresh starts again from them (the caller keeps its edited sides).
   const setPriceDraft = (key: string, value: PriceDraft, fresh: PriceDraft) => { const entry = priceDrafts.get(key); if (entry && !samePriceDraft(entry.original, fresh)) priceDrafts.remove([key]); priceDrafts.set(key, value, fresh) }
+  // A draft whose sides all equal the stored prices read now (another user saved the same) is no change: it is dropped,
+  // so it is neither counted nor written again.
+  const settledPriceKeys = [...priceDrafts.entries].filter(([key, entry]) => { const live = livePriceDraft(key, entry); return samePriceDraft(live.value, live.loaded) }).map(([key]) => key)
+  const settledPriceKey = settledPriceKeys.join('\n')
+  const removePriceDrafts = priceDrafts.remove
+  useEffect(() => { if (settledPriceKey) removePriceDrafts(settledPriceKey.split('\n')) }, [settledPriceKey, removePriceDrafts])
   const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
     const color = variantColorKey(item.variant) || 'Diğer'
     ;(result[color] ??= []).push(item)
@@ -367,9 +373,10 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     let stockSaved = 0; let priceSaved = 0; let followSaved = 0
     try {
       const followDone: string[] = []
-      // The marketplaces whose Özel Fiyat is now switched for every offer in this window (saved before, or just now);
-      // any other offer follows the panel by its own stored choice (panelFollowerWrites decides per offer).
-      const switched: Record<string, boolean> = { ...customOverrides }
+      // The marketplaces whose Özel Fiyat switch this Kaydet saved, for every offer there; any other offer (a switch saved
+      // earlier included: the offers read since hold it, and someone may have changed one meanwhile) follows the panel
+      // by its own stored choice (panelFollowerWrites decides per offer).
+      const switched: Record<string, boolean> = {}
       for (const [connectionId, entry] of followDrafts.entries) {
         const label = channelColumns.find(column => column.id === connectionId)?.label ?? 'Pazaryeri'
         const custom = entry.value === true
@@ -405,6 +412,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         if (!item || !column) continue
         if (column.id !== PANEL_PRICE_CHOICE && !customChannels[column.id]) { done.push(key); continue }
         const live = livePriceDraft(key, entry)
+        if (samePriceDraft(live.value, live.loaded)) { done.push(key); continue }
         const result = await writePriceCell({ column, channels: column.id === PANEL_PRICE_CHOICE ? channelColumns : [], switched, variant: item.variant, connectionCount: connections.length, list: live.value.list, sale: live.value.sale, loaded: live.loaded, offerCreateKey: offerCreateKey(key) })
         if (result.ok) { done.push(key); priceSaved += 1 } else { if (result.stale) anyStale = true; errors[`p:${key}`] = result.message; failures.push({ sku: item.variant.sku, message: `${column.label} fiyatı: ${result.message}` }) }
       }
