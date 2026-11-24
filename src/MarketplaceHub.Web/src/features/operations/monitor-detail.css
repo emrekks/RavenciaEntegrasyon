@@ -29,3 +29,8 @@
 @media (max-width: 640px) {
   .rr-layer.rr-layer .md-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* "Sorun Yok" in the invalid-offers list: the bulk button closes the filter row; the pick column takes its checkbox only. */
+.rr-layer.rr-layer .md-filters .md-bulk { margin-left: auto; }
+.rr-layer.rr-layer .md-tbl .md-pick { width: 1%; padding-right: 0; }
+.rr-layer.rr-layer .md-act .rr-btn + .rr-btn { margin-left: 8px; }
+.rr-layer.rr-layer .md-error { margin: 0 0 12px; color: var(--rv-color-danger); }

@@ -25,6 +25,46 @@ internal static class PriceInventoryOfferIssues
         Guid.TryParseExact(dedupeKey[(dedupeKey.LastIndexOf(':') + 1)..], "N", out var variantId) ? variantId : null;
 }
 
+// Owner, 24 Nov 2026 ("bunların bir süre sonra temizlenmesi lazım, sorun yok işaretleme gibi bir şey"): an offer issue the
+// owner marks "Sorun Yok" in İşlem Takibi is resolved, and the summary keeps the values the send judged when it was
+// marked (the reason code, the offer's currency, list and sale price) as a short fingerprint. The automatic send does not
+// open it again while those values are the same; once any of them changes and the offer is still refused, it opens again
+// with the send's own summary (IssueRecorder writes the summary anew, the mark goes with it). The mark changes panel
+// records only: nothing is sent, no price or offer is changed.
+internal static class OfferIssueNoProblem
+{
+    public const string AuditAction = "OFFER_ISSUE_MARKED_NO_PROBLEM";
+    public const string MarkStart = " · Sorun Yok olarak işaretlendi [değerler: ";
+
+    public static string Fingerprint(string code, string? currency, decimal? listPrice, decimal? salePrice) =>
+        TextValues.Sha256Hex($"{code}|{currency?.Trim().ToUpperInvariant() ?? "-"}|{Price(listPrice)}|{Price(salePrice)}")[..16];
+
+    private static string Price(decimal? value) => value?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) ?? "-";
+
+    public static string Mark(string fingerprint) => $"{MarkStart}{fingerprint}]";
+
+    // The fingerprint a "Sorun Yok" mark left in the summary; null when the summary carries none.
+    public static string? FingerprintOf(string summary)
+    {
+        var start = summary.LastIndexOf(MarkStart, StringComparison.Ordinal);
+        if (start < 0) return null;
+        start += MarkStart.Length;
+        var end = summary.IndexOf(']', start);
+        return end > start ? summary[start..end] : null;
+    }
+
+    // Whether the owner marked this resolved issue "Sorun Yok" on the very values the send refuses now.
+    public static async Task<bool> StillMarkedAsync(AppDbContext db, OperationalIssue issue, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
+    {
+        if (issue.Status != IssueStatus.Resolved || FingerprintOf(issue.Summary) is not { } marked) return false;
+        var offer = await db.ChannelOffers.AsNoTracking()
+            .Where(x => x.TenantId == issue.TenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
+            .Select(x => new { x.Currency, x.ListPrice, x.SalePrice })
+            .FirstOrDefaultAsync(cancellationToken);
+        return offer is not null && marked == Fingerprint(code, offer.Currency, offer.ListPrice, offer.SalePrice);
+    }
+}
+
 // Owner decisions A and B: the gate of the automatic price/stock writes and the baseline taken when it opens.
 internal static class AutomaticPriceStockWrites
 {

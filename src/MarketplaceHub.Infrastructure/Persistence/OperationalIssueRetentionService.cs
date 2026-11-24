@@ -97,9 +97,14 @@ public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvid
     {
         var cutoff = timeProvider.GetUtcNow() - retention;
         // Issues resolved before ResolvedAt existed (or by a path that does not set it) fall back to LastSeenAt.
+        // An offer issue the owner marked "Sorun Yok" is kept while its offer exists: the mark is what keeps the automatic
+        // send from opening it again on the same values (OfferIssueNoProblem), also after a month with the writes off.
         return await db.OperationalIssues
             .Where(issue => issue.Status == IssueStatus.Resolved && issue.LastSeenAt < cutoff
-                && (issue.ResolvedAt ?? issue.LastSeenAt) < cutoff)
+                && (issue.ResolvedAt ?? issue.LastSeenAt) < cutoff
+                && !(issue.DedupeKey.StartsWith(PriceInventoryOfferIssues.KeyPrefix) && issue.Summary.Contains(OfferIssueNoProblem.MarkStart)
+                    && db.ChannelOffers.Any(offer => offer.TenantId == issue.TenantId
+                        && issue.DedupeKey == PriceInventoryOfferIssues.KeyPrefix + offer.ConnectionId.ToString().Replace("-", "") + ":" + offer.VariantId.ToString().Replace("-", ""))))
             .ExecuteDeleteAsync(cancellationToken);
     }
 }

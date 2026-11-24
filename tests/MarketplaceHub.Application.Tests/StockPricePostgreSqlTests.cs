@@ -214,6 +214,135 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.True(await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Code == "CHANNEL_OFFER_INVALID"));
     }
 
+    // Owner, 24 Nov 2026: an offer issue marked "Sorun Yok" leaves the list with an audit record and stays closed while the
+    // send refuses the same values again; once the offer's values change and it is still refused, it opens again. The mark
+    // sends nothing and changes no offer.
+    [PostgreSqlFact]
+    public async Task AnOfferMarkedNoProblem_StaysClosedOnTheSameValues_AndOpensAgainWhenTheyChange()
+    {
+        var tenant = NewTenant("offer-no-problem");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var (product, invalid) = NewVariant(tenant, "NOP-1", "8690000000042");
+        var valid = NewVariant(tenant, "NOP-2", "8690000000059", product.Id).Variant;
+        var owner = Guid.CreateVersion7();
+        var offer = NewOffer(tenant, n11, invalid, currency: "USD");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.ConnectionSyncPolicies.AddRange(AutomaticWritePolicies(tenant, n11));
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(invalid, valid);
+            seed.InventoryItems.AddRange(NewInventory(tenant, invalid, 4m), NewInventory(tenant, valid, 6m));
+            seed.ChannelOffers.AddRange(offer, NewOffer(tenant, n11, valid));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = invalid.Id, ExternalId = "NOP-1" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = valid.Id, ExternalId = "NOP-2" });
+            await seed.SaveChangesAsync();
+        }
+        var key = $"stock-projection-offer-invalid:{n11.Id:N}:{invalid.Id:N}";
+        async Task ReconcileAsync()
+        {
+            await using var db = fixture.CreateContext();
+            // The push the previous pass queued is out of the way, so the next pass builds again.
+            await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).ExecuteDeleteAsync();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, WritesOnConfiguration(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, n11.Id, MarketplaceJobTypes.StockReconciliation, "{\"lookbackHours\":1}", "offer-no-problem", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+        async Task<OperationalIssue> IssueAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == key);
+        }
+
+        await ReconcileAsync();
+        Assert.Equal(IssueStatus.Open, (await IssueAsync()).Status);
+
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new PriceStockMonitorService(db, WritesOnConfiguration(), fixture.TimeProvider);
+            var marked = await service.MarkOffersNoProblemAsync(tenant.Id, n11.Id, [invalid.Id, valid.Id], owner, "mark-1", CancellationToken.None);
+            Assert.True(marked.Succeeded, marked.Error?.Message);
+            Assert.Equal(new PriceStockOfferNoProblemView(1, 1), marked.Value);
+            // A repeat finds it closed and writes nothing more.
+            Assert.Equal(new PriceStockOfferNoProblemView(0, 2), (await service.MarkOffersNoProblemAsync(tenant.Id, n11.Id, [invalid.Id, valid.Id], owner, "mark-2", CancellationToken.None)).Value);
+            var list = await service.InvalidOffersAsync(tenant.Id, n11.Id, null, null, 1, 50, CancellationToken.None);
+            Assert.Equal(0, list.Value!.TotalCount);
+            // Another tenant's connection is not found.
+            Assert.Equal("CONNECTION_NOT_FOUND", (await service.MarkOffersNoProblemAsync(Guid.CreateVersion7(), n11.Id, [invalid.Id], owner, "mark-3", CancellationToken.None)).Error!.Code);
+            var audit = await db.AuditLogs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Action == "OFFER_ISSUE_MARKED_NO_PROBLEM");
+            Assert.Equal(owner, audit.ActorUserId);
+            Assert.Equal((await IssueAsync()).Id.ToString("D"), audit.TargetId);
+            // Nothing about the offer changed.
+            var stored = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
+            Assert.Equal((offer.Currency, offer.ListPrice, offer.SalePrice, offer.Version), (stored.Currency, stored.ListPrice, stored.SalePrice, stored.Version));
+            await db.OperationalIssues.Where(x => x.TenantId == tenant.Id && x.DedupeKey == key).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastSeenAt, fixture.Now.AddDays(-40)));
+        }
+        var markedIssue = await IssueAsync();
+        Assert.Equal(IssueStatus.Resolved, markedIssue.Status);
+        Assert.Contains("Sorun Yok olarak işaretlendi", markedIssue.Summary, StringComparison.Ordinal);
+
+        // The send refuses the same values again: the issue stays closed and is only seen again.
+        await ReconcileAsync();
+        var seenAgain = await IssueAsync();
+        Assert.Equal(IssueStatus.Resolved, seenAgain.Status);
+        Assert.Equal(markedIssue.Summary, seenAgain.Summary);
+        Assert.True(seenAgain.LastSeenAt > fixture.Now.AddDays(-1));
+
+        // The offer's list price changes and it is still refused (USD): the issue opens again with the send's summary.
+        await using (var db = fixture.CreateContext())
+            await db.ChannelOffers.Where(x => x.Id == offer.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ListPrice, offer.ListPrice + 10m).SetProperty(x => x.Version, x => x.Version + 1));
+        await ReconcileAsync();
+        var reopened = await IssueAsync();
+        Assert.Equal(IssueStatus.Open, reopened.Status);
+        Assert.DoesNotContain("Sorun Yok", reopened.Summary, StringComparison.Ordinal);
+    }
+
+    // The retention keeps a "Sorun Yok" mark while its offer exists (also after a month with the writes off), and removes
+    // it once the offer is gone, like any resolved issue.
+    [PostgreSqlFact]
+    public async Task TheRetentionKeepsANoProblemMarkWhileItsOfferExists()
+    {
+        var tenant = NewTenant("offer-no-problem-retention");
+        var n11 = NewConnection(tenant, "N11");
+        var (product, kept) = NewVariant(tenant, "NOR-1", "8690000000066");
+        var gone = NewVariant(tenant, "NOR-2", "8690000000073", product.Id).Variant;
+        var old = fixture.Now.AddDays(-60);
+        OperationalIssue Marked(ProductVariant variant, bool mark) => new()
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenant.Id,
+            DedupeKey = $"stock-projection-offer-invalid:{n11.Id:N}:{variant.Id:N}",
+            Code = "CHANNEL_OFFER_INVALID",
+            Summary = "test" + (mark ? " · Sorun Yok olarak işaretlendi [değerler: 0123456789abcdef]" : ""),
+            Status = IssueStatus.Resolved,
+            FirstSeenAt = old,
+            LastSeenAt = old,
+            ResolvedAt = old,
+            OccurrenceCount = 1
+        };
+        var keptIssue = Marked(kept, true);
+        var goneIssue = Marked(gone, true);
+        var plainIssue = Marked(kept, false);
+        plainIssue.DedupeKey = $"stock-projection-offer-invalid:{n11.Id:N}:{Guid.CreateVersion7():N}";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(kept, gone);
+            seed.ChannelOffers.Add(NewOffer(tenant, n11, kept, currency: "USD"));
+            seed.OperationalIssues.AddRange(keptIssue, goneIssue, plainIssue);
+            await seed.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+            await new OperationalIssueRetentionService(db, fixture.TimeProvider).DeleteResolvedAsync(TimeSpan.FromDays(30), CancellationToken.None);
+        await using var check = fixture.CreateContext();
+        var left = await check.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync();
+        Assert.Equal([keptIssue.Id], left);
+    }
+
 
     // K-2: "update prices and stock" takes the marketplace number read at the page read. An order the panel took from
     // stock after that read is not in the number, so it comes off again; an order held as a reservation from before

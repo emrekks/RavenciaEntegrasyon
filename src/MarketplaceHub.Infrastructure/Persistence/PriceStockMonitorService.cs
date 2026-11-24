@@ -182,6 +182,50 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         static bool Contains(string? value, string term) => value is not null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
     }
 
+    // At most one list page's worth of offers a request (the window marks the rows it shows).
+    public const int NoProblemLimit = 500;
+
+    // "Sorun Yok" (owner, 24 Nov 2026): the open offer issues of the named variants are resolved with the mark and the
+    // values the send judged (OfferIssueNoProblem), one audit record each. Panel records only: no offer, price or job is
+    // touched and nothing is sent. A variant with no open issue (closed already, or never listed) counts as closed.
+    public async Task<ServiceResult<PriceStockOfferNoProblemView>> MarkOffersNoProblemAsync(Guid tenantId, Guid connectionId, IReadOnlyList<Guid> variantIds, Guid actorUserId, string correlationId, CancellationToken cancellationToken)
+    {
+        var ids = (variantIds ?? []).Where(id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0) return ServiceResult<PriceStockOfferNoProblemView>.Fail("VARIANTS_REQUIRED", "İşaretlenecek en az bir teklif seçin.", 422);
+        if (ids.Length > NoProblemLimit) return ServiceResult<PriceStockOfferNoProblemView>.Fail("TOO_MANY_VARIANTS", $"Bir seferde en çok {NoProblemLimit} teklif işaretlenebilir.", 422);
+        if (!await MonitoredAsync(tenantId, connectionId, cancellationToken)) return ConnectionNotFound<PriceStockOfferNoProblemView>();
+        var keys = ids.Select(id => PriceInventoryOfferIssues.Key(connectionId, id)).ToArray();
+        var issues = await db.OperationalIssues
+            .Where(x => x.TenantId == tenantId && keys.Contains(x.DedupeKey) && x.Status != IssueStatus.Resolved)
+            .ToListAsync(cancellationToken);
+        var offers = await db.ChannelOffers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && ids.Contains(x.VariantId))
+            .Select(x => new { x.VariantId, x.Currency, x.ListPrice, x.SalePrice })
+            .ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        foreach (var issue in issues)
+        {
+            var variantId = PriceInventoryOfferIssues.VariantOf(issue.DedupeKey);
+            var offer = variantId is { } id ? offers.GetValueOrDefault(id) : null;
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = now;
+            issue.Summary += OfferIssueNoProblem.Mark(OfferIssueNoProblem.Fingerprint(issue.Code, offer?.Currency, offer?.ListPrice, offer?.SalePrice));
+            db.AuditLogs.Add(new AuditLog
+            {
+                TenantId = tenantId,
+                ActorUserId = actorUserId,
+                Action = OfferIssueNoProblem.AuditAction,
+                TargetType = nameof(OperationalIssue),
+                TargetId = issue.Id.ToString("D"),
+                Reason = $"Gönderilemeyen teklif 'Sorun Yok' olarak işaretlendi ({issue.Code}); pazaryerine bir şey gönderilmedi.",
+                CorrelationId = correlationId,
+                CreatedAt = now
+            });
+        }
+        if (issues.Count > 0) await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<PriceStockOfferNoProblemView>.Ok(new(issues.Count, ids.Length - issues.Count));
+    }
+
     public async Task<ServiceResult<PriceStockFailedPushesView>> FailedPushesAsync(Guid tenantId, Guid connectionId, string? kind, int page, int pageSize, CancellationToken cancellationToken)
     {
         var manualReview = (kind?.Trim().ToLowerInvariant()) switch

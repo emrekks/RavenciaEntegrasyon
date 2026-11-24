@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { hubPoll } from '../../shared/api'
+import { hubApi, hubPoll } from '../../shared/api'
 import type { ApiAnswer } from '../../shared/api/api-answer'
 import { queryKeys } from '../../shared/api/query-keys'
 import { Pager } from '../../shared/components/Pager'
@@ -10,6 +10,7 @@ import { formatDateTime } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { RrError, RrLoading, RrModal } from '../../shared/ui/rr-components'
+import { useLacksElevatedRole } from '../elevated-role'
 import { jobTitle } from './job-presentation'
 import './monitor-detail.css'
 
@@ -19,6 +20,7 @@ import './monitor-detail.css'
 const PAGE_SIZE = 50
 
 type InvalidOffers = ApiAnswer<'getPriceStockMonitorByConnectionIdInvalidOffers'>
+type NoProblem = ApiAnswer<'postPriceStockMonitorByConnectionIdInvalidOffersNoProblem'>
 type FailedPushes = ApiAnswer<'getPriceStockMonitorByConnectionIdFailedPushes'>
 type LostLinks = ApiAnswer<'getPriceStockMonitorByConnectionIdLostLinks'>
 type Attempts = ApiAnswer<'getApiHealthSignalsByConnectionIdAttempts'>
@@ -82,28 +84,49 @@ function Body({ query, empty, children }: { query: { isPending: boolean; isError
   return <>{children}</>
 }
 
+// "Sorun Yok" (owner, 24 Nov 2026): the owner and administrators hide an offer they accept as it is. Only the panel's record
+// closes; nothing goes to the marketplace and no price changes. It comes back once the offer's values change and the
+// automatic send still cannot take it.
+function useMarkNoProblem(connectionId: string, onDone: () => void) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (variantIds: string[]) => hubApi<NoProblem>(`/price-stock-monitor/${connectionId}/invalid-offers/no-problem`, { method: 'POST', body: JSON.stringify({ variantIds }) }),
+    onSuccess: async () => { onDone(); await client.invalidateQueries({ queryKey: queryKeys.priceStockMonitor() }) }
+  })
+}
+
 function InvalidOffersTab({ connectionId }: { connectionId: string }) {
   const [search, setSearch] = useState(''); const [reason, setReason] = useState(''); const [page, setPage] = useState(1)
+  const [picked, setPicked] = useState<string[]>([])
+  const canMark = !useLacksElevatedRole()
   const term = useDebounced(search.trim())
   const query = useQuery({ queryKey: queryKeys.priceStockMonitor('invalid-offers', connectionId, term, reason, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<InvalidOffers>(`/price-stock-monitor/${connectionId}/invalid-offers?${qs({ search: term, reason, page, pageSize: PAGE_SIZE })}`, { signal }) })
   const data = query.data
   useClampPage(data, data?.filteredCount, page, setPage)
+  const mark = useMarkNoProblem(connectionId, () => setPicked([]))
+  const shown = data?.items.map(item => item.variantId) ?? []
+  const pickedShown = picked.filter(id => shown.includes(id))
+  const allPicked = shown.length > 0 && pickedShown.length === shown.length
+  const toggle = (id: string) => setPicked(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id])
   return <>
     <div className="md-filters">
       <label className="rr-fld rr-search"><small>Ara</small><input className="rr-in" aria-label="Gönderilemeyen tekliflerde ara" placeholder="Barkod, stok kodu veya ürün adı" value={search} onChange={event => { setSearch(event.target.value); setPage(1) }} /></label>
       <label className="rr-fld"><small>Sebep</small><PanelSelect ariaLabel="Sebep" value={reason} onChange={value => { setReason(value); setPage(1) }} width={320}
         options={[{ value: '', label: `Tüm Sebepler${data ? ` (${data.totalCount.toLocaleString('tr-TR')})` : ''}` }, ...(data?.reasons ?? []).map(item => ({ value: item.code, label: `${reasonText(item.code)} (${item.count.toLocaleString('tr-TR')})` }))]} /></label>
+      {canMark && <button type="button" className="rr-btn md-bulk" disabled={pickedShown.length === 0 || mark.isPending} onClick={() => mark.mutate(pickedShown)}>Seçilenleri Sorun Yok İşaretle{pickedShown.length ? ` (${pickedShown.length.toLocaleString('tr-TR')})` : ''}</button>}
     </div>
+    {mark.isError && <p className="rr-lead md-error" role="alert">{mark.error instanceof Error ? mark.error.message : 'İşaretlenemedi.'}</p>}
     <Body query={query} empty={!data?.items.length}>{data && <>
-      <div className="md-wrap"><table className="md-tbl"><thead><tr><th>Barkod / Stok Kodu</th><th>Ürün</th><th>Sebep</th><th>Panel Fiyatı (Liste / Satış)</th><th>Teklif Fiyatı (Liste / Satış)</th><th /></tr></thead><tbody>
+      <div className="md-wrap"><table className="md-tbl"><thead><tr>{canMark && <th className="md-pick"><input type="checkbox" className="rr-cb" aria-label="Bu sayfadaki teklifleri seç" checked={allPicked} onChange={() => setPicked(allPicked ? [] : shown)} /></th>}<th>Barkod / Stok Kodu</th><th>Ürün</th><th>Sebep</th><th>Panel Fiyatı (Liste / Satış)</th><th>Teklif Fiyatı (Liste / Satış)</th><th /></tr></thead><tbody>
         {data.items.map(item => <tr key={`${item.variantId}-${item.offerId ?? ''}`}>
+          {canMark && <td className="md-pick"><input type="checkbox" className="rr-cb" aria-label={`${item.sku ?? item.barcode ?? 'Teklif'} seç`} checked={picked.includes(item.variantId)} onChange={() => toggle(item.variantId)} /></td>}
           <td><Identity barcode={item.barcode} sku={item.sku} /></td>
           <td><Product title={item.productTitle} variant={item.variantLabel} /></td>
           <td title={item.reasonSummary}>{reasonText(item.reasonCode)}</td>
           <td className="md-num">{money(item.panelListPrice, item.currency)} / {money(item.panelSalePrice, item.currency)}</td>
           <td className="md-num">{money(item.offerListPrice, item.currency)} / {money(item.offerSalePrice, item.currency)}</td>
-          <td className="md-act">{openProduct(item.productId)}</td></tr>)}
+          <td className="md-act">{canMark && <button type="button" className="rr-btn rr-link" disabled={mark.isPending} onClick={() => mark.mutate([item.variantId])}>Sorun Yok</button>}{openProduct(item.productId)}</td></tr>)}
       </tbody></table></div>
       <PagedFoot page={data.page} pageSize={data.pageSize} total={data.filteredCount} shown={data.items.length} onPage={setPage} />
     </>}</Body>
@@ -170,7 +193,7 @@ export function PriceStockProblemDialog({ connectionId, displayName, counts, onC
   const title = `${tabs.length === 1 && current ? current.label.replace('Teklif', 'Teklifler') : 'Gönderim Sorunları'} · ${displayName} (${total.toLocaleString('tr-TR')})`
   return <RrModal crumb="API Sağlık" title={title} size="xl" modalClass="md-modal" onClose={onClose} foot={<button type="button" className="rr-btn" onClick={onClose}>Kapat</button>}>
     {tabs.length > 1 && <div className="md-tabs" role="tablist" aria-label="Sorun türü">{tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === current?.id} className={tab.id === current?.id ? 'md-on' : undefined} onClick={() => setActive(tab.id)}>{tab.label}<span className="rr-num">{tab.count.toLocaleString('tr-TR')}</span></button>)}</div>}
-    <p className="rr-lead md-lead">Yalnız okuma: buradan bir şey gönderilmez veya yeniden denenmez. Düzeltmek için ürüne gidin.</p>
+    <p className="rr-lead md-lead">Yalnız okuma: buradan bir şey gönderilmez veya yeniden denenmez. Düzeltmek için ürüne gidin.{current?.id === 'invalid' ? ' "Sorun Yok" yalnız satırı gizler; teklifin değerleri değişip yine gönderilemezse satır geri gelir.' : ''}</p>
     {current?.id === 'invalid' && <InvalidOffersTab key="invalid" connectionId={connectionId} />}
     {current?.id === 'failed' && <FailedPushesTab key="failed" connectionId={connectionId} kind="failed" onOpenJob={openJob} />}
     {current?.id === 'review' && <FailedPushesTab key="review" connectionId={connectionId} kind="manual-review" onOpenJob={openJob} />}

@@ -35,6 +35,21 @@ internal sealed class PriceStockService(
     private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
         issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
 
+    // An offer the automatic send leaves out (PriceInventoryOfferIssues). One the owner marked "Sorun Yok" on the values the
+    // send refuses now stays resolved and is only seen again, so the retention keeps the mark (OfferIssueNoProblem).
+    private async Task RecordOfferIssue(Guid tenantId, Guid connectionId, Guid variantId, string code, string summary, CancellationToken cancellationToken)
+    {
+        var key = PriceInventoryOfferIssues.Key(connectionId, variantId);
+        var issue = db.OperationalIssues.Local.FirstOrDefault(x => x.TenantId == tenantId && x.DedupeKey == key)
+            ?? await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken);
+        if (issue is not null && await OfferIssueNoProblem.StillMarkedAsync(db, issue, connectionId, variantId, code, cancellationToken))
+        {
+            issue.LastSeenAt = timeProvider.GetUtcNow();
+            return;
+        }
+        await RecordIssue(tenantId, key, code, summary, cancellationToken);
+    }
+
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
 
     private void TrackRequest() => run.TrackRequest();
@@ -570,8 +585,8 @@ internal sealed class PriceStockService(
             if (PriceInventoryOfferIssues.IsOfferProblem(code))
             {
                 foreach (var invalid in composer.InvalidOffers)
-                    await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
-                if (composer.InvalidOffers.Count == 0) await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, variantId), code, build.Error.Message, cancellationToken);
+                    await RecordOfferIssue(tenantId, connectionId, invalid.VariantId, invalid.Code, invalid.Message, cancellationToken);
+                if (composer.InvalidOffers.Count == 0) await RecordOfferIssue(tenantId, connectionId, variantId, code, build.Error.Message, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 return JobExecutionResult.Success();
             }
@@ -587,7 +602,7 @@ internal sealed class PriceStockService(
     private async Task<JobExecutionResult> QueueAutomaticPushAsync(Guid tenantId, Guid connectionId, PriceInventoryDraft draft, Guid? variantId, string correlationId, string trigger, CancellationToken cancellationToken)
     {
         foreach (var invalid in draft.InvalidOffers)
-            await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
+            await RecordOfferIssue(tenantId, connectionId, invalid.VariantId, invalid.Code, invalid.Message, cancellationToken);
         await ResolveOfferIssuesAsync(tenantId, connectionId, draft.Lines.Select(line => line.VariantId).Distinct().ToArray(), cancellationToken);
         var dedup = PriceInventoryOutboxPolicy.DedupKey(connectionId, draft.Lines);
         var now = timeProvider.GetUtcNow();
@@ -654,7 +669,7 @@ internal sealed class PriceStockService(
                 await RecordIssue(tenantId, $"price-inventory-inventory-required:{connectionId:N}", code, build.Error.Message, cancellationToken);
             // Every offer the pass could send is one the user has to fix: each is reported by itself.
             foreach (var invalid in composer.InvalidOffers)
-                await RecordIssue(tenantId, PriceInventoryOfferIssues.Key(connectionId, invalid.VariantId), invalid.Code, invalid.Message, cancellationToken);
+                await RecordOfferIssue(tenantId, connectionId, invalid.VariantId, invalid.Code, invalid.Message, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (StockProjectionOutboxPolicy.IsSettledBuildFailure(code) || code == "INVENTORY_REQUIRED" || PriceInventoryOfferIssues.IsOfferProblem(code)) return JobExecutionResult.Success();
             return JobExecutionResult.Blocked(code, build.Error.Message);
