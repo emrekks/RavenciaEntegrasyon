@@ -53,7 +53,9 @@ internal sealed partial class OrderQueryService
 
     private async Task<OrderSummaryView> CachedOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken, Func<Task<Func<OrderListQuery, IQueryable<Order>>>>? summaryOrders = null)
     {
-        var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
+        // Everything the answer depends on: the same tabs and filters with and without the micro-export detail (ALL asked
+        // alone, or beside LATE) are two answers.
+        var key = $"{tenantId:N}|{string.Join(',', requested)}|{includeMicro}|{JsonSerializer.Serialize(options)}";
         var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
         if (OrderSummaryCache.TryGetValue(key, out var cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
         var gate = OrderSummaryGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
