@@ -3,7 +3,6 @@ import { useRememberedTabCounts } from './tab-counts'
 import { useTabStripScroll } from './tab-strip-scroll'
 import { useDismissable } from './hooks/useDismissable'
 import { createPortal } from 'react-dom'
-import { DockTabs, useDockHost } from './components/dock-actions'
 import { uiGlyph16, type UiIconName } from './components/UiIcon'
 import './view-tabs.css'
 
@@ -76,8 +75,7 @@ type ViewTabItem = { value: string; label: ReactNode; count?: ReactNode; countTo
 // Tabs with a "Diğer" menu: the values listed in `more` leave the row and open from a menu at its end, so long tab sets
 // (orders and returns have nine) fit on one line. When one of them is selected, the menu button shows it as active.
 // Tabs that still do not fit the row move into the menu too, last first (never the first tab or the selected one).
-export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ariaLabel, className, dock = false }: { items: ViewTabItem[]; more: string[]; value: string; onChange: (value: string) => void; ariaLabel: string; className?: string; dock?: boolean }) {
-  const dockHost = useDockHost()
+export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ariaLabel, className }: { items: ViewTabItem[]; more: string[]; value: string; onChange: (value: string) => void; ariaLabel: string; className?: string }) {
   const items = useRememberedTabCounts(ariaLabel, givenItems)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
@@ -143,8 +141,6 @@ export function ViewTabsWithMore({ items: givenItems, more, value, onChange, ari
   }, [open])
   useDismissable(open, [trigger, menu], () => setOpen(false), { triggerRef: trigger })
   const tab = (item: ViewTabItem) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)}><span className="rv-tab-label">{item.label}</span>{item.count !== undefined ? <span className={`rv-tab-count${item.countTone === 'warn' ? ' is-warn' : ''}`}>{item.count}</span> : null}</button>
-  // dock: on a phone the strip is the top row of the dock (dock-actions.tsx), not a strip in the page.
-  if (dock && dockHost?.phone) return <DockTabs label={ariaLabel} items={items} value={value} onChange={onChange} />
   return <div ref={row} className={['rv-tabs', 'rv-view-tabs', phone ? 'is-strip' : '', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>
     {main.map(tab)}
     {extra.length > 0 && <button ref={trigger} type="button" role="tab" aria-selected={Boolean(selectedExtra)} aria-haspopup="menu" aria-expanded={open} tabIndex={selectedExtra ? 0 : -1} className={`rv-view-tabs-more${selectedExtra ? ' is-active' : ''}`} onClick={() => setOpen(current => !current)}>

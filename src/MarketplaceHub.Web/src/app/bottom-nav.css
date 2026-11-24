@@ -3,8 +3,7 @@
  * from the edges, radius 14, the page cards' opaque surface and 1 px border (BottomDock.tsx).
  *  - Bottom row, 52 px: Ana Sayfa, Siparişler, Ürünler, Menü - icon and 11 px label always shown, the open page tinted.
  *    The Menü target opens a full-screen list menu (and becomes Kapat while it is open).
- *  - Top row, 40 px: the open page's own tabs as chips with their counts (shared/components/dock-actions.tsx: DockTabs; the
- *    page's strip is not drawn in the page) - or, in task mode, the page's status strip. A page without either: one row.
+ *  - Top row, 40 px, only in task mode: the page's status strip. Otherwise the dock is one row.
  *  - Task mode ("Görev Kipi"): while a page has bottom actions (StickyActionBar, DraftSaveBar) the bottom row is a 40 px Menü
  *    button and the page's buttons in one row, 36 px high, the primary one stretching.
  * The page keeps room under its content for the rows shown (--rv-bottom-nav-space, eased over 180 ms). Wider screens keep
@@ -34,21 +33,9 @@
   .rv-dock-layer::after { content: ""; position: absolute; right: -12px; bottom: calc(-1 * var(--rv-dock-bottom)); left: -12px; z-index: -1; height: var(--rv-dock-bottom); background: var(--rv-color-bg); pointer-events: none; }
   .rv-dock-top { position: relative; display: block; box-sizing: border-box; height: 0; overflow: hidden; border-radius: 13px 13px 0 0; transition: height 180ms ease; }
   .rv-dock-layer[data-rows="2"] .rv-dock-top { height: 40px; }
-  .rv-dock-top[data-top="tabs"] .rv-dock-info, .rv-dock-top[data-top="info"] .rv-dock-tabs { display: none; }
   .rv-dock-bottom { position: relative; flex: none; height: 52px; }
   .rv-dock, .rv-taskbar { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; transition: opacity 180ms ease, visibility 180ms; }
   .rv-dock-layer[data-mode="task"] .rv-dock, .rv-dock-layer[data-mode="dock"] .rv-taskbar { visibility: hidden; opacity: 0; pointer-events: none; }
-
-  /* Top row: the page's tabs as chips, sideways. */
-  .rv-dock-tabs { box-sizing: border-box; height: 40px; padding: 4px 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
-  .rv-dock-tabs::-webkit-scrollbar { display: none; }
-  .rv-dock-tablist { display: flex; align-items: center; gap: 6px; width: max-content; min-width: 100%; }
-  .rv-dock-tab { display: inline-flex; flex: none; align-items: center; gap: 6px; box-sizing: border-box; height: 32px; min-height: 0; margin: 0; padding: 0 10px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 0; border-radius: 7px; font: inherit; font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  .rv-dock-tab.is-active { color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); }
-  :root:not([data-theme="light"]) .rv-dock-tab.is-active { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
-  .rv-dock-tab em { font-style: normal; opacity: .85; }
-  .rv-dock-tab .rv-view-tab-icon { display: none; }
-  .rv-dock-tab .rv-tab-text::after { content: none; }
 
   /* Bottom row: four targets, icon over label. */
   .rv-dock { padding: 0 8px; }
@@ -64,14 +51,6 @@
   .rv-taskbar { gap: 8px; padding: 0 8px; }
   .rv-taskbar-menu { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; cursor: pointer; }
   .rv-taskbar-menu .rv-dock-badge { top: -6px; left: auto; right: -5px; }
-  .rv-taskbar-note { display: flex; flex: 1 1 0; align-items: center; gap: 6px; min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .rv-taskbar-note { container-type: inline-size; }
-  @container (max-width: 96px) { .rv-taskbar-note > * { visibility: hidden; } }
-  .rv-taskbar-note:empty { display: none; }
-  /* Beside a status text the buttons keep their size (the text gives way, as far as it fits). */
-  .rv-taskbar-note:not(:empty) + .rv-taskbar-actions, .rv-taskbar-note:not(:empty) + .rv-taskbar-actions .rv-taskbar-group { flex: 0 1 auto; }
-  .rv-taskbar-note > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .rv-taskbar-note .rv-dock-info-end { display: none; }
   .rv-taskbar-actions { display: flex; flex: 1; align-items: center; min-width: 0; }
   .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: safe flex-end; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .rv-taskbar-group::-webkit-scrollbar { display: none; }
@@ -141,7 +120,8 @@
   .rv-fullmenu-count { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 10px; font-size: 11px; font-weight: 700; }
   .rv-fullmenu-count.is-warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
   .rv-fullmenu-empty { margin: 24px 0; color: var(--rv-color-muted); font-size: 14px; text-align: center; }
-  .rv-fullmenu-foot { display: flex; flex: none; align-items: center; gap: 12px; padding: 10px 16px 0; border-top: 1px solid var(--rv-color-border); }
+  /* The user and Çıkış are the last item of the one scrolling list, not a bar of their own. */
+  .rv-fullmenu-foot { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 4px 0; border-top: 1px solid var(--rv-color-border); }
   .rv-fullmenu-action { display: inline-flex; flex: none; min-width: 120px; align-items: center; justify-content: center; gap: 8px; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   .rv-fullmenu-action.is-danger { color: var(--rv-color-danger); }
   .rv-fullmenu :is(a, button):focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
