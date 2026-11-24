@@ -118,10 +118,13 @@ internal sealed partial class OrderQueryService
         var catalog = await OrderLineCatalog.LoadAsync(db, tenantId, lines, line => connectionByOrder.TryGetValue(line.OrderId, out var lineConnectionId) ? lineConnectionId : null, cancellationToken);
         // The orders' exchange resends (ExchangeResendClaims: the Yeniden Gönderimler tab's rule), one per order.
         var pageOrderIds = orders.Select(order => order.Id).ToArray();
-        var exchangeResends = (await db.ReturnClaims.AsNoTracking()
-                .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
-                    && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
-                    && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
+        var pageExchangeClaims = db.ReturnClaims.AsNoTracking()
+            .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
+                && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
+                && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change));
+        // Hepsiburada's shipped exchange line, by the tab's own rule (ExchangeResendRules.ShippedExchangeLine).
+        var exchangeLineShipped = (await pageExchangeClaims.Where(ExchangeResendRules.ShippedExchangeLine(db)).Select(claim => claim.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var exchangeResends = (await pageExchangeClaims
                 .Select(claim => new
                 {
                     claim.Id,
@@ -131,16 +134,14 @@ internal sealed partial class OrderQueryService
                     claim.ReplacementCargoProviderName,
                     claim.ReplacementCargoTrackingNumber,
                     claim.ReplacementCargoTrackingLink,
-                    claim.ReplacementShippedAt,
-                    ExchangeLineShipped = db.OrderLines.Any(line => line.TenantId == claim.TenantId && line.OrderId == claim.OrderId && line.ShippedQuantity > 0
-                        && line.SourceSnapshotJson != null && line.SourceSnapshotJson.Contains(ExchangeResendRules.HepsiburadaExchangeLineReason))
+                    claim.ReplacementShippedAt
                 })
                 .ToListAsync(cancellationToken))
             .GroupBy(claim => claim.OrderId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(claim => claim.ReplacementPackageId != null).Select(claim =>
             {
                 // Handed to the carrier: Trendyol's tracking link, Hepsiburada's shipped exchange line, or the owner's mark (ExchangeResendRules).
-                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt, claim.ExchangeLineShipped);
+                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt, exchangeLineShipped.Contains(claim.Id));
                 return new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, shippedSource is not null, claim.ReplacementCargoTrackingLink,
                     claim.Id, claim.Version, shippedSource);
             }).First());

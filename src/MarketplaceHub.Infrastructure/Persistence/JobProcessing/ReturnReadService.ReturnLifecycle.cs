@@ -420,9 +420,9 @@ internal sealed partial class ReturnReadService
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status != ReturnClaimStatus.Cancelled
                 && x.CustomerRequest == ReturnCustomerRequestPolicy.Change
                 && (x.ReplacementPackageId != null || x.ResolvedWith == ReturnCustomerRequestPolicy.Change)
-                && x.ReplacementCargoTrackingLink == null && x.ReplacementShippedAt == null
                 && x.ExternalClaimId != null && x.ExternalClaimId != ""
-                && (x.LastRemoteModifiedAt ?? x.UpdatedAt) >= since);
+                && (x.LastRemoteModifiedAt ?? x.UpdatedAt) >= since)
+            .Where(ExchangeResendRules.NotShipped(db));
         if (!await waiting.AnyAsync(cancellationToken)) return;
         var cursor = await Cursor(tenantId, connectionId, ExchangeResendRereadCursor, cancellationToken);
         if (cursor.LastAttemptAt is { } lastAttempt && now - lastAttempt < ExchangeResendRereadSpacing) return;

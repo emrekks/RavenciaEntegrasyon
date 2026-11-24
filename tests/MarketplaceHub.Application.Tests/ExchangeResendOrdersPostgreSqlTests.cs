@@ -202,6 +202,40 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // Review, 24 Nov 2026: the exchange line belongs to the order, not to one claim, so a shipped ClaimChangeAccepted line of
+    // exchange A closed a later exchange B of the same order. With two exchange requests on the order the line settles
+    // neither: the list, the not-shipped count and the row all keep it waiting, and the owner's mark is still taken.
+    [PostgreSqlFact]
+    public async Task A_shipped_exchange_line_does_not_close_a_second_exchange_of_the_same_order()
+    {
+        var (tenant, connection) = await SeedAsync("HEPSIBURADA");
+        var order = await SeedOrderAsync(tenant.Id, connection.Id, "hb-two", claim =>
+        {
+            claim.Status = ReturnClaimStatus.Approved;
+            claim.RawStatus = "Accepted";
+            claim.ReasonCode = null;
+            claim.ResolvedWith = ReturnCustomerRequestPolicy.Change;
+        });
+        Guid second;
+        await using (var db = fixture.CreateContext())
+        {
+            db.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order, ExternalLineId = "hb-two-2", Sku = "SKU-2", TitleSnapshot = "Ürün", RawStatus = "Delivered", OrderedQuantity = 1, ShippedQuantity = 1, UnitPrice = 100, VatRate = 10, Version = 1, SourceSnapshotJson = "{\"lineItemId\":\"b\",\"creationReason\":\"ClaimChangeAccepted\"}" });
+            var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order, ExternalClaimId = "claim-hb-two-b", Status = ReturnClaimStatus.Approved, RawStatus = "Accepted", CustomerRequest = ReturnCustomerRequestPolicy.Change, ResolvedWith = ReturnCustomerRequestPolicy.Change, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+            db.ReturnClaims.Add(claim);
+            await db.SaveChangesAsync();
+            second = claim.Id;
+        }
+
+        var waiting = await CountsAsync(tenant.Id, order);
+        Assert.Equal((1, true, true, false, (string?)null), (waiting.Count, waiting.InResent, waiting.Unshipped, waiting.Row.Shipped, waiting.Row.ShippedSource));
+        Assert.Equal(1, Assert.Single(waiting.ExchangeStores).Value);
+        await using (var db = fixture.CreateContext())
+        {
+            var version = (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == second)).Version;
+            Assert.True((await Service(db).MarkReplacementShippedAsync(tenant.Id, Guid.NewGuid(), second, version, true, "corr-hb-two", CancellationToken.None)).Succeeded);
+        }
+    }
+
     // The mark's audit names the exchange's own marketplace (it read "Trendyol'a" on a Hepsiburada exchange).
     [PostgreSqlFact]
     public async Task The_shipped_marks_audit_names_hepsiburada()
@@ -234,6 +268,9 @@ public sealed class ExchangeResendOrdersPostgreSqlTests(PostgreSqlTenantIsolatio
         {
             var claim = await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == claimId);
             Assert.Equal(((string?)null, (DateTimeOffset?)null, (string?)null), (claim.ResolvedWith, claim.ReplacementShippedAt, claim.ReplacementShippedSource));
+            // The removal's audit says the ship mark went with it.
+            var removed = await db.AuditLogs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.Action == "RETURN_EXCHANGE_MARK_REMOVED").Select(x => x.Reason).SingleAsync();
+            Assert.EndsWith(ExchangeResendRules.ShipMarkAlsoRemovedText, removed);
         }
         // Marked made again, it waits for the carrier: the old hand-made mark does not come back.
         await using (var db = fixture.CreateContext())

@@ -27,7 +27,7 @@ describe('exchange marks refresh the other page\'s claim version', () => {
   it('the Değişim Onaylandı mark refreshes the orders list', async () => {
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
-    render(<QueryClientProvider client={client}><ReturnExchangeMarkDialog item={{ id: 'cl3', version: 4, orderNumber: '11805950641' }} marked onClose={() => {}} onDone={() => {}} /></QueryClientProvider>)
+    render(<QueryClientProvider client={client}><ReturnExchangeMarkDialog item={{ id: 'cl3', version: 4, orderNumber: 'TEST-1' }} marked onClose={() => {}} onDone={() => {}} /></QueryClientProvider>)
     await confirm('Değişim Onaylandı Olarak İşaretle')
     expect(vi.mocked(hubApi).mock.calls.some(([path]) => path === '/returns/cl3/exchange-approved')).toBe(true)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.orders() })
@@ -36,7 +36,7 @@ describe('exchange marks refresh the other page\'s claim version', () => {
   it('the Kargoya Verildi mark refreshes the return\'s detail', async () => {
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
-    render(<QueryClientProvider client={client}><ExchangeResendShipDialog claim={{ id: 'cl3', version: 5, orderNumber: '11805950641' }} marked onClose={() => {}} onDone={() => {}} /></QueryClientProvider>)
+    render(<QueryClientProvider client={client}><ExchangeResendShipDialog claim={{ id: 'cl3', version: 5, orderNumber: 'TEST-1' }} marked onClose={() => {}} onDone={() => {}} /></QueryClientProvider>)
     await confirm('Kargoya Verildi Olarak İşaretle')
     expect(vi.mocked(hubApi).mock.calls.some(([path]) => path === '/returns/cl3/replacement-shipped')).toBe(true)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.return('cl3') })

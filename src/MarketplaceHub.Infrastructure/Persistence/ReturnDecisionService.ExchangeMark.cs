@@ -17,6 +17,7 @@ internal sealed partial class ReturnDecisionService
         if (claim is null) return NotFound<ReturnDetailView>();
         if (claim.Version != expectedVersion) return Precondition<ReturnDetailView>(claim.Version);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var shipMarkRemoved = false;
         if (marked)
         {
             if (!ReturnCustomerRequestPolicy.ManualExchangeMarkAllowed(platformCode, claim.CustomerRequest, claim.Status, claim.ResolvedWith))
@@ -29,7 +30,7 @@ internal sealed partial class ReturnDecisionService
         {
             if (claim.ResolvedWithSource != ReturnCustomerRequestPolicy.ManualSource)
                 return ServiceResult<ReturnDetailView>.Fail(ReturnCustomerRequestPolicy.ManualExchangeMarkNotAllowedCode, "Bu iadede elle konmuş bir Değişim Onaylandı işareti yok.", 409);
-            ExchangeResendRules.ClearManualExchangeMark(claim);
+            shipMarkRemoved = ExchangeResendRules.ClearManualExchangeMark(claim);
         }
         var now = timeProvider.GetUtcNow();
         claim.UpdatedAt = now;
@@ -43,7 +44,7 @@ internal sealed partial class ReturnDecisionService
             TargetId = claimId.ToString("D"),
             Reason = marked
                 ? "Değişim Onaylandı olarak elle işaretlendi ve Onaylananlar'a taşındı; Trendyol'a bir şey gönderilmedi."
-                : "Elle konan Değişim Onaylandı işareti kaldırıldı; Trendyol'a bir şey gönderilmedi.",
+                : "Elle konan Değişim Onaylandı işareti kaldırıldı; Trendyol'a bir şey gönderilmedi." + (shipMarkRemoved ? ExchangeResendRules.ShipMarkAlsoRemovedText : ""),
             CorrelationId = correlationId,
             CreatedAt = now
         });
