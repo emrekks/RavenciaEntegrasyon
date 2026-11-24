@@ -45,12 +45,12 @@
   /* One line for the open column: 24 x 3 px on the bar's top edge, sliding between the columns. */
   .rv-dock-indicator { position: absolute; top: -1px; left: 0; width: 20%; height: 3px; pointer-events: none; transition: transform 200ms ease-out, opacity 200ms ease-out; }
   .rv-dock-indicator::after { content: ""; position: absolute; top: 0; left: 50%; width: 24px; height: 3px; margin-left: -12px; background: var(--rv-color-primary); border-radius: 0 0 3px 3px; }
-  .rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 7px); box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 2px var(--rv-color-surface); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+  .rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 4px); box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 2px var(--rv-color-surface); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
 
   /* Task bar: one row, 56 px, items 40 px high and centred: [Menü] [primary, stretching] [İleri] [Diğer]. */
   .rv-taskbar { gap: 8px; padding: 0 12px; }
   .rv-taskbar-menu { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; cursor: pointer; }
-  .rv-taskbar-menu .rv-dock-badge { top: -6px; left: auto; right: -5px; box-shadow: 0 0 0 2px var(--rv-color-surface); }
+  .rv-taskbar-menu .rv-dock-badge { top: -6px; left: calc(100% - 4px); right: auto; box-shadow: 0 0 0 2px var(--rv-color-surface); }
   .rv-taskbar-actions { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
   .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
   .rv-taskbar-group > div:not([role="group"]) { display: contents; }
