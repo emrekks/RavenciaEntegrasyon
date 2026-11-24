@@ -85,7 +85,7 @@ export function StockReport({ from, to, platforms, sales }: { from: string; to: 
     { key: 'stocked', label: 'Stoklu Varyant', value: summary.stockedVariants, tip: `Ana depoda en az bir adedi olan aktif varyantlar; toplam ${formatCount(summary.variants)} aktif varyant.` },
     { key: 'empty', label: 'Stoksuz Varyant', value: summary.emptyVariants, tip: 'Ana depoda hiç adedi kalmayan aktif varyantlar.' },
     { key: 'low', label: 'Beden Kırığı', value: summary.lowStockProducts, tone: summary.lowStockProducts > 0 ? 'warn' : undefined,
-      tip: 'Bir renginin bedenlerinin yarısı ya da fazlası tükenmiş stoklu ürünler.' },
+      tip: 'Modelinde stok süren, bedenlerinin yarısı ya da fazlası tükenmiş renkler; tamamen biten renkler de sayılır.' },
     { key: 'cost', label: 'Maliyeti Eksik', value: summary.missingCostVariants, tone: summary.missingCostVariants > 0 ? 'warn' : undefined,
       tip: 'Stoğu olup maliyeti girilmemiş varyantlar; sermaye ve kâr bunlarsız hesaplanır.' },
     { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined,

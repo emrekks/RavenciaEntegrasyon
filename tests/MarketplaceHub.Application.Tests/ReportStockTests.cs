@@ -104,4 +104,22 @@ public sealed class ReportStockTests
         Assert.Equal(1, view.Summary.LowStockProducts);
         Assert.Null(view.Summary.Value);
     }
+
+    // Düşük Stok per model, as the products page counts it: a sold-out one-size colour of a model that still has units
+    // counts; a model with no units at all does not.
+    [Fact]
+    public void A_sold_out_colour_counts_as_low_stock_while_its_model_has_units()
+    {
+        Guid model = Guid.NewGuid(), soldOut = Guid.NewGuid(), stocked = Guid.NewGuid(), emptyModel = Guid.NewGuid();
+        var rows = new[]
+        {
+            Variant(soldOut, "Mor", "Standart", 0m, 100m) with { ModelId = model },
+            Variant(stocked, "Gri", "Standart", 2m, 100m) with { ModelId = model },
+            Variant(emptyModel, "Siyah", "Standart", 0m, 100m),
+        };
+
+        var view = ReportStock.Build(rows, [], Stores, false, new Dictionary<Guid, decimal>(), new Dictionary<Guid, decimal>(), Today, Today, Today);
+
+        Assert.Equal(1, view.Summary.LowStockProducts);
+    }
 }

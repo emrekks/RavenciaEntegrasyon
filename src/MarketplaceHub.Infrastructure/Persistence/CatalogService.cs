@@ -467,7 +467,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .GroupBy(x => x.ProductId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
             var stockByProduct = variantsByProductForFilter.ToDictionary(x => x.Key, x => ProductStockPolicy.TotalStock(x.Value, inventoryByVariant));
-            // GAP is decided per model (the list groups by model code): the models whose cards still have stock.
+            // GAP and LOW are decided per model (the list groups by model code): the models whose cards still have stock.
             var stockedModels = allProducts
                 .Where(product => !ProductDraftPolicy.IsDraft(product.Status) && stockByProduct.GetValueOrDefault(product.Id) > 0)
                 .Select(product => ProductFamilyKey(product, variantsByProductForFilter.GetValueOrDefault(product.Id) ?? []))
@@ -476,7 +476,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             allProducts = allProducts.Where(product => !ProductDraftPolicy.IsDraft(product.Status) && stock.Trim().ToUpperInvariant() switch
             {
                 "OUT" => stockByProduct.GetValueOrDefault(product.Id) <= 0,
-                "LOW" => stockByProduct.GetValueOrDefault(product.Id) > 0
+                // A colour with at least half its variants sold out while the model still has stock (a colour sold out in
+                // every size too, a one-size colour among them).
+                "LOW" => stockedModels.Contains(ProductFamilyKey(product, variantsByProductForFilter.GetValueOrDefault(product.Id) ?? []))
                     && ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
                 // Some variant sold out while the model still has stock (one size of a colour is enough; a colour sold out
                 // in every size is listed too, so a model of one-size colours shows its sold-out colours).
@@ -579,7 +581,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     }
 
     // KATALOG-10 (round 7): the counts worked out in the database: each card's MAIN stock is summed there; only the cards
-    // with stock read their narrow variant rows, for the colour groups of the low-stock count (ProductStockPolicy).
+    // of stocked models read their narrow variant rows, for the colour groups of the low-stock count (ProductStockPolicy).
     public async Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var main = db.InventoryItems.Where(item => item.TenantId == tenantId && item.LocationCode == "MAIN");
@@ -588,13 +590,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             product.Id,
             product.Status,
+            Model = product.FamilyId ?? product.Id,
             Total = main.Where(item => variants.Any(variant => variant.Id == item.VariantId && variant.ProductId == product.Id)).Sum(item => (decimal?)item.OnHand) ?? 0m
         });
-        // One narrow row per card (its id, status and summed stock); the variants stay in the database.
+        // One narrow row per card (its id, status, model and summed stock); the variants stay in the database.
         var totals = await cards.ToListAsync(cancellationToken);
         var countedCards = totals.Where(card => !ProductDraftPolicy.IsDraft(card.Status)).ToList();
-        var stocked = countedCards.Where(card => card.Total > 0m).Select(card => card.Id).ToArray();
-        var rows = await variants.Where(variant => stocked.Contains(variant.ProductId))
+        // Düşük Stok is decided per model (as the LOW filter): the cards of the models that still have stock.
+        var stockedModels = countedCards.Where(card => card.Total > 0m).Select(card => card.Model).ToHashSet();
+        var candidates = countedCards.Where(card => stockedModels.Contains(card.Model)).Select(card => card.Id).ToArray();
+        var rows = await variants.Where(variant => candidates.Contains(variant.ProductId))
             .Select(variant => new { variant.Id, variant.ProductId, variant.OptionSignature, Stock = main.Where(item => item.VariantId == variant.Id).Sum(item => (decimal?)item.OnHand) })
             .ToListAsync(cancellationToken);
         var stockByVariant = rows.Where(row => row.Stock is not null).ToDictionary(row => row.Id, row => row.Stock!.Value);
@@ -618,7 +623,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     internal async Task<ProductSummaryView> ProductSummaryInMemoryAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var products = await VisibleProducts(tenantId)
-            .Select(x => new { x.Id, x.Status })
+            .Select(x => new { x.Id, x.Status, x.BrandId })
             .ToListAsync(cancellationToken);
         // K7 (partial): only the columns the stock counts need.
         var variants = await VariantShapes(tenantId).ToListAsync(cancellationToken);
@@ -643,12 +648,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .ToListAsync(cancellationToken);
         // A draft is listed (Tüm Ürünler, Taslak) but not counted in the stock figures (ProductDraftPolicy).
         var stocked = products.Where(x => !ProductDraftPolicy.IsDraft(x.Status)).ToList();
+        // Düşük Stok per model, as the LOW filter decides it: the models (model-code rule) whose cards still have stock.
+        string ModelKey(Guid id, Guid? brandId) => ProductFamilyKeyPolicy.FamilyKey(id, brandId,
+            (variantsByProduct.GetValueOrDefault(id) ?? []).Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)));
+        var stockedModels = stocked.Where(x => stockByProduct.GetValueOrDefault(x.Id) > 0).Select(x => ModelKey(x.Id, x.BrandId)).ToHashSet(StringComparer.Ordinal);
 
         return new(
             products.Count,
             products.Count(x => x.Status == ProductStatus.Active),
             stocked.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
-            stocked.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
+            stocked.Count(x => stockedModels.Contains(ModelKey(x.Id, x.BrandId))
                 && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(x.Id) ?? [], inventoryByVariant)),
             platforms,
             stocked.Sum(x => Math.Max(0, stockByProduct.GetValueOrDefault(x.Id))));

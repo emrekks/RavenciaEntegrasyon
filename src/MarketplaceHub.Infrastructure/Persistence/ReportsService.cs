@@ -948,6 +948,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
                                  {
                                      variant.Id,
                                      variant.ProductId,
+                                     product.FamilyId,
                                      product.Title,
                                      variant.ModelCode,
                                      Category = category == null ? null : category.Name,
@@ -977,7 +978,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
             .GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => (decimal?)x.First().SalePrice);
         var variants = variantRows.Select(x => new ReportStockVariantRow(x.Id, x.ProductId, x.Title, x.ModelCode, x.Category, colors.GetValueOrDefault(x.Id), sizes.GetValueOrDefault(x.Id),
             x.OptionSignature, x.Status == ProductStatus.Active, x.CostPrice, x.VatRate, x.OnHand, x.Available, x.CreatedAt,
-            x.PanelPrice ?? firstOfferPrice.GetValueOrDefault(x.Id))).ToList();
+            x.PanelPrice ?? firstOfferPrice.GetValueOrDefault(x.Id), x.FamilyId)).ToList();
         var offers = await db.ChannelOffers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && allowedIds.Contains(x.ConnectionId))
             .Select(x => new ReportStockOfferRow(x.VariantId, x.ConnectionId, x.SalePrice, x.Currency, x.Status))

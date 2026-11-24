@@ -5,9 +5,12 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // One variant of the catalogue with its MAIN stock: its product's category and VAT rate, its colour and size (the RENK
 // and BEDEN options), its current cost and its panel sale price as the product editor shows it (both VAT included, as the
-// panel stores them; null or 0 = not entered).
+// panel stores them; null or 0 = not entered). ModelId: the card's model record (FamilyId), the card itself without one.
 internal sealed record ReportStockVariantRow(Guid VariantId, Guid ProductId, string Title, string? ModelCode, string? Category, string? Color, string? Size,
-    string OptionSignature, bool Active, decimal? CostPrice, decimal? VatRate, decimal OnHand, decimal Available, DateTimeOffset CreatedAt, decimal? PanelPrice = null);
+    string OptionSignature, bool Active, decimal? CostPrice, decimal? VatRate, decimal OnHand, decimal Available, DateTimeOffset CreatedAt, decimal? PanelPrice = null, Guid? ModelId = null)
+{
+    public Guid Model => ModelId ?? ProductId;
+}
 
 // One offer of a variant on a store, with its sale price (VAT included).
 internal sealed record ReportStockOfferRow(Guid VariantId, Guid ConnectionId, decimal SalePrice, string Currency, string Status);
@@ -93,7 +96,9 @@ internal static class ReportStock
         var sold = items.Sum(x => x.Sold);
         var daily = periodDays > 0 && sold > 0 ? MeasureRounding.Round(sold / periodDays, 2) : (decimal?)null;
         var products = items.GroupBy(x => x.Row.ProductId).ToList();
-        var low = products.Count(group => group.Any(x => x.Units > 0) && ProductStockPolicy.IsLowStock(
+        // Düşük Stok per model, as the products page counts it: a colour whose model still has units.
+        var stockedModels = items.Where(x => x.Units > 0).Select(x => x.Row.Model).ToHashSet();
+        var low = products.Count(group => stockedModels.Contains(group.First().Row.Model) && ProductStockPolicy.IsLowStock(
             group.Select(x => new ProductVariant { Id = x.Row.VariantId, ProductId = x.Row.ProductId, Sku = "", SkuNormalized = "", OptionSignature = x.Row.OptionSignature }),
             group.ToDictionary(x => x.Row.VariantId, x => x.Units)));
         var dead = inStock.Where(x => x.Dead).ToList();

@@ -232,7 +232,7 @@ public sealed partial class CatalogService
 
     // The stock filter as the in-memory list applies it (never a draft): OUT and GAP decided in the database from the MAIN
     // stock of each card and variant; LOW and OK need the colour groups (ProductStockPolicy.IsLowStock), decided on the
-    // narrow variant rows of the cards that have stock.
+    // narrow variant rows of the cards of stocked models (LOW) or of the stocked cards (OK).
     private async Task<IQueryable<Product>> ApplyStockFilterInSqlAsync(Guid tenantId, IQueryable<Product> query, string stock, CancellationToken cancellationToken)
     {
         var mode = stock.Trim().ToUpperInvariant();
@@ -254,17 +254,21 @@ public sealed partial class CatalogService
                     && variants.Any(variant => variant.ProductId == product.Id && (main.Where(item => item.VariantId == variant.Id).Sum(item => (decimal?)item.OnHand) ?? 0m) <= 0m));
             case "LOW":
             case "OK":
-                var stocked = withTotal.Where(row => row.Total > 0m).Select(row => row.Product.Id);
-                var rows = await variants.Where(variant => stocked.Contains(variant.ProductId))
+                // LOW is decided per model too (Düşük Stok Renkleri): a card of a model that still has stock whose colour
+                // has at least half its variants sold out, a colour sold out in every size included. OK: a card with
+                // stock of its own that is not LOW. The cards are read once and passed on as id lists.
+                var cardTotals = await withTotal.Select(row => new { row.Product.Id, Model = row.Product.FamilyId ?? row.Product.Id, row.Total }).ToListAsync(cancellationToken);
+                var stockedModelKeys = cardTotals.Where(card => card.Total > 0m).Select(card => card.Model).ToHashSet();
+                var candidates = cardTotals.Where(card => mode == "LOW" ? stockedModelKeys.Contains(card.Model) : card.Total > 0m).Select(card => card.Id).ToArray();
+                var rows = await variants.Where(variant => candidates.Contains(variant.ProductId))
                     .Select(variant => new { variant.Id, variant.ProductId, variant.OptionSignature, Stock = main.Where(item => item.VariantId == variant.Id).Sum(item => (decimal?)item.OnHand) })
                     .ToListAsync(cancellationToken);
                 var stockByVariant = rows.Where(row => row.Stock is not null).ToDictionary(row => row.Id, row => row.Stock!.Value);
                 var low = rows.GroupBy(row => row.ProductId)
                     .Where(group => ProductStockPolicy.IsLowStock(group.Select(row => new ProductVariant { Id = row.Id, TenantId = tenantId, ProductId = row.ProductId, Sku = "", SkuNormalized = "", OptionSignature = row.OptionSignature }), stockByVariant))
-                    .Select(group => group.Key).ToArray();
-                return mode == "LOW"
-                    ? nonDraft.Where(product => stocked.Contains(product.Id) && low.Contains(product.Id))
-                    : nonDraft.Where(product => stocked.Contains(product.Id) && !low.Contains(product.Id));
+                    .Select(group => group.Key).ToHashSet();
+                var picked = mode == "LOW" ? low.ToArray() : candidates.Where(id => !low.Contains(id)).ToArray();
+                return nonDraft.Where(product => picked.Contains(product.Id));
             default:
                 return nonDraft;
         }

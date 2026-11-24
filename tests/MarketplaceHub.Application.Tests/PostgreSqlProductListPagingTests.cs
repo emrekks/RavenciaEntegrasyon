@@ -416,15 +416,13 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         await AssertSameListsAsync(db, seed.TenantId);
     }
 
-    // Tükenen Varyantlar (stock GAP) is decided per model: a model of one-size colours, some sold out and some in stock,
-    // lists its sold-out colours (each card's only variant is at 0, so no card alone has a sold-out variant and stock);
-    // a two-size colour with one size at 0 is listed as before; a model sold out in every colour is not (that is OUT);
-    // a colour with every size in stock and a draft are not. Both paths list the same, and the modal's summary
-    // (models · cards · sold-out variants) is read from the listed rows.
-    [PostgreSqlFact]
-    public async Task TheSoldOutVariantList_IsDecidedPerModel_AndListsColoursSoldOutInEverySize()
+    // Models for the two lists of the Düşük Stok window, both decided per model: GAP900 of one-size colours, two sold out
+    // (one with no stock row at all) and two in stock; GAP910 with a colour that has one of two sizes at 0, a colour sold
+    // out in every size, a colour of three sizes with one at 0 (Tükenen only: under half sold out) and a colour fully in
+    // stock; GAP920 sold out in every colour (OUT, in neither list); GAP930 whose only stock is on a draft colour (drafts
+    // count nowhere).
+    private async Task<Guid> SeedStockModelsAsync(AppDbContext db)
     {
-        await using var db = fixture.CreateContext();
         var now = DateTimeOffset.UtcNow;
         var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"gap-{Guid.NewGuid():N}", DisplayName = "gap", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
         db.Tenants.Add(tenant);
@@ -434,21 +432,18 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         var oneSize = new[] { "Standart" };
         var stocks = new Dictionary<Product, decimal[]>
         {
-            // GAP900: one-size colours, two sold out (one with no stock row at all), two in stock.
             [AddCard(db, tenant.Id, brand, "GAP900", "Siyah", "Tek Beden Şal Siyah", at.AddMinutes(1), sizes: oneSize)] = [0m],
             [AddCard(db, tenant.Id, brand, "GAP900", "Mor", "Tek Beden Şal Mor", at.AddMinutes(2), sizes: oneSize)] = [],
             [AddCard(db, tenant.Id, brand, "GAP900", "Pembe", "Tek Beden Şal Pembe", at.AddMinutes(3), sizes: oneSize)] = [2m],
             [AddCard(db, tenant.Id, brand, "GAP900", "Gri", "Tek Beden Şal Gri", at.AddMinutes(4), sizes: oneSize)] = [1m],
-            // GAP910: one colour with a size at 0 (listed as before), one colour fully sold out, one fully in stock.
             [AddCard(db, tenant.Id, brand, "GAP910", "Siyah", "Etek Siyah", at.AddMinutes(5))] = [3m, 0m],
             [AddCard(db, tenant.Id, brand, "GAP910", "Mavi", "Etek Mavi", at.AddMinutes(6))] = [0m, -1m],
             [AddCard(db, tenant.Id, brand, "GAP910", "Beyaz", "Etek Beyaz", at.AddMinutes(7))] = [4m, 5m],
-            // GAP920: sold out in every colour: not this list.
-            [AddCard(db, tenant.Id, brand, "GAP920", "Siyah", "Bluz Siyah", at.AddMinutes(8))] = [0m, 0m],
-            [AddCard(db, tenant.Id, brand, "GAP920", "Gri", "Bluz Gri", at.AddMinutes(9))] = [0m],
-            // GAP930: the only stock is on a draft colour: drafts count nowhere.
-            [AddCard(db, tenant.Id, brand, "GAP930", "Siyah", "Ceket Siyah", at.AddMinutes(10))] = [0m, 0m],
-            [AddCard(db, tenant.Id, brand, "GAP930", "Gri", "Ceket Gri", at.AddMinutes(11), ProductStatus.Draft)] = [5m, 5m],
+            [AddCard(db, tenant.Id, brand, "GAP910", "Yeşil", "Etek Yeşil", at.AddMinutes(8), sizes: ["S", "M", "L"])] = [1m, 1m, 0m],
+            [AddCard(db, tenant.Id, brand, "GAP920", "Siyah", "Bluz Siyah", at.AddMinutes(9))] = [0m, 0m],
+            [AddCard(db, tenant.Id, brand, "GAP920", "Gri", "Bluz Gri", at.AddMinutes(10))] = [0m],
+            [AddCard(db, tenant.Id, brand, "GAP930", "Siyah", "Ceket Siyah", at.AddMinutes(11))] = [0m, 0m],
+            [AddCard(db, tenant.Id, brand, "GAP930", "Gri", "Ceket Gri", at.AddMinutes(12), ProductStatus.Draft)] = [5m, 5m],
         };
         await db.SaveChangesAsync();
         foreach (var (card, onHands) in stocks)
@@ -460,9 +455,15 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         await db.SaveChangesAsync();
         await ProductModelLinks.ReconcileTenantAsync(db, tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
         db.ChangeTracker.Clear();
-        var codec = new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System);
-        Assert.True(await Service(db, codec).FamilyIdMatchesModelCodeRuleAsync(tenant.Id, CancellationToken.None));
+        return tenant.Id;
+    }
 
+    // Every page of one stock filter, by both paths and two page sizes.
+    private async Task<List<(string Label, List<ProductView> Items)>> ListEveryPageAsync(AppDbContext db, Guid tenantId, string stock)
+    {
+        var codec = new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        Assert.True(await Service(db, codec).FamilyIdMatchesModelCodeRuleAsync(tenantId, CancellationToken.None));
+        var lists = new List<(string, List<ProductView>)>();
         foreach (var sqlPaging in new[] { true, false })
             foreach (var limit in new[] { 1, 50 })
             {
@@ -471,17 +472,59 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
                 string? after = null;
                 for (var page = 0; page < 20; page++)
                 {
-                    var result = await service.ListProductsAsync(tenant.Id, limit, after, null, null, null, "GAP", null, sqlPaging, CancellationToken.None);
+                    var result = await service.ListProductsAsync(tenantId, limit, after, null, null, null, stock, null, sqlPaging, CancellationToken.None);
                     items.AddRange(result.Items);
                     if (!result.HasMore) break;
                     after = result.NextCursor;
                 }
-                var label = $"sqlPaging {sqlPaging}, limit {limit}";
-                Assert.True(new[] { "Etek Mavi", "Etek Siyah", "Tek Beden Şal Mor", "Tek Beden Şal Siyah" }.SequenceEqual(items.Select(x => x.Title).Order(StringComparer.Ordinal)), $"{label}: {string.Join(", ", items.Select(x => x.Title))}");
-                // The summary line: 2 models · 4 catalog records · 5 sold-out variants (Mor has no stock row: 0).
-                Assert.Equal(2, items.Select(x => x.ModelCode).Distinct().Count());
-                Assert.Equal(4, items.Count);
-                Assert.Equal(5, items.Sum(x => x.Variants.Count(variant => variant.OnHand <= 0)));
+                lists.Add(($"stock {stock}, sqlPaging {sqlPaging}, limit {limit}", items));
             }
+        return lists;
+    }
+
+    private static void AssertTitles(string[] expected, string label, List<ProductView> items) =>
+        Assert.True(expected.Order(StringComparer.Ordinal).SequenceEqual(items.Select(x => x.Title).Order(StringComparer.Ordinal)), $"{label}: {string.Join(", ", items.Select(x => x.Title))}");
+
+    // Tükenen Varyantlar (stock GAP) is decided per model: GAP900 lists its sold-out one-size colours (no card alone has a
+    // sold-out variant and stock), GAP910 every colour with a size at 0, a whole colour included. The modal's summary
+    // (models · cards · sold-out variants) is read from the listed rows.
+    [PostgreSqlFact]
+    public async Task TheSoldOutVariantList_IsDecidedPerModel_AndListsColoursSoldOutInEverySize()
+    {
+        await using var db = fixture.CreateContext();
+        var tenantId = await SeedStockModelsAsync(db);
+        foreach (var (label, items) in await ListEveryPageAsync(db, tenantId, "GAP"))
+        {
+            AssertTitles(["Etek Mavi", "Etek Siyah", "Etek Yeşil", "Tek Beden Şal Mor", "Tek Beden Şal Siyah"], label, items);
+            // The summary line: 2 models · 5 catalog records · 6 sold-out variants (Mor has no stock row: 0).
+            Assert.Equal(2, items.Select(x => x.ModelCode).Distinct().Count());
+            Assert.Equal(5, items.Count);
+            Assert.Equal(6, items.Sum(x => x.Variants.Count(variant => variant.OnHand <= 0)));
+        }
+    }
+
+    // Düşük Stok Renkleri (stock LOW) is decided per model as well, with the colour rule unchanged (at least half of the
+    // colour's variants sold out): a sold-out one-size colour of a stocked model is listed, so is a colour sold out in every
+    // size; a colour with one of three sizes at 0 is not; a model with no stock and a draft are not. OK keeps the stocked
+    // cards that are not LOW. The products page's and the dashboard's Düşük Stok count (both summary paths) is the list's.
+    [PostgreSqlFact]
+    public async Task TheLowStockColourList_IsDecidedPerModel_AndTheSummaryCountsIt()
+    {
+        await using var db = fixture.CreateContext();
+        var tenantId = await SeedStockModelsAsync(db);
+        string[] low = ["Etek Mavi", "Etek Siyah", "Tek Beden Şal Mor", "Tek Beden Şal Siyah"];
+        foreach (var (label, items) in await ListEveryPageAsync(db, tenantId, "LOW"))
+        {
+            AssertTitles(low, label, items);
+            Assert.Equal(2, items.Select(x => x.ModelCode).Distinct().Count());
+            Assert.Equal(5, items.Sum(x => x.Variants.Count(variant => variant.OnHand <= 0)));
+        }
+        foreach (var (label, items) in await ListEveryPageAsync(db, tenantId, "OK"))
+            AssertTitles(["Etek Beyaz", "Etek Yeşil", "Tek Beden Şal Gri", "Tek Beden Şal Pembe"], label, items);
+
+        var service = Service(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System));
+        var summary = await service.ProductSummaryAsync(tenantId, CancellationToken.None);
+        Assert.Equal(low.Length, summary.LowStockCount);
+        Assert.Equal(JsonSerializer.Serialize(await service.ProductSummaryInMemoryAsync(tenantId, CancellationToken.None)), JsonSerializer.Serialize(summary));
     }
 }
