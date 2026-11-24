@@ -202,8 +202,8 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         foreach (var issue in issues)
         {
             var fingerprint = PriceInventoryOfferIssues.VariantOf(issue.DedupeKey) is { } variantId
-                ? (await OfferIssueNoProblem.CurrentAsync(db, tenantId, connectionId, variantId, issue.Code, cancellationToken)).Fingerprint
-                : OfferIssueNoProblem.Fingerprint(issue.Code, null, null, null);
+                ? (await OfferIssueNoProblem.CurrentAsync(db, tenantId, connectionId, variantId, issue.Code, cancellationToken)).Current
+                : OfferIssueNoProblem.CurrentShape + OfferIssueNoProblem.Fingerprint(issue.Code, null, null, null);
             issue.Status = IssueStatus.Resolved;
             issue.ResolvedAt = now;
             issue.Summary += OfferIssueNoProblem.Mark(fingerprint);
