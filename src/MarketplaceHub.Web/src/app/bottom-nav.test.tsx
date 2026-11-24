@@ -53,17 +53,26 @@ describe('phone bottom navigation (CSS)', () => {
     // The page's own top bar stays on a phone; only its hamburger goes (Menü is in the dock).
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
-    // A bar on the bottom edge: full width, 56 px, a line on top only - no box, radius, shadow or blur.
+    // A gentle floating panel: centred, min(100% - 40px, 340px), radius 14, border and a faint shadow, no blur; the layer lets touches through.
     const layer = phone.match(/\.rv-dock-layer \{[^}]*\}/)![0]
-    expect(layer).toMatch(/right: 0; bottom: 0; left: 0;/)
-    expect(layer).toContain('border-top: 1px solid var(--rv-color-border)')
-    expect(layer).not.toMatch(/radius|shadow|blur/)
-    expect(phone).not.toContain('.rv-dock-layer::after')
-    expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 56px/)
-    expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 29px; \}/)
-    // One sliding line (24 x 3 px, 200 ms), the active column in the accent colour with no fill.
-    expect(phone).toMatch(/\.rv-dock-indicator \{[^}]*width: 20%; height: 3px;[^}]*transform 200ms ease-out/)
-    expect(phone).toContain('width: 24px; height: 3px')
+    expect(layer).toContain('pointer-events: none')
+    expect(layer).toContain('padding-bottom: var(--rv-dock-bottom)')
+    expect(phone).toContain('--rv-dock-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px)')
+    const panel = phone.match(/\.rv-dock-panel \{[^}]*\}/)![0]
+    expect(panel).toContain('width: min(100% - 40px, 340px)')
+    expect(panel).toContain('border-radius: 14px')
+    expect(panel).toContain('border: 1px solid var(--rv-color-border)')
+    expect(panel).toContain('box-shadow: 0 4px 16px rgb(0 0 0 / 12%)')
+    expect(panel).not.toContain('blur')
+    expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-panel { width: calc(100% - 24px); }')
+    // Page colour from the panel's middle to the bottom edge, fading out over 20 px above (the one gradient).
+    expect(phone).toContain('linear-gradient(to top, var(--rv-color-bg)')
+    expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 48px/)
+    expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 54px; }')
+    expect(phone).toContain('.rv-dock-layer[data-rows="2"] .rv-dock-top { height: 29px; }')
+    // One sliding line (14 x 2 px, 200 ms) under the open label, the active column in the accent colour with no fill.
+    expect(phone).toMatch(/\.rv-dock-indicator \{[^}]*bottom: 4px;[^}]*width: 20%; height: 2px;[^}]*transform 200ms ease-out/)
+    expect(phone).toContain('width: 14px; height: 2px')
     expect(phone).toMatch(/\.rv-dock-slot\.is-active \{ color: var\(--rv-color-primary-text\); font-weight: 600; \}/)
     expect(phone).toContain('.rv-dock-slot:active .rv-dock-icon { transform: scale(.94); }')
     expect(css).not.toMatch(/touch-action/)

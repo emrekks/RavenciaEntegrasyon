@@ -94,6 +94,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   const activeIndex = menuOpen ? dockPages.length : dockPages.findIndex(page => isActive(page.to, page.end))
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
+    <div className="rv-dock-panel">
     <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
       <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
         <div className="rv-dock-info-slot" ref={setStripEl} />
@@ -111,6 +112,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
         <button type="button" className="rv-taskbar-menu" aria-label="Menüyü Aç" aria-haspopup="dialog" onClick={onToggleMenu}><UiIcon name="menu" size={20} />{menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</button>
         <div className="rv-taskbar-actions" ref={setActionsEl} />
       </div>
+    </div>
     </div>
   </div>
 }
