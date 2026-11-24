@@ -27,7 +27,7 @@ const groups: MenuGroup[] = [
 ]
 
 let pathNow = ''
-function Harness({ phone = true, count = 0, unread = 0, slotCounts = {}, children }: { phone?: boolean; count?: number; unread?: number; slotCounts?: Record<string, number>; children?: ReactNode }) {
+function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone?: boolean; count?: number; slotCounts?: Record<string, number>; children?: ReactNode }) {
   const dock = useDockHostState(phone)
   const menu = useMenuHistory()
   const navigate = useNavigate()
@@ -36,8 +36,8 @@ function Harness({ phone = true, count = 0, unread = 0, slotCounts = {}, childre
   pathNow = location.pathname
   return <DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
-    {menu.open && <FullScreenMenu unread={unread} unreadError={false} onOpenNotifications={() => undefined} onSearch={() => undefined} groups={groups} storeName="Mağaza" theme="light" onToggleTheme={() => undefined} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
-    <BottomDock unread={unread} unreadError={false} onOpenNotifications={() => undefined} menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
+    {menu.open && <FullScreenMenu onSearch={() => undefined} groups={groups} storeName="Mağaza" onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
+    <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
     {children}
   </DockContext.Provider>
 }
@@ -52,19 +52,21 @@ describe('phone bottom navigation (CSS)', () => {
   it('is drawn only up to 768 px, where the hamburger and the top bar search go away and the page keeps room under its content', () => {
     expect(css).toMatch(/^\.rv-dock-layer \{ display: none; \}/m)
     const phone = css.slice(css.indexOf('@media (max-width: 768px)'))
-    expect(phone).toContain('.rv-mobile-menu-toggle { display: none; }')
-    expect(phone).toContain('.rv-topbar-search { display: none; }')
-    expect(phone).toContain('> main { padding-top: env(safe-area-inset-top, 0px); padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }')
-    expect(phone).toContain('--rv-topbar-height: 0px')
+    expect(phone).toContain('> main { padding-top: calc(48px + env(safe-area-inset-top, 0px)); padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }')
+    expect(phone).toContain('--rv-topbar-height: calc(48px + env(safe-area-inset-top, 0px))')
+    expect(phone).toContain('.rv-phonebar.is-hidden { transform: translateY(-100%); }')
+    expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 56px; }')
     expect(phone).toMatch(/\.rv-dock-layer \{[^}]*bottom: var\(--rv-dock-bottom\)/)
     expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 52px/)
-    expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 40px; \}/)
+    expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 28px; \}/)
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
     // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
-    expect(phone).toContain(".rv-notification-history { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px;")
+    expect(phone).toContain(".rv-notification-history { top: calc(48px + env(safe-area-inset-top, 0px) + 4px); right: 12px; bottom: auto; left: 12px;")
     expect(phone).toContain("max-height: min(75dvh")
     expect(phone).toContain('translateY(-28px)')
+    // Page buttons that are not the primary, the step or the selection chip wait in the Diğer list.
+    expect(phone).toContain('.rv-taskbar-group [data-dock-other] { display: none; }')
   })
 })
 
@@ -152,20 +154,12 @@ describe('Ravencia Dock', () => {
   })
 })
 
-describe('notification pill', () => {
-  it('is absent at 0 unread, shows 99+ above 99, hides while the menu is open, and moves into the task bar strip as a bell', () => {
-    expect(mount('/orders', { unread: 0 }).host.querySelector('.rv-dock-pill-bell')).toBeNull()
-    cleanup()
-    const { host } = mount('/orders', { unread: 120 })
-    expect(host.querySelector('.rv-dock-pill-bell')?.textContent).toBe('99+')
+describe('no bell in the dock or the menu', () => {
+  it('has neither a pill above the dock nor a bell or theme button in the menu header (the phone bar has them)', () => {
+    const { host } = mount('/orders')
+    expect(host.querySelector('.rv-dock-pill-bell, .rv-dock-bell')).toBeNull()
     click(host.querySelector('button[aria-label^="Menü"]'))
-    expect(host.querySelector('.rv-dock-pill-bell')).toBeNull()
-    expect(document.querySelector('.rv-fullmenu-tool-badge')?.textContent).toBe('99+')
-    cleanup()
-    const task = render(<MemoryRouter initialEntries={['/orders']}><Harness unread={3}><StickyActionBar label="Toplu işlemler"><button type="button">Sil</button></StickyActionBar></Harness></MemoryRouter>)
-    expect(task.host.querySelector('.rv-dock-pill-bell')).toBeNull()
-    expect(task.host.querySelector('.rv-dock-info .rv-dock-bell')?.textContent).toBe('3')
-    expect(task.host.querySelector('.rv-dock-info')?.getAttribute('data-visible')).toBe('true')
+    expect([...document.querySelectorAll('.rv-fullmenu-tool')].map(tool => tool.getAttribute('aria-label'))).toEqual(['Ara'])
   })
 })
 
@@ -185,7 +179,8 @@ describe('page tabs stay in the page', () => {
     expect(host.querySelector('.rv-tabs')).not.toBeNull()
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-mode')).toBe('task')
     expect(host.querySelector('.rv-taskbar-actions')?.textContent).toBe('Sil')
-    expect(host.querySelector('.rv-dock-info-start')?.textContent).toBe('2 sipariş seçildi')
+    // No warning, so no strip: the dock stays one row; the count is the first line of the Diğer list.
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
   })
 })
 
@@ -196,14 +191,70 @@ describe('task mode', () => {
     const layer = host.querySelector('.rv-dock-layer')!
     expect(layer.getAttribute('data-mode')).toBe('task')
     expect(host.querySelector('.rv-taskbar-actions')?.textContent).toBe('Ürünü Oluştur')
-    expect(host.querySelector('.rv-dock-info')?.textContent).toBe('8 Zorunlu Alan Eksik1 Satış Satırı · 0 Kanal')
-    expect(host.querySelector('.rv-dock-info')?.getAttribute('data-visible')).toBe('true')
+    // Only the warning is in the strip; the neutral summary is the first line of the Diğer list.
+    expect(host.querySelector('.rv-dock-info')?.textContent).toBe('8 Zorunlu Alan Eksik')
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('2')
     expect(host.querySelector('.rv-dock')?.hasAttribute('inert')).toBe(true)
     expect(host.querySelector('.rv-action-bar')).toBeNull()
     rerender(bar(false))
     expect(layer.getAttribute('data-mode')).toBe('dock')
     expect(host.querySelector('.rv-taskbar-actions')?.textContent).toBe('')
-    expect(host.querySelector('.rv-dock-info')?.getAttribute('data-visible')).toBe('false')
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
+  })
+
+  it('shows only labelled controls: primary and step in the bar, the other actions in the Diğer list that runs them', () => {
+    const calls: string[] = []
+    const { host } = render(<MemoryRouter initialEntries={['/products/p1']}><Harness><StickyActionBar label="Ürün kaydetme" info={{ end: '33 Satış Satırı · 0 Kanal' }}>
+      <button type="button" data-dock-primary onClick={() => calls.push('kaydet')}>Kaydet</button>
+      <button type="button" data-dock-step aria-label="Yayınlamaya Devam Et" onClick={() => calls.push('ileri')}><span>Yayınla</span><svg /></button>
+      <button type="button" aria-label="Hızlı Güncelle" onClick={() => calls.push('hizli')}><span>Hızlı Güncelle</span><svg viewBox="0 0 4 4" /></button>
+      <button type="button" className="rr-danger" aria-label="Platformda Sil" onClick={() => calls.push('sil')}>x</button>
+    </StickyActionBar></Harness></MemoryRouter>)
+    const group = host.querySelector('.rv-taskbar-group')!
+    const tagged = [...group.querySelectorAll('button')].map(button => [button.textContent, button.hasAttribute('data-dock-other')])
+    expect(tagged).toEqual([['Kaydet', false], ['Yayınla', false], ['Hızlı Güncelle', true], ['x', true]])
+    // The strip has no warning: one row, nothing empty above the bar.
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
+    expect(host.querySelector('.rv-dock-top')?.getAttribute('data-top')).toBe('none')
+    expect(host.querySelector('.rv-taskbar-more-list')).toBeNull()
+    click(host.querySelector('.rv-taskbar-more-button'))
+    const list = host.querySelector('.rv-taskbar-more-list')!
+    expect(list.querySelector('.rv-taskbar-more-summary')?.textContent).toBe('33 Satış Satırı · 0 Kanal')
+    const items = [...list.querySelectorAll<HTMLButtonElement>('.rv-taskbar-more-item')]
+    expect(items.map(item => item.textContent)).toEqual(['Hızlı Güncelle', 'Platformda Sil'])
+    expect(items[1].classList.contains('is-danger')).toBe(true)
+    click(items[0])
+    expect(calls).toEqual(['hizli'])
+    expect(host.querySelector('.rv-taskbar-more-list')).toBeNull()
+    // A press on the scrim only closes the list.
+    click(host.querySelector('.rv-taskbar-more-button'))
+    click(host.querySelector('.rv-taskbar-more-scrim'))
+    expect(host.querySelector('.rv-taskbar-more-list')).toBeNull()
+    expect(calls).toEqual(['hizli'])
+    // Esc closes it too.
+    click(host.querySelector('.rv-taskbar-more-button'))
+    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(host.querySelector('.rv-taskbar-more-list')).toBeNull()
+  })
+
+  it('keeps one other action with a short name in the bar (no Diğer), and the selection chip is never an other action', () => {
+    const { host } = render(<MemoryRouter initialEntries={['/returns']}><Harness><StickyActionBar label="Toplu işlemler">
+      <button type="button" data-dock-clear data-dock-count="3" aria-label="Seçimi Temizle">Vazgeç</button>
+      <button type="button" className="rr-danger">Reddet</button>
+      <button type="button" className="rr-primary">Onayla</button>
+    </StickyActionBar></Harness></MemoryRouter>)
+    expect(host.querySelector('.rv-taskbar-more')).toBeNull()
+    expect(host.querySelector('[data-dock-other]')).toBeNull()
+    expect(host.querySelector('button[data-dock-keep]')?.textContent).toBe('Reddet')
+    expect(host.querySelector('[data-dock-clear]')?.getAttribute('data-dock-count')).toBe('3')
+  })
+
+  it('shows the warning strip only while there is a warning; the strip takes no height otherwise', () => {
+    const bar = (warning: boolean) => <MemoryRouter initialEntries={['/products/new']}><Harness><StickyActionBar label="Ürün kaydetme" info={{ start: warning ? <span className="rv-dock-chip is-warn">1 Zorunlu Alan Eksik</span> : undefined, end: 'özet' }}><button type="button" data-dock-primary>Kaydet</button></StickyActionBar></Harness></MemoryRouter>
+    const { host, rerender } = render(bar(true))
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('2')
+    rerender(bar(false))
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
   })
 
   it('opens the menu from the task bar, which shows the dock while the menu is open', () => {
@@ -217,7 +268,7 @@ describe('task mode', () => {
     const { host } = render(<MemoryRouter initialEntries={['/products']}><Harness><DraftSaveBar count={3} summary="özet" onSave={() => undefined} onDiscard={() => undefined} /></Harness></MemoryRouter>)
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-mode')).toBe('task')
     expect([...host.querySelectorAll('.rv-taskbar-actions button')].map(button => button.textContent)).toEqual(['Vazgeç', 'Kaydet'])
-    expect(host.querySelector('.rv-dock-info-start')?.textContent).toBe('3 Değişiklik · Kaydedilmedi')
+    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
     expect(host.querySelector('.rv-draftbar')).toBeNull()
   })
 

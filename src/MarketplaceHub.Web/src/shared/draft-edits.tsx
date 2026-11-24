@@ -72,7 +72,7 @@ export function DraftSaveBar({ variant = 'strip', count, busy = false, invalid =
   if (!count && !foot) return null
   // A strip on a phone is not drawn in the page: Vazgeç / Kaydet go to the dock's task bar and the state to the strip above it.
   const wrap = (text: ReactNode, actions: ReactNode, tone = '') => !foot && dock?.phone
-    ? <DockActions label="Kaydedilmemiş değişiklikler" info={{ start: text }}>{actions}</DockActions>
+    ? <DockActions label="Kaydedilmemiş değişiklikler" info={tone ? { start: text } : { end: text }}>{actions}</DockActions>
     : foot
     ? <><span className="rr-note rv-draftbar-text" role="status">{text}</span>{actions}</>
     : <div className={`rv-draftbar${tone}`} role="region" aria-label="Kaydedilmemiş değişiklikler"><span className="rv-draftbar-text">{text}</span><span className="rv-draftbar-actions">{actions}</span></div>

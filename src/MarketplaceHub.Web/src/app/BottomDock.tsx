@@ -44,29 +44,26 @@ const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: bool
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
 // The panel: the bottom row holds the four targets - or, in task mode, a Menü button and the page's buttons; in task mode
 // the status strip is a top row above it.
-export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, unread, unreadError, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate, onOpenNotifications }: {
+export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
   menuOpen: boolean
   menuCount: number
   // The pending count drawn on a page's own target ("/orders": 9).
   slotCounts: Record<string, number>
   taskActive: boolean
   hasInfo: boolean
-  // Unread notifications (the pill above the dock, or the bell at the end of the strip) and whether one is an error.
-  unread: number
-  unreadError: boolean
   setActionsEl: (element: HTMLElement | null) => void
   setStripEl: (element: HTMLElement | null) => void
   menuSlotRef: RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
   // Leaves the open menu for a page (replaces the menu's history entry).
   onNavigate: (to: string) => void
-  onOpenNotifications: () => void
 }) {
   const { pathname } = useLocation()
   const task = taskActive && !menuOpen
-  const strip = task && (hasInfo || unread > 0)
-  const rows = strip ? 2 : 1
+  // The strip above the bar exists only while the page has a warning to show; hidden (scrolled down) it takes no height.
+  const strip = task && hasInfo
   const [infoHidden, setInfoHidden] = useState(false)
+  const rows = strip && !infoHidden ? 2 : 1
   useEffect(() => {
     let last = window.scrollY
     const onScroll = () => {
@@ -94,16 +91,12 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     </Link>
   }
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  const showStripBell = strip && unread > 0
-  const bellLabel = 'Bildirimler, ' + unread + ' okunmamış'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
-    <div className="rv-dock-top" data-top={strip ? 'info' : 'none'} inert={rows === 1 || undefined}>
+    <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
       <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
         <div className="rv-dock-info-slot" ref={setStripEl} />
-        {showStripBell ? <button type="button" className={'rv-dock-bell' + (unreadError ? ' is-error' : '')} aria-label={bellLabel} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={14} />{badgeText(unread)}</button> : null}
       </div>
     </div>
-    {!showStripBell && !menuOpen && unread > 0 ? <button type="button" className={'rv-dock-pill-bell' + (unreadError ? ' is-error' : '')} aria-label={bellLabel} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={15} /><span>{badgeText(unread)}</span></button> : null}
     <div className="rv-dock-bottom">
       <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
         {dockPages.map(slot)}
@@ -124,15 +117,10 @@ const turkishKey = (value: string) => value.toLocaleLowerCase('tr-TR')
 
 // The full-screen menu: the page's own colour over the top bar, rising from the bottom; the dock stays below it.
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
-export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, onToggleTheme, onLogout, onClose, onNavigate, onOpenNotifications, onSearch, pathname }: {
+export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigate, onSearch, pathname }: {
   groups: MenuGroup[]
   storeName: string
-  theme: 'light' | 'dark'
-  unread: number
-  unreadError: boolean
-  onOpenNotifications: () => void
   onSearch: () => void
-  onToggleTheme: () => void
   onLogout: () => void
   onClose: () => void
   onNavigate: (to: string) => void
@@ -185,8 +173,6 @@ export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, 
   return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
     <header className="rv-fullmenu-head"><h2>Menü</h2><div className="rv-fullmenu-tools">
       <button type="button" className="rv-fullmenu-tool" aria-label="Ara" aria-haspopup="dialog" onClick={onSearch}><UiIcon name="search" size={18} /></button>
-      <button type="button" className="rv-fullmenu-tool" aria-label={unread > 0 ? `Bildirimler, ${unread} okunmamış` : 'Bildirimler'} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={18} />{unread > 0 ? <span className={`rv-fullmenu-tool-badge${unreadError ? ' is-error' : ''}`} aria-hidden="true">{badgeText(unread)}</span> : null}</button>
-      <button type="button" className="rv-fullmenu-tool" aria-label={theme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={theme === 'dark'} onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={18} /></button>
     </div></header>
     <div className="rv-fullmenu-search"><UiIcon name="search" size={18} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Sayfa Ara" aria-label="Sayfa Ara" autoComplete="off" enterKeyHint="search" /></div>
     <div className="rv-fullmenu-body">
