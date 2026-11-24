@@ -120,6 +120,33 @@ public sealed class JobReadRecordsPostgreSqlTests(PostgreSqlTenantIsolationFixtu
         Assert.All(table.Rows, row => Assert.Empty(row.FormulaColumns));
     }
 
+    // A product's every variant barcode is kept: the second or third variant's barcode finds its record, and the Excel
+    // lists them all. A record stored before (first barcode and a count only) keeps its old cell and is found by that one.
+    [PostgreSqlFact]
+    public async Task Any_variant_barcode_finds_its_product_and_the_export_lists_them_all()
+    {
+        var tenant = await TenantAsync();
+        var job = await JobAsync(tenant, MarketplaceJobTypes.ProductSync);
+        RemoteCatalogVariant Variant(string barcode) => new(barcode, $"SKU-{barcode}", barcode, "MDL-VAR", new Dictionary<string, string>(), false, null, null, null, null, null, "{}");
+        var product = new RemoteCatalogProduct("P-VAR", "MDL-VAR", "Ürün", "", null, null, null, null, [],
+            [Variant("2000000000011"), Variant(" 2000000000022 "), Variant(""), Variant("2000000000033"), Variant("2000000000011")], "{}");
+        var read = CatalogImportService.ProductReadRecord(product, JobReadOutcomes.New, null);
+        var old = new JobReadRecord("MDL-OLD", "2000000000044 +2", "3 varyant", JobReadOutcomes.Unchanged);
+        await SummaryAsync(tenant, job, [read, old], omitted: 0);
+        await using var db = fixture.CreateContext();
+        var service = new JobReadRecordsService(db);
+
+        foreach (var barcode in new[] { "2000000000011", "2000000000022", "2000000000033" })
+            Assert.Equal("MDL-VAR", Assert.Single((await service.PageAsync(tenant.Id, job.Id, new JobReadRecordsQuery(Search: barcode), CancellationToken.None)).Value!.Items).ModelCode);
+        Assert.Equal("MDL-OLD", Assert.Single((await service.PageAsync(tenant.Id, job.Id, new JobReadRecordsQuery(Search: "2000000000044"), CancellationToken.None)).Value!.Items).ModelCode);
+        var row = Assert.Single((await service.PageAsync(tenant.Id, job.Id, new JobReadRecordsQuery(Search: "MDL-VAR"), CancellationToken.None)).Value!.Items);
+        Assert.Equal(("2000000000011", 5, 5), (row.FirstBarcode, row.BarcodeCount, row.VariantCount));
+
+        var table = Table((await service.ExportAsync(tenant.Id, job.Id, new JobReadRecordsQuery(), CancellationToken.None)).Value!);
+        Assert.Equal("2000000000011, 2000000000022, 2000000000033", table.Rows.Single(x => x.Cells[0] == "MDL-VAR").Cells[1]);
+        Assert.Equal("2000000000044 (+2)", table.Rows.Single(x => x.Cells[0] == "MDL-OLD").Cells[1]);
+    }
+
     private static XlsxTable Table(JobExportFile file)
     {
         using var content = file.Content;

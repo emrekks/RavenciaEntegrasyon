@@ -60,7 +60,9 @@ public sealed class JobReadRecordsService(AppDbContext db) : IJobReadRecordsServ
         foreach (var record in records)
         {
             var view = View(record);
-            var barcodes = view.FirstBarcode is null ? null : view.BarcodeCount is > 1 ? $"{view.FirstBarcode} (+{view.BarcodeCount - 1})" : view.FirstBarcode;
+            // Every variant's barcode where the read kept them; a record stored before that knows only the first one.
+            var barcodes = record.Barcodes is { Count: > 0 } all ? string.Join(", ", all)
+                : view.FirstBarcode is null ? null : view.BarcodeCount is > 1 ? $"{view.FirstBarcode} (+{view.BarcodeCount - 1})" : view.FirstBarcode;
             yield return [view.ModelCode, barcodes, view.VariantCount is { } variants ? (object)(long)variants : null, Results.GetValueOrDefault(view.Result, view.Result), view.Reason];
         }
     }
@@ -90,7 +92,8 @@ public sealed class JobReadRecordsService(AppDbContext db) : IJobReadRecordsServ
             if (query.OnlyProblems && record.Outcome is not (JobReadOutcomes.Failed or JobReadOutcomes.Skipped)) continue;
             if (!string.IsNullOrEmpty(term)
                 && !record.Reference.Contains(term, StringComparison.OrdinalIgnoreCase)
-                && !(Barcodes(record.Secondary).First?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))
+                && !(Barcodes(record.Secondary).First?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                && !(record.Barcodes?.Any(barcode => barcode.Contains(term, StringComparison.OrdinalIgnoreCase)) ?? false))
                 continue;
             yield return record;
         }
