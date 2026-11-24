@@ -34,11 +34,17 @@
   .rv-dock-layer { --rv-bar-h: 50px; position: fixed; right: 0; bottom: 0; left: 0; z-index: 87; box-sizing: border-box; display: flex; justify-content: center; align-items: flex-end; padding-bottom: var(--rv-dock-bottom); pointer-events: none; }
   .rv-dock-layer[data-mode="task"] { --rv-bar-h: 56px; }
   .rv-dock-layer[data-rows="2"] { --rv-bar-h: 85px; }
-  /* From the panel's middle to the physical bottom edge: opaque page colour, fading to nothing over the 20 px above the panel's top. */
-  .rv-dock-layer::before { content: ""; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: calc(var(--rv-dock-bottom) + var(--rv-bar-h) / 2 + 20px); background: linear-gradient(to top, var(--rv-color-bg) calc(100% - 20px - var(--rv-bar-h) / 2), transparent); pointer-events: none; }
-  .rv-dock-panel { position: relative; box-sizing: border-box; display: flex; flex-direction: column; width: min(100% - 40px, 340px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; box-shadow: 0 4px 16px rgb(0 0 0 / 12%); pointer-events: auto; }
+  /* Frosted glass under and behind the panel: from 16 px above the panel's top edge to the physical bottom (the safe-area band included) the page
+     shows blurred and faded - never sharp text, never flat white. Its top edge fades in (mask), so there is no hard line. Only this and the panel blur. */
+  .rv-dock-layer::before { content: ""; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: calc(var(--rv-dock-bottom) + var(--rv-bar-h) + 16px); background: color-mix(in srgb, var(--rv-color-bg) 55%, transparent); -webkit-backdrop-filter: blur(10px) saturate(1.1); backdrop-filter: blur(10px) saturate(1.1); -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20px); mask-image: linear-gradient(to bottom, transparent, #000 20px); transform: translateZ(0); pointer-events: none; }
+  .rv-dock-panel { position: relative; box-sizing: border-box; display: flex; flex-direction: column; width: min(100% - 40px, 340px); background: color-mix(in srgb, var(--rv-color-surface) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); transform: translateZ(0); border: 1px solid var(--rv-color-border); border-radius: 14px; box-shadow: 0 4px 16px rgb(0 0 0 / 12%); pointer-events: auto; }
   :root:not([data-theme="light"]) .rv-dock-panel { box-shadow: 0 4px 16px rgb(0 0 0 / 32%); }
   .rv-dock-layer[data-mode="task"] .rv-dock-panel { width: calc(100% - 24px); }
+  /* No backdrop-filter: the lower area is 88% page colour and the panel is opaque. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .rv-dock-layer::before { background: color-mix(in srgb, var(--rv-color-bg) 88%, transparent); }
+    .rv-dock-panel { background: var(--rv-color-surface); }
+  }
   .rv-dock-top { position: relative; display: block; box-sizing: border-box; height: 0; overflow: hidden; border-bottom: 0 solid var(--rv-color-border); border-radius: 13px 13px 0 0; transition: height 180ms ease; }
   .rv-dock-layer[data-rows="2"] .rv-dock-top { border-bottom-width: 1px; }
   .rv-dock-bottom { position: relative; flex: none; height: 48px; }
@@ -50,7 +56,7 @@
   .rv-dock-slot { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-sizing: border-box; min-width: 0; height: 48px; min-height: 0; margin: 0; padding: 0 0 3px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font: inherit; font-size: 10px; font-weight: 500; line-height: 12px; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .rv-dock-slot.is-active { color: var(--rv-color-primary-text); font-weight: 600; }
   .rv-dock-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-dock-slot:focus-visible, .rv-taskbar-back:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
+  .rv-dock-slot:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
   .rv-dock-icon { position: relative; display: inline-grid; transition: transform 120ms ease; }
   .rv-dock-slot:active .rv-dock-icon { transform: scale(.94); }
   /* One line for the open column: 14 x 2 px under its label, 4 px above the panel's inner bottom edge, sliding between the columns. */
@@ -58,57 +64,59 @@
   .rv-dock-indicator::after { content: ""; position: absolute; top: 0; left: 50%; width: 14px; height: 2px; margin-left: -7px; background: var(--rv-color-primary); border-radius: 2px; }
   .rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 4px); box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 2px var(--rv-color-surface); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
 
-  /* Task bar: one row, 56 px, items 40 px high (radius 10, 8 px apart, 10 px in): [Geri, on a page reached from a list] [primary,
-     stretching] [the next step's name and an arrow] [Diğer]. There is no Menü here: the dock comes back when the page is left. */
+  /* Task bar: one row, 56 px, labelled buttons side by side, 40 px high, radius 10, 8 px apart, 10 px in. There is no Menü and no Geri
+     here (the way back is the top bar's "‹ Liste"; the dock comes back when the page is left). The row is fitted by dock-actions.tsx:
+     data-dock-fit 1 = tighter inner space, 2 = smaller text; what still does not fit goes to Diğer, whose ⋯ shows only then. */
   .rv-taskbar { gap: 8px; padding: 0 10px; }
-  .rv-taskbar-back { display: grid; flex: none; place-items: center; box-sizing: border-box; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border-strong); border-radius: 10px; cursor: pointer; }
   .rv-taskbar-actions { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
-  .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+  .rv-taskbar-group { --dock-pad: 14px; --dock-font: 13px; display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+  .rv-taskbar-group[data-dock-fit="1"] { --dock-pad: 10px; }
+  .rv-taskbar-group[data-dock-fit="2"] { --dock-pad: 10px; --dock-font: 12.5px; }
   .rv-taskbar-group > div:not([role="group"]) { display: contents; }
-  .rv-taskbar-group :is(button, a) { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; min-height: 0; margin: 0; padding: 0 14px; border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
-  /* The primary action's label is never cut: it takes what it needs, the chip and the step give way first (below). */
-  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 1 auto; min-width: min-content; padding: 0 10px; font-size: 14px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
-  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) :is(svg, .rr-bulk-badge) { display: none; }
+  /* Every button takes its text and an equal share of what is left, so the primary one is never wider than the others by more than its text. */
+  .rv-taskbar-group :is(button, a) { display: inline-flex; flex: 1 0 auto; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; min-width: 0; height: 40px; min-height: 0; margin: 0; padding: 0 var(--dock-pad); border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: var(--dock-font); font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { min-width: 72px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
+  /* Labels, not icons: only the selection chip's cross and the settings half of a split button keep their icon. */
+  .rv-taskbar-group :is(button, a) > svg, .rv-taskbar-group .rr-bulk-badge { display: none; }
+  .rv-taskbar-group [data-dock-clear] > svg, .rv-taskbar-group [role="group"] > :last-child > svg { display: inline-block; }
   .rv-taskbar-group :is(button, a):disabled { opacity: .5; cursor: default; }
   .rv-taskbar-group :is(.rr-danger, .is-danger) { color: var(--rv-color-danger); }
-  /* What the page's buttons do not show in the bar: the others wait in the Diğer list (dock-actions.tsx tags them). */
+  /* What does not fit waits in the Diğer list (dock-actions.tsx tags it). */
   .rv-taskbar-group [data-dock-other] { display: none; }
   /* A page's two label lengths ("Taslak Olarak Kaydet" / "Taslak"): the short one fits here. */
   .rv-taskbar-group .submit-label-long, .rv-taskbar-group .rr-lbl-long { display: none; }
   .rv-taskbar-group .rr-lbl-short { display: inline; }
-  .rv-taskbar-group .rr-bulk-badge { display: none; }
-  /* The step to the next screen: "İleri" and its arrow, whatever the page called it. */
-  .rv-taskbar-group [data-dock-step] { flex: 0 1 auto; width: auto; padding: 0 10px; font-size: 13px; }
+  /* The step to another screen: its name, no arrow (a shorter name on narrow phones where the page gives one). */
+  .rv-taskbar-group [data-dock-step] { flex: 1 0 auto; }
   .rv-taskbar-group [data-dock-step] > span { display: none; }
   .rv-taskbar-group [data-dock-step]::before { content: attr(data-dock-step); }
-  .rv-taskbar-group [data-dock-step-back] { flex-direction: row-reverse; }
-  /* The selection chip: "3 Seçili" and its cross, left of the primary button. */
-  .rv-taskbar-group [data-dock-clear] { flex: 0 1 auto; width: auto; min-width: 0; padding: 0 10px 0 12px; font-size: 0; }
-  .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count) " Seçili"; font-size: 13px; }
+  @media (max-width: 370px) {
+    .rv-taskbar-group [data-dock-step][data-dock-step-short]::before { content: attr(data-dock-step-short); }
+  }
+  /* The selection chip: "3 Seçili" and its cross, left of the buttons (just the count and the cross on narrow phones). */
+  .rv-taskbar-group [data-dock-clear] { flex: 0 0 auto; width: auto; padding: 0 10px 0 12px; font-size: 0; }
+  .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count) " Seçili"; font-size: var(--dock-font); }
   .rv-taskbar-group [data-dock-clear] > span { display: none; }
   .rv-taskbar-group [data-dock-clear] > svg { width: 14px; height: 14px; }
-  .rv-taskbar-group [role="group"]:not(:has(button:not([data-dock-other]), a:not([data-dock-other]))) { display: none; }
-  /* Narrow phones: the selection chip is the count and its cross; the step keeps its name from 350 px up (the second step's back button shortens to its short name on 370 px and below), the primary label is never cut. */
   @media (max-width: 400px) {
     .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count); }
     .rv-taskbar-group [data-dock-clear] { padding: 0 8px 0 10px; }
   }
-  @media (max-width: 370px) {
-    .rv-taskbar-group [data-dock-step][data-dock-step-short]::before { content: attr(data-dock-step-short); }
-  }
-  /* Set by dock-actions.tsx when the row does not fit: the step shows only its arrow. */
-  .rv-taskbar-group[data-dock-compact] [data-dock-step][data-dock-step]::before { content: none; }
-  .rv-taskbar-group[data-dock-compact] [data-dock-step][data-dock-step] { width: 40px; padding: 0; }
-  @media (max-width: 349px) {
-    .rv-taskbar-group [data-dock-step]::before { content: none; }
-    .rv-taskbar-group [data-dock-step] { width: 40px; padding: 0; }
-  }
+  /* A split button (Hızlı Güncelle | settings icon): one frame, the icon half 36 px. */
+  .rv-taskbar-group [role="group"] { display: inline-flex; flex: 0 0 auto; align-items: stretch; box-sizing: border-box; height: 40px; overflow: hidden; border: 1px solid var(--rv-color-border-strong); border-radius: 10px; }
+  .rv-taskbar-group [role="group"] > :is(button, a) { flex: 0 0 auto; height: 100%; border: 0; border-radius: 0; }
+  .rv-taskbar-group [role="group"] > :is(button, a) + :is(button, a) { width: 36px; padding: 0; border-left: 1px solid var(--rv-color-border-strong); }
+  .rv-taskbar-group [role="group"]:not(:has(button:not([data-dock-other]), a:not([data-dock-other]))) { display: none; }
   /* On a page reached from a list the top bar starts with "‹ Liste" (44 px to touch), then the page name when it fits. */
   .rv-topbar-backbar { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; container-type: inline-size; }
   .rv-topbar-back { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 44px; margin: 0; padding: 0 8px 0 0; color: var(--rv-color-ink); background: none; border: 0; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
   .rv-topbar-back-title { min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .rv-topbar-back-title::before { content: "· "; }
   @container (max-width: 200px) { .rv-topbar-back-title { display: none; } }
+  /* A page reached from a list has no back link of its own at the top (the shell draws it): the title block is flush left, the h1 two lines at most. */
+  html body .app-shell.stitch-shell main .product-page-heading .product-page-heading-copy.is-solo { grid-template-columns: minmax(0, 1fr); }
+  html body .app-shell.stitch-shell main .product-page-heading .product-page-heading-copy.is-solo > .product-page-heading-title { grid-column: 1 / -1; }
+  html body .app-shell.stitch-shell main .product-page-heading .product-page-heading-title > h1 { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; white-space: normal; text-overflow: ellipsis; }
   /* Diğer: the other actions in a small list right above the bar, 44 px rows. */
   .rv-taskbar-more { position: relative; flex: none; }
   .rv-taskbar-more-button { display: grid; place-items: center; box-sizing: border-box; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; cursor: pointer; }

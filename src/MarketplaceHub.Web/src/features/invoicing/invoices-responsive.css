@@ -243,8 +243,10 @@
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-amount { justify-self: end; align-self: center; justify-items: end; text-align: right; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products { display: flex !important; align-items: center; justify-content: flex-start !important; gap: 8px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products img { width: auto; height: 16px; }
-  /* the carrier name is a text label of its own width (Siparişler: label, then the number, one 36 px line) */
-  .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products :is(.cargo-provider-display, .cargo-provider-icon) { width: auto; min-width: 0; height: auto; }
+  /* the carrier box is as wide as its content; the mark itself is sized by the shared card rule (orders-responsive.css: 20 px high, 96 px at most) */
+  .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products .cargo-provider-display { width: auto; min-width: 0; height: auto; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products .cargo-provider-icon-fallback { width: auto; max-width: 96px; height: auto; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products img.cargo-provider-icon { width: auto; max-width: 96px; height: 20px; max-height: 28px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-products :is(span, small, code) { color: var(--rv-color-subtle); font-size: 12px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > :is(.invoice-reference-status, .invoice-reference-shipment) { padding-top: 10px !important; border-top: 1px solid var(--rv-color-border) !important; align-items: center; }
   .app-shell.stitch-shell main .invoices-page.invoices-page .invoice-reference-row > .invoice-reference-status { justify-content: flex-start !important; }
