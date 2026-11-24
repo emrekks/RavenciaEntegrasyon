@@ -33,10 +33,8 @@ export function EditorPublishStep({ editor }: { editor: EditorContext }) {
               onEditProductData={publishOnly ? undefined : () => setWizardStep(1)}
             />) : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Entegrasyonlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Entegrasyonları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
-          <StickyActionBar label="Yayınlama" className="publish-selection-footer">
-            <div><strong>{selectedChannelIds.length ? `${selectedChannelIds.length} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{selectedChannelIds.length ? `Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur. ${manualPriceStockNote}` : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
-            {!selectedChannelIds.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
-            <button type="submit" disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || undefined}>{submitting ? (editProductId ? 'Yayınlanıyor…' : 'Ürün Oluşturuluyor…') : (editProductId ? 'Yayınla' : <><UiIcon name="sparkle" /> Ürünü Oluştur</>)}</button>
+          <StickyActionBar label="Yayınlama" className="publish-selection-footer" info={{ start: selectedChannelIds.length ? `${selectedChannelIds.length} Platform Seçildi` : <span className="rv-dock-chip is-warn"><UiIcon name="alert" size={14} />En Az Bir Platform Seçin</span> }} lead={<><div><strong>{selectedChannelIds.length ? `${selectedChannelIds.length} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{selectedChannelIds.length ? `Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur. ${manualPriceStockNote}` : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>{!selectedChannelIds.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}</>}>
+            <button type="submit" data-dock-primary disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || undefined}>{submitting ? (editProductId ? 'Yayınlanıyor…' : 'Ürün Oluşturuluyor…') : (editProductId ? 'Yayınla' : <><UiIcon name="sparkle" /> Ürünü Oluştur</>)}</button>
           </StickyActionBar>
         </div>
       </div>

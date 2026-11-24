@@ -594,8 +594,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     {rows && rows.items.length === 0 && <EmptyState icon="products" title="Ürün Bulunamadı">Filtreye uyan ürün yok.</EmptyState>}
     {phone && rows && rows.items.length > 0 && <div ref={tableTop} className="commission-cards">{shownGroups.map(phoneCard)}</div>}
     {/* Phones: the count and Excel İndir in a bar on the screen's bottom edge, joining the last card at the list's end. */}
-    {phone && <StickyActionBar label="Seçimler" className="commission-phone-bar">
-      <span className="commission-plan-count" role="status">{summary}{savingNote}</span>
+    {phone && <StickyActionBar label="Seçimler" className="commission-phone-bar" lead={<span className="commission-plan-count" role="status">{summary}{savingNote}</span>}>
       {downloadButton}
     </StickyActionBar>}
     {!phone && rows && rows.items.length > 0 && <div ref={tableTop} className="commission-table-wrap" style={tableZoom === 100 ? undefined : { zoom: tableZoom / 100 }}><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { DockActions, useDockHost } from './components/dock-actions'
 import './draft-edits.css'
 
 // Typing into a stock or price box only makes a draft; nothing is saved (and so nothing reaches a marketplace) until
@@ -65,10 +66,14 @@ export function DraftSaveBar({ variant = 'strip', count, busy = false, invalid =
   onClose?: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
+  const dock = useDockHost()
   useEffect(() => { if (!count) setConfirming(false) }, [count])
   const foot = variant === 'foot'
   if (!count && !foot) return null
-  const wrap = (text: ReactNode, actions: ReactNode, tone = '') => foot
+  // A strip on a phone is not drawn in the page: Vazgeç / Kaydet go to the dock's task bar and the state to the strip above it.
+  const wrap = (text: ReactNode, actions: ReactNode, tone = '') => !foot && dock?.phone
+    ? <DockActions label="Kaydedilmemiş değişiklikler" info={{ start: text }}>{actions}</DockActions>
+    : foot
     ? <><span className="rr-note rv-draftbar-text" role="status">{text}</span>{actions}</>
     : <div className={`rv-draftbar${tone}`} role="region" aria-label="Kaydedilmemiş değişiklikler"><span className="rv-draftbar-text">{text}</span><span className="rv-draftbar-actions">{actions}</span></div>
   if (leaving && count) {
