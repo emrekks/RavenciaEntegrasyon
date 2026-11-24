@@ -6,6 +6,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { UiIcon, DialogSurface, UnsavedChangesGuard } from '../../../shared/components'
+// The wizard's step tabs are .rv-tabs.rv-view-tabs (underline, numbered round badge): the page loads their sheet itself, not only by luck of another page's chunk.
+import '../../../shared/view-tabs.css'
 import { ErrorToast } from '../../../shared/components/NoticeToast'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { VariantOptionEditDialog } from './VariantOptionEditDialog'
