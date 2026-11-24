@@ -175,6 +175,76 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(new Guid?[] { trendyol.Id, n11.Id }.OrderBy(x => x), dispatchConnections.OrderBy(x => x));
     }
 
+    // 24 Nov 2026: the N11, Pazarama and PttAVM checks moved into functions the orphaned-issue pass calls too. The automatic
+    // build still leaves out the same offers with the same codes and, word for word, the same sentences as before the move
+    // (written out here as they were in the composer, not built from the new functions).
+    [PostgreSqlFact]
+    public async Task TheN11PazaramaAndPttAvmRefusalsKeepTheirCodesAndSentences()
+    {
+        var tenant = NewTenant("send-refusals-golden");
+        var n11 = NewConnection(tenant, "N11");
+        var pazarama = NewConnection(tenant, "PAZARAMA");
+        var ptt = NewConnection(tenant, "PTTAVM");
+        var products = new List<Product>();
+        var variants = new List<ProductVariant>();
+        var offers = new List<ChannelOffer>();
+        var links = new List<MarketplaceVariantLink>();
+        ProductVariant Add(PlatformConnection connection, string sku, string code, Action<ChannelOffer>? offer = null, Guid? productId = null, string modelCode = "MODEL-1")
+        {
+            var (product, variant) = NewVariant(tenant, sku, $"86900{variants.Count:D8}", productId);
+            variant.ModelCode = modelCode;
+            if (productId is null) products.Add(product);
+            variants.Add(variant);
+            var row = NewOffer(tenant, connection, variant);
+            offer?.Invoke(row);
+            offers.Add(row);
+            links.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = code });
+            return variant;
+        }
+        var n1 = Add(n11, "GLD-N1", "GLD-N1", offer => offer.Currency = "USD");
+        var p1 = Add(pazarama, "GLD-P1", "GLD-P1", offer => offer.Currency = "USD");
+        var p2 = Add(pazarama, "GLD-P2", new string('A', 101));
+        // No price in force, a price change and no stock change: the third Pazarama refusal.
+        var p3 = Add(pazarama, "GLD-P3", "GLD-P3", offer => { offer.ListPrice = 0m; offer.SalePrice = 0m; offer.LastStockProjectionVersion = 1; });
+        var t1 = Add(ptt, "GLD-T1", "GLD-T1", offer => offer.Currency = "USD", modelCode: "M-T1");
+        var t2 = Add(ptt, "GLD-T2", new string('C', 251), modelCode: "M-T2");
+        // A PttAVM product with variants (linked by its model code) whose variants carry no colour or size.
+        var t3 = Add(ptt, "GLD-T3", "GLD-T3");
+        var t4 = Add(ptt, "GLD-T4", "GLD-T4", productId: t3.ProductId);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(n11, pazarama, ptt);
+            seed.Products.AddRange(products);
+            seed.ProductVariants.AddRange(variants);
+            seed.InventoryItems.AddRange(variants.Select(variant => NewInventory(tenant, variant, 5m)));
+            seed.ChannelOffers.AddRange(offers);
+            seed.MarketplaceVariantLinks.AddRange(links);
+            seed.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = ptt.Id, ProductId = t3.ProductId, ExternalId = "PTT-GLD", ExternalCode = "MODEL-1", Version = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        async Task<List<(Guid, string, string)>> RefusedAsync(PlatformConnection connection)
+        {
+            await using var db = fixture.CreateContext();
+            var composer = new PriceInventoryComposer(db);
+            await composer.BuildAsync(tenant.Id, connection.Id, CancellationToken.None, automatic: true);
+            return composer.InvalidOffers.Select(x => (x.VariantId, x.Code, x.Message)).OrderBy(x => x.Message, StringComparer.Ordinal).ToList();
+        }
+        List<(Guid, string, string)> Expected(params (Guid, string, string)[] rows) => rows.OrderBy(x => x.Item3, StringComparer.Ordinal).ToList();
+
+        Assert.Equal(Expected((n1.Id, "CHANNEL_OFFER_INVALID", "'GLD-N1' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.")), await RefusedAsync(n11));
+        Assert.Equal(Expected(
+            (p1.Id, "CHANNEL_OFFER_INVALID", "'GLD-P1' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir."),
+            (p2.Id, "PAZARAMA_BARCODE_INVALID", "'GLD-P2' için Pazarama barkodu boş veya 100 karakterden uzun."),
+            (p3.Id, "CHANNEL_OFFER_INVALID", "'GLD-P3' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.")), await RefusedAsync(pazarama));
+        Assert.Equal(Expected(
+            (t1.Id, "CHANNEL_OFFER_INVALID", "'GLD-T1' için PttAVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir."),
+            (t2.Id, "CHANNEL_OFFER_INVALID", "'GLD-T2' için PttAVM kodu boş veya 250 karakterden uzun."),
+            (t3.Id, "CHANNEL_OFFER_INVALID", "'GLD-T3' PttAVM'de MODEL-1 ürününün varyantı; PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi."),
+            (t4.Id, "CHANNEL_OFFER_INVALID", "'GLD-T4' PttAVM'de MODEL-1 ürününün varyantı; PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi.")), await RefusedAsync(ptt));
+    }
+
     // K2: a candidate whose offer cannot be sent no longer stops the reconcile scan.
     [PostgreSqlFact]
     public async Task StockReconcile_ContinuesPastACandidateWithAnInvalidOffer()

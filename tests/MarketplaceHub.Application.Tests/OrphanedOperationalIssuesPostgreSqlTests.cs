@@ -594,8 +594,8 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
                 // Still refused: its own price is 0, or the currency is not TRY.
                 Offer(seed, seed.Trendyol, b.M, salePrice: 0m, followsPanelPrice: false),
                 Offer(seed, seed.Trendyol, b.L, salePrice: 450m, currency: "USD"),
-                // N11's own checks are not judged here; another code under the same key shape is not this rule's.
-                Offer(seed, seed.N11, c.M, salePrice: 450m),
+                // An N11 offer still in another currency than TRY; another code under the same key shape is not this rule's.
+                Offer(seed, seed.N11, c.M, salePrice: 450m, currency: "USD"),
                 Offer(seed, seed.Trendyol, c.M, salePrice: 450m));
             await setup.SaveChangesAsync();
             string Key(PlatformConnection connection, ProductVariant variant) => $"stock-projection-offer-invalid:{connection.Id:N}:{variant.Id:N}";
@@ -632,6 +632,124 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         while (await reader.ReadAsync())
             if (reader.GetString(0) == "resolved by the pass") rules.Add($"{reader.GetString(3)} {reader.GetString(4)[3..]} {reader.GetInt64(5)}");
         Assert.Equal(["CONDITION_CLEARED offer-passes-send-check 2", "SUBJECT_GONE offer-gone 1"], rules.Order().ToList());
+    }
+
+    // The other marketplaces (24 Nov 2026): each issue stays open while the send's own check still refuses the offer and
+    // closes once it passes. Summaries are the composer's sentences.
+    private async Task<(string Key, IssueStatus Status)[]> PassAndReadAsync(Seed seed, params string[] keys)
+    {
+        await using (var db = fixture.CreateContext())
+            await PassAsync(db, seed.Tenant.Id);
+        await using var check = fixture.CreateContext();
+        var issues = await IssuesAsync(check, seed.Tenant.Id);
+        return keys.Select(key => (key, issues[key].Status)).ToArray();
+    }
+
+    private static string OfferKey(PlatformConnection connection, ProductVariant variant) => $"stock-projection-offer-invalid:{connection.Id:N}:{variant.Id:N}";
+
+    private static MarketplaceVariantLink Link(Seed seed, PlatformConnection connection, ProductVariant variant, string code) =>
+        new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = code, Version = 1 };
+
+    [PostgreSqlFact]
+    public async Task AnN11OfferIssueClosesOnceTheOfferIsInTry()
+    {
+        Seed seed;
+        ChannelOffer offer;
+        string key;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var card = AddCard(setup, seed, "N11A");
+            offer = Offer(seed, seed.N11, card.M, salePrice: 450m, currency: "USD");
+            setup.ChannelOffers.Add(offer);
+            key = OfferKey(seed.N11, card.M);
+            await setup.SaveChangesAsync();
+            setup.OperationalIssues.Add(Issue(seed, key, "CHANNEL_OFFER_INVALID", $"'{card.M.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir."));
+            await setup.SaveChangesAsync();
+        }
+        Assert.Equal([(key, IssueStatus.Open)], await PassAndReadAsync(seed, key));
+        await using (var db = fixture.CreateContext())
+            await db.ChannelOffers.Where(x => x.Id == offer.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Currency, "TRY"));
+        Assert.Equal([(key, IssueStatus.Resolved)], await PassAndReadAsync(seed, key));
+    }
+
+    [PostgreSqlFact]
+    public async Task APazaramaOfferIssueClosesOncePricedInTry_AndABarcodeIssueOnceTheBarcodeFits()
+    {
+        Seed seed;
+        ChannelOffer priced;
+        MarketplaceVariantLink barcode;
+        string priceKey, barcodeKey;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var pazarama = Connection(seed.Tenant, "PAZARAMA");
+            setup.PlatformConnections.Add(pazarama);
+            var card = AddCard(setup, seed, "PZA");
+            // Its own price (Özel Fiyat) is 0: no price in force.
+            priced = Offer(seed, pazarama, card.M, salePrice: 0m, followsPanelPrice: false);
+            barcode = Link(seed, pazarama, card.L, new string('A', 101));
+            setup.ChannelOffers.AddRange(priced, Offer(seed, pazarama, card.L, salePrice: 450m));
+            setup.MarketplaceVariantLinks.AddRange(Link(seed, pazarama, card.M, "PZA-M"), barcode);
+            priceKey = OfferKey(pazarama, card.M);
+            barcodeKey = OfferKey(pazarama, card.L);
+            await setup.SaveChangesAsync();
+            setup.OperationalIssues.AddRange(
+                Issue(seed, priceKey, "CHANNEL_OFFER_INVALID", $"'{card.M.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir."),
+                Issue(seed, barcodeKey, "PAZARAMA_BARCODE_INVALID", $"'{card.L.Sku}' için Pazarama barkodu boş veya 100 karakterden uzun."));
+            await setup.SaveChangesAsync();
+        }
+        Assert.Equal([(priceKey, IssueStatus.Open), (barcodeKey, IssueStatus.Open)], await PassAndReadAsync(seed, priceKey, barcodeKey));
+        await using (var db = fixture.CreateContext())
+        {
+            await db.ChannelOffers.Where(x => x.Id == priced.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.SalePrice, 450m).SetProperty(x => x.ListPrice, 450m));
+            await db.MarketplaceVariantLinks.Where(x => x.Id == barcode.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalId, "PZA-L"));
+        }
+        Assert.Equal([(priceKey, IssueStatus.Resolved), (barcodeKey, IssueStatus.Resolved)], await PassAndReadAsync(seed, priceKey, barcodeKey));
+    }
+
+    [PostgreSqlFact]
+    public async Task APttAvmOfferIssueClosesWhenTheCheckThatWroteItPasses_AndAProductLimitIssueStaysOpen()
+    {
+        Seed seed;
+        ChannelOffer priced;
+        MarketplaceVariantLink code;
+        ProductVariant noOptions;
+        string priceKey, codeKey, optionsKey, limitKey;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var a = AddCard(setup, seed, "PTA");
+            var b = AddCard(setup, seed, "PTB");
+            noOptions = b.M;
+            noOptions.OptionSignature = "";
+            priced = Offer(seed, seed.Ptt, a.M, salePrice: 1m, followsPanelPrice: false);
+            code = Link(seed, seed.Ptt, a.L, new string('C', 251));
+            setup.ChannelOffers.AddRange(priced, Offer(seed, seed.Ptt, a.L, salePrice: 450m), Offer(seed, seed.Ptt, b.M, salePrice: 450m), Offer(seed, seed.Ptt, b.L, salePrice: 450m));
+            setup.MarketplaceVariantLinks.AddRange(Link(seed, seed.Ptt, a.M, "PTA-M"), code, Link(seed, seed.Ptt, b.M, "PTB-M"), Link(seed, seed.Ptt, b.L, "PTB-L"));
+            priceKey = OfferKey(seed.Ptt, a.M);
+            codeKey = OfferKey(seed.Ptt, a.L);
+            optionsKey = OfferKey(seed.Ptt, b.M);
+            limitKey = OfferKey(seed.Ptt, b.L);
+            await setup.SaveChangesAsync();
+            setup.OperationalIssues.AddRange(
+                Issue(seed, priceKey, "CHANNEL_OFFER_INVALID", $"'{a.M.Sku}' için PttAVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir."),
+                Issue(seed, codeKey, "CHANNEL_OFFER_INVALID", $"'{a.L.Sku}' için PttAVM kodu boş veya 250 karakterden uzun."),
+                Issue(seed, optionsKey, "CHANNEL_OFFER_INVALID", $"'{b.M.Sku}' PttAVM'de PTB ürününün varyantı; PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi."),
+                // Judged over the whole product and its stock at send time: never by the pass.
+                Issue(seed, limitKey, "CHANNEL_OFFER_INVALID", $"'{b.L.Sku}': PttAVM bir üründe en fazla 100 varyant tutar; PTB ürününde 101 varyant gönderilecekti. Fiyat ve stok gönderilmedi."));
+            await setup.SaveChangesAsync();
+        }
+        Assert.Equal([(priceKey, IssueStatus.Open), (codeKey, IssueStatus.Open), (optionsKey, IssueStatus.Open), (limitKey, IssueStatus.Open)],
+            await PassAndReadAsync(seed, priceKey, codeKey, optionsKey, limitKey));
+        await using (var db = fixture.CreateContext())
+        {
+            await db.ChannelOffers.Where(x => x.Id == priced.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.SalePrice, 450m).SetProperty(x => x.ListPrice, 450m));
+            await db.MarketplaceVariantLinks.Where(x => x.Id == code.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalId, "PTA-L"));
+            await db.ProductVariants.Where(x => x.Id == noOptions.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.OptionSignature, "Beden: M"));
+        }
+        Assert.Equal([(priceKey, IssueStatus.Resolved), (codeKey, IssueStatus.Resolved), (optionsKey, IssueStatus.Resolved), (limitKey, IssueStatus.Open)],
+            await PassAndReadAsync(seed, priceKey, codeKey, optionsKey, limitKey));
     }
 
     [PostgreSqlFact]

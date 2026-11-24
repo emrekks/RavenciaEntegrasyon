@@ -99,12 +99,31 @@ public sealed class OperationalIssueRetentionService(AppDbContext db, TimeProvid
         // Issues resolved before ResolvedAt existed (or by a path that does not set it) fall back to LastSeenAt.
         // An offer issue the owner marked "Sorun Yok" is kept while its offer exists: the mark is what keeps the automatic
         // send from opening it again on the same values (OfferIssueNoProblem), also after a month with the writes off.
-        return await db.OperationalIssues
+        // The key is parsed here into its connection and variant, and the offers are looked up by those columns (their unique
+        // index); a key that does not parse keeps nothing, as before.
+        var expired = db.OperationalIssues
             .Where(issue => issue.Status == IssueStatus.Resolved && issue.LastSeenAt < cutoff
-                && (issue.ResolvedAt ?? issue.LastSeenAt) < cutoff
-                && !(issue.DedupeKey.StartsWith(PriceInventoryOfferIssues.KeyPrefix) && issue.Summary.Contains(OfferIssueNoProblem.MarkStart)
-                    && db.ChannelOffers.Any(offer => offer.TenantId == issue.TenantId
-                        && issue.DedupeKey == PriceInventoryOfferIssues.KeyPrefix + offer.ConnectionId.ToString().Replace("-", "") + ":" + offer.VariantId.ToString().Replace("-", ""))))
-            .ExecuteDeleteAsync(cancellationToken);
+                && (issue.ResolvedAt ?? issue.LastSeenAt) < cutoff);
+        var marked = (await expired
+                .Where(issue => issue.TenantId != null && issue.DedupeKey.StartsWith(PriceInventoryOfferIssues.KeyPrefix) && issue.Summary.Contains(OfferIssueNoProblem.MarkStart))
+                .Select(issue => new { issue.Id, TenantId = issue.TenantId!.Value, issue.DedupeKey })
+                .ToListAsync(cancellationToken))
+            .Select(issue => (issue.Id, issue.TenantId, Key: PriceInventoryOfferIssues.Parse(issue.DedupeKey)))
+            .Where(issue => issue.Key is not null)
+            .ToList();
+        var keep = new List<Guid>();
+        foreach (var tenant in marked.GroupBy(issue => issue.TenantId))
+        {
+            var connectionIds = tenant.Select(issue => issue.Key!.Value.ConnectionId).Distinct().ToArray();
+            var variantIds = tenant.Select(issue => issue.Key!.Value.VariantId).Distinct().ToArray();
+            var held = (await db.ChannelOffers.AsNoTracking()
+                    .Where(offer => offer.TenantId == tenant.Key && connectionIds.Contains(offer.ConnectionId) && variantIds.Contains(offer.VariantId))
+                    .Select(offer => new { offer.ConnectionId, offer.VariantId })
+                    .ToListAsync(cancellationToken))
+                .Select(offer => (offer.ConnectionId, offer.VariantId))
+                .ToHashSet();
+            keep.AddRange(tenant.Where(issue => held.Contains(issue.Key!.Value)).Select(issue => issue.Id));
+        }
+        return await expired.Where(issue => !keep.Contains(issue.Id)).ExecuteDeleteAsync(cancellationToken);
     }
 }

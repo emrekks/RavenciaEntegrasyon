@@ -604,9 +604,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase))
+            if (N11OfferRefused(row.Offer))
             {
-                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", N11OfferRefusal(row.Variant.Sku)) is { } refused) return refused;
                 continue;
             }
             // Owner rule of 18 Nov 2026: the price in force goes with every stock line; n11 takes a SKU with its quantity
@@ -666,18 +666,16 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
             var (storedList, storedSale) = PazaramaPrices(row.Offer);
-            var inForce = PricedInForce("PAZARAMA", row.Offer, row.Variant, cards);
-            var (listPrice, salePrice) = inForce is null ? (storedList, storedSale) : PazaramaPrices(inForce);
-            var priceKnown = inForce is not null && salePrice > 0;
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase))
+            var (listPrice, salePrice, priceKnown) = PazaramaInForce(row.Offer, row.Variant, cards);
+            if (!IsTry(row.Offer))
             {
-                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", PazaramaOfferRefusal(row.Variant.Sku)) is { } refused) return refused;
                 continue;
             }
             var barcode = row.Barcode.Trim();
-            if (barcode.Length == 0 || barcode.Length > PazaramaPriceInventoryRules.MaxCodeLength)
+            if (PazaramaBarcodeRefused(barcode))
             {
-                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "PAZARAMA_BARCODE_INVALID", $"'{row.Variant.Sku}' için Pazarama barkodu boş veya {PazaramaPriceInventoryRules.MaxCodeLength} karakterden uzun.") is { } refused) return refused;
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "PAZARAMA_BARCODE_INVALID", PazaramaBarcodeRefusal(row.Variant.Sku)) is { } refused) return refused;
                 continue;
             }
             var quantity = PazaramaPriceInventoryRules.Quantity(row.Inventory!.Available - row.Offer.SafetyStock);
@@ -700,7 +698,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 // A new price version whose price Pazarama already holds: its mark moves on without a request, so it is not
                 // judged again every round; a price that differs later still goes.
                 if (priceKnown) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, row.Inventory.ProjectionVersion)); continue; }
-                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
+                if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", PazaramaOfferRefusal(row.Variant.Sku)) is { } refused) return refused;
                 continue;
             }
             lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: !stockChanged, PriceOmitted: !sendsPrice, SafetyStock: row.Offer.SafetyStock,
@@ -803,16 +801,16 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 // the offer's stored price). PTT AVM takes no stock without a price, so a line without one is refused.
                 var salePrice = PttAvmPriceInForce(row.Offer, row.Variant, cards);
                 // PTT AVM refuses a price of 1 or less.
-                if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || salePrice <= 1)
+                if (PttAvmPriceRefused(row.Offer, salePrice))
                 {
-                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PttAVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.") is { } refused) return refused;
+                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", PttAvmPriceRefusal(row.Variant.Sku)) is { } refused) return refused;
                     productRefused = true;
                     continue;
                 }
                 var code = row.Code.Trim();
-                if (code.Length == 0 || code.Length > PttAvmPriceInventoryRules.MaxBarcodeLength)
+                if (PttAvmCodeRefused(code))
                 {
-                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için PttAVM kodu boş veya {PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.") is { } refused) return refused;
+                    if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", PttAvmCodeRefusal(row.Variant.Sku)) is { } refused) return refused;
                     productRefused = true;
                     continue;
                 }
@@ -854,7 +852,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                     // instead of staying unsent without a word on every dispatch.
                     if (attributes.Count == 0)
                     {
-                        if (Refuse(automatic, invalid, entry.Line.VariantId, Sku(entry.Line), "CHANNEL_OFFER_INVALID", $"'{Sku(entry.Line)}' PttAVM'de {productCode} ürününün varyantı; PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi.") is { } refused) return refused;
+                        if (Refuse(automatic, invalid, entry.Line.VariantId, Sku(entry.Line), "CHANNEL_OFFER_INVALID", PttAvmAttributesRefusal(Sku(entry.Line), productCode)) is { } refused) return refused;
                         continue;
                     }
                     variants.Add(new(attributes, (int)entry.Line.Quantity, entry.Line.SalePrice - basePrice));
@@ -957,6 +955,41 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
     // The platforms whose offers the line below judges (the Trendyol, Hepsiburada and Shopify build): the only check there
     // that raises CHANNEL_OFFER_INVALID.
     internal static readonly string[] StandardOfferPlatforms = ["TRENDYOL", "HEPSIBURADA", "SHOPIFY"];
+
+    // The checks of the N11, Pazarama and PttAVM builds that leave an offer out (24 Nov 2026): the send and the orphaned-issue
+    // pass (OrphanedOperationalIssues.ResolveClearedOffersAsync) call these same functions, and the summary the send writes
+    // comes from the message functions below, so the pass can tell which check wrote an issue by its fixed text.
+    internal static bool IsTry(ChannelOffer offer) => string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase);
+
+    // N11: another currency than TRY (a missing price sends the stock alone, never a refusal).
+    internal static bool N11OfferRefused(ChannelOffer offer) => !IsTry(offer);
+    internal static string N11OfferRefusal(string sku) => $"'{sku}' için N11 teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.";
+
+    // Pazarama: another currency than TRY; a barcode empty or too long (PAZARAMA_BARCODE_INVALID); a price change with no
+    // price in force and no stock change (the same refusal text). An offer in TRY with a price in force can meet neither
+    // price refusal, whatever its stock does.
+    internal static (decimal ListPrice, decimal SalePrice, bool Known) PazaramaInForce(ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards)
+    {
+        var inForce = PricedInForce("PAZARAMA", offer, variant, cards);
+        var (listPrice, salePrice) = inForce is null ? PazaramaPrices(offer) : PazaramaPrices(inForce);
+        return (listPrice, salePrice, inForce is not null && salePrice > 0);
+    }
+
+    internal static string PazaramaOfferRefusal(string sku) => $"'{sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.";
+    internal static bool PazaramaBarcodeRefused(string trimmedBarcode) => trimmedBarcode.Length == 0 || trimmedBarcode.Length > PazaramaPriceInventoryRules.MaxCodeLength;
+    internal static string PazaramaBarcodeRefusal(string sku) => $"'{sku}' için Pazarama barkodu boş veya {PazaramaPriceInventoryRules.MaxCodeLength} karakterden uzun.";
+
+    // PttAVM, in the send's order: another currency or a price in force of 1 or less; a code empty or too long; a variant of
+    // a product with variants that has no colour or size. A product over PttAVM's variant or stock limits is judged over the
+    // whole product and its stock, which the orphaned-issue pass does not judge.
+    internal static bool PttAvmPriceRefused(ChannelOffer offer, decimal priceInForce) => !IsTry(offer) || priceInForce <= 1;
+    internal const string PttAvmPriceRefusalText = "için PttAVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir.";
+    internal static string PttAvmPriceRefusal(string sku) => $"'{sku}' {PttAvmPriceRefusalText}";
+    internal static bool PttAvmCodeRefused(string trimmedCode) => trimmedCode.Length == 0 || trimmedCode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength;
+    internal const string PttAvmCodeRefusalText = "için PttAVM kodu boş veya ";
+    internal static string PttAvmCodeRefusal(string sku) => $"'{sku}' {PttAvmCodeRefusalText}{PttAvmPriceInventoryRules.MaxBarcodeLength} karakterden uzun.";
+    internal const string PttAvmAttributesRefusalText = "PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok.";
+    internal static string PttAvmAttributesRefusal(string sku, string? productCode) => $"'{sku}' PttAVM'de {productCode} ürününün varyantı; {PttAvmAttributesRefusalText} Fiyat ve stok gönderilmedi.";
 
     // Whether a Trendyol, Hepsiburada or Shopify line is left out as CHANNEL_OFFER_INVALID: another currency than TRY, or on
     // Trendyol no price in force (owner, 18 Nov 2026: "0 TL'liler fiyatsız kalsın"). The send and the orphaned-issue pass

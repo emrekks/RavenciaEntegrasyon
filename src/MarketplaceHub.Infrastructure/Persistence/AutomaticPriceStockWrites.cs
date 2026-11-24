@@ -20,6 +20,16 @@ internal static class PriceInventoryOfferIssues
     public static IQueryable<OperationalIssue> Open(AppDbContext db, Guid tenantId, string prefix) =>
         db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix));
 
+    // The connection and variant of a key written by Key() ("{prefix}{connection:N}:{variant:N}"); null for any other shape.
+    public static (Guid ConnectionId, Guid VariantId)? Parse(string dedupeKey)
+    {
+        if (!dedupeKey.StartsWith(KeyPrefix, StringComparison.Ordinal)) return null;
+        var parts = dedupeKey[KeyPrefix.Length..].Split(':');
+        return parts.Length == 2 && Guid.TryParseExact(parts[0], "N", out var connectionId) && Guid.TryParseExact(parts[1], "N", out var variantId)
+            ? (connectionId, variantId)
+            : null;
+    }
+
     // The variant of a key written by Key(); null for a key that does not end in one.
     public static Guid? VariantOf(string dedupeKey) =>
         Guid.TryParseExact(dedupeKey[(dedupeKey.LastIndexOf(':') + 1)..], "N", out var variantId) ? variantId : null;

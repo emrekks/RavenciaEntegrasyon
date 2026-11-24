@@ -152,74 +152,103 @@ public static class OrphanedOperationalIssues
             """))
     ];
 
-    // CHANNEL_OFFER_INVALID of a Trendyol, Hepsiburada or Shopify offer (24 Nov 2026): the send's own check
-    // (PriceInventoryComposer.StandardOfferRefused, the only one raising that code there) judges the stored offer, its
-    // variant and its card's panel prices again; an offer it passes now is resolved. Not SQL like the rules above: the
-    // check is the send's C# function itself, not a copy of it. An offer, variant or connection missing is left to the
-    // rules above; the other platforms' checks (N11, Pazarama, PttAVM) are not judged here and their issues stay open.
+    // An offer issue whose send-time check passes the stored offer now (24 Nov 2026). The check is the send's own C#
+    // function (PriceInventoryComposer), not a copy of it, so this is not SQL like the rules above. Per marketplace:
+    //   Trendyol, Hepsiburada, Shopify: CHANNEL_OFFER_INVALID by StandardOfferRefused (TRY; on Trendyol a price in force).
+    //   N11: CHANNEL_OFFER_INVALID by N11OfferRefused (TRY; a missing price sends the stock alone, never a refusal).
+    //   Pazarama: CHANNEL_OFFER_INVALID passes with TRY and a price in force (PazaramaInForce), which neither price refusal
+    //     can meet whatever the stock does; PAZARAMA_BARCODE_INVALID by PazaramaBarcodeRefused on the linked barcode.
+    //   PttAVM: CHANNEL_OFFER_INVALID by the check whose fixed text the summary carries: the price (PttAvmPriceRefused),
+    //     the code (PttAvmCodeRefused) or the colour/size (PttAvmVariantAttributes). A product over PttAVM's variant or
+    //     stock limits is judged over the whole product and its stock at send time: such an issue stays open.
+    // An offer, variant, link or connection missing, or a summary no check above wrote, stays open (unknown stays unknown).
     public const string OfferPassesName = "offer-passes-send-check";
     public const string OfferPassesDetail = "teklif gönderim kontrolünden artık geçiyor.";
 
-    private static async Task<int> ResolveClearedOffersAsync(AppDbContext db, Guid? tenantId, DateTimeOffset resolvedAt, int batchSize, int maxBatches, string actor, CancellationToken cancellationToken)
+    private static readonly string[] ClearedCodes = [PriceStockOfferIssueCodes.ChannelOfferInvalid, PriceStockOfferIssueCodes.PazaramaBarcodeInvalid];
+    private static readonly string[] ClearedPlatforms = [.. PriceInventoryComposer.StandardOfferPlatforms, "N11", "PAZARAMA", "PTTAVM"];
+
+    // Whether the send's own check passes the offer now, for the check that wrote the issue (see above); false when unknown.
+    internal static bool OfferPassesNow(string platform, string code, string summary, ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards, string? linkCode)
     {
-        const string code = PriceStockOfferIssueCodes.ChannelOfferInvalid;
+        if (code == PriceStockOfferIssueCodes.PazaramaBarcodeInvalid)
+            return platform == "PAZARAMA" && linkCode is not null && !PriceInventoryComposer.PazaramaBarcodeRefused(linkCode.Trim());
+        if (code != PriceStockOfferIssueCodes.ChannelOfferInvalid) return false;
+        return platform switch
+        {
+            "TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" => !PriceInventoryComposer.StandardOfferRefused(platform, offer, variant, cards),
+            "N11" => !PriceInventoryComposer.N11OfferRefused(offer),
+            "PAZARAMA" => PriceInventoryComposer.IsTry(offer) && PriceInventoryComposer.PazaramaInForce(offer, variant, cards).Known,
+            "PTTAVM" when summary.Contains(PriceInventoryComposer.PttAvmPriceRefusalText, StringComparison.Ordinal) =>
+                !PriceInventoryComposer.PttAvmPriceRefused(offer, PriceInventoryComposer.PttAvmPriceInForce(offer, variant, cards)),
+            "PTTAVM" when summary.Contains(PriceInventoryComposer.PttAvmCodeRefusalText, StringComparison.Ordinal) =>
+                linkCode is not null && !PriceInventoryComposer.PttAvmCodeRefused(linkCode.Trim()),
+            "PTTAVM" when summary.Contains(PriceInventoryComposer.PttAvmAttributesRefusalText, StringComparison.Ordinal) =>
+                PriceInventoryComposer.PttAvmVariantAttributes(variant.OptionSignature).Count > 0,
+            _ => false
+        };
+    }
+
+    private static async Task<Dictionary<string, int>> ResolveClearedOffersAsync(AppDbContext db, Guid? tenantId, DateTimeOffset resolvedAt, int batchSize, int maxBatches, string actor, CancellationToken cancellationToken)
+    {
         var prefix = PriceInventoryOfferIssues.KeyPrefix;
         var suffix = SuffixOf(ConditionCleared, OfferPassesDetail, actor);
-        var resolved = 0;
+        var resolved = new Dictionary<string, int>(StringComparer.Ordinal);
         var after = Guid.Empty;
         for (var batch = 0; batch < maxBatches; batch++)
         {
             var open = await db.OperationalIssues.AsNoTracking()
                 .Where(x => x.Status != IssueStatus.Resolved && x.TenantId != null && (tenantId == null || x.TenantId == tenantId)
-                    && x.Code == code && x.DedupeKey.StartsWith(prefix) && x.Id > after)
+                    && ClearedCodes.Contains(x.Code) && x.DedupeKey.StartsWith(prefix) && x.Id > after)
                 .OrderBy(x => x.Id).Take(batchSize)
-                .Select(x => new { x.Id, TenantId = x.TenantId!.Value, x.DedupeKey })
+                .Select(x => new { x.Id, TenantId = x.TenantId!.Value, x.DedupeKey, x.Code, x.Summary })
                 .ToListAsync(cancellationToken);
             if (open.Count == 0) break;
             after = open[^1].Id;
-            var keyed = open.Select(issue => (issue.Id, issue.TenantId, Key: KeyParts(issue.DedupeKey[prefix.Length..]))).Where(issue => issue.Key is not null).ToList();
-            var passed = new List<Guid>();
+            var keyed = open.Select(issue => (issue.Id, issue.TenantId, issue.Code, issue.Summary, Key: PriceInventoryOfferIssues.Parse(issue.DedupeKey))).Where(issue => issue.Key is not null).ToList();
+            var passed = new List<(Guid Id, string Code, string Summary)>();
             foreach (var tenant in keyed.GroupBy(issue => issue.TenantId))
             {
                 var connectionIds = tenant.Select(issue => issue.Key!.Value.ConnectionId).Distinct().ToArray();
                 var variantIds = tenant.Select(issue => issue.Key!.Value.VariantId).Distinct().ToArray();
                 var platforms = await db.PlatformConnections.AsNoTracking()
-                    .Where(x => x.TenantId == tenant.Key && connectionIds.Contains(x.Id) && x.Status != "DELETED" && PriceInventoryComposer.StandardOfferPlatforms.Contains(x.PlatformCode))
+                    .Where(x => x.TenantId == tenant.Key && connectionIds.Contains(x.Id) && x.Status != "DELETED" && ClearedPlatforms.Contains(x.PlatformCode))
                     .ToDictionaryAsync(x => x.Id, x => x.PlatformCode, cancellationToken);
                 var offers = await db.ChannelOffers.AsNoTracking()
                     .Where(x => x.TenantId == tenant.Key && connectionIds.Contains(x.ConnectionId) && variantIds.Contains(x.VariantId))
+                    .ToListAsync(cancellationToken);
+                // The code the send reads for the variant: its variant link on the connection (one; two links is unknown).
+                var links = await db.MarketplaceVariantLinks.AsNoTracking()
+                    .Where(x => x.TenantId == tenant.Key && connectionIds.Contains(x.ConnectionId) && variantIds.Contains(x.VariantId))
+                    .Select(x => new { x.ConnectionId, x.VariantId, x.ExternalId })
                     .ToListAsync(cancellationToken);
                 var variants = await db.ProductVariants.AsNoTracking()
                     .Where(x => x.TenantId == tenant.Key && variantIds.Contains(x.Id))
                     .ToDictionaryAsync(x => x.Id, cancellationToken);
                 var cards = await PriceInventoryComposer.CardPanelPricesAsync(db, tenant.Key, variants.Values.Select(x => x.ProductId), cancellationToken);
-                foreach (var (id, _, key) in tenant)
+                foreach (var (id, _, code, summary, key) in tenant)
                 {
                     var (connectionId, variantId) = key!.Value;
                     if (!platforms.TryGetValue(connectionId, out var platform) || !variants.TryGetValue(variantId, out var variant)) continue;
                     if (offers.FirstOrDefault(x => x.ConnectionId == connectionId && x.VariantId == variantId) is not { } offer) continue;
-                    if (!PriceInventoryComposer.StandardOfferRefused(platform, offer, variant, cards)) passed.Add(id);
+                    var linkCode = links.Where(x => x.ConnectionId == connectionId && x.VariantId == variantId).Select(x => x.ExternalId).ToList() is [var single] ? single : null;
+                    if (OfferPassesNow(platform, code, summary, offer, variant, cards, linkCode)) passed.Add((id, code, summary));
                 }
             }
-            if (passed.Count > 0)
-                resolved += await db.OperationalIssues
-                    .Where(x => passed.Contains(x.Id) && x.Status != IssueStatus.Resolved && x.Code == code)
+            // Only an issue still as it was read: one the send wrote again meanwhile (another code or text) is judged next time.
+            foreach (var (id, code, summary) in passed)
+            {
+                var done = await db.OperationalIssues
+                    .Where(x => x.Id == id && x.Status != IssueStatus.Resolved && x.Code == code && x.Summary == summary)
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(x => x.Status, IssueStatus.Resolved)
                         .SetProperty(x => x.ResolvedAt, resolvedAt)
                         .SetProperty(x => x.Summary, x => x.Summary + suffix), cancellationToken);
+                if (done > 0) resolved[code] = resolved.GetValueOrDefault(code) + done;
+            }
             if (open.Count < batchSize) break;
         }
         return resolved;
-
-        // "{connection:N}:{variant:N}" (PriceInventoryOfferIssues.Key) after the prefix; null for any other shape.
-        static (Guid ConnectionId, Guid VariantId)? KeyParts(string rest)
-        {
-            var parts = rest.Split(':');
-            return parts.Length == 2 && Guid.TryParseExact(parts[0], "N", out var connectionId) && Guid.TryParseExact(parts[1], "N", out var variantId)
-                ? (connectionId, variantId)
-                : null;
-        }
     }
 
     // The codes the pass may touch: every other code is left alone.
@@ -244,8 +273,9 @@ public static class OrphanedOperationalIssues
                 if (codes.Count < batchSize) break;
             }
         }
-        if (!subjectGoneOnly && await ResolveClearedOffersAsync(db, tenantId, resolvedAt, batchSize, maxBatches, actor, cancellationToken) is var cleared and > 0)
-            counts[(PriceStockOfferIssueCodes.ChannelOfferInvalid, ConditionCleared)] = counts.GetValueOrDefault((PriceStockOfferIssueCodes.ChannelOfferInvalid, ConditionCleared)) + cleared;
+        if (!subjectGoneOnly)
+            foreach (var (code, cleared) in await ResolveClearedOffersAsync(db, tenantId, resolvedAt, batchSize, maxBatches, actor, cancellationToken))
+                counts[(code, ConditionCleared)] = counts.GetValueOrDefault((code, ConditionCleared)) + cleared;
         return counts;
     }
 
@@ -261,7 +291,7 @@ public static class OrphanedOperationalIssues
         var cases = string.Join("\n", Rules.Select((rule, index) => $"""      WHEN {rule.Match} THEN '{index:D2} {rule.Name}|{rule.Reason}'"""))
             + $"""
 
-                  WHEN i."Code" = '{PriceStockOfferIssueCodes.ChannelOfferInvalid}' AND position('— {OfferPassesDetail}' in i."Summary") > 0 THEN '{Rules.Count:D2} {OfferPassesName}|{ConditionCleared}'
+                  WHEN i."Code" IN ('{PriceStockOfferIssueCodes.ChannelOfferInvalid}', '{PriceStockOfferIssueCodes.PazaramaBarcodeInvalid}') AND position('— {OfferPassesDetail}' in i."Summary") > 0 THEN '{Rules.Count:D2} {OfferPassesName}|{ConditionCleared}'
             """;
         var tenant = tenantCondition is null ? "" : $" AND {tenantCondition}";
         return $"""
