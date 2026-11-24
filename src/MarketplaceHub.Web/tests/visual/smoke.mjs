@@ -47,6 +47,35 @@ async function worker() {
     await context.close()
   }
 }
-try { await Promise.all(Array.from({ length: 4 }, worker)) } finally { await browser.close(); await server.close() }
+// A phone's bottom bar is hidden while a layer is open (a filter sheet, a window) and comes back when it closes.
+async function layerStep(name, path, open, close) {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
+  await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+  const page = await context.newPage()
+  await page.clock.setFixedTime(frozenNow)
+  await installApiMock(page, { unhandled: new Set() })
+  try {
+    await page.goto(server.origin + path)
+    await page.locator('.app-shell main').first().waitFor({ timeout: 15000 })
+    await page.waitForLoadState('networkidle').catch(() => undefined)
+    await page.waitForTimeout(600)
+    const dockHidden = () => page.evaluate(() => { const layer = document.querySelector('.rv-dock-layer'); const style = layer && getComputedStyle(layer); return Boolean(layer && layer.hasAttribute('inert') && style.visibility === 'hidden') })
+    if (await dockHidden()) failures.push(`layer step ${name}: the bar is hidden before the layer opens`)
+    await open(page)
+    await page.waitForTimeout(500)
+    if (!(await dockHidden())) failures.push(`layer step ${name}: the bar stays visible while the layer is open`)
+    await close(page)
+    await page.waitForTimeout(500)
+    if (await dockHidden()) failures.push(`layer step ${name}: the bar does not come back when the layer closes`)
+  } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
+  await context.close()
+}
+try {
+  await Promise.all(Array.from({ length: 4 }, worker))
+  if (!only) {
+    await layerStep('filter sheet', '/orders', page => page.getByRole('button', { name: /^Filtre/ }).first().click(), page => page.getByRole('button', { name: /^Filtrele$/ }).first().click())
+    await layerStep('window', '/orders', page => page.getByRole('button', { name: /Detayları Aç/ }).first().click(), page => page.keyboard.press('Escape'))
+  }
+} finally { await browser.close(); await server.close() }
 console.log(failures.length ? `Smoke failures:\n  ${failures.join('\n  ')}` : `smoke ok: ${routes.length} routes x ${widths.length} widths`)
 process.exitCode = failures.length ? 1 : 0

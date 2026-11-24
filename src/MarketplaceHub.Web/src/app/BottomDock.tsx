@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { Link, useLocation, useNavigate } from 'react-router'
 import { UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
-import { useScrollLock } from '../shared/hooks/useScrollLock'
+import { useLayerOpen, useScrollLock } from '../shared/hooks/useScrollLock'
 
 // The phone's bottom navigation (owner, 24 Nov 2026; bottom-nav.css): one panel, the "Ravencia Dock" (Ana Sayfa,
 // Siparişler, Ara, Ürünler, Menü) and, in its place and shape, the task bar of a page that has actions to offer
@@ -59,6 +59,8 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   onNavigate: (to: string) => void
 }) {
   const { pathname } = useLocation()
+  // A window, sheet or panel is open over the page: the bar steps away (and takes no touch) until it closes. The full-screen menu is no layer.
+  const layerOpen = useLayerOpen()
   const task = taskActive && !menuOpen
   // The strip above the bar exists only while the page has a warning to show; hidden (scrolled down) it takes no height.
   const strip = task && hasInfo
@@ -93,7 +95,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   // The open column: the page's own, or Menü while the menu is open (the one line under the bar's edge slides to it).
   const activeIndex = menuOpen ? dockPages.length : dockPages.findIndex(page => isActive(page.to, page.end))
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
     <div className="rv-dock-panel">
     <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
       <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
@@ -122,7 +124,23 @@ const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
 export type MenuProfile = { name: string; role?: string; email?: string; imageUrl?: string | null }
 
-export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname }: {
+// A layer that closes with the common exit (rv-sink, .18 s: styles/responsive.css) stays mounted that long: `present` is true while it
+// is open or leaving, `closing` only while it leaves. Without motion it goes at once.
+export const layerExitMs = 180 // = --rv-motion-exit (styles/tokens.css)
+export function useExitPresence(open: boolean) {
+  const [present, setPresent] = useState(open)
+  if (open && !present) setPresent(true)
+  useEffect(() => {
+    if (open || !present) return undefined
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const timer = window.setTimeout(() => setPresent(false), still ? 0 : layerExitMs)
+    return () => window.clearTimeout(timer)
+  }, [open, present])
+  return { present, closing: present && !open }
+}
+
+export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname, closing = false }: {
+  closing?: boolean
   groups: MenuGroup[]
   profile: MenuProfile
   onLogout: () => void
@@ -131,7 +149,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   pathname: string
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  useScrollLock(true)
+  useScrollLock(true, false, { layer: false })
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true })
     // Everything behind the layer (the page and its top bar) is out of reach for the keyboard and for screen readers.
@@ -177,7 +195,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     <UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} />
     <span className="rv-fullmenu-profile-copy"><strong>{profile.name}</strong>{profile.role || profile.email ? <small>{profile.role ? <span className="rv-fullmenu-role">{profile.role}</span> : null}{profile.email ? <span className="rv-fullmenu-email">{profile.role ? ' · ' : ''}{profile.email}</span> : null}</small> : null}</span>
   </div>
-  return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
+  return <div ref={rootRef} className={'rv-fullmenu' + (closing ? ' is-closing' : '')} role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1} inert={closing || undefined}>
     <header className="rv-fullmenu-head"><h2>Menü</h2></header>
     <div className="rv-fullmenu-body">
       {groups.map((group, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>

@@ -246,6 +246,8 @@ describe('phone shell (no top bar)', () => {
     server.me = [{ status: 200, body: active }]
     const { host } = mount('/orders')
     await waitFor(() => host.querySelector('.rv-topbar'))
+    // a page long enough to scroll (the bar ignores the very top and bottom, where a rubber band reports positions outside the page)
+    Object.defineProperty(document.documentElement, 'scrollHeight', { value: 5000, configurable: true })
     const scrollTo = (y: number) => { Object.defineProperty(window, 'scrollY', { value: y, configurable: true }); act(() => { window.dispatchEvent(new Event('scroll')) }) }
     scrollTo(300)
     await waitFor(() => host.querySelector('.rv-topbar.is-hidden'))

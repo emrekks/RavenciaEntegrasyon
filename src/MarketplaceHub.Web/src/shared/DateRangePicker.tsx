@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
+import { lockPageScroll } from './hooks/useScrollLock'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
 import { useDismissable } from './hooks/useDismissable'
@@ -56,6 +57,8 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     setOpen(true)
   }
   const showSelectedMonth = useEffectEvent(() => setMonth(firstShownMonth(from, future)))
+  // On a phone the open calendar is a layer over the page like a window: the page holds still and the bottom bar steps away, so the calendar can use the whole screen under its field.
+  useEffect(() => (open && (window.innerWidth || 1024) <= 760 ? lockPageScroll() : undefined), [open])
   useEffect(() => {
     if (!open) return
     showSelectedMonth()

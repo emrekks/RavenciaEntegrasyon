@@ -1226,14 +1226,11 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: normal; gap: 8px; }
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip > :is(.image-preview-card, .media-add-tile) { width: 100%; }
 }
-/* Phones: the variant table's head follows its frame's rounded top corners (its square background hid them). */
+/* Phones: the variant table's head follows its frame's rounded top corners while it sits in the frame; once it is stuck
+   (data-stuck, shared/hooks/useStuckHead) its corners are square at once and nothing shows behind its edges. */
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { border-radius: 11px 11px 0 0; }
-}
-/* Phones: when the top bar slides away on scroll, the variant table head moves up to the very top of the screen. */
-@media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { transition: top .2s ease; }
-  html body .app-shell.stitch-shell:has(.rv-topbar.is-hidden) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head[data-stuck] { border-radius: 0; }
 }
 
 /* Phones: the product title starts closer to its back arrow (24px column, 6px gap), the first step tab reads "Ürün
@@ -1287,10 +1284,10 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page :is(.variant-table-head :is(.variant-bulk-edit-trigger, .variant-header-action), .variant-option-cell > .variant-option-edit-button)::after { content: ""; position: absolute; inset: -7px; }
   :root:root:root body .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-mode-switch > button::after { content: ""; position: absolute; inset: -5px -1px; }
 }
-/* Phones: the stuck variant table head touches the top bar (the bar is 62px high there, while --rv-topbar-height
-   still says 70px and left an 8px band). */
+/* Phones: the stuck variant table head touches the top bar in every frame: its offset is --rv-topbar-offset (app/bottom-nav.css),
+   which slides with the bar on the same time and curve. */
 @media (max-width: 760px) {
-  html body .app-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 61px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { top: var(--rv-topbar-offset); }
 }
 /* Yayınlama: the platform cards sit in one panel; the space between them is the panel's colour, not the page's, so
    no dark lines cross between the cards (owner, 5 Nov 2026: "aradaki koyu çizgi"). */

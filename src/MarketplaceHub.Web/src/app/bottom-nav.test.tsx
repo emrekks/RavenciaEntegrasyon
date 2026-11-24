@@ -6,6 +6,7 @@ import { StickyActionBar } from '../shared/components/StickyActionBar'
 import { Tabs } from '../shared/components/DesignSystem'
 import { DraftSaveBar } from '../shared/draft-edits'
 import { DockContext } from '../shared/components/dock-actions'
+import { lockPageScroll } from '../shared/hooks/useScrollLock'
 import { BackTargetContext, useBackTarget, type BackTarget } from '../shared/components/back-target'
 import { phoneShellMaxWidth, phoneShellQuery } from '../shared/phone-shell'
 import { BottomDock, FullScreenMenu, menuPendingTotal, useBackNavigation, useDockHostState, useMenuHistory, type MenuGroup } from './BottomDock'
@@ -71,7 +72,7 @@ describe('phone bottom navigation (CSS)', () => {
     expect(css).toContain(`@media (max-width: ${phoneShellMaxWidth}px) {`)
     expect(phoneShellQuery).toBe('(max-width: 760px)')
     const phone = css.slice(css.indexOf(`@media (max-width: ${phoneShellMaxWidth}px)`))
-    expect(phone).toContain('> main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }')
+    expect(phone).toContain('> main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom var(--rv-motion-bar) var(--rv-ease-bar); }')
     // The page's own top bar stays on a phone; only its hamburger goes (Menü is in the dock).
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
@@ -85,18 +86,18 @@ describe('phone bottom navigation (CSS)', () => {
     expect(panel).toContain('border-radius: 14px')
     expect(panel).toContain('border: 1px solid var(--rv-color-border)')
     expect(panel).toContain('box-shadow: 0 4px 16px rgb(0 0 0 / 12%)')
-    expect(panel).toContain('color-mix(in srgb, var(--rv-color-surface) 82%, transparent)')
+    expect(panel).toContain('color-mix(in srgb, var(--rv-color-surface) 88%, transparent)')
     expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-panel { width: calc(100% - 24px); }')
-    // Frosted glass under and behind the panel (blurred and faded, its top edge masked), the panel itself 82% surface with its own blur.
-    expect(phone).toContain('backdrop-filter: blur(10px) saturate(1.1)')
-    expect(phone).toContain('mask-image: linear-gradient(to bottom, transparent, #000 20px)')
-    expect(phone).toContain('backdrop-filter: blur(14px)')
+    // Frosted glass under and behind the panel (blurred and faded, its top edge masked), the panel itself 88% surface with its own blur.
+    expect(phone).toContain('backdrop-filter: blur(4px)')
+    expect(phone).toContain('mask-image: linear-gradient(to bottom, transparent, #000 12px)')
+    expect(phone).toContain('backdrop-filter: blur(8px)')
     expect(phone).toContain('@supports not')
     expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 48px/)
     expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 54px; }')
     expect(phone).toContain('.rv-dock-layer[data-rows="2"] .rv-dock-top { height: 29px; }')
     // One sliding line (14 x 2 px, 200 ms) under the open label, the active column in the accent colour with no fill.
-    expect(phone).toMatch(/\.rv-dock-indicator \{[^}]*bottom: 4px;[^}]*width: 20%; height: 2px;[^}]*transform 200ms ease-out/)
+    expect(phone).toMatch(/\.rv-dock-indicator \{[^}]*bottom: 4px;[^}]*width: 20%; height: 2px;[^}]*transform var\(--rv-motion-bar\) var\(--rv-ease-bar\)/)
     expect(phone).toContain('width: 14px; height: 2px')
     expect(phone).toMatch(/\.rv-dock-slot\.is-active \{ color: var\(--rv-color-primary-text\); font-weight: 600; \}/)
     expect(phone).toContain('.rv-dock-slot:active .rv-dock-icon { transform: scale(.94); }')
@@ -105,7 +106,7 @@ describe('phone bottom navigation (CSS)', () => {
     // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
     expect(phone).toContain(".rv-notification-history { top: calc(62px + env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px;")
     expect(phone).toContain("max-height: min(75dvh")
-    expect(phone).toContain('translateY(-28px)')
+    expect(phone).toContain('translate: 0 -28px')
     // Page buttons that are not the primary, the step or the selection chip wait in the Diğer list.
     expect(phone).toContain('.rv-taskbar-group [data-dock-other] { display: none; }')
     // The step names the screen it goes to; the task bar has no Menü button.
@@ -348,6 +349,29 @@ describe('task mode', () => {
       expect(state('Sayfadakileri Seç (20)')).toBe(false)
       expect(state('Kargo')).toBe(true)
     } finally { restore() }
+  })
+
+  it('hides the dock (inert, data-layer) while a window or sheet holds the page lock and brings it back when it closes; the full-screen menu keeps it', () => {
+    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness /></MemoryRouter>)
+    const layer = () => host.querySelector('.rv-dock-layer')!
+    expect(layer().hasAttribute('data-layer')).toBe(false)
+    let release = () => undefined as void
+    act(() => { release = lockPageScroll(true) })
+    expect(layer().getAttribute('data-layer')).toBe('open')
+    expect(layer().hasAttribute('inert')).toBe(true)
+    expect(document.documentElement.hasAttribute('data-rv-layer')).toBe(true)
+    act(() => release())
+    expect(layer().hasAttribute('data-layer')).toBe(false)
+    expect(layer().hasAttribute('inert')).toBe(false)
+    expect(document.documentElement.hasAttribute('data-rv-layer')).toBe(false)
+    click(host.querySelector('button[aria-label="Menü"]'))
+    expect(host.querySelector('.rv-fullmenu')).toBeTruthy()
+    expect(layer().hasAttribute('data-layer')).toBe(false)
+  })
+
+  it('hides the dock under the CSS rule for an open layer, with the reduced-motion exception', () => {
+    expect(css).toContain('.rv-dock-layer[data-layer] { opacity: 0; visibility: hidden; pointer-events: none;')
+    expect(css).toContain('@media (prefers-reduced-motion: reduce) { .rv-dock-layer, .rv-dock-layer[data-layer] { transition: none; } }')
   })
 
   it('keeps the selection chip in the bar whatever the space', () => {

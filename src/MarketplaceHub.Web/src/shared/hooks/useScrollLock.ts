@@ -1,10 +1,23 @@
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
 type MainLockState = { count: number; previousOverflow: string }
-type ScrollLock = { main: HTMLElement | null; root: boolean }
-type LockOptions = { root?: boolean }
+type ScrollLock = { main: HTMLElement | null; root: boolean; layer: boolean }
+// layer: false for a lock that is not a layer over the page (the phone's full-screen menu, which keeps the bottom bar).
+type LockOptions = { root?: boolean; layer?: boolean }
 
 const activeLocks = new Set<ScrollLock>()
+// The phone's bottom bar (dock and task bar) hides while any layer holds a lock: one mark for every window, sheet and panel
+// (see bottom-nav.css, html[data-rv-layer]). Every overlay already takes this one counted lock to hold the page still.
+const layerListeners = new Set<() => void>()
+const layerOpen = () => [...activeLocks].some(lock => lock.layer)
+function syncLayerMark() {
+  if (layerOpen()) document.documentElement.setAttribute('data-rv-layer', ''); else document.documentElement.removeAttribute('data-rv-layer')
+  layerListeners.forEach(listener => listener())
+}
+/** True while a window, sheet or panel (any page lock except the full-screen menu's) is open. */
+export function useLayerOpen() {
+  return useSyncExternalStore(listener => { layerListeners.add(listener); return () => { layerListeners.delete(listener) } }, layerOpen, () => false)
+}
 const mainLockStates = new Map<HTMLElement, MainLockState>()
 let previousBodyOverflow = ''
 let rootLocks = 0
@@ -37,7 +50,7 @@ function unlockRoot() {
   previousRootStyles = null
 }
 
-function acquire(lockMain: boolean, { root = false }: LockOptions = {}) {
+function acquire(lockMain: boolean, { root = false, layer = true }: LockOptions = {}) {
   if (!activeLocks.size) previousBodyOverflow = unlocked(document.body.style.overflow)
 
   const main = lockMain ? document.querySelector<HTMLElement>('.app-shell.stitch-shell > main') : null
@@ -52,9 +65,10 @@ function acquire(lockMain: boolean, { root = false }: LockOptions = {}) {
   }
   if (root) lockRoot()
 
-  const lock = { main, root }
+  const lock = { main, root, layer }
   activeLocks.add(lock)
   document.body.style.overflow = 'hidden'
+  syncLayerMark()
   return () => release(lock)
 }
 
@@ -74,6 +88,7 @@ function release(lock: ScrollLock) {
   if (lock.root) unlockRoot()
 
   if (!activeLocks.size) document.body.style.overflow = previousBodyOverflow
+  syncLayerMark()
 }
 
 /**
@@ -92,6 +107,7 @@ export function releaseOrphanedScrollLock() {
   }
   rootLocks = 0
   previousRootStyles = null
+  syncLayerMark()
 }
 
 /** Locks the page for an overlay that is not a hook user; call the returned function when it closes. */
@@ -103,9 +119,9 @@ export function lockPageScroll(lockMain = false, options?: LockOptions) {
  * Keeps body and the application scroll owner locked until every overlay closes. `root` also holds the document
  * (html) still with no rubber-band scrolling, for a screen that must fit the viewport.
  */
-export function useScrollLock(enabled: boolean, lockMain = false, { root = false }: LockOptions = {}) {
+export function useScrollLock(enabled: boolean, lockMain = false, { root = false, layer = true }: LockOptions = {}) {
   useEffect(() => {
     if (!enabled) return
-    return acquire(lockMain, { root })
-  }, [enabled, lockMain, root])
+    return acquire(lockMain, { root, layer })
+  }, [enabled, lockMain, root, layer])
 }
