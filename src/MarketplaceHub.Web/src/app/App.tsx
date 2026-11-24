@@ -34,6 +34,7 @@ import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
 import { queryKeys } from '../shared/api/query-keys'
 import './bottom-nav.css'
+import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useDockHostState, useMenuHistory, type MenuEntry, type MenuGroup } from './BottomDock'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -134,6 +135,17 @@ function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
+  // Phones (up to 768 px): the dock and the full-screen menu replace the hamburger, the top bar's search and the left drawer.
+  const phone = useMediaQuery('(max-width: 768px)')
+  const dock = useDockHostState(phone)
+  const fullMenu = useMenuHistory()
+  const menuSlotRef = useRef<HTMLButtonElement>(null)
+  const menuWasOpen = useRef(false)
+  // Closing the menu (Esc, back button, Kapat) hands the focus back to the Menü slot that opened it.
+  useEffect(() => {
+    if (menuWasOpen.current && !fullMenu.open && phone) menuSlotRef.current?.focus({ preventScroll: true })
+    menuWasOpen.current = fullMenu.open
+  }, [fullMenu.open, phone])
   const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
   const [notifications, setNotifications] = useState<AppNotification[]>(readNotificationHistory)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -213,12 +225,29 @@ function Shell({ me }: { me: Me }) {
     const accessibleCount = typeof count === 'number' && count > 999 ? '999 üzeri' : count?.toLocaleString('tr-TR')
     const visibleCount = typeof count === 'number' && count > 999 ? '999' : count?.toLocaleString('tr-TR')
     const accessibleLabel = hasCount ? `${label}, ${accessibleCount} ${countNoun}` : label
-    return <NavLink to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className={`nav-count${warnWhenPositive && count! > 0 ? ' is-warn' : ''}`} aria-hidden="true" title={`${accessibleCount} ${countNoun}`}>{visibleCount}</span>}</NavLink>
+    return <NavLink key={to} to={to} end={end} aria-label={accessibleLabel}>{icon(iconName)}<span className="nav-label">{label}</span>{hasCount && <span className={`nav-count${warnWhenPositive && count! > 0 ? ' is-warn' : ''}`} aria-hidden="true" title={`${accessibleCount} ${countNoun}`}>{visibleCount}</span>}</NavLink>
   }
-  const navigationGroups: Array<{ label: string; items: ReactNode[] }> = [
-    { label: 'Ana Menü', items: [item('/dashboard', 'dashboard', 'Genel Bakış', true), item('/products', 'products', 'Ürünler'), item('/orders', 'orders', 'Siparişler', false, orderNavigationCount(orderSummary.data), true, 'bekleyen sipariş'), item('/returns', 'returns', 'İadeler', false, navigationCounts?.pendingReturns, true, 'bekleyen iade'), item('/invoices', 'invoice', 'Faturalar', false, invoiceWorkspaceSummary.data?.dueSoonCount, true, 'faturanın süresi yaklaşıyor', true), item('/questions', 'questions', 'Ürün Soruları', false, questionWaitingSummary.data?.totalCount, true, 'bekleyen soru'), item('/reports', 'chart', 'Raporlar'), item('/promotions', 'promotion', 'Promosyon'), item('/integrations', 'connect', 'Entegrasyonlar'), item('/mappings/categories', 'layers', 'Eşleştirmeler'), item('/jobs', 'jobs', 'İşlem Takibi')] },
+  // The one menu definition: the sidebar, the tablet drawer and the phone's full-screen menu all draw these entries.
+  const menuGroups: MenuGroup[] = [
+    { label: 'Ana Menü', entries: [
+      { to: '/dashboard', icon: 'dashboard', label: 'Genel Bakış', end: true },
+      { to: '/products', icon: 'products', label: 'Ürünler' },
+      { to: '/orders', icon: 'orders', label: 'Siparişler', count: orderNavigationCount(orderSummary.data), showZero: true, noun: 'bekleyen sipariş' },
+      { to: '/returns', icon: 'returns', label: 'İadeler', count: navigationCounts?.pendingReturns, showZero: true, noun: 'bekleyen iade' },
+      { to: '/invoices', icon: 'invoice', label: 'Faturalar', count: invoiceWorkspaceSummary.data?.dueSoonCount, showZero: true, noun: 'faturanın süresi yaklaşıyor', warn: true },
+      { to: '/questions', icon: 'questions', label: 'Ürün Soruları', count: questionWaitingSummary.data?.totalCount, showZero: true, noun: 'bekleyen soru' },
+      { to: '/reports', icon: 'chart', label: 'Raporlar' },
+      { to: '/promotions', icon: 'promotion', label: 'Promosyon' },
+      { to: '/integrations', icon: 'connect', label: 'Entegrasyonlar' },
+      { to: '/mappings/categories', icon: 'layers', label: 'Eşleştirmeler' },
+      { to: '/jobs', icon: 'jobs', label: 'İşlem Takibi' },
+    ] },
   ]
-  const navigation = <>{navigationGroups.map(group => <div className="nav-group" key={group.label}>{group.items}</div>)}</>
+  const settingsEntry: MenuEntry = { to: '/settings', icon: 'settings', label: 'Sistem Ayarları', end: true }
+  const entryItem = (entry: MenuEntry) => item(entry.to, entry.icon, entry.label, entry.end, entry.count, entry.showZero, entry.noun, entry.warn)
+  const navigation = <>{menuGroups.map(group => <div className="nav-group" key={group.label}>{group.entries.map(entryItem)}</div>)}</>
+  // The phone's full-screen menu: the same groups, and the settings page as its own group.
+  const phoneMenuGroups: MenuGroup[] = [...menuGroups, { label: 'Sistem', entries: [settingsEntry] }]
   // Hızlı Arama lists every page of the menu, in the menu's order.
   const quickSearchItems: Array<{ to: string; label: string; description: string; icon: UiIconName }> = [
     { to: '/dashboard', label: 'Genel Bakış', description: 'Operasyon merkezini aç', icon: 'dashboard' },
@@ -234,31 +263,24 @@ function Shell({ me }: { me: Me }) {
     { to: '/jobs', label: 'İşlem Takibi', description: 'Arka plan işleri, loglar ve API sağlığı', icon: 'jobs' },
     { to: '/settings', label: 'Sistem Ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
   ]
-  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
+  return <DockContext.Provider value={dock.host}><div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
       <div className="sidebar-brand-row"><Link className="sidebar-brand-home" to="/dashboard" aria-label="Genel bakışa git"><span className="stitch-brand-mark" aria-hidden="true"><BrandSymbol /></span><span className="brand wordmark"><strong>Ravencia</strong></span></Link><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{navigation}</nav>
-      <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu Kapat" title="Oturumu Kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu Kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
+      <div className="sidebar-side-bottom"><div className="settings-nav">{entryItem(settingsEntry)}<button type="button" className="logout-link" aria-label="Oturumu Kapat" title="Oturumu Kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu Kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
     <main ref={mainRef}>
       <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       {notificationsOpen && createPortal(<><div className="rv-notification-dim" aria-hidden="true" /><div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi">{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { setNotificationsOpen(false); navigate(href) }} onCleared={() => setNotifications([])} /></Suspense> })()}</div></>, document.body)}
       {invitations.data?.length && !invitationsClosed ? <Suspense fallback={null}><WorkspaceInvitationsPrompt invitations={invitations.data} onClose={closeInvitations} onSignOut={() => void logout()} /></Suspense> : null}
       {quickSearchOpen && <RrModal title="Hızlı Arama" size="lg" onClose={() => setQuickSearchOpen(false)}><nav className="rv-command-list" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</nav></RrModal>}
-      <Drawer open={mobileMenuOpen} className="rv-mobile-drawer" title={<BrandWordmark className="rv-drawer-logo" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
+      <Drawer open={mobileMenuOpen && !phone} className="rv-mobile-drawer" title={<BrandWordmark className="rv-drawer-logo" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{entryItem(settingsEntry)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
       <ShellPages me={me} />
     </main>
-    {/* Phone navigation: a bar at the bottom (bottom-nav.css); the sidebar and the hamburger belong to wider screens. */}
-    <nav className="rv-bottom-nav" aria-label="Alt menü">
-      <NavLink className="rv-bottom-nav-home" to="/dashboard" end aria-label="Ana Sayfa"><UiIcon name="dashboard" size={24} /></NavLink>
-      <div className="rv-bottom-nav-bar">
-        <NavLink to="/orders"><UiIcon name="orders" size={22} /><span>Siparişler</span></NavLink>
-        <NavLink to="/products"><UiIcon name="products" size={22} /><span>Ürünler</span></NavLink>
-        <NavLink to="/invoices"><UiIcon name="invoice" size={22} /><span>Faturalar</span></NavLink>
-        <button type="button" aria-haspopup="dialog" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /><span>Menü</span></button>
-      </div>
-    </nav>
-    </div>
+    {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
+    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} storeName={displayName} theme={visualTheme} onToggleTheme={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
+    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups)} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setInfoEl={dock.setInfoEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onSearch={() => setQuickSearchOpen(true)} onNavigate={fullMenu.leaveTo} />
+    </div></DockContext.Provider>
 }
 
 const sessionExpiredNotice = 'Oturumunuzun süresi doldu. Devam etmek için yeniden giriş yapın.'

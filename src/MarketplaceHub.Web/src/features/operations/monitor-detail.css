@@ -34,3 +34,50 @@
 .rr-layer.rr-layer .md-tbl .md-pick { width: 1%; padding-right: 0; }
 .rr-layer.rr-layer .md-act .rr-btn + .rr-btn { margin-left: 8px; }
 .rr-layer.rr-layer .md-error { margin: 0 0 12px; color: var(--rv-color-danger); }
+
+/* Phones (owner, 24 Nov 2026: "Metinleri rahat sığdır"): the title wraps to two lines, Ara and Sebep take the full width, and the
+   table is a stack of cards (no sideways scroll): the product (two lines, whole) with its variant, the barcode, the reason in
+   full, Panel Fiyatı and Teklif Fiyatı side by side with their labels, and the action bottom right. The row is a grid, so a
+   tick box (top left) or a second action can be added to the row without moving the rest. Same for all four windows. */
+@media (max-width: 760px) {
+  .rr-layer.rr-layer .md-modal .rr-m-head h2 { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+  .rr-layer.rr-layer .md-filters { flex-direction: column; align-items: stretch; gap: 10px; }
+  .rr-layer.rr-layer .md-filters .rr-fld, .rr-layer.rr-layer .md-filters .rr-search { flex: none; width: 100%; max-width: none; }
+  .rr-layer.rr-layer .md-wrap { overflow: visible; border: 0; border-radius: 0; }
+  .rr-layer.rr-layer .md-tbl, .rr-layer.rr-layer .md-tbl tbody { display: block; }
+  .rr-layer.rr-layer .md-tbl thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .rr-layer.rr-layer .md-tbl tbody { display: grid; gap: 10px; }
+  .rr-layer.rr-layer .md-tbl tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; }
+  .rr-layer.rr-layer .md-tbl td { display: block; grid-column: 1 / -1; min-width: 0; padding: 0; border: 0; overflow-wrap: anywhere; white-space: normal; }
+  .rr-layer.rr-layer .md-tbl td.md-nowrap, .rr-layer.rr-layer .md-tbl td.md-num { white-space: normal; }
+  .rr-layer.rr-layer .md-prod { max-width: none; }
+  .rr-layer.rr-layer .md-prod b { overflow: visible; text-overflow: clip; white-space: normal; }
+  .rr-layer.rr-layer .md-tbl td.md-act { grid-column: 1 / -1; order: 99; justify-self: end; text-align: right; }
+  /* the product windows: the product first, then the barcode */
+  .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td:nth-child(2) { order: 1; }
+  .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td:nth-child(1) { order: 2; }
+  .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td:nth-child(n+3) { order: 3; }
+  .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td.md-act { order: 99; }
+  /* labelled values */
+  .rr-layer.rr-layer .md-tbl td.md-num { grid-column: auto; }
+  .rr-layer.rr-layer .md-tbl td.md-num::before, .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td.md-nowrap::before, .rr-layer.rr-layer .md-tbl tr:has(.md-num) > td[title]:nth-child(3)::before { display: block; margin-bottom: 1px; color: var(--rr-muted); font-size: 12px; font-weight: 500; }
+  .rr-layer.rr-layer .md-tbl td.md-num:nth-child(4)::before { content: "Panel Fiyatı"; }
+  .rr-layer.rr-layer .md-tbl td.md-num:nth-child(5)::before { content: "Teklif Fiyatı"; }
+  .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td.md-nowrap::before { content: "Tarihten Beri"; }
+  .rr-layer.rr-layer .md-tbl tr:has(.md-num) > td[title]:nth-child(3)::before { content: "Sebep"; }
+}
+/* "Sorun Yok" on phones: the tick box sits top left of the card beside the product, the row's two actions share the
+   bottom line, and the bulk button takes the full width under the filters. The tick box moves every cell one place on,
+   so the order and the labels of the offer row are named for that row here. */
+@media (max-width: 760px) {
+  .rr-layer.rr-layer .md-filters .md-bulk { width: 100%; margin-left: 0; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) { position: relative; padding-left: 40px; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-pick { position: absolute; top: 12px; left: 12px; grid-column: auto; width: auto; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td:nth-child(3) { order: 1; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td:nth-child(2) { order: 2; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td:nth-child(n+4) { order: 3; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-act { order: 99; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td[title]:nth-child(4)::before { content: "Sebep"; display: block; margin-bottom: 1px; color: var(--rr-muted); font-size: 12px; font-weight: 500; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-num:nth-child(5)::before { content: "Panel Fiyatı"; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-num:nth-child(6)::before { content: "Teklif Fiyatı"; }
+}

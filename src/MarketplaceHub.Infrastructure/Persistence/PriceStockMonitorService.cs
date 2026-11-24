@@ -198,18 +198,15 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         var issues = await db.OperationalIssues
             .Where(x => x.TenantId == tenantId && keys.Contains(x.DedupeKey) && x.Status != IssueStatus.Resolved)
             .ToListAsync(cancellationToken);
-        var offers = await db.ChannelOffers.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && ids.Contains(x.VariantId))
-            .Select(x => new { x.VariantId, x.Currency, x.ListPrice, x.SalePrice })
-            .ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var now = timeProvider.GetUtcNow();
         foreach (var issue in issues)
         {
-            var variantId = PriceInventoryOfferIssues.VariantOf(issue.DedupeKey);
-            var offer = variantId is { } id ? offers.GetValueOrDefault(id) : null;
+            var fingerprint = PriceInventoryOfferIssues.VariantOf(issue.DedupeKey) is { } variantId
+                ? (await OfferIssueNoProblem.CurrentAsync(db, tenantId, connectionId, variantId, issue.Code, cancellationToken)).Fingerprint
+                : OfferIssueNoProblem.Fingerprint(issue.Code, null, null, null);
             issue.Status = IssueStatus.Resolved;
             issue.ResolvedAt = now;
-            issue.Summary += OfferIssueNoProblem.Mark(OfferIssueNoProblem.Fingerprint(issue.Code, offer?.Currency, offer?.ListPrice, offer?.SalePrice));
+            issue.Summary += OfferIssueNoProblem.Mark(fingerprint);
             db.AuditLogs.Add(new AuditLog
             {
                 TenantId = tenantId,

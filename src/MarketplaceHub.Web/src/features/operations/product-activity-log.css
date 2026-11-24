@@ -81,12 +81,12 @@
 }
 
 /* Phones: the list is one column that may shrink (a grid track of auto size grew to the widest filter or table
-   content and pushed the cards past the screen); the kind chips stay a sideways slider with Yenile beside it. */
+   content and pushed the cards past the screen). The toolbar is the İşler one (owner, 24 Nov 2026): the kind chips on the
+   first line (a sideways slider), "Sayfa Başına" and Yenile on the line under it. */
 .app-shell.stitch-shell main .jobs-reference-page .psl { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 760px) {
-  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar { flex-direction: row; align-items: center; gap: 8px; }
-  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar > .jobs-reference-status-summary { display: flex; flex: 1 1 0; flex-wrap: nowrap; width: auto; min-width: 0; padding-bottom: 0; overflow: auto hidden; scrollbar-width: none; }
-  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar > .jobs-reference-toolbar-actions { flex: none; width: auto; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .psl > .psl-toolbar > .jobs-reference-toolbar-actions { flex: none; width: 100%; justify-content: space-between; }
 }
 /* Narrow phones: the product column gives up its desktop minimum width; the log switch is two equal columns (label
    cut with an ellipsis only when it cannot fit) and the page's tab strip fits the screen instead of being cut. */

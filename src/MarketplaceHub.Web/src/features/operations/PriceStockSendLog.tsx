@@ -7,7 +7,9 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
-import { RrIcon, RrLogo } from '../../shared/ui/rr-components'
+import { RrIcon, RrLogo, RrPageSize } from '../../shared/ui/rr-components'
+import { storedPageSize } from '../../shared/sticky-sort'
+import { logPageSizes, logDefaultPageSize } from './log-page-sizes'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { jobTimeRangeOptions } from './job-list-query'
 import { JobStateGlyph } from './job-state-glyph'
@@ -80,6 +82,7 @@ export type KeptSendLogView = { filters: SendLogFilters; searchText: string; old
 export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platformOptions: string[]; onOpenJob: (jobId: string) => void; kept?: { current: KeptSendLogView | null } }) {
   const [filters, setFilters] = useState<SendLogFilters>(() => kept?.current?.filters ?? emptySendLogFilters)
   const [searchText, setSearchText] = useState(() => kept?.current?.searchText ?? '')
+  const [pageSize, setPageSize] = useState(() => storedPageSize('price-stock-send-log', logPageSizes, logDefaultPageSize))
   // Zaman is the one order the server pages by: newest first, or oldest first.
   const [oldestFirst, setOldestFirst] = useState(() => kept?.current?.oldestFirst ?? false)
   useEffect(() => { if (kept) kept.current = { filters, searchText, oldestFirst } }, [kept, filters, searchText, oldestFirst])
@@ -104,8 +107,8 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
   const summary = useMemo(() => counts.data ? sendLogSummaryCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
-    queryKey: queryKeys.priceStockSendLog(filters, oldestFirst),
-    queryFn: context => hubPoll<PriceStockSendLogPage>(`/price-stock-send-log${sendLogQueryString(filters, context.pageParam, undefined, oldestFirst)}`),
+    queryKey: queryKeys.priceStockSendLog(filters, oldestFirst, pageSize),
+    queryFn: context => hubPoll<PriceStockSendLogPage>(`/price-stock-send-log${sendLogQueryString(filters, context.pageParam, pageSize, oldestFirst)}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -138,6 +141,7 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
         </span>)}
       </div>
       <div className="jobs-reference-toolbar-actions">
+        <span className="rr ops-psize"><RrPageSize remember="price-stock-send-log" value={pageSize} sizes={[...logPageSizes]} onChange={setPageSize} /></span>
         <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Gönderim kayıtlarını yenile" onClick={() => { void list.refetch(); void counts.refetch() }}><UiIcon name="refresh" size={16} /></button>
       </div>
     </div>

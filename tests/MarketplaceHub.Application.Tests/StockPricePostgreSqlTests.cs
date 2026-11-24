@@ -299,6 +299,61 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.DoesNotContain("Sorun Yok", reopened.Summary, StringComparison.Ordinal);
     }
 
+    // Review of 24 Nov 2026: a barcode refusal is marked on the barcode the check looked at, not only on the prices. A new
+    // barcode that is still refused opens the row again; the same barcode keeps it closed.
+    [PostgreSqlFact]
+    public async Task ABarcodeRefusalMarkedNoProblem_OpensAgainWhenTheBarcodeChangesAndIsStillRefused()
+    {
+        var tenant = NewTenant("offer-no-problem-barcode");
+        var pazarama = NewConnection(tenant, "PAZARAMA", writesEnabled: true);
+        var (product, invalid) = NewVariant(tenant, "NOB-1", "8690000000080");
+        var valid = NewVariant(tenant, "NOB-2", "8690000000097", product.Id).Variant;
+        var linkId = Guid.CreateVersion7();
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pazarama);
+            seed.ConnectionSyncPolicies.AddRange(AutomaticWritePolicies(tenant, pazarama));
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(invalid, valid);
+            seed.InventoryItems.AddRange(NewInventory(tenant, invalid, 4m), NewInventory(tenant, valid, 6m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, pazarama, invalid), NewOffer(tenant, pazarama, valid));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = linkId, TenantId = tenant.Id, ConnectionId = pazarama.Id, VariantId = invalid.Id, ExternalId = new string('A', 101) },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pazarama.Id, VariantId = valid.Id, ExternalId = "NOB-2" });
+            await seed.SaveChangesAsync();
+        }
+        var key = $"stock-projection-offer-invalid:{pazarama.Id:N}:{invalid.Id:N}";
+        async Task ReconcileAsync()
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).ExecuteDeleteAsync();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, WritesOnConfiguration(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, pazarama.Id, MarketplaceJobTypes.StockReconciliation, "{\"lookbackHours\":1}", "offer-no-problem-barcode", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+        async Task<OperationalIssue> IssueAsync()
+        {
+            await using var db = fixture.CreateContext();
+            return await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == key);
+        }
+
+        await ReconcileAsync();
+        Assert.Equal(("PAZARAMA_BARCODE_INVALID", IssueStatus.Open), ((await IssueAsync()).Code, (await IssueAsync()).Status));
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(1, (await new PriceStockMonitorService(db, WritesOnConfiguration(), fixture.TimeProvider).MarkOffersNoProblemAsync(tenant.Id, pazarama.Id, [invalid.Id], Guid.CreateVersion7(), "mark", CancellationToken.None)).Value!.Marked);
+
+        await ReconcileAsync();
+        Assert.Equal(IssueStatus.Resolved, (await IssueAsync()).Status);
+
+        // Another barcode, still too long: the prices did not change, the row comes back.
+        await using (var db = fixture.CreateContext())
+            await db.MarketplaceVariantLinks.Where(x => x.Id == linkId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalId, new string('B', 101)));
+        await ReconcileAsync();
+        var reopened = await IssueAsync();
+        Assert.Equal(("PAZARAMA_BARCODE_INVALID", IssueStatus.Open), (reopened.Code, reopened.Status));
+    }
+
     // The retention keeps a "Sorun Yok" mark while its offer exists (also after a month with the writes off), and removes
     // it once the offer is gone, like any resolved issue.
     [PostgreSqlFact]

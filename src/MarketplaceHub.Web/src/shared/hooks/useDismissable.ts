@@ -15,6 +15,16 @@ const openEntries = new Set<Entry>()
 
 const contains = (entry: Entry, node: Node | null) => !!node && (entry.refs.some(ref => ref.current?.contains(node)) || !!entry.isInside?.(node))
 
+let swallowing = false
+function swallowNextClick() {
+  if (swallowing) return
+  swallowing = true
+  const stop = () => { swallowing = false; window.clearTimeout(timer); document.removeEventListener('click', block, true) }
+  const block = (event: MouseEvent) => { event.stopPropagation(); event.preventDefault(); stop() }
+  const timer = window.setTimeout(stop, 600)
+  document.addEventListener('click', block, true)
+}
+
 /** Closes every open popover (the app calls it when the route changes). */
 export function closeAllDismissables(reason: DismissReason = 'route') {
   for (const entry of [...openEntries]) entry.close(reason)
@@ -72,6 +82,9 @@ export function useDismissable(open: boolean, refs: ReadonlyArray<RefObject<Elem
       // A press inside a popover nested in this one (portalled elsewhere) counts as inside.
       for (const other of openEntries) if (other !== entry && contains(other, target) && other.refs.some(ref => contains(entry, ref.current))) return
       entry.close('outside')
+      // A finger press closes on pointerdown, so the layer (and its dim) is already gone when the tap's click arrives: it would
+      // land on whatever lies under the finger (a top-bar button). The tap that closes only closes.
+      if (event instanceof PointerEvent && (event.pointerType === 'touch' || event.pointerType === 'pen')) swallowNextClick()
     }
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return

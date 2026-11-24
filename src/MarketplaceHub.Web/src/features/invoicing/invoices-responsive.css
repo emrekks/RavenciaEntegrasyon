@@ -323,6 +323,9 @@
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .invoice-order-number .order-number-copy { width: 22px; height: 22px; min-height: 22px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div:last-child > small { grid-column: 1 / -1 !important; justify-self: start !important; text-align: left !important; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div:last-child > small::before { content: "Sipariş Tarihi: "; }
+  /* the package number sits under the order date, as on the Siparişler and İadeler cards (phones only) */
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div:last-child > small.invoice-package-no { display: block; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > div:last-child > small.invoice-package-no::before { content: "Paket No: "; }
 }
 
 /* Wider screens: like the order table, the invoice table keeps a readable width and scrolls sideways inside its panel,
@@ -382,8 +385,9 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row { -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select:checked::after { left: 6.5px; top: 3px; width: 4.5px; height: 9px; border-color: #fff; opacity: 1; }
 }
-/* Very narrow phones (320-350 px): a narrower logo and a one-line number keep [dot][logo][number + copy] on one row. */
-@media (max-width: 350px) {
+/* Phones: as on Siparişler and İadeler the number sits 8 px right of the logo (a natural-width mark, not the 112 px desktop box)
+   on one line [dot][logo][number + copy]. */
+@media (max-width: 760px) {
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { column-gap: 8px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .order-platform-logo { min-width: 0 !important; width: auto !important; max-width: 80px !important; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .order-reference-platform { min-width: 0; width: auto; }
@@ -405,3 +409,5 @@ html[data-theme="dark"] .app-shell.stitch-shell main .reference-invoices-page .i
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reference-invoices-page .rr.invoice-filter-scope { position: relative; z-index: 80; }
 }
+
+.invoice-reference-order small.invoice-package-no { display: none; }

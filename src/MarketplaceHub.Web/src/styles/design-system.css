@@ -1372,7 +1372,7 @@
   .variant-table-toolbar-actions > *, .product-submit-actions > * { flex: 1; }
   .publish-platform-facts { grid-template-columns: 1fr; gap: var(--rv-space-3); }
   .product-submit-sticky { padding: var(--rv-space-4); }
-  .order-pagination { align-items: flex-start; flex-direction: column; }
+  .order-pagination { align-items: center; flex-direction: row; }
   .sessions li { grid-template-columns: 32px minmax(0, 1fr); }
   .sessions li > :last-child { grid-column: 2; justify-self: start; }
   .workspace-modal-backdrop { padding: var(--rv-space-2); }

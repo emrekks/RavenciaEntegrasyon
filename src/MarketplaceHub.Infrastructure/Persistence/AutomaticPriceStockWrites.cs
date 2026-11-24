@@ -36,8 +36,47 @@ internal static class OfferIssueNoProblem
     public const string AuditAction = "OFFER_ISSUE_MARKED_NO_PROBLEM";
     public const string MarkStart = " · Sorun Yok olarak işaretlendi [değerler: ";
 
-    public static string Fingerprint(string code, string? currency, decimal? listPrice, decimal? salePrice) =>
-        TextValues.Sha256Hex($"{code}|{currency?.Trim().ToUpperInvariant() ?? "-"}|{Price(listPrice)}|{Price(salePrice)}")[..16];
+    // codes: for a reason other than the price check, the marketplace codes that check looked at (CheckedCodesAsync).
+    public static string Fingerprint(string code, string? currency, decimal? listPrice, decimal? salePrice, string? codes = null) =>
+        TextValues.Sha256Hex($"{code}|{currency?.Trim().ToUpperInvariant() ?? "-"}|{Price(listPrice)}|{Price(salePrice)}{(codes is null ? "" : "|" + codes)}")[..16];
+
+    // The fingerprint of the values the send judges now for this offer and reason; offerFound is false without an offer row.
+    public static async Task<(string Fingerprint, bool OfferFound)> CurrentAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
+    {
+        var offer = await db.ChannelOffers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
+            .Select(x => new { x.Currency, x.ListPrice, x.SalePrice })
+            .FirstOrDefaultAsync(cancellationToken);
+        var codes = await CheckedCodesAsync(db, tenantId, connectionId, variantId, code, cancellationToken);
+        return (Fingerprint(code, offer?.Currency, offer?.ListPrice, offer?.SalePrice, codes), offer is not null);
+    }
+
+    // Review of 24 Nov 2026: the link and barcode checks judge codes, not prices. HEPSIBURADA_LISTING_LINK_REQUIRED looks at
+    // the merchant SKU and hbSku (the variant link's codes, the panel SKU, the listing row's codes); PAZARAMA_BARCODE_INVALID
+    // at the barcode the link holds. Their mark keeps those, so a changed code that is still refused opens it again.
+    // Null for the price check (its fingerprint stays the prices alone).
+    private static async Task<string?> CheckedCodesAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
+    {
+        if (code == PriceStockOfferIssueCodes.ChannelOfferInvalid) return null;
+        var link = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
+            .OrderBy(x => x.Id)
+            .Select(x => new { x.ExternalId, x.ExternalSku, x.ExternalBarcode })
+            .FirstOrDefaultAsync(cancellationToken);
+        var values = new List<string?> { link?.ExternalId, link?.ExternalSku, link?.ExternalBarcode };
+        if (code == PriceStockOfferIssueCodes.HepsiburadaListingLinkRequired)
+        {
+            values.Add(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variantId).Select(x => x.Sku).FirstOrDefaultAsync(cancellationToken));
+            var listing = await (from profile in db.ChannelListingProfiles.AsNoTracking()
+                                 join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId }
+                                 where profile.TenantId == tenantId && profile.ConnectionId == connectionId && listingVariant.VariantId == variantId
+                                 orderby listingVariant.Id
+                                 select new { listingVariant.ExternalSku, listingVariant.ExternalBarcode }).FirstOrDefaultAsync(cancellationToken);
+            values.Add(listing?.ExternalSku);
+            values.Add(listing?.ExternalBarcode);
+        }
+        return string.Join("|", values.Select(value => value?.Trim() ?? "-"));
+    }
 
     private static string Price(decimal? value) => value?.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) ?? "-";
 
@@ -56,12 +95,9 @@ internal static class OfferIssueNoProblem
     // Whether the owner marked this resolved issue "Sorun Yok" on the very values the send refuses now.
     public static async Task<bool> StillMarkedAsync(AppDbContext db, OperationalIssue issue, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
     {
-        if (issue.Status != IssueStatus.Resolved || FingerprintOf(issue.Summary) is not { } marked) return false;
-        var offer = await db.ChannelOffers.AsNoTracking()
-            .Where(x => x.TenantId == issue.TenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
-            .Select(x => new { x.Currency, x.ListPrice, x.SalePrice })
-            .FirstOrDefaultAsync(cancellationToken);
-        return offer is not null && marked == Fingerprint(code, offer.Currency, offer.ListPrice, offer.SalePrice);
+        if (issue.Status != IssueStatus.Resolved || issue.TenantId is not { } tenantId || FingerprintOf(issue.Summary) is not { } marked) return false;
+        var (current, offerFound) = await CurrentAsync(db, tenantId, connectionId, variantId, code, cancellationToken);
+        return offerFound && marked == current;
     }
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useStuckBottom } from './useStuckBottom'
+import { DockActions, useDockHost, type DockInfo } from './dock-actions'
 import './sticky-action-bar.css'
 
 const exitMs = 160
@@ -8,11 +9,17 @@ const exitMs = 160
 // gap (rows never scroll by under it) and stays in the page flow, so at the end of the list it sits after the last
 // row instead of covering it. It slides in when it opens and out when it closes, showing what it showed last while
 // it leaves (a cleared selection does not flash "0 seçildi").
-export function StickyActionBar({ open = true, label, className, children }: { open?: boolean; label: string; className?: string; children: ReactNode }) {
+// On a phone the bar is not drawn in the page: its buttons go to the dock's task bar (dock-actions.tsx) and `info` (the
+// status: a chip or text on the left, a short summary on the right) to the strip above it. `dock={false}` keeps a bar
+// that holds text boxes in the page (sticky, above the dock). `lead` is the status drawn inside the bar on wider screens.
+export function StickyActionBar({ open = true, label, className, info, lead, dock = true, children }: { open?: boolean; label: string; className?: string; info?: DockInfo; lead?: ReactNode; dock?: boolean; children: ReactNode }) {
+  const host = useDockHost()
+  const inDock = Boolean(host?.phone) && dock
   const [present, setPresent] = useState(open)
   if (open && !present) setPresent(true)
-  const lastChildren = useRef<ReactNode>(children)
-  useEffect(() => { if (open) lastChildren.current = children })
+  const content = <>{lead}{children}</>
+  const lastChildren = useRef<ReactNode>(content)
+  useEffect(() => { if (open) lastChildren.current = content })
   useEffect(() => {
     if (open || !present) return undefined
     const timer = window.setTimeout(() => setPresent(false), exitMs)
@@ -22,6 +29,7 @@ export function StickyActionBar({ open = true, label, className, children }: { o
   // false once the page is scrolled to its end and the bar rests under the last card (bottom corners round like the
   // card's). data-docked is its opposite: the card above merges with a resting bar.
   const [barRef, stuck] = useStuckBottom<HTMLDivElement>()
+  if (inDock) return open ? <DockActions label={label} info={info ?? (lead ? { start: lead } : undefined)}>{children}</DockActions> : null
   if (!open && !present) return null
-  return <div ref={barRef} data-stuck={String(stuck)} data-docked={String(!stuck)} className={`rv-action-bar${open ? '' : ' is-leaving'}${className ? ` ${className}` : ''}`} role="group" aria-label={label} inert={!open || undefined}>{open ? children : lastChildren.current}</div>
+  return <div ref={barRef} data-stuck={String(stuck)} data-docked={String(!stuck)} data-dock={dock ? undefined : 'inline'} className={`rv-action-bar${open ? '' : ' is-leaving'}${className ? ` ${className}` : ''}`} role="group" aria-label={label} inert={!open || undefined}>{open ? content : lastChildren.current}</div>
 }
