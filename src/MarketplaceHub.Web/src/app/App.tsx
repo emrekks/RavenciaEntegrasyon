@@ -262,7 +262,9 @@ function Shell({ me }: { me: Me }) {
       window.clearTimeout(wait)
       current = heading
       if (!heading) { setTitleShown(false); wait = window.setTimeout(() => setTitleShown(true), 700); return }
-      observer = new IntersectionObserver(([entry]) => setTitleShown(!entry.isIntersecting), { rootMargin: '-56px 0px 0px 0px' })
+      // The bar's own height (it grows with the safe area): any part of the heading below it counts as seen.
+      const barHeight = document.querySelector('.rv-phonebar')?.getBoundingClientRect().height ?? 56
+      observer = new IntersectionObserver(([entry]) => setTitleShown(!entry.isIntersecting), { rootMargin: '-' + Math.round(barHeight) + 'px 0px 0px 0px' })
       observer.observe(heading)
     }
     const main = document.querySelector('main')

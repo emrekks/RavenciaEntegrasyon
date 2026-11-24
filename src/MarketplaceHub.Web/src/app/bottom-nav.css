@@ -41,7 +41,8 @@
   /* The panel: top row (tabs or status strip) over the bottom row (targets or the task bar). */
   .rv-dock-layer { position: fixed; right: 12px; bottom: var(--rv-dock-bottom); left: 12px; z-index: 87; box-sizing: border-box; display: flex; flex-direction: column; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 30%); }
   /* The gap under the panel (8 px and the safe area) is the page colour, so no page text reads there. */
-  .rv-dock-layer::after { content: ""; position: absolute; right: -12px; bottom: calc(-1 * var(--rv-dock-bottom)); left: -12px; z-index: -1; height: var(--rv-dock-bottom); background: var(--rv-color-bg); pointer-events: none; }
+  /* (offsets are from the padding box: 1 px more than the 12 px side and the gap below, for the border) */
+  .rv-dock-layer::after { content: ""; position: absolute; right: -13px; bottom: calc(-1px - var(--rv-dock-bottom)); left: -13px; z-index: -1; height: calc(var(--rv-dock-bottom) + 1px); background: var(--rv-color-bg); pointer-events: none; }
   .rv-dock-top { position: relative; display: block; box-sizing: border-box; height: 0; overflow: hidden; border-radius: 13px 13px 0 0; transition: height 180ms ease; }
   .rv-dock-bottom { position: relative; flex: none; height: 52px; }
   .rv-dock, .rv-taskbar { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; transition: opacity 180ms ease, visibility 180ms; }
@@ -66,8 +67,8 @@
   .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
   .rv-taskbar-group > div:not([role="group"]) { display: contents; }
   .rv-taskbar-group :is(button, a) { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; min-height: 0; margin: 0; padding: 0 14px; border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
-  /* The primary keeps its full words as far as the row allows; a long one ends in an ellipsis rather than pushing the other controls out. */
-  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { display: block; flex: 1 1 auto; min-width: 96px; padding: 0 12px; overflow: hidden; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; line-height: 38px; text-overflow: ellipsis; }
+  /* The primary action's label is never cut: it takes what it needs, the chip and the step give way first (below). */
+  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 0 auto; padding: 0 12px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
   .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) :is(svg, .rr-bulk-badge) { display: none; }
   .rv-taskbar-group :is(button, a):disabled { opacity: .5; cursor: default; }
   .rv-taskbar-group :is(.rr-danger, .is-danger) { color: var(--rv-color-danger); }
@@ -78,15 +79,27 @@
   .rv-taskbar-group .rr-lbl-short { display: inline; }
   .rv-taskbar-group .rr-bulk-badge { display: none; }
   /* The step to the next screen: "İleri" and its arrow, whatever the page called it. */
-  .rv-taskbar-group [data-dock-step] { width: auto; padding: 0 12px; }
+  .rv-taskbar-group [data-dock-step] { flex: 0 1 auto; width: auto; padding: 0 12px; }
   .rv-taskbar-group [data-dock-step] > span { display: none; }
   .rv-taskbar-group [data-dock-step]::before { content: "İleri"; }
   /* The selection chip: "3 Seçili" and its cross, left of the primary button. */
-  .rv-taskbar-group [data-dock-clear] { width: auto; padding: 0 10px 0 12px; font-size: 0; }
+  .rv-taskbar-group [data-dock-clear] { flex: 0 1 auto; width: auto; min-width: 0; padding: 0 10px 0 12px; font-size: 0; }
   .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count) " Seçili"; font-size: 13px; }
   .rv-taskbar-group [data-dock-clear] > span { display: none; }
   .rv-taskbar-group [data-dock-clear] > svg { width: 14px; height: 14px; }
   .rv-taskbar-group [role="group"]:not(:has(button:not([data-dock-other]), a:not([data-dock-other]))) { display: none; }
+  /* Narrow phones: the selection chip is the count and its cross, the row is tighter; narrower still, İleri is only its arrow. */
+  @media (max-width: 400px) {
+    .rv-taskbar { gap: 6px; padding: 0 6px; }
+    .rv-taskbar-actions, .rv-taskbar-group { gap: 6px; }
+    .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count); }
+    .rv-taskbar-group [data-dock-clear] { padding: 0 8px 0 10px; }
+    .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { padding: 0 10px; font-size: 12.5px; }
+  }
+  @media (max-width: 370px) {
+    .rv-taskbar-group [data-dock-step]::before { content: none; }
+    .rv-taskbar-group [data-dock-step] { width: 40px; padding: 0; }
+  }
   /* Diğer: the other actions in a small list right above the bar, 44 px rows. */
   .rv-taskbar-more { position: relative; flex: none; }
   .rv-taskbar-more-button { display: grid; place-items: center; box-sizing: border-box; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; cursor: pointer; }
