@@ -11,6 +11,7 @@
   /* Top bar: 36 px controls like the desktop bar instead of the 44 px phone targets. */
   html body .rv-topbar :is(.rv-mobile-menu-toggle, .rv-icon-button, .rv-topbar-theme, .rv-topbar-search, .rv-topbar-notification-trigger) { min-width: 36px; height: 36px; min-height: 0; }
   html body .rv-topbar :is(.rv-mobile-menu-toggle, .rv-topbar-search.rv-topbar-search-icon, .rv-topbar-notification-trigger) { width: 36px; padding-inline: 0; }
+  html body .rv-topbar .rv-topbar-theme { white-space: nowrap; }
 
   /* Windows are centred dialogs with the page gutter (24 px) around them; the phone bottom sheets stay on phones. */
   html body :is(.rv-overlay, .workspace-modal-backdrop) { padding: 24px; }
@@ -19,6 +20,11 @@
   html body .rr-layer.rr-layer .rr-modal { max-height: calc(100dvh - 48px); }
   /* The window's close cross is a 36 px touch target. */
   html body .rr-layer.rr-layer .rr-m-head .rr-icon-btn { width: 36px; height: 36px; min-height: 0; }
+}
+/* Tablets in portrait: the theme button is the icon alone (as on phones), so the breadcrumb is not cut and the label never wraps. */
+@media (min-width: 761px) and (max-width: 899px) {
+  html body .rv-topbar .rv-topbar-theme { width: 36px; min-width: 36px; justify-content: center; padding-inline: 0; }
+  html body .rv-topbar .rv-topbar-theme > span { display: none; }
 }
 
 /* ---------- Genel Bakış ---------- */

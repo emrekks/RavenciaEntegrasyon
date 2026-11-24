@@ -197,7 +197,7 @@ describe('irreversible work needs no re-authentication', () => {
 })
 
 describe('phone shell (no top bar)', () => {
-  const phoneQuery = (query: string) => query.includes('max-width: 768px') || query.includes('prefers-reduced-motion: reduce')
+  const phoneQuery = (query: string) => query.includes('max-width: 760px') || query.includes('prefers-reduced-motion: reduce')
   const stubPhone = () => vi.stubGlobal('matchMedia', (query: string) => ({ matches: phoneQuery(query), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
   afterEach(() => { try { localStorage.clear() } catch { /* nothing */ } })
 

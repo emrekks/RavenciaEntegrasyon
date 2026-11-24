@@ -329,6 +329,46 @@ const securitySessions = [
   { id: 'ses-05', state: 'REVOKED', current: false, issuedAt: '2026-10-15T09:20:00Z', lastSeenAt: '2026-10-15T12:03:00Z', expiresAt: '2026-10-15T20:03:00Z' },
 ]
 
+
+// ---------------------------------------------------------------------------------------- settings (the tabs after Güvenlik)
+
+const alertEmail = { senderAddress: 'uyari@ravencia.example', recipients: ['ayse@ravencia.com', 'depo@ravencia.com'], appPasswordSaved: true, updatedAt: '2026-10-12T09:30:00Z', version: 3 }
+const tenantUsers = {
+  currentUserId: 'u1', currentRole: 'OWNER',
+  items: [
+    { id: 'u1', displayName: 'Ayşe Yılmaz', email: 'ayse@ravencia.com', role: 'OWNER', active: true, lockedOut: false, mfaEnabled: true, passwordChangePending: false, lastLoginAt: '2026-10-20T05:58:00Z', createdAt: '2026-01-05T08:00:00Z', openSessions: 3, self: true },
+    { id: 'u2', displayName: 'Mehmet Kara', email: 'depo@ravencia.com', role: 'OPERATOR', active: true, lockedOut: false, mfaEnabled: false, passwordChangePending: false, lastLoginAt: '2026-10-19T14:10:00Z', createdAt: '2026-03-14T10:20:00Z', openSessions: 1, self: false },
+    { id: 'u3', displayName: 'Zeynep Aksoy', email: 'muhasebe@ravencia.com', role: 'ADMIN', active: false, lockedOut: false, mfaEnabled: true, passwordChangePending: false, lastLoginAt: '2026-09-02T09:00:00Z', createdAt: '2026-04-01T11:00:00Z', openSessions: 0, self: false },
+  ],
+  invitations: [{ id: 'inv-u1', displayName: 'Burak Şen', email: 'burak@ravencia.example', role: 'OPERATOR', invitedAt: '2026-10-18T10:00:00Z', expiresAt: '2026-10-25T10:00:00Z', expired: false }],
+}
+const resetGroup = (key, label, description, section, count, requires = []) => ({ key, label, description, section, requires, count })
+const factoryReset = {
+  groups: [
+    resetGroup('orders', 'Siparişler', 'Siparişler, paketler ve sipariş satırları.', 'Satış ve Faturalar', 1240),
+    resetGroup('invoices', 'Faturalar', 'Fatura kayıtları ve belgeleri.', 'Satış ve Faturalar', 986, ['orders']),
+    resetGroup('products', 'Ürünler', 'Ürünler, varyantlar ve görseller.', 'Katalog', 212),
+    resetGroup('categories', 'Kategoriler', 'Panel kategorileri ve markalar.', 'Katalog', 41),
+    resetGroup('offers', 'Pazaryeri Teklifleri', 'Pazaryeri bağlantıları ve fiyat kayıtları.', 'Pazaryeri Kayıtları', 1460),
+    resetGroup('jobs', 'İşler ve Loglar', 'Arka plan işleri, loglar ve bildirimler.', 'Sistem Kayıtları', 18420),
+  ],
+  total: 22359, steps: ['Veriler yedeklenir', 'Seçilen kayıtlar silinir', 'Sayımlar yenilenir'], kept: ['Kullanıcılar ve oturumlar', 'Pazaryeri anahtarları', 'Sistem ayarları'],
+  confirmationWord: 'TAMAMEN SIFIRLA', partialConfirmationWord: 'SIFIRLA', job: null,
+}
+const offsiteBackup = {
+  enabled: true, ageRecipient: null, folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 6, clientId: null, clientSecretSaved: false, redirectUri: 'https://panel.ravencia.example/settings/google-drive-callback',
+  scopes: 'https://www.googleapis.com/auth/drive.file', connected: false, account: null, connectedAt: null, authorizationInvalid: false, authorizationError: null, folderId: null, lastAttemptAt: null, lastSuccessAt: null,
+  lastSet: null, lastSize: null, lastError: null, lastErrorAt: null, consecutiveFailures: 0, requestedAt: null, runningSince: null, nextRunAt: null, remoteCopies: null, updatedAt: null, version: 1,
+}
+const aiSettings = {
+  apiKeySaved: true, defaultModel: 'claude-sonnet-4-5', updatedAt: '2026-10-10T12:00:00Z', version: 2,
+  skills: [
+    { key: 'product-copy', title: 'Ürün Açıklaması', description: 'Ürün başlığı ve açıklamasını pazaryeri kurallarına göre yazar.', bundleHash: 'a1b2c3', uploaded: { skillId: 'skill_01', version: '1', uploadedAt: '2026-10-10T12:00:00Z', bundleHash: 'a1b2c3', source: 'PANEL', fileName: null, name: 'Ürün Açıklaması' }, upToDate: true },
+    { key: 'size-chart', title: 'Beden Tablosu', description: 'Ürün ölçülerinden beden tablosu görseli hazırlar.', bundleHash: 'd4e5f6', uploaded: null, upToDate: false },
+  ],
+}
+const aiUsage = { items: [{ id: 'ai-1', createdAt: '2026-10-19T10:12:00Z', feature: 'product-copy', featureLabel: 'Ürün Açıklaması', userName: 'Ayşe Yılmaz', subjectLabel: 'Kadın Kemerli Trençkot', model: 'claude-sonnet-4-5', inputTokens: 1420, outputTokens: 380, costUsd: 0.0099, status: 'OK', error: null, durationMs: 4200 }] }
+
 export const backOffice = [
   // Faturalar
   ['^/invoice-workspace/page$', invoiceWorkspacePage],
@@ -340,10 +380,17 @@ export const backOffice = [
   ['GET /questions/sync-state', questionSyncStates],
   ['POST /questions/sync', { jobs: ['job-question-sync-01', 'job-question-sync-02'], queuedConnections: 4 }],
   ['GET /question-templates', questionTemplates],
+  ['^/questions/([^/]+)/customer-history$', []],
   ['^/questions/(q-[^/]+)$', ({ match }) => questions.find(item => item.id === match[1]) ?? questions[0]],
   // Sistem Ayarları
   ['GET /settings/appearance', appearanceSettings],
   ['GET /settings/shipping-label', shippingLabelSettings],
   ['GET /auth/security-status', { totpState: 'ENABLED', recoveryCodesRemaining: 7 }],
   ['GET /auth/sessions', securitySessions],
+  ['GET /settings/alert-email', alertEmail],
+  ['GET /settings/users', tenantUsers],
+  ['GET /settings/factory-reset', factoryReset],
+  ['GET /settings/offsite-backup', offsiteBackup],
+  ['GET /settings/ai/usage', aiUsage],
+  ['GET /settings/ai', aiSettings],
 ]

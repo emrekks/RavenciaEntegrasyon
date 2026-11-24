@@ -19,32 +19,19 @@ export const connections = [
   connection('c-ef', 'TRENDYOL_EFATURAM', 'Trendyol E-Faturam', '784512', { apiVersion: 'v1', invoiceCreationEnabled: false }),
 ]
 
-// Same shape DashboardPage, OrdersPage and the shell read under the one ['dashboard-bootstrap'] query key.
+// GET /dashboard/bootstrap (DashboardBootstrapView): DashboardPage, OrdersPage and the shell read it under the one
+// ['dashboard-bootstrap'] query key. Counts per store are keyed by connection id.
+const salesConnections = connections.filter(item => item.platformCode !== 'TRENDYOL_EFATURAM')
 export const dashboardBootstrap = {
   metrics: {
-    pendingOrders: orderSummary.new + orderSummary.processing, newAndProcessingOrders: orderSummary.new + orderSummary.processing,
-    lateOrders: 1, todayOrders: 18, todayProductQuantity: 26, monthOrders: 412, monthProductQuantity: 588,
-    pendingReturns: 3, dueSoonInvoices: 2, lowStockProducts: 42, activeConnections: 5,
-    pendingByPlatform: { TRENDYOL: 2, HEPSIBURADA: 1, SHOPIFY: 1 },
-    lateByPlatform: { TRENDYOL: 1 },
-    pendingReturnsByPlatform: { TRENDYOL: 2, HEPSIBURADA: 1 },
-    oldestQueuedJobAt: ist('2026-10-20 09:21'), lastVerifiedSynchronizationAt: ist('2026-10-20 09:24'),
-    deadJobCount: 2, manualReviewJobCount: 1, recentJobCount: 1846, recentRateLimitJobCount: 12, oldestStockObservationAt: ist('2026-10-20 08:55')
+    pendingOrders: orderSummary.new + orderSummary.processing, lateOrders: 1, pendingReturns: 3,
+    pendingByConnection: { 'c-ty': 2, 'c-hb': 1, 'c-sh': 1 },
+    lateByConnection: { 'c-ty': 1 },
+    pendingReturnsByConnection: { 'c-ty': 2, 'c-hb': 1 },
+    pendingUnitsByConnection: { 'c-ty': 3, 'c-hb': 1, 'c-sh': 1 },
+    deadJobCount: 2, manualReviewJobCount: 1, recentJobCount: 1846
   },
-  lowStock: [
-    { id: 'p-1001', title: 'Kadın Oversize Triko Kazak - Ekru', totalStock: 3, primaryImageUrl: null },
-    { id: 'p-1002', title: 'Erkek Slim Fit Keten Gömlek - Lacivert', totalStock: 2, primaryImageUrl: null },
-    { id: 'p-1003', title: 'Deri Görünümlü Çapraz Çanta - Taba', totalStock: 1, primaryImageUrl: null },
-  ],
-  sync: [
-    { resourceType: 'ORDERS', label: 'Siparişler', kind: 'READ', status: 'HEALTHY', lastAttemptAt: ist('2026-10-20 09:28'), lastSuccessAt: ist('2026-10-20 09:28'), lastErrorCode: null },
-    { resourceType: 'RETURNS', label: 'İadeler', kind: 'READ', status: 'HEALTHY', lastAttemptAt: ist('2026-10-20 09:12'), lastSuccessAt: ist('2026-10-20 09:12'), lastErrorCode: null },
-    { resourceType: 'STOCK_WRITE', label: 'Stok gönderimi', kind: 'WRITE', status: 'DELAYED', lastAttemptAt: ist('2026-10-20 09:25'), lastSuccessAt: ist('2026-10-20 08:40'), lastErrorCode: 'RATE_LIMITED' },
-  ],
-  platforms: [
-    { name: 'Trendyol', status: 'ACTIVE' }, { name: 'Hepsiburada', status: 'ACTIVE' }, { name: 'Shopify', status: 'ACTIVE' },
-    { name: 'N11', status: 'ACTIVE' }, { name: 'Pazarama', status: 'ACTIVE' },
-  ],
+  channels: salesConnections.map(item => ({ connectionId: item.id, platformCode: item.platformCode, displayName: item.displayName, status: item.status })),
   generatedAt: ist('2026-10-20 09:29'),
   version: 1
 }
@@ -78,4 +65,6 @@ export const shell = [
   ['GET /orders/summary', ({ url }) => orderSummary.forPlatform(url.searchParams.get('platform'))],
   questionSummaryEntry,
   ['GET /connections', { items: connections, nextCursor: null, hasMore: false, totalCount: connections.length }],
+  ['^/connections/([^/]+)/full-reset$', { items: [{ scope: 'orders', count: 240 }, { scope: 'products', count: 86 }, { scope: 'offers', count: 312 }], keptProducts: 0, job: null }],
+  ['^/connections/([^/]+)$', ({ match }) => connections.find(item => item.id === decodeURIComponent(match[1])) ?? connections[0]],
 ]

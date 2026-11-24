@@ -7,6 +7,7 @@ import { Tabs } from '../shared/components/DesignSystem'
 import { DraftSaveBar } from '../shared/draft-edits'
 import { DockContext } from '../shared/components/dock-actions'
 import { BackTargetContext, useBackTarget, type BackTarget } from '../shared/components/back-target'
+import { phoneShellMaxWidth, phoneShellQuery } from '../shared/phone-shell'
 import { BottomDock, FullScreenMenu, menuPendingTotal, useBackNavigation, useDockHostState, useMenuHistory, type MenuGroup } from './BottomDock'
 
 // node:fs without @types/node, the way quick-edit-scroll.test.ts reads files.
@@ -65,9 +66,11 @@ function fakeRowWidths() {
 const click = (element: Element | null) => act(() => { (element as HTMLElement).click() })
 
 describe('phone bottom navigation (CSS)', () => {
-  it('is drawn only up to 768 px, where the hamburger and the top bar search go away and the page keeps room under its content', () => {
+  it('is drawn only up to the phone shell width (760 px, the same as the JS query), where the hamburger and the top bar search go away and the page keeps room under its content', () => {
     expect(css).toMatch(/^\.rv-dock-layer \{ display: none; \}/m)
-    const phone = css.slice(css.indexOf('@media (max-width: 768px)'))
+    expect(css).toContain(`@media (max-width: ${phoneShellMaxWidth}px) {`)
+    expect(phoneShellQuery).toBe('(max-width: 760px)')
+    const phone = css.slice(css.indexOf(`@media (max-width: ${phoneShellMaxWidth}px)`))
     expect(phone).toContain('> main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }')
     // The page's own top bar stays on a phone; only its hamburger goes (Menü is in the dock).
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')

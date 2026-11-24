@@ -20,7 +20,7 @@ import { UiIcon } from './UiIcon'
 // no aria-label. `info.start` is a warning (a chip in the strip above the bar, only while there is one).
 export type DockInfo = { start?: ReactNode; end?: ReactNode }  // end: a summary for wider screens; a phone shows none
 export type DockHost = {
-  // True up to 768 px, where the dock exists.
+  // True on a phone (shared/phone-shell.ts), where the dock exists.
   phone: boolean
   actionsEl: HTMLElement | null
   infoEl: HTMLElement | null
