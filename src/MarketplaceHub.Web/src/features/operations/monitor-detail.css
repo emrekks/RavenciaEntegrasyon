@@ -29,6 +29,11 @@
 @media (max-width: 640px) {
   .rr-layer.rr-layer .md-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* "Sorun Yok" in the invalid-offers list: the bulk button closes the filter row; the pick column takes its checkbox only. */
+.rr-layer.rr-layer .md-filters .md-bulk { margin-left: auto; }
+.rr-layer.rr-layer .md-tbl .md-pick { width: 1%; padding-right: 0; }
+.rr-layer.rr-layer .md-act .rr-btn + .rr-btn { margin-left: 8px; }
+.rr-layer.rr-layer .md-error { margin: 0 0 12px; color: var(--rv-color-danger); }
 
 /* Phones (owner, 24 Nov 2026: "Metinleri rahat sığdır"): the title wraps to two lines, Ara and Sebep take the full width, and the
    table is a stack of cards (no sideways scroll): the product (two lines, whole) with its variant, the barcode, the reason in
@@ -60,4 +65,19 @@
   .rr-layer.rr-layer .md-tbl td.md-num:nth-child(5)::before { content: "Teklif Fiyatı"; }
   .rr-layer.rr-layer .md-tbl tr:has(.md-prod) > td.md-nowrap::before { content: "Tarihten Beri"; }
   .rr-layer.rr-layer .md-tbl tr:has(.md-num) > td[title]:nth-child(3)::before { content: "Sebep"; }
+}
+/* "Sorun Yok" on phones: the tick box sits top left of the card beside the product, the row's two actions share the
+   bottom line, and the bulk button takes the full width under the filters. The tick box moves every cell one place on,
+   so the order and the labels of the offer row are named for that row here. */
+@media (max-width: 760px) {
+  .rr-layer.rr-layer .md-filters .md-bulk { width: 100%; margin-left: 0; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) { position: relative; padding-left: 40px; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-pick { position: absolute; top: 12px; left: 12px; grid-column: auto; width: auto; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td:nth-child(3) { order: 1; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td:nth-child(2) { order: 2; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td:nth-child(n+4) { order: 3; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-act { order: 99; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td[title]:nth-child(4)::before { content: "Sebep"; display: block; margin-bottom: 1px; color: var(--rr-muted); font-size: 12px; font-weight: 500; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-num:nth-child(5)::before { content: "Panel Fiyatı"; }
+  .rr-layer.rr-layer .md-tbl tr:has(> td.md-pick) > td.md-num:nth-child(6)::before { content: "Teklif Fiyatı"; }
 }

@@ -1174,8 +1174,8 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-metric-alarm strong { color: var(--rv-color-danger); }
 @keyframes rr-metric-alarm { 50% { border-color: color-mix(in srgb, var(--rv-color-danger) 70%, var(--rr-line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-danger) 10%, transparent); } }
 @media (prefers-reduced-motion: reduce) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-metric-alarm { animation: none; } }
-/* Phones: a footer with only Kapat is gone; the header's × closes the window (owner, 5 Nov 2026). */
-@media (max-width: 760px) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal > .rr-m-foot.rr-m-foot-close-only { display: none; } }
+/* A footer with only Kapat is gone on every screen; the header's × closes the window (owner, phones 5 Nov 2026, all screens 24 Nov). */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal > .rr-m-foot.rr-m-foot-close-only { display: none; }
 
 /* Empty state of a wide table: stays as wide as the visible card and pinned to its left edge, so it centres in view whatever the table's min-width. */
 main .rr.rr .rr-tblwrap.rr-tblwrap { container-type: inline-size; }

@@ -61,6 +61,24 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         return (card, m, l);
     }
 
+    private static ChannelOffer Offer(Seed seed, PlatformConnection connection, ProductVariant variant, decimal salePrice, bool? followsPanelPrice = null, string currency = "TRY") => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        ConnectionId = connection.Id,
+        VariantId = variant.Id,
+        ListPrice = salePrice,
+        SalePrice = salePrice,
+        Currency = currency,
+        VatRate = 10m,
+        VatInclusion = "INCLUDED",
+        RoundingMode = "HALF_EVEN",
+        Status = "ACTIVE",
+        FollowsPanelPrice = followsPanelPrice,
+        PriceVersion = 1,
+        Version = 1
+    };
+
     private static OperationalIssue Issue(Seed seed, string key, string code, string summary = "test") => new()
     {
         Id = Guid.CreateVersion7(),
@@ -158,6 +176,7 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
                 $"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{gone.L.Id:N}"
             ];
             liveKeys = [WebColorKey(kept.Card, kept.M), $"product-mapping-unmatched:{seed.Ptt.Id}:{kept.L.Id:N}", $"stock-projection-offer-invalid:{seed.Trendyol.Id:N}:{kept.M.Id:N}"];
+            setup.ChannelOffers.Add(Offer(seed, seed.Trendyol, kept.M, salePrice: 0m, followsPanelPrice: false));
             await setup.SaveChangesAsync();
             setup.OperationalIssues.AddRange(goneKeys.Concat(liveKeys).Select(key => Issue(seed, key, CodeOf(key), key.Contains(seed.Ptt.Id.ToString(), StringComparison.Ordinal) ? PttColourMissing : "test")));
             var pttGone = $"product-mapping-unmatched:{seed.Ptt.Id}:{gone.M.Id:N}";
@@ -194,6 +213,8 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             seed = await SeedAsync(setup);
             var live = AddCard(setup, seed, "LIVE1");
             var other = AddCard(setup, seed, "LIVE2");
+            // The offer its Trendyol issue names: still at 0 with its own price kept (Özel Fiyat), so the send still refuses it.
+            setup.ChannelOffers.Add(Offer(seed, seed.Trendyol, other.M, salePrice: 0m, followsPanelPrice: false));
             var deletedConnection = Connection(seed.Tenant, "PAZARAMA");
             deletedConnection.Status = "DELETED";
             var pazarama = Connection(seed.Tenant, "PAZARAMA");
@@ -548,6 +569,69 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         Assert.Equal(IssueStatus.Open, issue.Status);
         Assert.Equal("yeniden", issue.Summary);
         Assert.Equal(2, issue.OccurrenceCount);
+    }
+
+    // 24 Nov 2026: an offer issue of the automatic send closes when its offer is gone, or when the send's own check
+    // (PriceInventoryComposer.StandardOfferRefused) passes the stored offer now; an offer still refused, another platform's
+    // offer and another code stay open. A delete's pass (subject gone only) does not judge the check.
+    [PostgreSqlFact]
+    public async Task AnOfferIssueClosesWhenItsOfferIsGoneOrPassesTheSendsOwnCheck_AndStaysWhileRefused()
+    {
+        Seed seed;
+        string passesAtPanelPrice, passesAtOwnPrice, offerGone;
+        string[] stays;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var a = AddCard(setup, seed, "OFA");
+            var b = AddCard(setup, seed, "OFB");
+            var c = AddCard(setup, seed, "OFC");
+            setup.ChannelOffers.AddRange(
+                // Stored at 0, follows the panel price (600 on the variant): the send sends the panel price.
+                Offer(seed, seed.Trendyol, a.M, salePrice: 0m),
+                // Its own price (Özel Fiyat) is above 0 now.
+                Offer(seed, seed.Trendyol, a.L, salePrice: 450m, followsPanelPrice: false),
+                // Still refused: its own price is 0, or the currency is not TRY.
+                Offer(seed, seed.Trendyol, b.M, salePrice: 0m, followsPanelPrice: false),
+                Offer(seed, seed.Trendyol, b.L, salePrice: 450m, currency: "USD"),
+                // N11's own checks are not judged here; another code under the same key shape is not this rule's.
+                Offer(seed, seed.N11, c.M, salePrice: 450m),
+                Offer(seed, seed.Trendyol, c.M, salePrice: 450m));
+            await setup.SaveChangesAsync();
+            string Key(PlatformConnection connection, ProductVariant variant) => $"stock-projection-offer-invalid:{connection.Id:N}:{variant.Id:N}";
+            passesAtPanelPrice = Key(seed.Trendyol, a.M);
+            passesAtOwnPrice = Key(seed.Trendyol, a.L);
+            offerGone = Key(seed.Trendyol, c.L);
+            stays = [Key(seed.Trendyol, b.M), Key(seed.Trendyol, b.L), Key(seed.N11, c.M)];
+            setup.OperationalIssues.AddRange(new[] { passesAtPanelPrice, passesAtOwnPrice, offerGone }.Concat(stays).Select(key => Issue(seed, key, "CHANNEL_OFFER_INVALID")));
+            setup.OperationalIssues.Add(Issue(seed, Key(seed.Trendyol, c.M), "HEPSIBURADA_LISTING_LINK_REQUIRED"));
+            stays = [.. stays, Key(seed.Trendyol, c.M)];
+            await setup.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var afterDelete = await OrphanedOperationalIssues.ResolveAsync(db, seed.Tenant.Id, DateTimeOffset.UtcNow, 500, 5, OrphanedOperationalIssues.DeleteActor, CancellationToken.None, subjectGoneOnly: true);
+            Assert.Equal([new KeyValuePair<(string, string), int>(("CHANNEL_OFFER_INVALID", OrphanedOperationalIssues.SubjectGone), 1)], afterDelete.ToList());
+            var counts = await PassAsync(db, seed.Tenant.Id, batchSize: 1, maxBatches: 10);
+            Assert.Equal([new KeyValuePair<(string, string), int>(("CHANNEL_OFFER_INVALID", OrphanedOperationalIssues.ConditionCleared), 2)], counts.ToList());
+            Assert.Empty(await PassAsync(db, seed.Tenant.Id));
+        }
+
+        await using var check = fixture.CreateContext();
+        var issues = await IssuesAsync(check, seed.Tenant.Id);
+        Assert.All(new[] { passesAtPanelPrice, passesAtOwnPrice }, key => Assert.True(issues[key].Status == IssueStatus.Resolved && issues[key].ResolvedAt is not null
+            && issues[key].Summary.EndsWith($"({OrphanedOperationalIssues.MaintenanceActor}): koşul artık geçerli değil — {OrphanedOperationalIssues.OfferPassesDetail}", StringComparison.Ordinal), key));
+        Assert.EndsWith("konu artık yok — kaydın bu bağlantıdaki teklifi artık yok.", issues[offerGone].Summary, StringComparison.Ordinal);
+        Assert.All(stays, key => Assert.True(issues[key].Status == IssueStatus.Open && issues[key].Summary == "test", key));
+        var connection = (NpgsqlConnection)check.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open) await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(OrphanedOperationalIssues.VerifySql($"""i."TenantId" = '{seed.Tenant.Id}'"""), connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        var rules = new List<string>();
+        while (await reader.ReadAsync())
+            if (reader.GetString(0) == "resolved by the pass") rules.Add($"{reader.GetString(3)} {reader.GetString(4)[3..]} {reader.GetInt64(5)}");
+        Assert.Equal(["CONDITION_CLEARED offer-passes-send-check 2", "SUBJECT_GONE offer-gone 1"], rules.Order().ToList());
     }
 
     [PostgreSqlFact]
