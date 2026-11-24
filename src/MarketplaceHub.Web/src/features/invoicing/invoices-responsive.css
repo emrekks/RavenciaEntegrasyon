@@ -325,7 +325,7 @@
 @media (min-width: 1025px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace { min-width: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row) { min-width: 1030px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row) { min-width: 988px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row .invoice-reference-products small { overflow: visible; text-overflow: clip; white-space: nowrap; }
 }
 
