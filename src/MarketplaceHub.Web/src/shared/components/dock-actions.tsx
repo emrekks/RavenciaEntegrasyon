@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useId, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useId, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 // The phone's one bottom bar. The app shell draws the dock (Ana Sayfa, Siparişler, Ara, Ürünler, Menü) and, in the same
@@ -14,6 +14,10 @@ export type DockHost = {
   // The registration that owns the task bar now (the newest one).
   topId: string | null
   register: (id: string, hasInfo: boolean) => () => void
+  // The top row of the dock: the open page's own tabs (DockTabs).
+  tabsEl: HTMLElement | null
+  tabsTopId: string | null
+  registerTabs: (id: string) => () => void
 }
 export const DockContext = createContext<DockHost | null>(null)
 export const useDockHost = () => useContext(DockContext)
@@ -31,4 +35,26 @@ export function DockActions({ label, info, children }: { label: string; info?: D
     {createPortal(<div className="rv-taskbar-group" role="group" aria-label={label}>{children}</div>, dock.actionsEl)}
     {hasInfo && dock.infoEl ? createPortal(<>{info?.start ? <span className="rv-dock-info-start">{info.start}</span> : null}{info?.end ? <span className="rv-dock-info-end">{info.end}</span> : null}</>, dock.infoEl) : null}
   </>
+}
+
+export type DockTabItem = { value: string; label: ReactNode; count?: ReactNode }
+
+// A page's tab strip on a phone: it is not drawn in the page; its tabs are chips in the dock's top row (one source: the
+// page keeps its value and its onChange, the dock only draws them). The selected chip scrolls into view.
+export function DockTabs({ label, items, value, onChange }: { label: string; items: DockTabItem[]; value: string; onChange: (value: string) => void }) {
+  const dock = useDockHost()
+  const id = useId()
+  const registerTabs = dock?.registerTabs
+  useLayoutEffect(() => registerTabs?.(id), [registerTabs, id])
+  const tabsEl = dock?.tabsEl ?? null
+  const mine = dock?.tabsTopId === id
+  useEffect(() => {
+    if (!mine || !tabsEl) return
+    const selected = tabsEl.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!selected) return
+    const left = selected.offsetLeft - (tabsEl.clientWidth - selected.offsetWidth) / 2
+    tabsEl.scrollTo?.({ left: Math.max(0, left), behavior: 'smooth' })
+  }, [mine, tabsEl, value, items.length])
+  if (!dock || !mine || !tabsEl) return null
+  return createPortal(<div className="rv-dock-tablist" role="tablist" aria-label={label}>{items.map(item => <button key={item.value} type="button" role="tab" aria-selected={item.value === value} className={`rv-dock-tab${item.value === value ? ' is-active' : ''}`} onClick={() => onChange(item.value)}><span className="rv-dock-tab-label">{item.label}</span>{item.count !== undefined && item.count !== null ? <em>{item.count}</em> : null}</button>)}</div>, tabsEl)
 }

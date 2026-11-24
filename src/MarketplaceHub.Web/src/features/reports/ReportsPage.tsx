@@ -128,7 +128,7 @@ export function ReportsPage() {
     {data && (() => {
       const tabs = reportTabs(data)
       return <>
-        <ViewTabsWithMore className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => go(value as ViewKey)}
+        <ViewTabsWithMore dock className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => go(value as ViewKey)}
           items={tabs.map(tab => ({ value: tab.value, label: tabLabel(tab.icon, tab.label), count: tab.count, countTone: tab.warn ? 'warn' : undefined }))} />
         <TabSlidePanel active={view} order={tabs.map(tab => tab.value)} className="reports-body" role="tabpanel" aria-label={tabs.find(tab => tab.value === view)?.label}>
           {view === 'overview' ? <Overview data={data} onMore={openDetail} />
