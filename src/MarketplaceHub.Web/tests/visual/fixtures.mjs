@@ -6,5 +6,8 @@ import { sales } from './fixtures/sales.mjs'
 import { catalog } from './fixtures/catalog.mjs'
 import { backOffice } from './fixtures/back-office.mjs'
 import { promotions } from './fixtures/promotions.mjs'
+import { monitoring } from './fixtures/monitoring.mjs'
+import { reports } from './fixtures/reports.mjs'
 
-export const fixtures = [...shell, ...sales, ...catalog, ...backOffice, ...promotions]
+// monitoring comes before the catalog and sales lists: their "^/jobs/([^/]+)$" and "^/returns/([^/]+)$" patterns would answer /jobs/attention and similar fixed paths.
+export const fixtures = [...shell, ...monitoring, ...reports, ...sales, ...catalog, ...backOffice, ...promotions]

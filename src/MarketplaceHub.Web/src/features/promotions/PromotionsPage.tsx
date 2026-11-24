@@ -10,6 +10,7 @@ import { prefetchLastTariff } from '../marketplace/integrations/commission-tarif
 import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
 import { bySalesChannel, platformName } from '../reports/report-format'
 import '../reports/reports.css'
+import '../../shared/view-tabs.css'
 import { PanelSelect } from '../../shared/PanelSelect'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { connectionQueries } from '../../shared/api/query-keys'
