@@ -30,11 +30,38 @@ internal sealed partial class CatalogImportService(
     private enum FocusedPriceStockOutcome { NotInPanel, Conflict, Unchanged, Changed }
 
     // What the moved code used from the processor: the same classes and helpers the processor calls.
-    private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken) =>
-        issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
+    private Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken)
+    {
+        foreach (var open in openListingIssueKeys.Values) if (ListingIssuePrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal))) open.Add(key);
+        return issues.RecordAsync(tenantId, key, code, summary, timeProvider.GetUtcNow(), cancellationToken);
+    }
 
     private Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) =>
         issues.ResolveAsync(tenantId, key, timeProvider.GetUtcNow(), cancellationToken);
+
+    // Y5 review (23 Nov 2026): a per-listing check that finds its warning's condition gone resolves the warning under the
+    // writer's own key. The open keys of those checks are read once per connection (a run reads thousands of listings and
+    // holds a few hundred open warnings), so a listing without one costs no query. A key missing from the set is left as
+    // it is (it stays open until a later run), never resolved by guess.
+    private static readonly string[] ListingIssuePrefixes = ["product-sync-barcode-conflict:", "product-mapping-unmatched:"];
+    private readonly Dictionary<Guid, HashSet<string>> openListingIssueKeys = [];
+
+    private async Task ResolveOpenListingIssue(Guid tenantId, Guid connectionId, string key, CancellationToken cancellationToken, Func<OperationalIssue, bool>? onlyIf = null)
+    {
+        if (!openListingIssueKeys.TryGetValue(connectionId, out var open))
+        {
+            var conflicts = $"{ListingIssuePrefixes[0]}{connectionId}:";
+            var unmatched = $"{ListingIssuePrefixes[1]}{connectionId}:";
+            open = (await db.OperationalIssues.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && (x.DedupeKey.StartsWith(conflicts) || x.DedupeKey.StartsWith(unmatched)))
+                    .Select(x => x.DedupeKey)
+                    .ToListAsync(cancellationToken))
+                .ToHashSet(StringComparer.Ordinal);
+            openListingIssueKeys[connectionId] = open;
+        }
+        if (!open.Contains(key)) return;
+        if (await issues.ResolveIfOpenAsync(tenantId, key, timeProvider, cancellationToken, onlyIf)) open.Remove(key);
+    }
 
     private Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) =>
         cursors.GetAsync(tenantId, connectionId, resource, cancellationToken);

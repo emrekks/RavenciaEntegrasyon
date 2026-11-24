@@ -388,7 +388,10 @@ public static class PazaramaBatchMapper
         foreach (var (part, items) in results)
             foreach (var item in items)
             {
-                var failed = item.State == BatchState.Failed;
+                // A barcode's value refused in the batch result because Pazarama already holds it ("… önceki değerleriyle aynı
+                // olamaz") is up to date, as the same refusal of a whole request is (PushAsync): not a failure (O2, scan of
+                // 23 Nov 2026: one such line sent the batch to manual review).
+                var failed = item.State == BatchState.Failed && !PazaramaPriceInventoryRules.AlreadyHeld(item.Detail);
                 if (item.State == BatchState.PendingApproval) pendingApproval.Add(item.Code);
                 if (!codes.TryGetValue(item.Code, out var detail) || failed) codes[item.Code] = failed || detail is null ? item.Detail : detail;
                 if (failed) (part.Family == "p" ? priceFailed : stockFailed).Add(item.Code);

@@ -91,10 +91,14 @@ public sealed class JobWakeRouter
     // Raised for each lane a job notification names (not for "freed" or a wake of every slot).
     public event Action<string>? LaneNotified;
 
+    // Raised for a "freed" notification (a leased job ended), before the lanes are woken.
+    public event Action? JobEnded;
+
     public void Route(string? payload)
     {
         if (string.Equals(payload, Freed, StringComparison.Ordinal))
         {
+            JobEnded?.Invoke();
             foreach (var (_, signal, _) in lanes) signal.WakeOne();
             return;
         }

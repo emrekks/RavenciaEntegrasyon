@@ -125,6 +125,15 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
   treats the family as one product (`holdsFamilyAsOneProduct`). Source: offline `pazarama-api-son.md` ~545.
 - Envelope `{data, success, messageCode, message, userMessage}`; money fields are objects (use `value`); ids are GUIDs.
 - A price or stock equal to the current value is refused — send only changed values.
+  The panel sends a price only when it differs from the one Pazarama holds as far as it knows (the last confirmed value
+  for the barcode, else the stored price while the price mark names it): a new price version alone, such as a VAT rate
+  saved on a VAT-inclusive offer, sends no price (`PriceInventoryComposer.PazaramaHeldPrice`). That holds only while
+  every price version since the mark (`ChannelPriceHistory`, at most 64 back) carries the current price: another price in
+  between may reach Pazarama by a send whose result (up to 4 h) is still out, so the price goes then (review of 24 Nov
+  2026). The mark cannot tell a confirmation from a baseline (decision B), so a baseline counts as held. The refusal ("…
+  önceki değerleriyle aynı olamaz") of a whole request or of one barcode in the batch result counts as already held,
+  not failed (`PazaramaHttpClient.PushAsync`, `PazaramaBatchMapper.Merge`; scan finding O2, 23 Nov 2026; whether
+  Pazarama also answers it per barcode is not documented, the panel accepts both).
 - A discount of 70% or more goes to approval. Price/stock results can take up to 4 h; product batch results are
   queryable for 4 h.
 - Orders without a package get a virtual package `order:{orderNumber}`.

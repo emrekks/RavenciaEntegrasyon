@@ -727,6 +727,7 @@ internal sealed partial class ProductJobService
         {
             JobCompletionKind.Succeeded => JobStatus.Succeeded,
             JobCompletionKind.Retry => JobStatus.RetryScheduled,
+            JobCompletionKind.Blocked when JobLeaseService.CancelsWhenSuperseded(result.ErrorCode) => JobStatus.Cancelled,
             JobCompletionKind.Blocked => JobStatus.Blocked,
             JobCompletionKind.ManualReview => JobStatus.ManualReview,
             _ => JobStatus.Dead

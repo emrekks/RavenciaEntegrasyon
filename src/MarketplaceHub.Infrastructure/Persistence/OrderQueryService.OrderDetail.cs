@@ -120,7 +120,7 @@ internal sealed partial class OrderQueryService
         {
             var matchingProductIds = await EffectiveCatalog.Products(db)
                 .Where(x => x.TenantId == tenantId && x.Title.ToUpper() == normalizedProductName.ToUpper())
-                .Select(x => x.Id).Take(2).ToListAsync(cancellationToken);
+                .Select(x => x.Id).OrderBy(id => id).Take(2).ToListAsync(cancellationToken);
             if (matchingProductIds.Count == 1)
             {
                 var titleVariantIds = await db.ProductVariants.AsNoTracking()
@@ -149,6 +149,7 @@ internal sealed partial class OrderQueryService
                         && (lookupKeys.Contains(x.ExternalId.Trim().ToUpper()) || x.ExternalSku != null && lookupKeys.Contains(x.ExternalSku.Trim().ToUpper())))
                     .Select(x => x.VariantId)
                     .Distinct()
+                    .OrderBy(id => id)
                     .Take(2)
                     .ToListAsync(cancellationToken);
             Guid? linkedVariantId = linkedVariantIds.Count == 1 ? linkedVariantIds[0] : null;
@@ -181,6 +182,7 @@ internal sealed partial class OrderQueryService
                     && x.ModelCode.Trim().ToUpper() == catalogKey.ToUpper())
                 .Select(x => x.ProductId)
                 .Distinct()
+                .OrderBy(id => id)
                 .Take(2)
                 .ToListAsync(cancellationToken);
             if (modelProductIds.Count == 1)

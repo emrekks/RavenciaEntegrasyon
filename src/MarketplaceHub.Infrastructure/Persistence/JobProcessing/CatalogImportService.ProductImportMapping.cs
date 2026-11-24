@@ -118,6 +118,14 @@ internal sealed partial class CatalogImportService
         // (owner, 14 Nov 2026: MZ035YNC, 8 cards x 3 sizes in one Shopify product, was never linked).
         var linkProduct = true;
         Guid? productId = link?.ProductId;
+        // The "several cards" warning below is keyed by the listing. It is raised only while the listing has no product link
+        // and its variants land on more than one panel product; once either no longer holds, this same check resolves it
+        // (Y5 review, 23 Nov 2026). A listing whose id is also one of its variant ids shares the key with a variant warning
+        // and is left alone, as is every marketplace but Shopify, N11 and Pazarama: Hepsiburada's import writes its own
+        // "not in the panel" warning under the same listing key, judged by another check.
+        var cardsKey = $"product-mapping-unmatched:{connectionId}:{externalProductId}";
+        var cardsKeyIsListing = (preferBarcode || crossMatchCodes) && !externalVariantIds.Contains(externalProductId, StringComparer.OrdinalIgnoreCase);
+        if (productId is not null && cardsKeyIsListing) await ResolveOpenListingIssue(tenantId, connectionId, cardsKey, cancellationToken);
         if (productId is null)
         {
             var resolvedProductIds = resolved
@@ -125,6 +133,7 @@ internal sealed partial class CatalogImportService
                 .Select(item => item.Candidate!.ProductId)
                 .Distinct()
                 .ToList();
+            if (resolvedProductIds.Count <= 1 && cardsKeyIsListing) await ResolveOpenListingIssue(tenantId, connectionId, cardsKey, cancellationToken);
             // Only the colour cards of one model (one linked model, or one brand and model code) make that normal shape;
             // cards of different models fall to the conflict handling below (audit 14 Nov 2026).
             if (resolvedProductIds.Count > 1 && preferBarcode && await ProductModelLinks.OneModelAsync(db, tenantId, resolvedProductIds, cancellationToken))

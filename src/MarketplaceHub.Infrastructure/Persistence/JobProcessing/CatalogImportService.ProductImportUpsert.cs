@@ -159,11 +159,22 @@ internal sealed partial class CatalogImportService
                         .Distinct()
                         .OrderBy(id => id).Take(2)
                         .ToListAsync(cancellationToken);
+                var barcodeConflictKey = $"product-sync-barcode-conflict:{connectionId}:{(skuCodes.Count > 0 ? skuCodes.First() : identityCodes.First())}";
+                // Y5 review (23 Nov 2026): the listing's whole code set lands on one panel product (or none) now, so the clash
+                // this listing reported is gone; only this check knows the whole set, the key holds its first code alone.
+                // Two listings may share that first code (Shopify allows one barcode on several products), so the warning
+                // names its listing and only that listing settles it (review 24 Nov 2026); one written before the name was
+                // added names no listing, so no listing settles it: the next import of a listing that still clashes writes its
+                // name into it, else the 30-day stale pass closes it.
+                var conflictListing = $"(ilan {externalProductId})";
+                if (identityProductIds.Count <= 1)
+                    await ResolveOpenListingIssue(tenantId, connectionId, barcodeConflictKey, cancellationToken,
+                        issue => issue.Summary.Contains(conflictListing, StringComparison.Ordinal));
                 if (identityProductIds.Count > 1)
                 {
                     if (!allowCrossProductVariantMatch)
                     {
-                        await RecordIssue(tenantId, $"product-sync-barcode-conflict:{connectionId}:{(skuCodes.Count > 0 ? skuCodes.First() : identityCodes.First())}", "PRODUCT_BARCODE_CONFLICT", $"{observedPlatform} ürününün stok kodu veya barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı.", cancellationToken);
+                        await RecordIssue(tenantId, barcodeConflictKey, "PRODUCT_BARCODE_CONFLICT", $"{observedPlatform} ürününün stok kodu veya barkodu birden fazla yerel üründe bulundu; otomatik eşleştirme yapılmadı {conflictListing}.", cancellationToken);
                         return false;
                     }
 

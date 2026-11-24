@@ -56,6 +56,89 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // Scan 23 Nov 2026: a product update stopped by a newer update of the same product ends cancelled with its code, not
+    // blocked; a first publish stopped the same way stays blocked for the owner.
+    [PostgreSqlFact]
+    public async Task ASupersededProductUpdateEndsCancelled_ASupersededPublishStaysBlocked()
+    {
+        var tenant = NewTenant("bg-superseded");
+        var update = NewJob(tenant.Id, "TEST_SUPERSEDED_UPDATE");
+        var publish = NewJob(tenant.Id, "TEST_SUPERSEDED_PUBLISH");
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(update, publish);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            foreach (var (job, code) in new[] { (update, "PRODUCT_UPDATE_SUPERSEDED"), (publish, "PRODUCT_PUBLICATION_SUPERSEDED") })
+            {
+                await using var db = fixture.CreateContext();
+                var leases = new JobLeaseService(db, fixture.TokenHasher, fixture.TimeProvider);
+                var lease = await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: job.Id);
+                Assert.NotNull(lease);
+                Assert.True(await leases.CompleteAsync(job.Id, lease.LeaseToken, JobExecutionResult.Blocked(code, "yenisi var"), CancellationToken.None));
+            }
+
+            await using var verification = fixture.CreateContext();
+            var storedUpdate = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == update.Id);
+            Assert.Equal(JobStatus.Cancelled, storedUpdate.Status);
+            Assert.Equal("PRODUCT_UPDATE_SUPERSEDED", storedUpdate.LastErrorCode);
+            Assert.NotNull(storedUpdate.CompletedAt);
+            Assert.Equal(JobStatus.Blocked, (await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == publish.Id)).Status);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
+    // Review 24 Nov 2026: a recovery sweep started by hand that went to review on a refused Pazarama token is run again with
+    // its own window once a later run of the same read succeeded; it is never closed unread.
+    [PostgreSqlFact]
+    public async Task AHandStartedRecoveryReadInReviewOnARefusedToken_RunsAgainWithItsWindow_NotClosed()
+    {
+        var tenant = NewTenant("bg-token");
+        var connection = NewConnection(tenant);
+        var now = DateTimeOffset.UtcNow;
+        var failed = NewJob(tenant.Id, MarketplaceJobTypes.PazaramaOrderRecoverySync);
+        failed.ConnectionId = connection.Id;
+        failed.PayloadJson = """{"from":"2026-09-01","to":"2026-10-01"}""";
+        failed.Status = JobStatus.ManualReview;
+        failed.LastErrorCode = "PAZARAMA_TOKEN_INVALID";
+        failed.CompletedAt = now.AddHours(-2);
+        var later = NewJob(tenant.Id, MarketplaceJobTypes.PazaramaOrderRecoverySync);
+        later.ConnectionId = connection.Id;
+        later.Status = JobStatus.Succeeded;
+        later.CreatedAt = now.AddHours(-1);
+        later.CompletedAt = now.AddHours(-1);
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.PlatformConnections.Add(connection);
+            setup.IntegrationJobs.AddRange(failed, later);
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True(await ScheduledReadSupersession.RetryCredentialReviewsAsync(db, now, CancellationToken.None) >= 1);
+
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == failed.Id);
+            Assert.Equal(JobStatus.RetryScheduled, stored.Status);
+            Assert.Equal(failed.PayloadJson, stored.PayloadJson);
+            Assert.Null(stored.LastErrorCode);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TheLeaseChecksTheLockGroupStoredOnTheJob()
     {
@@ -182,6 +265,9 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         var cancelledBeforeRun = Guard(MarketplaceJobTypes.ShipmentAction, $"shipment:{Guid.NewGuid():N}", JobStatus.Cancelled, attempts: 0);
         var blockedBeforeSend = Guard(MarketplaceJobTypes.ShipmentAction, $"shipment:{Guid.NewGuid():N}", JobStatus.Blocked, error: "CONNECTION_INACTIVE");
         var sentShipment = Guard(MarketplaceJobTypes.ShipmentAction, $"shipment:{Guid.NewGuid():N}", JobStatus.Succeeded);
+        // Scan 23 Nov 2026: a product update a newer payload superseded guards nothing; a superseded create keeps its guard.
+        var supersededUpdate = Guard(MarketplaceJobTypes.ProductUpdate, $"product-update:{Guid.NewGuid():N}:{Guid.NewGuid():N}:old", JobStatus.Blocked, attempts: 3, error: "PRODUCT_UPDATE_SUPERSEDED");
+        var supersededCreate = Guard(MarketplaceJobTypes.ProductCreate, $"product-create:{Guid.NewGuid():N}:{Guid.NewGuid():N}:old", JobStatus.Blocked, error: "PRODUCT_PUBLICATION_SUPERSEDED");
         var inboxKey = $"bg-{Guid.NewGuid():N}";
         var usageKey = $"bg-retired:{Guid.NewGuid():N}";
         var settledEffect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenant.Id, EffectType = "SHIPMENT", IdempotencyKey = $"bg-{Guid.NewGuid():N}", CreatedAt = old, CompletedAt = old, Outcome = "APPLIED" };
@@ -190,7 +276,7 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
-        db.IntegrationJobs.AddRange(versionedDispatch, versionedPush, cancelledBeforeRun, blockedBeforeSend, sentShipment);
+        db.IntegrationJobs.AddRange(versionedDispatch, versionedPush, cancelledBeforeRun, blockedBeforeSend, sentShipment, supersededUpdate, supersededCreate);
         db.InboxMessages.Add(new InboxMessage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Source = "TRENDYOL_WEBHOOK", ExternalMessageId = inboxKey, PayloadHash = "h", ReceivedAt = old });
         db.ExternalEffectRecords.AddRange(settledEffect, openEffect);
         await db.SaveChangesAsync();
@@ -204,7 +290,7 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         await retention.PurgeCompletedEffectRecordsAsync(TimeSpan.FromDays(90), maximumBatches: 1_000, CancellationToken.None);
 
         var remaining = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync();
-        Assert.Equal([sentShipment.Id], remaining);
+        Assert.Equal(new[] { sentShipment.Id, supersededCreate.Id }.Order(), remaining.Order());
         Assert.False(await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id));
         Assert.Equal(0, await db.Database.SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM integration.rate_limit_usage WHERE \"Key\" = {usageKey}").SingleAsync());
         Assert.Equal([openEffect.Id], await db.ExternalEffectRecords.AsNoTracking().Where(x => x.TenantId == tenant.Id).Select(x => x.Id).ToListAsync());

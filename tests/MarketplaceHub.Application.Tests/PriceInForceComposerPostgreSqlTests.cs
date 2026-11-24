@@ -161,6 +161,8 @@ public sealed class PriceInForceComposerPostgreSqlTests(PostgreSqlTenantIsolatio
         db.InventoryItems.Add(inventory);
         db.MarketplaceVariantLinks.Add(link);
         db.ChannelOffers.Add(offer);
+        // Every opened offer records its first price version (what Pazarama's held price is read from).
+        db.ChannelPriceHistory.Add(new ChannelPriceHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OfferId = offer.Id, PriceVersion = 1, ListPrice = offer.ListPrice, SalePrice = offer.SalePrice, Currency = offer.Currency, Reason = "test", ActorSource = "SYSTEM:TEST", EffectiveAt = now });
         await db.SaveChangesAsync();
         return new(tenant.Id, connection.Id, variant.Id);
     }
