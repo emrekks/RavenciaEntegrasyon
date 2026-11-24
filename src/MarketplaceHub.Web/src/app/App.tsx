@@ -38,7 +38,7 @@ import './bottom-nav.css'
 import { phoneShellQuery } from '../shared/phone-shell'
 import { shouldResetScroll } from './page-scroll'
 import { BackTargetContext, backLabel, type BackTarget } from '../shared/components'
-import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useBackNavigation, useDockHostState, useMenuHistory, useNotificationHistory, type MenuEntry, type MenuGroup } from './BottomDock'
+import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useBackNavigation, useDockHostState, useExitPresence, useMenuHistory, useNotificationHistory, type MenuEntry, type MenuGroup } from './BottomDock'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -148,6 +148,7 @@ function Shell({ me }: { me: Me }) {
   const phone = useMediaQuery(phoneShellQuery)
   const dock = useDockHostState(phone)
   const fullMenu = useMenuHistory()
+  const fullMenuShown = useExitPresence(fullMenu.open)
   // The list the open page was reached from (shared/components/back-target.tsx): offered as Geri in the task bar and the top bar.
   const [backTarget, setBackTarget] = useState<BackTarget | null>(null)
   const backHost = useMemo(() => ({ target: backTarget, set: setBackTarget }), [backTarget])
@@ -328,7 +329,7 @@ function Shell({ me }: { me: Me }) {
       <ShellPages me={me} />
     </main>
     {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
-    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} profile={{ name: displayName, role: userRoleLabels[(me.role ?? '').toUpperCase() as UserRole] ?? me.role ?? undefined, email: me.displayName ? me.email : undefined }} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
+    {phone && fullMenuShown.present && <FullScreenMenu closing={fullMenuShown.closing} groups={phoneMenuGroups} profile={{ name: displayName, role: userRoleLabels[(me.role ?? '').toUpperCase() as UserRole] ?? me.role ?? undefined, email: me.displayName ? me.email : undefined }} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
     <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders', '/questions'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0), '/questions': Math.max(0, questionWaitingSummary.data?.totalCount ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
     </div></DockContext.Provider></BackTargetContext.Provider>
 }

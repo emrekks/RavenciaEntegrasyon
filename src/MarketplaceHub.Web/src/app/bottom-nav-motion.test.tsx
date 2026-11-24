@@ -74,3 +74,35 @@ describe('useStuckHead', () => {
     })()
   })
 })
+
+describe('layers over the top bar and the menu leaving', () => {
+  it('lifts the filter block above the top bar while a layer is open, so its scrim covers the bar', () => {
+    expect(dock).toContain('html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }')
+  })
+
+  it('keeps the full-screen menu mounted for the shared exit (rv-sink on the exit tokens) with no touch while it goes', () => {
+    expect(dock).toContain('.rv-fullmenu.is-closing { pointer-events: none; animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards; }')
+    expect(read('../styles/responsive.css')).toContain('animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards')
+    expect(tokens).toContain('--rv-motion-exit: 180ms;')
+  })
+
+  it('useExitPresence is present while open and leaving, closing only while it leaves', async () => {
+    const { useExitPresence } = await import('./BottomDock')
+    const seen: Array<[boolean, boolean]> = []
+    function Probe({ open }: { open: boolean }) {
+      const state = useExitPresence(open)
+      seen.push([state.present, state.closing])
+      return null
+    }
+    const host = document.createElement('div')
+    const root = createRoot(host)
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+    act(() => root.render(<Probe open />))
+    expect(seen.at(-1)).toEqual([true, false])
+    act(() => root.render(<Probe open={false} />))
+    expect(seen.at(-1)).toEqual([true, true])
+    await act(async () => { await new Promise(resolveWait => setTimeout(resolveWait, 260)) })
+    expect(seen.at(-1)).toEqual([false, false])
+    act(() => root.unmount())
+  })
+})

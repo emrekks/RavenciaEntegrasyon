@@ -42,6 +42,9 @@
   .rv-dock-layer { transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility 0s; }
   .rv-dock-layer[data-layer] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility 0s linear var(--rv-motion-bar); }
   @media (prefers-reduced-motion: reduce) { .rv-dock-layer, .rv-dock-layer[data-layer] { transition: none; } }
+  /* The page's filter block (z-index 80, a stacking box of its own) held its dimmed sheet under the top bar (z-index 85): while a layer is open
+     the block that holds it is lifted above the bar, so the dimmed scrim covers the bar as it covers the page and takes its touches. */
+  html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }
   .rv-dock-layer[data-mode="task"] { --rv-bar-h: 56px; }
   .rv-dock-layer[data-rows="2"] { --rv-bar-h: 85px; }
   /* Frosted glass under and behind the panel: from 6 px above the panel's top edge to the physical bottom (the safe-area band included) the page
@@ -190,11 +193,13 @@
   /* Notifications: a panel dropping from just under the top bar (12 px in from the sides), at most 75% of the screen,
      over the full-screen menu too; the dimmed page behind only closes it. Wherever it is opened from, it opens here. */
   html body .rv-notification-history { top: calc(62px + env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - 62px - env(safe-area-inset-top, 0px) - 20px)); border-radius: 14px; outline: 0; transform-origin: top center; animation: rv-sheet-down var(--rv-motion-sheet) var(--rv-ease-sheet) backwards; }
+  /* Leaving: the shared exit of every phone sheet (rv-sink, styles/responsive.css), the way it came, and no second tap while it goes. */
+  .rv-fullmenu.is-closing { pointer-events: none; animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards; }
   @keyframes rv-sheet-down { from { translate: 0 -28px; opacity: 0; } }
   /* The live toast keeps its behaviour and shows above the dock (and its pill) instead of at the top. */
   html body .app-toast-stack, html body .app-toast:not(.app-toast-stack > *) { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 50px + var(--rv-dock-extra) + 56px); left: 12px; width: auto; }
   @media (prefers-reduced-motion: reduce) {
-    .rv-fullmenu, html body .rv-notification-history { animation: none; }
+    .rv-fullmenu, .rv-fullmenu.is-closing, html body .rv-notification-history { animation: none; }
     .rv-dock, .rv-taskbar, .rv-dock-top, html body .app-shell.stitch-shell > main { transition: none; }
   }
 }

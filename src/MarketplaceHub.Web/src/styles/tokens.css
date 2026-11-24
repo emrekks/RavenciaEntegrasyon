@@ -127,6 +127,9 @@
      the top bar sliding away and the sticky heads following it. One time, one curve, the sheet's. */
   --rv-motion-bar: var(--rv-motion-base);
   --rv-ease-bar: var(--rv-ease-sheet);
+  /* A sheet or window leaving (rv-sink, rv-drawer-out-*): faster than it came, accelerating. */
+  --rv-motion-exit: 180ms;
+  --rv-ease-exit: cubic-bezier(.4, 0, 1, 1);
   --rv-motion-tab: 400ms;
   --rv-ease-tab: cubic-bezier(.34, 1.3, .5, 1);
   /* A tab's content sliding in from the side (shared/tab-slide.tsx). */

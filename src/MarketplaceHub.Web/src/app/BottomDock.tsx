@@ -124,7 +124,23 @@ const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
 export type MenuProfile = { name: string; role?: string; email?: string; imageUrl?: string | null }
 
-export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname }: {
+// A layer that closes with the common exit (rv-sink, .18 s: styles/responsive.css) stays mounted that long: `present` is true while it
+// is open or leaving, `closing` only while it leaves. Without motion it goes at once.
+export const layerExitMs = 180 // = --rv-motion-exit (styles/tokens.css)
+export function useExitPresence(open: boolean) {
+  const [present, setPresent] = useState(open)
+  if (open && !present) setPresent(true)
+  useEffect(() => {
+    if (open || !present) return undefined
+    const still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const timer = window.setTimeout(() => setPresent(false), still ? 0 : layerExitMs)
+    return () => window.clearTimeout(timer)
+  }, [open, present])
+  return { present, closing: present && !open }
+}
+
+export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname, closing = false }: {
+  closing?: boolean
   groups: MenuGroup[]
   profile: MenuProfile
   onLogout: () => void
@@ -179,7 +195,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     <UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} />
     <span className="rv-fullmenu-profile-copy"><strong>{profile.name}</strong>{profile.role || profile.email ? <small>{profile.role ? <span className="rv-fullmenu-role">{profile.role}</span> : null}{profile.email ? <span className="rv-fullmenu-email">{profile.role ? ' · ' : ''}{profile.email}</span> : null}</small> : null}</span>
   </div>
-  return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
+  return <div ref={rootRef} className={'rv-fullmenu' + (closing ? ' is-closing' : '')} role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1} inert={closing || undefined}>
     <header className="rv-fullmenu-head"><h2>Menü</h2></header>
     <div className="rv-fullmenu-body">
       {groups.map((group, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
