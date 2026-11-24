@@ -16,12 +16,12 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
-    private static Product AddCard(AppDbContext db, Guid tenantId, Guid? brandId, string? modelCode, string colour, string title, DateTimeOffset createdAt, ProductStatus status = ProductStatus.Active)
+    private static Product AddCard(AppDbContext db, Guid tenantId, Guid? brandId, string? modelCode, string colour, string title, DateTimeOffset createdAt, ProductStatus status = ProductStatus.Active, string[]? sizes = null)
     {
         var card = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = title, Description = "Açıklama", BrandId = brandId, VatRate = 10m, VatInclusion = "INCLUDED", Status = status, CreatedAt = createdAt, UpdatedAt = createdAt, Version = 1 };
         db.Products.Add(card);
         var index = 0;
-        foreach (var size in new[] { "M", "L" })
+        foreach (var size in sizes ?? ["M", "L"])
         {
             var sku = $"{modelCode ?? "X"}-{colour}-{size}-{Guid.NewGuid():N}"[..40];
             db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = card.Id, Sku = sku, SkuNormalized = sku.ToUpperInvariant(), ModelCode = modelCode, OptionSignature = $"Renk: {colour} | Beden: {size}", Desi = 1m, DefaultListPrice = 900m, DefaultSalePrice = 600m, Status = status, SortOrder = index++, CreatedAt = createdAt, UpdatedAt = createdAt, Version = 1 });
@@ -414,5 +414,74 @@ public sealed class PostgreSqlProductListPagingTests(PostgreSqlTenantIsolationFi
         await db.SaveChangesAsync();
         Assert.True(await service.FamilyIdMatchesModelCodeRuleAsync(seed.TenantId, CancellationToken.None));
         await AssertSameListsAsync(db, seed.TenantId);
+    }
+
+    // Tükenen Varyantlar (stock GAP) is decided per model: a model of one-size colours, some sold out and some in stock,
+    // lists its sold-out colours (each card's only variant is at 0, so no card alone has a sold-out variant and stock);
+    // a two-size colour with one size at 0 is listed as before; a model sold out in every colour is not (that is OUT);
+    // a colour with every size in stock and a draft are not. Both paths list the same, and the modal's summary
+    // (models · cards · sold-out variants) is read from the listed rows.
+    [PostgreSqlFact]
+    public async Task TheSoldOutVariantList_IsDecidedPerModel_AndListsColoursSoldOutInEverySize()
+    {
+        await using var db = fixture.CreateContext();
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"gap-{Guid.NewGuid():N}", DisplayName = "gap", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        db.Tenants.Add(tenant);
+        var brand = Guid.CreateVersion7();
+        db.Brands.Add(new Brand { Id = brand, TenantId = tenant.Id, Name = "Marka", NormalizedName = "MARKA", IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 });
+        var at = now.AddDays(-1);
+        var oneSize = new[] { "Standart" };
+        var stocks = new Dictionary<Product, decimal[]>
+        {
+            // GAP900: one-size colours, two sold out (one with no stock row at all), two in stock.
+            [AddCard(db, tenant.Id, brand, "GAP900", "Siyah", "Tek Beden Şal Siyah", at.AddMinutes(1), sizes: oneSize)] = [0m],
+            [AddCard(db, tenant.Id, brand, "GAP900", "Mor", "Tek Beden Şal Mor", at.AddMinutes(2), sizes: oneSize)] = [],
+            [AddCard(db, tenant.Id, brand, "GAP900", "Pembe", "Tek Beden Şal Pembe", at.AddMinutes(3), sizes: oneSize)] = [2m],
+            [AddCard(db, tenant.Id, brand, "GAP900", "Gri", "Tek Beden Şal Gri", at.AddMinutes(4), sizes: oneSize)] = [1m],
+            // GAP910: one colour with a size at 0 (listed as before), one colour fully sold out, one fully in stock.
+            [AddCard(db, tenant.Id, brand, "GAP910", "Siyah", "Etek Siyah", at.AddMinutes(5))] = [3m, 0m],
+            [AddCard(db, tenant.Id, brand, "GAP910", "Mavi", "Etek Mavi", at.AddMinutes(6))] = [0m, -1m],
+            [AddCard(db, tenant.Id, brand, "GAP910", "Beyaz", "Etek Beyaz", at.AddMinutes(7))] = [4m, 5m],
+            // GAP920: sold out in every colour: not this list.
+            [AddCard(db, tenant.Id, brand, "GAP920", "Siyah", "Bluz Siyah", at.AddMinutes(8))] = [0m, 0m],
+            [AddCard(db, tenant.Id, brand, "GAP920", "Gri", "Bluz Gri", at.AddMinutes(9))] = [0m],
+            // GAP930: the only stock is on a draft colour: drafts count nowhere.
+            [AddCard(db, tenant.Id, brand, "GAP930", "Siyah", "Ceket Siyah", at.AddMinutes(10))] = [0m, 0m],
+            [AddCard(db, tenant.Id, brand, "GAP930", "Gri", "Ceket Gri", at.AddMinutes(11), ProductStatus.Draft)] = [5m, 5m],
+        };
+        await db.SaveChangesAsync();
+        foreach (var (card, onHands) in stocks)
+        {
+            var cardVariants = await db.ProductVariants.Where(x => x.ProductId == card.Id).OrderBy(x => x.SortOrder).ToListAsync();
+            for (var index = 0; index < onHands.Length; index++)
+                db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenant.Id, VariantId = cardVariants[index].Id, LocationCode = "MAIN", OnHand = onHands[index], Available = Math.Max(0, onHands[index]) });
+        }
+        await db.SaveChangesAsync();
+        await ProductModelLinks.ReconcileTenantAsync(db, tenant.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+        db.ChangeTracker.Clear();
+        var codec = new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        Assert.True(await Service(db, codec).FamilyIdMatchesModelCodeRuleAsync(tenant.Id, CancellationToken.None));
+
+        foreach (var sqlPaging in new[] { true, false })
+            foreach (var limit in new[] { 1, 50 })
+            {
+                var service = Service(db, codec);
+                var items = new List<ProductView>();
+                string? after = null;
+                for (var page = 0; page < 20; page++)
+                {
+                    var result = await service.ListProductsAsync(tenant.Id, limit, after, null, null, null, "GAP", null, sqlPaging, CancellationToken.None);
+                    items.AddRange(result.Items);
+                    if (!result.HasMore) break;
+                    after = result.NextCursor;
+                }
+                var label = $"sqlPaging {sqlPaging}, limit {limit}";
+                Assert.True(new[] { "Etek Mavi", "Etek Siyah", "Tek Beden Şal Mor", "Tek Beden Şal Siyah" }.SequenceEqual(items.Select(x => x.Title).Order(StringComparer.Ordinal)), $"{label}: {string.Join(", ", items.Select(x => x.Title))}");
+                // The summary line: 2 models · 4 catalog records · 5 sold-out variants (Mor has no stock row: 0).
+                Assert.Equal(2, items.Select(x => x.ModelCode).Distinct().Count());
+                Assert.Equal(4, items.Count);
+                Assert.Equal(5, items.Sum(x => x.Variants.Count(variant => variant.OnHand <= 0)));
+            }
     }
 }
