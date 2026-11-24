@@ -50,15 +50,40 @@ internal static class OfferIssueNoProblem
     public static string Fingerprint(string code, string? currency, decimal? listPrice, decimal? salePrice, string? codes = null) =>
         TextValues.Sha256Hex($"{code}|{currency?.Trim().ToUpperInvariant() ?? "-"}|{Price(listPrice)}|{Price(salePrice)}{(codes is null ? "" : "|" + codes)}")[..16];
 
-    // The fingerprint of the values the send judges now for this offer and reason; offerFound is false without an offer row.
-    public static async Task<(string Fingerprint, bool OfferFound)> CurrentAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
+    // Review of 24 Nov 2026: a mark written from then on starts with "v2:" and also holds what PttAVM's non-price checks look
+    // at (the linked code, the colour and size), so a marked PttAVM code or colour/size refusal opens again when one of them
+    // changes. A mark written before has no "v2:" and keeps being compared with the fingerprint of its own shape (the
+    // prices and, for the link and barcode reasons, their codes): for it the new parts count as unchanged.
+    public const string CurrentShape = "v2:";
+
+    // The fingerprints of the values the send judges now for this offer and reason, in the current shape (what a new mark
+    // stores) and in the shape before "v2:"; offerFound is false without an offer row.
+    public static async Task<(string Current, string Previous, bool OfferFound)> CurrentAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
     {
         var offer = await db.ChannelOffers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
             .Select(x => new { x.Currency, x.ListPrice, x.SalePrice })
             .FirstOrDefaultAsync(cancellationToken);
         var codes = await CheckedCodesAsync(db, tenantId, connectionId, variantId, code, cancellationToken);
-        return (Fingerprint(code, offer?.Currency, offer?.ListPrice, offer?.SalePrice, codes), offer is not null);
+        var previous = Fingerprint(code, offer?.Currency, offer?.ListPrice, offer?.SalePrice, codes);
+        var pttAvmValues = await PttAvmCheckedValuesAsync(db, tenantId, connectionId, variantId, code, cancellationToken);
+        var current = CurrentShape + (pttAvmValues is null ? previous : Fingerprint(code, offer?.Currency, offer?.ListPrice, offer?.SalePrice, pttAvmValues));
+        return (current, previous, offer is not null);
+    }
+
+    // PttAVM's CHANNEL_OFFER_INVALID also comes from its code check (the linked code) and its colour/size check (the
+    // variant's options as PttAVM names them); null for every other platform and reason.
+    private static async Task<string?> PttAvmCheckedValuesAsync(AppDbContext db, Guid tenantId, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
+    {
+        if (code != PriceStockOfferIssueCodes.ChannelOfferInvalid
+            || !await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken))
+            return null;
+        var linkCodes = await db.MarketplaceVariantLinks.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.VariantId == variantId)
+            .OrderBy(x => x.Id).Select(x => x.ExternalId).ToListAsync(cancellationToken);
+        var options = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variantId).Select(x => x.OptionSignature).FirstOrDefaultAsync(cancellationToken);
+        var attributes = PriceInventoryComposer.PttAvmVariantAttributes(options).Select(attribute => $"{attribute.Definition}={attribute.Value}");
+        return $"ptt|{string.Join(",", linkCodes.Select(value => value.Trim()))}|{string.Join(",", attributes)}";
     }
 
     // Review of 24 Nov 2026: the link and barcode checks judge codes, not prices. HEPSIBURADA_LISTING_LINK_REQUIRED looks at
@@ -106,8 +131,8 @@ internal static class OfferIssueNoProblem
     public static async Task<bool> StillMarkedAsync(AppDbContext db, OperationalIssue issue, Guid connectionId, Guid variantId, string code, CancellationToken cancellationToken)
     {
         if (issue.Status != IssueStatus.Resolved || issue.TenantId is not { } tenantId || FingerprintOf(issue.Summary) is not { } marked) return false;
-        var (current, offerFound) = await CurrentAsync(db, tenantId, connectionId, variantId, code, cancellationToken);
-        return offerFound && marked == current;
+        var (current, previous, offerFound) = await CurrentAsync(db, tenantId, connectionId, variantId, code, cancellationToken);
+        return offerFound && marked == (marked.StartsWith(CurrentShape, StringComparison.Ordinal) ? current : previous);
     }
 }
 

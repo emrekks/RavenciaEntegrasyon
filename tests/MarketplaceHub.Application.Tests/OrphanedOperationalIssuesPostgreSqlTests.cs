@@ -725,12 +725,21 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
             noOptions.OptionSignature = "";
             priced = Offer(seed, seed.Ptt, a.M, salePrice: 1m, followsPanelPrice: false);
             code = Link(seed, seed.Ptt, a.L, new string('C', 251));
-            setup.ChannelOffers.AddRange(priced, Offer(seed, seed.Ptt, a.L, salePrice: 450m), Offer(seed, seed.Ptt, b.M, salePrice: 450m), Offer(seed, seed.Ptt, b.L, salePrice: 450m));
-            setup.MarketplaceVariantLinks.AddRange(Link(seed, seed.Ptt, a.M, "PTA-M"), code, Link(seed, seed.Ptt, b.M, "PTB-M"), Link(seed, seed.Ptt, b.L, "PTB-L"));
+            setup.ChannelOffers.AddRange(priced, Offer(seed, seed.Ptt, a.L, salePrice: 450m), Offer(seed, seed.Ptt, b.M, salePrice: 450m));
+            setup.MarketplaceVariantLinks.AddRange(Link(seed, seed.Ptt, a.M, "PTA-M"), code, Link(seed, seed.Ptt, b.M, "PTB-M"));
+            // A second PttAVM store whose offers together hold more stock than PttAVM takes for one product: the product
+            // limits may refuse there, so its issue stays open although each offer passes the other checks.
+            var big = Connection(seed.Tenant, "PTTAVM");
+            setup.PlatformConnections.Add(big);
+            setup.ChannelOffers.AddRange(Offer(seed, big, b.L, salePrice: 450m), Offer(seed, big, a.M, salePrice: 450m));
+            setup.MarketplaceVariantLinks.AddRange(Link(seed, big, b.L, "BIG-L"), Link(seed, big, a.M, "BIG-M"));
+            setup.InventoryItems.AddRange(
+                new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, VariantId = b.L.Id, LocationCode = "MAIN", OnHand = 6000m, Available = 6000m },
+                new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, VariantId = a.M.Id, LocationCode = "MAIN", OnHand = 6000m, Available = 6000m });
             priceKey = OfferKey(seed.Ptt, a.M);
             codeKey = OfferKey(seed.Ptt, a.L);
             optionsKey = OfferKey(seed.Ptt, b.M);
-            limitKey = OfferKey(seed.Ptt, b.L);
+            limitKey = OfferKey(big, b.L);
             await setup.SaveChangesAsync();
             setup.OperationalIssues.AddRange(
                 Issue(seed, priceKey, "CHANNEL_OFFER_INVALID", $"'{a.M.Sku}' için PttAVM teklifinde TRY para birimi ve 1'den büyük satış fiyatı gerekir."),
@@ -751,6 +760,68 @@ public sealed class OrphanedOperationalIssuesPostgreSqlTests(PostgreSqlTenantIso
         Assert.Equal([(priceKey, IssueStatus.Resolved), (codeKey, IssueStatus.Resolved), (optionsKey, IssueStatus.Resolved), (limitKey, IssueStatus.Open)],
             await PassAndReadAsync(seed, priceKey, codeKey, optionsKey, limitKey));
     }
+
+    // Review of 24 Nov 2026: the check that wrote an issue passing is not enough; a check the send runs before or after it
+    // still refusing the offer keeps the issue open. One case per scenario the review named.
+    private async Task AssertStaysOpenAsync(Func<Seed, AppDbContext, (PlatformConnection Connection, ProductVariant Variant, string Code, string Summary)> arrange)
+    {
+        Seed seed;
+        string key;
+        await using (var setup = fixture.CreateContext())
+        {
+            seed = await SeedAsync(setup);
+            var (connection, variant, code, summary) = arrange(seed, setup);
+            key = OfferKey(connection, variant);
+            await setup.SaveChangesAsync();
+            setup.OperationalIssues.Add(Issue(seed, key, code, summary));
+            await setup.SaveChangesAsync();
+        }
+        Assert.Equal([(key, IssueStatus.Open)], await PassAndReadAsync(seed, key));
+    }
+
+    [PostgreSqlFact]
+    public async Task APttAvmCodeIssueStaysOpenWhileThePriceIsRefused() => await AssertStaysOpenAsync((seed, setup) =>
+    {
+        var card = AddCard(setup, seed, "RVA");
+        // The code is fine now, but the price in force is 1.
+        setup.ChannelOffers.Add(Offer(seed, seed.Ptt, card.M, salePrice: 1m, followsPanelPrice: false));
+        setup.MarketplaceVariantLinks.Add(Link(seed, seed.Ptt, card.M, "RVA-M"));
+        return (seed.Ptt, card.M, "CHANNEL_OFFER_INVALID", $"'{card.M.Sku}' için PttAVM kodu boş veya 250 karakterden uzun.");
+    });
+
+    [PostgreSqlFact]
+    public async Task APttAvmColourSizeIssueStaysOpenWhileTheOfferIsNotInTry() => await AssertStaysOpenAsync((seed, setup) =>
+    {
+        var card = AddCard(setup, seed, "RVB");
+        // The variant has its size now, but the offer is in USD.
+        setup.ChannelOffers.Add(Offer(seed, seed.Ptt, card.M, salePrice: 450m, currency: "USD"));
+        setup.MarketplaceVariantLinks.Add(Link(seed, seed.Ptt, card.M, "RVB-M"));
+        return (seed.Ptt, card.M, "CHANNEL_OFFER_INVALID", $"'{card.M.Sku}' PttAVM'de RVB ürününün varyantı; PttAVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi.");
+    });
+
+    [PostgreSqlFact]
+    public async Task APazaramaBarcodeIssueStaysOpenWhileTheOfferIsNotInTry() => await AssertStaysOpenAsync((seed, setup) =>
+    {
+        var pazarama = Connection(seed.Tenant, "PAZARAMA");
+        setup.PlatformConnections.Add(pazarama);
+        var card = AddCard(setup, seed, "RVC");
+        // The barcode fits now, but the offer is in USD.
+        setup.ChannelOffers.Add(Offer(seed, pazarama, card.M, salePrice: 450m, currency: "USD"));
+        setup.MarketplaceVariantLinks.Add(Link(seed, pazarama, card.M, "RVC-M"));
+        return (pazarama, card.M, "PAZARAMA_BARCODE_INVALID", $"'{card.M.Sku}' için Pazarama barkodu boş veya 100 karakterden uzun.");
+    });
+
+    [PostgreSqlFact]
+    public async Task APazaramaPriceIssueStaysOpenWhileTheBarcodeIsRefused() => await AssertStaysOpenAsync((seed, setup) =>
+    {
+        var pazarama = Connection(seed.Tenant, "PAZARAMA");
+        setup.PlatformConnections.Add(pazarama);
+        var card = AddCard(setup, seed, "RVD");
+        // Priced in TRY now, but the linked barcode is too long.
+        setup.ChannelOffers.Add(Offer(seed, pazarama, card.M, salePrice: 450m));
+        setup.MarketplaceVariantLinks.Add(Link(seed, pazarama, card.M, new string('D', 101)));
+        return (pazarama, card.M, "CHANNEL_OFFER_INVALID", $"'{card.M.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.");
+    });
 
     [PostgreSqlFact]
     public async Task ThePassIsBoundedByItsBatches()

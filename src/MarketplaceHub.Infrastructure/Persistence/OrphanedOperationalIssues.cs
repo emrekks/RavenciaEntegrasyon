@@ -1,5 +1,6 @@
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -152,42 +153,64 @@ public static class OrphanedOperationalIssues
             """))
     ];
 
-    // An offer issue whose send-time check passes the stored offer now (24 Nov 2026). The check is the send's own C#
-    // function (PriceInventoryComposer), not a copy of it, so this is not SQL like the rules above. Per marketplace:
-    //   Trendyol, Hepsiburada, Shopify: CHANNEL_OFFER_INVALID by StandardOfferRefused (TRY; on Trendyol a price in force).
-    //   N11: CHANNEL_OFFER_INVALID by N11OfferRefused (TRY; a missing price sends the stock alone, never a refusal).
-    //   Pazarama: CHANNEL_OFFER_INVALID passes with TRY and a price in force (PazaramaInForce), which neither price refusal
-    //     can meet whatever the stock does; PAZARAMA_BARCODE_INVALID by PazaramaBarcodeRefused on the linked barcode.
-    //   PttAVM: CHANNEL_OFFER_INVALID by the check whose fixed text the summary carries: the price (PttAvmPriceRefused),
-    //     the code (PttAvmCodeRefused) or the colour/size (PttAvmVariantAttributes). A product over PttAVM's variant or
-    //     stock limits is judged over the whole product and its stock at send time: such an issue stays open.
-    // An offer, variant, link or connection missing, or a summary no check above wrote, stays open (unknown stays unknown).
+    // An offer issue whose offer the send would take now (24 Nov 2026). The checks are the send's own C# functions
+    // (PriceInventoryComposer), not copies, so this is not SQL like the rules above. Review of 24 Nov 2026: an issue closes
+    // only when the offer passes EVERY check its marketplace's send runs, in the send's order, not only the one that wrote
+    // it (a fixed barcode with the offer no longer in TRY is still refused); a check this pass cannot judge keeps it open.
+    //   Trendyol, Shopify: StandardOfferRefused (TRY; on Trendyol a price in force), the only refusal of their line.
+    //   Hepsiburada: its listing-link check (merchant SKU and hbSku, read from the listing rows and links) follows the price
+    //     check and is not judged here: its issues stay open.
+    //   N11: N11OfferRefused (TRY), the only refusal (a missing price sends the stock alone).
+    //   Pazarama: TRY, the linked barcode (PazaramaBarcodeRefused), and a price in force (PazaramaInForce), so the third
+    //     refusal cannot be met whatever the stock does.
+    //   PttAVM: the price in force (PttAvmPriceRefused), the linked code (PttAvmCodeRefused), a colour or size
+    //     (PttAvmVariantAttributes: without one, whether the variant goes in a product with variants depends on the product
+    //     links, so it stays open), and the product limits (variants, total stock), judged over the whole PttAVM product at
+    //     send time: the pass takes them as unable to refuse only when the connection's every ACTIVE offer together stays
+    //     within them, else the issue stays open.
+    // An offer, variant, link or connection missing stays open (unknown stays unknown).
     public const string OfferPassesName = "offer-passes-send-check";
     public const string OfferPassesDetail = "teklif gönderim kontrolünden artık geçiyor.";
 
     private static readonly string[] ClearedCodes = [PriceStockOfferIssueCodes.ChannelOfferInvalid, PriceStockOfferIssueCodes.PazaramaBarcodeInvalid];
-    private static readonly string[] ClearedPlatforms = [.. PriceInventoryComposer.StandardOfferPlatforms, "N11", "PAZARAMA", "PTTAVM"];
+    private static readonly string[] ClearedPlatforms = ["TRENDYOL", "SHOPIFY", "N11", "PAZARAMA", "PTTAVM"];
 
-    // Whether the send's own check passes the offer now, for the check that wrote the issue (see above); false when unknown.
-    internal static bool OfferPassesNow(string platform, string code, string summary, ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards, string? linkCode)
+    // Whether the send would take the offer now (see above); false when any check refuses it or cannot be judged.
+    // pttAvmWithinLimits: the connection's ACTIVE offers together stay within PttAVM's product limits (PttAVM only).
+    internal static bool OfferPassesNow(string platform, string code, ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards, string? linkCode, bool pttAvmWithinLimits)
     {
-        if (code == PriceStockOfferIssueCodes.PazaramaBarcodeInvalid)
-            return platform == "PAZARAMA" && linkCode is not null && !PriceInventoryComposer.PazaramaBarcodeRefused(linkCode.Trim());
-        if (code != PriceStockOfferIssueCodes.ChannelOfferInvalid) return false;
+        if (code is not (PriceStockOfferIssueCodes.ChannelOfferInvalid or PriceStockOfferIssueCodes.PazaramaBarcodeInvalid)) return false;
+        if (code == PriceStockOfferIssueCodes.PazaramaBarcodeInvalid && platform != "PAZARAMA") return false;
         return platform switch
         {
-            "TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" => !PriceInventoryComposer.StandardOfferRefused(platform, offer, variant, cards),
+            "TRENDYOL" or "SHOPIFY" => !PriceInventoryComposer.StandardOfferRefused(platform, offer, variant, cards),
             "N11" => !PriceInventoryComposer.N11OfferRefused(offer),
-            "PAZARAMA" => PriceInventoryComposer.IsTry(offer) && PriceInventoryComposer.PazaramaInForce(offer, variant, cards).Known,
-            "PTTAVM" when summary.Contains(PriceInventoryComposer.PttAvmPriceRefusalText, StringComparison.Ordinal) =>
-                !PriceInventoryComposer.PttAvmPriceRefused(offer, PriceInventoryComposer.PttAvmPriceInForce(offer, variant, cards)),
-            "PTTAVM" when summary.Contains(PriceInventoryComposer.PttAvmCodeRefusalText, StringComparison.Ordinal) =>
-                linkCode is not null && !PriceInventoryComposer.PttAvmCodeRefused(linkCode.Trim()),
-            "PTTAVM" when summary.Contains(PriceInventoryComposer.PttAvmAttributesRefusalText, StringComparison.Ordinal) =>
-                PriceInventoryComposer.PttAvmVariantAttributes(variant.OptionSignature).Count > 0,
+            "PAZARAMA" => PriceInventoryComposer.IsTry(offer)
+                && linkCode is not null && !PriceInventoryComposer.PazaramaBarcodeRefused(linkCode.Trim())
+                && PriceInventoryComposer.PazaramaInForce(offer, variant, cards).Known,
+            "PTTAVM" => !PriceInventoryComposer.PttAvmPriceRefused(offer, PriceInventoryComposer.PttAvmPriceInForce(offer, variant, cards))
+                && linkCode is not null && !PriceInventoryComposer.PttAvmCodeRefused(linkCode.Trim())
+                && PriceInventoryComposer.PttAvmVariantAttributes(variant.OptionSignature).Count > 0
+                && pttAvmWithinLimits,
             _ => false
         };
     }
+
+    // Whether the connection's ACTIVE offers together stay within PttAVM's product limits: no PttAVM product built from them
+    // can then hold more variants, or more stock, than PttAVM takes (the send's own quantity rule per offer).
+    private static async Task<bool> PttAvmWithinLimitsAsync(AppDbContext db, Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var active = await (from offer in db.ChannelOffers.AsNoTracking()
+                            join inventory in db.InventoryItems.AsNoTracking().Where(x => x.LocationCode == "MAIN") on new { offer.TenantId, offer.VariantId } equals new { inventory.TenantId, inventory.VariantId } into inventories
+                            from inventory in inventories.DefaultIfEmpty()
+                            where offer.TenantId == tenantId && offer.ConnectionId == connectionId && offer.Status == "ACTIVE"
+                            select new { Available = inventory == null ? (decimal?)null : inventory.Available, offer.SafetyStock })
+            .Take(PttAvmPriceInventoryRules.MaxVariantsPerProduct + 1)
+            .ToListAsync(cancellationToken);
+        return active.Count <= PttAvmPriceInventoryRules.MaxVariantsPerProduct
+            && active.Sum(row => row.Available is { } available ? PttAvmPriceInventoryRules.Quantity(available - row.SafetyStock) : 0) <= PttAvmPriceInventoryRules.MaxQuantity;
+    }
+
 
     private static async Task<Dictionary<string, int>> ResolveClearedOffersAsync(AppDbContext db, Guid? tenantId, DateTimeOffset resolvedAt, int batchSize, int maxBatches, string actor, CancellationToken cancellationToken)
     {
@@ -226,13 +249,15 @@ public static class OrphanedOperationalIssues
                     .Where(x => x.TenantId == tenant.Key && variantIds.Contains(x.Id))
                     .ToDictionaryAsync(x => x.Id, cancellationToken);
                 var cards = await PriceInventoryComposer.CardPanelPricesAsync(db, tenant.Key, variants.Values.Select(x => x.ProductId), cancellationToken);
+                var pttAvmLimits = new Dictionary<Guid, bool>();
                 foreach (var (id, _, code, summary, key) in tenant)
                 {
                     var (connectionId, variantId) = key!.Value;
                     if (!platforms.TryGetValue(connectionId, out var platform) || !variants.TryGetValue(variantId, out var variant)) continue;
                     if (offers.FirstOrDefault(x => x.ConnectionId == connectionId && x.VariantId == variantId) is not { } offer) continue;
                     var linkCode = links.Where(x => x.ConnectionId == connectionId && x.VariantId == variantId).Select(x => x.ExternalId).ToList() is [var single] ? single : null;
-                    if (OfferPassesNow(platform, code, summary, offer, variant, cards, linkCode)) passed.Add((id, code, summary));
+                    var withinLimits = platform == "PTTAVM" && (pttAvmLimits.TryGetValue(connectionId, out var known) ? known : pttAvmLimits[connectionId] = await PttAvmWithinLimitsAsync(db, tenant.Key, connectionId, cancellationToken));
+                    if (OfferPassesNow(platform, code, offer, variant, cards, linkCode, withinLimits)) passed.Add((id, code, summary));
                 }
             }
             // Only an issue still as it was read: one the send wrote again meanwhile (another code or text) is judged next time.

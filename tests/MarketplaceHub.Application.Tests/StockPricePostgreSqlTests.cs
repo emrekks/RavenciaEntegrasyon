@@ -424,6 +424,73 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(("PAZARAMA_BARCODE_INVALID", IssueStatus.Open), (reopened.Code, reopened.Status));
     }
 
+    // Review of 24 Nov 2026: a PttAVM code refusal marked "Sorun Yok" stays closed on the same code and opens again on a
+    // new code that is still refused; a mark written before the "v2:" shape (prices only) keeps it closed on a new code.
+    [PostgreSqlFact]
+    public async Task APttAvmCodeRefusalMarkedNoProblem_OpensAgainOnANewCode_AndAnOldShapeMarkKeepsItClosed()
+    {
+        var tenant = NewTenant("offer-no-problem-ptt-code");
+        var ptt = NewConnection(tenant, "PTTAVM", writesEnabled: true);
+        var (marked, oldMarked) = (NewVariant(tenant, "NOT-1", "8690000000103"), NewVariant(tenant, "NOT-2", "8690000000110"));
+        marked.Variant.ModelCode = "M-NOT-1";
+        oldMarked.Variant.ModelCode = "M-NOT-2";
+        var markedLink = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = ptt.Id, VariantId = marked.Variant.Id, ExternalId = new string('A', 251) };
+        var oldLink = new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = ptt.Id, VariantId = oldMarked.Variant.Id, ExternalId = new string('B', 251) };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(ptt);
+            seed.ConnectionSyncPolicies.AddRange(AutomaticWritePolicies(tenant, ptt));
+            seed.Products.AddRange(marked.Product, oldMarked.Product);
+            seed.ProductVariants.AddRange(marked.Variant, oldMarked.Variant);
+            seed.InventoryItems.AddRange(NewInventory(tenant, marked.Variant, 4m), NewInventory(tenant, oldMarked.Variant, 4m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, ptt, marked.Variant), NewOffer(tenant, ptt, oldMarked.Variant));
+            seed.MarketplaceVariantLinks.AddRange(markedLink, oldLink);
+            await seed.SaveChangesAsync();
+        }
+        string Key(ProductVariant variant) => $"stock-projection-offer-invalid:{ptt.Id:N}:{variant.Id:N}";
+        async Task ReconcileAsync()
+        {
+            await using var db = fixture.CreateContext();
+            await db.IntegrationJobs.Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.PriceInventorySync).ExecuteDeleteAsync();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, WritesOnConfiguration(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, ptt.Id, MarketplaceJobTypes.StockReconciliation, "{\"lookbackHours\":1}", "offer-no-problem-ptt-code", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+        async Task<IssueStatus> StatusAsync(ProductVariant variant)
+        {
+            await using var db = fixture.CreateContext();
+            var key = Key(variant);
+            return (await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.DedupeKey == key)).Status;
+        }
+
+        await ReconcileAsync();
+        Assert.Equal((IssueStatus.Open, IssueStatus.Open), (await StatusAsync(marked.Variant), await StatusAsync(oldMarked.Variant)));
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(1, (await new PriceStockMonitorService(db, WritesOnConfiguration(), fixture.TimeProvider).MarkOffersNoProblemAsync(tenant.Id, ptt.Id, [marked.Variant.Id], Guid.CreateVersion7(), "mark", CancellationToken.None)).Value!.Marked);
+            // A mark as the first version wrote it: the prices alone, no "v2:".
+            var offer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == oldMarked.Variant.Id);
+            var oldShape = OfferIssueNoProblem.Mark(OfferIssueNoProblem.Fingerprint("CHANNEL_OFFER_INVALID", offer.Currency, offer.ListPrice, offer.SalePrice));
+            var oldKey = Key(oldMarked.Variant);
+            await db.OperationalIssues.Where(x => x.TenantId == tenant.Id && x.DedupeKey == oldKey)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.Summary, x => x.Summary + oldShape));
+        }
+
+        // The same codes: both stay closed.
+        await ReconcileAsync();
+        Assert.Equal((IssueStatus.Resolved, IssueStatus.Resolved), (await StatusAsync(marked.Variant), await StatusAsync(oldMarked.Variant)));
+
+        // New codes, still too long: the current mark opens again; the old-shape mark has no code in it and stays closed.
+        await using (var db = fixture.CreateContext())
+        {
+            await db.MarketplaceVariantLinks.Where(x => x.Id == markedLink.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalId, new string('C', 251)));
+            await db.MarketplaceVariantLinks.Where(x => x.Id == oldLink.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ExternalId, new string('D', 251)));
+        }
+        await ReconcileAsync();
+        Assert.Equal((IssueStatus.Open, IssueStatus.Resolved), (await StatusAsync(marked.Variant), await StatusAsync(oldMarked.Variant)));
+    }
+
     // The retention keeps a "Sorun Yok" mark while its offer exists (also after a month with the writes off), and removes
     // it once the offer is gone, like any resolved issue.
     [PostgreSqlFact]
