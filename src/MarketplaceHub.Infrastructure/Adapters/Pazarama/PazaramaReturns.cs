@@ -26,7 +26,7 @@ public sealed partial class PazaramaHttpClient : IReturnPort
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
         // What a refund row carries beyond the documented fields, read by read: on 6 Nov 2026 the only refund
-        // (674544454) stayed refundStatus 1 with the same return cargo code from the request until after the parcel
+        // (674000001) stayed refundStatus 1 with the same return cargo code from the request until after the parcel
         // reached the seller, and the raw row is not stored. These lines show whether Pazarama sends anything that
         // tells "requested", "on its way" and "arrived" apart (no customer data: names, phones, addresses left out).
         if (PazaramaReturnMapper.RowShapes(document.RootElement) is { Length: > 0 } shapes)

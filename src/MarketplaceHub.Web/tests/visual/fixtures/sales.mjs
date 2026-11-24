@@ -50,17 +50,17 @@ function order({ id, platformCode, orderNumber, status, orderedAt, dueAt = null,
 
 export const orders = [
   order({
-    id: 'o-1001', platformCode: 'TRENDYOL', orderNumber: '10458213377', status: 'NEW', orderedAt: '2026-10-20 08:47', dueAt: '2026-10-21 23:59',
+    id: 'o-1001', platformCode: 'TRENDYOL', orderNumber: '10400000011', status: 'NEW', orderedAt: '2026-10-20 08:47', dueAt: '2026-10-21 23:59',
     customer: 'Elif Demir', phone: '+90 532 418 26 90', shipTo: address('Elif Demir', 'Caferağa Mah. Moda Cad. No: 41 D: 6', 'Caferağa', 'Kadıköy', 'İstanbul', '34710'),
     lines: [
       line('o-1001-l1', { sku: 'RVK-TRK-2241-EKR-M', barcode: '8684471220419', title: 'Kadın Oversize Triko Kazak', price: 649.9, model: 'RVK-TRK-2241', options: 'Renk: Ekru | Beden: M', image: photo }),
       line('o-1001-l2', { sku: 'RVK-JN-1180-AMV-38', barcode: '8684471219987', title: 'Yüksek Bel Mom Jean', price: 799.9, model: 'RVK-JN-1180', options: 'Renk: Açık Mavi | Beden: 38' }),
     ],
-    packages: [{ externalPackageId: '3189204417', status: 'NEW', rawStatus: 'Created', cargo: MNG, tracking: '7330029117624185', at: '2026-10-20 08:47' }],
+    packages: [{ externalPackageId: '3180000008', status: 'NEW', rawStatus: 'Created', cargo: MNG, tracking: '7330000000000009', at: '2026-10-20 08:47' }],
     invoiceStatus: 'FATURA_BEKLIYOR'
   }),
   order({
-    id: 'o-1002', platformCode: 'HEPSIBURADA', orderNumber: '4290571836', status: 'NEW', orderedAt: '2026-10-19 21:15', dueAt: '2026-10-20 18:00',
+    id: 'o-1002', platformCode: 'HEPSIBURADA', orderNumber: '4290000001', status: 'NEW', orderedAt: '2026-10-19 21:15', dueAt: '2026-10-20 18:00',
     customer: 'Mehmet Kaya', shipTo: address('Mehmet Kaya', 'Kızılırmak Mah. 1443. Cad. No: 25 D: 12', 'Kızılırmak', 'Çankaya', 'Ankara', '06510'),
     lines: [line('o-1002-l1', { sku: 'RVE-GML-0932-LCV-L', barcode: '0RVE09320L', title: 'Erkek Slim Fit Keten Gömlek', qty: 2, price: 459.9, raw: 'Open', model: 'RVE-GML-0932', options: 'Renk: Lacivert | Beden: L' })],
     invoiceStatus: 'FATURA_BEKLIYOR', discount: 50
@@ -77,41 +77,41 @@ export const orders = [
     invoiceStatus: 'FATURA_BEKLIYOR'
   }),
   order({
-    id: 'o-1004', platformCode: 'TRENDYOL', orderNumber: '10451877206', status: 'PROCESSING', orderedAt: '2026-10-16 13:40', dueAt: '2026-10-18 08:00',
+    id: 'o-1004', platformCode: 'TRENDYOL', orderNumber: '10400000009', status: 'PROCESSING', orderedAt: '2026-10-16 13:40', dueAt: '2026-10-18 08:00',
     customer: 'Ayşe Çelik', shipTo: address('Ayşe Çelik', 'Ataevler Mah. Mavi Cad. No: 9 D: 3', 'Ataevler', 'Nilüfer', 'Bursa', '16140'),
     lines: [line('o-1004-l1', { sku: 'RVK-TST-0310-SYH-S', barcode: '8684471201104', title: 'Kadın Basic Bisiklet Yaka Tişört', qty: 3, price: 199.9, raw: 'Picking', model: 'RVK-TST-0310', options: 'Renk: Siyah | Beden: S' })],
-    packages: [{ externalPackageId: '3188615092', status: 'PROCESSING', rawStatus: 'Picking', cargo: MNG, tracking: '7330029117555302', at: '2026-10-17 09:12' }],
+    packages: [{ externalPackageId: '3180000007', status: 'PROCESSING', rawStatus: 'Picking', cargo: MNG, tracking: '7330000000000008', at: '2026-10-17 09:12' }],
     invoiceStatus: 'FATURA_ISLENIYOR', labelPrintedAt: '2026-10-17 09:20'
   }),
   order({
-    id: 'o-1005', platformCode: 'N11', orderNumber: '211698830412', status: 'SHIPPED', orderedAt: '2026-10-17 10:20', dueAt: '2026-10-19 10:20', shippedAt: '2026-10-18 15:05',
+    id: 'o-1005', platformCode: 'N11', orderNumber: '211000000002', status: 'SHIPPED', orderedAt: '2026-10-17 10:20', dueAt: '2026-10-19 10:20', shippedAt: '2026-10-18 15:05',
     customer: 'Burak Şahin', shipTo: address('Burak Şahin', 'Fener Mah. Tekelioğlu Cad. No: 52 D: 8', 'Fener', 'Muratpaşa', 'Antalya', '07160'),
     lines: [line('o-1005-l1', { sku: 'RVU-SWT-0705-GRI-XL', barcode: '8684471212203', title: 'Unisex Kapüşonlu Sweatshirt', price: 549, raw: 'Shipped', model: 'RVU-SWT-0705', options: 'Renk: Gri Melanj | Beden: XL', shipped: 1, image: photo })],
-    packages: [{ externalPackageId: '50419978321', status: 'SHIPPED', rawStatus: 'Shipped', cargo: UPS, tracking: '1Z84E9W60412257731', at: '2026-10-18 15:05' }],
+    packages: [{ externalPackageId: '50400000002', status: 'SHIPPED', rawStatus: 'Shipped', cargo: UPS, tracking: '1Z84E9W60412257731', at: '2026-10-18 15:05' }],
     invoiceStatus: 'FATURA_KONTROLDE', invoiceId: 'inv-1005', platformInfo: [{ label: 'n11 Sipariş Durumu', value: 'Kargoya Verildi' }]
   }),
   order({
-    id: 'o-1006', platformCode: 'PAZARAMA', orderNumber: 'PZ-58120734', status: 'SHIPPED', orderedAt: '2026-10-17 19:44', dueAt: '2026-10-19 19:44', shippedAt: '2026-10-19 11:30',
+    id: 'o-1006', platformCode: 'PAZARAMA', orderNumber: 'PZ-58100001', status: 'SHIPPED', orderedAt: '2026-10-17 19:44', dueAt: '2026-10-19 19:44', shippedAt: '2026-10-19 11:30',
     customer: 'Selin Yıldız', shipTo: address('Selin Yıldız', 'Hoşnudiye Mah. Ismet İnönü 1 Cad. No: 77 D: 2', 'Hoşnudiye', 'Tepebaşı', 'Eskişehir', '26130'),
     lines: [line('o-1006-l1', { sku: 'RVC-PJM-0218-LCV-78', barcode: '8684471240776', title: 'Çocuk Desenli Pijama Takımı', qty: 2, price: 279.9, raw: 'Kargoya Verildi', model: 'RVC-PJM-0218', options: 'Renk: Lacivert | Beden: 7-8 Yaş', shipped: 2 })],
-    packages: [{ externalPackageId: 'PZP-90331842', status: 'SHIPPED', rawStatus: 'Kargoya Verildi', cargo: KARGOIST, tracking: 'KGI40961188', at: '2026-10-19 11:30' }],
+    packages: [{ externalPackageId: 'PZP-90300001', status: 'SHIPPED', rawStatus: 'Kargoya Verildi', cargo: KARGOIST, tracking: 'KGI40961188', at: '2026-10-19 11:30' }],
     invoiceStatus: 'FATURA_PLATFORMA_AKTARILMADI', invoiceId: 'inv-1006'
   }),
   order({
-    id: 'o-1007', platformCode: 'TRENDYOL', orderNumber: '10437702915', status: 'DELIVERED', orderedAt: '2026-10-13 09:12', dueAt: '2026-10-15 09:12', shippedAt: '2026-10-14 14:20',
+    id: 'o-1007', platformCode: 'TRENDYOL', orderNumber: '10400000006', status: 'DELIVERED', orderedAt: '2026-10-13 09:12', dueAt: '2026-10-15 09:12', shippedAt: '2026-10-14 14:20',
     customer: 'Lena Hoffmann', microExport: true, shipTo: address('Lena Hoffmann', 'Kastanienallee 12', 'Prenzlauer Berg', 'Pankow', 'Berlin', '10435', 'DE'),
     lines: [line('o-1007-l1', { sku: 'RVK-PNT-0544-BEJ-40', barcode: '8684471225445', title: 'Keten Karışımlı Palazzo Pantolon', price: 899, raw: 'Delivered', model: 'RVK-PNT-0544', options: 'Renk: Bej | Beden: 40', shipped: 1, delivered: 1, image: photo })],
-    packages: [{ externalPackageId: '3186120774', status: 'DELIVERED', rawStatus: 'Delivered', cargo: MNG, tracking: '7330029116987703', at: '2026-10-16 12:47' }],
+    packages: [{ externalPackageId: '3180000003', status: 'DELIVERED', rawStatus: 'Delivered', cargo: MNG, tracking: '7330000000000007', at: '2026-10-16 12:47' }],
     invoiceStatus: 'FATURA_KONTROLDE', invoiceId: 'inv-1007'
   }),
   order({
-    id: 'o-1008', platformCode: 'HEPSIBURADA', orderNumber: '4288140027', status: 'DELIVERED', orderedAt: '2026-10-12 22:31', dueAt: '2026-10-14 22:31', shippedAt: '2026-10-13 16:00',
+    id: 'o-1008', platformCode: 'HEPSIBURADA', orderNumber: '4280000003', status: 'DELIVERED', orderedAt: '2026-10-12 22:31', dueAt: '2026-10-14 22:31', shippedAt: '2026-10-13 16:00',
     customer: 'Can Öztürk', taxId: '4810573926', shipTo: address('Can Öztürk', 'Sinanpaşa Mah. Ihlamurdere Cad. No: 18 D: 5', 'Sinanpaşa', 'Beşiktaş', 'İstanbul', '34353'),
     lines: [
       line('o-1008-l1', { sku: 'RVE-PNT-0811-HAK-32', barcode: '8684471218812', title: 'Erkek Chino Pantolon', price: 699.9, raw: 'Delivered', model: 'RVE-PNT-0811', options: 'Renk: Haki | Beden: 32', shipped: 1, delivered: 1 }),
       line('o-1008-l2', { sku: 'RVA-BRE-0021-ANT', barcode: '8684471231001', title: 'Örme Bere', price: 149.9, raw: 'Delivered', model: 'RVA-BRE-0021', options: 'Renk: Antrasit', shipped: 1, delivered: 1 }),
     ],
-    packages: [{ externalPackageId: '5435694424', status: 'DELIVERED', rawStatus: 'Delivered', cargo: SENDEO, tracking: 'SND2026101300417', at: '2026-10-15 10:05' }],
+    packages: [{ externalPackageId: '5430000003', status: 'DELIVERED', rawStatus: 'Delivered', cargo: SENDEO, tracking: 'SND2026101300417', at: '2026-10-15 10:05' }],
     invoiceStatus: 'FATURA_KONTROLDE', invoiceId: 'inv-1008', discount: 85
   }),
   order({
@@ -122,10 +122,10 @@ export const orders = [
     invoiceStatus: 'FATURA_YUKLENDI', invoiceId: 'inv-1009', invoiceDocumentUrl: '/api/v1/invoices/inv-1009/documents/latest/content'
   }),
   order({
-    id: 'o-1010', platformCode: 'TRENDYOL', orderNumber: '10449930188', status: 'CANCELLED', orderedAt: '2026-10-15 11:58', dueAt: '2026-10-17 11:58',
+    id: 'o-1010', platformCode: 'TRENDYOL', orderNumber: '10400000007', status: 'CANCELLED', orderedAt: '2026-10-15 11:58', dueAt: '2026-10-17 11:58',
     customer: 'Emre Koç', shipTo: address('Emre Koç', 'Kozluk Mah. Ankara Yolu Cad. No: 104 D: 9', 'Kozluk', 'İzmit', 'Kocaeli', '41040'),
     lines: [line('o-1010-l1', { sku: 'RVK-TRC-0377-BEJ-38', barcode: '8684471203771', title: 'Kadın Kemerli Trençkot', price: 1599.9, raw: 'Cancelled', model: 'RVK-TRC-0377', options: 'Renk: Bej | Beden: 38', cancelled: 1 })],
-    packages: [{ externalPackageId: '3187530661', status: 'CANCELLED', rawStatus: 'Cancelled', cargo: MNG, tracking: null, at: '2026-10-15 16:20' }],
+    packages: [{ externalPackageId: '3180000005', status: 'CANCELLED', rawStatus: 'Cancelled', cargo: MNG, tracking: null, at: '2026-10-15 16:20' }],
     invoiceStatus: 'FATURA_IPTAL'
   }),
 ]
@@ -193,21 +193,21 @@ function claim({ id, platformCode, externalClaimId, orderNumber, status, rawStat
 
 export const returns = [
   claim({
-    id: 'r-2001', platformCode: 'TRENDYOL', externalClaimId: 'f3a9c1e2-7d44-4b8a-9a51-2c6e0d9b1a77', orderNumber: '10421188530', status: 'ACTION_REQUIRED', rawStatus: 'WaitingInAction',
+    id: 'r-2001', platformCode: 'TRENDYOL', externalClaimId: 'f3a9c1e2-7d44-4b8a-9a51-2c6e0d9b1a77', orderNumber: '10400000003', status: 'ACTION_REQUIRED', rawStatus: 'WaitingInAction',
     reasonCode: 'SIZE_TOO_SMALL', reasonText: 'Normalde M giyiyorum ama kalıbı dar, bir beden büyüğünü alacağım.', actionDueAt: '2026-10-21 08:00',
-    customer: 'Gizem Aksoy', orderedAt: '2026-10-08 14:10', cargo: MNG, tracking: '7330029101188452', packageNumber: '3187741290',
+    customer: 'Gizem Aksoy', orderedAt: '2026-10-08 14:10', cargo: MNG, tracking: '7330000000000006', packageNumber: '3180000006',
     lines: [line('r-2001-l1', { sku: 'RVK-ELB-0661-YSL-M', barcode: '8684471266617', title: 'Kadın Saten Midi Elbise', price: 749.9, raw: 'WaitingInAction', model: 'RVK-ELB-0661', options: 'Renk: Yeşil | Beden: M', image: photo })]
   }),
   claim({
-    id: 'r-2002', platformCode: 'HEPSIBURADA', externalClaimId: 'HBR-77120458', orderNumber: '4281057719', status: 'ACTION_REQUIRED', rawStatus: 'AwaitingPreApproval',
+    id: 'r-2002', platformCode: 'HEPSIBURADA', externalClaimId: 'HBR-77100001', orderNumber: '4280000001', status: 'ACTION_REQUIRED', rawStatus: 'AwaitingPreApproval',
     reasonCode: 'Ürünü almaktan vazgeçtim / beğenmedim', reasonText: 'Rengi fotoğraftakinden daha koyu geldi.', actionDueAt: '2026-10-23 17:00', estimated: true,
-    customer: 'Oğuzhan Polat', orderedAt: '2026-10-09 20:44', cargo: SENDEO, tracking: 'SND2026101700981', packageNumber: '5435120087', discount: 40,
+    customer: 'Oğuzhan Polat', orderedAt: '2026-10-09 20:44', cargo: SENDEO, tracking: 'SND2026101700981', packageNumber: '5430000002', discount: 40,
     lines: [line('r-2002-l1', { sku: 'RVE-MNT-0148-HAK-L', barcode: '0RVE01480L', title: 'Erkek Şişme Mont', price: 1899.9, vat: 20, raw: 'AwaitingPreApproval', model: 'RVE-MNT-0148', options: 'Renk: Haki | Beden: L' })]
   }),
   claim({
-    id: 'r-2003', platformCode: 'TRENDYOL', externalClaimId: '0b6e2d91-4c3f-4f6a-8e27-91d5a3c7e410', orderNumber: '10419920671', status: 'ACTION_REQUIRED', rawStatus: 'WaitingInAction',
+    id: 'r-2003', platformCode: 'TRENDYOL', externalClaimId: '0b6e2d91-4c3f-4f6a-8e27-91d5a3c7e410', orderNumber: '10400000002', status: 'ACTION_REQUIRED', rawStatus: 'WaitingInAction',
     reasonCode: 'PRODUCT_IS_DAMAGED', reasonText: 'Bir tanesinin dikişi sökük geldi.', actionDueAt: '2026-10-22 12:00', approvedAt: '2026-10-19 10:05',
-    customer: 'Hakan Yurt', orderedAt: '2026-10-06 11:32', cargo: MNG, tracking: '7330029100954118', packageNumber: '3187250134',
+    customer: 'Hakan Yurt', orderedAt: '2026-10-06 11:32', cargo: MNG, tracking: '7330000000000005', packageNumber: '3180000004',
     lines: [
       line('r-2003-l1', { sku: 'RVE-TST-0402-BYZ-L', barcode: '8684471204020', title: 'Erkek Polo Yaka Tişört', price: 329.9, raw: 'Accepted', model: 'RVE-TST-0402', options: 'Renk: Beyaz | Beden: L' }),
       line('r-2003-l2', { sku: 'RVE-TST-0402-LCV-L', barcode: '8684471204037', title: 'Erkek Polo Yaka Tişört', price: 329.9, raw: 'WaitingInAction', model: 'RVE-TST-0402', options: 'Renk: Lacivert | Beden: L' }),
@@ -215,33 +215,33 @@ export const returns = [
     lineStatuses: { 'r-2003-l1': 'APPROVED', 'r-2003-l2': 'ACTION_REQUIRED' }
   }),
   claim({
-    id: 'r-2004', platformCode: 'N11', externalClaimId: 'N11-IAD-3390715', orderNumber: '211690044817', status: 'REQUESTED', rawStatus: 'Requested',
+    id: 'r-2004', platformCode: 'N11', externalClaimId: 'N11-IAD-3390715', orderNumber: '211000000001', status: 'REQUESTED', rawStatus: 'Requested',
     reasonCode: 'ProductIsDamaged', reasonText: 'Kutusu ezik geldi, sapı kırık.', customer: 'Tuğba Erdem', orderedAt: '2026-10-14 08:55',
-    orderCargo: UPS, orderTracking: '1Z84E9W60409981120', packageNumber: '50419012655', invoiceStatus: 'FATURA_BEKLIYOR',
+    orderCargo: UPS, orderTracking: '1Z84E9W60409981120', packageNumber: '50400000001', invoiceStatus: 'FATURA_BEKLIYOR',
     lines: [line('r-2004-l1', { sku: 'RVA-CNT-0461-SYH', barcode: '8684471230616', title: 'Hasır Plaj Çantası', price: 429, raw: 'Requested', model: 'RVA-CNT-0461', options: 'Renk: Siyah' })]
   }),
   claim({
-    id: 'r-2005', platformCode: 'PAZARAMA', externalClaimId: 'PZR-1188420', orderNumber: 'PZ-57998410', status: 'IN_TRANSIT', rawStatus: 'InTransit',
+    id: 'r-2005', platformCode: 'PAZARAMA', externalClaimId: 'PZR-1188420', orderNumber: 'PZ-57900001', status: 'IN_TRANSIT', rawStatus: 'InTransit',
     reasonCode: 'WrongProductSentByMerchant', reasonText: null, customer: 'Murat Güneş', orderedAt: '2026-10-10 17:20',
-    cargo: KARGOIST, tracking: 'KGI40955021', packageNumber: 'PZP-90288170',
+    cargo: KARGOIST, tracking: 'KGI40955021', packageNumber: 'PZP-90200001',
     lines: [line('r-2005-l1', { sku: 'RVC-MNT-0033-KRM-56', barcode: '8684471240332', title: 'Çocuk Kapüşonlu Yağmurluk', price: 489.9, raw: 'InTransit', model: 'RVC-MNT-0033', options: 'Renk: Kırmızı | Beden: 5-6 Yaş', image: photo })]
   }),
   claim({
-    id: 'r-2006', platformCode: 'TRENDYOL', externalClaimId: '5d2f8a17-0e93-4d1b-b6c4-7a8e2f9c3b05', orderNumber: '10402263394', status: 'APPROVED', rawStatus: 'Accepted',
+    id: 'r-2006', platformCode: 'TRENDYOL', externalClaimId: '5d2f8a17-0e93-4d1b-b6c4-7a8e2f9c3b05', orderNumber: '10400000001', status: 'APPROVED', rawStatus: 'Accepted',
     reasonCode: 'POOR_QUALITY', reasonText: 'Bir yıkamada tüylendi.', approvedAt: '2026-10-17 15:42', customer: 'Esra Koçak', orderedAt: '2026-10-01 10:02',
-    cargo: MNG, tracking: '7330029099874310', packageNumber: '3186099821',
+    cargo: MNG, tracking: '7330000000000004', packageNumber: '3180000002',
     lines: [line('r-2006-l1', { sku: 'RVK-HRK-0275-PMB-S', barcode: '8684471227753', title: 'Kadın Örgü Hırka', price: 579.9, raw: 'Accepted', model: 'RVK-HRK-0275', options: 'Renk: Pembe | Beden: S' })]
   }),
   claim({
-    id: 'r-2007', platformCode: 'HEPSIBURADA', externalClaimId: 'HBR-77098311', orderNumber: '4279912048', status: 'REJECTED', rawStatus: 'Rejected',
+    id: 'r-2007', platformCode: 'HEPSIBURADA', externalClaimId: 'HBR-77000001', orderNumber: '4270000001', status: 'REJECTED', rawStatus: 'Rejected',
     reasonCode: 'Ürünüm hasarlı geldi', reasonText: 'Fermuar bozuk.', customer: 'Kerem Aslan', orderedAt: '2026-10-03 13:47',
-    cargo: SENDEO, tracking: 'SND2026101800233', packageNumber: '5434988102', sellerDescription: 'Ürün kullanılmış ve etiketi sökülmüş olarak geldi.',
+    cargo: SENDEO, tracking: 'SND2026101800233', packageNumber: '5430000001', sellerDescription: 'Ürün kullanılmış ve etiketi sökülmüş olarak geldi.',
     lines: [line('r-2007-l1', { sku: 'RVE-CNT-0333-SYH', barcode: '0RVE03330', title: 'Erkek Sırt Çantası', price: 899.9, vat: 20, raw: 'Rejected', model: 'RVE-CNT-0333', options: 'Renk: Siyah' })]
   }),
   claim({
-    id: 'r-2008', platformCode: 'TRENDYOL', externalClaimId: '9c41b7e3-2a6d-4f08-8d15-e3b0a6c94f21', orderNumber: '10398750126', status: 'DISPUTED', rawStatus: 'Unresolved',
+    id: 'r-2008', platformCode: 'TRENDYOL', externalClaimId: '9c41b7e3-2a6d-4f08-8d15-e3b0a6c94f21', orderNumber: '10300000001', status: 'DISPUTED', rawStatus: 'Unresolved',
     reasonCode: 'OTHER', reasonText: 'Ürün beklediğim gibi değil.', customer: 'Nazlı Tekin', orderedAt: '2026-09-28 16:15',
-    cargo: MNG, tracking: '7330029098120775', packageNumber: '3185520716', sellerDescription: 'Ürün kullanılmış olarak geri gönderildi; itiraz edildi.',
+    cargo: MNG, tracking: '7330000000000003', packageNumber: '3180000001', sellerDescription: 'Ürün kullanılmış olarak geri gönderildi; itiraz edildi.',
     lines: [line('r-2008-l1', { sku: 'RVK-BOT-0820-SYH-38', barcode: '8684471208202', title: 'Kadın Bilekte Deri Bot', price: 1349.9, vat: 20, raw: 'Unresolved', model: 'RVK-BOT-0820', options: 'Renk: Siyah | Beden: 38' })]
   }),
 ]

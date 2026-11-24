@@ -81,7 +81,7 @@ public sealed class InvoiceIssueGateTests
           "Note":"Satış faturası",
           "IssuedAt":"2026-10-05T12:00:00+03:00",
           "Order":{
-            "OrderNumber":"4227866665",
+            "OrderNumber":"4220000001",
             "OrderedAt":"2026-09-26T18:52:26+03:00",
             "CustomerSnapshotJson":"{\"commercial\":true,\"customerFirstName\":\"Ali\",\"customerLastName\":\"Veli\"}",
             "InvoiceAddressSnapshotJson":"{\"taxNumber\":\"10000000146\",\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\",\"company\":\"Ali Veli Ticaret\"}"

@@ -11,14 +11,14 @@ public sealed class N11ShipmentExtrasTests
     public void QuantitySplitKeepsSplitPackagesAndCancelledItems()
     {
         var body = N11PackageActionMapper.Body("SPLIT_BY_QUANTITY", """
-            {"cancelledItems":[{"cancelReasonId":61,"orderLineId":389132250,"quantity":1}],
-             "splitPackages":[{"packageDetails":[{"orderLineId":389132250,"quantities":2}]},{"packageDetails":[{"orderLineId":389132251,"quantities":1}]}]}
+            {"cancelledItems":[{"cancelReasonId":61,"orderLineId":389000001,"quantity":1}],
+             "splitPackages":[{"packageDetails":[{"orderLineId":389000001,"quantities":2}]},{"packageDetails":[{"orderLineId":389000002,"quantities":1}]}]}
             """);
 
         using var json = JsonDocument.Parse(body!);
         var cancelled = json.RootElement.GetProperty("cancelledItems")[0];
         Assert.Equal(61, cancelled.GetProperty("cancelReasonId").GetInt32());
-        Assert.Equal(389132250, cancelled.GetProperty("orderLineId").GetInt64());
+        Assert.Equal(389000001, cancelled.GetProperty("orderLineId").GetInt64());
         Assert.Equal(1, cancelled.GetProperty("quantity").GetInt64());
         var packages = json.RootElement.GetProperty("splitPackages");
         Assert.Equal(2, packages.GetArrayLength());
@@ -28,7 +28,7 @@ public sealed class N11ShipmentExtrasTests
     [Fact]
     public void QuantitySplitWithoutCancelledItemsOmitsThem()
     {
-        var body = N11PackageActionMapper.Body("SPLIT_BY_QUANTITY", """{"splitPackages":[{"packageDetails":[{"orderLineId":448627086,"quantities":1}]}]}""");
+        var body = N11PackageActionMapper.Body("SPLIT_BY_QUANTITY", """{"splitPackages":[{"packageDetails":[{"orderLineId":448000001,"quantities":1}]}]}""");
 
         using var json = JsonDocument.Parse(body!);
         Assert.False(json.RootElement.TryGetProperty("cancelledItems", out _));
@@ -47,7 +47,7 @@ public sealed class N11ShipmentExtrasTests
     [Fact]
     public void LaborCostIsRoundedToTwoDecimalsAndKeepsTheVatRate()
     {
-        var body = N11PackageActionMapper.Body("LABOR_COST", """{"laborCostDetails":[{"orderLineId":434713839,"totalLaborCostExcludingVAT":352.174,"laborVatRate":10},{"orderLineId":434708601,"totalLaborCostExcludingVAT":200}]}""");
+        var body = N11PackageActionMapper.Body("LABOR_COST", """{"laborCostDetails":[{"orderLineId":434000002,"totalLaborCostExcludingVAT":352.174,"laborVatRate":10},{"orderLineId":434000001,"totalLaborCostExcludingVAT":200}]}""");
 
         using var json = JsonDocument.Parse(body!);
         var rows = json.RootElement.GetProperty("laborCostDetails");
@@ -68,8 +68,8 @@ public sealed class N11ShipmentExtrasTests
     public void CollectionRequestUppercasesTheCarrierAndKeepsEveryLine()
     {
         var body = N11PackageActionMapper.Body("COLLECTION_REQUEST", """
-            {"collectionRequestDetails":[{"id":"112745617962209","orderLineId":471150189,"boxQuantity":1,"desi":100,"shipmentCompany":"hlz"},
-                                         {"id":"112745617962209","orderLineId":471150188,"boxQuantity":1,"desi":60,"shipmentCompany":"HLZ"}]}
+            {"collectionRequestDetails":[{"id":"112000000000001","orderLineId":471000002,"boxQuantity":1,"desi":100,"shipmentCompany":"hlz"},
+                                         {"id":"112000000000001","orderLineId":471000001,"boxQuantity":1,"desi":60,"shipmentCompany":"HLZ"}]}
             """);
 
         using var json = JsonDocument.Parse(body!);

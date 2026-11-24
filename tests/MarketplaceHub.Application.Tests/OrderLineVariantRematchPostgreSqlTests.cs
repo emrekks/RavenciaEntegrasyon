@@ -31,9 +31,9 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         var hepsiburada = NewConnection(tenant, "HEPSIBURADA");
         var (deliveredProduct, deliveredVariant) = NewVariant(tenant, "KRL01501K04", "KRL01501K04");
         var (openProduct, openVariant) = NewVariant(tenant, "RYP00121", "RYP00121");
-        var deliveredOrder = NewOrder(tenant, hepsiburada, "4219346609", "DELIVERED");
-        var openOrder = NewOrder(tenant, hepsiburada, "4552478925", "NEW");
-        var missingOrder = NewOrder(tenant, hepsiburada, "4091991027", "DELIVERED");
+        var deliveredOrder = NewOrder(tenant, hepsiburada, "4210000001", "DELIVERED");
+        var openOrder = NewOrder(tenant, hepsiburada, "4550000001", "NEW");
+        var missingOrder = NewOrder(tenant, hepsiburada, "4090000001", "DELIVERED");
         // Hepsiburada reports no shipped quantity on the line: only the order's status says it was delivered.
         var deliveredLine = NewLine(tenant, deliveredOrder, "KRL01501K04", "00KRL01501K04", """{"sku":"HBCV00008VUNWZ","merchantSku":"KRL01501K04"}""");
         var openLine = NewLine(tenant, openOrder, "RYP00121", "00000RYP00121", """{"sku":"HBCV0000AKL370"}""");
@@ -70,7 +70,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
             Assert.Equal(9m, (await db.InventoryItems.AsNoTracking().SingleAsync(x => x.VariantId == openVariant.Id)).OnHand);
             var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Code == OrderIngestionService.UnmatchedOrderLineIssueCode);
             Assert.Equal(IssueStatus.Open, issue.Status);
-            Assert.Contains("4091991027", issue.Summary);
+            Assert.Contains("4090000001", issue.Summary);
             Assert.Contains("KRL44118", issue.Summary);
         }
 
@@ -197,8 +197,8 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
     [Fact]
     public void The_stock_shortfall_notice_names_the_marketplace_order_and_code()
     {
-        var summary = OrderIngestionService.StockShortfallSummary("TRENDYOL", "11789787348", "MZ029YD10", 1m);
-        Assert.Contains("Trendyol siparişi 11789787348", summary);
+        var summary = OrderIngestionService.StockShortfallSummary("TRENDYOL", "11700000013", "MZ029YD10", 1m);
+        Assert.Contains("Trendyol siparişi 11700000013", summary);
         Assert.Contains("MZ029YD10 kodlu", summary);
         Assert.Contains("1 adet stoktan düşülemedi", summary);
         var bare = OrderIngestionService.StockShortfallSummary(null, null, null, 2m);
@@ -213,7 +213,7 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         var tenant = NewTenant("order-line-rematch-carry");
         var trendyol = NewConnection(tenant, "TRENDYOL");
         var (product, variant) = NewVariant(tenant, "RYP00103", "RYP00103");
-        var order = NewOrder(tenant, trendyol, "11509706338", "DELIVERED");
+        var order = NewOrder(tenant, trendyol, "11500000001", "DELIVERED");
         var line = NewLine(tenant, order, "RYP00103", "RYP00103", "{}");
         line.ShippedQuantity = 1m;
         line.DeliveredQuantity = 1m;

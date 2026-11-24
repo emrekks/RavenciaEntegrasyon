@@ -1279,27 +1279,27 @@ public sealed class HepsiburadaAdapterTests
         Assert.Throws<JsonException>(() => HepsiburadaJsonMapper.PackageTrackingInfo(json.RootElement, "another-package"));
     }
 
-    // Live 4893555494 / 5543873658 (14 Nov 2026): an Open hepsiJET package has its cargo barcode but no tracking number
+    // Live 4890000001 / 5540000001 (14 Nov 2026): an Open hepsiJET package has its cargo barcode but no tracking number
     // yet. The barcode is kept on its own; the tracking number stays empty until Hepsiburada gives trackingInfoCode.
     [Fact]
     public async Task OpenPackageKeepsItsCargoBarcodeWithoutInventingATrackingNumber()
     {
         using var packageJson = JsonDocument.Parse("""
         {
-          "orderNumber": "4893555494",
-          "packageNumber": "5543873658",
+          "orderNumber": "4890000001",
+          "packageNumber": "5540000001",
           "status": "Open",
           "cargoCompany": "hepsiJET",
           "orderDate": "2026-11-14T12:04:00",
-          "barcode": "62755438736587",
+          "barcode": "62700000000002",
           "lineItems": [{ "lineItemId": "line-open", "merchantSku": "SELLER-OPEN", "productBarcode": "0000RYP003T13", "name": "Test product", "quantity": 1, "price": 10 }]
         }
         """);
         var mappedPackage = HepsiburadaJsonMapper.OrderPackage(packageJson.RootElement);
-        Assert.Equal("62755438736587", mappedPackage.Package.CargoBarcode);
+        Assert.Equal("62700000000002", mappedPackage.Package.CargoBarcode);
         Assert.Null(mappedPackage.Package.CargoTrackingNumber);
 
-        var handler = new CapturingHttpHandler("""[{"packageNumber":"5543873658","barcode":"62755438736587","status":"Open","cargoCompany":"hepsiJET","orderNumber":"4893555494"}]""");
+        var handler = new CapturingHttpHandler("""[{"packageNumber":"5540000001","barcode":"62700000000002","status":"Open","cargoCompany":"hepsiJET","orderNumber":"4890000001"}]""");
         var client = CreateReadOnlyHepsiburadaClient(handler);
         var account = new HepsiburadaRequestContext(
             new MarketplaceHub.Domain.PlatformConnection { PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "fixture", ExternalStoreId = "merchant-open", Status = "ACTIVE", ApiVersion = "V1.0" },
@@ -1307,11 +1307,11 @@ public sealed class HepsiburadaAdapterTests
         { IntegratorName = "ravencia_tests/1.0" };
 
         var read = await client.ReadPackageTrackingInfoAsync(account, mappedPackage, CancellationToken.None);
-        var direct = await client.GetPackageTrackingInfoAsync(account, "5543873658", CancellationToken.None);
+        var direct = await client.GetPackageTrackingInfoAsync(account, "5540000001", CancellationToken.None);
 
-        Assert.Equal("62755438736587", read.Package.Package.CargoBarcode);
+        Assert.Equal("62700000000002", read.Package.Package.CargoBarcode);
         Assert.Null(read.Package.Package.CargoTrackingNumber);
-        Assert.Equal("62755438736587", direct.Value!.Barcode);
+        Assert.Equal("62700000000002", direct.Value!.Barcode);
         Assert.Null(direct.Value.TrackingInfoCode);
     }
 
@@ -1324,7 +1324,7 @@ public sealed class HepsiburadaAdapterTests
           "orderNumber": "HB-BARCODE-1",
           "orderDate": "2026-11-14T12:04:00",
           "items": [
-            { "id": "line-a", "merchantSku": "SKU-A", "packageNumber": "pkg-a", "barcode": "62755438736587", "productBarcode": "00SKUA", "quantity": 1, "price": 10.0, "status": "Packaged" },
+            { "id": "line-a", "merchantSku": "SKU-A", "packageNumber": "pkg-a", "barcode": "62700000000002", "productBarcode": "00SKUA", "quantity": 1, "price": 10.0, "status": "Packaged" },
             { "id": "line-b", "merchantSku": "SKU-B", "packageNumber": "pkg-b", "barcode": "8690000000300", "quantity": 1, "price": 10.0, "status": "Packaged" }
           ],
           "packages": [
@@ -1336,7 +1336,7 @@ public sealed class HepsiburadaAdapterTests
 
         var order = HepsiburadaJsonMapper.Order(json.RootElement, "HB-BARCODE-1");
 
-        Assert.Equal("62755438736587", order.Packages.Single(x => x.ExternalPackageId == "pkg-a").CargoBarcode);
+        Assert.Equal("62700000000002", order.Packages.Single(x => x.ExternalPackageId == "pkg-a").CargoBarcode);
         // No product barcode beside it: "barcode" may be the product's own, so the cargo barcode stays unknown.
         Assert.Null(order.Packages.Single(x => x.ExternalPackageId == "pkg-b").CargoBarcode);
         Assert.All(order.Packages, package => Assert.Null(package.CargoTrackingNumber));
@@ -1345,11 +1345,11 @@ public sealed class HepsiburadaAdapterTests
     [Fact]
     public void OlderPackageReadFillsAMissingCargoBarcodeAndNeverTheTrackingNumber()
     {
-        var package = new ShipmentPackage { ExternalPackageId = "5543873658", RawStatus = "Open", CargoBarcode = null };
-        var remote = new RemotePackage("5543873658", null, "Open", DateTimeOffset.UtcNow, "hepsiJET", null, [], CargoBarcode: " 62755438736587 ");
+        var package = new ShipmentPackage { ExternalPackageId = "5540000001", RawStatus = "Open", CargoBarcode = null };
+        var remote = new RemotePackage("5540000001", null, "Open", DateTimeOffset.UtcNow, "hepsiJET", null, [], CargoBarcode: " 62700000000002 ");
 
         Assert.True(PackageIngestionSafety.FillMissingCargoMetadata(package, remote));
-        Assert.Equal("62755438736587", package.CargoBarcode);
+        Assert.Equal("62700000000002", package.CargoBarcode);
         Assert.Null(package.CargoTrackingNumber);
 
         package.CargoBarcode = "kept";
@@ -1685,7 +1685,7 @@ public sealed class HepsiburadaAdapterTests
           "claimType": "Return",
           "claimDate": "2026-09-28T12:15:00Z",
           "orderDate": "2026-09-20T10:00:00Z",
-          "orderNumber": "4146480888",
+          "orderNumber": "4140000002",
           "lineItemId": "6ab9ff5b-0b73-8d07-cc9a-d15f06060606",
           "quantity": 1,
           "line": {

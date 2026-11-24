@@ -101,7 +101,7 @@ public static class OrderAmountProjectionPolicy
             .ToList();
         if (current.Count == 0) return null;
         // Trendyol's payment-pending package "0" is the same order before its real package exists; once the real
-        // package is stored it would count the order twice (live 29 Oct 2026: 11763229493 showed 1.798 for 899).
+        // package is stored it would count the order twice (live 29 Oct 2026: 11700000007 showed 1.798 for 899).
         if (current.Any(package => !IsPaymentPlaceholder(package.ExternalPackageId)))
             current = current.Where(package => !IsPaymentPlaceholder(package.ExternalPackageId)).ToList();
         if (current.Any(package => package.GrossAmount == 0 && package.NetAmount == 0 && !packagesInRead.Contains(package.ExternalPackageId)))

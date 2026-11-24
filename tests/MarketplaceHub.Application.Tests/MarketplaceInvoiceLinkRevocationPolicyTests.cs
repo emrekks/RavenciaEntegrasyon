@@ -46,7 +46,7 @@ public sealed class MarketplaceInvoiceLinkRevocationPolicyTests
     [Fact]
     public void EveryMarketplaceGetsPlainInstructionsNamingThePackage()
     {
-        Assert.Contains("4052072376", MarketplaceInvoiceLinkRevocationPolicy.Instructions("TRENDYOL", "4052072376"), StringComparison.Ordinal);
+        Assert.Contains("4050000001", MarketplaceInvoiceLinkRevocationPolicy.Instructions("TRENDYOL", "4050000001"), StringComparison.Ordinal);
         Assert.Contains("“Kaldırıldığını Kontrol Et”", MarketplaceInvoiceLinkRevocationPolicy.Instructions("HEPSIBURADA", "HB-PKG-1"), StringComparison.Ordinal);
         Assert.Contains("HB-PKG-1", MarketplaceInvoiceLinkRevocationPolicy.Instructions("HEPSIBURADA", "HB-PKG-1"), StringComparison.Ordinal);
         Assert.Contains("yerine geçer", MarketplaceInvoiceLinkRevocationPolicy.Instructions("N11", null), StringComparison.Ordinal);

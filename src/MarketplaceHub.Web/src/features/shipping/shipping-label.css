@@ -39,7 +39,7 @@
 .lbl-sheet.lbl-sheet .lbl-title { font-weight: 700; letter-spacing: .02em; }
 .lbl-sheet.lbl-sheet .lbl-caption { font-weight: 400; }
 .lbl-sheet.lbl-sheet .lbl-field { display: flex; flex-direction: column; gap: .3mm; }
-/* Tek Satır: caption and value on one line ("Paket Numarası: 4293901515"); a long value still wraps under it. */
+/* Tek Satır: caption and value on one line ("Paket Numarası: 4290000002"); a long value still wraps under it. */
 .lbl-sheet.lbl-sheet .lbl-body.is-inline .lbl-field { display: block; }
 .lbl-sheet.lbl-sheet .lbl-body.is-inline .lbl-field > :is(.lbl-caption, .lbl-value) { display: inline; }
 .lbl-sheet.lbl-sheet .lbl-body.is-inline .lbl-caption::after { content: ": "; white-space: pre; }

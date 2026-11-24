@@ -9,10 +9,10 @@ public sealed class OneTimeInvoiceDeliveryPolicyTests
     public void StageExceptionIsBoundToExactInvoiceAndOrder()
     {
         var invoice = Guid.Parse("01a125c4-a478-74a8-8865-943228b09515");
-        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4034357330", invoice));
-        Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4486229624", invoice));
-        Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4034357330", Guid.NewGuid()));
-        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4034357330"));
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4030000001", invoice));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4480000001", invoice));
+        Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument("4030000001", Guid.NewGuid()));
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4030000001"));
         Assert.True(OneTimeInvoiceDeliveryPolicy.IsEligibleSourceFailure(InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure, false));
         Assert.True(OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure("FAILED", InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure, null));
         Assert.False(OneTimeInvoiceDeliveryPolicy.IsSafePriorFailure("UNKNOWN", InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure, null));
@@ -21,7 +21,7 @@ public sealed class OneTimeInvoiceDeliveryPolicyTests
     [Fact]
     public void TargetOrderIsExactAndCaseSensitive()
     {
-        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4486229624"));
+        Assert.True(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4480000001"));
         Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget("4486229625"));
         Assert.False(OneTimeInvoiceDeliveryPolicy.IsAuthorizedTarget(null));
     }

@@ -10,7 +10,7 @@
       <SiparisKontrolListesiV2Result xmlns:a="http://schemas.datacontract.org/2004/07/ePttAVMService" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
         <a:TedarikciSiparisKontrolV2>
           <a:Barcodes xmlns:b="http://schemas.datacontract.org/2004/07/ePttAVMService.Model">
-            <b:Barkod><b:barcode>2710243114843</b:barcode><b:type>KARGO</b:type></b:Barkod>
+            <b:Barkod><b:barcode>2710000000001</b:barcode><b:type>KARGO</b:type></b:Barkod>
           </a:Barcodes>
           <a:Eposta>customer@example.test</a:Eposta>
           <a:FaturaAdresi>Fake Fatura Sokak 1</a:FaturaAdresi>
@@ -21,7 +21,7 @@
           <a:FaturaTip>Bireysel</a:FaturaTip>
           <a:FirmaUnvani/>
           <a:IslemTarihi>2024-10-07T17:38:29</a:IslemTarihi>
-          <a:KargoBarkod>2710243114843</a:KargoBarkod>
+          <a:KargoBarkod>2710000000001</a:KargoBarkod>
           <a:KargoTutari>1330</a:KargoTutari>
           <a:MusteriAdi>Test</a:MusteriAdi>
           <a:MusteriId>900001</a:MusteriId>
@@ -29,7 +29,7 @@
           <a:SiparisAdresi>Fake Teslimat Sokak 2</a:SiparisAdresi>
           <a:SiparisIlce>Keçiören</a:SiparisIlce>
           <a:SiparisIli>Ankara</a:SiparisIli>
-          <a:SiparisNo>PTT-A1712HP2E-071024</a:SiparisNo>
+          <a:SiparisNo>PTT-TEST00001-071024</a:SiparisNo>
           <a:SiparisUrunler>
             <a:SiparisUrun>
               <a:IndirimPttavm>2.71</a:IndirimPttavm>
@@ -37,7 +37,7 @@
               <a:IndirimToplam>2.71</a:IndirimToplam>
               <a:KdvDahilToplamTutar>33.92</a:KdvDahilToplamTutar>
               <a:KdvOrani>10</a:KdvOrani>
-              <a:LineItemId>229049580</a:LineItemId>
+              <a:LineItemId>229000001</a:LineItemId>
               <a:SiparisDurumu>iade</a:SiparisDurumu>
               <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
               <a:Urun>parça yönetimi 6</a:Urun>
@@ -48,7 +48,7 @@
               <a:IndirimToplam>0</a:IndirimToplam>
               <a:KdvDahilToplamTutar>41.25</a:KdvDahilToplamTutar>
               <a:KdvOrani>10</a:KdvOrani>
-              <a:LineItemId>229049601</a:LineItemId>
+              <a:LineItemId>229000002</a:LineItemId>
               <a:SiparisDurumu>iptal</a:SiparisDurumu>
               <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
               <a:Urun>parça yönetimi 4</a:Urun>
@@ -66,13 +66,13 @@
           <a:KargoBarkod/>
           <a:MusteriAdi>Test</a:MusteriAdi>
           <a:MusteriSoyadi>Musteri</a:MusteriSoyadi>
-          <a:SiparisNo>PTT-L6LI1VK2D-211024</a:SiparisNo>
+          <a:SiparisNo>PTT-TEST00003-211024</a:SiparisNo>
           <a:SiparisUrunler>
             <a:SiparisUrun>
               <a:IndirimToplam>3.72</a:IndirimToplam>
               <a:KdvDahilToplamTutar>49.66</a:KdvDahilToplamTutar>
               <a:KdvOrani>1</a:KdvOrani>
-              <a:LineItemId>232318670</a:LineItemId>
+              <a:LineItemId>232000001</a:LineItemId>
               <a:SiparisDurumu>iptal</a:SiparisDurumu>
               <a:ToplamIslemAdedi>1</a:ToplamIslemAdedi>
               <a:Urun>Test ürünü Fırın</a:Urun>

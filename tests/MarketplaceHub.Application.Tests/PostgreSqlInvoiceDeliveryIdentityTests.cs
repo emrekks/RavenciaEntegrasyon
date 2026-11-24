@@ -10,7 +10,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Live 13 Oct 2026: 15 INVOICE_MARKETPLACE_DELIVERY jobs of order 4623308608 stopped in MANUAL_REVIEW with
+// Live 13 Oct 2026: 15 INVOICE_MARKETPLACE_DELIVERY jobs of order 4620000001 stopped in MANUAL_REVIEW with
 // DELIVERY_RETRY_PAYLOAD_CHANGED, because the delivery record was keyed by a hash of its whole payload (the latest
 // document link among it) and the invoice row was left as it was, so the panel showed it on its way. A delivery is now
 // keyed by its identity; a real identity change stops it with the invoice in review until the owner's "Tekrar Dene".

@@ -341,7 +341,7 @@ function jobCounts({ url }) {
   return [...counts.entries()].map(([key, count]) => { const [status, jobType] = key.split('|'); return { status, jobType, count } })
 }
 
-const jobOrder = { orderId: 'o-1042', orderNumber: '10428871234', externalOrderId: '10428871234', status: 'SHIPPED', currency: 'TRY', netAmount: 2499.9, orderedAt: '2026-10-19T13:12:00+03:00', externalPackageId: 'PKG-3381920', cargoProvider: 'Trendyol Express', cargoTrackingNumber: '7280012345671', customerName: 'Elif Demir', lineCount: 2 }
+const jobOrder = { orderId: 'o-1042', orderNumber: '10400000004', externalOrderId: '10400000004', status: 'SHIPPED', currency: 'TRY', netAmount: 2499.9, orderedAt: '2026-10-19T13:12:00+03:00', externalPackageId: 'PKG-3381920', cargoProvider: 'Trendyol Express', cargoTrackingNumber: '7280012345671', customerName: 'Elif Demir', lineCount: 2 }
 function jobDetail({ match }) {
   const item = jobs.find(entry => entry.id === decodeURIComponent(match[1]))
   if (!item) return undefined
@@ -355,10 +355,10 @@ function jobDetail({ match }) {
     job: item, attempts,
     order: item.jobType.includes('SHIPMENT') ? jobOrder : null,
     change: null,
-    relatedOrders: orderJob && !item.jobType.includes('SHIPMENT') ? [jobOrder, { ...jobOrder, orderId: 'o-1043', orderNumber: '10428871299', externalOrderId: '10428871299', status: 'CREATED', netAmount: 899, customerName: 'Mert Kaya', lineCount: 1, cargoTrackingNumber: null }] : [],
+    relatedOrders: orderJob && !item.jobType.includes('SHIPMENT') ? [jobOrder, { ...jobOrder, orderId: 'o-1043', orderNumber: '10400000005', externalOrderId: '10400000005', status: 'CREATED', netAmount: 899, customerName: 'Mert Kaya', lineCount: 1, cargoTrackingNumber: null }] : [],
     scan: orderJob ? { mode: 'INCREMENTAL', label: 'Artımlı tarama', detail: 'Son başarılı taramadan bu yana değişen siparişler okunur.', window: '20.10.2026 09:13 – 09:28', plannedIntervalSeconds: 300, plannedIntervalLabel: '5 dakika', previousScheduledAt: '2026-10-20T09:23:00+03:00', actualIntervalLabel: '5 dakika' } : null,
     failureReasons: item.status === 'MANUAL_REVIEW' ? [{ key: 'MISSING_ATTRIBUTE', title: 'Zorunlu özellik eksik', description: 'Trendyol bu kategoride "Kumaş Tipi" özelliğini zorunlu tutuyor.', technicalDetail: 'CREATE_REJECTED: attributeId=1192 missing', affectedRecords: 3, sampleProductIds: ['p8'] }] : null,
-    invoice: item.jobType.includes('INVOICE') ? { invoiceId: 'inv-418', orderNumber: '10428871234', status: 'ISSUED', invoiceType: 'E_ARCHIVE', currency: 'TRY', payableTotal: 2499.9, invoiceNumber: 'RVN2026000418', externalPackageId: 'PKG-3381920' } : null
+    invoice: item.jobType.includes('INVOICE') ? { invoiceId: 'inv-418', orderNumber: '10400000004', status: 'ISSUED', invoiceType: 'E_ARCHIVE', currency: 'TRY', payableTotal: 2499.9, invoiceNumber: 'RVN2026000418', externalPackageId: 'PKG-3381920' } : null
   }
 }
 

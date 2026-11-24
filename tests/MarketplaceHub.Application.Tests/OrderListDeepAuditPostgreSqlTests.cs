@@ -384,7 +384,7 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // Trendyol order #11768706205: the line's barcode and stock code (MZ052BOD-16) were changed on Trendyol only, so no
+    // Trendyol order #11700000008: the line's barcode and stock code (MZ052BOD-16) were changed on Trendyol only, so no
     // panel variant carries them; its listing id (productCode 1696621714) is linked to the variant still coded
     // MZ051BYC-16. The list and the detail find that variant by the listing and show its photo and model code.
     [PostgreSqlFact]
@@ -412,7 +412,7 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
                 Id = Guid.CreateVersion7(),
                 TenantId = tenant.Id,
                 OrderId = order.Id,
-                ExternalLineId = "6139565733",
+                ExternalLineId = "6130000001",
                 Sku = "MZ052BOD-16",
                 Barcode = "MZ052BOD-16",
                 TitleSnapshot = "Kışlık Saç Örgü Triko Düğmeli Yumuşak Bluz MZ052BOD, L",
@@ -456,7 +456,7 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
     }
 
     // Owner, 17 Nov 2026: a parcel the carrier could not deliver and brought back (RETURNED, raw UnDeliveredAndReturned on
-    // its lines, live 11813450018, or on its package) is listed and counted under Teslim Edilemedi and stays under İade
+    // its lines, live 11800000002, or on its package) is listed and counted under Teslim Edilemedi and stays under İade
     // Edildi; a customer return is not Teslim Edilemedi; a plain undelivered order still is; paging walks the same rows.
     [PostgreSqlFact]
     public async Task TeslimEdilemediListsAndCountsAnUndeliveredAndReturnedOrderButNotACustomerReturn()

@@ -404,4 +404,4 @@ export function ShippingLabelSettingsPanel({ section, settings, saved, dirty, sa
 
 
 // What the designer fills its label with: one realistic order, so a block shows the height a real one needs.
-const shippingPreviewValues: ShippingLabelValues = { trackingNumber: '73300036563130080', packageNumber: '4293901515', orderNumber: '#11771694031', customerName: 'Fehime Mat', address: 'Gümüşsuyu Mah. Selime Hatun Cami Sok. No:3 D:5\nFındıklı / Beyoğlu / İstanbul', cargoProvider: 'Trendyol Express', senderName: 'Ravencia', senderAddress: '403. Cad. No:24/2\nKarşıyaka / İzmir', customerEmail: 'musteri@example.com' }
+const shippingPreviewValues: ShippingLabelValues = { trackingNumber: '73300000000000001', packageNumber: '4290000002', orderNumber: '#11700000009', customerName: 'Fehime Mat', address: 'Gümüşsuyu Mah. Selime Hatun Cami Sok. No:3 D:5\nFındıklı / Beyoğlu / İstanbul', cargoProvider: 'Trendyol Express', senderName: 'Ravencia', senderAddress: '403. Cad. No:24/2\nKarşıyaka / İzmir', customerEmail: 'musteri@example.com' }

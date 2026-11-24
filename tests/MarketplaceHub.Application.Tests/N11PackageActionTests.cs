@@ -9,21 +9,21 @@ public sealed class N11PackageActionTests
     [Fact]
     public void PickingTurnsTheTrendyolShapedBodyIntoN11LineApproval()
     {
-        var body = N11PackageActionMapper.Body("PICKING", """{"lines":[{"lineId":426659152,"quantity":2},{"lineId":426659151,"quantity":1}],"params":{},"status":"Picking"}""");
+        var body = N11PackageActionMapper.Body("PICKING", """{"lines":[{"lineId":426000002,"quantity":2},{"lineId":426000001,"quantity":1}],"params":{},"status":"Picking"}""");
 
         using var json = JsonDocument.Parse(body!);
         Assert.Equal("Picking", json.RootElement.GetProperty("status").GetString());
-        Assert.Equal(new long[] { 426659152, 426659151 }, json.RootElement.GetProperty("lines").EnumerateArray().Select(x => x.GetProperty("lineId").GetInt64()).ToArray());
+        Assert.Equal(new long[] { 426000002, 426000001 }, json.RootElement.GetProperty("lines").EnumerateArray().Select(x => x.GetProperty("lineId").GetInt64()).ToArray());
         Assert.False(json.RootElement.GetProperty("lines")[0].TryGetProperty("quantity", out _));
     }
 
     [Fact]
     public void SplitsBecomeN11SplitGroups()
     {
-        var single = N11PackageActionMapper.Body("SPLIT", """{"orderLineIds":[448627086,"448627087"],"shouldKeepPreviousStatus":false}""");
+        var single = N11PackageActionMapper.Body("SPLIT", """{"orderLineIds":[448000001,"448000002"],"shouldKeepPreviousStatus":false}""");
         var multi = N11PackageActionMapper.Body("MULTI_SPLIT", """{"splitGroups":[{"orderLineIds":[1]},{"orderLineIds":[2,3]}]}""");
 
-        Assert.Equal("""{"splitGroups":[{"orderLineIds":[448627086,448627087]}]}""", single);
+        Assert.Equal("""{"splitGroups":[{"orderLineIds":[448000001,448000002]}]}""", single);
         Assert.Equal("""{"splitGroups":[{"orderLineIds":[1]},{"orderLineIds":[2,3]}]}""", multi);
     }
 

@@ -6,7 +6,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // A new order an integrity check refused (missing lines or packages, invalid line quantities, lines without a package,
 // package quantities that do not add up) is not lost behind the read window (audit 14 Nov 2026: PttAVM order
-// PTT-1C2OSLF2R-120926, refused at its first import, was never read again because only Trendyol's refusals joined the
+// PTT-TEST00002-120926, refused at its first import, was never read again because only Trendyol's refusals joined the
 // re-read list and PttAVM's reads cover two days). On every marketplace it joins the re-read list (RejectedOrderRereadPolicy:
 // read by its number, with backoff), and an ORDER_NOT_IMPORTED notice stays open until the order is imported: the
 // 30-day stale pass leaves it, and the import resolves it with the refusals that kept it out.

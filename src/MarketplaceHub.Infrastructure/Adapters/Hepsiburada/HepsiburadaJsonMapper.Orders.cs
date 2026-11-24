@@ -541,7 +541,7 @@ internal static partial class HepsiburadaJsonMapper
 
     // Hepsiburada's own campaign discount a unit ("hbDiscount": {"unitPrice": {"amount": 194.85}}), which Hepsiburada pays
     // the seller: live, every CampaignDiscount record of Sep-Nov 2026 credited the line's hbDiscount, grossed up from the
-    // product's VAT to 20 % (4091991027: 194.85 at 10 % VAT, 212.57 credited). Part of the seller's revenue, as Trendyol's
+    // product's VAT to 20 % (4090000001: 194.85 at 10 % VAT, 212.57 credited). Part of the seller's revenue, as Trendyol's
     // own discount is (DashboardRevenuePolicy); none when the line carries none.
     internal static decimal? PlatformDiscount(JsonElement line) =>
         TryFind(line, out var discount, "hbDiscount", "HbDiscount") && Money(discount, "unitPrice", "UnitPrice") is { } amount && amount > 0m ? amount : null;
@@ -615,7 +615,7 @@ internal static partial class HepsiburadaJsonMapper
     }
 
     // The cargo barcode the order detail's lines of one package carry: a line's "barcode" is its package's cargo barcode
-    // and its own product barcode is "productBarcode" (live 4893555494: 62755438736587 and 0000RYP003T13). Taken only
+    // and its own product barcode is "productBarcode" (live 4890000001: 62700000000002 and 0000RYP003T13). Taken only
     // when every line names a product barcode that differs from it and all lines agree; otherwise unknown.
     internal static string? LineCargoBarcode(IReadOnlyList<JsonElement> lines)
     {

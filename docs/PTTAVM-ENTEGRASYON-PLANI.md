@@ -87,7 +87,7 @@ alan adlarıyla yazıldı; SOAP karşılıkları aynı adların PascalCase hâli
 
 ### 3.4 Sipariş
 
-- Sipariş no örneği `PTT-A1712HP2E-071024`; satır kimliği `LineItemId`; durum **satır bazında**:
+- Sipariş no örneği `PTT-TEST00001-071024`; satır kimliği `LineItemId`; durum **satır bazında**:
   `kargo_yapilmasi_bekleniyor`, `havale_onayi_bekleniyor`, `onay_surecinde`, `gonderilmiş`,
   `gondericisine_teslim_edildi`, `tamamlandi`, `iptal`, `iade`, `odeme_gecersiz`.
 - Satırda komisyon oranı, PTT AVM/tedarikçi indirimleri, KDV hariç tutar, KDV dahil toplam, `IsInvoice`.

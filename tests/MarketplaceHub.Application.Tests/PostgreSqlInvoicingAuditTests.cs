@@ -834,7 +834,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
-    // 16 Nov 2026 (Hepsiburada 4476971250): a Hepsiburada order with 11111111111 next to a valid VKN and a tax office is a
+    // 16 Nov 2026 (Hepsiburada 4470000001): a Hepsiburada order with 11111111111 next to a valid VKN and a tax office is a
     // company: the order is stored Corporate, the preview shows the company and its VKN, and the taxpayer lookup decides
     // the type. Synthetic values only.
     [PostgreSqlFact]

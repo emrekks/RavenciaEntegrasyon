@@ -198,7 +198,7 @@ public static class N11OrderMapper
 
     // n11 has no invoice state, only invoiceLink: the link of an invoice attached through the API. A link means n11
     // holds an invoice. An empty one proves nothing: an invoice uploaded in n11's own seller panel leaves it empty
-    // (live, 23 Oct 2026: order 241612122428 has an invoice, its fresh read has no link), so it gives no observation.
+    // (live, 23 Oct 2026: order 241000000001 has an invoice, its fresh read has no link), so it gives no observation.
     internal static RemotePackageInvoiceObservation? Invoice(JsonElement package)
     {
         if (!package.TryGetProperty("invoiceLink", out var link)) return null;

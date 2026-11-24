@@ -24,7 +24,7 @@ public sealed class PttAvmContractTests
         var page = result.Value!;
         var returns = page.Items.Select(order => new { order.ExternalOrderId, claim = PttAvmHttpClient.ReturnClaim(order) }).ToList();
         ContractFixture.MatchesGolden("PttAvm/SiparisKontrolListesiV2.golden.json", new { page, returns });
-        Assert.Equal(["PTT-A1712HP2E-071024", "PTT-L6LI1VK2D-211024", "PTT-OPEN12345-211026", "PTT-NILFIELDS1-051126"], page.Items.Select(order => order.ExternalOrderId).ToArray());
+        Assert.Equal(["PTT-TEST00001-071024", "PTT-TEST00003-211024", "PTT-OPEN12345-211026", "PTT-NILFIELDS1-051126"], page.Items.Select(order => order.ExternalOrderId).ToArray());
         var first = page.Items[0];
         // 17:38:29 Istanbul local is 14:38:29 UTC.
         Assert.Equal(new DateTimeOffset(2024, 10, 7, 14, 38, 29, TimeSpan.Zero), first.OrderedAt);

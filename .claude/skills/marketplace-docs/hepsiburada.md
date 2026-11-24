@@ -112,7 +112,7 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   lists (:10321, :10418, :10502), the Create Packages webhook (:13365, with `"status": "Open"`), and every order-detail
   line (`barcode` beside the product's `productBarcode`). `trackingInfoCode` comes later. Live read-only SQL: for hepsiJET
   the two are the same number (6275 + package number + check digit) on all 30 packages; for Aras Kargo they differ
-  (5534650975: barcode 62255346509755, tracking 6520112224589). So the panel keeps it apart
+  (5530000001: barcode 62200000000001, tracking 6520000000001). So the panel keeps it apart
   (`ShipmentPackage.CargoBarcode`, never `CargoTrackingNumber`), shows it on the order row only while no tracking number
   exists, and labels/tracking links keep using the tracking number or package number.
 - Variants are separate listings grouped by `VaryantGroupID` ("Renk, Beden vb özelliklere göre ayrılan aynı ürünler
@@ -135,7 +135,7 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   `Commission` record (one per current package when they name packages) at the net of these records
   (debt − credit) and label it Gerçek Komisyon; otherwise the estimate (`ReportMarketplaceCommissions`).
 - Commission VAT (live, 6 Nov 2026, all 107 `Commission` records Sep-Nov): the record charges 1.20 x the line's
-  `commission.amount` (232.02 on the line of 4091991027, 278.42 charged): the line's amount and `commissionRate` are
+  `commission.amount` (232.02 on the line of 4090000001, 278.42 charged): the line's amount and `commissionRate` are
   without VAT, Hepsiburada adds 20 % (`ReportBuckets.EstimatedCommission`).
 - Hepsiburada's own campaign discount: the line's `hbDiscount.unitPrice.amount` (the seller's own is
   `merchantDiscount`). Hepsiburada credits it as a `CampaignDiscount` record grossed up from the product's VAT to 20 %
@@ -197,7 +197,7 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
   `taxNumber` "Kurumsal müşterinin vergi numarası", `identityNo` "Müşterinin TCKN bilgisi" (`hepsiburada-api-son.md`
   schema ~17411-17478); order detail `items.invoice.turkishIdentityNumber` / `taxNumber` / `taxOffice` (~8640-8664).
 - `11111111111` in `identityNo` / `turkishIdentityNumber` is NOT an individual flag (the 5 Nov note said so from the one
-  sample at :13394, where `taxNumber` is empty). Live, 16 Nov 2026: order 4476971250 (seller panel: "Kurumsal Müşteri",
+  sample at :13394, where `taxNumber` is empty). Live, 16 Nov 2026: order 4470000001 (seller panel: "Kurumsal Müşteri",
   company name, VKN, tax office) came with `turkishIdentityNumber` 11111111111 next to a valid 10-digit `taxNumber` and a
   `taxOffice`, and was wrongly issued an e-Arşiv to 11111111111.
 - Shapes of all 37 live Hepsiburada orders (read-only SQL, 16 Nov 2026): 34 placeholder + `taxNumber` "" + `taxOffice`

@@ -12,9 +12,9 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     public void PackageRefreshPromotesPendingSameOrderReadWithoutMatchingPackage(string? existingPackage)
     {
         var result = TargetedOrderSyncConflictPolicy.Resolve(
-            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
-            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
-            JobStatus.Pending, false, "5467917398", existingPackage);
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4730000001",
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4730000001",
+            JobStatus.Pending, false, "5460000001", existingPackage);
         Assert.Equal(TargetedOrderSyncConflictResolution.PromotePending, result);
     }
 
@@ -25,9 +25,9 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     public void PackageRefreshDoesNotReuseStartedOrderOnlyRead(JobStatus status, bool started)
     {
         var result = TargetedOrderSyncConflictPolicy.Resolve(
-            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
-            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
-            status, started, "5467917398", null);
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4730000001",
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4730000001",
+            status, started, "5460000001", null);
         Assert.Equal(TargetedOrderSyncConflictResolution.Reject, result);
     }
 
@@ -35,9 +35,9 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     public void PackageRefreshReusesMatchingOrderAndPackage()
     {
         var result = TargetedOrderSyncConflictPolicy.Resolve(
-            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
-            MarketplaceJobTypes.HepsiburadaOrderSync, "4736002251",
-            JobStatus.Leased, true, "5467917398", " 5467917398 ");
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4730000001",
+            MarketplaceJobTypes.HepsiburadaOrderSync, "4730000001",
+            JobStatus.Leased, true, "5460000001", " 5460000001 ");
         Assert.Equal(TargetedOrderSyncConflictResolution.ReuseExisting, result);
     }
 
@@ -46,7 +46,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             MarketplaceJobTypes.HepsiburadaOrderSync,
             null,
             JobStatus.Pending,
@@ -67,14 +67,14 @@ public sealed class TargetedOrderSyncConflictPolicyTests
         var preferredIndex = TargetedOrderSyncConflictPolicy.PreferredConflictIndex(
             conflicts,
             MarketplaceJobTypes.OrderSync,
-            "11376153333");
+            "11300000001");
 
         Assert.Equal(1, preferredIndex);
         Assert.Equal(
             TargetedOrderSyncConflictResolution.PromotePending,
             TargetedOrderSyncConflictPolicy.Resolve(
                 MarketplaceJobTypes.OrderSync,
-                "11376153333",
+                "11300000001",
                 conflicts[preferredIndex!.Value].JobType,
                 conflicts[preferredIndex.Value].ExternalOrderId,
                 conflicts[preferredIndex.Value].Status,
@@ -88,7 +88,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.OrderSync,
-            "11376153333",
+            "11300000001",
             blockerType,
             conflictingExternalOrderId: null,
             conflictingStatus: JobStatus.Leased,
@@ -105,7 +105,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.OrderSync,
-            "11376153333",
+            "11300000001",
             blockerType,
             conflictingExternalOrderId: null,
             conflictingStatus: JobStatus.Pending,
@@ -119,14 +119,14 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var conflicts = new (string JobType, string? ExternalOrderId, JobStatus Status, bool HasStarted, string? PackageNumber)[]
         {
-            (MarketplaceJobTypes.OrderSync, "11376153333", JobStatus.Leased, true, null),
+            (MarketplaceJobTypes.OrderSync, "11300000001", JobStatus.Leased, true, null),
             (MarketplaceJobTypes.OrderSync, null, JobStatus.Pending, false, null)
         };
 
         var preferredIndex = TargetedOrderSyncConflictPolicy.PreferredConflictIndex(
             conflicts,
             MarketplaceJobTypes.OrderSync,
-            "11376153333");
+            "11300000001");
 
         Assert.Equal(0, preferredIndex);
     }
@@ -136,9 +136,9 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            " 4146480888 ",
+            " 4140000002 ",
             JobStatus.Leased,
             conflictingJobHasStarted: true);
 
@@ -150,7 +150,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             MarketplaceJobTypes.HepsiburadaOrderSync,
             "4146480889",
             JobStatus.Pending,
@@ -166,7 +166,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             conflictingType,
             null,
             JobStatus.Pending,
@@ -180,7 +180,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             MarketplaceJobTypes.OrderSync,
             null,
             JobStatus.Pending,
@@ -194,7 +194,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             MarketplaceJobTypes.HepsiburadaOrderSync,
             null,
             JobStatus.Pending,
@@ -208,7 +208,7 @@ public sealed class TargetedOrderSyncConflictPolicyTests
     {
         var resolution = TargetedOrderSyncConflictPolicy.Resolve(
             MarketplaceJobTypes.HepsiburadaOrderSync,
-            "4146480888",
+            "4140000002",
             MarketplaceJobTypes.HepsiburadaOrderSync,
             null,
             JobStatus.Succeeded,

@@ -67,9 +67,9 @@ describe('label size, text sizes and layout checks', () => {
 
   it('warns when a barcode is too narrow to scan, as on the live 100 × 100 sticker’s 40% block', () => {
     const barcode = block({ id: 'bc', kind: 'trackingBarcode', fields: ['trackingNumber'], position: { x: 27.5, y: 2.5, width: 40, height: 12.5 } })
-    const narrow = shippingLabelLayoutIssues([barcode], { width: 100, height: 100 }, { trackingNumber: '73300385314147370' })
+    const narrow = shippingLabelLayoutIssues([barcode], { width: 100, height: 100 }, { trackingNumber: '73300000000000002' })
     expect(narrow).toEqual([expect.objectContaining({ kind: 'narrowBarcode', blockId: 'bc' })])
-    expect(shippingLabelLayoutIssues([{ ...barcode, position: { ...barcode.position!, x: 8, width: 84 } }], { width: 100, height: 100 }, { trackingNumber: '73300385314147370' })).toEqual([])
+    expect(shippingLabelLayoutIssues([{ ...barcode, position: { ...barcode.position!, x: 8, width: 84 } }], { width: 100, height: 100 }, { trackingNumber: '73300000000000002' })).toEqual([])
   })
 
   it('stacks rows of blocks from the first row’s top with the gap, fitting text blocks to their content', () => {
@@ -99,6 +99,6 @@ describe('Code 128 symbols', () => {
 
   it('keeps letters in code set B and draws 11 modules a symbol plus a 13-module stop', () => {
     expect(code128Symbols('AB1')).toEqual([104, 33, 34, 17, (104 + 33 + 68 + 51) % 103, 106])
-    expect(code128Modules('73300385314147370')).toHaveLength(12 * 11 + 13)
+    expect(code128Modules('73300000000000002')).toHaveLength(12 * 11 + 13)
   })
 })

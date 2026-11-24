@@ -2,8 +2,8 @@
   "page": {
     "Items": [
       {
-        "ExternalOrderId": "PTT-A1712HP2E-071024",
-        "OrderNumber": "PTT-A1712HP2E-071024",
+        "ExternalOrderId": "PTT-TEST00001-071024",
+        "OrderNumber": "PTT-TEST00001-071024",
         "OrderedAt": "2024-10-07T14:38:29+00:00",
         "LastModifiedAt": "2024-10-07T14:38:36+00:00",
         "Currency": "TRY",
@@ -43,7 +43,7 @@
         },
         "Lines": [
           {
-            "ExternalLineId": "229049580",
+            "ExternalLineId": "229000001",
             "Sku": "0000000066266mainbrkd",
             "Barcode": "0000000066266mainbrkd",
             "Title": "parça yönetimi 6",
@@ -57,7 +57,7 @@
             "PlatformDiscount": null
           },
           {
-            "ExternalLineId": "229049601",
+            "ExternalLineId": "229000002",
             "Sku": "abs123456",
             "Barcode": "abs123456",
             "Title": "parça yönetimi 4",
@@ -73,15 +73,15 @@
         ],
         "Packages": [
           {
-            "ExternalPackageId": "order:PTT-A1712HP2E-071024",
+            "ExternalPackageId": "order:PTT-TEST00001-071024",
             "OriginExternalPackageId": null,
             "RawStatus": "Returned",
             "OccurredAt": "2024-10-07T14:38:36+00:00",
             "CargoProviderExternalId": "PTT Kargo",
-            "CargoTrackingNumber": "2710243114843",
+            "CargoTrackingNumber": "2710000000001",
             "Allocations": [
               {
-                "ExternalLineId": "229049580",
+                "ExternalLineId": "229000001",
                 "AllocatedQuantity": 1,
                 "CancelledQuantity": 0,
                 "ShippedQuantity": 1,
@@ -89,7 +89,7 @@
                 "ReturnedQuantity": 1
               },
               {
-                "ExternalLineId": "229049601",
+                "ExternalLineId": "229000002",
                 "AllocatedQuantity": 0,
                 "CancelledQuantity": 1,
                 "ShippedQuantity": 0,
@@ -120,8 +120,8 @@
         "StoreFrontCode": null
       },
       {
-        "ExternalOrderId": "PTT-L6LI1VK2D-211024",
-        "OrderNumber": "PTT-L6LI1VK2D-211024",
+        "ExternalOrderId": "PTT-TEST00003-211024",
+        "OrderNumber": "PTT-TEST00003-211024",
         "OrderedAt": "2024-10-21T11:48:46+00:00",
         "LastModifiedAt": "2024-10-21T11:48:52+00:00",
         "Currency": "TRY",
@@ -137,7 +137,7 @@
         "InvoiceAddressSnapshotJson": {},
         "Lines": [
           {
-            "ExternalLineId": "232318670",
+            "ExternalLineId": "232000001",
             "Sku": "10102024-85224",
             "Barcode": "10102024-85224",
             "Title": "Test ürünü Fırın",
@@ -153,7 +153,7 @@
         ],
         "Packages": [
           {
-            "ExternalPackageId": "order:PTT-L6LI1VK2D-211024",
+            "ExternalPackageId": "order:PTT-TEST00003-211024",
             "OriginExternalPackageId": null,
             "RawStatus": "Cancelled",
             "OccurredAt": "2024-10-21T11:48:52+00:00",
@@ -161,7 +161,7 @@
             "CargoTrackingNumber": null,
             "Allocations": [
               {
-                "ExternalLineId": "232318670",
+                "ExternalLineId": "232000001",
                 "AllocatedQuantity": 0,
                 "CancelledQuantity": 1,
                 "ShippedQuantity": 0,
@@ -347,10 +347,10 @@
   },
   "returns": [
     {
-      "ExternalOrderId": "PTT-A1712HP2E-071024",
+      "ExternalOrderId": "PTT-TEST00001-071024",
       "claim": {
-        "ExternalClaimId": "iade:PTT-A1712HP2E-071024",
-        "ExternalOrderId": "PTT-A1712HP2E-071024",
+        "ExternalClaimId": "iade:PTT-TEST00001-071024",
+        "ExternalOrderId": "PTT-TEST00001-071024",
         "RawStatus": "Completed",
         "ReasonCode": null,
         "ReasonText": null,
@@ -358,8 +358,8 @@
         "LastModifiedAt": "2024-10-07T14:38:36+00:00",
         "Lines": [
           {
-            "ExternalLineId": "229049580",
-            "ExternalOrderLineId": "229049580",
+            "ExternalLineId": "229000001",
+            "ExternalOrderLineId": "229000001",
             "Quantity": 1,
             "AlternateExternalOrderLineIds": null,
             "RawStatus": "Completed",
@@ -373,7 +373,7 @@
         ],
         "RawJson": "<raw 195 chars sha256:41323a66d793>",
         "CargoProviderName": "PTT Kargo",
-        "CargoTrackingNumber": "2710243114843",
+        "CargoTrackingNumber": "2710000000001",
         "CargoTrackingLink": null,
         "OrderCreatedAt": "2024-10-07T14:38:29+00:00",
         "ActionDueAtEstimated": false,
@@ -387,7 +387,7 @@
       }
     },
     {
-      "ExternalOrderId": "PTT-L6LI1VK2D-211024",
+      "ExternalOrderId": "PTT-TEST00003-211024",
       "claim": null
     },
     {

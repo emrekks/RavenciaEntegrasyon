@@ -103,7 +103,7 @@ public sealed class MarketplaceSalesImageUrlTests
         Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), OrderSnapshotReader.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/a.jpg"));
     }
 
-    // Live 6 Nov 2026: Pazarama return 674544454's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok"
+    // Live 6 Nov 2026: Pazarama return 674000001's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok"
     // although the catalog holds the product's pictures; the return detail line now carries the catalog's as fallback.
     [Fact]
     public void ReturnDetailLineKeepsTheCatalogPhotoBehindTheMarketplaceImage()
@@ -141,7 +141,7 @@ public sealed class MarketplaceSalesImageUrlTests
     [Fact]
     public void LineMarketplaceIdentitiesNameTheStockCodeThenTheListingIds()
     {
-        const string trendyol = """{"sku":"MZ052BOD-16","productCode":1696621714,"contentId":1696621714,"id":6139565733}""";
+        const string trendyol = """{"sku":"MZ052BOD-16","productCode":1696621714,"contentId":1696621714,"id":6130000001}""";
         Assert.Equal(["MZ052BOD-16", "1696621714"], OrderSnapshotReader.LineMarketplaceIdentities(" mz052bod-16 ", trendyol));
         Assert.Equal(["HBV0000ABC", "123-LISTING"], OrderSnapshotReader.LineMarketplaceIdentities("HBV0000ABC", """{"hbSku":"hbv0000abc","listingId":"123-listing"}"""));
         Assert.Equal(["SKU-1"], OrderSnapshotReader.LineMarketplaceIdentities("SKU-1", """{"productCode":0,"listingId":"","variantId":null}"""));

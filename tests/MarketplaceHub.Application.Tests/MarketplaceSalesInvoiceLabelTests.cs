@@ -178,7 +178,7 @@ public sealed class MarketplaceSalesInvoiceLabelTests
     [Fact]
     public void ShopifyDisplayPackageSkipsSyntheticRemainderAndPrefersTrackingNumber()
     {
-        var synthetic = new ShipmentPackage { ExternalPackageId = "order:6297409945684:remainder", RawStatus = "Cancelled", Status = ShipmentPackageStatus.Cancelled, StatusOccurredAt = DateTimeOffset.UtcNow.AddMinutes(5) };
+        var synthetic = new ShipmentPackage { ExternalPackageId = "order:6290000000001:remainder", RawStatus = "Cancelled", Status = ShipmentPackageStatus.Cancelled, StatusOccurredAt = DateTimeOffset.UtcNow.AddMinutes(5) };
         var untracked = new ShipmentPackage { ExternalPackageId = "fulfillment-1", RawStatus = "Created", Status = ShipmentPackageStatus.New, StatusOccurredAt = DateTimeOffset.UtcNow.AddMinutes(1) };
         var tracked = new ShipmentPackage { ExternalPackageId = "fulfillment-2", RawStatus = "Shipped", Status = ShipmentPackageStatus.Shipped, CargoTrackingNumber = "TRK-2", StatusOccurredAt = DateTimeOffset.UtcNow };
 

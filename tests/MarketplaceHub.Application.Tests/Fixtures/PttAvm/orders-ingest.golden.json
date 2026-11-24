@@ -1,7 +1,7 @@
 {
   "Orders": [
     {
-      "ExternalOrderId": "PTT-A1712HP2E-071024",
+      "ExternalOrderId": "PTT-TEST00001-071024",
       "DerivedStatus": "RETURNED",
       "Currency": "TRY",
       "GrossAmount": 36.6300,
@@ -33,7 +33,7 @@
       ]
     },
     {
-      "ExternalOrderId": "PTT-L6LI1VK2D-211024",
+      "ExternalOrderId": "PTT-TEST00003-211024",
       "DerivedStatus": "CANCELLED",
       "Currency": "TRY",
       "GrossAmount": 53.3800,

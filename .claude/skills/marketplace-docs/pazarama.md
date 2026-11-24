@@ -57,8 +57,8 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   (docs sample uses 500). First read 3 months; incremental re-reads 2 days.
 - End day excluded and 1 month at most: `pazarama-api-son.md:2294-2296`; the code sends tomorrow as the end day.
 - An order appears in the list only once Pazarama creates it (first history entry, status 3), which can be a day
-  after its `orderDate`: live 500506964, orderDate 29 Oct 17:48, status 3 at 30 Oct 17:48:55 Istanbul time, read by
-  the panel three minutes later (674544454: 15 min after its orderDate). The hot read re-reads 2 days, the recovery
+  after its `orderDate`: live 500000001, orderDate 29 Oct 17:48, status 3 at 30 Oct 17:48:55 Istanbul time, read by
+  the panel three minutes later (674000001: 15 min after its orderDate). The hot read re-reads 2 days, the recovery
   read (15 min) 7 days since 6 Nov 2026 (`PazaramaOrderHistoryPolicy.RecoveryLookbackDays`).
 - Status changes of older orders: open orders re-read by number every 3 min until closed or 45 days old.
 - `success:false` with "İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz." is a busy
@@ -171,18 +171,18 @@ _FINANCE_SYNC (issue code PAZARAMA_FINANCE_SYNC_FAILED).
   approval (6) decides; there is no delivery, receipt or cargo-status date (`pazarama-api-son.md:3198-3223` field
   table, `:3337-3350` flow: customer starts the return → getOrdersForApi item 7, getRefund 1 → seller decides).
 - `shipmentCode` is the **İade Kargo Kodu** Pazarama generates for contracted cargo (`:3194`, `:3222`), not a sign that
-  the customer shipped: live 674544454 (refundDate 5 Nov 11:00 Istanbul) carried `shipmentCode` PZ15649905156 with
+  the customer shipped: live 674000001 (refundDate 5 Nov 11:00 Istanbul) carried `shipmentCode` PZ10000000001 with
   Aras Kargo in the first read at 11:16, and on 6 Nov, after the parcel reached the seller, every read (RETURN_SYNC
   each minute, 0 updated) still sent status 1 with the same code; the claim row never changed. So a code present does
   **not** put a Pazarama return in Kargoda: status 1 stays Aksiyon Bekleyen (the seller may decide at any time).
 - Order side: getOrdersForApi `orderItemStatus` 7 "İade Süreci Başlatıldı" while the refund is open, then 8 approved,
-  9 rejected, 10 "İade Edildi" (`:2306`, `:3352-3360`); 674544454 showed 7 on 6 Nov, and its `orderItemStatusHistory`
+  9 rejected, 10 "İade Edildi" (`:2306`, `:3352-3360`); 674000001 showed 7 on 6 Nov, and its `orderItemStatusHistory`
   ended at 11 Teslim Edildi (no history entry for 7).
 - The raw refund row is not stored; since 6 Nov 2026 each poll logs the row's field names and progress values (status,
   date, cargo, shipment, delivery, tracking; no customer fields, the cargo code only as set/none) as "Pazarama refund
   rows" (`PazaramaReturnMapper.RowShapes`). Read it in the worker log on the next return before mapping a new field.
 - Images: order line `imageUrl` / `product.imageURL` is an `img.pzrmcdn.com/asset/{stockCode}/images/…` address. The
-  674544454 one answered 403 (4.5 KB HTML) to a plain curl on 6 Nov, the same answer as the docs' own sample image
+  674000001 one answered 403 (4.5 KB HTML) to a plain curl on 6 Nov, the same answer as the docs' own sample image
   (`:3893`): a block page, not proof the photo is gone; the panel showed "Görsel yok". Return rows and details now
   carry the catalog photo as `fallbackImageUrl` behind the marketplace's (`MarketplaceSalesService.LineImageUrls`).
 
