@@ -31,7 +31,12 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         var fairLeasedAt = fairness?.LastLeasedAt.ToArray() ?? [];
         var agedBefore = fairness is null ? DateTimeOffset.MinValue : now - fairness.Aging;
         var candidateLimit = fair ? FairCandidateLimit : CandidateLimit;
-        // Bulkheads (JobBulkhead): at most N running jobs of a class, or of the leasing lane, per marketplace.
+        // Bulkheads (JobBulkhead): at most N running jobs of a class, or of the leasing lane, per marketplace. The count is read
+        // under READ COMMITTED, so two slots leasing at the same instant may both see N - 1 and run N + 1 for a moment. Left so
+        // (24 Nov 2026): a class's jobs of one connection share a lock group (the busy check and the processor's advisory lock
+        // keep them apart), live has one connection per tenant and marketplace (no overlapping class job in 7 days), and the
+        // marketplace's request rate is kept by its quota limiter, not by this cap. Serialising the lease (an advisory lock
+        // and a recount) would cost every lease a round trip for a case that cannot happen today.
         var bulk = bulkhead is { IsEmpty: false } ? bulkhead : null;
         var bulkJobTypes = bulk?.JobTypes.ToArray() ?? [];
         var bulkClasses = bulk?.Classes.ToArray() ?? [];
@@ -337,6 +342,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         {
             JobCompletionKind.Succeeded => JobStatus.Succeeded,
             JobCompletionKind.Retry => JobStatus.RetryScheduled,
+            JobCompletionKind.Blocked when CancelsWhenSuperseded(result.ErrorCode) => JobStatus.Cancelled,
             JobCompletionKind.Blocked => JobStatus.Blocked,
             JobCompletionKind.ManualReview => JobStatus.ManualReview,
             _ => JobStatus.Dead
@@ -375,6 +381,17 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
     // over up to 30 % more than asked, at least 3 s and at most 5 minutes more, never less: a quota or Retry-After
     // wait is a minimum. The spread comes from a hash of the job id and its version, which changes with every lease,
     // so the same jobs do not keep landing in the same order. A slice of a long job keeps its own short pause.
+    // A product update, archive or approval check that stopped before any call because a newer job of the same product
+    // carries a newer payload ends cancelled, not blocked: the newer job is the product's work and its result, nothing is
+    // left for anyone to settle (scan 23 Nov 2026: seven PRODUCT_UPDATE jobs of 14 Nov stayed BLOCKED). The code stays on
+    // the job, so the panel still says the newer update replaced it.
+    internal static readonly IReadOnlySet<string> SupersededStopCodes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "PRODUCT_UPDATE_SUPERSEDED", "PRODUCT_ARCHIVE_SUPERSEDED", "PRODUCT_APPROVAL_SUPERSEDED"
+    };
+
+    internal static bool CancelsWhenSuperseded(string? errorCode) => errorCode is not null && SupersededStopCodes.Contains(errorCode);
+
     internal static TimeSpan DeferralDelay(TimeSpan requested, Guid jobId, long version)
     {
         var spread = TimeSpan.FromTicks(requested.Ticks * 3 / 10);

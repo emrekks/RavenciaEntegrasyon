@@ -24,6 +24,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private readonly JobWakeSignal wakeSignal = new();
     // KUYRUK-6: wakes the idle slots of the lanes a notification concerns (set up with the lanes in ExecuteAsync).
     private JobWakeRouter wakeRouter = new([]);
+    // The flexible lane pool (null with the legacy lane model).
+    private LaneSlotPool? lanePool;
     // Asks the due-time wake to read the next due moment again (a scheduler pass enqueued jobs).
     private readonly JobWakeSignal dueRecheck = new();
     private static readonly TimeSpan DueRecheckDebounce = TimeSpan.FromSeconds(1);
@@ -65,7 +67,13 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         // Worker lanes step 3: with the flexible model the lanes' slots form one pool (LaneSlotPool); each lane also runs
         // borrowing slots, which lease only while the pool lends them a free slot.
         var pool = laneModel.Flexible ? new LaneSlotPool(laneSlots, laneModel.ProtectedLanes, laneModel.BorrowLimits) : null;
-        if (pool is not null) wakeRouter.LaneNotified += pool.NoteWork;
+        lanePool = pool;
+        if (pool is not null)
+        {
+            wakeRouter.LaneNotified += pool.NoteWork;
+            // A job ended (here or on another worker): a lock group or a bulkhead may have opened for any lane.
+            wakeRouter.JobEnded += pool.Unquiet;
+        }
         // Borrowing slots wait on a signal of their own: a lane's notification goes to its own slots first (a borrowing slot
         // that may not borrow would use the wake up and leave the job to the idle poll). They are woken when a slot is freed
         // and when one of the lane's own slots found work (there may be more), and by the lane's notifications (JobWakeRouter).
@@ -124,7 +132,11 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         var pressure = MarketplaceHub.Infrastructure.Jobs.QuotaPressure.Shared;
         pressure.Saturation = quotaAwareLeasing.Saturation;
         // A full bucket that has emptied its waiters: the jobs held for it are runnable again now, not at the next poll.
-        pressure.Released += () => wakeRouter.WakeAll();
+        pressure.Released += () =>
+        {
+            lanePool?.QuotaReleased();
+            wakeRouter.WakeAll();
+        };
         pressure.PairsTrimmed += dropped => logger.LogWarning("Quota-aware leasing: {Dropped} least recently learned connection + job type pairs dropped (limit reached)", dropped);
         logger.LogInformation("Quota-aware leasing is on: a background job (priority above {HotPriorityCeiling}) whose marketplace quota has kept a request waiting for {SaturationSeconds} s is held in the queue for at most {MaximumHoldMinutes} min; user actions, new-order reads, webhooks and writes are never held",
             hotPriorityCeiling, quotaAwareLeasing.Saturation.TotalSeconds, quotaAwareLeasing.MaximumHold.TotalMinutes);
@@ -358,8 +370,6 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // A live process that cannot reach the database must not remain healthy.
             TouchHealthFile();
             if (job is not null) leased?.Invoke();
-            if (job is null) pool?.NoteNoWork(laneName ?? lane);
-            else pool?.NoteWork(laneName ?? lane);
             return job;
         }, async job =>
         {
@@ -369,10 +379,13 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     }
 
     // A slot leases only with room in the pool (flexible lane model; no pool: always), and gives the room back when it found
-    // nothing, failed, or its job ended.
+    // nothing, failed, or its job ended. It tells the pool what its poll found: a job (NoteWork), or nothing (NoteNoWork, with
+    // the lane's epoch read before the poll, so a notification, a job's end or a hold's end during the poll is not undone by its
+    // stale answer). Only the release of a job that ran wakes other lanes' slots.
     internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run)
     {
         if (pool is not null && !pool.TryClaim(lane, ownSlot)) return null;
+        var epoch = pool?.Epoch(lane) ?? 0;
         LeasedJob? job;
         try
         {
@@ -380,14 +393,16 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
         catch
         {
-            pool?.Release(lane, ownSlot);
+            pool?.Release(lane, ownSlot, ranJob: false);
             throw;
         }
         if (job is null)
         {
-            pool?.Release(lane, ownSlot);
+            pool?.NoteNoWork(lane, epoch);
+            pool?.Release(lane, ownSlot, ranJob: false);
             return null;
         }
+        pool?.NoteWork(lane);
         return async () =>
         {
             try
@@ -396,7 +411,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             }
             finally
             {
-                pool?.Release(lane, ownSlot);
+                pool?.Release(lane, ownSlot, ranJob: true);
             }
         };
     }
@@ -417,10 +432,12 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // queues the same job type for many connections wakes one slot per lane. A slot whose wait ended by a wake and that
     // then finds a job wakes the next idle slot, so the wake travels on until a slot finds nothing.
     internal static async Task RunSlotAsync(LaneWakeSignal laneWake, Func<CancellationToken, Task<Func<Task>?>> lease, Action<Exception> onFailure, CancellationToken stoppingToken,
-        TimeSpan? firstDelay = null, Func<TimeSpan, bool, TimeSpan>? nextDelay = null)
+        TimeSpan? firstDelay = null, Func<TimeSpan, bool, TimeSpan>? nextDelay = null, Func<Task, TimeSpan, CancellationToken, Task<bool>>? wait = null)
     {
         var first = firstDelay ?? JobIdleWait.First;
         nextDelay ??= JobIdleWait.Next;
+        // The idle wait (tests run it on a simulated clock).
+        wait ??= JobWakeSignal.WaitAsync;
         var idleDelay = first;
         var wokenLast = false;
         while (!stoppingToken.IsCancellationRequested)
@@ -457,7 +474,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             {
                 // Polling stays as the fallback; a notification for a job this lane can lease, or the due-time wake when a
                 // waiting job's time comes, ends the wait early.
-                var woken = await JobWakeSignal.WaitAsync(wake.Woken, idleDelay, stoppingToken);
+                var woken = await wait(wake.Woken, idleDelay, stoppingToken);
                 if (idle) laneWake.Leave(wake, forward: false);
                 idleDelay = nextDelay(idleDelay, woken);
                 wokenLast = woken;
@@ -956,6 +973,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     {
         var staleAfter = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:StaleDays", 30), 7, 365));
         var resolvedRetention = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("Worker:IssueRetention:ResolvedDays", 30), 7, 365));
+        var resolveOrphaned = configuration.GetValue("Worker:IssueRetention:ResolveOrphaned", true);
+        var orphanBatchSize = Math.Clamp(configuration.GetValue("Worker:IssueRetention:OrphanBatchSize", 500), 1, 2_000);
+        var orphanMaxBatches = Math.Clamp(configuration.GetValue("Worker:IssueRetention:OrphanMaxBatches", 10), 1, 100);
         return RunPeriodicAsync(TimeSpan.FromMinutes(15), TimeSpan.FromHours(24), async token =>
         {
             await using var scope = scopeFactory.CreateAsyncScope();
@@ -968,6 +988,24 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // Return lines reported as unlinked whose line has since been linked to its order line.
             var linked = await issues.ResolveLinkedReturnLineIssuesAsync(token);
             if (linked > 0) logger.LogInformation("Issue retention resolved {Count} return line notice(s) whose line is linked now", linked);
+            // Y5: issues whose subject is gone (a deleted variant or connection) or whose writer's own guard no longer holds
+            // (OrphanedOperationalIssues: one rule per code, a code without a rule is never touched). Resolved, never
+            // deleted; Worker:IssueRetention:ResolveOrphaned=false turns it off. Batches of OrphanBatchSize (500), at most
+            // OrphanMaxBatches (10) per rule a pass; logged per code and reason. Its failure does not stop the deletion below.
+            if (resolveOrphaned)
+            {
+                try
+                {
+                    var orphaned = await issues.ResolveOrphanedAsync(orphanBatchSize, orphanMaxBatches, token);
+                    foreach (var ((code, reason), count) in orphaned.OrderBy(x => x.Key.Code, StringComparer.Ordinal).ThenBy(x => x.Key.Reason, StringComparer.Ordinal))
+                        logger.LogInformation("Issue retention resolved {Count} {Code} issue(s): {Reason}", count, code, reason);
+                    logger.LogInformation("Issue retention orphan pass resolved {Count} issue(s) in all", orphaned.Values.Sum());
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogError(exception, "Issue retention could not run the orphaned issue pass; it tries again in the next pass");
+                }
+            }
             var deleted = await issues.DeleteResolvedAsync(resolvedRetention, token);
             if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
         }, exception => logger.LogError(exception, "Issue retention pass failed"), stoppingToken, "issue-retention");

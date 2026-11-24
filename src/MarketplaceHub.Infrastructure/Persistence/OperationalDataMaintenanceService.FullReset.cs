@@ -208,6 +208,9 @@ public sealed partial class OperationalDataMaintenanceService
         AnnounceReset(tenantId, "connections", "PlatformConnection", connectionId);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        // Y5 (scan 23 Nov 2026): the issues keyed by the variants of the products this reset deleted (Web Color, attribute
+        // values, other connections' offers, PttAVM links) name nothing any more either; resolved after the commit.
+        await ResolveOrphanedIssuesAfterCommitAsync(tenantId, "full reset", cancellationToken);
     }
 
     private Task<int> CancelWaitingJobsAsync(Guid tenantId, Guid connectionId, Guid? keep, DateTimeOffset now, CancellationToken cancellationToken) =>

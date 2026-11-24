@@ -325,6 +325,10 @@ public sealed class BackgroundProcessingAuditTests
         Assert.Contains("EXTERNAL_WRITES_DISABLED", JobRetentionService.PreSendBlockCodes);
         Assert.Contains("CONNECTION_INACTIVE", JobRetentionService.PreSendBlockCodes);
         Assert.DoesNotContain("F3_JOB_REJECTED", JobRetentionService.PreSendBlockCodes);
+        // Scan 23 Nov 2026: a superseded product update is let go after the failed retention; a superseded product create
+        // (it may already have opened the product at the marketplace) keeps its guard.
+        Assert.Contains("PRODUCT_UPDATE_SUPERSEDED", JobRetentionService.PreSendBlockCodes);
+        Assert.DoesNotContain("PRODUCT_PUBLICATION_SUPERSEDED", JobRetentionService.PreSendBlockCodes);
     }
 
     [Fact]

@@ -1124,6 +1124,59 @@ public sealed class TrendyolImportRegressionPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
+    // Y5 review (23-24 Nov 2026): a product's import failure is resolved by a later run that writes the product whole, as
+    // the retry run does. A run that writes a part of it says nothing about the write that failed: "Yeni Ürünleri Çek"
+    // adding a new size to a card whose update failed leaves the failure open; the next full update of the card closes it.
+    [PostgreSqlFact]
+    public async Task AnImportFailure_IsResolvedByALaterRunThatWritesTheProductWhole_NotByANewSizesRun()
+    {
+        var seed = await SeedAsync();
+        var port = new TrendyolCatalogPort(Read([Spec("Bordo"), Spec("Haki") with { MainId = "MZ999HK" }]));
+        async Task ImportAsync(string payload, Microsoft.EntityFrameworkCore.Diagnostics.IInterceptor? failing = null)
+        {
+            var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")!);
+            if (failing is not null) options.AddInterceptors(failing);
+            await using var db = new AppDbContext(options.Options, fixture.TimeProvider);
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferencePort(), port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ProductSync, payload, $"trendyol-import-regression-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+        async Task<Dictionary<string, OperationalIssue>> IssuesAsync()
+        {
+            await using var check = fixture.CreateContext();
+            return await check.OperationalIssues.AsNoTracking().Where(row => row.TenantId == seed.TenantId && row.Code == "PRODUCT_IMPORT_FAILED").ToDictionaryAsync(row => row.DedupeKey);
+        }
+
+        // A new product whose create failed is written whole by the next full pull: its failure closes.
+        await ImportAsync("{\"full\":true}", new ConflictOnCardTitled("Haki"));
+        var hakiKey = Assert.Single(await IssuesAsync()).Key;
+        await ImportAsync("{\"full\":true}");
+        Assert.Equal(IssueStatus.Resolved, (await IssuesAsync())[hakiKey].Status);
+
+        // The update of the Bordo card failed (the issue its failure leaves).
+        var bordoKey = $"product-sync-import:{seed.ConnectionId}:{ContentId("Bordo")}";
+        await using (var setup = fixture.CreateContext())
+        {
+            Assert.True(await setup.MarketplaceProductLinks.AnyAsync(row => row.TenantId == seed.TenantId && row.ConnectionId == seed.ConnectionId && row.ExternalId == ContentId("Bordo")));
+            setup.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, DedupeKey = bordoKey, Code = "PRODUCT_IMPORT_FAILED", Summary = "güncelleme hatası", Status = IssueStatus.Open, FirstSeenAt = fixture.Now, LastSeenAt = fixture.Now, OccurrenceCount = 1 });
+            await setup.SaveChangesAsync();
+        }
+
+        // "Yeni Ürünleri Çek" adds Bordo's new size (the card is written, but not by the update that failed): stays open.
+        port = new TrendyolCatalogPort(Read([Spec("Bordo") with { Sizes = [.. Sizes, "XS"] }, Spec("Haki") with { MainId = "MZ999HK" }]));
+        await ImportAsync("{\"newOnly\":true}");
+        await using (var check = fixture.CreateContext())
+            Assert.Contains(await check.ProductVariants.AsNoTracking().Where(row => row.TenantId == seed.TenantId).Select(row => row.OptionSignature).ToListAsync(), signature => signature != null && signature.Contains("Beden: XS", StringComparison.Ordinal));
+        Assert.Equal(IssueStatus.Open, (await IssuesAsync())[bordoKey].Status);
+
+        // The next full update writes the card whole: closes.
+        port = new TrendyolCatalogPort(Read([Spec("Bordo") with { Sizes = [.. Sizes, "XS"], Title = "Bordo Yeni Başlık" }, Spec("Haki") with { MainId = "MZ999HK" }]));
+        await ImportAsync("{\"full\":true,\"updateExistingProducts\":true}");
+        var closed = (await IssuesAsync())[bordoKey];
+        Assert.Equal(IssueStatus.Resolved, closed.Status);
+        Assert.NotNull(closed.ResolvedAt);
+    }
+
     // ISLEYICI-1: the products a run filters out (here a content whose every size is archived) no longer count towards
     // "not all failed": a run whose only processed model failed is not a success.
     [PostgreSqlFact]
