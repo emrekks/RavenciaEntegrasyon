@@ -1356,6 +1356,11 @@ public sealed record PriceStockInvalidOffersView(
     int FilteredCount,
     IReadOnlyList<PriceStockReasonCountView> Reasons,
     IReadOnlyList<string> ReasonCodes);
+// "Sorun Yok" over offers of the invalid-offers list (owner, 24 Nov 2026): their open issues are resolved in the panel only,
+// nothing is sent. Marked: the open issues it resolved; AlreadyClosed: the named offers with no open issue (resolved
+// already, by an earlier mark or by the system), which a repeat of the same request finds.
+public sealed record PriceStockOfferNoProblemCommand(IReadOnlyList<Guid> VariantIds);
+public sealed record PriceStockOfferNoProblemView(int Marked, int AlreadyClosed);
 // The monitor's FailedPushes7d (kind "failed": blocked or dead in the last 7 days) or ManualReviewPushes (kind
 // "manual-review"), newest first; TotalCount is that monitor number.
 public sealed record PriceStockFailedPushesView(IReadOnlyList<PriceStockPushFailureView> Items, int Page, int PageSize, int TotalCount);
@@ -1371,6 +1376,9 @@ public interface IPriceStockMonitorService
     // The detail lists behind the monitor's numbers for one connection, read-only, page 1-based. CONNECTION_NOT_FOUND
     // (404) for a connection the monitor does not show (another tenant's, deleted, not a marketplace).
     Task<ServiceResult<PriceStockInvalidOffersView>> InvalidOffersAsync(Guid tenantId, Guid connectionId, string? search, string? reason, int page, int pageSize, CancellationToken cancellationToken);
+    // "Sorun Yok": resolves the open offer issues of the named variants on the connection, with the offer values as the
+    // mark's fingerprint and one audit record each (who, when). Changes panel records only. Idempotent.
+    Task<ServiceResult<PriceStockOfferNoProblemView>> MarkOffersNoProblemAsync(Guid tenantId, Guid connectionId, IReadOnlyList<Guid> variantIds, Guid actorUserId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<PriceStockFailedPushesView>> FailedPushesAsync(Guid tenantId, Guid connectionId, string? kind, int page, int pageSize, CancellationToken cancellationToken);
     Task<ServiceResult<PriceStockLostLinksView>> LostLinksAsync(Guid tenantId, Guid connectionId, string? health, int page, int pageSize, CancellationToken cancellationToken);
     // "Tüm Otomatik Yazmaları Durdur": every connection's PRICE_WRITE and STOCK_WRITE off and every queued price/stock

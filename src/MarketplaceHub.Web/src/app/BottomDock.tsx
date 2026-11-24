@@ -15,20 +15,31 @@ export const menuHistoryKey = 'rvMenu'
 export const isMenuState = (state: unknown) => Boolean(state && typeof state === 'object' && (state as Record<string, unknown>)[menuHistoryKey])
 
 // The sum of the pending counts the menu's own badges show (nothing is read again for it).
-export const menuPendingTotal = (groups: MenuGroup[]) => groups.reduce((sum, group) => sum + group.entries.reduce((inner, entry) => inner + (typeof entry.count === 'number' && entry.count > 0 ? entry.count : 0), 0), 0)
+// `except` leaves out the pages that have a target of their own in the dock (their count is drawn on that target).
+export const menuPendingTotal = (groups: MenuGroup[], except: string[] = []) => groups.reduce((sum, group) => sum + group.entries.reduce((inner, entry) => inner + (typeof entry.count === 'number' && entry.count > 0 && !except.includes(entry.to) ? entry.count : 0), 0), 0)
 export const badgeText = (count: number) => count > 99 ? '99+' : String(count)
 
 export function useDockHostState(phone: boolean) {
   const [actionsEl, setActionsEl] = useState<HTMLElement | null>(null)
-  const [infoEl, setInfoEl] = useState<HTMLElement | null>(null)
+  const [noteEl, setNoteEl] = useState<HTMLElement | null>(null)
+  const [stripEl, setStripEl] = useState<HTMLElement | null>(null)
+  const [tabsEl, setTabsEl] = useState<HTMLElement | null>(null)
   const [entries, setEntries] = useState<Array<{ id: string; hasInfo: boolean }>>([])
+  const [tabEntries, setTabEntries] = useState<string[]>([])
   const register = useCallback((id: string, hasInfo: boolean) => {
     setEntries(current => [...current.filter(entry => entry.id !== id), { id, hasInfo }])
     return () => setEntries(current => current.filter(entry => entry.id !== id))
   }, [])
+  const registerTabs = useCallback((id: string) => {
+    setTabEntries(current => [...current.filter(entry => entry !== id), id])
+    return () => setTabEntries(current => current.filter(entry => entry !== id))
+  }, [])
   const top = entries[entries.length - 1]
-  const host = useMemo<DockHost>(() => ({ phone, actionsEl, infoEl, topId: top?.id ?? null, register }), [phone, actionsEl, infoEl, top?.id, register])
-  return { host, taskActive: Boolean(top), hasInfo: Boolean(top?.hasInfo), setActionsEl, setInfoEl }
+  const tabsTopId = tabEntries[tabEntries.length - 1] ?? null
+  // The page's status text goes to the strip in the top row; where the top row holds the page's tabs it goes next to the buttons.
+  const infoEl = tabsTopId ? noteEl : stripEl
+  const host = useMemo<DockHost>(() => ({ phone, actionsEl, infoEl, topId: top?.id ?? null, register, tabsEl, tabsTopId, registerTabs }), [phone, actionsEl, infoEl, top?.id, register, tabsEl, tabsTopId, registerTabs])
+  return { host, taskActive: Boolean(top), hasInfo: Boolean(top?.hasInfo), tabsActive: Boolean(tabsTopId), setActionsEl, setNoteEl, setStripEl, setTabsEl }
 }
 
 export { DockContext }
@@ -36,31 +47,38 @@ export { DockContext }
 const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: boolean }> = [
   { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true },
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
-]
-const dockPagesAfter: Array<{ to: string; icon: UiIconName; label: string; end?: boolean }> = [
   { to: '/products', icon: 'products', label: 'Ürünler' },
 ]
 
-// The keyboard is open while a text box has focus: the bar steps aside (bottom-nav.css does it with :has()).
-export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, unread, unreadError, setActionsEl, setInfoEl, menuSlotRef, onToggleMenu, onSearch, onNavigate, onOpenNotifications }: {
+// The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
+// Two floors in one panel: the top row holds the open page's tabs (or, in task mode, the status strip), the bottom row the four
+// targets - or, in task mode, a Menü button and the page's buttons.
+export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, tabsActive, unread, unreadError, setActionsEl, setNoteEl, setStripEl, setTabsEl, menuSlotRef, onToggleMenu, onNavigate, onOpenNotifications }: {
   menuOpen: boolean
   menuCount: number
+  // The pending count drawn on a page's own target ("/orders": 9).
+  slotCounts: Record<string, number>
   taskActive: boolean
   hasInfo: boolean
-  // Unread notifications (the pill above the dock, or the bell at the end of the task bar's strip) and whether one is an error.
+  tabsActive: boolean
+  // Unread notifications (the pill above the dock, or the bell at the end of the strip) and whether one is an error.
   unread: number
   unreadError: boolean
   setActionsEl: (element: HTMLElement | null) => void
-  setInfoEl: (element: HTMLElement | null) => void
+  setNoteEl: (element: HTMLElement | null) => void
+  setStripEl: (element: HTMLElement | null) => void
+  setTabsEl: (element: HTMLElement | null) => void
   menuSlotRef: RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
-  onSearch: () => void
   // Leaves the open menu for a page (replaces the menu's history entry).
   onNavigate: (to: string) => void
   onOpenNotifications: () => void
 }) {
   const { pathname } = useLocation()
   const task = taskActive && !menuOpen
+  const tabs = tabsActive && !menuOpen
+  const strip = !tabs && task && (hasInfo || unread > 0)
+  const rows = tabs || strip ? 2 : 1
   const [infoHidden, setInfoHidden] = useState(false)
   useEffect(() => {
     let last = window.scrollY
@@ -75,7 +93,7 @@ export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, unread, u
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-  const isActive = (to: string, end?: boolean) => !menuOpen && (end ? pathname === to : pathname === to || pathname.startsWith(`${to}/`))
+  const isActive = (to: string, end?: boolean) => !menuOpen && (end ? pathname === to : pathname === to || pathname.startsWith(to + '/'))
   const follow = (to: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (!menuOpen || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return
     event.preventDefault()
@@ -83,29 +101,35 @@ export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, unread, u
   }
   const slot = (page: { to: string; icon: UiIconName; label: string; end?: boolean }) => {
     const active = isActive(page.to, page.end)
-    return <Link key={page.to} to={page.to} className={`rv-dock-slot${active ? ' is-active' : ''}`} aria-label={page.label} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
-      <span className="rv-dock-pill"><UiIcon name={page.icon} size={20} />{active ? <span className="rv-dock-label">{page.label}</span> : null}</span>
+    const count = slotCounts[page.to] ?? 0
+    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? page.label + ', ' + count + ' bekleyen' : page.label} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
+      <span className="rv-dock-icon"><UiIcon name={page.icon} size={20} />{count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null}</span><span className="rv-dock-label">{page.label}</span>
     </Link>
   }
-  const menuLabel = menuOpen ? 'Kapat' : 'Menü'
-  const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? `Menü, ${menuCount} bekleyen işlem` : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'}>
-    <div className="rv-dock-info" data-visible={task && (hasInfo || unread > 0) && !infoHidden ? 'true' : 'false'}>
-      <div className="rv-dock-info-slot" ref={setInfoEl} />
-      {unread > 0 ? <button type="button" className={`rv-dock-bell${unreadError ? ' is-error' : ''}`} aria-label={`Bildirimler, ${unread} okunmamış`} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={14} />{badgeText(unread)}</button> : null}
+  const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
+  const showStripBell = strip && unread > 0
+  const bellLabel = 'Bildirimler, ' + unread + ' okunmamış'
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
+    <div className="rv-dock-top" data-top={tabs ? 'tabs' : strip ? 'info' : 'none'} inert={rows === 1 || undefined}>
+      <div className="rv-dock-tabs" ref={setTabsEl} />
+      <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
+        <div className="rv-dock-info-slot" ref={setStripEl} />
+        {showStripBell ? <button type="button" className={'rv-dock-bell' + (unreadError ? ' is-error' : '')} aria-label={bellLabel} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={14} />{badgeText(unread)}</button> : null}
+      </div>
     </div>
-    {!task && !menuOpen && unread > 0 ? <button type="button" className={`rv-dock-pill-bell${unreadError ? ' is-error' : ''}`} aria-label={`Bildirimler, ${unread} okunmamış`} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={15} /><span>{badgeText(unread)}</span></button> : null}
-    <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
-      {dockPages.map(slot)}
-      <div className="rv-dock-slot rv-dock-slot-center"><button type="button" className="rv-dock-search" aria-label="Ara" aria-haspopup="dialog" onClick={onSearch}><UiIcon name="search" size={20} /></button></div>
-      {dockPagesAfter.map(slot)}
-      <button type="button" ref={menuSlotRef} className={`rv-dock-slot${menuOpen ? ' is-active' : ''}`} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
-        <span className="rv-dock-pill"><span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={20} />{!menuOpen && menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</span>{menuOpen ? <span className="rv-dock-label">{menuLabel}</span> : null}</span>
-      </button>
-    </nav>
-    <div className="rv-taskbar" inert={!task || undefined}>
-      <button type="button" className="rv-taskbar-menu" aria-label="Menüyü Aç" aria-haspopup="dialog" onClick={onToggleMenu}><UiIcon name="menu" size={20} />{menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</button>
-      <div className="rv-taskbar-actions" ref={setActionsEl} />
+    {!showStripBell && !menuOpen && unread > 0 ? <button type="button" className={'rv-dock-pill-bell' + (unreadError ? ' is-error' : '')} aria-label={bellLabel} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={15} /><span>{badgeText(unread)}</span></button> : null}
+    <div className="rv-dock-bottom">
+      <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
+        {dockPages.map(slot)}
+        <button type="button" ref={menuSlotRef} className={'rv-dock-slot' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
+          <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={20} />{!menuOpen && menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</span><span className="rv-dock-label">{menuOpen ? 'Kapat' : 'Menü'}</span>
+        </button>
+      </nav>
+      <div className="rv-taskbar" inert={!task || undefined}>
+        <button type="button" className="rv-taskbar-menu" aria-label="Menüyü Aç" aria-haspopup="dialog" onClick={onToggleMenu}><UiIcon name="menu" size={20} />{menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</button>
+        <div className="rv-taskbar-note" ref={setNoteEl} />
+        <div className="rv-taskbar-actions" ref={setActionsEl} />
+      </div>
     </div>
   </div>
 }
@@ -115,13 +139,14 @@ const turkishKey = (value: string) => value.toLocaleLowerCase('tr-TR')
 
 // The full-screen menu: the page's own colour over the top bar, rising from the bottom; the dock stays below it.
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
-export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, onToggleTheme, onLogout, onClose, onNavigate, onOpenNotifications, pathname }: {
+export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, onToggleTheme, onLogout, onClose, onNavigate, onOpenNotifications, onSearch, pathname }: {
   groups: MenuGroup[]
   storeName: string
   theme: 'light' | 'dark'
   unread: number
   unreadError: boolean
   onOpenNotifications: () => void
+  onSearch: () => void
   onToggleTheme: () => void
   onLogout: () => void
   onClose: () => void
@@ -161,24 +186,26 @@ export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, 
   const needle = turkishKey(query.trim())
   const shown = groups.map(group => ({ ...group, entries: needle ? group.entries.filter(entry => turkishKey(entry.label).includes(needle)) : group.entries })).filter(group => group.entries.length)
   const row = (entry: MenuEntry): ReactNode => {
-    const hasCount = typeof entry.count === 'number' && (entry.count > 0 || entry.showZero)
+    const hasCount = typeof entry.count === 'number' && entry.count > 0
     const active = entry.end ? pathname === entry.to : pathname === entry.to || pathname.startsWith(`${entry.to}/`)
     const countLabel = typeof entry.count === 'number' && entry.count > 999 ? '999 üzeri' : entry.count?.toLocaleString('tr-TR')
     return <Link key={entry.to} to={entry.to} className={`rv-fullmenu-row${active ? ' is-current' : ''}`} aria-current={active ? 'page' : undefined} aria-label={hasCount ? `${entry.label}, ${countLabel} ${entry.noun ?? 'bildirim'}` : undefined}
       onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); onNavigate(entry.to) }}>
       <UiIcon name={entry.icon} size={20} />
       <span className="rv-fullmenu-name">{entry.label}</span>
-      {hasCount ? <span className={`rv-fullmenu-count${entry.warn && entry.count! > 0 ? ' is-warn' : ''}`} aria-hidden="true">{entry.count! > 999 ? '999+' : entry.count!.toLocaleString('tr-TR')}</span> : null}
+      {hasCount ? <span className={`rv-fullmenu-count${entry.warn ? ' is-warn' : ''}`} aria-hidden="true">{entry.count! > 999 ? '999+' : entry.count!.toLocaleString('tr-TR')}</span> : null}
+      <UiIcon className="rv-fullmenu-chev" name="chevronRight" size={16} />
     </Link>
   }
   return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
     <header className="rv-fullmenu-head"><h2>Menü</h2><div className="rv-fullmenu-tools">
+      <button type="button" className="rv-fullmenu-tool" aria-label="Ara" aria-haspopup="dialog" onClick={onSearch}><UiIcon name="search" size={18} /></button>
       <button type="button" className="rv-fullmenu-tool" aria-label={unread > 0 ? `Bildirimler, ${unread} okunmamış` : 'Bildirimler'} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={18} />{unread > 0 ? <span className={`rv-fullmenu-tool-badge${unreadError ? ' is-error' : ''}`} aria-hidden="true">{badgeText(unread)}</span> : null}</button>
       <button type="button" className="rv-fullmenu-tool" aria-label={theme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={theme === 'dark'} onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={18} /></button>
     </div></header>
     <div className="rv-fullmenu-search"><UiIcon name="search" size={18} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Sayfa Ara" aria-label="Sayfa Ara" autoComplete="off" enterKeyHint="search" /></div>
     <div className="rv-fullmenu-body">
-      {shown.map(group => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}><h3>{group.label}</h3><div className="rv-fullmenu-card">{group.entries.map(row)}</div></section>)}
+      {shown.map(group => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}><h3>{group.label}</h3><div className="rv-fullmenu-list">{group.entries.map(row)}</div></section>)}
       {!shown.length ? <p className="rv-fullmenu-empty" role="status">Eşleşen Sayfa Yok</p> : null}
     </div>
     <footer className="rv-fullmenu-foot">

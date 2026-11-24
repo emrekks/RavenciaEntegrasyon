@@ -94,6 +94,12 @@ public static partial class MarketplaceEndpoints
             var request = NumberedPageRequest.From(page, pageSize);
             return Result(await service.InvalidOffersAsync(tenant.TenantId, connectionId, search, reason, request.Page, request.PageSize, http.RequestAborted), Results.Ok);
         }).Produces<PriceStockInvalidOffersView>();
+        // "Sorun Yok" in the same window (owner and administrators): the offers' open issues are resolved in the panel; nothing is sent.
+        api.MapPost("/price-stock-monitor/{connectionId:guid}/invalid-offers/no-problem", async (Guid connectionId, PriceStockOfferNoProblemCommand command, HttpContext http, IPriceStockMonitorService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            return Result(await service.MarkOffersNoProblemAsync(tenant.TenantId, connectionId, command.VariantIds, tenant.UserId, OperationCorrelation(http), http.RequestAborted), Results.Ok);
+        }).RequireGate(ApiGate.Elevated).Produces<PriceStockOfferNoProblemView>().Idempotent("resolves the named offers' open issues; a repeat finds them closed and changes nothing");
         api.MapGet("/price-stock-monitor/{connectionId:guid}/failed-pushes", async (Guid connectionId, HttpContext http, IPriceStockMonitorService service, string? kind, int? page, int? pageSize) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

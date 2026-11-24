@@ -227,6 +227,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/price-stock-monitor SignedIn",
         "GET    /api/v1/api-health-signals SignedIn",
         "GET    /api/v1/price-stock-monitor/{connectionId:guid}/invalid-offers SignedIn",
+        "POST   /api/v1/price-stock-monitor/{connectionId:guid}/invalid-offers/no-problem Elevated",
         "GET    /api/v1/price-stock-monitor/{connectionId:guid}/failed-pushes SignedIn",
         "GET    /api/v1/price-stock-monitor/{connectionId:guid}/lost-links SignedIn",
         "GET    /api/v1/api-health-signals/{connectionId:guid}/attempts SignedIn",

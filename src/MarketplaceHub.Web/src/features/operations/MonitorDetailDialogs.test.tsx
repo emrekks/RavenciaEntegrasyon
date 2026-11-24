@@ -4,20 +4,24 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { queryKeys } from '../../shared/api/query-keys'
 import { ApiHealthAttemptsDialog, PriceStockProblemDialog, problemTotal, reasonText } from './MonitorDetailDialogs'
 
 const hubPoll = vi.fn()
-vi.mock('../../shared/api', () => ({ hubPoll: (...args: unknown[]) => hubPoll(...args) }))
+const hubApi = vi.fn()
+vi.mock('../../shared/api', () => ({ hubPoll: (...args: unknown[]) => hubPoll(...args), hubApi: (...args: unknown[]) => hubApi(...args) }))
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 let container: HTMLDivElement
 let root: Root
-beforeEach(() => { hubPoll.mockReset(); container = document.createElement('div'); document.body.appendChild(container) })
+beforeEach(() => { hubPoll.mockReset(); hubApi.mockReset(); container = document.createElement('div'); document.body.appendChild(container) })
 afterEach(() => { act(() => root.unmount()); container.remove(); document.body.innerHTML = '' })
 
-async function mount(node: React.ReactNode) {
+async function mount(node: React.ReactNode, role?: string) {
   root = createRoot(container)
-  await act(async () => { root.render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter>{node}</MemoryRouter></QueryClientProvider>) })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  if (role) client.setQueryData(queryKeys.me(), { role })
+  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter>{node}</MemoryRouter></QueryClientProvider>) })
   for (let i = 0; i < 6; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
 }
 const counts = { invalidOffers: 50, failedPushes: 3, manualReview: 2, notFoundLinks: 1, rejectedLinks: 1 }
@@ -35,6 +39,34 @@ describe('PriceStockProblemDialog', () => {
     expect(row.querySelector('a')?.getAttribute('href')).toBe('/products/p1')
     expect(document.body.textContent).toContain('Yalnız okuma')
     expect(document.body.querySelectorAll('.md-tabs button')).toHaveLength(4)
+  })
+
+  it('marks one row or the picked rows "Sorun Yok" and says it only hides the row', async () => {
+    const offer = (id: string) => ({ variantId: id, productId: 'p1', sku: `SKU-${id}`, barcode: null, productTitle: 'Gömlek', variantLabel: null, reasonCode: 'CHANNEL_OFFER_INVALID', reasonSummary: 'raw', panelListPrice: null, panelSalePrice: null, offerListPrice: 0, offerSalePrice: 0, currency: 'TRY', lastSeenAt: '2026-11-19T00:00:00Z' })
+    hubPoll.mockResolvedValue({ items: [offer('v1'), offer('v2'), offer('v3')], page: 1, pageSize: 50, totalCount: 3, filteredCount: 3, reasons: [{ code: 'CHANNEL_OFFER_INVALID', count: 3 }], reasonCodes: ['CHANNEL_OFFER_INVALID'] })
+    hubApi.mockResolvedValue({ marked: 1, alreadyClosed: 0 })
+    await mount(<PriceStockProblemDialog connectionId="c1" displayName="Trendyol" counts={{ invalidOffers: 3, failedPushes: 0, manualReview: 0, notFoundLinks: 0, rejectedLinks: 0 }} onClose={() => undefined} />, 'OWNER')
+    expect(document.body.textContent).toContain('"Sorun Yok" yalnız satırı gizler')
+    const bulk = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.startsWith('Seçilenleri Sorun Yok İşaretle'))!
+    expect(bulk.disabled).toBe(true)
+    const rowButton = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.md-tbl tbody button')).find(button => button.textContent === 'Sorun Yok')!
+    await act(async () => { rowButton.click() })
+    expect(hubApi.mock.calls[0][0]).toBe('/price-stock-monitor/c1/invalid-offers/no-problem')
+    expect(JSON.parse(hubApi.mock.calls[0][1].body)).toEqual({ variantIds: ['v1'] })
+    const boxes = Array.from(document.body.querySelectorAll<HTMLInputElement>('.md-tbl tbody input.rr-cb'))
+    expect(boxes).toHaveLength(3)
+    await act(async () => { boxes[1].click() })
+    await act(async () => { boxes[2].click() })
+    expect(bulk.textContent).toBe('Seçilenleri Sorun Yok İşaretle (2)')
+    await act(async () => { bulk.click() })
+    expect(JSON.parse(hubApi.mock.calls[1][1].body)).toEqual({ variantIds: ['v2', 'v3'] })
+  })
+
+  it('shows no "Sorun Yok" control to a role the server refuses', async () => {
+    hubPoll.mockResolvedValue({ items: [{ variantId: 'v1', productId: 'p1', sku: 'S', barcode: null, productTitle: 'G', variantLabel: null, reasonCode: 'CHANNEL_OFFER_INVALID', reasonSummary: 'r', panelListPrice: null, panelSalePrice: null, offerListPrice: 0, offerSalePrice: 0, currency: 'TRY', lastSeenAt: '2026-11-19T00:00:00Z' }], page: 1, pageSize: 50, totalCount: 1, filteredCount: 1, reasons: [], reasonCodes: [] })
+    await mount(<PriceStockProblemDialog connectionId="c1" displayName="Trendyol" counts={{ invalidOffers: 1, failedPushes: 0, manualReview: 0, notFoundLinks: 0, rejectedLinks: 0 }} onClose={() => undefined} />, 'OPERATIONS')
+    expect(document.body.querySelector('.md-tbl input')).toBeNull()
+    expect(document.body.textContent).not.toContain('Seçilenleri Sorun Yok')
   })
 
   it('names a lone tab in the title and reads the failed pushes of the chosen kind', async () => {

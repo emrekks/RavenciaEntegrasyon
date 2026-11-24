@@ -383,7 +383,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // stored at 0 with a saved panel price goes at the panel price; without a price in force it stays out as before.
             // Hepsiburada and Shopify take the stock alone (below).
             var (sendList, sendSale, priceKnown) = OutboundInForce(connection.PlatformCode, row.Offer, row.Variant, cards, listPrice, salePrice);
-            if (!string.Equals(row.Offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase) || isTrendyol && !priceKnown)
+            if (StandardOfferRefused(connection.PlatformCode, row.Offer, row.Variant, cards))
             {
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için TRY ve listPrice >= salePrice > 0 kuralı gerekir.") is { } refused) return refused;
                 continue;
@@ -953,6 +953,17 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var list = OutboundListPrice(inForce);
         return sale > 0 && list >= sale ? (list, sale, true) : (storedList, storedSale, false);
     }
+
+    // The platforms whose offers the line below judges (the Trendyol, Hepsiburada and Shopify build): the only check there
+    // that raises CHANNEL_OFFER_INVALID.
+    internal static readonly string[] StandardOfferPlatforms = ["TRENDYOL", "HEPSIBURADA", "SHOPIFY"];
+
+    // Whether a Trendyol, Hepsiburada or Shopify line is left out as CHANNEL_OFFER_INVALID: another currency than TRY, or on
+    // Trendyol no price in force (owner, 18 Nov 2026: "0 TL'liler fiyatsız kalsın"). The send and the orphaned-issue pass
+    // (OrphanedOperationalIssues.ResolveClearedOffersAsync) ask this one function.
+    internal static bool StandardOfferRefused(string platformCode, ChannelOffer offer, ProductVariant variant, IReadOnlyDictionary<Guid, (decimal? Sale, decimal? List)> cards) =>
+        !string.Equals(offer.Currency, "TRY", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && !OutboundInForce(platformCode, offer, variant, cards, 0m, 0m).Known;
 
     // The prices that leave the panel: VAT added for an offer kept without VAT, two decimals.
     internal static decimal OutboundSalePrice(ChannelOffer offer) =>
