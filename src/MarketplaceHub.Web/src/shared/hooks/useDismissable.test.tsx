@@ -40,6 +40,19 @@ describe('useDismissable', () => {
     container.remove()
   })
 
+  it('a finger press outside only closes: the tap click does not reach the button under the finger', () => {
+    const under = vi.fn()
+    act(() => root.render(<><Popover id="a" /><button type="button" data-under onClick={under}>top bar</button></>))
+    click(trigger('a'))
+    const target = container.querySelector('[data-under]')!
+    act(() => { target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch' })) })
+    expect(panel('a')).toBeNull()
+    click(target)
+    expect(under).not.toHaveBeenCalled()
+    click(target)
+    expect(under).toHaveBeenCalledTimes(1)
+  })
+
   it('stays open on presses on its trigger and its portalled panel, and closes on a press anywhere else', () => {
     act(() => root.render(<><Popover id="a" /><p data-outside>page</p></>))
     click(trigger('a'))
