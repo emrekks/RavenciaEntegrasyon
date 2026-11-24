@@ -31008,6 +31008,15 @@
               "null",
               "string"
             ]
+          },
+          "b": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

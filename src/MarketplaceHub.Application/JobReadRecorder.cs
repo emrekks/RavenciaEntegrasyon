@@ -5,13 +5,15 @@ namespace MarketplaceHub.Application;
 
 // One record a read job pulled: its reference (order, package or claim number), a second number (the claim's order),
 // the marketplace status it came with, what the read did with it and why it was skipped or failed. Never a customer's
-// name, address or phone.
+// name, address or phone. A product read also keeps every variant's barcode (Barcodes); a record stored before it knows
+// only the first one (Secondary).
 public sealed record JobReadRecord(
     [property: JsonPropertyName("r")] string Reference,
     [property: JsonPropertyName("s")] string? Secondary,
     [property: JsonPropertyName("st")] string? Status,
     [property: JsonPropertyName("o")] string Outcome,
-    [property: JsonPropertyName("why")] string? Reason = null);
+    [property: JsonPropertyName("why")] string? Reason = null,
+    [property: JsonPropertyName("b")] IReadOnlyList<string>? Barcodes = null);
 
 public static class JobReadOutcomes
 {

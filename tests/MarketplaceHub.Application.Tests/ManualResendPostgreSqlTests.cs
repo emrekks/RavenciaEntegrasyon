@@ -110,6 +110,40 @@ public sealed class ManualResendPostgreSqlTests(PostgreSqlTenantIsolationFixture
         }
     }
 
+    // An old Hepsiburada order with no live package and an unverified status is hidden from the order tabs
+    // (HepsiburadaOrderVisibility). Added by hand as a resend, it is listed and counted under Yeniden Gönderimler (list ==
+    // card, with and without a search term) and stays hidden from every other tab.
+    [PostgreSqlFact]
+    public async Task A_hand_added_stale_hepsiburada_order_is_listed_and_counted_only_under_resends()
+    {
+        var (tenant, _, hepsiburada) = await SeedAsync();
+        var order = await SeedOrderAsync(tenant.Id, hepsiburada.Id, "1000000401", "NEW", fixture.Now.AddDays(-90));
+        await using (var db = fixture.CreateContext())
+        {
+            var result = await new ManualResendService(db, fixture.TimeProvider).AddAsync(tenant.Id, Guid.NewGuid(), new ManualResendCreateCommand(hepsiburada.Id, "1000000401"), "corr", CancellationToken.None);
+            Assert.True(result.Succeeded, result.Error?.Message);
+        }
+
+        var listed = await ReadAsync(tenant.Id);
+        Assert.Equal(1, listed.Count);
+        Assert.Equal([order], listed.Resent.Select(x => x.Id));
+        Assert.Equal([order], listed.Unshipped.Select(x => x.Id));
+        Assert.Equal(1, listed.Stores[hepsiburada.Id.ToString("D")]);
+        var searched = await ReadAsync(tenant.Id, "1000000401");
+        Assert.Equal(1, searched.Count);
+        Assert.Equal([order], searched.Unshipped.Select(x => x.Id));
+
+        await using var context = fixture.CreateContext();
+        var service = new MarketplaceSalesService(context, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
+        foreach (var search in new string?[] { null, "1000000401" })
+        {
+            foreach (var tab in new string?[] { null, "NEW" })
+                Assert.Empty((await service.OrdersAsync(tenant.Id, 50, 1, null, new OrderListQuery(Status: tab, Search: search), CancellationToken.None)).Items);
+            var summary = await service.OrderSummaryAsync(tenant.Id, new OrderListQuery(Search: search), CancellationToken.None, ["ALL", "NEW", "RESENT"]);
+            Assert.Equal((0, 0, 1), (summary.All, summary.New, summary.Resent));
+        }
+    }
+
     [Theory]
     [InlineData(" 1000000301 ", "1000000301")]
     [InlineData("#1000000301", "1000000301")]
@@ -118,21 +152,22 @@ public sealed class ManualResendPostgreSqlTests(PostgreSqlTenantIsolationFixture
     public void The_typed_number_is_trimmed_and_its_hash_dropped(string? typed, string? expected) =>
         Assert.Equal(expected, ManualResendService.NormalizeOrderNumber(typed));
 
-    private async Task<(int Count, IReadOnlyList<OrderListView> Resent, IReadOnlyList<OrderListView> Unshipped, IReadOnlyDictionary<string, int> Stores)> ReadAsync(Guid tenantId)
+    private async Task<(int Count, IReadOnlyList<OrderListView> Resent, IReadOnlyList<OrderListView> Unshipped, IReadOnlyDictionary<string, int> Stores)> ReadAsync(Guid tenantId, string? search = null)
     {
         await using var db = fixture.CreateContext();
         var service = new MarketplaceSalesService(db, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
-        var resent = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "RESENT"), CancellationToken.None);
-        var unshipped = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "RESENT", ResentNotShipped: true), CancellationToken.None);
+        var resent = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "RESENT", Search: search), CancellationToken.None);
+        var unshipped = await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "RESENT", ResentNotShipped: true, Search: search), CancellationToken.None);
         // The card: the summary over the not-shipped resends, cached like the live one.
-        var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(ResentNotShipped: true), CancellationToken.None, ["RESENT"], allowCached: true);
+        var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(ResentNotShipped: true, Search: search), CancellationToken.None, ["RESENT"], allowCached: true);
         Assert.Equal(unshipped.Items.Count, summary.Resent);
         return (summary.Resent, resent.Items, unshipped.Items, summary.ResentByConnection ?? new Dictionary<string, int>());
     }
 
-    private async Task<Guid> SeedOrderAsync(Guid tenantId, Guid connectionId, string number)
+    private async Task<Guid> SeedOrderAsync(Guid tenantId, Guid connectionId, string number, string status = "DELIVERED", DateTimeOffset? orderedAt = null)
     {
-        var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = number, OrderNumber = number, Currency = "TRY", OrderedAt = fixture.Now.AddDays(-5), LastRemoteModifiedAt = fixture.Now.AddDays(-5), CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "DELIVERED", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var at = orderedAt ?? fixture.Now.AddDays(-5);
+        var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = number, OrderNumber = number, Currency = "TRY", OrderedAt = at, LastRemoteModifiedAt = at, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = status, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
         await using var db = fixture.CreateContext();
         db.Orders.Add(order);
         db.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = $"{number}-1", Sku = "SKU", TitleSnapshot = "Ürün", RawStatus = "Delivered", OrderedQuantity = 1, ShippedQuantity = 1, DeliveredQuantity = 1, UnitPrice = 100, VatRate = 10, Version = 1 });

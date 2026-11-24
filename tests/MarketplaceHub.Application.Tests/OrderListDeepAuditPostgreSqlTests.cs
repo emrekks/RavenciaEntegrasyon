@@ -204,6 +204,15 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None)).MicroExport);
             Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None, ["PENDING"])).MicroExport);
             Assert.Null((await service.OrderSummaryAsync(tenantId, new OrderListQuery(MicroExport: true), CancellationToken.None)).MicroExportCountries);
+            // Cached: the ALL tab counted beside LATE (no micro-export detail) is not the answer of the ALL tab asked alone.
+            var withLate = await service.OrderSummaryAsync(tenantId, new OrderListQuery(MicroExport: true), CancellationToken.None, ["ALL", "LATE"], allowCached: true);
+            Assert.Equal(0, withLate.MicroExport);
+            var cachedAlone = await service.OrderSummaryAsync(tenantId, new OrderListQuery(MicroExport: true), CancellationToken.None, ["ALL"], allowCached: true);
+            Assert.Equal((3, 2), (cachedAlone.MicroExport, cachedAlone.MicroExportCountries?["SA"] ?? 0));
+            // The per-key locks of the cached counts leave when their count is done: they do not pile up one per search.
+            for (var i = 0; i < 5; i++)
+                await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: $"mic-gate-{i}"), CancellationToken.None, ["ALL"], allowCached: true);
+            Assert.Equal(0, OrderQueryService.OrderSummaryGatesInUse);
         }
         finally
         {

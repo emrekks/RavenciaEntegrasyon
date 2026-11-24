@@ -20,7 +20,9 @@ internal sealed partial class OrderQueryService
     // this, identical counts ran side by side and their memory took the database over its limit (live
     // 20 Oct 2026: PostgreSQL killed by the out-of-memory killer while several 15-tab counts ran).
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, string Stamp, OrderSummaryView View)> OrderSummaryCache = new();
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> OrderSummaryGates = new();
+    // One lock per key while a count of that key runs or waits; it leaves with its last user (KeyedAsyncLock).
+    private static readonly KeyedAsyncLock OrderSummaryGates = new();
+    internal static int OrderSummaryGatesInUse => OrderSummaryGates.Count;
     // An answer is reused while no order or package of the tenant changed (a cheap stamp read), at most this long.
     // The full count takes seconds on live data (8 s on 20 Oct 2026), so it runs again only after a change.
     internal static readonly TimeSpan OrderSummaryCacheLifetime = TimeSpan.FromMinutes(5);
@@ -53,12 +55,12 @@ internal sealed partial class OrderQueryService
 
     private async Task<OrderSummaryView> CachedOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken, Func<Task<Func<OrderListQuery, IQueryable<Order>>>>? summaryOrders = null)
     {
-        var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
+        // Everything the answer depends on: the same tabs and filters with and without the micro-export detail (ALL asked
+        // alone, or beside LATE) are two answers.
+        var key = $"{tenantId:N}|{string.Join(',', requested)}|{includeMicro}|{JsonSerializer.Serialize(options)}";
         var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
         if (OrderSummaryCache.TryGetValue(key, out var cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
-        var gate = OrderSummaryGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
-        try
+        using (await OrderSummaryGates.AcquireAsync(key, cancellationToken))
         {
             // A request that waited behind an identical one takes its answer.
             if (OrderSummaryCache.TryGetValue(key, out cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
@@ -67,7 +69,6 @@ internal sealed partial class OrderQueryService
             OrderSummaryCache[key] = (DateTimeOffset.UtcNow, stamp, view);
             return view;
         }
-        finally { gate.Release(); }
     }
 
     // Changes of the tenant's orders (a label print too: it sets LabelPrintedAt without touching UpdatedAt), packages,
@@ -147,7 +148,7 @@ internal sealed partial class OrderQueryService
     private async Task<Func<OrderListQuery, IQueryable<Order>>> SummaryOrdersAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Search)) return tabOptions => FilteredOrders(tenantId, tabOptions with { Sort = null });
-        var matched = await FilteredOrders(tenantId, options with { Status = null, Sort = null }).Select(order => order.Id).ToListAsync(cancellationToken);
+        var matched = await FilteredOrders(tenantId, options with { Status = null, Sort = null }, keepManualResends: true).Select(order => order.Id).ToListAsync(cancellationToken);
         return tabOptions => FilteredOrders(tenantId, tabOptions with { Search = null, Sort = null }).Where(order => matched.Contains(order.Id));
     }
 
