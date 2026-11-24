@@ -4296,7 +4296,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         db.MarketplaceQuestions.Add(question);
         await db.SaveChangesAsync();
 
-        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var service = new MarketplaceQuestionService(db, port, new SteppingTimeProvider(fixture.Now), NullLogger<MarketplaceQuestionService>.Instance);
         var result = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "yeni cevap metni", Guid.NewGuid().ToString("N"), "question-answer-reconciled", CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -4324,7 +4324,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         db.MarketplaceQuestions.Add(question);
         await db.SaveChangesAsync();
 
-        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var service = new MarketplaceQuestionService(db, port, new SteppingTimeProvider(fixture.Now), NullLogger<MarketplaceQuestionService>.Instance);
         var first = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "yeni cevap metni", Guid.NewGuid().ToString("N"), "question-answer-rejected-1", CancellationToken.None);
 
         Assert.Equal("QUESTION_ANSWER_REJECTED", first.Error?.Code);
@@ -4355,7 +4355,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         db.MarketplaceQuestions.Add(question);
         await db.SaveChangesAsync();
 
-        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var service = new MarketplaceQuestionService(db, port, new SteppingTimeProvider(fixture.Now), NullLogger<MarketplaceQuestionService>.Instance);
         var result = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "başka cevap", Guid.NewGuid().ToString("N"), "question-answer-unresolved", CancellationToken.None);
 
         Assert.False(result.Succeeded);
@@ -4392,7 +4392,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         });
         await db.SaveChangesAsync();
 
-        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var service = new MarketplaceQuestionService(db, port, new SteppingTimeProvider(fixture.Now), NullLogger<MarketplaceQuestionService>.Instance);
         var sync = await service.SyncConnectionAsync(tenant.Id, connection.Id, null, CancellationToken.None);
 
         Assert.Null(sync.Error);
@@ -4420,7 +4420,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         db.MarketplaceQuestionSyncStates.Add(new MarketplaceQuestionSyncState { TenantId = tenant.Id, ConnectionId = connection.Id, HistoryImported = true, HistoryStartedAt = fixture.Now.AddYears(-1), ProgressStatus = "IDLE", LastSuccessAt = fixture.Now.AddMinutes(-1), Version = 1 });
         await db.SaveChangesAsync();
 
-        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var service = new MarketplaceQuestionService(db, port, new SteppingTimeProvider(fixture.Now), NullLogger<MarketplaceQuestionService>.Instance);
         var sync = await service.SyncConnectionAsync(tenant.Id, connection.Id, null, CancellationToken.None);
 
         Assert.Null(sync.Error);
@@ -4451,7 +4451,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         db.MarketplaceQuestions.Add(question);
         await db.SaveChangesAsync();
 
-        var service = new MarketplaceQuestionService(db, port, fixture.TimeProvider, NullLogger<MarketplaceQuestionService>.Instance);
+        var service = new MarketplaceQuestionService(db, port, new SteppingTimeProvider(fixture.Now), NullLogger<MarketplaceQuestionService>.Instance);
         var result = await service.AnswerAsync(tenant.Id, Guid.CreateVersion7(), question.Id, question.Version, "Önceki cevap", Guid.NewGuid().ToString("N"), "question-answer-late", CancellationToken.None);
 
         Assert.Equal("QUESTION_ANSWER_RECONCILED", result.Error?.Code);
@@ -9803,6 +9803,10 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         ApiVersion = "V1"
     };
 
+    // The submission is stamped from fixture.Now, which is fixed when the fixture is built: the service under test needs
+    // a clock standing at that same instant (new SteppingTimeProvider(fixture.Now)). With the wall clock, a run that
+    // reaches these tests more than 15 minutes after the fixture started sees the answer as older than the 20-minute
+    // NotDeliveredAfter window and settles it as NOT_DELIVERED.
     private static MarketplaceQuestion NewUncertainQuestion(Guid tenantId, Guid connectionId, DateTimeOffset now) => new()
     {
         Id = Guid.CreateVersion7(),
