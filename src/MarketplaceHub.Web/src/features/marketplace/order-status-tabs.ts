@@ -2,6 +2,8 @@ import { statusLabel } from '../../shared/status-labels'
 
 export const orderStatusTabs = [
   ['ALL', 'Tümü'],
+  // The warehouse queue the menu counter and the dashboard's "Bekleyen" card count: always in the row, left of Yeni (owner, 24 Nov).
+  ['PENDING', 'Bekleyen İşler'],
   ['NEW', 'Yeni'],
   ['PROCESSING', 'İşleme Alınanlar'],
   ['SHIPPED', 'Kargoda'],
@@ -12,17 +14,14 @@ export const orderStatusTabs = [
   ['PARTIALLY_CANCELLED', 'Kısmi İptal'],
   ['UNDELIVERED', 'Teslim Edilemedi'],
   ['MANUAL_REVIEW', 'İnceleme Gerekli'],
-  // The warehouse queue the menu counter and the dashboard's "Bekleyen" card count: reached from those links only
-  // (orderLinkOnlyTabs), not listed in the tab row.
-  ['PENDING', 'Bekleyen İşler'],
   // Pending orders past their ship-by time: the dashboard's "Geciken Siparişler" card opens this tab.
   ['LATE', 'Geciken'],
 ] as const
 
 // The tab row shows what fits and moves the rest into "Diğer" by itself (ViewTabsWithMore); these always go there.
 export const orderStatusMoreTabs: string[] = []
-// Shown only while a link (the dashboard cards, the menu counter) has opened them.
-export const orderLinkOnlyTabs = ['PENDING']
+// Tabs shown only while a link has opened them (none now: Bekleyen İşler is always in the row).
+export const orderLinkOnlyTabs: string[] = []
 
 const knownOrderStatusTabs = new Set<string>(orderStatusTabs.map(([value]) => value))
 

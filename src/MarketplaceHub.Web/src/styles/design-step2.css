@@ -99,15 +99,15 @@
    neighbours (the jump reaches the rest), the "Sayfaya Git" label hides (the input keeps its aria-label) and the input
    is 56 px. The bare pager drops the phone gutter its host already has, so it lines up with "Toplam". */
 @media (max-width: 760px) {
-  :root:root:root:root :is(.rr-pager:not(.rr-pager-bare), .order-pagination) { flex-wrap: nowrap; align-items: center; gap: 8px; }
-  :root:root:root:root :is(.rr-pager:not(.rr-pager-bare), .order-pagination) > span:first-child { flex: 0 0 auto; white-space: nowrap; font-size: 12.5px; }
+  :root:root:root:root :is(.rr-pager:not(.rr-pager-bare), .order-pagination) { flex-wrap: nowrap; align-items: center; gap: 6px; }
+  :root:root:root:root :is(.rr-pager:not(.rr-pager-bare), .order-pagination) > span:first-child { flex: 0 0 auto; white-space: nowrap; font-size: 12px; }
   :root:root:root:root .rr-pager.rr-pager-bare { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; justify-content: space-between; gap: 8px; padding-inline: 0 !important; }
   :root:root:root:root .rr-pager .rr-pages { margin-left: auto; }
-  :root:root:root:root .rr-pager .rr-pages > button { min-width: 32px; padding-inline: 4px !important; }
+  :root:root:root:root .rr-pager .rr-pages > button { min-width: 30px; padding-inline: 4px !important; }
   :root:root:root:root .rr-pager .rr-pages > :not(:first-child, :last-child, .rr-on) { display: none; }
   :root:root:root:root .rr-pager .rr-jump { margin-left: auto; padding-left: 0; border-left: 0; }
-  :root:root:root:root .rr-pager .rr-jump .rr-in { width: 44px; }
-  :root:root:root:root .rr-pager .rr-jump .rr-btn { padding-inline: 10px !important; }
+  :root:root:root:root .rr-pager .rr-jump .rr-in { width: 40px; }
+  :root:root:root:root .rr-pager .rr-jump .rr-btn { padding-inline: 8px !important; }
   :root:root:root:root .rr-pager .rr-jump-label { display: none; }
 }
 

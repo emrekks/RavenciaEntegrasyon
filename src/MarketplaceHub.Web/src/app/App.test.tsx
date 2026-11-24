@@ -19,6 +19,7 @@ vi.mock('../features/dashboard/DashboardPage', () => ({ DashboardPage: () => <h1
 import { App } from './App'
 import { confirmQuerySnapshotScope, forgetPreviousSession, querySnapshotKey, restoreQuerySnapshot, saveQuerySnapshot } from '../shared/query-snapshot'
 import { setStorageScope } from '../shared/storage-scope'
+import { appendNotification } from '../shared/notifications'
 
 type Reply = { status: number; body?: unknown }
 const server = vi.hoisted(() => ({ me: [] as Reply[], calls: [] as Array<{ url: string; method: string; body?: string }>, hub: (_url: string): Reply => ({ status: 200, body: {} }) }))
@@ -192,6 +193,37 @@ describe('irreversible work needs no re-authentication', () => {
     expect(resets).toBe(1)
     expect(document.querySelector('input[type="password"]')).toBeNull()
     expect(server.calls.some(call => call.url === '/api/v1/auth/reauthenticate')).toBe(false)
+  })
+})
+
+describe('phone shell (no top bar)', () => {
+  const phoneQuery = (query: string) => query.includes('max-width: 768px') || query.includes('prefers-reduced-motion: reduce')
+  const stubPhone = () => vi.stubGlobal('matchMedia', (query: string) => ({ matches: phoneQuery(query), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
+  afterEach(() => { try { localStorage.clear() } catch { /* nothing */ } })
+
+  it('draws no top bar, the dock instead, and no notification pill while nothing is unread', async () => {
+    stubPhone()
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount('/orders')
+    await waitFor(() => host.querySelector('.rv-dock'))
+    expect(host.querySelector('header.rv-topbar')).toBeNull()
+    expect(host.querySelector('.rv-dock-pill-bell')).toBeNull()
+  })
+
+  it('shows the pill when a notification is unread, opens the sheet from it, and a press on the dimmed page only closes it', async () => {
+    stubPhone()
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount('/orders')
+    await waitFor(() => host.querySelector('.rv-dock'))
+    act(() => { appendNotification('Fatura gönderilemedi', 'error') })
+    const pill = await waitFor(() => host.querySelector<HTMLButtonElement>('.rv-dock-pill-bell'))
+    expect(pill.classList.contains('is-error')).toBe(true)
+    act(() => { pill.click() })
+    const sheet = await waitFor(() => document.querySelector<HTMLElement>('#rv-notification-history'))
+    expect(sheet.getAttribute('aria-modal')).toBe('true')
+    act(() => { document.querySelector<HTMLElement>('.rv-notification-dim')!.click() })
+    await waitFor(() => document.querySelector('#rv-notification-history') === null || undefined)
+    expect(host.querySelector('.rv-dock [aria-current="page"]')?.getAttribute('aria-label')).toBe('Siparişler')
   })
 })
 

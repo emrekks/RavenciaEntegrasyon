@@ -42,11 +42,14 @@ const dockPagesAfter: Array<{ to: string; icon: UiIconName; label: string; end?:
 ]
 
 // The keyboard is open while a text box has focus: the bar steps aside (bottom-nav.css does it with :has()).
-export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, setActionsEl, setInfoEl, menuSlotRef, onToggleMenu, onSearch, onNavigate }: {
+export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, unread, unreadError, setActionsEl, setInfoEl, menuSlotRef, onToggleMenu, onSearch, onNavigate, onOpenNotifications }: {
   menuOpen: boolean
   menuCount: number
   taskActive: boolean
   hasInfo: boolean
+  // Unread notifications (the pill above the dock, or the bell at the end of the task bar's strip) and whether one is an error.
+  unread: number
+  unreadError: boolean
   setActionsEl: (element: HTMLElement | null) => void
   setInfoEl: (element: HTMLElement | null) => void
   menuSlotRef: RefObject<HTMLButtonElement | null>
@@ -54,6 +57,7 @@ export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, setAction
   onSearch: () => void
   // Leaves the open menu for a page (replaces the menu's history entry).
   onNavigate: (to: string) => void
+  onOpenNotifications: () => void
 }) {
   const { pathname } = useLocation()
   const task = taskActive && !menuOpen
@@ -86,7 +90,11 @@ export function BottomDock({ menuOpen, menuCount, taskActive, hasInfo, setAction
   const menuLabel = menuOpen ? 'Kapat' : 'Menü'
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? `Menü, ${menuCount} bekleyen işlem` : 'Menü'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'}>
-    <div className="rv-dock-info" ref={setInfoEl} data-visible={task && hasInfo && !infoHidden ? 'true' : 'false'} />
+    <div className="rv-dock-info" data-visible={task && (hasInfo || unread > 0) && !infoHidden ? 'true' : 'false'}>
+      <div className="rv-dock-info-slot" ref={setInfoEl} />
+      {unread > 0 ? <button type="button" className={`rv-dock-bell${unreadError ? ' is-error' : ''}`} aria-label={`Bildirimler, ${unread} okunmamış`} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={14} />{badgeText(unread)}</button> : null}
+    </div>
+    {!task && !menuOpen && unread > 0 ? <button type="button" className={`rv-dock-pill-bell${unreadError ? ' is-error' : ''}`} aria-label={`Bildirimler, ${unread} okunmamış`} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={15} /><span>{badgeText(unread)}</span></button> : null}
     <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
       {dockPages.map(slot)}
       <div className="rv-dock-slot rv-dock-slot-center"><button type="button" className="rv-dock-search" aria-label="Ara" aria-haspopup="dialog" onClick={onSearch}><UiIcon name="search" size={20} /></button></div>
@@ -107,10 +115,13 @@ const turkishKey = (value: string) => value.toLocaleLowerCase('tr-TR')
 
 // The full-screen menu: the page's own colour over the top bar, rising from the bottom; the dock stays below it.
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
-export function FullScreenMenu({ groups, storeName, theme, onToggleTheme, onLogout, onClose, onNavigate, pathname }: {
+export function FullScreenMenu({ groups, storeName, theme, unread, unreadError, onToggleTheme, onLogout, onClose, onNavigate, onOpenNotifications, pathname }: {
   groups: MenuGroup[]
   storeName: string
   theme: 'light' | 'dark'
+  unread: number
+  unreadError: boolean
+  onOpenNotifications: () => void
   onToggleTheme: () => void
   onLogout: () => void
   onClose: () => void
@@ -128,6 +139,8 @@ export function FullScreenMenu({ groups, storeName, theme, onToggleTheme, onLogo
     return () => main?.removeAttribute('inert')
   }, [])
   const trap = (event: KeyboardEvent | ReactKeyboardEvent) => {
+    // The notification sheet over the menu owns Esc and Tab while it is open.
+    if (document.querySelector('.rv-notification-history')) return
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
     if (event.key !== 'Tab') return
     // The dock stays usable (it holds the Kapat slot), so the cycle runs through the menu and then the dock.
@@ -159,14 +172,17 @@ export function FullScreenMenu({ groups, storeName, theme, onToggleTheme, onLogo
     </Link>
   }
   return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
-    <header className="rv-fullmenu-head"><h2>Menü</h2><span className="rv-fullmenu-store" title={storeName}>{storeName}</span></header>
+    <header className="rv-fullmenu-head"><h2>Menü</h2><div className="rv-fullmenu-tools">
+      <button type="button" className="rv-fullmenu-tool" aria-label={unread > 0 ? `Bildirimler, ${unread} okunmamış` : 'Bildirimler'} aria-haspopup="dialog" onClick={onOpenNotifications}><UiIcon name="bell" size={18} />{unread > 0 ? <span className={`rv-fullmenu-tool-badge${unreadError ? ' is-error' : ''}`} aria-hidden="true">{badgeText(unread)}</span> : null}</button>
+      <button type="button" className="rv-fullmenu-tool" aria-label={theme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={theme === 'dark'} onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={18} /></button>
+    </div></header>
     <div className="rv-fullmenu-search"><UiIcon name="search" size={18} /><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Sayfa Ara" aria-label="Sayfa Ara" autoComplete="off" enterKeyHint="search" /></div>
     <div className="rv-fullmenu-body">
       {shown.map(group => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}><h3>{group.label}</h3><div className="rv-fullmenu-card">{group.entries.map(row)}</div></section>)}
       {!shown.length ? <p className="rv-fullmenu-empty" role="status">Eşleşen Sayfa Yok</p> : null}
     </div>
     <footer className="rv-fullmenu-foot">
-      <button type="button" className="rv-fullmenu-action" aria-pressed={theme === 'dark'} onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={18} />{theme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</button>
+      <span className="rv-fullmenu-store" title={storeName}>{storeName}</span>
       <button type="button" className="rv-fullmenu-action is-danger" onClick={onLogout}><UiIcon name="logout" size={18} />Çıkış</button>
     </footer>
   </div>
@@ -179,11 +195,23 @@ export function useMenuHistory() {
   const navigate = useNavigate()
   const location = useLocation()
   const open = isMenuState(location.state)
-  const openMenu = useCallback(() => { if (!open) navigate(`${location.pathname}${location.search}`, { state: { [menuHistoryKey]: true } }) }, [navigate, open, location.pathname, location.search])
+  const openMenu = useCallback(() => { if (!open) navigate(`${location.pathname}${location.search}`, { state: { ...(location.state as object | null), [menuHistoryKey]: true } }) }, [navigate, open, location.pathname, location.search, location.state])
   const closeMenu = useCallback(() => { if (open) navigate(-1) }, [navigate, open])
   const leaveTo = useCallback((to: string) => {
     if (to === location.pathname) { closeMenu(); return }
     navigate(to, { replace: true })
   }, [navigate, location.pathname, closeMenu])
   return { open, openMenu, closeMenu, leaveTo }
+}
+
+// The notification sheet (phone) is an entry of the history too, like the menu: back closes it, leaving for a page replaces it.
+export const notificationHistoryKey = 'rvNotifications'
+export function useNotificationHistory() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const open = Boolean(location.state && typeof location.state === 'object' && (location.state as Record<string, unknown>)[notificationHistoryKey])
+  const openSheet = useCallback(() => { if (!open) navigate(`${location.pathname}${location.search}`, { state: { ...(location.state as object | null), [notificationHistoryKey]: true } }) }, [navigate, open, location.pathname, location.search, location.state])
+  const closeSheet = useCallback(() => { if (open) navigate(-1) }, [navigate, open])
+  const leaveTo = useCallback((href: string) => navigate(href, { replace: true }), [navigate])
+  return { open, openSheet, closeSheet, leaveTo }
 }
