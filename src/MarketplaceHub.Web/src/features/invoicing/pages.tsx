@@ -19,7 +19,7 @@ import { handSetInvoiceStatus, handSetInvoiceStatusNote, setManualInvoiceStatus 
 import { ShopifyInvoiceStatusDialog } from './ShopifyInvoiceStatusDialog'
 import { invoiceDueText } from './invoice-due-text'
 import { invoicePreviewNotice } from './invoice-preview-notice'
-import { Busy, CardBackgroundIcon, CargoProviderIcon, cargoFilterOptions, CountUp, ErrorBox, InvoiceStatusBadge, Modal, Pager, StickyActionBar, TitleHint, useDockHost, UiIcon, DialogSurface } from '../../shared/components'
+import { Busy, CardBackgroundIcon, CargoProviderIcon, cargoFilterOptions, CountUp, ErrorBox, InvoiceStatusBadge, Modal, Pager, StickyActionBar, TitleHint, useBackTarget, useDockHost, UiIcon, DialogSurface } from '../../shared/components'
 import { fullyReturnedNoInvoiceStatus, invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification, notificationError, notificationLinks, notificationPlatformName, type NotificationContext } from '../../shared/notifications'
 import { useJobOutcomeNotice } from '../../shared/job-outcome-notice'
@@ -805,6 +805,7 @@ function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: Invo
 const invoiceSendActions = new Set(['SUBMIT', 'CANCEL', 'DELIVER', 'RETRY_DELIVERY'])
 
 export function InvoiceDetailPage() {
+  useBackTarget({ to: '/invoices', label: 'Faturalar' })
   const { id = '' } = useParams(); const [searchParams] = useSearchParams(); const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<InvoiceNoticeKind>('info'); const [confirmed, setConfirmed] = useState(false); const [uploadFile, setUploadFile] = useState<File | null>(null)
   // Every notice of this page is about this invoice: its number (or its order's) and a link back to it.
   function setNotice(value: string, kind: InvoiceNoticeKind = 'info') {

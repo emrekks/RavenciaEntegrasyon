@@ -215,6 +215,16 @@ describe('phone shell (no top bar)', () => {
     expect(host.querySelector('.rv-dock-pill-bell, .rv-dock-bell')).toBeNull()
   })
 
+  it('offers the way back from a page reached from a list: "‹ Faturalar" in the top bar of an invoice, the breadcrumb elsewhere', async () => {
+    stubPhone()
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount('/invoices/123')
+    const back = await waitFor(() => host.querySelector<HTMLButtonElement>('.rv-topbar-back'))
+    expect(back.getAttribute('aria-label')).toBe("Faturalar'a Dön")
+    expect(back.textContent).toBe('Faturalar')
+    expect(host.querySelector('.rv-breadcrumb')).toBeNull()
+  })
+
   it('opens the notification panel from the bell of the top bar; a press on the dimmed page only closes it', async () => {
     stubPhone()
     server.me = [{ status: 200, body: active }]

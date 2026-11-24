@@ -11,8 +11,8 @@ const exitMs = 160
 // it leaves (a cleared selection does not flash "0 seçildi").
 // On a phone the bar is not drawn in the page: its buttons go to the dock's task bar (dock-actions.tsx) and `info` (the
 // status: a chip or text on the left, a short summary on the right) to the strip above it. `dock={false}` keeps a bar
-// that holds text boxes in the page (sticky, above the dock). `lead` is the status drawn inside the bar on wider screens.
-export function StickyActionBar({ open = true, label, className, info, lead, dock = true, children }: { open?: boolean; label: string; className?: string; info?: DockInfo; lead?: ReactNode; dock?: boolean; children: ReactNode }) {
+// that holds text boxes in the page (sticky, above the dock). `lead` is the status drawn inside the bar on wider screens. `dockOpen={false}` keeps a bar that is hidden by the page itself (the other step of a wizard) out of the dock.
+export function StickyActionBar({ open = true, label, className, info, lead, dock = true, dockOpen = true, children }: { open?: boolean; label: string; className?: string; info?: DockInfo; lead?: ReactNode; dock?: boolean; dockOpen?: boolean; children: ReactNode }) {
   const host = useDockHost()
   const inDock = Boolean(host?.phone) && dock
   const [present, setPresent] = useState(open)
@@ -29,7 +29,7 @@ export function StickyActionBar({ open = true, label, className, info, lead, doc
   // false once the page is scrolled to its end and the bar rests under the last card (bottom corners round like the
   // card's). data-docked is its opposite: the card above merges with a resting bar.
   const [barRef, stuck] = useStuckBottom<HTMLDivElement>()
-  if (inDock) return open ? <DockActions label={label} info={info ?? (lead ? { end: lead } : undefined)}>{children}</DockActions> : null
+  if (inDock) return open && dockOpen ? <DockActions label={label} info={info ?? (lead ? { end: lead } : undefined)}>{children}</DockActions> : null
   if (!open && !present) return null
   return <div ref={barRef} data-stuck={String(stuck)} data-docked={String(!stuck)} data-dock={dock ? undefined : 'inline'} className={`rv-action-bar${open ? '' : ' is-leaving'}${className ? ` ${className}` : ''}`} role="group" aria-label={label} inert={!open || undefined}>{open ? content : lastChildren.current}</div>
 }

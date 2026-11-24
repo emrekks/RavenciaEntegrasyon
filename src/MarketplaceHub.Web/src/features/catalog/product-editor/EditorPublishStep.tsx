@@ -1,13 +1,15 @@
 // The publish step: a card per marketplace connection and Yayınla.
 import { Link } from 'react-router'
-import { UiIcon, StickyActionBar } from '../../../shared/components'
+import { UiIcon, StickyActionBar, useDockHost } from '../../../shared/components'
 import { manualPriceStockNote } from './PlatformUpdateDialog'
 import { publishCardVariantLinks } from './publish-card-variants'
 import { PublishPlatformCardSkeletons, PublishPlatformCard } from './PublishPlatformCard'
 import type { EditorContext } from './editor-context'
 
 export function EditorPublishStep({ editor }: { editor: EditorContext }) {
-  const { publishOnly, editProductId, setFeedback, submitting, form, variantRows, selectedChannelIds, setSelectedChannelIds, setBlockedPublishCards, setWizardStep, productToEdit, connections, editorHydrating, requirements, leafCategories, publishLinkRows, platformCards, modelCodeCreateBlock, productChecks, publicationAttributeSelections, updateChannel } = editor
+  // On a phone the publish bar also offers the way back to the first step, by the step's name.
+  const dockPhone = Boolean(useDockHost()?.phone)
+  const { wizardStep, publishOnly, editProductId, setFeedback, submitting, form, variantRows, selectedChannelIds, setSelectedChannelIds, setBlockedPublishCards, setWizardStep, productToEdit, connections, editorHydrating, requirements, leafCategories, publishLinkRows, platformCards, modelCodeCreateBlock, productChecks, publicationAttributeSelections, updateChannel } = editor
   return <>
     <section className="product-publish-step" aria-label={editProductId ? 'Ürün yayınlama ve güncelleme' : 'Ürün yayınlama'}>
       <div className="product-publish-layout">
@@ -33,8 +35,9 @@ export function EditorPublishStep({ editor }: { editor: EditorContext }) {
               onEditProductData={publishOnly ? undefined : () => setWizardStep(1)}
             />) : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Entegrasyonlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Entegrasyonları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
-          <StickyActionBar label="Yayınlama" className="publish-selection-footer" info={{ start: selectedChannelIds.length ? undefined : <span className="rv-dock-chip is-warn"><UiIcon name="alert" size={14} />En Az Bir Platform Seçin</span>, end: selectedChannelIds.length ? `${selectedChannelIds.length} Platform Seçildi` : undefined }} lead={<><div><strong>{selectedChannelIds.length ? `${selectedChannelIds.length} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{selectedChannelIds.length ? `Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur. ${manualPriceStockNote}` : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>{!selectedChannelIds.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}</>}>
+          <StickyActionBar label="Yayınlama" className="publish-selection-footer" dockOpen={wizardStep === 2} info={{ start: selectedChannelIds.length ? undefined : <span className="rv-dock-chip is-warn"><UiIcon name="alert" size={14} />En Az Bir Platform Seçin</span>, end: selectedChannelIds.length ? `${selectedChannelIds.length} Platform Seçildi` : undefined }} lead={<><div><strong>{selectedChannelIds.length ? `${selectedChannelIds.length} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{selectedChannelIds.length ? `Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur. ${manualPriceStockNote}` : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>{!selectedChannelIds.length && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}</>}>
             <button type="submit" data-dock-primary disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || undefined}>{submitting ? (editProductId ? 'Yayınlanıyor…' : 'Ürün Oluşturuluyor…') : (editProductId ? 'Yayınla' : <><UiIcon name="sparkle" /> Ürünü Oluştur</>)}</button>
+            {dockPhone && !publishOnly ? <button type="button" data-dock-step="Ürün Bilgileri" data-dock-step-back aria-label="Ürün Bilgilerine Dön" onClick={() => setWizardStep(1)}><UiIcon name="arrowLeft" /></button> : null}
           </StickyActionBar>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { UiIcon, UserAvatar, type UiIconName } from '../shared/components'
+import { backLabel, UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
 import { useScrollLock } from '../shared/hooks/useScrollLock'
 
@@ -44,7 +44,7 @@ const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: bool
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
 // The panel: the bottom row holds the four targets - or, in task mode, a Menü button and the page's buttons; in task mode
 // the status strip is a top row above it.
-export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
+export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate, back }: {
   menuOpen: boolean
   menuCount: number
   // The pending count drawn on a page's own target ("/orders": 9).
@@ -55,6 +55,8 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   setStripEl: (element: HTMLElement | null) => void
   menuSlotRef: RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
+  // A page reached from a list: the task bar starts with a button back to it (the dock's Menü is hidden in task mode anyway).
+  back?: { label: string; onBack: () => void } | null
   // Leaves the open menu for a page (replaces the menu's history entry).
   onNavigate: (to: string) => void
 }) {
@@ -109,7 +111,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
         </button>
       </nav>
       <div className="rv-taskbar" inert={!task || undefined}>
-        <button type="button" className="rv-taskbar-menu" aria-label="Menüyü Aç" aria-haspopup="dialog" onClick={onToggleMenu}><UiIcon name="menu" size={20} />{menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</button>
+        {back ? <button type="button" className="rv-taskbar-back" aria-label={backLabel(back.label)} onClick={back.onBack}><UiIcon name="arrowLeft" size={20} /></button> : null}
         <div className="rv-taskbar-actions" ref={setActionsEl} />
       </div>
     </div>
@@ -219,4 +221,22 @@ export function useNotificationHistory() {
   const closeSheet = useCallback(() => { if (open) navigate(-1) }, [navigate, open])
   const leaveTo = useCallback((href: string) => navigate(href, { replace: true }), [navigate])
   return { open, openSheet, closeSheet, leaveTo }
+}
+
+// Back to the list the open page was reached from: one step back in the history when the person came from that list (its filter, page
+// and scroll position come back - a back step does not reset the scroll), else to the list's own address. The page's own
+// unsaved-changes question runs as for any other way out (it holds every navigation that leaves the page).
+export function useBackNavigation(target: BackTarget | null) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const trail = useRef<{ current: string; previous: string | null }>({ current: location.pathname, previous: null })
+  useEffect(() => {
+    const path = trail.current
+    if (path.current !== location.pathname) { path.previous = path.current; path.current = location.pathname }
+  }, [location.pathname])
+  return useCallback(() => {
+    if (!target) return
+    if (trail.current.previous === target.to) navigate(-1)
+    else navigate(target.to)
+  }, [navigate, target])
 }

@@ -50,7 +50,7 @@
   .rv-dock-slot { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 2px; box-sizing: border-box; min-width: 0; height: 48px; min-height: 0; margin: 0; padding: 0 0 3px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 0; font: inherit; font-size: 10px; font-weight: 500; line-height: 12px; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .rv-dock-slot.is-active { color: var(--rv-color-primary-text); font-weight: 600; }
   .rv-dock-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-dock-slot:focus-visible, .rv-taskbar-menu:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
+  .rv-dock-slot:focus-visible, .rv-taskbar-back:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
   .rv-dock-icon { position: relative; display: inline-grid; transition: transform 120ms ease; }
   .rv-dock-slot:active .rv-dock-icon { transform: scale(.94); }
   /* One line for the open column: 14 x 2 px under its label, 4 px above the panel's inner bottom edge, sliding between the columns. */
@@ -58,16 +58,16 @@
   .rv-dock-indicator::after { content: ""; position: absolute; top: 0; left: 50%; width: 14px; height: 2px; margin-left: -7px; background: var(--rv-color-primary); border-radius: 2px; }
   .rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 4px); box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 2px var(--rv-color-surface); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
 
-  /* Task bar: one row, 56 px, items 40 px high and centred: [Menü] [primary, stretching] [İleri] [Diğer]. */
-  .rv-taskbar { gap: 8px; padding: 0 12px; }
-  .rv-taskbar-menu { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; cursor: pointer; }
-  .rv-taskbar-menu .rv-dock-badge { top: -6px; left: calc(100% - 4px); right: auto; box-shadow: 0 0 0 2px var(--rv-color-surface); }
+  /* Task bar: one row, 56 px, items 40 px high (radius 10, 8 px apart, 10 px in): [Geri, on a page reached from a list] [primary,
+     stretching] [the next step's name and an arrow] [Diğer]. There is no Menü here: the dock comes back when the page is left. */
+  .rv-taskbar { gap: 8px; padding: 0 10px; }
+  .rv-taskbar-back { display: grid; flex: none; place-items: center; box-sizing: border-box; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: transparent; border: 1px solid var(--rv-color-border-strong); border-radius: 10px; cursor: pointer; }
   .rv-taskbar-actions { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
   .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
   .rv-taskbar-group > div:not([role="group"]) { display: contents; }
   .rv-taskbar-group :is(button, a) { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; min-height: 0; margin: 0; padding: 0 14px; border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
   /* The primary action's label is never cut: it takes what it needs, the chip and the step give way first (below). */
-  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 0 auto; padding: 0 12px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
+  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 0 auto; padding: 0 12px; font-size: 14px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
   .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) :is(svg, .rr-bulk-badge) { display: none; }
   .rv-taskbar-group :is(button, a):disabled { opacity: .5; cursor: default; }
   .rv-taskbar-group :is(.rr-danger, .is-danger) { color: var(--rv-color-danger); }
@@ -80,25 +80,29 @@
   /* The step to the next screen: "İleri" and its arrow, whatever the page called it. */
   .rv-taskbar-group [data-dock-step] { flex: 0 1 auto; width: auto; padding: 0 12px; }
   .rv-taskbar-group [data-dock-step] > span { display: none; }
-  .rv-taskbar-group [data-dock-step]::before { content: "İleri"; }
+  .rv-taskbar-group [data-dock-step]::before { content: attr(data-dock-step); }
+  .rv-taskbar-group [data-dock-step-back] { flex-direction: row-reverse; }
   /* The selection chip: "3 Seçili" and its cross, left of the primary button. */
   .rv-taskbar-group [data-dock-clear] { flex: 0 1 auto; width: auto; min-width: 0; padding: 0 10px 0 12px; font-size: 0; }
   .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count) " Seçili"; font-size: 13px; }
   .rv-taskbar-group [data-dock-clear] > span { display: none; }
   .rv-taskbar-group [data-dock-clear] > svg { width: 14px; height: 14px; }
   .rv-taskbar-group [role="group"]:not(:has(button:not([data-dock-other]), a:not([data-dock-other]))) { display: none; }
-  /* Narrow phones: the selection chip is the count and its cross, the row is tighter; narrower still, İleri is only its arrow. */
+  /* Narrow phones: the selection chip is the count and its cross; on phones up to 420 px the step is only its arrow (its name stays as the aria-label), so the primary label is never cut. */
   @media (max-width: 400px) {
-    .rv-taskbar { gap: 6px; padding: 0 12px; }
-    .rv-taskbar-actions, .rv-taskbar-group { gap: 6px; }
     .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count); }
     .rv-taskbar-group [data-dock-clear] { padding: 0 8px 0 10px; }
-    .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { padding: 0 10px; font-size: 12.5px; }
   }
-  @media (max-width: 370px) {
+  @media (max-width: 420px) {
     .rv-taskbar-group [data-dock-step]::before { content: none; }
     .rv-taskbar-group [data-dock-step] { width: 40px; padding: 0; }
   }
+  /* On a page reached from a list the top bar starts with "‹ Liste" (44 px to touch), then the page name when it fits. */
+  .rv-topbar-backbar { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; container-type: inline-size; }
+  .rv-topbar-back { display: inline-flex; flex: none; align-items: center; gap: 4px; min-height: 44px; margin: 0; padding: 0 8px 0 0; color: var(--rv-color-ink); background: none; border: 0; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .rv-topbar-back-title { min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .rv-topbar-back-title::before { content: "· "; }
+  @container (max-width: 200px) { .rv-topbar-back-title { display: none; } }
   /* Diğer: the other actions in a small list right above the bar, 44 px rows. */
   .rv-taskbar-more { position: relative; flex: none; }
   .rv-taskbar-more-button { display: grid; place-items: center; box-sizing: border-box; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; cursor: pointer; }

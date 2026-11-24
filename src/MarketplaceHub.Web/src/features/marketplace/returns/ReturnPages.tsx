@@ -7,7 +7,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState,
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../../shared/api'
-import { CardBackgroundIcon, cargoCarrier, cargoFilterOptions, cargoLabel, CountUp, StickyActionBar, TitleHint } from '../../../shared/components'
+import { CardBackgroundIcon, cargoCarrier, cargoFilterOptions, cargoLabel, CountUp, StickyActionBar, TitleHint, useBackTarget } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
 import { shortRemaining } from './return-remaining'
@@ -553,6 +553,7 @@ export function ReturnsPage() {
 }
 // The separate detail route (/returns/:id), as the proposal's detail page.
 export function ReturnDetailPage() {
+  useBackTarget({ to: '/returns', label: 'İadeler' })
   const { id = '' } = useParams(); const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<ReturnNoticeKind>('info')
   function setNotice(message: string, kind: ReturnNoticeKind = 'info') { setNoticeState(message); setNoticeKind(kind) }
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { act, useRef, type ReactNode } from 'react'
+import { act, useMemo, useRef, useState, type ReactNode } from 'react'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '../test/render'
@@ -6,7 +6,8 @@ import { StickyActionBar } from '../shared/components/StickyActionBar'
 import { Tabs } from '../shared/components/DesignSystem'
 import { DraftSaveBar } from '../shared/draft-edits'
 import { DockContext } from '../shared/components/dock-actions'
-import { BottomDock, FullScreenMenu, menuPendingTotal, useDockHostState, useMenuHistory, type MenuGroup } from './BottomDock'
+import { BackTargetContext, useBackTarget, type BackTarget } from '../shared/components/back-target'
+import { BottomDock, FullScreenMenu, menuPendingTotal, useBackNavigation, useDockHostState, useMenuHistory, type MenuGroup } from './BottomDock'
 
 // node:fs without @types/node, the way quick-edit-scroll.test.ts reads files.
 const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string): unknown } }).process.getBuiltinModule('node:fs') as { readFileSync(path: URL, encoding: 'utf8'): string }
@@ -28,20 +29,26 @@ const groups: MenuGroup[] = [
 
 const profile = { name: 'Ayşe Yılmaz', role: 'Hesap Sahibi', email: 'ayse@ravencia.com' }
 let pathNow = ''
+let searchNow = ''
 function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone?: boolean; count?: number; slotCounts?: Record<string, number>; children?: ReactNode }) {
   const dock = useDockHostState(phone)
   const menu = useMenuHistory()
   const navigate = useNavigate()
   const location = useLocation()
   const slotRef = useRef<HTMLButtonElement>(null)
+  const [backTarget, setBackTarget] = useState<BackTarget | null>(null)
+  const backHost = useMemo(() => ({ target: backTarget, set: setBackTarget }), [backTarget])
+  const goBack = useBackNavigation(backTarget)
   pathNow = location.pathname
-  return <DockContext.Provider value={dock.host}>
+  searchNow = location.search
+  return <BackTargetContext.Provider value={backHost}><DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
     {menu.open && <FullScreenMenu groups={groups} profile={profile} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
-    <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
+    <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} back={backTarget ? { label: backTarget.label, onBack: goBack } : null} />
     {children}
-  </DockContext.Provider>
+  </DockContext.Provider></BackTargetContext.Provider>
 }
+function Registers({ to }: { to: string }) { useBackTarget({ to, label: 'Ürünler' }); return null }
 const mount = (path: string, props: Parameters<typeof Harness>[0] = {}) => render(<MemoryRouter initialEntries={[path]}><Harness {...props} /></MemoryRouter>)
 const click = (element: Element | null) => act(() => { (element as HTMLElement).click() })
 
@@ -83,6 +90,9 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('translateY(-28px)')
     // Page buttons that are not the primary, the step or the selection chip wait in the Diğer list.
     expect(phone).toContain('.rv-taskbar-group [data-dock-other] { display: none; }')
+    // The step names the screen it goes to; the task bar has no Menü button.
+    expect(phone).toContain('[data-dock-step]::before { content: attr(data-dock-step); }')
+    expect(phone).not.toContain('rv-taskbar-menu')
   })
 })
 
@@ -312,11 +322,31 @@ describe('task mode', () => {
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
   })
 
-  it('opens the menu from the task bar, which shows the dock while the menu is open', () => {
-    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness><StickyActionBar label="Toplu işlemler"><button type="button">Sil</button></StickyActionBar></Harness></MemoryRouter>)
-    click(host.querySelector('.rv-taskbar-menu'))
-    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-mode')).toBe('dock')
-    expect(document.querySelector('.rv-fullmenu')).not.toBeNull()
+  it('has no Menü in the task bar, at the left or in the Diğer list; a page without a list to go back to starts with its own buttons', () => {
+    const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness count={5}><StickyActionBar label="Toplu işlemler"><button type="button" data-dock-primary>Etiketleri Yazdır</button><button type="button" aria-label="Kargo Firması Değiştir">kargo</button></StickyActionBar></Harness></MemoryRouter>)
+    expect(host.querySelector('.rv-taskbar-menu, .rv-taskbar-back')).toBeNull()
+    expect(host.querySelector('.rv-taskbar .rv-dock-badge')).toBeNull()
+    click(host.querySelector('.rv-taskbar-more-button'))
+    expect([...host.querySelectorAll('.rv-taskbar-more-item')].map(item => item.textContent)).toEqual(['Kargo Firması Değiştir'])
+  })
+
+  it('starts the task bar of a page reached from a list with Geri, and the top-level page opens the list by its address when it was opened directly', () => {
+    const { host } = render(<MemoryRouter initialEntries={['/products/p1']}><Harness><Registers to="/products" /><StickyActionBar label="Ürün kaydetme"><button type="button" data-dock-primary>Kaydet</button></StickyActionBar></Harness></MemoryRouter>)
+    const back = host.querySelector<HTMLButtonElement>('.rv-taskbar > .rv-taskbar-back, .rv-taskbar-back')!
+    expect(back.getAttribute('aria-label')).toBe("Ürünler'e Dön")
+    expect(host.querySelector('.rv-taskbar-menu')).toBeNull()
+    click(back)
+    expect(pathNow).toBe('/products')
+  })
+
+  it('goes one step back in the history when the page was reached from the list (its filter comes back), not to the bare address', () => {
+    const Opener = () => { const navigate = useNavigate(); return <button type="button" id="open" onClick={() => navigate('/products/p1')}>aç</button> }
+    const { host } = render(<MemoryRouter initialEntries={['/orders', '/products?page=3']} initialIndex={1}><Harness><Opener /><Registers to="/products" /><StickyActionBar label="Ürün kaydetme"><button type="button" data-dock-primary>Kaydet</button></StickyActionBar></Harness></MemoryRouter>)
+    click(host.querySelector('#open'))
+    expect(pathNow).toBe('/products/p1')
+    click(host.querySelector('.rv-taskbar-back'))
+    expect(pathNow).toBe('/products')
+    expect(searchNow).toBe('?page=3')
   })
 
   it('puts the DraftSaveBar strip of a page in the task bar: Vazgeç and Kaydet in the bar, the state in the strip', () => {

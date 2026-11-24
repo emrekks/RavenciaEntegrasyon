@@ -6,7 +6,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../../shared/api'
 import { automaticWritesBaselineMessage, cadenceChoices, connectionActiveFeedback, disconnectDialogDescription, cadenceNote, cadenceShortText, idleRuleText, type SyncCadence, connectionEnvironmentLabel, connectionStatusLabel, connectionTestFeedback, credentialRequestBody, integrationPlatformFilters, invoiceCreationFeedback, priceStockMonitorQueryKey, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState, type IntegrationListState } from './integration-helpers'
-import { Busy, ErrorBox, Tabs, TitleHint, UiIcon, useConfirmDialog, DialogSurface, FieldLabel } from '../../../shared/components'
+import { Busy, ErrorBox, Tabs, TitleHint, UiIcon, useConfirmDialog, DialogSurface, FieldLabel, useBackTarget } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '../../../shared/reauth'
 import { useJobOutcomeNotice } from '../../../shared/job-outcome-notice'
@@ -938,5 +938,6 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
 }
 export function IntegrationDetailPage() {
   const { id = '' } = useParams()
+  useBackTarget({ to: '/integrations', label: 'Platformlar' })
   return <IntegrationDetailWorkspace id={id} />
 }
