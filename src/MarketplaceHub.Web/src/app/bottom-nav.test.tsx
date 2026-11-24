@@ -25,7 +25,7 @@ const groups: MenuGroup[] = [
 ]
 
 let pathNow = ''
-function Harness({ phone = true, count = 0, children }: { phone?: boolean; count?: number; children?: ReactNode }) {
+function Harness({ phone = true, count = 0, unread = 0, children }: { phone?: boolean; count?: number; unread?: number; children?: ReactNode }) {
   const dock = useDockHostState(phone)
   const menu = useMenuHistory()
   const navigate = useNavigate()
@@ -34,8 +34,8 @@ function Harness({ phone = true, count = 0, children }: { phone?: boolean; count
   pathNow = location.pathname
   return <DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
-    {menu.open && <FullScreenMenu groups={groups} storeName="Mağaza" theme="light" onToggleTheme={() => undefined} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
-    <BottomDock menuOpen={menu.open} menuCount={count} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setInfoEl={dock.setInfoEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onSearch={() => undefined} onNavigate={menu.leaveTo} />
+    {menu.open && <FullScreenMenu unread={unread} unreadError={false} onOpenNotifications={() => undefined} groups={groups} storeName="Mağaza" theme="light" onToggleTheme={() => undefined} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
+    <BottomDock unread={unread} unreadError={false} onOpenNotifications={() => undefined} menuOpen={menu.open} menuCount={count} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setInfoEl={dock.setInfoEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onSearch={() => undefined} onNavigate={menu.leaveTo} />
     {children}
   </DockContext.Provider>
 }
@@ -52,7 +52,8 @@ describe('phone bottom navigation (CSS)', () => {
     const phone = css.slice(css.indexOf('@media (max-width: 768px)'))
     expect(phone).toContain('.rv-mobile-menu-toggle { display: none; }')
     expect(phone).toContain('.rv-topbar-search { display: none; }')
-    expect(phone).toContain('> main { padding-bottom: var(--rv-bottom-nav-space); }')
+    expect(phone).toContain('> main { padding-top: env(safe-area-inset-top, 0px); padding-bottom: var(--rv-bottom-nav-space); }')
+    expect(phone).toContain('--rv-topbar-height: 0px')
     expect(phone).toMatch(/\.rv-dock-layer \{[^}]*bottom: var\(--rv-dock-bottom\)[^}]*height: 52px/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
   })
@@ -121,6 +122,23 @@ describe('Ravencia Dock', () => {
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
     click(host.querySelector('#back'))
     expect(pathNow).toBe('/orders')
+  })
+})
+
+describe('notification pill', () => {
+  it('is absent at 0 unread, shows 99+ above 99, hides while the menu is open, and moves into the task bar strip as a bell', () => {
+    expect(mount('/orders', { unread: 0 }).host.querySelector('.rv-dock-pill-bell')).toBeNull()
+    cleanup()
+    const { host } = mount('/orders', { unread: 120 })
+    expect(host.querySelector('.rv-dock-pill-bell')?.textContent).toBe('99+')
+    click(host.querySelector('button[aria-label^="Menü"]'))
+    expect(host.querySelector('.rv-dock-pill-bell')).toBeNull()
+    expect(document.querySelector('.rv-fullmenu-tool-badge')?.textContent).toBe('99+')
+    cleanup()
+    const task = render(<MemoryRouter initialEntries={['/orders']}><Harness unread={3}><StickyActionBar label="Toplu işlemler"><button type="button">Sil</button></StickyActionBar></Harness></MemoryRouter>)
+    expect(task.host.querySelector('.rv-dock-pill-bell')).toBeNull()
+    expect(task.host.querySelector('.rv-dock-info .rv-dock-bell')?.textContent).toBe('3')
+    expect(task.host.querySelector('.rv-dock-info')?.getAttribute('data-visible')).toBe('true')
   })
 })
 
