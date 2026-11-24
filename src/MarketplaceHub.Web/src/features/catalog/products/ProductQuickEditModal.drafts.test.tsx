@@ -400,3 +400,70 @@ describe('ProductQuickEditModal drafts', () => {
     expect(closed).toBe(1)
   })
 })
+
+// Review of 24 Nov 2026 (b16618668), two HIGH price faults in Toplu Düzenle.
+describe('ProductQuickEditModal price conflicts and per-offer following', () => {
+  const trendyol = [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }]
+  const ownOffer = (offerVersion: number, salePrice: number): Product => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion, listPrice: 500, salePrice, currency: 'TRY', followsPanelPrice: false })] })) })
+  const calls: Array<{ path: string; method?: string; ifMatch?: string; body: Record<string, unknown> }> = []
+  // The list as read again after a refusal: the same window, new products.
+  async function redraw(products: Product[]) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="price" products={products} connections={trendyol as never} onChanged={async () => undefined} onClose={() => { closed += 1 }} /></MemoryRouter></QueryClientProvider>)
+    })
+  }
+  beforeEach(async () => {
+    calls.length = 0
+    const { ApiRequestError } = await import('../../../shared/api')
+    let refused = false
+    vi.mocked(hubApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      calls.push({ path, method: init?.method, ifMatch: (init?.headers as Record<string, string> | undefined)?.['If-Match'], body: init?.body ? JSON.parse(String(init.body)) : {} })
+      // The first offer write is refused: another user changed the offer meanwhile.
+      if (!refused && path.startsWith('/channel-offers/o-') && init?.method === 'PATCH') { refused = true; throw new ApiRequestError('Fiyat başka bir işlemle değişti.', 412, 'PRECONDITION_FAILED') }
+      return {} as never
+    })
+  })
+
+  // BUG 1: only the list price was typed; the sale price is taken as it is stored now, never the value the window opened with.
+  it('after a version conflict sends the edited list price with the sale price another user saved meanwhile', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Liste')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol liste fiyatı"]')!, '550')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.map(call => [call.path, call.ifMatch, call.body.listPrice, call.body.salePrice])).toEqual([['/channel-offers/o-v1', '"v1"', 550, 450]])
+    // Another user raised the sale price to 470; the window reads the list again.
+    await redraw([ownOffer(2, 470)])
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.slice(1).map(call => [call.path, call.ifMatch, call.body.listPrice, call.body.salePrice])).toEqual([['/channel-offers/o-v1', '"v2"', 550, 470]])
+  })
+
+  it('after a version conflict stops with the validation message when the fresh sale price is above the edited list price', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Liste')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol liste fiyatı"]')!, '550')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    await redraw([{ ...ownOffer(2, 600), variants: ownOffer(2, 600).variants.map(item => ({ ...item, platformStatuses: item.platformStatuses!.map(status => ({ ...status, listPrice: 650 })) })) }])
+    expect(barButton('Kaydet').disabled).toBe(true)
+    expect(bar()?.textContent).toContain('Liste fiyatı satış fiyatından küçük olamaz.')
+    await click(barButton('Kaydet'))
+    expect(calls).toHaveLength(1)
+  })
+
+  // BUG 2: one Trendyol variant keeps Özel Fiyat, the other follows the panel; the follower's panel price change reaches its offer.
+  it('writes a panel price to the following offer of a marketplace where another variant keeps its own price', async () => {
+    const mixed: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `x-${item.id}`, offerVersion: 3, listPrice: item.id === 'v1' ? 600 : 500, salePrice: item.id === 'v1' ? 550 : 450, currency: 'TRY', followsPanelPrice: item.id === 'v1' ? false : null })] })) }
+    await render('price', trendyol, [mixed])
+    await pickValue('Panel', 'Satış')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-2 Panel Fiyatı satış fiyatı"]')!, '480')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.map(call => [call.path, call.method, call.ifMatch, call.body.listPrice, call.body.salePrice, call.body.followsPanelPrice])).toEqual([
+      ['/variants/v2/default-prices', 'PATCH', '"v1"', 500, 480, undefined],
+      ['/channel-offers/x-v2', 'PATCH', '"v3"', 500, 480, true],
+    ])
+  })
+})

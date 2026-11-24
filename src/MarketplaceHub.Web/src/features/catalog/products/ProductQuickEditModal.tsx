@@ -9,7 +9,7 @@ import { type NotificationContext } from '../../../shared/notifications'
 import { updateVariantGroupSelection } from '../variant-bulk-edit'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { parseTrEntry, parseTrMeasure, trEntryHelp } from '../../../shared/tr-number'
-import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, channelFollowMix, offerFollowsPanel, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
+import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, channelFollowMix, offerFollowsPanel, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceColumns, quickPriceTarget, rebasedPriceDraft, unreadablePriceMessage, type QuickPriceColumn } from '../quick-price-edit'
 import { formatMoney } from '../../../shared/format-money'
 import { priceJumps } from '../price-jump'
 import { quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
@@ -127,6 +127,14 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // Each variant once, beside its own card: a product read by id lists its whole family's variants.
   const variants = quickEditVariantItems(products)
   const sortedVariants = [...variants].sort(compareVariantItemsAlphabetically)
+  const itemById = new Map(variants.map(item => [item.variant.id, item]))
+  // A price cell's loaded texts from the stored prices as read now (after a refresh, the fresh ones).
+  const freshPriceTexts = (item: typeof variants[number], columnId: string): PriceDraft => { const shown = quickInlinePrices(columnId, item.variant, item.product); return { list: priceFieldText(shown.listPrice), sale: priceFieldText(shown.salePrice) } }
+  // A price draft over the stored prices as they are now (rebasedPriceDraft, review 24 Nov): only the sides the person
+  // changed are theirs, so a price another user saved meanwhile on the other side is shown, checked and sent as it is now.
+  const livePriceDraft = (key: string, entry: { value: PriceDraft; original: PriceDraft }) => { const [variantId, columnId] = key.split('|'); const item = itemById.get(variantId); return item ? rebasedPriceDraft(entry.value, entry.original, freshPriceTexts(item, columnId)) : { value: entry.value, loaded: entry.original } }
+  // A draft set against the fresh texts: one kept from before a refresh starts again from them (the caller keeps its edited sides).
+  const setPriceDraft = (key: string, value: PriceDraft, fresh: PriceDraft) => { const entry = priceDrafts.get(key); if (entry && !samePriceDraft(entry.original, fresh)) priceDrafts.remove([key]); priceDrafts.set(key, value, fresh) }
   const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
     const color = variantColorKey(item.variant) || 'Diğer'
     ;(result[color] ??= []).push(item)
@@ -210,7 +218,6 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     followDrafts.set(connectionId, custom, customOverrides[connectionId] ?? ((derivedMixed.get(connectionId) ?? 0) > 0 ? 'mixed' : derivedCustom?.[connectionId] ?? true))
     if (!custom) priceDrafts.remove([...priceDrafts.entries.keys()].filter(key => key.endsWith(`|${connectionId}`)))
   }
-  const followerColumns = panelFollowerColumns(priceColumns, customChannels)
   // A marketplace that takes no list price shows only Satış Fiyatı; its offer's list price follows the sale price.
   const showListPrice = priceConnectionId === PANEL_PRICE_CHOICE || channelTakesListPrice(connections.find(connection => connection.id === priceConnectionId)?.platformCode)
   // A first offer keeps its create key for this window's life, so a resend after a lost answer cannot make two.
@@ -315,7 +322,8 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
           const saved = priceConnectionId === PANEL_PRICE_CHOICE ? panelPrices(variant, item.product) : target.kind === 'update' ? target.offer : {}
           // Applied over the cell's draft when it has one (Y3): an earlier Uygula's list price stays when the sale price
           // is applied next, and the list-not-below-sale check reads the drafted list price, not the saved one.
-          const drafted = priceDrafts.get(priceKey(variant.id, column.id))?.value
+          const draftEntry = priceDrafts.get(priceKey(variant.id, column.id))
+          const drafted = draftEntry ? livePriceDraft(priceKey(variant.id, column.id), draftEntry).value : undefined
           const current = drafted ? draftedPrices(drafted, saved) : saved
           if (current == null) throw new Error(`taslaktaki fiyat okunamadı; ${unreadablePriceMessage}`)
           const prices = quickEditOfferPrices(current, list, sale)
@@ -340,7 +348,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       }
     }
     for (const [id, value, original] of nextStock) { stockDrafts.set(id, value, original); clearRowError(`s:${id}`) }
-    for (const [key, value, original] of nextPrice) { priceDrafts.set(key, value, original); clearRowError(`p:${key}`) }
+    for (const [key, value, original] of nextPrice) { setPriceDraft(key, value, original); clearRowError(`p:${key}`) }
     const filled = nextStock.length + nextPrice.length
     const defaultedNote = saleDefaulted.length && list != null ? ` Satış fiyatı girilmediği için ${saleDefaulted.length} varyantın satış fiyatı liste fiyatına (${formatMoney(list, saleDefaulted[0].currency)}) eşitlendi; kontrol edin.` : ''
     if (failures.length) { setNotice(`Başarısız: ${bulkEditSummary(targetIds.length, failures)}${filled ? ` ${filled} hücre taslak oldu.` : ''}${defaultedNote}`); return }
@@ -359,6 +367,9 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     let stockSaved = 0; let priceSaved = 0; let followSaved = 0
     try {
       const followDone: string[] = []
+      // The marketplaces whose Özel Fiyat is now switched for every offer in this window (saved before, or just now);
+      // any other offer follows the panel by its own stored choice (panelFollowerWrites decides per offer).
+      const switched: Record<string, boolean> = { ...customOverrides }
       for (const [connectionId, entry] of followDrafts.entries) {
         const label = channelColumns.find(column => column.id === connectionId)?.label ?? 'Pazaryeri'
         const custom = entry.value === true
@@ -366,7 +377,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         try {
           if (variantIds.length) await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice: !custom }) })
           setCustomOverrides(current => ({ ...current, [connectionId]: custom }))
-          followDone.push(connectionId); followSaved += 1
+          followDone.push(connectionId); followSaved += 1; switched[connectionId] = custom
         } catch (error) {
           const message = error instanceof Error ? error.message : 'beklenmeyen hata.'
           errors[`f:${connectionId}`] = message; failures.push({ sku: label, message: `Özel Fiyat seçimi kaydedilemedi: ${message}` })
@@ -393,7 +404,8 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         const item = byId.get(variantId); const column = priceColumns.find(candidate => candidate.id === columnId)
         if (!item || !column) continue
         if (column.id !== PANEL_PRICE_CHOICE && !customChannels[column.id]) { done.push(key); continue }
-        const result = await writePriceCell({ column, followers: column.id === PANEL_PRICE_CHOICE ? followerColumns : [], variant: item.variant, connectionCount: connections.length, list: entry.value.list, sale: entry.value.sale, loaded: entry.original, offerCreateKey: offerCreateKey(key) })
+        const live = livePriceDraft(key, entry)
+        const result = await writePriceCell({ column, channels: column.id === PANEL_PRICE_CHOICE ? channelColumns : [], switched, variant: item.variant, connectionCount: connections.length, list: live.value.list, sale: live.value.sale, loaded: live.loaded, offerCreateKey: offerCreateKey(key) })
         if (result.ok) { done.push(key); priceSaved += 1 } else { if (result.stale) anyStale = true; errors[`p:${key}`] = result.message; failures.push({ sku: item.variant.sku, message: `${column.label} fiyatı: ${result.message}` }) }
       }
       priceDrafts.remove(done)
@@ -413,7 +425,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // off while one exists, and each cell tells its own problem.
   const draftErrors: Record<string, string> = {}
   for (const [id, entry] of stockDrafts.entries) { const parsed = parseStockInput(entry.value); if (parsed.kind === 'empty') draftErrors[`s:${id}`] = 'Stok boş bırakılamaz.'; else if (parsed.kind === 'invalid') draftErrors[`s:${id}`] = 'Stok sıfır veya pozitif bir tam sayı olmalıdır.' }
-  for (const [key, entry] of priceDrafts.entries) { const column = priceColumns.find(candidate => candidate.id === key.split('|')[1]); const checked = inlinePrices(column?.takesListPrice === false ? entry.value.sale : entry.value.list, entry.value.sale, column?.takesListPrice === false ? { list: entry.original.sale, sale: entry.original.sale } : entry.original); if (!checked.ok) draftErrors[`p:${key}`] = checked.message }
+  for (const [key, entry] of priceDrafts.entries) { const column = priceColumns.find(candidate => candidate.id === key.split('|')[1]); const live = livePriceDraft(key, entry); const checked = inlinePrices(column?.takesListPrice === false ? live.value.sale : live.value.list, live.value.sale, column?.takesListPrice === false ? { list: live.loaded.sale, sale: live.loaded.sale } : live.loaded); if (!checked.ok) draftErrors[`p:${key}`] = checked.message }
   const cellError = (key: string) => draftErrors[key] || rowErrors[key] || ''
   const firstDraftError = Object.values(draftErrors)[0] ?? ''
   useEffect(() => {
@@ -430,15 +442,15 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
   // A price falling below half or rising above three times its value is named in Kaydet's confirmation (priceJumps).
   // A first offer on a marketplace (no price before) is set against the variant's panel price; without one, no warning.
   const jumpItems = new Map(variants.map(item => [item.variant.id, item]))
-  const jumpLines = priceJumps([...priceDrafts.entries].flatMap(([key, entry]) => (['sale', 'list'] as const).flatMap(field => {
-    const after = entry.value[field] === entry.original[field] ? null : parseTrEntry(entry.value[field])
+  const jumpLines = priceJumps([...priceDrafts.entries].flatMap(([key, entry]) => { const live = livePriceDraft(key, entry); return (['sale', 'list'] as const).flatMap(field => {
+    const after = live.value[field] === live.loaded[field] ? null : parseTrEntry(live.value[field])
     const [variantId, columnId] = key.split('|')
     const item = jumpItems.get(variantId)
     const panel = item && columnId !== PANEL_PRICE_CHOICE ? panelPrices(item.variant, item.product) : null
     // The loaded text was written from the stored number (any decimals): read back as that number, not by the typed rule.
-    const before = entry.original[field].trim() === '' ? (field === 'list' ? panel?.listPrice : panel?.salePrice) : parseTrMeasure(entry.original[field])
+    const before = live.loaded[field].trim() === '' ? (field === 'list' ? panel?.listPrice : panel?.salePrice) : parseTrMeasure(live.loaded[field])
     return after == null ? [] : [{ key: variantId, before, after }]
-  }))).lines
+  }) })).lines
   const saveSummary = <>{[stockDrafts.count ? `${stockDrafts.count} varyantın stoğu` : '', priceDrafts.count ? `${priceDrafts.count} fiyat hücresi` : '', followDrafts.count ? `${followDrafts.count} kanalda Özel Fiyat seçimi` : ''].filter(Boolean).join(', ')} değişecek.{jumpLines.map(text => <span key={text} className="rv-draftbar-warn" role="alert">{text}</span>)}</>
   const canApply = stepValue === 'price' ? (showListPrice && listPrice.trim() !== '') || salePrice.trim() !== '' : stepValue === 'stock' ? stockAmount.trim() !== '' : true
   // What the boxes show now: one value, named in the band above the sizes, in step 2's title and in its field.
@@ -542,10 +554,10 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
       const value = field === 'list' ? panel.listPrice : panel.salePrice
       return <span className="rr-mx-follow" title={`${column.label}: bu varyantın Özel Fiyatı kapalı, panel fiyatıyla satılır. · ${identity}`}>{value != null ? formatPriceField(value) : '—'}</span>
     }
-    const shownPrices = quickInlinePrices(column.id, variant, item.product)
-    const original: PriceDraft = { list: priceFieldText(shownPrices.listPrice), sale: priceFieldText(shownPrices.salePrice) }
+    const original = freshPriceTexts(item, column.id)
     const key = priceKey(variant.id, column.id)
-    const draftPair = priceDrafts.get(key)?.value
+    const draftEntry = priceDrafts.get(key)
+    const draftPair = draftEntry ? rebasedPriceDraft(draftEntry.value, draftEntry.original, original).value : undefined
     const current = draftPair ?? original
     const target = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, column.id, connections.length)
     const blocked = target.kind === 'blocked' ? target.reason : ''
@@ -554,7 +566,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
     const drafted = draftPair !== undefined && draftPair[field] !== original[field]
     const title = error || blocked || (drafted ? `Kaydedilmedi · kayıtlı fiyat: ${original[field] || '—'} · ${identity}` : fallback ? 'Kayıtlı panel fiyatı yok; ürün düzenleyicideki gibi ilk aktif kanal fiyatı gösteriliyor. Değiştirirseniz panel fiyatı olarak kaydedilir.' : identity)
     return <span className={`rr-mx-box${drafted ? ' rr-draft' : ''}`}><QuickPriceInput {...where} className="rr-in rr-num rr-mx-in" aria-invalid={error ? true : undefined} title={title} disabled={!!blocked} placeholder={field === 'list' ? 'Liste' : 'Satış'} aria-label={`${variant.sku} ${column.label} ${field === 'list' ? 'liste' : 'satış'} fiyatı`} value={current[field]}
-      onValue={value => { setNotice(''); clearRowError(`p:${key}`); priceDrafts.set(key, { ...current, [field]: value }, original) }}
+      onValue={value => { setNotice(''); clearRowError(`p:${key}`); setPriceDraft(key, { ...current, [field]: value }, original) }}
       onKeyDown={event => { if (event.key === 'Escape' && draftPair !== undefined) { event.preventDefault(); priceDrafts.revert(key); clearRowError(`p:${key}`) } }} /></span>
   }
   return <RrModal crumb={!draft && mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} modalStyle={typeof window !== 'undefined' && window.matchMedia?.('(max-width: 760px)').matches ? undefined : { width: windowWidth, maxWidth: 'calc(100vw - 32px)' }} onClose={onClose} onBeforeClose={() => { if (unsaved) { setConfirmClose(true); return false } return true }} foot={draft
@@ -599,9 +611,9 @@ function QuickPriceInput({ value, onValue, ...props }: Omit<InputHTMLAttributes<
 }
 // The panel price written to the marketplaces that follow it (no "Özel Fiyat"): each existing offer of the variant
 // there, at the version loaded, through the same channel offer update as a marketplace's own cell. Returns what failed.
-async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<QuickPriceColumn>, prices: { listPrice: number; salePrice: number }, reason: string) {
+async function writePanelFollowers(variant: Variant, channels: ReadonlyArray<QuickPriceColumn>, switched: Readonly<Record<string, boolean>>, prices: { listPrice: number; salePrice: number }, reason: string) {
   const failures: Array<{ message: string; stale: boolean }> = []
-  for (const write of panelFollowerWrites(variant, followers, prices)) {
+  for (const write of panelFollowerWrites(variant, channels, prices, switched)) {
     if (write.kind === 'blocked') { failures.push({ message: `${write.column.label} fiyatı: ${write.reason}`, stale: false }); continue }
     try {
       const body = quickPriceBody({ kind: 'update', offerId: write.offerId, offerVersion: write.offerVersion, offer: write.offer }, variant, { listPrice: write.listPrice, salePrice: write.salePrice }, reason, true)
@@ -614,7 +626,7 @@ async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<Qu
 }
 // One price draft written: the panel price (and the offers of the marketplaces that follow it) or one "Özel Fiyat"
 // channel's offer, at the versions loaded; nothing else here decides what is saved. Returns the reason when refused.
-async function writePriceCell({ column, followers, variant, connectionCount, list, sale, loaded, offerCreateKey }: { column: QuickPriceColumn; followers: ReadonlyArray<QuickPriceColumn>; variant: Variant; connectionCount: number; list: string; sale: string; loaded?: PriceDraft; offerCreateKey: string }): Promise<{ ok: true } | { ok: false; message: string; stale: boolean }> {
+async function writePriceCell({ column, channels, switched, variant, connectionCount, list, sale, loaded, offerCreateKey }: { column: QuickPriceColumn; channels: ReadonlyArray<QuickPriceColumn>; switched: Readonly<Record<string, boolean>>; variant: Variant; connectionCount: number; list: string; sale: string; loaded?: PriceDraft; offerCreateKey: string }): Promise<{ ok: true } | { ok: false; message: string; stale: boolean }> {
   const isPanel = column.id === PANEL_PRICE_CHOICE
   const target = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, column.id, connectionCount)
   if (target.kind === 'blocked') return { ok: false, message: target.reason, stale: false }
@@ -623,7 +635,7 @@ async function writePriceCell({ column, followers, variant, connectionCount, lis
   try {
     if (target.kind === 'panel') {
       await hubApi(`/variants/${target.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
-      const failures = await writePanelFollowers(variant, followers, prices, 'Hızlı varyant fiyat düzenleme')
+      const failures = await writePanelFollowers(variant, channels, switched, prices, 'Hızlı varyant fiyat düzenleme')
       if (failures.length) return { ok: false, message: `panel fiyatı kaydedildi; ${failures.map(failure => failure.message).join('; ')}`, stale: failures.some(failure => failure.stale) }
     } else {
       // A marketplace cell is editable only while its "Özel Fiyat" is ticked: the price is stored as its own.
