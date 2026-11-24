@@ -130,3 +130,4 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-sizes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (min-width: 761px) { .rr-lead-short { display: none; } }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-note-warn { color: var(--rr-warn, var(--rv-color-warning)); font-weight: 600; }

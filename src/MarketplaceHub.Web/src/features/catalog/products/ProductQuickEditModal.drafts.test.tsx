@@ -232,6 +232,44 @@ describe('ProductQuickEditModal drafts', () => {
     expect(document.body.querySelector('.rv-draftbar')).toBeNull()
   })
 
+  it('names a price that falls by more than half in the confirmation, so a lost digit is seen', async () => {
+    await render('price')
+    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!
+    await act(async () => { sale.focus() })
+    await type(sale, '45')
+    await act(async () => { sale.blur() })
+    await click(barButton('Kaydet'))
+    expect(bar()?.textContent).toContain('1 fiyatta yarıdan fazla düşüş: 450,00 → 45,00')
+  })
+
+  it('adding stock twice adds twice: add works on the cell’s draft, not on the saved stock', async () => {
+    await render()
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith('Bu Kadar Ekle'))!.click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '3')
+    const apply = document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!
+    await click(apply)
+    expect(stockBox('SKU-1').value).toBe('6')
+    await click(apply)
+    expect(stockBox('SKU-1').value).toBe('9')
+  })
+
+  it('a sale price applied after a list price keeps both drafts, and the check runs on the pair', async () => {
+    await render('price')
+    const applyValue = async (row: string, value: string) => {
+      await pickValue('Panel', row)
+      await type(document.body.querySelector<HTMLInputElement>(`.rr-qe-applyrow input[aria-label="${row === 'Satış' ? 'Satış' : 'Liste'} Fiyatı (₺)"]`)!, value)
+      await click(document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!)
+    }
+    await applyValue('Liste', '800')
+    await applyValue('Satış', '700')
+    expect(document.body.textContent).not.toContain('liste fiyatı satış fiyatından küçük olamaz')
+    await pickValue('Panel', 'Liste')
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="liste fiyatı"]')!.value).toContain('800')
+    await pickValue('Panel', 'Satış')
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!.value).toContain('700')
+  })
+
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))

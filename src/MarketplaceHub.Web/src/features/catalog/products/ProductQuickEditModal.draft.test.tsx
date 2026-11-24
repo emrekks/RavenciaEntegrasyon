@@ -167,6 +167,9 @@ describe('the editor window with marketplace prices', () => {
     expect(document.body.querySelector('.rr-mx-follow')).not.toBeNull()
     expect(document.body.textContent).toContain('Tüm varyantlar için')
     await click(document.body.querySelector<HTMLInputElement>('input[aria-label="Trendyol özel fiyat"]')!)
+    // The switch is a draft of the window: the editor's own state changes only with Varyantlara Uygula.
+    expect(toggle).not.toHaveBeenCalled()
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
     expect(toggle).toHaveBeenCalledTimes(1)
   })
 
@@ -186,5 +189,37 @@ describe('the editor window with marketplace prices', () => {
     const option = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="option"]')).filter(item => item.textContent?.includes('Önce ürünü kaydedin'))
     expect(option.length).toBeGreaterThan(0)
     expect(option.every(item => item.disabled)).toBe(true)
+  })
+
+  it('reads a typed 1.250 as 1250 everywhere: the draft carries 1250, never 1.25', async () => {
+    const onApplyChannelPrices = await mount({ channels: channels(true) })
+    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Liste Fiyatı'))[1].click() })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol liste fiyatı"]')!, '1.250')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+    expect(onApplyChannelPrices).toHaveBeenCalledWith([{ rowKey: 'b-s', connectionId: 'c-ty', listPrice: '1250', salePrice: '150' }])
+  })
+
+  it('reads the typed forms of a price alike: 1.250,50, 1250,5, spaces and a trailing comma', async () => {
+    for (const [typed, expected] of [['1.250,50', '1250.5'], ['1250,5', '1250.5'], [' 799 ', '799']] as const) {
+      const onApplyChannelPrices = await mount({ channels: channels(true) })
+      await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Düzenlenen Değer"]')!.click() })
+      await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).filter(item => item.textContent?.startsWith('Liste Fiyatı'))[1].click() })
+      await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="Trendyol liste fiyatı"]')!, typed)
+      await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find(item => item.textContent === 'Varyantlara Uygula')!)
+      expect(onApplyChannelPrices.mock.calls[0]?.[0]?.[0]?.listPrice).toBe(expected)
+      act(() => root.unmount()); container.innerHTML = ''
+    }
+  })
+
+  it('asks before it drops typed cells, and leaves the editor untouched when kept open', async () => {
+    const toggle = vi.fn()
+    await mount({ channels: channels(true, toggle) })
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label$="stok"]')!, '9')
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(item => item.textContent === 'Vazgeç')!)
+    expect(document.body.textContent).toContain('Kaydedilmemiş değişiklikler var.')
+    expect(toggle).not.toHaveBeenCalled()
+    await click(Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(item => item.textContent === 'Devam Et')!)
+    expect(document.body.textContent).not.toContain('Kaydedilmemiş değişiklikler var.')
   })
 })
