@@ -59,15 +59,20 @@ const samePrice = (left: string, right: string) => left.trim() === right.trim() 
 // The price table's drafts after its rows were read again (each saved offer is written into the rows at once): a
 // typed cell whose stored price now equals what was typed was saved and starts clean; every other typed cell keeps
 // its draft, so one failed price among many does not wipe the prices typed for the rest.
-export function refreshedMatrixDrafts(current: Record<string, ChannelPricingDraft>, fresh: Record<string, ChannelPricingDraft>, dirtyKeys: readonly string[]): { drafts: Record<string, ChannelPricingDraft>; dirtyKeys: string[] } {
+// loaded: the texts the cells held before this read. A side still holding its loaded text was not typed: it takes the
+// stored price read now (review 24 Nov 2026: after a refused write the untouched side sent its old value back at the
+// new version, undoing a price another user saved meanwhile). Only the sides the person typed stay theirs.
+export function refreshedMatrixDrafts(current: Record<string, ChannelPricingDraft>, fresh: Record<string, ChannelPricingDraft>, dirtyKeys: readonly string[], loaded: Record<string, ChannelPricingDraft> = {}): { drafts: Record<string, ChannelPricingDraft>; dirtyKeys: string[] } {
   const drafts = { ...fresh }
   const stillDirty: string[] = []
   for (const key of dirtyKeys) {
     const typed = current[key]
     const stored = fresh[key]
     if (!typed || !stored) continue
-    if (samePrice(typed.listPrice, stored.listPrice) && samePrice(typed.salePrice, stored.salePrice)) continue
-    drafts[key] = typed
+    const before = loaded[key]
+    const merged = before ? { listPrice: typed.listPrice === before.listPrice ? stored.listPrice : typed.listPrice, salePrice: typed.salePrice === before.salePrice ? stored.salePrice : typed.salePrice } : typed
+    if (samePrice(merged.listPrice, stored.listPrice) && samePrice(merged.salePrice, stored.salePrice)) continue
+    drafts[key] = merged
     stillDirty.push(key)
   }
   return { drafts, dirtyKeys: stillDirty }

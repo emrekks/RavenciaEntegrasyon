@@ -20,8 +20,7 @@ function ProductReadRecords({ jobId, sentence }: { jobId: string; sentence: stri
   const [searchText, setSearchText] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
-  useEffect(() => { const timeout = window.setTimeout(() => setSearch(searchText.trim()), 350); return () => window.clearTimeout(timeout) }, [searchText])
-  useEffect(() => { setPage(1) }, [search, problemsOnly])
+  useEffect(() => { const timeout = window.setTimeout(() => { setSearch(searchText.trim()); setPage(1) }, 350); return () => window.clearTimeout(timeout) }, [searchText])
   const query = useQuery({
     queryKey: queryKeys.job(jobId, 'read-records', search, problemsOnly, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<ProductReadPage>(`/jobs/${jobId}/read-records?${new URLSearchParams({ page: String(page), pageSize: String(jobListPageSize), ...(search ? { search } : {}), ...(problemsOnly ? { onlyProblems: 'true' } : {}) })}`, { signal })
@@ -31,8 +30,8 @@ function ProductReadRecords({ jobId, sentence }: { jobId: string; sentence: stri
     <div className="publication-job-variants-head">
       <h3>Çekilen Kayıtlar</h3>
       <div className="publication-job-variants-tools">
-        <label><input type="checkbox" checked={problemsOnly} onChange={event => setProblemsOnly(event.target.checked)} />Sadece Sorunlular</label>
-        <ExcelExportButton path={`/jobs/${jobId}/read-records/export.xlsx`} query={{ search, onlyProblems: problemsOnly ? 'true' : '' }} fallbackName={`is-${jobId}-cekilen-kayitlar.xlsx`} disabled={!data?.totalCount} />
+        <label><input type="checkbox" checked={problemsOnly} onChange={event => { setProblemsOnly(event.target.checked); setPage(1) }} />Sadece Sorunlular</label>
+        <ExcelExportButton path={`/jobs/${jobId}/read-records/export.xlsx`} query={{ search: searchText.trim(), onlyProblems: problemsOnly ? 'true' : '' }} fallbackName={`is-${jobId}-cekilen-kayitlar.xlsx`} disabled={!data?.totalCount} />
       </div>
     </div>
     <p className="publication-job-variants-summary">{sentence}</p>

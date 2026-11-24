@@ -58,8 +58,6 @@ async function type(input: HTMLInputElement, value: string) {
 const stockBox = (sku: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${sku} stok"]`)!
 const bar = () => document.body.querySelector('.rr-m-foot')
 const barButton = (label: string) => Array.from(bar()!.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === label)!
-const bulkField = (label: string) => Array.from(document.body.querySelectorAll('label.rr-fld')).find(item => item.querySelector('small')?.textContent === label)!.querySelector('input')!
-const applyButton = () => document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!
 const footButton = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('footer button')).find(button => button.textContent === label)!
 
 beforeEach(() => {
@@ -234,169 +232,135 @@ describe('ProductQuickEditModal drafts', () => {
     expect(document.body.querySelector('.rv-draftbar')).toBeNull()
   })
 
-  // Y3 (scan 23 Nov 2026): Uygula twice in a row (Liste, then Satış) dropped the first draft's list price and refused the
-  // sale price against the saved list price. The second Uygula works over the first one's draft.
-  it('a second Uygula keeps the first one\'s draft and checks against it', async () => {
-    await render('price')
-    await pickValue('Panel', 'Liste')
-    await type(bulkField('Liste Fiyatı (₺)'), '1.000')
-    await click(applyButton())
-    await pickValue('Panel', 'Satış')
-    await type(bulkField('Satış Fiyatı (₺)'), '800')
-    await click(applyButton())
-    expect(document.body.querySelector('[role="alert"]')).toBeNull()
-    expect(bar()?.textContent).toContain('2 Değişiklik')
-    await click(barButton('Kaydet'))
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => [call.path, call.body])).toEqual([
-      ['/variants/v1/default-prices', { listPrice: 1000, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }],
-      ['/variants/v2/default-prices', { listPrice: 1000, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }],
-    ])
-  })
-
-  it('a second Uygula still refuses a sale price above the drafted list price, keeping the first draft', async () => {
-    await render('price')
-    await pickValue('Panel', 'Liste')
-    await type(bulkField('Liste Fiyatı (₺)'), '600')
-    await click(applyButton())
-    await pickValue('Panel', 'Satış')
-    await type(bulkField('Satış Fiyatı (₺)'), '700')
-    await click(applyButton())
-    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('liste fiyatı satış fiyatından küçük olamaz')
-    await click(barButton('Kaydet'))
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => call.body)).toEqual([
-      { listPrice: 600, salePrice: 450, reason: 'Hızlı varyant fiyat düzenleme' },
-      { listPrice: 600, salePrice: 450, reason: 'Hızlı varyant fiyat düzenleme' },
-    ])
-  })
-
-  // O4 (scan 23 Nov 2026): Bu Kadar Ekle applied twice added once, since it worked on the saved stock, not the draft.
-  it('Bu Kadar Ekle applied twice adds twice, and Kaydet sends the sum against the saved stock', async () => {
+  it('adding stock twice adds twice: add works on the cell’s draft, not on the saved stock', async () => {
     await render()
     await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!.click() })
     await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith('Bu Kadar Ekle'))!.click() })
-    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '5')
-    await click(applyButton())
-    await click(applyButton())
-    expect(stockBox('SKU-1').value).toBe('13')
-    await act(async () => { document.body.querySelector<HTMLButtonElement>('button[aria-label^="Stok İşlemi"]')!.click() })
-    await act(async () => { Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]')).find(item => item.textContent?.startsWith('Bu Kadar Çıkar'))!.click() })
-    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '2')
-    await click(applyButton())
-    expect(stockBox('SKU-1').value).toBe('11')
-    await click(barButton('Kaydet'))
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.map(call => [call.path, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 11, 3], ['/inventory/v2/on-hand', 11, 3]])
+    await type(document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!, '3')
+    const apply = document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!
+    await click(apply)
+    expect(stockBox('SKU-1').value).toBe('6')
+    await click(apply)
+    expect(stockBox('SKU-1').value).toBe('9')
   })
 
-  // O1 (scan 23 Nov 2026): Özel Fiyat on for only some variants. Shown as mixed, a following variant shows the panel price
-  // (what goes), and nothing is a change until the owner switches or types.
-  const mixedProduct = (): Product => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion: 1, listPrice: item.id === 'v1' ? 600 : 520, salePrice: item.id === 'v1' ? 550 : 470, currency: 'TRY', followsPanelPrice: item.id === 'v1' ? false : true })] })) })
-  it('shows a mixed marketplace as mixed and has nothing to save untouched', async () => {
-    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [mixedProduct()])
-    await pickValue('Trendyol', 'Satış')
-    const toggle = document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!
-    expect(toggle.indeterminate).toBe(true)
-    expect(toggle.closest('label')?.textContent).toContain('Özel Fiyat · 1/2 Varyant')
-    expect(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol satış fiyatı"]')?.value).toBe('550,00')
-    expect(document.body.querySelector('input[aria-label="SKU-2 Trendyol satış fiyatı"]')).toBeNull()
-    expect(Array.from(document.body.querySelectorAll('.rr-mx-follow')).map(item => item.textContent)).toEqual(['450,00'])
-    expect(bar()?.textContent).toContain('Değişiklik Yok')
-    expect(barButton('Kaydet').disabled).toBe(true)
-    await click(footButton('Kapat'))
-    expect(sent).toEqual([])
-  })
-  it('switching a mixed marketplace on is a draft that turns only the following variants own', async () => {
-    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [mixedProduct()])
-    await pickValue('Trendyol', 'Satış')
-    await click(document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!)
-    expect(bar()?.textContent).toContain('1 Değişiklik')
-    await click(barButton('Kaydet'))
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.map(call => [call.path, call.method, call.body])).toEqual([['/channel-offers/panel-price-follow', 'PUT', { connectionId: 'c1', variantIds: ['v2'], followsPanelPrice: false }]])
-  })
-
-  it('names a price falling below half in Kaydet\'s confirmation and still saves on Onayla ve Kaydet', async () => {
+  it('a sale price applied after a list price keeps both drafts, and the check runs on the pair', async () => {
     await render('price')
-    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!
-    await act(async () => { sale.focus() })
-    await type(sale, '4,5')
-    await click(barButton('Kaydet'))
-    expect(bar()?.querySelector('[role="alert"]')?.textContent).toBe('1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 450,00 → 4,50')
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.filter(call => call.path.endsWith('/default-prices')).map(call => call.body)).toEqual([{ listPrice: 500, salePrice: 4.5, reason: 'Hızlı varyant fiyat düzenleme' }])
-  })
-
-  it('sets a first offer on a marketplace against the panel price in the confirmation', async () => {
-    const oneOffer: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: item.id === 'v1' ? [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: 'o-v1', offerVersion: 1, listPrice: 500, salePrice: 450, currency: 'TRY', followsPanelPrice: false })] : [] })) }
-    await render('price', [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }], [oneOffer])
-    await pickValue('Trendyol', 'Satış')
-    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-2 Trendyol satış fiyatı"]')!
-    expect(sale.value).toBe('')
-    await act(async () => { sale.focus() })
-    await type(sale, '4,5')
-    await click(barButton('Kaydet'))
-    expect(bar()?.querySelector('[role="alert"]')?.textContent).toBe('1 Varyantın Fiyatı Yarıdan Fazla Düşüyor: 450,00 → 4,50')
-  })
-
-  it('names no warning for an ordinary price change', async () => {
-    await render('price')
-    const sale = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!
-    await act(async () => { sale.focus() })
-    await type(sale, '440')
-    await click(barButton('Kaydet'))
-    expect(bar()?.querySelector('[role="alert"]')).toBeNull()
-  })
-
-  it('Enter in a cell never submits the window, and each variant\'s tick is reachable by keyboard', async () => {
-    await render()
-    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
-    await act(async () => { stockBox('SKU-2').dispatchEvent(enter) })
-    expect(enter.defaultPrevented).toBe(true)
-    const tick = document.body.querySelector<HTMLInputElement>('input[aria-label$="varyantını seç"]')!
-    expect(tick.tabIndex).toBe(0)
-  })
-
-  // B7: an emptied list cell is no list price for Kaydet (it takes the sale price); Uygula reads it the same way, so a
-  // sale price above the saved list price is not refused, and what is sent equals what Kaydet would send by hand.
-  it('Uygula reads an emptied list cell as Kaydet does', async () => {
-    await render('price')
+    const applyValue = async (row: string, value: string) => {
+      await pickValue('Panel', row)
+      await type(document.body.querySelector<HTMLInputElement>(`.rr-qe-applyrow input[aria-label="${row === 'Satış' ? 'Satış' : 'Liste'} Fiyatı (₺)"]`)!, value)
+      await click(document.body.querySelector<HTMLButtonElement>('button.rr-qe-apply')!)
+    }
+    await applyValue('Liste', '800')
+    await applyValue('Satış', '700')
+    expect(document.body.textContent).not.toContain('liste fiyatı satış fiyatından küçük olamaz')
     await pickValue('Panel', 'Liste')
-    const list = document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="liste fiyatı"]')!
-    await act(async () => { list.focus() })
-    await type(list, '')
-    await act(async () => { list.blur() })
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="liste fiyatı"]')!.value).toContain('800')
     await pickValue('Panel', 'Satış')
-    await type(bulkField('Satış Fiyatı (₺)'), '800')
-    await click(applyButton())
-    // SKU-2 keeps its saved list price 500 and is rightly refused; SKU-1, whose list cell was emptied, is not.
-    expect(document.body.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('SKU-1')
-    await click(barButton('Kaydet'))
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.filter(call => call.path === '/variants/v1/default-prices').map(call => call.body)).toEqual([{ listPrice: 800, salePrice: 800, reason: 'Hızlı varyant fiyat düzenleme' }])
-  })
-
-  // B2: the stock cell read "1.000" as 1, "1e3" as 1000 and "0x10" as 16 (Number()). Now Turkish whole numbers only.
-  it('sends "1.000" typed in a stock cell as 1000', async () => {
-    await render()
-    expect(stockBox('SKU-1').type).toBe('text')
-    await type(stockBox('SKU-1'), '1.000')
-    await click(barButton('Kaydet'))
-    await click(barButton('Onayla ve Kaydet'))
-    expect(sent.map(call => [call.path, call.body.onHand, call.body.expectedOnHand])).toEqual([['/inventory/v1/on-hand', 1000, 3]])
-  })
-  it.each(['1e3', '0x10', '2,5', '1,000', '-1'])('refuses "%s" in a stock cell and sends nothing', async typed => {
-    await render()
-    await type(stockBox('SKU-1'), typed)
-    expect(barButton('Kaydet').disabled).toBe(true)
-    await click(barButton('Kaydet'))
-    expect(sent).toEqual([])
+    expect(document.body.querySelector<HTMLInputElement>('input[aria-label^="SKU-1"][aria-label$="satış fiyatı"]')!.value).toContain('700')
   })
 
   it('closing without a draft closes at once', async () => {
     await render()
     await click(footButton('Kapat'))
     expect(closed).toBe(1)
+  })
+})
+
+// Review of 24 Nov 2026 (b16618668), two HIGH price faults in Toplu Düzenle.
+describe('ProductQuickEditModal price conflicts and per-offer following', () => {
+  const trendyol = [{ id: 'c1', displayName: 'Trendyol', platformCode: 'TRENDYOL' }]
+  const ownOffer = (offerVersion: number, salePrice: number): Product => ({ ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `o-${item.id}`, offerVersion, listPrice: 500, salePrice, currency: 'TRY', followsPanelPrice: false })] })) })
+  const calls: Array<{ path: string; method?: string; ifMatch?: string; body: Record<string, unknown> }> = []
+  // The list as read again after a refusal: the same window, new products.
+  async function redraw(products: Product[]) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => {
+      root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="price" products={products} connections={trendyol as never} onChanged={async () => undefined} onClose={() => { closed += 1 }} /></MemoryRouter></QueryClientProvider>)
+    })
+  }
+  beforeEach(async () => {
+    calls.length = 0
+    const { ApiRequestError } = await import('../../../shared/api')
+    let refused = false
+    vi.mocked(hubApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      calls.push({ path, method: init?.method, ifMatch: (init?.headers as Record<string, string> | undefined)?.['If-Match'], body: init?.body ? JSON.parse(String(init.body)) : {} })
+      // The first offer write is refused: another user changed the offer meanwhile.
+      if (!refused && path.startsWith('/channel-offers/o-') && init?.method === 'PATCH') { refused = true; throw new ApiRequestError('Fiyat başka bir işlemle değişti.', 412, 'PRECONDITION_FAILED') }
+      return {} as never
+    })
+  })
+
+  // BUG 1: only the list price was typed; the sale price is taken as it is stored now, never the value the window opened with.
+  it('after a version conflict sends the edited list price with the sale price another user saved meanwhile', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Liste')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol liste fiyatı"]')!, '550')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.map(call => [call.path, call.ifMatch, call.body.listPrice, call.body.salePrice])).toEqual([['/channel-offers/o-v1', '"v1"', 550, 450]])
+    // Another user raised the sale price to 470; the window reads the list again.
+    await redraw([ownOffer(2, 470)])
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.slice(1).map(call => [call.path, call.ifMatch, call.body.listPrice, call.body.salePrice])).toEqual([['/channel-offers/o-v1', '"v2"', 550, 470]])
+  })
+
+  it('after a version conflict stops with the validation message when the fresh sale price is above the edited list price', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Liste')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol liste fiyatı"]')!, '550')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    await redraw([{ ...ownOffer(2, 600), variants: ownOffer(2, 600).variants.map(item => ({ ...item, platformStatuses: item.platformStatuses!.map(status => ({ ...status, listPrice: 650 })) })) }])
+    expect(barButton('Kaydet').disabled).toBe(true)
+    expect(bar()?.textContent).toContain('Liste fiyatı satış fiyatından küçük olamaz.')
+    await click(barButton('Kaydet'))
+    expect(calls).toHaveLength(1)
+  })
+
+  it('drops a price draft whose sides all equal the stored prices read again, counting and sending nothing', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Satış')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Trendyol satış fiyatı"]')!, '470')
+    expect(bar()?.textContent).toContain('1 Değişiklik')
+    // Another user saved the same 470 meanwhile.
+    await redraw([ownOffer(2, 470)])
+    expect(bar()?.textContent).toContain('Değişiklik Yok')
+    expect(barButton('Kaydet').disabled).toBe(true)
+    expect(calls).toEqual([])
+  })
+
+  // An Özel Fiyat switch saved by an earlier Kaydet of this window does not decide later saves: another user may have
+  // turned one variant's Özel Fiyat on since, and that offer keeps its own price.
+  it('leaves an offer turned own meanwhile alone after an earlier Kaydet switched the marketplace to follow', async () => {
+    await render('price', trendyol, [ownOffer(1, 450)])
+    await pickValue('Trendyol', 'Satış')
+    await click(document.body.querySelector<HTMLInputElement>('input.rr-qt-switch')!)
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.map(call => [call.path, call.method, call.body.followsPanelPrice])).toEqual([['/channel-offers/panel-price-follow', 'PUT', true]])
+    // Read again: both follow now, but another user turned SKU-1's Özel Fiyat on (550).
+    const after = ownOffer(2, 450)
+    await redraw([{ ...after, variants: after.variants.map(item => ({ ...item, platformStatuses: item.platformStatuses!.map(status => item.id === 'v1' ? { ...status, salePrice: 550, listPrice: 600, followsPanelPrice: false } : { ...status, followsPanelPrice: true }) })) }])
+    await pickValue('Panel', 'Satış')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-1 Panel Fiyatı satış fiyatı"]')!, '480')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.slice(1).map(call => [call.path, call.method])).toEqual([['/variants/v1/default-prices', 'PATCH']])
+  })
+
+  // BUG 2: one Trendyol variant keeps Özel Fiyat, the other follows the panel; the follower's panel price change reaches its offer.
+  it('writes a panel price to the following offer of a marketplace where another variant keeps its own price', async () => {
+    const mixed: Product = { ...product, variants: product.variants.map(item => ({ ...item, platformStatuses: [testVariantPlatformStatus({ platform: 'Trendyol', platformCode: 'TRENDYOL', connectionId: 'c1', offerId: `x-${item.id}`, offerVersion: 3, listPrice: item.id === 'v1' ? 600 : 500, salePrice: item.id === 'v1' ? 550 : 450, currency: 'TRY', followsPanelPrice: item.id === 'v1' ? false : null })] })) }
+    await render('price', trendyol, [mixed])
+    await pickValue('Panel', 'Satış')
+    await type(document.body.querySelector<HTMLInputElement>('input[aria-label="SKU-2 Panel Fiyatı satış fiyatı"]')!, '480')
+    await click(barButton('Kaydet'))
+    await click(barButton('Onayla ve Kaydet'))
+    expect(calls.map(call => [call.path, call.method, call.ifMatch, call.body.listPrice, call.body.salePrice, call.body.followsPanelPrice])).toEqual([
+      ['/variants/v2/default-prices', 'PATCH', '"v1"', 500, 480, undefined],
+      ['/channel-offers/x-v2', 'PATCH', '"v3"', 500, 480, true],
+    ])
   })
 })

@@ -85,6 +85,24 @@ describe('BulkVariantPlatformPricingModal', () => {
     expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: 100, salePrice: 85 } })
   })
 
+  // Review of 24 Nov 2026: after a refused write the rows are read again; the side not typed takes the price stored now,
+  // never the value the window opened with (that undid another user's price).
+  it('after the rows are read again sends a typed list price with the sale price stored now', () => {
+    const onSave = vi.fn()
+    const twoPlatforms = platforms()
+    const draw = (currentRows: Props['rows']) => act(() => {
+      root.render(<BulkVariantPlatformPricingModal row={currentRows[0]} rows={currentRows} platforms={twoPlatforms} savedDrafts={savedDrafts} productName="Elbise" modelCode="RYP" filterGroups={[]} matchesFilterValue={() => true} saving={false} onClose={vi.fn()} onSave={onSave} />)
+    })
+    const withTrendyolSale = (sale: number) => [{ ...row, platformStatuses: [{ ...twoPlatforms[0] }, { ...twoPlatforms[1], salePrice: sale }] }] as Props['rows']
+    draw(withTrendyolSale(90))
+    type(document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Trendyol liste fiyatı"]')!, '120')
+    // Another user saved 95 as Trendyol's sale price; the rows come back with it.
+    draw(withTrendyolSale(95))
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Trendyol satış fiyatı"]')!.value).toBe('95')
+    act(() => saveButton().click())
+    expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: 120, salePrice: 95 } })
+  })
+
   it('shows the marketplaces in the panel order', () => {
     render()
     const heads = [...document.querySelectorAll('.variant-platform-pricing-matrix-head strong')].map(item => item.textContent)

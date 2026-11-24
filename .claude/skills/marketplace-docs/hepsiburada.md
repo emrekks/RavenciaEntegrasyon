@@ -177,6 +177,12 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
 - The claim list carries `finalizedWith` ("Onaylanan talebin onay türü": `Refund` ücret iadesi, `Change` yeni ürün ile
   değişim; `hepsiburada-api-son.md:26135`, schema :28262). Stored as `ReturnClaim.ResolvedWith` (REFUND/CHANGE, null =
   unknown). The claim model has **no package field**: a replacement package is never named by the claim.
+- The exchange product comes as an order item whose `creationReason` is `ClaimChangeAccepted` (other values: OrderCreated,
+  OrderLineTransferred, OrderLineResend, DeliveryCreated; `hepsiburada-api-son.md:9097`, :9549, :12032, :13340). The
+  item's raw JSON is kept in `OrderLine.SourceSnapshotJson` (live 23 Nov 2026: 65 HB lines, all `OrderCreated`; no
+  exchange yet, so whether the item comes under the claim's own order number is **unverified**). Yeniden Gönderimler
+  (`ExchangeResendRules.NotShipped`): an HB exchange is handed to the carrier when such a line of the claim's order has a
+  shipped quantity (MARKETPLACE), else by the owner's "Kargoya Verildi" mark.
 - HB's guide (Talep Önemli Bilgiler) asks for cancel + new invoice after an exchange:
   https://developers.hepsiburada.com/tr/companies/hepsiburada?category=hepsiburada-talep-entegrasyonu&product=talep-entegrasyonu&version=v1&guide=talep-onemli-bilgiler-2&view=guide
   The owner knowingly chose instead: re-send the SAME invoice link (no new invoice, no cancellation, no E-Faturam call).

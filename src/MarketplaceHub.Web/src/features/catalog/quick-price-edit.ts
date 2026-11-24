@@ -232,24 +232,25 @@ export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOff
     && (offer.offerStatus ?? '').trim() === command.status.trim() && offer.followsPanelPrice === command.followsPanelPrice
 }
 
-// The marketplaces that follow the panel price: every marketplace column not ticked "Özel Fiyat".
-export function panelFollowerColumns(columns: ReadonlyArray<QuickPriceColumn>, custom: Readonly<Record<string, boolean>>) {
-  return columns.filter(column => column.id !== PANEL_PRICE_CHOICE && !custom[column.id])
-}
-
 // What a panel price saved for one variant writes to the marketplaces that follow it: the variant's existing offer
 // on each, at the version loaded, with the same list and sale price (a sale-price-only marketplace takes list = sale).
 // An offer already at that price is left alone, and a marketplace where the variant has no offer gets none: creating
 // one is publishing, which stays with "Platformlarda Yayınla" and the product editor.
+// Whether an offer follows is decided PER OFFER (review 24 Nov: on a marketplace where one variant keeps Özel Fiyat, the
+// others that follow the panel were skipped): switched holds the marketplaces whose Özel Fiyat was switched in this
+// window ({ connectionId: custom }), which decide for all their offers; any other offer goes by its own stored choice
+// (offerFollowsPanel), so an offer with Özel Fiyat on keeps its own price and every other one takes the panel price.
 export type PanelFollowerWrite =
   | { kind: 'update'; column: QuickPriceColumn; offerId: string; offerVersion: number; offer: QuickPriceOffer; listPrice: number; salePrice: number }
   | { kind: 'blocked'; column: QuickPriceColumn; reason: string }
-export function panelFollowerWrites(variant: QuickPriceVariant, followers: ReadonlyArray<QuickPriceColumn>, prices: { listPrice: number; salePrice: number }): PanelFollowerWrite[] {
+export function panelFollowerWrites(variant: QuickPriceVariant, columns: ReadonlyArray<QuickPriceColumn>, prices: { listPrice: number; salePrice: number }, switched: Readonly<Record<string, boolean>> = {}): PanelFollowerWrite[] {
+  const followers = columns.filter(column => column.id !== PANEL_PRICE_CHOICE && switched[column.id] !== true)
   if (!followers.length) return []
   if (!variant.platformStatuses) return followers.map(column => ({ kind: 'blocked' as const, column, reason: 'Platform fiyatları okunamadı; listeyi yenileyip tekrar deneyin.' }))
   return followers.flatMap<PanelFollowerWrite>(column => {
     const offer = channelOffer(variant, column.id)
     if (!offer) return []
+    if (switched[column.id] === undefined && !offerFollowsPanel(offer)) return []
     const listPrice = column.takesListPrice ? prices.listPrice : prices.salePrice
     if (offerMatchesPanel(offer, { listPrice, salePrice: prices.salePrice }, column.takesListPrice)) return []
     if (offer.offerVersion == null) return [{ kind: 'blocked', column, reason: 'Fiyat sürümü okunamadı; listeyi yenileyip tekrar deneyin.' }]
@@ -259,6 +260,15 @@ export function panelFollowerWrites(variant: QuickPriceVariant, followers: Reado
 
 function samePrice(left: number, right: number) {
   return Math.abs(left - right) < 0.005
+}
+
+// A price cell's draft over the stored prices as they are now (review 24 Nov: after a version conflict the refreshed
+// cell sent the other side's old value back at the new version, undoing another user's price). Only a side the person
+// changed (its text apart from the text the cell loaded with) is theirs; a side left as loaded takes the stored price
+// read now. loaded is then the fresh text, so that side reads as the stored number when saved.
+export type PriceDraftTexts = { list: string; sale: string }
+export function rebasedPriceDraft(draft: PriceDraftTexts, loaded: PriceDraftTexts, fresh: PriceDraftTexts): { value: PriceDraftTexts; loaded: PriceDraftTexts } {
+  return { value: { list: draft.list === loaded.list ? fresh.list : draft.list, sale: draft.sale === loaded.sale ? fresh.sale : draft.sale }, loaded: fresh }
 }
 
 // A price as the table shows it outside editing: Turkish digits, two decimals ("1.249,90"); empty for none. A number

@@ -171,9 +171,10 @@ internal sealed partial class ReturnIngestionService
             // loses it, and the owner is told (review, 18 Nov 2026).
             if (ReturnCustomerRequestPolicy.ManualMarkLapses(claim.ResolvedWithSource, claim.Status))
             {
-                claim.ResolvedWith = null; claim.ResolvedWithSource = null; claimChanged = true;
+                var shipMarkRemoved = ExchangeResendRules.ClearManualExchangeMark(claim); claimChanged = true;
                 await RecordIssue(tenantId, $"return-exchange-mark-lapsed:{claim.Id:N}", "RETURN_EXCHANGE_MARK_LAPSED",
-                    $"{claim.ExternalClaimId} numaralı iade elle Değişim Onaylandı olarak işaretlenmişti; pazaryeri iadeyi artık reddedilmiş göstermiyor ({remote.RawStatus}). İşaret kaldırıldı.", cancellationToken);
+                    $"{claim.ExternalClaimId} numaralı iade elle Değişim Onaylandı olarak işaretlenmişti; pazaryeri iadeyi artık reddedilmiş göstermiyor ({remote.RawStatus}). İşaret kaldırıldı."
+                        + (shipMarkRemoved ? ExchangeResendRules.ShipMarkAlsoRemovedText : ""), cancellationToken);
             }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; run.UpdatedCount++; }
         }

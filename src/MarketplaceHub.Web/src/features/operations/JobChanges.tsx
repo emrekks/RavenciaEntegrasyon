@@ -67,10 +67,9 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
   const [search, setSearch] = useState('')
   const [groups, setGroups] = useState<string[]>([])
   const [page, setPage] = useState(1)
-  // Another search or another group goes back to the first page.
-  useEffect(() => { setPage(1) }, [search, groups])
+  // Another search or another group goes back to the first page in the same update (no request for the old page number first).
   useEffect(() => {
-    const timeout = window.setTimeout(() => setSearch(searchText.trim()), searchDelayMs)
+    const timeout = window.setTimeout(() => { setSearch(searchText.trim()); setPage(1) }, searchDelayMs)
     return () => window.clearTimeout(timeout)
   }, [searchText])
 
@@ -96,11 +95,11 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
     <div className="jc-heading">
       <div><span className="jobs-reference-section-kicker">{productImport ? 'Panelde Değişenler' : 'Pazaryerine Gidenler'}</span><h3 id="job-changes-title">Gidenler ve Değişenler</h3></div>
       {head?.sourceOrderNumber && <span className="jc-origin">Kaynak: Sipariş #{head.sourceOrderNumber}</span>}
-      <ExcelExportButton path={`/jobs/${jobId}/changes/export.xlsx`} query={{ search, groups: groupText }} fallbackName={`is-${jobId}-degisiklikler.xlsx`} disabled={!totalCount} />
+      <ExcelExportButton path={`/jobs/${jobId}/changes/export.xlsx`} query={{ search: searchText.trim(), groups: groupText }} fallbackName={`is-${jobId}-degisiklikler.xlsx`} disabled={!totalCount} />
     </div>
     {summary.isLoading ? <Busy text="Özet yükleniyor…" /> : summary.isError ? <p role="alert" className="jc-note is-error">Özet alınamadı.</p> : <>
       <ul className="jc-counts" aria-label="Gidenler ve değişenler özeti">
-        {counts.map(item => { const group = chipGroups[item.key]; const on = group !== undefined && groups.includes(group); return <li key={item.key}>{group ? <button type="button" className={`jc-chip${on ? ' is-on' : ''}`} aria-pressed={on} title={on ? 'Süzgeci kaldır' : `Yalnız ${item.label} satırlarını göster`} onClick={() => setGroups(current => on ? current.filter(value => value !== group) : [...current, group])}><small>{item.label}</small><strong>{formatCount(item.value)}</strong></button> : <><small>{item.label}</small><strong>{formatCount(item.value)}</strong></>}</li> })}
+        {counts.map(item => { const group = chipGroups[item.key]; const on = group !== undefined && groups.includes(group); return <li key={item.key}>{group ? <button type="button" className={`jc-chip${on ? ' is-on' : ''}`} aria-pressed={on} title={on ? 'Süzgeci kaldır' : `Yalnız ${item.label} satırlarını göster`} onClick={() => { setGroups(current => on ? current.filter(value => value !== group) : [...current, group]); setPage(1) }}><small>{item.label}</small><strong>{formatCount(item.value)}</strong></button> : <><small>{item.label}</small><strong>{formatCount(item.value)}</strong></>}</li> })}
       </ul>
       {outcome && <p className="jc-note" role="status">{outcome}</p>}
       {productImport && <p className="jc-hint">Liste, bu çekimin çalıştığı süre içinde aynı mağazadan panele işlenen stok ve mağaza fiyatı değişikliklerinden oluşur (Ürün Hareketleri).</p>}
@@ -113,7 +112,7 @@ export function JobChanges({ jobId, jobType, onOpenJob }: { jobId: string; jobTy
     </>}
     <label className="jc-search">
       <span className="sr-only">Satırlarda ara</span>
-      <input value={searchText} maxLength={100} placeholder="Barkod, stok kodu veya model kodu ara" onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') setSearch(searchText.trim()) }} />
+      <input value={searchText} maxLength={100} placeholder="Barkod, stok kodu veya model kodu ara" onChange={event => setSearchText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { setSearch(searchText.trim()); setPage(1) } }} />
     </label>
     {list.isLoading ? <Busy text="Satırlar yükleniyor…" /> : list.isError && !list.data ? <p role="alert" className="jc-note is-error">Satırlar alınamadı.</p> : <>
       {lines.length > 0 ? <>

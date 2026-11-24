@@ -76,3 +76,18 @@ describe('opening a job from a detail window', () => {
     expect(opened).toEqual(['j7']); expect(closed).toBe(0)
   })
 })
+
+describe('a list that shrinks under the person', () => {
+  it('goes back to the last real page instead of staying on an empty page with no pager', async () => {
+    const row = { jobId: 'j1', errorCode: 'E', errorSummary: 'boom', status: 'DEAD', at: '2026-11-19T00:00:00Z' }
+    hubPoll.mockImplementation(async (path: string) => String(path).includes('page=2') ? { items: [], page: 2, pageSize: 50, totalCount: 30 } : { items: [row], page: 1, pageSize: 50, totalCount: String(path).includes('page=1') && hubPoll.mock.calls.length < 3 ? 120 : 30 })
+    await mount(<PriceStockProblemDialog connectionId="c1" displayName="N11" counts={{ invalidOffers: 0, failedPushes: 120, manualReview: 0, notFoundLinks: 0, rejectedLinks: 0 }} onClose={() => undefined} />)
+    const page2 = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.rr-pages button')).find(button => button.textContent === '2')!
+    await act(async () => { page2.click() })
+    for (let i = 0; i < 4; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    const paths = hubPoll.mock.calls.map(call => String(call[0]))
+    expect(paths.some(path => path.includes('page=2'))).toBe(true)
+    expect(paths[paths.length - 1]).toContain('page=1')
+    expect(document.body.querySelector('.md-tbl tbody tr')).not.toBeNull()
+  })
+})
