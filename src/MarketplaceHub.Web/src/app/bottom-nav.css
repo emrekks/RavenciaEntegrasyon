@@ -13,7 +13,12 @@
 .rv-dock-layer { display: none; }
 @media (max-width: 768px) {
   .app-shell.stitch-shell { --rv-dock-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); --rv-bottom-nav-space: calc(100px + env(safe-area-inset-bottom, 0px)); }
-  .app-shell.stitch-shell > main { padding-bottom: var(--rv-bottom-nav-space); }
+  :root { --rv-dock-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+  html body .app-shell.stitch-shell > main { padding-top: env(safe-area-inset-top, 0px); padding-bottom: var(--rv-bottom-nav-space); }
+  /* There is no top bar on a phone (Menü holds the bell and the theme): nothing sticks under it any more. */
+  .app-shell.stitch-shell { --rv-topbar-height: 0px; }
+  html body .app-shell.stitch-shell main .product-add-wizardbar { top: 0; }
+  :root:root body .app-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
   html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
   html body .app-shell.stitch-shell .rv-topbar .rv-topbar-search { display: none; }
   /* A field that takes focus is never left behind the bar. */
@@ -69,23 +74,34 @@
   .rv-dock-info[data-visible="true"] { height: 29px; opacity: 1; visibility: visible; }
   .rv-dock-layer:has(.rv-dock-info[data-visible="true"]) .rv-taskbar { border-top-left-radius: 0; border-top-right-radius: 0; }
   .rv-dock-info > * { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-dock-info-start { flex: 0 1 auto; }
-  .rv-dock-info-end { flex: 0 1 auto; margin-left: auto; color: var(--rv-color-muted); }
+  /* The state on the left keeps its words (up to 72%); the short summary on the right gives way first. */
+  .rv-dock-info-start { flex: 0 1 auto; max-width: 72%; }
+  .rv-dock-info-end { flex: 1 1 0; justify-content: flex-end; margin-left: auto; color: var(--rv-color-muted); }
   .rv-dock-info > * > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .rv-dock-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 0; height: 28px; margin: 0; padding: 0; color: inherit; background: none; border: 0; border-radius: 0; font: inherit; font-weight: 600; white-space: nowrap; }
   button.rv-dock-chip { cursor: pointer; }
   .rv-dock-chip.is-warn { color: var(--rv-color-warning); }
   .rv-dock-chip-action { min-height: 0; padding: 0 0 0 6px; color: var(--rv-color-primary-text); background: none; border: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
   .rv-dock-info .rr-grow { flex: none; }
+  .rv-dock-info > .rv-dock-info-slot { display: contents; }
+  .rv-dock-info > .rv-dock-bell { flex: none; margin-left: 12px; gap: 4px; min-height: 0; height: 28px; padding: 0; color: var(--rv-color-ink); background: none; border: 0; font: inherit; font-weight: 700; cursor: pointer; }
+  .rv-dock-info-slot:empty + .rv-dock-bell { margin-left: auto; }
+  .rv-dock-bell.is-error > .ui-icon, .rv-dock-pill-bell.is-error > .ui-icon { color: var(--rv-color-danger); }
+  /* Unread notifications: a small pill right above the dock, at its right end (in the task bar the bell sits at the end of the strip). */
+  .rv-dock-pill-bell { position: absolute; right: 0; bottom: calc(100% + 8px); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 44px; height: 32px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 10px; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 30%); font: inherit; font-size: 11px; font-weight: 700; line-height: 1; pointer-events: auto; cursor: pointer; }
 
   /* The keyboard is open while a text box has focus: the bar steps aside. */
   body:has(:is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"], [type="file"], [type="color"]), textarea, select, [contenteditable=""], [contenteditable="true"]):focus) .rv-dock-layer { display: none; }
 
   /* Full-screen menu: the page's colour over the top bar (z 85 on a phone); the dock (87) stays above it, sheets and dialogs (900+) above both. */
   .rv-fullmenu { position: fixed; inset: 0; z-index: 86; display: flex; flex-direction: column; box-sizing: border-box; padding: calc(14px + env(safe-area-inset-top, 0px)) 0 calc(var(--rv-dock-bottom) + 52px + 12px); color: var(--rv-color-ink); background: var(--rv-color-bg); outline: 0; animation: rv-fullmenu-in 200ms cubic-bezier(.2, .8, .2, 1) both; }
-  .rv-fullmenu-head { display: flex; flex: none; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 16px 10px; }
+  .rv-fullmenu-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px 10px; }
   .rv-fullmenu-head h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
-  .rv-fullmenu-store { min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .rv-fullmenu-tools { display: flex; gap: 8px; }
+  .rv-fullmenu-tool { position: relative; display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
+  .rv-fullmenu-tool-badge { position: absolute; top: -7px; right: -7px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-bg); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
+  .rv-fullmenu-tool-badge.is-error { background: var(--rv-color-danger); }
+  .rv-fullmenu-store { flex: 1; min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .rv-fullmenu-search { display: flex; flex: none; align-items: center; gap: 8px; box-sizing: border-box; height: 36px; margin: 0 16px 4px; padding: 0 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
   .rv-fullmenu-search:focus-within { border-color: var(--rv-color-primary); }
   .rv-fullmenu-search input { flex: 1; min-width: 0; height: 34px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: none; border: 0; border-radius: 0; outline: 0; box-shadow: none; font: inherit; font-size: 16px; -webkit-appearance: none; appearance: none; }
@@ -103,14 +119,21 @@
   .rv-fullmenu-count { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; font-size: 11px; font-weight: 700; }
   .rv-fullmenu-count.is-warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: transparent; }
   .rv-fullmenu-empty { margin: 24px 0; color: var(--rv-color-muted); font-size: 14px; text-align: center; }
-  .rv-fullmenu-foot { display: flex; flex: none; gap: 8px; padding: 8px 16px 0; }
-  .rv-fullmenu-action { display: inline-flex; flex: 1; align-items: center; justify-content: center; gap: 8px; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .rv-fullmenu-foot { display: flex; flex: none; align-items: center; gap: 12px; padding: 8px 16px 0; }
+  .rv-fullmenu-action { display: inline-flex; flex: none; min-width: 120px; align-items: center; justify-content: center; gap: 8px; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   .rv-fullmenu-action.is-danger { color: var(--rv-color-danger); }
   .rv-fullmenu :is(a, button):focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
   html body .rv-fullmenu .rv-fullmenu-search input:focus, html body .rv-fullmenu .rv-fullmenu-search input:focus-visible { border: 0; outline: 0; box-shadow: none; }
   @keyframes rv-fullmenu-in { from { transform: translateY(100%); } }
+
+  /* Notifications: a sheet rising from above the dock, at most 75% of the screen; the dimmed page behind only closes it. */
+  html body .rv-notification-history { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 52px + 10px); left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - var(--rv-dock-bottom) - 52px - 22px - env(safe-area-inset-top, 0px))); border-radius: 14px; outline: 0; transform-origin: bottom center; animation: rv-sheet-up 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
+  html body .rv-notification-history::before { content: ""; flex: none; align-self: center; width: 36px; height: 4px; margin: 8px 0 0; background: var(--rv-color-border-strong); border-radius: 2px; }
+  @keyframes rv-sheet-up { from { transform: translateY(28px); opacity: 0; } }
+  /* The live toast keeps its behaviour and shows above the dock (and its pill) instead of at the top. */
+  html body .app-toast-stack, html body .app-toast:not(.app-toast-stack > *) { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 52px + 56px); left: 12px; width: auto; }
   @media (prefers-reduced-motion: reduce) {
-    .rv-fullmenu { animation: none; }
+    .rv-fullmenu, html body .rv-notification-history { animation: none; }
     .rv-dock, .rv-taskbar, .rv-dock-slot, .rv-dock-info { transition: none; }
   }
 }

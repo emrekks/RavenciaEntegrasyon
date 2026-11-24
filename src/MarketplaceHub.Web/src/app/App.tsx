@@ -34,7 +34,7 @@ import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
 import { queryKeys } from '../shared/api/query-keys'
 import './bottom-nav.css'
-import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useDockHostState, useMenuHistory, type MenuEntry, type MenuGroup } from './BottomDock'
+import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useDockHostState, useMenuHistory, useNotificationHistory, type MenuEntry, type MenuGroup } from './BottomDock'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -140,6 +140,9 @@ function Shell({ me }: { me: Me }) {
   const dock = useDockHostState(phone)
   const fullMenu = useMenuHistory()
   const menuSlotRef = useRef<HTMLButtonElement>(null)
+  // Notifications: a dropdown under the bell on wide screens; on a phone a sheet above the dock (an entry of the history).
+  const notificationSheet = useNotificationHistory()
+  const notificationOpener = useRef<HTMLElement | null>(null)
   const menuWasOpen = useRef(false)
   // Closing the menu (Esc, back button, Kapat) hands the focus back to the Menü slot that opened it.
   useEffect(() => {
@@ -151,6 +154,27 @@ function Shell({ me }: { me: Me }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const notificationRef = useRef<HTMLDivElement>(null)
   const notificationHistoryRef = useRef<HTMLDivElement>(null)
+  const notificationsShown = phone ? notificationSheet.open : notificationsOpen
+  const openNotifications = () => { notificationOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; if (phone) notificationSheet.openSheet(); else setNotificationsOpen(true) }
+  const closeNotifications = () => { if (phone) notificationSheet.closeSheet(); else setNotificationsOpen(false) }
+  // The sheet: Esc closes it, Tab stays inside it, the focus comes back to what opened it.
+  const sheetOpen = phone && notificationSheet.open
+  useEffect(() => {
+    if (!sheetOpen) return undefined
+    notificationHistoryRef.current?.focus({ preventScroll: true })
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); notificationSheet.closeSheet(); return }
+      if (event.key !== 'Tab' || !notificationHistoryRef.current) return
+      const items = [...notificationHistoryRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      if (!items.length) { event.preventDefault(); return }
+      const first = items[0]; const last = items[items.length - 1]
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === notificationHistoryRef.current)) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey); const opener = notificationOpener.current; if (opener?.isConnected) opener.focus({ preventScroll: true }) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetOpen])
   useEffect(() => { setMobileMenuOpen(false); setQuickSearchOpen(false) }, [location.pathname])
   useEffect(() => {
     const syncVisualTheme = (event: Event) => {
@@ -210,6 +234,7 @@ function Shell({ me }: { me: Me }) {
   const displayName = me.displayName || me.email
   const initials = displayName.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR') || 'RA'
   const unreadNotificationCount = notifications.filter(notification => !notification.read).length
+  const unreadError = notifications.some(notification => !notification.read && notification.kind === 'error')
   function toggleSidebarPinned() {
     const nextPinned = !sidebarPinned
     setSidebarPinned(nextPinned)
@@ -270,16 +295,16 @@ function Shell({ me }: { me: Me }) {
       <div className="sidebar-side-bottom"><div className="settings-nav">{entryItem(settingsEntry)}<button type="button" className="logout-link" aria-label="Oturumu Kapat" title="Oturumu Kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu Kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
     <main ref={mainRef}>
-      <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
-      {notificationsOpen && createPortal(<><div className="rv-notification-dim" aria-hidden="true" /><div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi">{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { setNotificationsOpen(false); navigate(href) }} onCleared={() => setNotifications([])} /></Suspense> })()}</div></>, document.body)}
+      {!phone && <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>}
+      {notificationsShown && createPortal(<><div className="rv-notification-dim" aria-hidden="true" onClick={phone ? closeNotifications : undefined} /><div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-modal={phone || undefined} aria-label="Bildirim geçmişi" tabIndex={-1}>{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { if (phone) notificationSheet.leaveTo(href); else { setNotificationsOpen(false); navigate(href) } }} onCleared={() => setNotifications([])} /></Suspense> })()}</div></>, document.body)}
       {invitations.data?.length && !invitationsClosed ? <Suspense fallback={null}><WorkspaceInvitationsPrompt invitations={invitations.data} onClose={closeInvitations} onSignOut={() => void logout()} /></Suspense> : null}
       {quickSearchOpen && <RrModal title="Hızlı Arama" size="lg" onClose={() => setQuickSearchOpen(false)}><nav className="rv-command-list" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</nav></RrModal>}
       <Drawer open={mobileMenuOpen && !phone} className="rv-mobile-drawer" title={<BrandWordmark className="rv-drawer-logo" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{entryItem(settingsEntry)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
       <ShellPages me={me} />
     </main>
     {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
-    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} storeName={displayName} theme={visualTheme} onToggleTheme={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
-    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups)} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setInfoEl={dock.setInfoEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onSearch={() => setQuickSearchOpen(true)} onNavigate={fullMenu.leaveTo} />
+    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} storeName={displayName} theme={visualTheme} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} onToggleTheme={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
+    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups)} taskActive={dock.taskActive} hasInfo={dock.hasInfo} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} setActionsEl={dock.setActionsEl} setInfoEl={dock.setInfoEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onSearch={() => setQuickSearchOpen(true)} onNavigate={fullMenu.leaveTo} />
     </div></DockContext.Provider>
 }
 
