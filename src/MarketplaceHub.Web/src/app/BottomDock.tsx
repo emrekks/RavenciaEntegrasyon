@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { Link, useLocation, useNavigate } from 'react-router'
 import { UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
-import { useScrollLock } from '../shared/hooks/useScrollLock'
+import { useLayerOpen, useScrollLock } from '../shared/hooks/useScrollLock'
 
 // The phone's bottom navigation (owner, 24 Nov 2026; bottom-nav.css): one panel, the "Ravencia Dock" (Ana Sayfa,
 // Siparişler, Ara, Ürünler, Menü) and, in its place and shape, the task bar of a page that has actions to offer
@@ -59,6 +59,8 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   onNavigate: (to: string) => void
 }) {
   const { pathname } = useLocation()
+  // A window, sheet or panel is open over the page: the bar steps away (and takes no touch) until it closes. The full-screen menu is no layer.
+  const layerOpen = useLayerOpen()
   const task = taskActive && !menuOpen
   // The strip above the bar exists only while the page has a warning to show; hidden (scrolled down) it takes no height.
   const strip = task && hasInfo
@@ -93,7 +95,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   // The open column: the page's own, or Menü while the menu is open (the one line under the bar's edge slides to it).
   const activeIndex = menuOpen ? dockPages.length : dockPages.findIndex(page => isActive(page.to, page.end))
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
     <div className="rv-dock-panel">
     <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
       <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
@@ -131,7 +133,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   pathname: string
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  useScrollLock(true)
+  useScrollLock(true, false, { layer: false })
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true })
     // Everything behind the layer (the page and its top bar) is out of reach for the keyboard and for screen readers.

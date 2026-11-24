@@ -123,6 +123,10 @@
   --rv-motion-menu: 280ms;
   --rv-ease-menu: cubic-bezier(.34, 1.4, .5, 1);
   --rv-motion-menu-from: .92;
+  /* The phone's bottom bar and top bar (app/bottom-nav.css, styles/responsive.css): dock <-> task bar, hide / show with a layer,
+     the top bar sliding away and the sticky heads following it. One time, one curve, the sheet's. */
+  --rv-motion-bar: var(--rv-motion-base);
+  --rv-ease-bar: var(--rv-ease-sheet);
   --rv-motion-tab: 400ms;
   --rv-ease-tab: cubic-bezier(.34, 1.3, .5, 1);
   /* A tab's content sliding in from the side (shared/tab-slide.tsx). */

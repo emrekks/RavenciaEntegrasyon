@@ -1,5 +1,6 @@
 // 6 Ürün Seçenek Grupları: the variant table with its toolbar, code checks, column menus and row actions.
-import { type CSSProperties } from 'react'
+import { useRef, type CSSProperties, type ReactNode } from 'react'
+import { useStuckHead } from '../../../shared/hooks/useStuckHead'
 import { TrNumberInput } from './TrNumberInput'
 import { TitleHint, UiIcon } from '../../../shared/components'
 import { type VariantBulkEditField } from '../variant-bulk-edit'
@@ -12,6 +13,13 @@ import { displayVariantOptionSignature, variantBulkEditLabels } from './editor-h
 import { BarcodeFillIcon, BarcodePasteIcon } from './EditorBits'
 import { variantCodeNoticeTail } from './variant-code-notice'
 import type { EditorContext } from './editor-context'
+
+// The variant table's head: sticky on a phone, square-cornered while it is stuck (data-stuck, shared/hooks/useStuckHead).
+function StuckHead({ children }: { children: ReactNode }) {
+  const head = useRef<HTMLDivElement>(null)
+  useStuckHead(head)
+  return <div ref={head} className="variant-table-head">{children}</div>
+}
 
 export function VariantGroupsSection({ editor }: { editor: EditorContext }) {
   const { editProductId, variantRows, draggedVariantKey, dragOverVariantKey, setMarketplaceCodesOpen, setQuickEditOpen, setMarketplaceCodesVariant, barcodeSkuMenuOpen, setBarcodeSkuMenuOpen, barcodeSkuActionRef, barcodePasteMenuOpen, setBarcodePasteMenuOpen, variantMobileGroup, setVariantMobileGroup, barcodePasteActionRef, variantBulkEdit, chartKey, fieldErrors, setOptionEditRowKey, beginVariantPointerDrag, moveVariantRow, variantCodeIssues, variantCodeDuplicateRows, heldVariantCodes, variantCodeIssueSummary, editingDraftProduct, draftCodeSaveBlock, goToFirstVariantCodeIssue, variantPricingPlatforms, outgoingByRow, trendyolMixedColours, barcodeRowCount, emptySkuBarcodeRowCount, emptyBarcodeRowCount, rowOptionEntries, clearVariants, requestVariantRowRemoval, updateVariantRow, openVariantBulkEdit, openVariantMediaPicker, openBulkVariantMediaPicker, applyBarcodeToSku, pasteBarcodesFromClipboard, openVariantPlatformPricing } = editor
@@ -34,13 +42,13 @@ export function VariantGroupsSection({ editor }: { editor: EditorContext }) {
               <button type="button" className="secondary variant-code-rule-notice-action" onClick={goToFirstVariantCodeIssue}>İlk Hataya Git</button>
             </div>}
             <div className={`variant-table-editor is-mobile-${variantMobileGroup}`} style={{ '--vopt-ch': variantRows.reduce((longest, row) => Math.max(longest, displayVariantOptionSignature(row.optionSignature, row.options).length), 8) } as CSSProperties}>
-              <div className="variant-table-head">
+              <StuckHead>
                 <span>#</span><span>Seçenek</span>
                 <span className="variant-table-header-with-action"><span>Barkod</span><div className="variant-header-action-shell" ref={barcodePasteActionRef}><button type="button" className="variant-header-action" onClick={() => { setBarcodeSkuMenuOpen(false); setBarcodePasteMenuOpen(current => !current) }} aria-label="Panodan barkod yapıştırma seçenekleri" aria-haspopup="menu" aria-expanded={barcodePasteMenuOpen} title="Panodan barkod yapıştırma seçenekleri"><BarcodePasteIcon /></button>{barcodePasteMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş Barkodlara Yapıştır</strong><small>Sadece boş satırlar · {emptyBarcodeRowCount} hedef</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm Barkodları Panodan Değiştir</strong><small>Varyant sırası · {variantRows.length} hedef</small></span><i aria-hidden="true">!</i></button><p>Satır sayısı hedefle aynı olmalı; sekmeli tabloda ilk sütun kullanılır. Boş veya yinelenen barkodda işlem yapılmaz.</p></div>}</div></span>
                 <span className="variant-table-header-with-action"><span>Stok Kodu</span><div className="variant-header-action-shell" ref={barcodeSkuActionRef}><button type="button" className="variant-header-action" onClick={() => { setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(current => !current) }} aria-label="Barkoddan doldurma seçenekleri" aria-haspopup="menu" aria-expanded={barcodeSkuMenuOpen} title="Barkoddan stok kodu doldurma seçenekleri"><BarcodeFillIcon /></button>{barcodeSkuMenuOpen && <div className="variant-header-action-menu" role="menu"><button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik Stok Kodlarını Doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount} aday</small></span><UiIcon name="externalLink" /></button><button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları Stok Koduna Uygula</strong><small>Barkodu olan {barcodeRowCount} satırı güncelle</small></span><i aria-hidden="true">!</i></button><p>Çakışan barkodlar otomatik olarak atlanır; mevcut kodlar ilk seçenekte korunur.</p></div>}</div></span>
                 {(['stock', 'salePrice', 'costPrice', 'listPrice'] as VariantBulkEditField[]).map(field => <span className="variant-table-header-with-action variant-bulk-header" key={field}><span>{variantBulkEditLabels[field]}</span><button type="button" className="variant-bulk-edit-trigger" aria-label={`${variantBulkEditLabels[field]} için toplu değişiklik aç`} aria-haspopup="dialog" aria-controls={variantBulkEdit?.field === field ? 'variant-bulk-edit-dialog' : undefined} aria-expanded={variantBulkEdit?.field === field} title={`${variantBulkEditLabels[field]} toplu değiştir`} onClick={() => openVariantBulkEdit(field)} disabled={!variantRows.length}><UiIcon name="edit" size={14} /></button></span>)}
                 <span>İşlem</span>
-              </div>
+              </StuckHead>
               {variantRows.length ? variantRows.map((row, index) => {
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 const codeIssues = variantCodeIssues.get(row.key) ?? []

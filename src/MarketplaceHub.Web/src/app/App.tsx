@@ -87,20 +87,29 @@ function Shell({ me }: { me: Me }) {
   const [invitationsClosed, setInvitationsClosed] = useState(() => readSessionItem(invitationsLaterKey) === '1')
   const closeInvitations = () => { writeSessionItem(invitationsLaterKey, '1'); setInvitationsClosed(true) }
   const [topbarHidden, setTopbarHidden] = useState(false)
+  // Hide on a scroll down, show on a scroll up - decided once per frame, and only after 12 px in one direction have added up
+  // (a direction change starts the count again), so a momentum scroll or the address bar's resize that reports a step back
+  // does not flip the bar. At the very top and bottom of the page (rubber band: a scroll position outside the page, or
+  // within the bar's height of the top) nothing is decided; the bar is shown within its own height of the top.
   useEffect(() => {
     let last = window.scrollY
+    let run = 0
     let frame = 0
     const onScroll = () => {
-      cancelAnimationFrame(frame)
+      if (frame) return
       frame = requestAnimationFrame(() => {
+        frame = 0
         // A layer that locks the page (the menu, the notification panel, a window) leaves the bar where it is.
-        if (document.body.style.overflow === 'hidden') return
-        const y = Math.max(0, window.scrollY)
+        if (document.body.style.overflow === 'hidden') { last = window.scrollY; return }
+        const y = window.scrollY
+        const max = document.documentElement.scrollHeight - window.innerHeight
+        if (y <= 0 || y >= max - 1) { last = Math.min(Math.max(y, 0), Math.max(max, 0)); run = 0; if (y <= 0) setTopbarHidden(false); return }
         const delta = y - last
-        if (y < 64) setTopbarHidden(false)
-        else if (delta > 8) setTopbarHidden(true)
-        else if (delta < -8) setTopbarHidden(false)
-        if (Math.abs(delta) > 8 || y < 64) last = y
+        last = y
+        if (y < 64) { run = 0; setTopbarHidden(false); return }
+        if (delta === 0) return
+        run = Math.sign(delta) === Math.sign(run) ? run + delta : delta
+        if (run >= 12) { setTopbarHidden(true); run = 0 } else if (run <= -12) { setTopbarHidden(false); run = 0 }
       })
     }
     window.addEventListener('scroll', onScroll, { passive: true })
