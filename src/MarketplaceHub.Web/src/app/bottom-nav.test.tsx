@@ -52,10 +52,19 @@ describe('phone bottom navigation (CSS)', () => {
     // The page's own top bar stays on a phone; only its hamburger goes (Menü is in the dock).
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
-    expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 56px; }')
-    expect(phone).toMatch(/\.rv-dock-layer \{[^}]*bottom: var\(--rv-dock-bottom\)/)
-    expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 52px/)
-    expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 28px; \}/)
+    // A bar on the bottom edge: full width, 56 px, a line on top only - no box, radius, shadow or blur.
+    const layer = phone.match(/\.rv-dock-layer \{[^}]*\}/)![0]
+    expect(layer).toMatch(/right: 0; bottom: 0; left: 0;/)
+    expect(layer).toContain('border-top: 1px solid var(--rv-color-border)')
+    expect(layer).not.toMatch(/radius|shadow|blur/)
+    expect(phone).not.toContain('.rv-dock-layer::after')
+    expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 56px/)
+    expect(phone).toMatch(/\.rv-dock-layer\[data-rows="2"\] \.rv-dock-top \{ height: 29px; \}/)
+    // One sliding line (24 x 3 px, 200 ms), the active column in the accent colour with no fill.
+    expect(phone).toMatch(/\.rv-dock-indicator \{[^}]*width: 20%; height: 3px;[^}]*transform 200ms ease-out/)
+    expect(phone).toContain('width: 24px; height: 3px')
+    expect(phone).toMatch(/\.rv-dock-slot\.is-active \{ color: var\(--rv-color-primary-text\); font-weight: 600; \}/)
+    expect(phone).toContain('.rv-dock-slot:active .rv-dock-icon { transform: scale(.94); }')
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
     // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
@@ -80,6 +89,19 @@ describe('Ravencia Dock', () => {
     expect(current[0].textContent).toBe('Siparişler')
     // Every target shows its label, active or not.
     expect([...dock.querySelectorAll('.rv-dock-label')].map(label => label.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Sorular', 'Menü'])
+  })
+
+  it('has one indicator line that sits on the open column and slides to Menü while the menu is open', () => {
+    const { host } = mount('/orders')
+    const indicator = host.querySelector<HTMLElement>('.rv-dock-indicator')!
+    expect(host.querySelectorAll('.rv-dock-indicator')).toHaveLength(1)
+    expect(indicator.style.transform).toBe('translateX(100%)')
+    expect(host.querySelector('.rv-dock-slot.is-active')?.getAttribute('aria-label')).toBe('Siparişler')
+    click(host.querySelector('button[aria-label^="Menü"]'))
+    expect(indicator.style.transform).toBe('translateX(400%)')
+    expect(host.querySelector('.rv-dock-slot.is-active')?.textContent).toBe('Kapat')
+    cleanup()
+    expect(mount('/reports').host.querySelector<HTMLElement>('.rv-dock-indicator')?.style.opacity).toBe('0')
   })
 
   it('shows the Menü badge from 1 to 99 and as 99+ above, and none at 0', () => {

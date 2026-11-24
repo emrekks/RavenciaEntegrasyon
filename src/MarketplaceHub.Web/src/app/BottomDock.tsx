@@ -87,9 +87,11 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     const active = isActive(page.to, page.end)
     const count = slotCounts[page.to] ?? 0
     return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? (page.aria ?? page.label) + ', ' + count + ' ' + (page.noun ?? 'bekleyen') : (page.aria ?? page.label)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
-      <span className="rv-dock-icon"><UiIcon name={page.icon} size={20} />{count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null}</span><span className="rv-dock-label">{page.label}</span>
+      <span className="rv-dock-icon"><UiIcon name={page.icon} size={22} />{count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null}</span><span className="rv-dock-label">{page.label}</span>
     </Link>
   }
+  // The open column: the page's own, or Menü while the menu is open (the one line under the bar's edge slides to it).
+  const activeIndex = menuOpen ? dockPages.length : dockPages.findIndex(page => isActive(page.to, page.end))
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows}>
     <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
@@ -99,9 +101,10 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     </div>
     <div className="rv-dock-bottom">
       <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
+        <span className="rv-dock-indicator" aria-hidden="true" style={{ transform: 'translateX(' + Math.max(activeIndex, 0) * 100 + '%)', opacity: activeIndex < 0 ? 0 : 1 }} />
         {dockPages.map(slot)}
         <button type="button" ref={menuSlotRef} className={'rv-dock-slot' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
-          <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={20} />{!menuOpen && menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</span><span className="rv-dock-label">{menuOpen ? 'Kapat' : 'Menü'}</span>
+          <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen && menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</span><span className="rv-dock-label">{menuOpen ? 'Kapat' : 'Menü'}</span>
         </button>
       </nav>
       <div className="rv-taskbar" inert={!task || undefined}>
