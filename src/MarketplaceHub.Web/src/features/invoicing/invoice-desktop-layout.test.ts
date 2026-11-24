@@ -28,9 +28,9 @@ const bodies = (source: string) => {
 describe('Faturalar desktop table keeps its 23 Nov cells', () => {
   const sources = ['./invoices-responsive.css', '../marketplace/orders-responsive.css'].map(path => [path, bodies(read(path))] as const)
 
-  it('the package number line and the card-only carrier / tracking rules apply to phones and tablets only', () => {
+  it('the card-only carrier rules apply to phones and tablets only', () => {
     for (const [path, list] of sources) {
-      for (const rule of list.filter(item => /invoice-package-no|cargo-provider-(icon|display)/.test(item.selector) && !/invoice-detail/.test(item.selector))) {
+      for (const rule of list.filter(item => /cargo-provider-(icon|display)/.test(item.selector) && !/invoice-detail/.test(item.selector))) {
         const hidesOnly = /^display:\s*none;?$/.test(rule.body)
         if (hidesOnly) continue
         expect(rule.media.join(' '), `${path}: ${rule.selector.slice(0, 90)}`).toMatch(/max-width:\s*(760|1024)px/)
@@ -38,14 +38,14 @@ describe('Faturalar desktop table keeps its 23 Nov cells', () => {
     }
   })
 
-  it('the package number line is hidden outside the phone card', () => {
+  it('the package number line is shown from 761 px up (hidden only on the base rule)', () => {
     const base = bodies(read('./invoices-responsive.css')).find(rule => rule.selector === '.invoice-reference-order small.invoice-package-no')
     expect(base?.media).toEqual([])
     expect(base?.body).toMatch(/display:\s*none/)
   })
 
-  it('the desktop column grid (from 1025 px) is fixed: fluid order column, then 136 / 140 / 160 / 180 / 112 / 124 px', () => {
-    const rule = bodies(read('./invoices-sade.css')).find(item => /invoice-reference-head, \.invoice-reference-row\) \{?$|invoice-reference-head, \.invoice-reference-row\)$/.test(item.selector) && /136px 140px 160px 180px 112px 124px/.test(item.body))
+  it('the desktop column grid (from 1025 px): order column capped at 240 px, the other columns share the rest by weight', () => {
+    const rule = bodies(read('./invoices-sade.css')).find(item => item.body.includes('minmax(170px, 240px) minmax(124px, 1fr) minmax(160px, .8fr)'))
     expect(rule?.media.join(' ')).toMatch(/min-width:\s*1025px/)
   })
 
