@@ -4,6 +4,7 @@ import { connectionQueries } from '../../../shared/api/query-keys'
 import { notificationError } from '../../../shared/notifications'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { RrLogo, RrModal } from '../../../shared/ui/rr-components'
+import { TitleHint } from '../../../shared/components'
 import { formatDateTime } from '../../../shared/format-date'
 import { useLacksElevatedRole } from '../../elevated-role'
 import { isActiveMarketplaceConnection } from '../marketplace-platform-support'
@@ -43,7 +44,7 @@ export function ManualResendDialog({ legacyCount, onClearLegacy, onClose }: { le
       return `${displayOrderNumber(created.orderNumber)} Yeniden Gönderimler'e eklendi.`
     }, 'Yeniden gönderim eklenemedi.')
   }
-  return <RrModal crumb="Siparişler" title="Yeniden Gönderim Ekle" desc="Platformu seçin, sipariş numarasını yazın" size="md" modalClass="rr-mresend-modal" onClose={onClose}
+  return <RrModal crumb="Siparişler" label="Yeniden Gönderim Ekle" title={<>Yeniden Gönderim Ekle<TitleHint label="Yeniden Gönderim Ekle">{MANUAL_RESEND_NOTE}</TitleHint></>} desc="Platformu seçin, sipariş numarasını yazın" size="md" modalClass="rr-mresend-modal" onClose={onClose}
     foot={<button type="button" className="rr-btn rr-quiet" onClick={onClose}>Kapat</button>}>
     <div className="rr-mresend">
       {legacyCount > 0 && <div className="rr-mresend-legacy" role="note">
@@ -62,7 +63,6 @@ export function ManualResendDialog({ legacyCount, onClearLegacy, onClose }: { le
         <button type="submit" className="rr-btn rr-primary rr-mresend-add" disabled={busy}>Ekle</button>
       </form>}
       {message && <p className={`rr-mresend-msg${message.kind === 'error' ? ' is-error' : ''}`} role={message.kind === 'error' ? 'alert' : 'status'}>{message.text}</p>}
-      <p className="rr-mresend-note">{MANUAL_RESEND_NOTE}</p>
       <div className="rr-mresend-head"><span className="rr-h3">Elle Eklenenler</span><small>{records.items.length.toLocaleString('tr-TR')} Kayıt</small></div>
       {records.loading ? <p className="rr-mresend-empty">Yükleniyor…</p>
         : records.error ? <p className="rr-mresend-msg is-error" role="alert">{notificationError(records.error, 'Kayıtlar okunamadı.').message}</p>
