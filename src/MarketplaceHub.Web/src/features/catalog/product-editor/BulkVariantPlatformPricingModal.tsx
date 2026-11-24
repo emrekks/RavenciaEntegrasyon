@@ -30,6 +30,8 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   }))) as Record<string, { listPrice: number | null | undefined; salePrice: number | null | undefined }>
   const initialMatrixDrafts = () => Object.fromEntries(Object.entries(loadedPrices()).map(([key, value]) => [key, { listPrice: priceFieldText(value.listPrice), salePrice: priceFieldText(value.salePrice) }])) as Record<string, ChannelPricingDraft>
   const [matrixDrafts, setMatrixDrafts] = useState<Record<string, ChannelPricingDraft>>(initialMatrixDrafts)
+  // The texts the cells were last loaded with: a side still holding its text was not typed (refreshedMatrixDrafts).
+  const [matrixLoaded, setMatrixLoaded] = useState<Record<string, ChannelPricingDraft>>(initialMatrixDrafts)
   const [dirtyMatrixDraftKeys, setDirtyMatrixDraftKeys] = useState<string[]>([])
   const [saveError, setSaveError] = useState<{ message: string; cells: string[] } | null>(null)
   const [confirm, setConfirm] = useState<{ prices: Record<string, StagedOfferPrices>; lines: string[]; count: number } | null>(null)
@@ -39,13 +41,14 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
   // cells whose stored price now matches what was typed: one failed price among many keeps the other typed prices.
   const matrixRowKey = useRef(row.key)
   const resetMatrixDrafts = useEffectEvent(() => {
+    const fresh = initialMatrixDrafts()
     if (matrixRowKey.current !== row.key) {
       matrixRowKey.current = row.key
-      setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([])
+      setMatrixDrafts(fresh); setMatrixLoaded(fresh); setDirtyMatrixDraftKeys([])
       return
     }
-    const next = refreshedMatrixDrafts(matrixDrafts, initialMatrixDrafts(), dirtyMatrixDraftKeys)
-    setMatrixDrafts(next.drafts); setDirtyMatrixDraftKeys(next.dirtyKeys)
+    const next = refreshedMatrixDrafts(matrixDrafts, fresh, dirtyMatrixDraftKeys, matrixLoaded)
+    setMatrixDrafts(next.drafts); setMatrixLoaded(fresh); setDirtyMatrixDraftKeys(next.dirtyKeys)
   })
   useEffect(() => resetMatrixDrafts(), [row.key, rows, platformsKey, savedDrafts])
   const matchingRows = filterVariantsByOptions(sortedRows, filterGroups, filterSelections, matchesFilterValue)
