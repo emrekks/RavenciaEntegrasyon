@@ -61,6 +61,7 @@ vi.mock('../../shared/api', () => ({
 vi.mock('../../shared/notifications', async importOriginal => ({ ...(await importOriginal<typeof import('../../shared/notifications')>()), appendNotification: vi.fn() }))
 
 import { InvoicesPage } from './pages'
+import { PhoneDock, taskBarButtons } from '../../test/phone-dock'
 
 let container: HTMLDivElement
 let root: Root
@@ -516,20 +517,40 @@ describe('InvoicesPage on a phone (375 px)', () => {
     try {
       act(() => { row('SH-1001').querySelector<HTMLInputElement>('.invoice-reference-select')!.click() })
 
-      expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('1 sipariş seçildi')
+      expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('1 sipariş seçildi')
       expect(row('SH-1001').classList.contains('is-selected')).toBe(true)
       expect(container.querySelector('.invoice-detail-modal')).toBeNull()
 
       act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
-      expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('2 sipariş seçildi')
+      expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('2 sipariş seçildi')
       expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('2 sipariş seçildi')
 
       act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
-      expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('1 sipariş seçildi')
+      expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('1 sipariş seçildi')
 
-      act(() => button('İptal').click())
-      expect(container.querySelector('.invoice-selection-bar')).toBeNull()
+      act(() => button('Seçimi Temizle').click())
+      expect(container.querySelector('.invoice-reference-bulk-toolbar:not(.is-leaving)')).toBeNull()
       expect(container.querySelectorAll('.invoice-reference-row.is-selected')).toHaveLength(0)
+    } finally {
+      media.mockRestore()
+    }
+  })
+
+  it('on a phone offers Sayfadakileri Seç in the task bar, with the desktop header handler, until the whole page is picked', async () => {
+    const media = phoneViewport()
+    try {
+      act(() => root.unmount())
+      root = createRoot(container)
+      await act(async () => { root.render(<QueryClientProvider client={client}><PhoneDock><MemoryRouter initialEntries={['/invoices?tab=DUE_SOON']}><InvoicesPage /></MemoryRouter></PhoneDock></QueryClientProvider>) })
+      await settle()
+      await settle()
+      const total = container.querySelectorAll('.invoice-reference-row').length
+      expect(taskBarButtons(container).some(label => label.includes('Sayfadakileri Seç'))).toBe(false)
+      act(() => { row('SH-1001').querySelector<HTMLInputElement>('.invoice-reference-select')!.click() })
+      expect(taskBarButtons(container)).toContain(`Sayfadakileri Seç (${total})`)
+      act(() => Array.from(container.querySelectorAll<HTMLButtonElement>('.rv-taskbar-actions button')).find(item => item.textContent?.includes('Sayfadakileri Seç'))!.click())
+      expect(container.querySelectorAll('.invoice-reference-row.is-selected')).toHaveLength(total)
+      expect(taskBarButtons(container).some(label => label.includes('Sayfadakileri Seç'))).toBe(false)
     } finally {
       media.mockRestore()
     }
@@ -541,7 +562,7 @@ describe('InvoicesPage on a phone (375 px)', () => {
       act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
       await settle()
       expect(container.querySelector('.invoice-detail-modal')).toBeNull()
-      expect(container.querySelector('.invoice-selection-bar')).toBeNull()
+      expect(container.querySelector('.invoice-reference-bulk-toolbar:not(.is-leaving)')).toBeNull()
     } finally {
       media.mockRestore()
     }

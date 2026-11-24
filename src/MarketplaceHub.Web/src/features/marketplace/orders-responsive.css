@@ -53,4 +53,3 @@
 /* Phone order card: no checkbox. Long-press selects (the card tints), a tap on a selected card
    deselects it; the platform logo sits above the order number. */
 
-.orders-selection-bar { display: none; }

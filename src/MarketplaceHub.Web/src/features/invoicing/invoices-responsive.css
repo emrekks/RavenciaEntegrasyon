@@ -181,20 +181,8 @@
     border-color: var(--rv-color-primary);
     box-shadow: 0 0 0 1px var(--rv-color-primary);
   }
-  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar {
-    position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
-    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-    background: var(--rv-color-surface); border-top: 1px solid var(--rv-color-border-strong); box-shadow: 0 -8px 20px rgb(0 0 0 / 16%);
-  }
-  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar > strong { text-align: center; font-size: 13px; font-weight: 600; }
-  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar > button { min-height: 40px; padding: 0 12px; font-size: 14px; font-weight: 600; background: transparent; border: 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar .orders-selection-cancel { color: var(--rv-color-danger); }
-  .app-shell.stitch-shell main .invoices-page .invoice-selection-bar .orders-selection-all { color: var(--rv-color-primary); }
   .app-shell.stitch-shell > main > .invoices-page.invoices-page > .invoice-reference-bulk-toolbar.invoice-reference-bulk-toolbar.invoice-reference-bulk-toolbar { margin-bottom: 0; bottom: 70px; } /* above the fixed selection bar */
 }
-.invoice-selection-bar { display: none; }
-@media (max-width: 760px) { .app-shell.stitch-shell main .invoices-page .invoice-selection-bar { display: grid; } }
 
 /* Phones: the "Filtreleme sonuçları" line is not shown. */
 @media (max-width: 760px) {

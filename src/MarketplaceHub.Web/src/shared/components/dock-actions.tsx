@@ -15,6 +15,7 @@ import { UiIcon } from './UiIcon'
 //   .rr-primary / .is-primary / data-dock-primary   the primary action
 //   data-dock-step="Yayınlama"                      the step to another screen, drawn as its name (data-dock-step-short: a shorter name)
 //   data-dock-clear + data-dock-count="3"           the selection chip ("3 Seçili" and its cross)
+//   data-dock-keep                                  an action that goes into the Diğer list after the other actions (select all)
 //   every other button                              an action; a split button (a role="group" of buttons) moves as one
 // Priority when space runs out: primary > step > the page's other actions, left to right. data-dock-label names a button that has
 // no aria-label. `info.start` is a warning (a chip in the strip above the bar, only while there is one).
@@ -57,7 +58,8 @@ function otherUnits(group: HTMLElement): Unit[] {
     const unit = units.find(item => item.node === node)
     if (unit) unit.buttons.push(button); else units.push({ node, buttons: [button] })
   }
-  return units
+  // data-dock-keep actions stay in the row longer than the other actions: they sit first in the priority order (the DOM order is kept).
+  return [...units.filter(unit => unit.buttons.some(button => button.hasAttribute('data-dock-keep'))), ...units.filter(unit => !unit.buttons.some(button => button.hasAttribute('data-dock-keep')))]
 }
 
 const toOther = (element: HTMLElement): Other => ({

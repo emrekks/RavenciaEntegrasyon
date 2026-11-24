@@ -336,6 +336,20 @@ describe('task mode', () => {
     } finally { restore() }
   })
 
+  it('keeps a select-all action (data-dock-keep) in the row longer than the other actions', () => {
+    const restore = fakeRowWidths()
+    try {
+      const { host } = render(<MemoryRouter initialEntries={['/orders']}><Harness><StickyActionBar label="Toplu işlemler">
+        <button type="button" data-dock-clear data-dock-count="1" aria-label="1 seçili, seçimi kaldır">Temizle</button>
+        <button type="button" data-dock-keep>Sayfadakileri Seç (20)</button>
+        <button type="button">Kargo</button>
+      </StickyActionBar></Harness></MemoryRouter>)
+      const state = (text: string) => Array.from(host.querySelectorAll('.rv-taskbar-actions button')).find(button => button.textContent === text)?.hasAttribute('data-dock-other')
+      expect(state('Sayfadakileri Seç (20)')).toBe(false)
+      expect(state('Kargo')).toBe(true)
+    } finally { restore() }
+  })
+
   it('keeps the selection chip in the bar whatever the space', () => {
     const restore = fakeRowWidths()
     try {
