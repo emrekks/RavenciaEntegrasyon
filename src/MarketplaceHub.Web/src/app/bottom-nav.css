@@ -18,7 +18,7 @@
   /* There is no top bar on a phone (Menü holds the bell and the theme): nothing sticks under it any more. */
   .app-shell.stitch-shell { --rv-topbar-height: 0px; }
   html body .app-shell.stitch-shell main .product-add-wizardbar { top: 0; }
-  :root:root body .app-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
+  html body .app-shell.stitch-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
   html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
   html body .app-shell.stitch-shell .rv-topbar .rv-topbar-search { display: none; }
   /* A field that takes focus is never left behind the bar. */
