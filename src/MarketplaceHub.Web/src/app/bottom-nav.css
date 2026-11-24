@@ -1,5 +1,5 @@
 /*
- * Phone navigation (owner, 24 Nov 2026; the gentle floating bar): up to 768 px a bar floats at the bottom, centred: min(100% - 40px,
+ * Phone navigation (owner, 24 Nov 2026; the gentle floating bar): up to 760 px (shared/phone-shell.ts) a bar floats at the bottom, centred: min(100% - 40px,
  * 340px) wide, 50 px high, radius 14, the top bar's opaque surface, a 1 px border and a faint shadow (no blur), 10 px (and the safe
  * area) above the edge (BottomDock.tsx).
  *  - Five equal columns: Ana Sayfa, Siparişler, Ürünler, Sorular, Menü - a 20 px icon over a 10 px label. The open page is the accent
@@ -12,7 +12,7 @@
  * The page keeps room under its content (--rv-bottom-nav-space, eased over 180 ms). Wider screens keep the sidebar and the top bar.
  */
 .rv-dock-layer { display: none; }
-@media (max-width: 768px) {
+@media (max-width: 760px) {
   .app-shell.stitch-shell { --rv-bottom-nav-space: calc(76px + env(safe-area-inset-bottom, 0px)); }
   .app-shell.stitch-shell:has(.rv-dock-layer[data-mode="task"]) { --rv-bottom-nav-space: calc(82px + env(safe-area-inset-bottom, 0px)); }
   .app-shell.stitch-shell:has(.rv-dock-layer[data-rows="2"]) { --rv-bottom-nav-space: calc(111px + env(safe-area-inset-bottom, 0px)); }
@@ -27,8 +27,9 @@
   html body .app-shell.stitch-shell > main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }
   /* A field that takes focus is never left behind the bar. */
   .app-shell.stitch-shell :is(input, textarea, select, button, [tabindex]) { scroll-margin-bottom: calc(var(--rv-bottom-nav-space) + 8px); }
-  /* A page bar that holds text boxes stays in the page, sticky above the dock. */
-  .app-shell.stitch-shell main .rv-action-bar[data-dock="inline"] { bottom: var(--rv-bottom-nav-space); }
+  /* A page bar that holds text boxes (Veri Sıfırlama) stays in the page, sticky above the bar; the page's own rule that pulls a sticky bar over its bottom
+     padding is outweighed here, without !important. */
+  html body .app-shell.stitch-shell.stitch-shell > main > :is(.content, .rv-page) .rv-action-bar.rv-action-bar[data-dock="inline"] { bottom: var(--rv-bottom-nav-space); }
 
   /* The layer holds the page-coloured backdrop and the floating panel; only the panel takes touches. */
   .rv-dock-layer { --rv-bar-h: 50px; position: fixed; right: 0; bottom: 0; left: 0; z-index: 87; box-sizing: border-box; display: flex; justify-content: center; align-items: flex-end; padding-bottom: var(--rv-dock-bottom); pointer-events: none; }

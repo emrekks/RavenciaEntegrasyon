@@ -35,6 +35,7 @@ import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
 import { queryKeys } from '../shared/api/query-keys'
 import './bottom-nav.css'
+import { phoneShellQuery } from '../shared/phone-shell'
 import { shouldResetScroll } from './page-scroll'
 import { BackTargetContext, backLabel, type BackTarget } from '../shared/components'
 import { BottomDock, DockContext, FullScreenMenu, menuPendingTotal, useBackNavigation, useDockHostState, useMenuHistory, useNotificationHistory, type MenuEntry, type MenuGroup } from './BottomDock'
@@ -134,8 +135,8 @@ function Shell({ me }: { me: Me }) {
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
-  // Phones (up to 768 px): the dock and the full-screen menu replace the hamburger, the top bar's search and the left drawer.
-  const phone = useMediaQuery('(max-width: 768px)')
+  // Phones (up to phoneShellMaxWidth, 760 px; 761-768 px is a tablet with the drawer): the dock and the full-screen menu replace the hamburger, the top bar's search and the left drawer.
+  const phone = useMediaQuery(phoneShellQuery)
   const dock = useDockHostState(phone)
   const fullMenu = useMenuHistory()
   // The list the open page was reached from (shared/components/back-target.tsx): offered as Geri in the task bar and the top bar.
