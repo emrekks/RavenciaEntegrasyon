@@ -27,9 +27,7 @@
   html body .app-shell.stitch-shell > main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }
   /* A field that takes focus is never left behind the bar. */
   .app-shell.stitch-shell :is(input, textarea, select, button, [tabindex]) { scroll-margin-bottom: calc(var(--rv-bottom-nav-space) + 8px); }
-  /* A page bar that holds text boxes (Veri Sıfırlama) stays in the page, sticky above the bar; the page's own rule that pulls a sticky bar over its bottom
-     padding is outweighed here, without !important. */
-  html body .app-shell.stitch-shell.stitch-shell > main > :is(.content, .rv-page) .rv-action-bar.rv-action-bar[data-dock="inline"] { bottom: var(--rv-bottom-nav-space); }
+  /* (A page bar that holds text boxes, Veri Sıfırlama, is static on a phone and ends the page: the page keeps room for the bar under it.) */
 
   /* The layer holds the page-coloured backdrop and the floating panel; only the panel takes touches. */
   .rv-dock-layer { --rv-bar-h: 50px; position: fixed; right: 0; bottom: 0; left: 0; z-index: 87; box-sizing: border-box; display: flex; justify-content: center; align-items: flex-end; padding-bottom: var(--rv-dock-bottom); pointer-events: none; }
@@ -79,14 +77,14 @@
   .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { min-width: 72px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
   /* Labels, not icons: only the selection chip's cross and the settings half of a split button keep their icon. */
   .rv-taskbar-group :is(button, a) > svg, .rv-taskbar-group .rr-bulk-badge { display: none; }
-  .rv-taskbar-group [data-dock-clear] > svg, .rv-taskbar-group [role="group"] > :last-child > svg { display: inline-block; }
+  .rv-taskbar-group [role="group"] > :last-child > svg { display: inline-block; }
   .rv-taskbar-group :is(button, a):disabled { opacity: .5; cursor: default; }
   .rv-taskbar-group :is(.rr-danger, .is-danger) { color: var(--rv-color-danger); }
   /* What does not fit waits in the Diğer list (dock-actions.tsx tags it). */
   .rv-taskbar-group [data-dock-other] { display: none; }
   /* A page's two label lengths ("Taslak Olarak Kaydet" / "Taslak"): the short one fits here. */
-  .rv-taskbar-group .submit-label-long, .rv-taskbar-group .rr-lbl-long { display: none; }
-  .rv-taskbar-group .rr-lbl-short { display: inline; }
+  .rv-taskbar-group :is(.submit-label-long, .rr-lbl-long, .ss-lbl-long) { display: none; }
+  .rv-taskbar-group :is(.rr-lbl-short, .ss-lbl-short) { display: inline; }
   /* The step to another screen: its name, no arrow (a shorter name on narrow phones where the page gives one). */
   .rv-taskbar-group [data-dock-step] { flex: 1 0 auto; }
   .rv-taskbar-group [data-dock-step] > span { display: none; }
@@ -98,7 +96,8 @@
   .rv-taskbar-group [data-dock-clear] { flex: 0 0 auto; width: auto; padding: 0 10px 0 12px; font-size: 0; }
   .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count) " Seçili"; font-size: var(--dock-font); }
   .rv-taskbar-group [data-dock-clear] > span { display: none; }
-  .rv-taskbar-group [data-dock-clear] > svg { width: 14px; height: 14px; }
+  /* The cross is drawn the same for every page's chip (some have an icon, some only text). */
+  .rv-taskbar-group [data-dock-clear]::after { content: "\00D7"; font-size: 18px; font-weight: 500; line-height: 1; }
   @media (max-width: 400px) {
     .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count); }
     .rv-taskbar-group [data-dock-clear] { padding: 0 8px 0 10px; }
