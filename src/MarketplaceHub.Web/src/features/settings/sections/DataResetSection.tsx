@@ -97,7 +97,7 @@ export function SettingsDataReset({ forbidden, groups, counts, countsFailed, pic
       </div>
       <PanelFactoryResetSection />
     </div>
-    <StickyActionBar label="Silinecekler" className="ss-bar ss-dr-bar">
+    <StickyActionBar label="Silinecekler" className="ss-bar ss-dr-bar" dock={false}>
       <div className="ss-dr-sum" role="status">
         <div className="ss-dr-sum-head"><strong>Silinecekler</strong><span className="ss-dr-total">Toplam <b>{goingCount && !known ? '…' : `${resetNumber(total)} kayıt`}</b></span></div>
         {goingCount > 0 && <div className="ss-dr-chips">{goingMarketplaces.map(entry => <span key={entry.id} className="ss-dr-chip">{entry.displayName} (Tam)<b>{entry.count !== undefined ? resetNumber(entry.count) : '…'}</b></span>)}{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}

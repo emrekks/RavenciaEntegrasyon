@@ -79,7 +79,7 @@ export function SettingsPaneHead({ section, description, actions }: { section: S
 }
 
 export function SettingsBar({ title, copy, hint, dirty = false, children }: { title: string; copy?: ReactNode; hint?: ReactNode; dirty?: boolean; children: ReactNode }) {
-  return <StickyActionBar label={title} className="ss-bar"><div className="ss-bar-copy"><strong>{title}{hint ? <TitleHint label={title}>{hint}</TitleHint> : null}</strong>{copy ? <span className={dirty ? 'is-dirty' : undefined} title={typeof copy === 'string' ? copy : undefined}>{copy}</span> : null}</div><div className="ss-bar-actions">{children}</div></StickyActionBar>
+  return <StickyActionBar label={title} className="ss-bar" info={copy ? { start: <span className={dirty ? 'is-dirty' : undefined}>{copy}</span> } : undefined} lead={<div className="ss-bar-copy"><strong>{title}{hint ? <TitleHint label={title}>{hint}</TitleHint> : null}</strong>{copy ? <span className={dirty ? 'is-dirty' : undefined} title={typeof copy === 'string' ? copy : undefined}>{copy}</span> : null}</div>}><div className="ss-bar-actions">{children}</div></StickyActionBar>
 }
 
 export function SettingsSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
