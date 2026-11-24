@@ -201,29 +201,28 @@ describe('phone shell (no top bar)', () => {
   const stubPhone = () => vi.stubGlobal('matchMedia', (query: string) => ({ matches: phoneQuery(query), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
   afterEach(() => { try { localStorage.clear() } catch { /* nothing */ } })
 
-  it('draws the thin phone bar (bell and theme, no hamburger, no search) and the dock, and no notification pill or bell in the dock', async () => {
+  it('keeps the page top bar on a phone (breadcrumb, bell, theme, search) and the dock, with no notification pill or bell in the dock', async () => {
     stubPhone()
     server.me = [{ status: 200, body: active }]
     const { host } = mount('/orders')
     await waitFor(() => host.querySelector('.rv-dock'))
-    expect(host.querySelector('header.rv-topbar')).toBeNull()
-    const bar = host.querySelector('header.rv-phonebar')!
-    const labels = [...bar.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? '')
-    expect(labels).toHaveLength(2)
-    expect(labels[0]).toMatch(/^Bildirim geçmişini aç/)
-    expect(labels[1]).toMatch(/ temaya geç$/)
+    const bar = host.querySelector('header.rv-topbar')!
+    expect(bar.querySelector('.rv-breadcrumb strong')?.textContent).toBe('Siparişler')
+    expect(bar.querySelector('.rv-topbar-notification-trigger')).not.toBeNull()
+    expect(bar.querySelector('.rv-topbar-theme')).not.toBeNull()
+    expect(bar.querySelector('.rv-topbar-search')).not.toBeNull()
+    expect(host.querySelector('.rv-phonebar')).toBeNull()
     expect(host.querySelector('.rv-dock-pill-bell, .rv-dock-bell')).toBeNull()
   })
 
-  it('opens the notification panel from the bell of the phone bar; a press on the dimmed page only closes it', async () => {
+  it('opens the notification panel from the bell of the top bar; a press on the dimmed page only closes it', async () => {
     stubPhone()
     server.me = [{ status: 200, body: active }]
     const { host } = mount('/orders')
     await waitFor(() => host.querySelector('.rv-dock'))
     act(() => { appendNotification('Fatura gönderilemedi', 'error') })
-    const bell = await waitFor(() => host.querySelector<HTMLButtonElement>('.rv-phonebar-tool'))
-    await waitFor(() => host.querySelector('.rv-phonebar-badge'))
-    expect(host.querySelector('.rv-phonebar-badge')?.classList.contains('is-error')).toBe(true)
+    const bell = await waitFor(() => host.querySelector<HTMLButtonElement>('.rv-topbar-notification-trigger'))
+    await waitFor(() => host.querySelector('.rv-topbar-notification-count'))
     act(() => { bell.click() })
     const sheet = await waitFor(() => document.querySelector<HTMLElement>('#rv-notification-history'))
     expect(sheet.getAttribute('aria-modal')).toBe('true')
@@ -232,19 +231,16 @@ describe('phone shell (no top bar)', () => {
     expect(host.querySelector('.rv-dock [aria-current="page"]')?.getAttribute('aria-label')).toBe('Siparişler')
   })
 
-  it('hides the phone bar while the page is scrolled down and brings it back when scrolled up', async () => {
+  it('hides the top bar while the page is scrolled down and brings it back when scrolled up', async () => {
     stubPhone()
     server.me = [{ status: 200, body: active }]
     const { host } = mount('/orders')
-    await waitFor(() => host.querySelector('.rv-phonebar'))
+    await waitFor(() => host.querySelector('.rv-topbar'))
     const scrollTo = (y: number) => { Object.defineProperty(window, 'scrollY', { value: y, configurable: true }); act(() => { window.dispatchEvent(new Event('scroll')) }) }
     scrollTo(300)
-    await waitFor(() => host.querySelector('.rv-phonebar.is-hidden'))
-    expect(host.querySelector('.rv-phonebar.is-scrolled')).not.toBeNull()
+    await waitFor(() => host.querySelector('.rv-topbar.is-hidden'))
     scrollTo(240)
-    await waitFor(() => host.querySelector('.rv-phonebar:not(.is-hidden)'))
-    scrollTo(0)
-    await waitFor(() => host.querySelector('.rv-phonebar:not(.is-scrolled)'))
+    await waitFor(() => host.querySelector('.rv-topbar:not(.is-hidden)'))
   })
 })
 

@@ -16,23 +16,9 @@
   .app-shell.stitch-shell:has(.rv-dock-layer[data-rows="2"]) { --rv-bottom-nav-space: calc(116px + env(safe-area-inset-bottom, 0px)); }
   :root { --rv-dock-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); --rv-dock-extra: 0px; }
   :root:has(.rv-dock-layer[data-rows="2"]) { --rv-dock-extra: 28px; }
-  /* The phone's top bar is 48 px (and the safe area) and is fixed; the page keeps that room whether the bar shows or not, so nothing
-     jumps. Sticky things under it sit at its height while it shows and at the top edge while it is hidden. */
-  html body .app-shell.stitch-shell > main { padding-top: calc(48px + env(safe-area-inset-top, 0px)); padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }
-  .app-shell.stitch-shell { --rv-topbar-height: calc(48px + env(safe-area-inset-top, 0px)); }
-  .app-shell.stitch-shell:has(.rv-phonebar.is-hidden) { --rv-topbar-height: env(safe-area-inset-top, 0px); }
-  html body .app-shell.stitch-shell main .product-add-wizardbar { top: var(--rv-topbar-height); }
-  html body .app-shell.stitch-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { top: var(--rv-topbar-height); }
-  .rv-phonebar { position: fixed; inset: 0 0 auto 0; z-index: 85; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: calc(48px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 12px 0 16px; background: var(--rv-color-bg); border-bottom: 1px solid transparent; transition: transform 180ms ease, border-color 180ms ease; }
-  .rv-phonebar.is-scrolled { border-bottom-color: var(--rv-color-border); }
-  .rv-phonebar.is-hidden { transform: translateY(-100%); }
-  .rv-phonebar-title { min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; opacity: 0; transition: opacity 180ms ease; }
-  .rv-phonebar-title.is-shown { opacity: 1; }
-  .rv-phonebar-tools { display: flex; flex: none; gap: 8px; }
-  .rv-phonebar-tool { position: relative; display: grid; place-items: center; box-sizing: border-box; width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; cursor: pointer; }
-  .rv-phonebar-tool .ui-icon.is-error { color: var(--rv-color-danger); }
-  .rv-phonebar-badge { position: absolute; top: -6px; right: -6px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-bg); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
-  .rv-phonebar-badge.is-error { background: var(--rv-color-danger); }
+  /* The phone keeps the page's top bar as it was (breadcrumb, bell, theme, search); only its hamburger is gone: Menü is in the dock. */
+  html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
+  html body .app-shell.stitch-shell > main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }
   /* A field that takes focus is never left behind the bar. */
   .app-shell.stitch-shell :is(input, textarea, select, button, [tabindex]) { scroll-margin-bottom: calc(var(--rv-bottom-nav-space) + 8px); }
   /* A page bar that holds text boxes stays in the page, sticky above the dock. */
@@ -161,7 +147,7 @@
 
   /* Notifications: a panel dropping from just under the top bar (12 px in from the sides), at most 75% of the screen,
      over the full-screen menu too; the dimmed page behind only closes it. Wherever it is opened from, it opens here. */
-  html body .rv-notification-history { top: calc(48px + env(safe-area-inset-top, 0px) + 4px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - 48px - env(safe-area-inset-top, 0px) - 16px)); border-radius: 14px; outline: 0; transform-origin: top center; animation: rv-sheet-down 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
+  html body .rv-notification-history { top: calc(62px + env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - 62px - env(safe-area-inset-top, 0px) - 20px)); border-radius: 14px; outline: 0; transform-origin: top center; animation: rv-sheet-down 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
   @keyframes rv-sheet-down { from { transform: translateY(-28px); opacity: 0; } }
   /* The live toast keeps its behaviour and shows above the dock (and its pill) instead of at the top. */
   html body .app-toast-stack, html body .app-toast:not(.app-toast-stack > *) { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 52px + var(--rv-dock-extra) + 56px); left: 12px; width: auto; }

@@ -52,9 +52,10 @@ describe('phone bottom navigation (CSS)', () => {
   it('is drawn only up to 768 px, where the hamburger and the top bar search go away and the page keeps room under its content', () => {
     expect(css).toMatch(/^\.rv-dock-layer \{ display: none; \}/m)
     const phone = css.slice(css.indexOf('@media (max-width: 768px)'))
-    expect(phone).toContain('> main { padding-top: calc(48px + env(safe-area-inset-top, 0px)); padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }')
-    expect(phone).toContain('--rv-topbar-height: calc(48px + env(safe-area-inset-top, 0px))')
-    expect(phone).toContain('.rv-phonebar.is-hidden { transform: translateY(-100%); }')
+    expect(phone).toContain('> main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }')
+    // The page's own top bar stays on a phone; only its hamburger goes (Menü is in the dock).
+    expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
+    expect(phone).not.toContain('rv-phonebar')
     expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 56px; }')
     expect(phone).toMatch(/\.rv-dock-layer \{[^}]*bottom: var\(--rv-dock-bottom\)/)
     expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 52px/)
@@ -62,7 +63,7 @@ describe('phone bottom navigation (CSS)', () => {
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
     // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
-    expect(phone).toContain(".rv-notification-history { top: calc(48px + env(safe-area-inset-top, 0px) + 4px); right: 12px; bottom: auto; left: 12px;")
+    expect(phone).toContain(".rv-notification-history { top: calc(62px + env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px;")
     expect(phone).toContain("max-height: min(75dvh")
     expect(phone).toContain('translateY(-28px)')
     // Page buttons that are not the primary, the step or the selection chip wait in the Diğer list.
