@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bulkEditValues, offerHasSalePrice, unpricedOfferWarning,channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget } from './quick-price-edit'
+import { bulkEditValues, offerHasSalePrice, unpricedOfferWarning,channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget, rebasedPriceDraft } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -257,11 +257,6 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
     expect(typedOfferPriceChoice({ listPrice: 300, salePrice: 250 }, { listPrice: 300, salePrice: 250 }, true)).toBeUndefined()
   })
 
-  it('lists the unticked marketplaces, never the panel column', () => {
-    expect(panelFollowerColumns(columns, { 'c-n11': true }).map(column => column.id)).toEqual(['c-ty', 'c-hb'])
-    expect(panelFollowerColumns(columns, { 'c-ty': true, 'c-hb': true, 'c-n11': true })).toEqual([])
-  })
-
   it('writes a panel save to each following offer, list = sale on a sale-only marketplace, nothing new created', () => {
     const variant = { platformStatuses: [status('c-ty', 300, 250, 4), status('c-hb', 250, 250, 9)] }
     expect(panelFollowerWrites(variant, [ty, hb, n11], { listPrice: 320, salePrice: 280 })).toEqual([
@@ -271,6 +266,22 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
     // An offer already at the price is left alone; no follower means no marketplace write at all.
     expect(panelFollowerWrites(variant, [ty, hb], { listPrice: 300, salePrice: 250 })).toEqual([])
     expect(panelFollowerWrites(variant, [], { listPrice: 1, salePrice: 1 })).toEqual([])
+  })
+
+  // Review of 24 Nov 2026: decided per offer, not per marketplace. Özel Fiyat on keeps its own price; any other offer
+  // follows; a marketplace switched in the window decides for all its offers.
+  it('decides each offer by its own Özel Fiyat choice unless the marketplace was switched', () => {
+    const own = { ...status('c-ty', 600, 550, 2), followsPanelPrice: false }
+    const follows = { ...status('c-ty', 500, 450, 3), offerId: 'o-follow', followsPanelPrice: null }
+    expect(panelFollowerWrites({ platformStatuses: [own] }, [ty], { listPrice: 500, salePrice: 480 })).toEqual([])
+    expect(panelFollowerWrites({ platformStatuses: [follows] }, [ty], { listPrice: 500, salePrice: 480 })).toEqual([expect.objectContaining({ kind: 'update', offerId: 'o-follow', offerVersion: 3, listPrice: 500, salePrice: 480 })])
+    expect(panelFollowerWrites({ platformStatuses: [follows] }, [ty], { listPrice: 500, salePrice: 480 }, { 'c-ty': true })).toEqual([])
+    expect(panelFollowerWrites({ platformStatuses: [own] }, [ty], { listPrice: 500, salePrice: 480 }, { 'c-ty': false })).toEqual([expect.objectContaining({ kind: 'update', listPrice: 500, salePrice: 480 })])
+  })
+
+  it('rebases a price draft on the stored prices read now, keeping only the typed sides', () => {
+    expect(rebasedPriceDraft({ list: '550', sale: '450' }, { list: '500', sale: '450' }, { list: '500', sale: '470' })).toEqual({ value: { list: '550', sale: '470' }, loaded: { list: '500', sale: '470' } })
+    expect(rebasedPriceDraft({ list: '500', sale: '430' }, { list: '500', sale: '450' }, { list: '520', sale: '470' })).toEqual({ value: { list: '520', sale: '430' }, loaded: { list: '520', sale: '470' } })
   })
 
   it('blocks a follower write it cannot place safely', () => {

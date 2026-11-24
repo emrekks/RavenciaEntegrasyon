@@ -5,7 +5,7 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class N11OrderInfoTests
 {
-    private const string Customer = """{"cargoSenderNumber":"6508248937060","cargoTrackingLink":"https://kargotakip.araskargo.com.tr/mainpage.aspx?code=6508248937060","deliveryAddressType":"Adres"}""";
+    private const string Customer = """{"cargoSenderNumber":"6500000000001","cargoTrackingLink":"https://kargotakip.araskargo.com.tr/mainpage.aspx?code=6500000000001","deliveryAddressType":"Adres"}""";
 
     private static string Line(decimal mall, decimal seller, decimal commission, decimal campaign) =>
         $$"""{"price":625,"totalMallDiscountPrice":{{mall.ToString(System.Globalization.CultureInfo.InvariantCulture)}},"totalSellerDiscountPrice":{{seller.ToString(System.Globalization.CultureInfo.InvariantCulture)}},"commissionRate":{{commission.ToString(System.Globalization.CultureInfo.InvariantCulture)}},"sellerCampaignCommissionRate":{{campaign.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}""";
@@ -16,8 +16,8 @@ public sealed class N11OrderInfoTests
         var info = OrderSnapshotReader.N11OrderInfo([Line(60, 0, 20.34m, 0)], Customer);
 
         Assert.Equal(["Kargo takip no", "Teslimat tipi", "Komisyon oranı", "N11 indirimi"], info.Select(x => x.Label));
-        Assert.Equal("6508248937060", info[0].Value);
-        Assert.Equal("https://kargotakip.araskargo.com.tr/mainpage.aspx?code=6508248937060", info[0].Url);
+        Assert.Equal("6500000000001", info[0].Value);
+        Assert.Equal("https://kargotakip.araskargo.com.tr/mainpage.aspx?code=6500000000001", info[0].Url);
         Assert.Equal("%20,34", info[2].Value);
         Assert.Equal("60,00 ₺", info[3].Value);
     }

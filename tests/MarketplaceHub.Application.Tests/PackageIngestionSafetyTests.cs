@@ -287,7 +287,7 @@ public sealed class PackageIngestionSafetyTests
         // Live 6 Nov: every new awaiting-payment order carries package "0" and was dropped as a conflict.
         var occurredAt = DateTimeOffset.Parse("2026-11-06T10:00:00Z");
         var placeholder = new RemotePackage("0", null, "Awaiting", occurredAt, null, null, []);
-        var first = new RemoteOrder("11763229493", "11763229493", occurredAt, occurredAt, "TRY", 0, 0, 0, "{}", "{}", "{}", [], [placeholder], "{}");
+        var first = new RemoteOrder("11700000007", "11700000007", occurredAt, occurredAt, "TRY", 0, 0, 0, "{}", "{}", "{}", [], [placeholder], "{}");
         var second = first with { ExternalOrderId = "11780000001", OrderNumber = "11780000001" };
 
         Assert.Empty(OrderPackageIdentityGuard.FindConflicts([first, second]));

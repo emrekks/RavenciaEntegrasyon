@@ -190,9 +190,9 @@ public sealed class JobQueueAuditTests
     [Fact]
     public void TheHepsiburadaLifecycleScanPagesByTheLastOrderReadNotByOffset()
     {
-        var cursor = OrderReadService.HepsiburadaLifecycleCursor("4736002251");
+        var cursor = OrderReadService.HepsiburadaLifecycleCursor("4730000001");
 
-        Assert.Equal("4736002251", OrderReadService.HepsiburadaLifecycleLastSeen(cursor));
+        Assert.Equal("4730000001", OrderReadService.HepsiburadaLifecycleLastSeen(cursor));
         // An offset saved by the previous version starts the scan from the first order.
         Assert.Null(OrderReadService.HepsiburadaLifecycleLastSeen("25"));
         Assert.Null(OrderReadService.HepsiburadaLifecycleLastSeen(null));

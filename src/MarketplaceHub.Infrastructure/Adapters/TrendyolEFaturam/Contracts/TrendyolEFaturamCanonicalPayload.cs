@@ -308,7 +308,7 @@ public static class TrendyolEFaturamCanonicalPayload
 
     // Report item 12, one rule for every marketplace: the buyer kind the marketplace states decides (Trendyol commercial,
     // n11 and Pazarama invoiceType, PTT AVM FaturaTip). Hepsiburada states no kind; its 11111111111 identity only means that
-    // no personal identity number was given, and it comes for corporate buyers too (live, 16 Nov 2026: order 4476971250
+    // no personal identity number was given, and it comes for corporate buyers too (live, 16 Nov 2026: order 4470000001
     // carried it next to a valid VKN and a tax office). So beside that identity its tax number and tax office decide
     // (HepsiburadaBuyerEvidence). Without any statement the tax identity decides: a 10-digit VKN is a company, an 11-digit
     // TCKN a person. Without either, a company name (Shopify sends one with no tax number) makes the buyer corporate, and

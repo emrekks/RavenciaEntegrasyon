@@ -6,7 +6,7 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // Bug scan 9 Nov 2026: a Hepsiburada package reported as Unpacked ("Paketi bozulan") was read as a hold (OnHold), so
-// live order 4780777645, cancelled by the customer after packing, was CANCELLED but listed in Askıda through its
+// live order 4780000001, cancelled by the customer after packing, was CANCELLED but listed in Askıda through its
 // package. Unpacked is a broken-up package that never ships: a superseded split parent, as on Trendyol.
 public sealed class HepsiburadaUnpackedPackageTests
 {
@@ -36,7 +36,7 @@ public sealed class HepsiburadaUnpackedPackageTests
         Assert.Equal(ShipmentPackageStatusPolicy.FromRemote(rawStatus), HepsiburadaShipmentPackageStatusPolicy.FromRemote(rawStatus));
     }
 
-    // The stored OnHold package of 4780777645 moves on at the next package read; a delivered or returned one stays.
+    // The stored OnHold package of 4780000001 moves on at the next package read; a delivered or returned one stays.
     [Theory]
     [InlineData(ShipmentPackageStatus.OnHold, true)]
     [InlineData(ShipmentPackageStatus.ReadyToShip, true)]
@@ -56,7 +56,7 @@ public sealed class HepsiburadaUnpackedPackageTests
     [Fact]
     public void A_lone_unpacked_package_does_not_decide_the_order()
     {
-        var package = new ShipmentPackage { ExternalPackageId = "5539921191", Status = HepsiburadaShipmentPackageStatusPolicy.FromRemote("Unpacked"), RawStatus = "Unpacked" };
+        var package = new ShipmentPackage { ExternalPackageId = "5530000002", Status = HepsiburadaShipmentPackageStatusPolicy.FromRemote("Unpacked"), RawStatus = "Unpacked" };
 
         Assert.Null(ShipmentPackageSupersession.StatusSources([package]));
         Assert.False(ShipmentPackageStatusPolicy.NeedsWork(package.Status));
@@ -66,8 +66,8 @@ public sealed class HepsiburadaUnpackedPackageTests
     [Fact]
     public void A_listed_unpacked_package_has_an_end_status()
     {
-        var remote = new RemotePackage("5539921191", null, "Unpacked", Now, "MNG", "TRK1", []);
+        var remote = new RemotePackage("5530000002", null, "Unpacked", Now, "MNG", "TRK1", []);
 
-        Assert.True(HepsiburadaHttpClient.HasTerminalListStatus(new RemoteOrderPackage("4780777645", remote)));
+        Assert.True(HepsiburadaHttpClient.HasTerminalListStatus(new RemoteOrderPackage("4780000001", remote)));
     }
 }

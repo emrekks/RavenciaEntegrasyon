@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { editorChannelOfferPrices, editorOfferUnchanged, initialCustomChannels, offerFollowsPanel, panelFollowerColumns, panelFollowerWrites, quickPriceColumns, typedOfferPriceChoice } from './quick-price-edit'
+import { editorChannelOfferPrices, editorOfferUnchanged, initialCustomChannels, offerFollowsPanel, panelFollowerWrites, quickPriceColumns, typedOfferPriceChoice } from './quick-price-edit'
 
 // A new product, panel price 100, store N11 not switched to "Özel Fiyat", and variant B given 150 in the variant price
 // table: the arguments the product editor passes at its offer write.
@@ -18,7 +18,7 @@ describe('a variant price typed in the price table of a new product', () => {
     const columns = quickPriceColumns([{ id: 'n11', displayName: 'N11', platformCode: 'N11' }])
     const custom = initialCustomChannels([{ variant, product: {} }], columns)
     expect(custom).toEqual({ n11: true })
-    expect(panelFollowerWrites(variant, panelFollowerColumns(columns, custom), { listPrice: 120, salePrice: 120 })).toEqual([])
+    expect(panelFollowerWrites(variant, columns, { listPrice: 120, salePrice: 120 })).toEqual([])
   })
 
   it('stays with the panel when it equals the variant panel price, and is the own price on an Özel Fiyat store', () => {

@@ -393,7 +393,7 @@ public static class ShopifyShipmentPackageStatusPolicy
 // Hepsiburada package statuses. An Unpacked package was broken up ("Paketi bozulan", hepsiburada-api-son.md:8618): its
 // lines went back to the order or were cancelled, and it never ships. It is a superseded split parent as on Trendyol
 // (Cancelled with its Unpacked raw status, so its lines are not cancelled and the order keeps its status), never a
-// hold: live 4780777645 (9 Nov 2026), cancelled by the customer after packing, sat in Askıda with an OnHold package.
+// hold: live 4780000001 (9 Nov 2026), cancelled by the customer after packing, sat in Askıda with an OnHold package.
 public static class HepsiburadaShipmentPackageStatusPolicy
 {
     public static ShipmentPackageStatus FromRemote(string? rawStatus) =>
@@ -465,7 +465,7 @@ public static class ShipmentPackageSupersession
         string.Equals(externalPackageId?.Trim(), PlaceholderExternalId, StringComparison.Ordinal);
 
     // Superseded: a package another one names as its origin, one the panel unpacked, and the "0" placeholder once the
-    // order has a real package, whatever the placeholder's last status (it is never updated again: live 11763229493
+    // order has a real package, whatever the placeholder's last status (it is never updated again: live 11700000007
     // kept Awaiting next to its delivered package), as MarketplaceSalesService.CurrentShipmentPackages leaves it out.
     public static IReadOnlySet<string> SupersededExternalIds(IEnumerable<ShipmentPackage> packages)
     {
@@ -604,7 +604,7 @@ public sealed class ShipmentPackage
     public string? CargoTrackingNumber { get; set; }
     // The cargo barcode the marketplace gave the package (Hepsiburada "barcode": "Oluşturulan paketin kargo barkodudur"),
     // known while the package is still Open, before any tracking number. Not a tracking number: for hepsiJET it is the
-    // same value, for Aras Kargo it is not (live 5534650975), so CargoTrackingNumber is never filled from it.
+    // same value, for Aras Kargo it is not (live 5530000001), so CargoTrackingNumber is never filled from it.
     public string? CargoBarcode { get; set; }
     public decimal GrossAmount { get; set; }
     public decimal DiscountAmount { get; set; }

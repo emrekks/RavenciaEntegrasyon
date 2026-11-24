@@ -9,7 +9,7 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class HepsiburadaPlatformDiscountTests
 {
     [Theory]
-    // Live line of order 4091991027 (Hepsiburada credited 212.57: 194.85 grossed up from 10 % to 20 % VAT).
+    // Live line of order 4090000001 (Hepsiburada credited 212.57: 194.85 grossed up from 10 % to 20 % VAT).
     [InlineData("""{"hbDiscount":{"unitPrice":{"amount":194.85,"currency":"TRY"},"totalPrice":{"amount":194.85,"currency":"TRY"}},"merchantDiscount":{"unitPrice":{"amount":10,"currency":"TRY"}}}""", 194.85)]
     [InlineData("""{"hbDiscount":{"unitPrice":{"amount":"93,75"}}}""", 93.75)]
     public void The_line_takes_hepsiburadas_own_discount_a_unit(string line, double expected)

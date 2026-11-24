@@ -6,7 +6,7 @@ import { shippingLabelLayoutIssues } from './shipping-label-layout'
 import { ShippingLabelBlockBody, ShippingLabelSurface, type ShippingLabelValues } from './ShippingLabelSurface'
 
 // Sample values only: no real order's data.
-const values: ShippingLabelValues = { trackingNumber: '73300036563130080', packageNumber: '4293901515', orderNumber: '11771694031', customerName: 'Örnek Alıcı', address: 'Örnek Mah. Deneme Sok. No:1\nMerkez / İzmir', cargoProvider: 'Trendyol Express', senderName: 'Ravencia', senderAddress: '', customerEmail: 'musteri@example.com' }
+const values: ShippingLabelValues = { trackingNumber: '73300000000000001', packageNumber: '4290000002', orderNumber: '11700000009', customerName: 'Örnek Alıcı', address: 'Örnek Mah. Deneme Sok. No:1\nMerkez / İzmir', cargoProvider: 'Trendyol Express', senderName: 'Ravencia', senderAddress: '', customerEmail: 'musteri@example.com' }
 const sender: ShippingLabelBlock = { id: 'sender', kind: 'sender', title: 'Gönderici', fields: ['cargoProvider', 'senderName'], align: 'left', text: '' }
 
 let container: HTMLDivElement

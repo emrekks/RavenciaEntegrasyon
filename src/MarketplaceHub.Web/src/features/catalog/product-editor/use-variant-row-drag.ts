@@ -22,6 +22,16 @@ export function useVariantRowDrag(c: EditorProps & EditorStateResult & EditorMed
       return next
     })
   }
+  // The keyboard way (Alt+Up / Alt+Down on the focused handle): one row up or down.
+  function moveVariantRow(key: string, delta: -1 | 1) {
+    setVariantRows(rows => {
+      const from = rows.findIndex(row => row.key === key); const to = from + delta
+      if (from < 0 || to < 0 || to >= rows.length) return rows
+      const next = [...rows]; const [moved] = next.splice(from, 1); next.splice(to, 0, moved)
+      return next
+    })
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-variant-row-key="${key}"] .variant-row-lead`)?.focus())
+  }
   useEffect(() => {
     if (!pointerDraggedVariantKey) return
     const rowKeyAtPoint = (clientX: number, clientY: number) => document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('[data-variant-row-key]')?.dataset.variantRowKey ?? null
@@ -39,6 +49,9 @@ export function useVariantRowDrag(c: EditorProps & EditorStateResult & EditorMed
     }
     const handlePointerMove = (event: PointerEvent) => {
       event.preventDefault()
+      // The table scrolls inside its box: near the box's top or bottom edge the drag scrolls it, so a row can be carried past the visible part.
+      const box = document.querySelector<HTMLElement>('.variant-table-editor')
+      if (box) { const rect = box.getBoundingClientRect(); if (event.clientY > rect.bottom - 48) box.scrollTop += 14; else if (event.clientY < rect.top + 48 + 46) box.scrollTop -= 14 }
       const targetKey = rowKeyAtPoint(event.clientX, event.clientY)
       if (targetKey && targetKey !== pointerDraggedVariantKey) setDragOverVariantKey(targetKey)
     }
@@ -71,6 +84,6 @@ export function useVariantRowDrag(c: EditorProps & EditorStateResult & EditorMed
     setDraggedVariantKey(keyValue)
     setDragOverVariantKey(null)
   }
-  return { reorderVariants, beginVariantPointerDrag }
+  return { reorderVariants, moveVariantRow, beginVariantPointerDrag }
 }
 export type VariantRowDragResult = ReturnType<typeof useVariantRowDrag>

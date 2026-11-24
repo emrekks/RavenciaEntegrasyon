@@ -62,7 +62,7 @@ public sealed class ShipmentPackageStatusPolicyTests
     [InlineData(" 0 ", ShipmentPackageStatus.New, true, true)]
     [InlineData("0", ShipmentPackageStatus.Cancelled, true, false)]
     [InlineData("0", ShipmentPackageStatus.PaymentPending, false, false)]
-    [InlineData("4234395651", ShipmentPackageStatus.PaymentPending, true, false)]
+    [InlineData("4230000001", ShipmentPackageStatus.PaymentPending, true, false)]
     public void TrendyolStatusPolicy_ClosesTheZeroPlaceholderWhateverItsStatusOnceARealPackageIsPresent(
         string externalPackageId,
         ShipmentPackageStatus status,
@@ -72,7 +72,7 @@ public sealed class ShipmentPackageStatusPolicyTests
         Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.ShouldClosePlaceholder(externalPackageId, status, hasAuthoritativePackage));
     }
 
-    // Live 11763229493: a delivered real package next to the "0" placeholder left Awaiting (PaymentPending) read as
+    // Live 11700000007: a delivered real package next to the "0" placeholder left Awaiting (PaymentPending) read as
     // PAYMENT_PENDING and blocked the sale invoice. The placeholder no longer decides the order once a real package exists.
     [Fact]
     public void TheZeroPlaceholderDoesNotDecideAnOrderThatHasARealPackage()
@@ -80,7 +80,7 @@ public sealed class ShipmentPackageStatusPolicyTests
         static ShipmentPackage Package(string id, ShipmentPackageStatus status, string raw) =>
             new() { ExternalPackageId = id, Status = status, RawStatus = raw };
 
-        var withReal = new[] { Package("0", ShipmentPackageStatus.PaymentPending, "Awaiting"), Package("4287472684", ShipmentPackageStatus.Delivered, "Delivered") };
+        var withReal = new[] { Package("0", ShipmentPackageStatus.PaymentPending, "Awaiting"), Package("4280000002", ShipmentPackageStatus.Delivered, "Delivered") };
         var sources = ShipmentPackageSupersession.StatusSources(withReal);
         Assert.Equal([ShipmentPackageStatus.Delivered], sources);
         Assert.Equal(ShipmentPackageStatus.Delivered, ShipmentPackageStatusPolicy.Aggregate(sources!));

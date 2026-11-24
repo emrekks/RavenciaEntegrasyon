@@ -25,7 +25,11 @@ export function ReturnExchangeMarkDialog({ item, marked, onClose, onDone }: { it
       await client.invalidateQueries({ queryKey: queryKeys.orders() })
       onClose()
     },
-    onError: error => onDone(notificationError(error, 'Değişim işareti kaydedilemedi.').message, 'error')
+    // A refusal (changed meanwhile: 409/412) leaves the lists stale: they are read again so a second try goes out with the current version.
+    onError: error => {
+      for (const queryKey of [queryKeys.return(item.id), queryKeys.returns(), queryKeys.orders()]) void client.invalidateQueries({ queryKey })
+      onDone(notificationError(error, 'Değişim işareti kaydedilemedi.').message, 'error')
+    }
   })
   const title = marked ? 'Değişim Onaylandı Olarak İşaretle' : 'İşareti Kaldır'
   return <RrModal crumb="Trendyol Değişim Talebi" title={title} desc={item.orderNumber} size="sm" onClose={onClose}

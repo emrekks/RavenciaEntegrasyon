@@ -13,7 +13,7 @@ namespace MarketplaceHub.Application.Tests;
 // F5a: the documented Trendyol "Fatura Linki Silme" request, the reads around it, and the cases where nothing is sent.
 public sealed class TrendyolInvoiceLinkRevocationTests
 {
-    private const string PackageId = "4052072376";
+    private const string PackageId = "4050000001";
     private const string OurLink = "https://panel.example.test/api/v1/public/invoice-documents/token-1/content";
     private static readonly DateTimeOffset Now = new(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
 
@@ -43,7 +43,7 @@ public sealed class TrendyolInvoiceLinkRevocationTests
         Assert.Equal("application/json", delete.ContentType);
         using var body = JsonDocument.Parse(delete.Body!);
         Assert.Equal(["serviceSourceId", "channelId", "customerId"], body.RootElement.EnumerateObject().Select(property => property.Name));
-        Assert.Equal(4052072376L, body.RootElement.GetProperty("serviceSourceId").GetInt64());
+        Assert.Equal(4050000001L, body.RootElement.GetProperty("serviceSourceId").GetInt64());
         Assert.Equal(1, body.RootElement.GetProperty("channelId").GetInt32());
         Assert.Equal(888888888L, body.RootElement.GetProperty("customerId").GetInt64());
     }
@@ -186,7 +186,7 @@ public sealed class TrendyolInvoiceLinkRevocationTests
         new(Guid.CreateVersion7(), ConnectionId, "link-revocation-test", "link-revocation-test", Now.AddMinutes(2), IsExplicitManualInvoiceDelivery: explicitInvoiceAction);
 
     private static InvoiceLinkRevocationCommand Command(string storeFront = "TR") => new(
-        new ExternalInvoiceDeliveryReference(PackageId, "11476852228", null, "GIB2026000000001", OurLink,
+        new ExternalInvoiceDeliveryReference(PackageId, "11400000002", null, "GIB2026000000001", OurLink,
             new PackageLookup(Now.AddDays(-1), new OrderLookupHint(Now.AddDays(-3), Now.AddDays(-1), storeFront), InvoiceOnly: true)),
         [OurLink, OurLink.Replace("/content", "/invoice.pdf", StringComparison.Ordinal)],
         "GIB2026000000001");
@@ -194,7 +194,7 @@ public sealed class TrendyolInvoiceLinkRevocationTests
     private static HttpResponseMessage Package(string invoiceFields, long? customerId = 888888888) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(
-            "{\"content\":[{\"shipmentPackageId\":" + PackageId + ",\"orderNumber\":\"11476852228\",\"currencyCode\":\"TRY\","
+            "{\"content\":[{\"shipmentPackageId\":" + PackageId + ",\"orderNumber\":\"11400000002\",\"currencyCode\":\"TRY\","
             + (customerId is { } id ? $"\"customerId\":{id}," : string.Empty)
             + "\"status\":\"Delivered\",\"orderDate\":1760700000000,\"lastModifiedDate\":1760900000000,"
             + invoiceFields + ",\"lines\":[]}],\"page\":0,\"totalPages\":1}",

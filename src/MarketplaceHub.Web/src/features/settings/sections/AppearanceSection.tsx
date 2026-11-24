@@ -14,7 +14,7 @@ function SettingsSwatches({ palette, large = false }: { palette: AppearancePalet
 }
 
 const notificationSamples: Array<{ kind: NoticeToastKind; label: string; glyph: SettingsGlyphState; message: string }> = [
-  { kind: 'success', label: 'Başarılı', glyph: 'done', message: '#4574136713 için fatura oluşturuldu ve Hepsiburada’ya iletildi.' },
+  { kind: 'success', label: 'Başarılı', glyph: 'done', message: '#4570000002 için fatura oluşturuldu ve Hepsiburada’ya iletildi.' },
   { kind: 'pending', label: 'Bekliyor', glyph: 'pending', message: 'Fatura Hepsiburada’ya iletiliyor, sonuç birkaç saniye içinde görünecek.' },
   { kind: 'error', label: 'Başarısız', glyph: 'bad', message: 'Fatura oluşturulamadı: sağlayıcı isteği reddetti.' }
 ]
