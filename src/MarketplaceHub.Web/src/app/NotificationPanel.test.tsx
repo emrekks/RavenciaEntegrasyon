@@ -117,3 +117,13 @@ describe('the box head, filter and empty state', () => {
     expect(panel.querySelector('.rv-notification-history-empty')?.textContent).toContain('Yeni sipariş, fatura ve hata bildirimleri burada görünür.')
   })
 })
+
+describe('the day heading follows Istanbul', () => {
+  it('calls 23:30 of the day before Dün at 00:30 in Istanbul, whatever the device time zone', async () => {
+    const { dayLabel } = await import('./NotificationPanel')
+    const now = new Date('2026-11-23T21:30:00Z') // 00:30 on the 24th in Istanbul (UTC+3), still the 23rd in UTC
+    expect(dayLabel('2026-11-23T20:30:00Z', now)).toBe('Dün') // 23:30 on the 23rd in Istanbul
+    expect(dayLabel('2026-11-23T21:10:00Z', now)).toBe('Bugün') // 00:10 on the 24th
+    expect(dayLabel('2026-11-22T20:30:00Z', now)).not.toBe('Dün')
+  })
+})
