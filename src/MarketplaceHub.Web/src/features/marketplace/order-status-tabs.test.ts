@@ -9,9 +9,10 @@ describe('order status tabs', () => {
     expect(new Set(values).size).toBe(values.length)
   })
 
-  it('lets the tab row decide what fits and shows the pending queue only when a link opened it', () => {
+  it('lets the tab row decide what fits and always lists Bekleyen İşler, right after Tümü and left of Yeni', () => {
     expect(orderStatusMoreTabs).toEqual([])
-    expect(orderLinkOnlyTabs).toEqual(['PENDING'])
+    expect(orderLinkOnlyTabs).toEqual([])
+    expect(orderStatusTabs.slice(0, 3).map(([value]) => value)).toEqual(['ALL', 'PENDING', 'NEW'])
   })
 
   it('opens the tab a link names, so the dashboard pending link lists what its counter counts', () => {
