@@ -1,6 +1,8 @@
+using System.Linq.Expressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using static MarketplaceHub.Infrastructure.Persistence.SalesResults;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -22,9 +24,12 @@ internal sealed partial class ReturnDecisionService
         if (!ExchangeResendRules.IsExchangeResend(claim))
             return ServiceResult<ReturnDetailView>.Fail(ReplacementShipMarkNotAllowedCode, "Bu iade bir değişim yeniden gönderimi değil; kargoya verildi işareti konamaz.", 409);
         var now = timeProvider.GetUtcNow();
+        var platform = ExchangeResendRules.PlatformName(await db.PlatformConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == claim.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken));
         if (marked)
         {
-            if (claim.ReplacementCargoTrackingLink is not null || claim.ReplacementShippedAt is not null)
+            if (claim.ReplacementCargoTrackingLink is not null || claim.ReplacementShippedAt is not null
+                || await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claim.Id).AnyAsync(ExchangeResendRules.ShippedExchangeLine(db), cancellationToken))
                 return ServiceResult<ReturnDetailView>.Fail(ReplacementShipMarkNotAllowedCode, "Bu değişim paketi zaten kargoya verildi olarak görünüyor.", 409);
             claim.ReplacementShippedAt = now;
             claim.ReplacementShippedSource = ReturnCustomerRequestPolicy.ManualSource;
@@ -46,8 +51,8 @@ internal sealed partial class ReturnDecisionService
             TargetType = "ReturnClaim",
             TargetId = claimId.ToString("D"),
             Reason = marked
-                ? "Değişim paketi Kargoya Verildi olarak elle işaretlendi; Trendyol'a bir şey gönderilmedi."
-                : "Değişim paketine elle konan Kargoya Verildi işareti kaldırıldı; Trendyol'a bir şey gönderilmedi.",
+                ? $"Değişim paketi Kargoya Verildi olarak elle işaretlendi; {platform.To} bir şey gönderilmedi."
+                : $"Değişim paketine elle konan Kargoya Verildi işareti kaldırıldı; {platform.To} bir şey gönderilmedi.",
             CorrelationId = correlationId,
             CreatedAt = now
         });
@@ -60,15 +65,69 @@ internal sealed partial class ReturnDecisionService
 // the re-read: a Trendyol exchange request (CustomerRequest CHANGE, not cancelled) whose claim names the exchange package
 // or that the owner marked made. Its package is handed to the carrier once its tracking link is known or the owner marked
 // it so; a tracking number alone says nothing about it (Trendyol names it before the parcel leaves).
+// Hepsiburada (scan O3, 23 Nov 2026): its claim names no exchange shipment, but an exchange it accepts (finalizedWith
+// Change) re-creates the new product as an order line whose creationReason is ClaimChangeAccepted
+// (hepsiburada-api-son.md:9097, "Değişim için : ClaimChangeAccepted"; the line's raw item is kept in SourceSnapshotJson).
+// Once such a line of the claim's order is shipped, Hepsiburada has reported the exchange handed to the carrier
+// (source MARKETPLACE). Only that positive fact closes it; without it the owner's mark is the way, as on Trendyol.
 internal static class ExchangeResendRules
 {
     internal const string MarketplaceSource = "MARKETPLACE";
+    internal const string HepsiburadaExchangeLineReason = "ClaimChangeAccepted";
 
     internal static bool IsExchangeResend(ReturnClaim claim) =>
         claim.Status != ReturnClaimStatus.Cancelled
         && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
         && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change);
 
-    internal static string? ShippedSource(string? trackingLink, DateTimeOffset? shippedAt) =>
-        trackingLink is not null ? MarketplaceSource : shippedAt is not null ? ReturnCustomerRequestPolicy.ManualSource : null;
+    // The claim's exchange is shipped by an exchange line of its order (Hepsiburada's ClaimChangeAccepted item) that the
+    // carrier has taken. The line belongs to the order, not to one claim (review, 24 Nov 2026: a shipped line of exchange A
+    // closed a later exchange B of the same order), so it settles the claim only while the order has exactly one exchange
+    // request (a non-cancelled CHANGE claim); with more the line cannot say which exchange left, and it stays unknown
+    // until the owner marks it.
+    internal static Expression<Func<ReturnClaim, bool>> ShippedExchangeLine(AppDbContext db) => claim =>
+        db.ReturnClaims.Count(other => other.TenantId == claim.TenantId && other.OrderId == claim.OrderId
+            && other.Status != ReturnClaimStatus.Cancelled && other.CustomerRequest == ReturnCustomerRequestPolicy.Change) == 1
+        && db.OrderLines.Any(line => line.TenantId == claim.TenantId && line.OrderId == claim.OrderId && line.ShippedQuantity > 0
+            && line.SourceSnapshotJson != null && line.SourceSnapshotJson.Contains(HepsiburadaExchangeLineReason));
+
+    // The exchange's package is not known to be handed to the carrier: no tracking link, no owner mark and no shipped
+    // Hepsiburada exchange line (ShippedExchangeLine). One rule for the tab, its count, the card's stores, the rows, the
+    // mark and the re-read.
+    internal static Expression<Func<ReturnClaim, bool>> NotShipped(AppDbContext db)
+    {
+        var shipped = ShippedExchangeLine(db);
+        var claim = shipped.Parameters[0];
+        Expression<Func<ReturnClaim, bool>> unmarked = x => x.ReplacementCargoTrackingLink == null && x.ReplacementShippedAt == null;
+        return Expression.Lambda<Func<ReturnClaim, bool>>(
+            Expression.AndAlso(ReplacingExpressionVisitor.Replace(unmarked.Parameters[0], claim, unmarked.Body), Expression.Not(shipped.Body)), claim);
+    }
+
+    // The owner's "Değişim Onaylandı" mark goes (removed by him, or lapsed on a read): the outcome is unknown again. A claim
+    // without a package Trendyol named is then no exchange resend, so a "Kargoya Verildi" mark made by hand on it goes too;
+    // left behind it was orphaned (scan, 23 Nov 2026): "İşareti Kaldır" refused it and a new exchange mark brought it back
+    // as "Kargoya Verildi (Elle)" unseen. True when that ship mark went too, so the audit and the issue can say so.
+    internal static bool ClearManualExchangeMark(ReturnClaim claim)
+    {
+        claim.ResolvedWith = null;
+        claim.ResolvedWithSource = null;
+        if (claim.ReplacementPackageId is not null || claim.ReplacementShippedSource != ReturnCustomerRequestPolicy.ManualSource) return false;
+        claim.ReplacementShippedAt = null;
+        claim.ReplacementShippedSource = null;
+        return true;
+    }
+
+    // Appended to the mark's audit and issue texts when ClearManualExchangeMark took the hand-made ship mark with it.
+    internal const string ShipMarkAlsoRemovedText = " Elle konan Kargoya Verildi işareti de kaldırıldı.";
+
+    // The marketplace's name as the texts use it: "Trendyol'a", "Hepsiburada'ya" (only these two have exchanges).
+    internal static (string Name, string To) PlatformName(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
+    {
+        "TRENDYOL" => ("Trendyol", "Trendyol'a"),
+        "HEPSIBURADA" => ("Hepsiburada", "Hepsiburada'ya"),
+        _ => ("Pazaryeri", "Pazaryerine")
+    };
+
+    internal static string? ShippedSource(string? trackingLink, DateTimeOffset? shippedAt, bool exchangeLineShipped = false) =>
+        trackingLink is not null || exchangeLineShipped ? MarketplaceSource : shippedAt is not null ? ReturnCustomerRequestPolicy.ManualSource : null;
 }

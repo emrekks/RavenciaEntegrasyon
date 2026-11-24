@@ -118,17 +118,30 @@ internal sealed partial class OrderQueryService
         var catalog = await OrderLineCatalog.LoadAsync(db, tenantId, lines, line => connectionByOrder.TryGetValue(line.OrderId, out var lineConnectionId) ? lineConnectionId : null, cancellationToken);
         // The orders' exchange resends (ExchangeResendClaims: the Yeniden Gönderimler tab's rule), one per order.
         var pageOrderIds = orders.Select(order => order.Id).ToArray();
-        var exchangeResends = (await db.ReturnClaims.AsNoTracking()
-                .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
-                    && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
-                    && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
-                .Select(claim => new { claim.Id, claim.Version, claim.OrderId, claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt })
+        var pageExchangeClaims = db.ReturnClaims.AsNoTracking()
+            .Where(claim => claim.TenantId == tenantId && pageOrderIds.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
+                && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
+                && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change));
+        // Hepsiburada's shipped exchange line, by the tab's own rule (ExchangeResendRules.ShippedExchangeLine).
+        var exchangeLineShipped = (await pageExchangeClaims.Where(ExchangeResendRules.ShippedExchangeLine(db)).Select(claim => claim.Id).ToListAsync(cancellationToken)).ToHashSet();
+        var exchangeResends = (await pageExchangeClaims
+                .Select(claim => new
+                {
+                    claim.Id,
+                    claim.Version,
+                    claim.OrderId,
+                    claim.ReplacementPackageId,
+                    claim.ReplacementCargoProviderName,
+                    claim.ReplacementCargoTrackingNumber,
+                    claim.ReplacementCargoTrackingLink,
+                    claim.ReplacementShippedAt
+                })
                 .ToListAsync(cancellationToken))
             .GroupBy(claim => claim.OrderId)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(claim => claim.ReplacementPackageId != null).Select(claim =>
             {
-                // Handed to the carrier: Trendyol's tracking link, or the owner's mark (ExchangeResendRules).
-                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt);
+                // Handed to the carrier: Trendyol's tracking link, Hepsiburada's shipped exchange line, or the owner's mark (ExchangeResendRules).
+                var shippedSource = ExchangeResendRules.ShippedSource(claim.ReplacementCargoTrackingLink, claim.ReplacementShippedAt, exchangeLineShipped.Contains(claim.Id));
                 return new OrderExchangeResendView(claim.ReplacementPackageId, claim.ReplacementCargoProviderName, claim.ReplacementCargoTrackingNumber, shippedSource is not null, claim.ReplacementCargoTrackingLink,
                     claim.Id, claim.Version, shippedSource);
             }).First());
@@ -147,9 +160,7 @@ internal sealed partial class OrderQueryService
                 .ToList();
             var connection = connections.GetValueOrDefault(order.ConnectionId);
             var orderPackages = (packagesByOrder.GetValueOrDefault(order.Id) ?? [])
-                .Where(package => !string.Equals(connection?.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
-                    || !(package.ExternalPackageId.StartsWith("order:", StringComparison.OrdinalIgnoreCase)
-                        && package.ExternalPackageId.EndsWith(":remainder", StringComparison.OrdinalIgnoreCase)))
+                .Where(package => !IsShopifyRemainderPackage(connection?.PlatformCode, package.ExternalPackageId))
                 .ToList();
             var package = SelectDisplayPackage(orderPackages, connection?.PlatformCode);
             // The displayed package is ordered by the latest operational event,
@@ -238,6 +249,7 @@ internal sealed partial class OrderQueryService
         var currentPackages = CurrentShipmentPackages();
         var resendCreators = new[] { "transfer", "resend", "replacement" };
         var resentNotShipped = options.ResentNotShipped == true;
+        var exchangeClaims = resentNotShipped ? db.ReturnClaims.Where(ExchangeResendRules.NotShipped(db)) : db.ReturnClaims;
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
         {
@@ -435,10 +447,10 @@ internal sealed partial class OrderQueryService
                         // is a resend too when its exchange claim names the package (getClaims replacementOutboundpackageinfo)
                         // or the owner marked the exchange made; it waits for the carrier until the package's tracking link comes
                         // or the owner marks it handed to the carrier (ExchangeResendRules; a tracking number alone does not).
-                        || db.ReturnClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
+                        // Not handed over: ExchangeResendRules.NotShipped (a Hepsiburada exchange closes when its exchange line ships).
+                        || exchangeClaims.Any(claim => claim.TenantId == x.TenantId && claim.OrderId == x.Id && claim.Status != ReturnClaimStatus.Cancelled
                             && claim.CustomerRequest == ReturnCustomerRequestPolicy.Change
-                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change)
-                            && (!resentNotShipped || (claim.ReplacementCargoTrackingLink == null && claim.ReplacementShippedAt == null)))
+                            && (claim.ReplacementPackageId != null || claim.ResolvedWith == ReturnCustomerRequestPolicy.Change))
                         // A re-shipment the owner added by hand (owner, 23 Nov 2026; ManualResendService), "Elle Eklendi",
                         // waiting until he marks it handed to the carrier.
                         || db.ManualResends.Any(record => record.TenantId == x.TenantId && record.OrderId == x.Id && (!resentNotShipped || record.ShippedAt == null)),
@@ -556,12 +568,25 @@ internal sealed partial class OrderQueryService
     // An undelivered-and-returned order: RETURNED with a line or a current package of that raw status (the lines and
     // packages the order list sends the web). One rule for the Teslim Edilemedi list and its count, which both read
     // FilteredOrders; the order keeps its DerivedStatus, so it stays under İade Edildi as well.
+    // The packages are the ones the row lists (scan, 23 Nov 2026: the tab read every current package, the row and the web's
+    // undeliveredReturn the listed ones, without Shopify's remainder placeholder; IsShopifyRemainderPackage is the one rule).
     internal Expression<Func<Order, bool>> UndeliveredReturnInDatabase(IQueryable<ShipmentPackage> currentPackages) =>
         order => order.DerivedStatus == "RETURNED"
             && (db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id
                     && line.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus)
                 || currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id
-                    && package.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus));
+                    && package.RawStatus.ToUpper() == UndeliveredAndReturnedRawStatus
+                    && !(package.ExternalPackageId.ToLower().StartsWith(ShopifyRemainderPrefix) && package.ExternalPackageId.ToLower().EndsWith(ShopifyRemainderSuffix)
+                        && db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY"))));
+
+    // Shopify's "order:{id}:remainder" placeholder package: never listed on an order row, nor read by its row rules.
+    private const string ShopifyRemainderPrefix = "order:";
+    private const string ShopifyRemainderSuffix = ":remainder";
+
+    internal static bool IsShopifyRemainderPackage(string? platformCode, string externalPackageId) =>
+        string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+        && externalPackageId.StartsWith(ShopifyRemainderPrefix, StringComparison.OrdinalIgnoreCase)
+        && externalPackageId.EndsWith(ShopifyRemainderSuffix, StringComparison.OrdinalIgnoreCase);
 
     // left(order) || right(order), as one predicate.
     private static Expression<Func<Order, bool>> Either(Expression<Func<Order, bool>> left, Expression<Func<Order, bool>> right)

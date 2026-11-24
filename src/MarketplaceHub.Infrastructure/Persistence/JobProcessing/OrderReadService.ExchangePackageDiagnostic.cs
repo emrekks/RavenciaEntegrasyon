@@ -33,7 +33,9 @@ internal sealed partial class OrderReadService
         foreach (var candidate in candidates)
         {
             var resource = ExchangePackageDiagnosticCursorPrefix + candidate.ReplacementPackageId;
-            if (await db.SyncCursors.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resource && x.LastSuccessAt != null, cancellationToken)) continue;
+            var state = await db.SyncCursors.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resource)
+                .Select(x => new { x.LastSuccessAt, x.LastErrorAt }).SingleOrDefaultAsync(cancellationToken);
+            if (!ExchangePackageDiagnostic.ShouldRead(state?.LastSuccessAt, state?.LastErrorAt, timeProvider.GetUtcNow())) continue;
             var firstPackages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == candidate.Id).Select(x => x.ExternalPackageId).ToListAsync(cancellationToken);
             var packageIds = new[] { candidate.ReplacementPackageId! }.Concat(firstPackages).Distinct(StringComparer.Ordinal).Take(10).ToArray();
             var around = candidate.LastRemoteModifiedAt ?? timeProvider.GetUtcNow();
@@ -75,6 +77,14 @@ internal sealed partial class OrderReadService
 
 internal static class ExchangePackageDiagnostic
 {
+    // A failed read waits this long before a recovery read tries it again (scan, 23 Nov 2026): it was retried after every
+    // recovery read (15 minutes), several requests each time, for as long as Trendyol refused it.
+    internal static readonly TimeSpan RetryAfterFailure = TimeSpan.FromHours(6);
+
+    // Read once: never after a success, and not again within RetryAfterFailure of a failure.
+    internal static bool ShouldRead(DateTimeOffset? lastSuccessAt, DateTimeOffset? lastErrorAt, DateTimeOffset now) =>
+        lastSuccessAt is null && (lastErrorAt is not { } failedAt || now - failedAt >= RetryAfterFailure);
+
     // Whether a (redacted) answer holds a package with this id: a "shipmentPackageId", "id" or "packageId" equal to it,
     // anywhere in the document. Only the id is compared; nothing else is read.
     internal static bool Holds(string? body, string packageId)
