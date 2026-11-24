@@ -325,7 +325,7 @@
 @media (min-width: 1025px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace { min-width: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row) { min-width: 1040px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > :is(.invoice-reference-head, .invoice-reference-row) { min-width: 1030px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row .invoice-reference-products small { overflow: visible; text-overflow: clip; white-space: nowrap; }
 }
 
@@ -403,3 +403,8 @@ html[data-theme="dark"] .app-shell.stitch-shell main .reference-invoices-page .i
 }
 
 .invoice-reference-order small.invoice-package-no { display: none; }
+/* From tablets up the package number shows under the date, as on the Siparişler table (phones label it in their card rules above). */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order small.invoice-package-no { display: block; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order small.invoice-package-no::before { content: "Paket No: "; }
+}
