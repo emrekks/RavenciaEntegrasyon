@@ -247,7 +247,9 @@ public sealed partial class CatalogService
             case "GAP":
                 // Decided per model, as the Tükenen Varyantlar list groups it: a model that still has stock lists every
                 // card with a sold-out variant, a colour sold out in all its sizes too (a model of one-size colours has only those).
-                var stockedModels = withTotal.Where(row => row.Total > 0m).Select(row => row.Product.FamilyId ?? row.Product.Id);
+                // The stocked models are read once: as a subquery they were summed again inside every query the list
+                // composes over this one (the platform-state filter's union, the count, the pages).
+                var stockedModels = await withTotal.Where(row => row.Total > 0m).Select(row => row.Product.FamilyId ?? row.Product.Id).Distinct().ToArrayAsync(cancellationToken);
                 return nonDraft.Where(product => stockedModels.Contains(product.FamilyId ?? product.Id)
                     && variants.Any(variant => variant.ProductId == product.Id && (main.Where(item => item.VariantId == variant.Id).Sum(item => (decimal?)item.OnHand) ?? 0m) <= 0m));
             case "LOW":
