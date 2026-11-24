@@ -33,6 +33,7 @@ import { installOverlayScrollLock } from '../shared/overlay-scroll-lock'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 import { followNotificationBell } from './notification-history-placement'
 import { queryKeys } from '../shared/api/query-keys'
+import './bottom-nav.css'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
 // Once loaded it is rendered directly: through React.lazy even a loaded panel suspends on its first render,
@@ -247,6 +248,16 @@ function Shell({ me }: { me: Me }) {
       <Drawer open={mobileMenuOpen} className="rv-mobile-drawer" title={<BrandWordmark className="rv-drawer-logo" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
       <ShellPages me={me} />
     </main>
+    {/* Phone navigation: a bar at the bottom (bottom-nav.css); the sidebar and the hamburger belong to wider screens. */}
+    <nav className="rv-bottom-nav" aria-label="Alt menü">
+      <NavLink className="rv-bottom-nav-home" to="/dashboard" end aria-label="Ana Sayfa"><UiIcon name="dashboard" size={24} /></NavLink>
+      <div className="rv-bottom-nav-bar">
+        <NavLink to="/orders"><UiIcon name="orders" size={22} /><span>Siparişler</span></NavLink>
+        <NavLink to="/products"><UiIcon name="products" size={22} /><span>Ürünler</span></NavLink>
+        <NavLink to="/invoices"><UiIcon name="invoice" size={22} /><span>Faturalar</span></NavLink>
+        <button type="button" aria-haspopup="dialog" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /><span>Menü</span></button>
+      </div>
+    </nav>
     </div>
 }
 

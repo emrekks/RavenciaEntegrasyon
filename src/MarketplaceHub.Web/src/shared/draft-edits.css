@@ -1,5 +1,5 @@
 /* The unsaved-changes bar of every in-place editor (DraftSaveBar) and the mark on a cell that holds a draft. */
-.rv-draftbar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); border: 1px solid color-mix(in srgb, var(--rv-color-accent, #7c5cff) 45%, var(--rv-color-border, #e4e4ec)); border-radius: 12px; background: var(--rv-color-surface, #fff); box-shadow: 0 -6px 18px color-mix(in srgb, #000 8%, transparent); }
+.rv-draftbar { position: sticky; bottom: var(--rv-bottom-nav-space, 0px); z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); border: 1px solid color-mix(in srgb, var(--rv-color-accent, #7c5cff) 45%, var(--rv-color-border, #e4e4ec)); border-radius: 12px; background: var(--rv-color-surface, #fff); box-shadow: 0 -6px 18px color-mix(in srgb, #000 8%, transparent); }
 .rv-draftbar-text { display: grid; gap: 1px; min-width: 0; font-size: 13px; color: var(--rv-color-ink, #1c1c28); }
 .rv-draftbar-text small { color: var(--rv-color-muted, #6b6b80); font-size: 12px; }
 .rv-draftbar-actions { display: flex; flex: none; gap: 8px; }
