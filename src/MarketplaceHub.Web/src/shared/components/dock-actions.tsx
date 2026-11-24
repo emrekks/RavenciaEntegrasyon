@@ -7,18 +7,18 @@ import { UiIcon } from './UiIcon'
 // it registers its actions here (DockActions, or StickyActionBar which does it for every page bar) and they are portalled
 // into the task bar; while one is registered the dock gives way to the task bar (a cross-fade).
 //
-// The task bar is one row of labelled controls: [Menü] [primary, stretching] [step "İleri"] [Diğer]. The page's buttons are
-// sorted by markers the page puts on them, never by page CSS:
-//   .rr-primary / .is-primary / data-dock-primary   the primary action (full label, stretches)
-//   data-dock-step                                  the step to the next screen ("İleri" and its arrow)
+// The task bar is one row of labelled buttons, side by side: the page's actions as they are (the primary one, the step to the next
+// screen by its name, the others by theirs, a selection chip). Nothing is an unlabelled icon except the settings half of a split
+// button. When they do not fit the row is fitted by measuring: first the inner space 14 -> 10 px, then the text 13 -> 12.5 px, then the
+// lowest-priority actions (the last "other" ones first) move into the Diğer list, and only then does the ⋯ button appear. A label is never cut.
+// The page marks what is what; it never writes CSS for the bar:
+//   .rr-primary / .is-primary / data-dock-primary   the primary action
+//   data-dock-step="Yayınlama"                      the step to another screen, drawn as its name (data-dock-step-short: a shorter name)
 //   data-dock-clear + data-dock-count="3"           the selection chip ("3 Seçili" and its cross)
-//   every other button                              goes into the Diğer list (icon and its full name); when it is the
-//                                                   only other one and its label is short (<= 8 characters) it stays
-//                                                   in the bar as a labelled button. data-dock-label gives a name where the
-//                                                   button has no aria-label.
-// `info.start` is a warning (a chip in the strip above the bar, only while there is one); `info.end` is the neutral
-// summary, the grey first line of the Diğer list.
-export type DockInfo = { start?: ReactNode; end?: ReactNode }
+//   every other button                              an action; a split button (a role="group" of buttons) moves as one
+// Priority when space runs out: primary > step > the page's other actions, left to right. data-dock-label names a button that has
+// no aria-label. `info.start` is a warning (a chip in the strip above the bar, only while there is one).
+export type DockInfo = { start?: ReactNode; end?: ReactNode }  // end: a summary for wider screens; a phone shows none
 export type DockHost = {
   // True up to 768 px, where the dock exists.
   phone: boolean
@@ -32,33 +32,41 @@ export const DockContext = createContext<DockHost | null>(null)
 export const useDockHost = () => useContext(DockContext)
 
 type Other = { element: HTMLElement; label: string; iconHtml: string; danger: boolean; disabled: boolean }
-const shortLabel = 8
+// A unit that can leave the bar: one button, or a split button (a role="group" of buttons) that goes as a whole.
+type Unit = { node: HTMLElement; buttons: HTMLElement[] }
+const moreWidth = 48
 
 const isPrimary = (element: Element) => element.matches('[data-dock-primary], .rr-primary, .is-primary')
 const labelOf = (element: HTMLElement) => (element.getAttribute('data-dock-label') || element.getAttribute('aria-label') || element.querySelector('.submit-label-long')?.textContent || element.textContent || element.getAttribute('title') || '').replace(/\s+/g, ' ').trim()
-const barLabelOf = (element: HTMLElement) => (element.querySelector('.submit-label-short')?.textContent || labelOf(element)).trim()
 
-// Reads the page's buttons in the group and tags the ones that leave the bar (data-dock-other) or stay as the lone short one
-// (data-dock-keep). The tags are plain attributes on the page's own elements; the page keeps its handlers and states.
-// `squeezed`: the row does not fit, so even a lone short button goes into the Diğer list.
-function sortActions(group: HTMLElement, squeezed = false): Other[] {
-  const candidates = [...group.querySelectorAll<HTMLElement>('button, a[href]')].filter(element => {
+function actionButtons(group: HTMLElement) {
+  return [...group.querySelectorAll<HTMLElement>('button, a[href]')].filter(element => {
     // The menu a primary button opens (an anchored popover) is not one of the actions.
     const anchor = element.closest('.rr-anchor')
     return !(anchor && element.parentElement !== anchor)
   })
-  for (const element of candidates) { element.removeAttribute('data-dock-other'); element.removeAttribute('data-dock-keep') }
-  const others = candidates.filter(element => !isPrimary(element) && !element.matches('[data-dock-step], [data-dock-clear]'))
-  if (!squeezed && others.length === 1 && barLabelOf(others[0]).length <= shortLabel) { others[0].setAttribute('data-dock-keep', ''); return [] }
-  for (const element of others) element.setAttribute('data-dock-other', '')
-  return others.map(element => ({
-    element,
-    label: labelOf(element),
-    iconHtml: element.querySelector('svg')?.outerHTML ?? '',
-    danger: element.matches('.rr-danger, .is-danger, .rv-button-danger'),
-    disabled: (element as HTMLButtonElement).disabled === true || element.getAttribute('aria-disabled') === 'true',
-  }))
 }
+
+function otherUnits(group: HTMLElement): Unit[] {
+  const units: Unit[] = []
+  for (const button of actionButtons(group)) {
+    button.removeAttribute('data-dock-other')
+    if (isPrimary(button) || button.matches('[data-dock-step], [data-dock-clear]')) continue
+    const split = button.closest<HTMLElement>('[role="group"]')
+    const node = split && split !== group && group.contains(split) ? split : button
+    const unit = units.find(item => item.node === node)
+    if (unit) unit.buttons.push(button); else units.push({ node, buttons: [button] })
+  }
+  return units
+}
+
+const toOther = (element: HTMLElement): Other => ({
+  element,
+  label: labelOf(element),
+  iconHtml: element.querySelector('svg')?.outerHTML ?? '',
+  danger: element.matches('.rr-danger, .is-danger, .rv-button-danger'),
+  disabled: (element as HTMLButtonElement).disabled === true || element.getAttribute('aria-disabled') === 'true',
+})
 
 export function DockActions({ label, info, children }: { label: string; info?: DockInfo; children: ReactNode }) {
   const dock = useDockHost()
@@ -78,17 +86,28 @@ export function DockActions({ label, info, children }: { label: string; info?: D
   useLayoutEffect(() => {
     if (!group.current) return
     const element = group.current
-    // Fit the row: the labelled step first gives way to its arrow, then a lone short button moves into the Diğer list; the
-    // primary label is never cut.
-    // (the row is end-aligned, and an overflow to the left is not counted in scrollWidth: it is measured start-aligned)
-    const overflows = () => { element.style.justifyContent = 'flex-start'; const over = element.scrollWidth > element.clientWidth + 1; element.style.justifyContent = ''; return over }
-    element.removeAttribute('data-dock-compact')
-    let next = sortActions(element)
-    if (overflows()) {
-      element.setAttribute('data-dock-compact', '')
-      if (overflows() && element.querySelector('[data-dock-keep]')) next = sortActions(element, true)
+    // Measured start-aligned: the row is end-aligned, and an overflow to the left is not counted in scrollWidth.
+    const moreShown = others.length > 0
+    const overflows = (reserve: number) => { element.style.justifyContent = 'flex-start'; const over = element.scrollWidth > element.clientWidth - reserve + 1; element.style.justifyContent = ''; return over }
+    element.removeAttribute('data-dock-fit')
+    for (const tagged of element.querySelectorAll('[data-dock-other]')) tagged.removeAttribute('data-dock-other')
+    const units = otherUnits(element)
+    const moved: Unit[] = []
+    const over = () => overflows(moved.length > 0 && !moreShown ? moreWidth : 0)
+    if (over()) {
+      element.setAttribute('data-dock-fit', '1')
+      if (over()) {
+        element.setAttribute('data-dock-fit', '2')
+        while (over() && moved.length < units.length) {
+          const unit = units[units.length - 1 - moved.length]
+          unit.node.setAttribute('data-dock-other', '')
+          for (const button of unit.buttons) button.setAttribute('data-dock-other', '')
+          moved.push(unit)
+        }
+      }
     }
-    const nextSignature = next.map(item => `${item.label}|${item.disabled}|${item.danger}`).join(';')
+    const next = moved.reverse().flatMap(unit => unit.buttons.map(toOther))
+    const nextSignature = next.map(item => item.label + '|' + item.disabled + '|' + item.danger).join(';')
     if (nextSignature !== signature.current) { signature.current = nextSignature; setOthers(next) }
   })
   const mine = Boolean(dock) && dock?.topId === id
@@ -117,7 +136,6 @@ export function DockActions({ label, info, children }: { label: string; info?: D
         {open ? <>
           <div className="rv-taskbar-more-scrim" aria-hidden="true" onClick={() => setOpen(false)} />
           <div className="rv-taskbar-more-list" role="menu" aria-label="Diğer işlemler">
-            {info?.end ? <div className="rv-taskbar-more-summary">{info.end}</div> : null}
             {others.map((item, index) => <button key={index} type="button" role="menuitem" className={'rv-taskbar-more-item' + (item.danger ? ' is-danger' : '')} disabled={item.disabled} onClick={() => { setOpen(false); item.element.click() }}>
               <span className="rv-taskbar-more-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: item.iconHtml }} /><span>{item.label}</span>
             </button>)}

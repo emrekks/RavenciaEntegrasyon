@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { backLabel, UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
+import { UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
 import { useScrollLock } from '../shared/hooks/useScrollLock'
 
@@ -44,7 +44,7 @@ const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: bool
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
 // The panel: the bottom row holds the four targets - or, in task mode, a Menü button and the page's buttons; in task mode
 // the status strip is a top row above it.
-export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate, back }: {
+export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
   menuOpen: boolean
   menuCount: number
   // The pending count drawn on a page's own target ("/orders": 9).
@@ -55,8 +55,6 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   setStripEl: (element: HTMLElement | null) => void
   menuSlotRef: RefObject<HTMLButtonElement | null>
   onToggleMenu: () => void
-  // A page reached from a list: the task bar starts with a button back to it (the dock's Menü is hidden in task mode anyway).
-  back?: { label: string; onBack: () => void } | null
   // Leaves the open menu for a page (replaces the menu's history entry).
   onNavigate: (to: string) => void
 }) {
@@ -111,7 +109,6 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
         </button>
       </nav>
       <div className="rv-taskbar" inert={!task || undefined}>
-        {back ? <button type="button" className="rv-taskbar-back" aria-label={backLabel(back.label)} onClick={back.onBack}><UiIcon name="arrowLeft" size={20} /></button> : null}
         <div className="rv-taskbar-actions" ref={setActionsEl} />
       </div>
     </div>
