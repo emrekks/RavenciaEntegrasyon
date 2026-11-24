@@ -2,7 +2,7 @@
 // The capture clock stands at 2026-10-20 09:30 (+03:00).
 
 const productImage = '/pack/brand/ravencia-symbol-light-128.webp'
-const costs = (cost, price) => ({ productCost: cost, cargo: 42.5, serviceFee: 10.19, withholding: Math.round(price * 0.01 * 100) / 100, netVat: 18.4 })
+const costs = (cost, price) => ({ cost, cargo: 42.5, serviceFee: 10.19, stoppage: Math.round(price * 0.01 * 100) / 100, netVat: 18.4, vatRate: 10 })
 const choice = (tier, price, rate, cost) => {
   const commission = Math.round(price * rate) / 100
   return { tier, price, rate, commission, remaining: cost === null ? null : Math.round((price - commission - cost - 71.09 - price * 0.01) * 100) / 100, costs: cost === null ? null : costs(cost, price) }
@@ -41,9 +41,32 @@ const plus = [
   plusRow('8690000000041', 'Oversize Basic Tişört', 'TS-118', 'Siyah', 'STD', 41, 96.5, 289.9, 279.9),
 ]
 
+// The short form of a page (rows?shape=compact, CommissionTariffCompactRows.cs): values in a fixed order, the repeated
+// name and picture as indexes into strings, each band's shared costs left out of the choices.
+function compactPage(items) {
+  const strings = []
+  const text = value => { if (value == null) return null; const at = strings.indexOf(value); return at >= 0 ? at : strings.push(value) - 1 }
+  const band = item => [item.tier, item.min, item.max, item.rate]
+  const rows = items.map(row => {
+    const priced = (row.choices ?? []).flatMap(choice => choice.costs ? [choice.costs] : [])
+    const first = priced[0]
+    const shared = first && priced.every(item => item.cost === first.cost && item.cargo === first.cargo && item.serviceFee === first.serviceFee && item.vatRate === first.vatRate) ? [first.cost, first.cargo, first.serviceFee, first.vatRate] : null
+    const choices = row.choices == null ? null : row.choices.map(choice => {
+      const own = !choice.costs ? null : shared ? [choice.costs.stoppage, choice.costs.netVat] : [choice.costs.cost, choice.costs.cargo, choice.costs.serviceFee, choice.costs.stoppage, choice.costs.netVat, choice.costs.vatRate]
+      const bandRate = row.bands.find(item => item.tier === choice.tier)?.rate
+      return bandRate === choice.rate ? [choice.tier, choice.price, choice.commission, choice.remaining, own] : [choice.tier, choice.price, choice.commission, choice.remaining, own, choice.rate]
+    })
+    return [row.id, row.barcode, row.sellerSku, row.modelCode, text(row.productName), row.size, row.basisPrice, row.currentSalePrice, row.currentRate, row.currentTier, row.currentBandRate, row.bands.map(band),
+      row.nextLowerBand ? band(row.nextLowerBand) : null, row.matchesPanel, row.costPrice ?? null, choices, row.recommendedTier ?? null, text(row.imageUrl), row.color ?? null, row.stock ?? null, shared]
+  })
+  return { strings, rows, totalCount: 120, page: 0, pageSize: 50, nextCursor: null, hasMore: false }
+}
+const tariffRows = ({ url }) => url.searchParams.get('shape') === 'compact' ? compactPage(rows) : { items: rows, totalCount: 120, page: 0, pageSize: 50, nextCursor: null, hasMore: false }
+
 export const promotions = [
   ['GET /connections/c-ty/commission-tariffs', tariffs],
-  ['^/connections/c-ty/commission-tariffs/t[01]/rows$', { items: rows, totalCount: 120, page: 0, pageSize: 50 }],
+  ['^/connections/c-ty/commission-tariffs/t[01]/rows$', tariffRows],
+  ['^/connections/c-ty/commission-tariffs/t[01]/selection$', { bulk: null, tier: null, minRate: null, minAmount: null, maxRate: null, maxAmount: null, choices: [], updatedAt: null }],
   ['^/connections/c-ty/commission-tariffs/t[01]/facets$', { categories: ['Jean', 'Tişört'], brands: ['Ravencia'] }],
   ['GET /connections/c-ty/promotion-offers', [{ kind: 'PLUS', fileName: 'plus-komisyon-tarifesi.xlsx', uploadedAt: '2026-10-19T09:00:00Z', periodText: '20 Ekim – 2 Kasım', rowCount: 3, matchedRowCount: 3 }]],
   ['GET /connections/c-ty/promotion-offers/PLUS', { offer: { kind: 'PLUS', fileName: 'plus-komisyon-tarifesi.xlsx', uploadedAt: '2026-10-19T09:00:00Z', periodText: '20 Ekim – 2 Kasım', rowCount: 3, matchedRowCount: 3 }, plus, advantage: null, flash: null }],

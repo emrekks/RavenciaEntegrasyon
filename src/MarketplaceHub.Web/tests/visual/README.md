@@ -39,6 +39,23 @@ Lower level: `node tests/visual/capture.mjs --dist <built folder> --out <folder>
   that one again (`--only <scenario> --widths <width>`) before reading anything into it; a capture whose signed-in
   shell did not render is retried automatically.
 
+## Smoke check and screenshots
+
+```bash
+npm run test:smoke                                   # build + open every route of routes.mjs against the mocks (1280 and 375 px)
+node tests/visual/smoke.mjs --only reports-profit --widths 820   # no build, one route, another width
+node tests/visual/shots.mjs --out <folder> --prefix tablet --widths 769,820,1024 --themes dark,light --only orders,reports
+```
+
+- `smoke.mjs` fails when a route shows the error screen, throws, logs a console error, renders nothing or asks for an API
+  path no fixture answers (the empty default hides a shape a page no longer accepts, as "e is not iterable" on Genel Bakış
+  did when the dashboard's answer changed). Add a route to `routes.mjs` with every new screen or tab; add the fixture the
+  failure names (shape from `src/shared/api/generated/api-types.ts`).
+- `shots.mjs` writes `<prefix>-<screen>-<width>-<theme>.png` of the routes in `routes.mjs` (frozen clock, light/dark through the
+  saved theme).
+- Fixtures: `fixtures/monitoring.mjs` (overview and İşlem Takibi logs), `fixtures/reports.mjs` (Raporlar; its data is
+  `report-sales.mjs` and `report-more.mjs`, shared with `.claude/skills/reports-design/serve.mjs`).
+
 ## Cascade check
 
 ```bash

@@ -13,7 +13,7 @@ const photo = '/pack/brand/ravencia-symbol-256.webp'
 const MNG = 'MNG Kargo Marketplace', UPS = 'UPS Kargo', SENDEO = 'Sendeo', KARGOIST = 'Kargoist', GELIVER = 'Geliver'
 
 const platformNames = { TRENDYOL: 'Trendyol', HEPSIBURADA: 'Hepsiburada', SHOPIFY: 'Shopify', N11: 'N11', PAZARAMA: 'Pazarama' }
-const connectionIds = { TRENDYOL: 'c-ty', HEPSIBURADA: 'c-hb', SHOPIFY: 'c-sh', N11: 'c-n11', PAZARAMA: 'c-pz' }
+export const connectionIds = { TRENDYOL: 'c-ty', HEPSIBURADA: 'c-hb', SHOPIFY: 'c-sh', N11: 'c-n11', PAZARAMA: 'c-pz' }
 
 // ---------------------------------------------------------------------------------------------------------- orders
 
@@ -267,6 +267,24 @@ function returnPage({ url }) {
   return { items, nextCursor: null, hasMore: false, totalCount: items.length }
 }
 
+// GET /returns/summary: the tab counts (the status groups of the list above), the filter choices and the metric cards.
+function returnSummary({ url }) {
+  const status = url.searchParams.get('status')
+  const tabCounts = { ALL: returns.length }
+  for (const item of returns) {
+    const group = returnGroup(item.status)
+    tabCounts[group] = (tabCounts[group] ?? 0) + 1
+  }
+  const current = status ? returns.filter(item => returnGroup(item.status) === status) : returns
+  const platformCounts = {}
+  for (const item of current) platformCounts[item.platformCode] = (platformCounts[item.platformCode] ?? 0) + 1
+  const platforms = [...new Set(returns.map(item => item.platformCode))].map(code => ({ platformCode: code, displayName: platformNames[code] ?? code }))
+  return {
+    tabCounts, platforms, cargoProviders: [], reasons: [], invoiceStatuses: [], unfilteredCount: current.length, platformCounts, cargoCounts: {}, reasonCounts: {}, invoiceStatusCounts: {},
+    metrics: { rejectedAwaitingCargo: 1, rejectedCargoUnknown: 0, todayApproved: 2, todayRejected: 0 }
+  }
+}
+
 function returnDetail({ match }) {
   const item = returns.find(entry => entry.id === match[1]) ?? returns[0]
   const waiting = returnGroup(item.status) === 'ACTION_REQUIRED'
@@ -297,9 +315,9 @@ function unit(text) {
   for (const char of text) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619) }
   return (hash >>> 0) / 4294967296
 }
-const istanbulDay = iso => new Date(Date.parse(iso) + 3 * 3_600_000).toISOString().slice(0, 10)
-const channelProfiles = { TRENDYOL: [42000, 610], HEPSIBURADA: [18500, 720], SHOPIFY: [9200, 1150], N11: [6100, 540], PAZARAMA: [3400, 460] }
-function channelDay(code, day) {
+export const istanbulDay = iso => new Date(Date.parse(iso) + 3 * 3_600_000).toISOString().slice(0, 10)
+export const channelProfiles = { TRENDYOL: [42000, 610], HEPSIBURADA: [18500, 720], SHOPIFY: [9200, 1150], N11: [6100, 540], PAZARAMA: [3400, 460] }
+export function channelDay(code, day) {
   const [base, basket] = channelProfiles[code]
   const weekday = new Date(`${day}T12:00:00Z`).getUTCDay()
   const weekend = weekday === 0 || weekday === 6 ? 1.25 : 1
@@ -349,6 +367,7 @@ export const sales = [
   // (shipping-label settings: back-office.mjs, shared with the settings page's label designer)
   // Returns
   ['GET /returns', returnPage],
+  ['GET /returns/summary', returnSummary],
   ['^/returns/([^/]+)/rejection-reasons$', [
     { id: 'rr-1', name: 'Ürün kullanılmış', evidenceRequired: true },
     { id: 'rr-2', name: 'Ürün etiketi sökülmüş', evidenceRequired: true },

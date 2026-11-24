@@ -287,8 +287,20 @@ function syncPolicies({ match }) {
 // its attributes are known and need no further values, so the card shows no blocking issue.
 const referenceSnapshot = 'snap-2026-10-19'
 const categoryMapping = { externalId: '1180', snapshotId: referenceSnapshot, status: 'VERIFIED' }
-const referenceCategories = { snapshotId: referenceSnapshot, items: [{ externalId: '1180', name: 'Trençkot', isActive: true, isLeaf: true }, { externalId: '601', name: 'Gömlek', isActive: true, isLeaf: true }, { externalId: '383', name: 'Kazak', isActive: true, isLeaf: true }] }
-const referenceAttributes = { snapshotId: referenceSnapshot, items: [{ externalId: '47', name: 'Renk', isActive: true, isRequired: true, allowsCustomValue: false }, { externalId: '338', name: 'Beden', isActive: true, isRequired: true, allowsCustomValue: false }, { externalId: '14', name: 'Materyal', isActive: true, isRequired: false, allowsCustomValue: false }, { externalId: '1192', name: 'Menşei', isActive: true, isRequired: true, allowsCustomValue: true }] }
+// GET /mappings/categories?connectionId=: the connection's category links (the list the Eşleştirmeler screen reads).
+const mappingOf = (localId, externalId, status = 'VERIFIED') => ({ id: `map-${localId}`, connectionId: 'c-ty', snapshotId: referenceSnapshot, localId, scopeExternalId: '', externalId, status, verifiedAt: '2026-10-18T11:05:00+03:00', version: 1, missingRequiredAttributeCount: 0, source: 'MANUAL' })
+const referenceBrands = { snapshotId: referenceSnapshot, resourceType: 'BRANDS', fetchedAt: '2026-10-19T04:12:40+03:00', items: [
+  { externalId: '8801', parentExternalId: null, name: 'Ravencia', path: 'Ravencia', depth: 0, isLeaf: true, isActive: true },
+  { externalId: '8802', parentExternalId: null, name: 'Ravencia Basic', path: 'Ravencia Basic', depth: 0, isLeaf: true, isActive: true },
+  { externalId: '8803', parentExternalId: null, name: 'Nova Jeans', path: 'Nova Jeans', depth: 0, isLeaf: true, isActive: true }] }
+const brandMappingList = [{ id: 'bmap-1', connectionId: 'c-ty', snapshotId: referenceSnapshot, localId: 'br-ravencia', scopeExternalId: '', externalId: '8801', status: 'VERIFIED', verifiedAt: '2026-10-18T11:05:00+03:00', version: 1, missingRequiredAttributeCount: null, source: 'MANUAL' }]
+const categoryMappingList = [mappingOf('cat-trenckot', '1180'), mappingOf('cat-erkek-gomlek', '601')]
+const attributeList = () => { const items = [attrRenk, attrBeden, attrWebColor, attrMateryal, attrKalip, attrBoy, attrYaka, attrMensei].map(item => ({ unit: null, selectionMode: null, isActive: true, ...item })); return { items, totalCount: items.length, hasMore: false, nextCursor: null } }
+const referenceCategories = { snapshotId: referenceSnapshot, resourceType: 'CATEGORIES', fetchedAt: '2026-10-19T04:12:40+03:00', items: [
+  { externalId: '1180', parentExternalId: '1000', name: 'Trençkot', path: 'Giyim > Kadın > Dış Giyim > Trençkot', depth: 3, isActive: true, isLeaf: true },
+  { externalId: '601', parentExternalId: '1001', name: 'Gömlek', path: 'Giyim > Erkek > Üst Giyim > Gömlek', depth: 3, isActive: true, isLeaf: true },
+  { externalId: '383', parentExternalId: '1001', name: 'Kazak', path: 'Giyim > Erkek > Üst Giyim > Kazak', depth: 3, isActive: true, isLeaf: true }] }
+const referenceAttributes = { snapshotId: referenceSnapshot, resourceType: 'ATTRIBUTES', fetchedAt: '2026-10-19T04:12:40+03:00', items: [{ externalId: '47', parentExternalId: null, name: 'Renk', path: 'Renk', depth: 0, isLeaf: true, isActive: true, isRequired: true, allowsCustomValue: false }, { externalId: '338', parentExternalId: null, name: 'Beden', path: 'Beden', depth: 0, isLeaf: true, isActive: true, isRequired: true, allowsCustomValue: false }, { externalId: '14', parentExternalId: null, name: 'Materyal', path: 'Materyal', depth: 0, isLeaf: true, isActive: true, isRequired: false, allowsCustomValue: false }, { externalId: '1192', parentExternalId: null, name: 'Menşei', path: 'Menşei', depth: 0, isLeaf: true, isActive: true, isRequired: true, allowsCustomValue: true }] }
 const attributeDefaults = [{ externalAttributeId: '1192' }]
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -302,7 +314,8 @@ function job({ id, connectionId = null, jobType, status, attemptCount = 1, maxAt
     firstFailedAt: failed ? startedAt : null, lastFailedAt: failed ? completedAt ?? startedAt : null, nextRetryAt: status === 'RETRY_SCHEDULED' ? '2026-10-20T09:45:00+03:00' : null,
     batchCount, progressCurrent: progress?.current ?? 0, progressTotal: progress?.total ?? null, progressPercent: progress ? Math.round(progress.current / progress.total * 100) : null,
     progressLabel: progress?.label ?? null, progressReceived: progress?.current ?? 0, progressProcessed: progress ? progress.current - (progress.failed ?? 0) : 0, progressSkipped: 0, progressFailed: progress?.failed ?? 0,
-    lastAttemptStartedAt: status === 'PENDING' ? null : startedAt, heartbeatAt: status === 'LEASED' ? '2026-10-20T09:29:40+03:00' : null
+    lastAttemptStartedAt: status === 'PENDING' ? null : startedAt, heartbeatAt: status === 'LEASED' ? '2026-10-20T09:29:40+03:00' : null,
+    waitingChecks: 0, attemptBudget: maxAttempts, waiting: false, resource: null
   }
 }
 
@@ -324,12 +337,19 @@ const jobs = [
 ]
 
 function jobsMatching(url) {
-  const since = url.searchParams.get('since')
-  const statuses = (url.searchParams.get('status') ?? '').split(',').filter(Boolean)
-  const types = (url.searchParams.get('jobTypes') ?? '').split(',').filter(Boolean)
+  const query = url.searchParams
+  let since = query.get('dateFrom') ?? query.get('since')
+  // A clock far past the fixture's world (a preview in a live browser) would hide every job: no lower bound then.
+  if (since && new Date(since).getTime() > Date.parse('2026-10-22T00:00:00+03:00')) since = null
+  const statuses = (query.get('status') ?? '').split(',').filter(Boolean)
+  const types = (query.get('jobTypes') ?? '').split(',').filter(Boolean)
+  const platforms = (query.get('platforms') ?? query.get('platform') ?? '').split(',').filter(Boolean).map(value => value.toLocaleLowerCase('tr-TR'))
+  const search = (query.get('search') ?? '').toLocaleLowerCase('tr-TR')
   return jobs.filter(item => (!since || new Date(item.createdAt).getTime() >= new Date(since).getTime())
     && (!statuses.length || statuses.includes(item.status))
-    && (!types.length || types.includes(item.jobType)))
+    && (!types.length || types.includes(item.jobType))
+    && (!platforms.length || platforms.includes(item.marketplace.toLocaleLowerCase('tr-TR')))
+    && (!search || [item.id, item.externalId, item.correlationId, item.jobType, item.marketplace].some(value => value?.toLocaleLowerCase('tr-TR').includes(search))))
 }
 
 function jobCounts({ url }) {
@@ -387,6 +407,13 @@ export const catalog = [
   ['^/products/([^/]+)/publication-status/([^/]+)$', publicationStatus],
   ['^/products/([^/]+)/listing-profiles/([^/]+)$', ({ match }) => ({ id: `lp-${match[1]}-${match[2]}`, version: 2 })],
   ['^/products/([^/]+)$', ({ match }) => products.find(item => item.id === decodeURIComponent(match[1])) ?? products[0]],
+  ['GET /catalog/attributes', attributeList],
+  ['GET /mappings/categories', categoryMappingList],
+  ['GET /mappings/brands', brandMappingList],
+  ['GET /reference-data/brands/summary', { ...referenceBrands, itemCount: referenceBrands.items.length }],
+  ['GET /reference-data/brands/unmapped', [{ externalId: '8803', name: 'Nova Jeans', occurrences: 14, lastSeenAt: '2026-10-19T22:15:00+03:00' }]],
+  ['GET /reference-data/brands/lookup', ({ url }) => { const items = referenceBrands.items.filter(item => (url.searchParams.get('ids') ?? '').split(',').includes(item.externalId)); return { ...referenceBrands, itemCount: items.length, items } }],
+  ['GET /reference-data/brands', referenceBrands],
   ['GET /catalog/categories', { items: categories, totalCount: categories.length, hasMore: false, nextCursor: null }],
   ['GET /catalog/brands', { items: brands, totalCount: brands.length, hasMore: false, nextCursor: null }],
   ['^/catalog/categories/([^/]+)/attribute-requirements$', ({ match }) => match[1] === 'cat-trenckot' ? trenchRequirements : genericRequirements],
@@ -408,6 +435,7 @@ export const catalog = [
 
   // Jobs
   ['GET /jobs', ({ url }) => jobsMatching(url)],
+  ['GET /jobs/page', ({ url }) => { const items = jobsMatching(url); return { items, nextCursor: null, hasMore: false, totalCount: items.length, supportedFilters: null } }],
   ['GET /jobs/counts', jobCounts],
   ['GET /jobs/metrics', jobMetrics],
   ['GET /jobs/metrics/lanes', laneMetrics],
