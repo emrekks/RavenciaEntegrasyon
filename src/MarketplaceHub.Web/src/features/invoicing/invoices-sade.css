@@ -149,6 +149,8 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .5; }
 /* Second pass against the proposal, element by element */
 .app-shell.stitch-shell main .reference-invoices-page :is(.invoice-reference-shipment, .invoice-reference-status) > * { justify-self: start !important; margin-left: 0 !important; margin-right: 0 !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-select-all input { position: relative; }
+/* The head box is the row boxes' size (16 px) on their vertical line, 8 px before the title. */
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-head .invoice-reference-select-all { width: 16px; height: 16px; flex: 0 0 16px; margin-right: 8px; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-platform-heading > strong { flex: none; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger { height: 36px; min-height: 36px; padding: 0 10px 0 12px; gap: 6px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-actions-trigger:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }

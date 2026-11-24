@@ -48,4 +48,9 @@ describe('Faturalar desktop table keeps its 23 Nov cells', () => {
     const rule = bodies(read('./invoices-sade.css')).find(item => /invoice-reference-head, \.invoice-reference-row\) \{?$|invoice-reference-head, \.invoice-reference-row\)$/.test(item.selector) && /136px 140px 160px 180px 112px 124px/.test(item.body))
     expect(rule?.media.join(' ')).toMatch(/min-width:\s*1025px/)
   })
+
+  it('the head select-all box is the row boxes size (16 px) with 8 px before the title', () => {
+    const css = read('./invoices-sade.css')
+    expect(css).toMatch(/invoice-reference-head .invoice-reference-select-all { width: 16px; height: 16px; flex: 0 0 16px; margin-right: 8px; }/)
+  })
 })

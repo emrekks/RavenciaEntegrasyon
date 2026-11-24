@@ -25,7 +25,7 @@ vi.mock('../../../shared/api', async importOriginal => {
   return { ...original, hubApi: vi.fn(answer), hubPoll: vi.fn(answer), loadAllPages: vi.fn(async (path: string) => answer(path)) }
 })
 
-import { ManualResendDialog } from './ManualResendDialog'
+import { MANUAL_RESEND_NOTE, ManualResendDialog } from './ManualResendDialog'
 import { normalizeManualResendNumber } from './manual-resends'
 
 let container: HTMLDivElement
@@ -72,6 +72,13 @@ describe('ManualResendDialog', () => {
     expect(list.textContent).toContain('Kargoya Verilmesi Bekleniyor')
     // Only marketplace connections are offered; the only one is picked.
     expect(document.querySelector('.rr-mresend-store .rr-trigger')!.textContent).toContain('Trendyol')
+    // The explanation sits in the title's hint, not in the body.
+    expect(document.querySelector('.rr-mresend-note')).toBeNull()
+    expect(document.querySelector('.rr-mresend')!.textContent).not.toContain('Kayıt pazaryerine hiçbir şey göndermez')
+    const hint = document.querySelector('.rr-m-head .title-hint')!
+    expect(hint).not.toBeNull()
+    await act(async () => { (hint as HTMLElement).click() })
+    expect(document.body.textContent).toContain(MANUAL_RESEND_NOTE)
     await typeInto(field(), ' #1000000102 ')
     await submit()
     await settle(() => document.querySelector('.rr-mresend-msg')?.textContent?.includes('eklendi') ?? false)
