@@ -26,6 +26,7 @@ const groups: MenuGroup[] = [
   { label: 'Sistem', entries: [{ to: '/settings', icon: 'settings', label: 'Sistem Ayarları', end: true }] },
 ]
 
+const profile = { name: 'Ayşe Yılmaz', subtitle: 'Hesap Sahibi · ayse@ravencia.com', to: '/settings?tab=auth' }
 let pathNow = ''
 function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone?: boolean; count?: number; slotCounts?: Record<string, number>; children?: ReactNode }) {
   const dock = useDockHostState(phone)
@@ -36,7 +37,7 @@ function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone
   pathNow = location.pathname
   return <DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
-    {menu.open && <FullScreenMenu groups={groups} storeName="Mağaza" onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
+    {menu.open && <FullScreenMenu groups={groups} profile={profile} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
     <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} />
     {children}
   </DockContext.Provider>
@@ -157,13 +158,30 @@ describe('Ravencia Dock', () => {
     expect(document.querySelector('.rv-fullmenu-head')?.textContent).toBe('Menü')
     expect(document.querySelector('.rv-fullmenu-search, .rv-fullmenu-foot, .rv-fullmenu-tools, input')).toBeNull()
     const system = document.querySelector('.rv-fullmenu-group[aria-label="Sistem"]')!
-    expect(system.querySelector('h3 .rv-fullmenu-store')?.textContent).toBe('Mağaza')
+    expect(system.querySelector('h3')?.textContent).toBe('Sistem')
+    expect(document.querySelector('.rv-fullmenu-store')).toBeNull()
+    // The profile card is the first item of the scrolling list: initials avatar, name, role and e-mail, an arrow to the account page.
+    const card = document.querySelector('.rv-fullmenu-body > .rv-fullmenu-profile')!
+    expect(card.getAttribute('href')).toBe('/settings?tab=auth')
+    expect(card.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('AY')
+    expect(card.querySelector('strong')?.textContent).toBe('Ayşe Yılmaz')
+    expect(card.querySelector('small')?.textContent).toBe('Hesap Sahibi · ayse@ravencia.com')
+    expect(card.querySelector('.rv-fullmenu-chev')).not.toBeNull()
     const rows = [...system.querySelectorAll('.rv-fullmenu-row')]
     expect(rows.map(row => row.textContent)).toEqual(['Sistem Ayarları', 'Çıkış'])
     expect(rows[1].classList.contains('is-danger')).toBe(true)
     expect(rows[1].querySelector('.rv-fullmenu-chev')).toBeNull()
     // Only pages with something pending show a count (0 shows none).
     expect([...document.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
+  })
+
+  it('shows only the name, with no arrow and no link, when the session has no role or e-mail and there is no page to go to', () => {
+    render(<MemoryRouter><FullScreenMenu groups={groups} profile={{ name: 'ilker' }} onLogout={() => undefined} onClose={() => undefined} onNavigate={() => undefined} pathname="/orders" /></MemoryRouter>)
+    const card = document.querySelector('.rv-fullmenu-profile')!
+    expect(card.tagName).toBe('DIV')
+    expect(card.querySelector('small')).toBeNull()
+    expect(card.querySelector('.rv-fullmenu-chev')).toBeNull()
+    expect(card.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('İ')
   })
 
   it('leaves the menu for a page by replacing its history entry, so back returns to the page it was opened on', () => {

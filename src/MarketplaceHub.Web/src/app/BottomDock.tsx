@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
-import { UiIcon, type UiIconName } from '../shared/components'
+import { UiIcon, UserAvatar, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
 import { useScrollLock } from '../shared/hooks/useScrollLock'
 
@@ -119,9 +119,11 @@ const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]
 
 // The full-screen menu: the page's own colour over the top bar, rising from the bottom; the dock stays below it.
 // The menu is the app's one menu definition (App.tsx's groups, filtered the way the sidebar is), drawn as cards.
-export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigate, pathname }: {
+export type MenuProfile = { name: string; subtitle?: string; imageUrl?: string | null; to?: string }
+
+export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname }: {
   groups: MenuGroup[]
-  storeName: string
+  profile: MenuProfile
   onLogout: () => void
   onClose: () => void
   onNavigate: (to: string) => void
@@ -168,11 +170,22 @@ export function FullScreenMenu({ groups, storeName, onLogout, onClose, onNavigat
       <UiIcon className="rv-fullmenu-chev" name="chevronRight" size={16} />
     </Link>
   }
+  // The profile card: the person's picture (or initials), name and, when the session has them, role and e-mail; an arrow only when
+  // there is a page to go to.
+  const profileBody = <>
+    <UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} />
+    <span className="rv-fullmenu-profile-copy"><strong>{profile.name}</strong>{profile.subtitle ? <small>{profile.subtitle}</small> : null}</span>
+    {profile.to ? <UiIcon className="rv-fullmenu-chev" name="chevronRight" size={16} /> : null}
+  </>
+  const profileCard = profile.to
+    ? <Link className="rv-fullmenu-profile" to={profile.to} onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); onNavigate(profile.to!) }}>{profileBody}</Link>
+    : <div className="rv-fullmenu-profile">{profileBody}</div>
   return <div ref={rootRef} className="rv-fullmenu" role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1}>
     <header className="rv-fullmenu-head"><h2>Menü</h2></header>
     <div className="rv-fullmenu-body">
+      {profileCard}
       {groups.map((group, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
-        <h3>{group.label}{index === groups.length - 1 ? <span className="rv-fullmenu-store" title={storeName}>{storeName}</span> : null}</h3>
+        <h3>{group.label}</h3>
         <div className="rv-fullmenu-list">
           {group.entries.map(row)}
           {index === groups.length - 1 ? <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={20} /><span className="rv-fullmenu-name">Çıkış</span></button> : null}

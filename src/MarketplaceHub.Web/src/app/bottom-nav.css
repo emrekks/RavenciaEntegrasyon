@@ -119,7 +119,15 @@
   .rv-fullmenu { position: fixed; inset: 0; z-index: 86; display: flex; flex-direction: column; box-sizing: border-box; padding: calc(14px + env(safe-area-inset-top, 0px)) 0 calc(var(--rv-dock-bottom) + 57px + 14px); color: var(--rv-color-ink); background: var(--rv-color-bg); outline: 0; animation: rv-fullmenu-in 200ms cubic-bezier(.2, .8, .2, 1) both; }
   .rv-fullmenu-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px 12px; }
   .rv-fullmenu-head h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
-  .rv-fullmenu-store { float: right; max-width: 60%; overflow: hidden; margin-right: 12px; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+  /* The profile card: the first item of the list, scrolling with it. */
+  .rv-fullmenu-profile { display: flex; align-items: center; gap: 12px; box-sizing: border-box; min-height: 68px; margin: 4px 0 0; padding: 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+  .rv-fullmenu-avatar { display: grid; flex: none; place-items: center; width: 44px; height: 44px; overflow: hidden; color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); border-radius: 50%; font-size: 16px; font-weight: 700; line-height: 1; }
+  :root:not([data-theme="light"]) .rv-fullmenu-avatar { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
+  .rv-fullmenu-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .rv-fullmenu-profile-copy { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
+  .rv-fullmenu-profile-copy strong { overflow: hidden; font-size: 15px; font-weight: 600; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+  .rv-fullmenu-profile-copy small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+  .rv-fullmenu-profile > .rv-fullmenu-chev { flex: none; color: var(--rv-color-muted); opacity: .7; }
   .rv-fullmenu-body { flex: 1; min-height: 0; padding: 0 16px 12px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
   .rv-fullmenu-body::-webkit-scrollbar { display: none; }
   .rv-fullmenu-row.is-danger { width: 100%; color: var(--rv-color-danger); background: none; border: 0; font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
