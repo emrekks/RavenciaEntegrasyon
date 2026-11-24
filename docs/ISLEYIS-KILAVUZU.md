@@ -1731,9 +1731,9 @@ Sekmeler: Genel Bakış, Kârlılık (yanında kâr marjı %), Hakediş, Sipari�
 
 | Kart | Formül |
 |---|---|
-| **Toplam Ciro** | Σ satış tutarı (TRY); iptaller yok, **iadeler düşülmez**. Alt satır "Net … · iade …" (`OverviewTab.tsx`) |
+| **Net Ciro** | Toplam Ciro − İade Edilen Tutar (TRY); iptaller yok, **iadeler düşülmüş** (sahip, 14 Kas 2026). Alt satır "Toplam … · İade …" (`OverviewTab.tsx`) |
 | **Net Kâr** / **Tahmini Net Kâr** / **Tahmini Zarar** | 5.3.2'deki Net Kâr; "Sipariş başına" = Net Kâr ÷ tutarı olan sipariş. Maliyet hiç girilmemişse "Maliyet girilmemiş", müşteride kalan adetlerin %95'inden azının maliyeti girili ise **"Maliyet Eksik"**; %95–%100 arasında kâr gösterilir ve **Tahmini** yazar (`report-parts.tsx` `moneyBreakdown`, `profitReason`, `profitLabel`) |
-| **Kâr Marjı** | Net Kâr ÷ Toplam Ciro; alt satır "Reklam öncesi" = (Net Kâr + Trendyol reklamı) ÷ Toplam Ciro |
+| **Kâr Marjı** | Net Kâr ÷ Net Ciro; alt satır "Reklam öncesi" = (Net Kâr + Trendyol reklamı) ÷ Net Ciro |
 | **Maliyete Göre Kâr** | Net Kâr ÷ Ürün Maliyeti |
 | **Sipariş** | İptal edilmemiş sipariş sayısı (tutarsızlar dahil); alt satır iptal sayısı · sepet |
 | **Satılan Adet** | Sipariş − iptal adedi (iade düşülmez); alt satır "Net" = müşteride kalan; iade adedi |
@@ -1741,7 +1741,7 @@ Sekmeler: Genel Bakış, Kârlılık (yanında kâr marjı %), Hakediş, Sipari�
 Oranlar: **iptal oranı** = iptal adedi ÷ (satılan + iptal adedi); **iade oranı** = iade adedi ÷ aynı payda (Trendyol'un satış
 raporu gibi). İptal uyarı eşiği %2 (`ReportBuilder.cs:337,495-499`).
 
-**5.3.2 Kârlılık sekmesi.** Üstte **beş kart**: Toplam Ciro, Maliyeti Olan Ciro, Net Kâr, Net Kâr / Satış Fiyatı Oranı, Net
+**5.3.2 Kârlılık sekmesi.** Üstte **beş kart**: Net Ciro, Maliyeti Olan Ciro, Net Kâr, Net Kâr / Satış Fiyatı Oranı, Net
 Kâr / Ürün Maliyeti Oranı. Altında Kâr Hesabı, Komisyon ve Trendyol Kargo, Platformlara Göre Net Ciro, Reklam ve Diğer
 Kesintiler, platform tablosu. **Brüt Kâr kartı yoktur**: 9 Kas'ta eklenip aynı gün kaldırıldı (`e479e8998`). Koddaki ölü "Tahmini Brüt Kâr" adımı da
 12 Kas'ta silindi; döküm yalnız Net Kâr'ı gösterir (`ProfitBridge.tsx` `ProfitLedger`).
@@ -1751,7 +1751,7 @@ Kesintiler, platform tablosu. **Brüt Kâr kartı yoktur**: 9 Kas'ta eklenip ayn
 | **Toplam Ciro** = Kâr Hesabı'nda **Satış Tutarı** | Satıcı indirimi düşülmüş, pazaryeri indirimi eklenmiş satış tutarı (TRY) | dahil | `ReportBuilder.cs:492` |
 | **İade Edilen Tutar** | 5.1'deki iade tutarı | — | `ReportBuilder.cs:437-440` |
 | **Net Ciro** | Toplam Ciro − İade Edilen Tutar | düşülmüş | `ReportBuilder.cs:439,500` |
-| **Maliyeti Olan Ciro** | Maliyeti girili (>0) satırların satış tutarı, Toplam Ciro gibi (iadeler düşülmeden; `CostedSales`) | dahil | `ReportBuilder.cs:522,542` |
+| **Maliyeti Olan Ciro** | Maliyeti girili (>0) satırların müşteride kalan adetlerinin satış tutarı, Net Ciro gibi (iadeler düşülmüş; `CostedRevenue`, sahip 14 Kas 2026) | düşülmüş | `ReportBuilder.cs:555` |
 | **Ürün Maliyeti** | Σ maliyet × **müşteride kalan adet**; yalnız maliyeti girili satırlar | iade adedi hariç | `ReportBuilder.cs:523-528` |
 | **Komisyon** | Trendyol: hesap kesiminde gerçek, kesinleşmeyende satırdaki orandan tahmin. HB, N11, Pazarama: finans kaydı okunan siparişte gerçek, diğerlerinde tahmin. Oran yoksa mağazanın dönem ortalaması; o da yoksa **bilinmiyor** (0 sayılmaz, "N siparişin komisyonu bilinmiyor"). Shopify: komisyon yok. | kalan adet üzerinden | `ReportBuilder.cs:455-475`; `ReportCosts.cs:500-516` |
 | **Kargo** | Trendyol: kargo faturası gelende gerçek; gelmeyende mağazanın son 60 gün tarifesi (en sık faturalanan tutar, Eki 2026: 98,34 TL), iadede dönüş kargosu da. Diğerleri: 2026 sözleşme tarifeleri (desi ve kargo firmasına göre, KDV dahil; desi yoksa 1 desi; iadede iki yön). Shopify: sipariş başı 120 TL. | dönüş kargosu eklenir | `ReportCosts.cs:24-35,271-291`; `ReportPlatformCosts.cs:22-86` |
@@ -1761,7 +1761,7 @@ Kesintiler, platform tablosu. **Brüt Kâr kartı yoktur**: 9 Kas'ta eklenip ayn
 | **Net KDV** | Yurt içi satışların KDV'si − ürün maliyetinin KDV'si − pazaryeri giderlerinin %20 KDV'si; eksiyse devreden KDV'dir, kârı artırır | kalan satış | `ReportCosts.cs:400-411` |
 | **Reklam ve Diğer Kesintiler** | Siparişe bağlı olmayan Trendyol kesintileri: Reklam, Ceza, Erken Ödeme Kesintisi, Diğer Kesinti; işlem tarihine göre | — | `report-parts.tsx` `unlinkedTitle` |
 | **Net Kâr** = **Tahmini Net Kâr** | Masraflar Sonrası − Net KDV − Ürün Maliyeti − Reklam ve Diğer Kesintiler. **Müşteride kalan adetlerin en az %95'inin maliyeti girili değilse Net Kâr gösterilmez** ("Maliyet Eksik"; hiçbiri girili değilse "Maliyet girilmemiş"); **%95 ve üstünde** kâr gösterilir, eksik adetlerin maliyeti satış payına göre tahmin edilir ve kart **Tahmini Net Kâr** yazar. Aynı koşul Kâr Köprüsü'nde Ürün Maliyeti adımını ve Stok'taki aylık kâr oranını da kapatır. Eksiyse kart adı **Tahmini Zarar**. | — | `report-parts.tsx` `moneyBreakdown`, `profitReason`, `profitLabel`; `ReportProfitRate.cs:16-23,73` |
-| **Net Kâr / Satış Fiyatı Oranı** = Genel Bakış'taki **Kâr Marjı** | Net Kâr ÷ Toplam Ciro | — | `report-parts.tsx:205` |
+| **Net Kâr / Satış Fiyatı Oranı** = Genel Bakış'taki **Kâr Marjı** | Net Kâr ÷ Net Ciro | — | `report-parts.tsx:205` |
 | **Net Kâr / Ürün Maliyeti Oranı** = **Maliyete Göre Kâr** | Net Kâr ÷ Ürün Maliyeti | — | `OverviewTab.tsx:143` |
 
 - Trendyol cari hesabı hiç okunamadıysa hesap daraltılır: yalnız İade + "Tahmini Komisyon" düşülür; kargo, hizmet bedeli,
