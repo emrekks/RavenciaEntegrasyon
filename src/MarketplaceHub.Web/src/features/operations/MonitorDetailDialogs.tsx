@@ -65,6 +65,11 @@ function OpenJob({ jobId, onOpenJob }: { jobId: string; onOpenJob?: (jobId: stri
   return onOpenJob ? <button type="button" className="rr-btn rr-link" onClick={() => onOpenJob(jobId)}>İşi Aç</button> : <Link className="rr-btn rr-link" to={`/jobs?ara=${encodeURIComponent(jobId)}`}>İşi Aç</Link>
 }
 
+// The list shrank under the person (a fix elsewhere, a refresh): a page past the last one is an empty page with no pager, so it goes back to the last real page.
+function useClampPage(data: { items: unknown[]; pageSize: number } | undefined, total: number | undefined, page: number, setPage: (page: number) => void) {
+  useEffect(() => { if (data && total != null && data.items.length === 0 && total > 0 && page > 1) setPage(Math.max(1, Math.ceil(total / data.pageSize))) }, [data, total, page, setPage])
+}
+
 function PagedFoot({ page, pageSize, total, onPage, shown }: { page: number; pageSize: number; total: number; onPage: (page: number) => void; shown: number }) {
   const pages = Math.max(1, Math.ceil(total / pageSize))
   return <div className="md-foot"><span className="rr-lead">{total.toLocaleString('tr-TR')} kayıttan {shown ? `${((page - 1) * pageSize + 1).toLocaleString('tr-TR')}–${((page - 1) * pageSize + shown).toLocaleString('tr-TR')}` : '0'} gösteriliyor</span>{pages > 1 ? <Pager page={page} totalPages={pages} onPageChange={onPage} /> : null}</div>
@@ -83,6 +88,7 @@ function InvalidOffersTab({ connectionId }: { connectionId: string }) {
   const query = useQuery({ queryKey: queryKeys.priceStockMonitor('invalid-offers', connectionId, term, reason, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<InvalidOffers>(`/price-stock-monitor/${connectionId}/invalid-offers?${qs({ search: term, reason, page, pageSize: PAGE_SIZE })}`, { signal }) })
   const data = query.data
+  useClampPage(data, data?.filteredCount, page, setPage)
   return <>
     <div className="md-filters">
       <label className="rr-fld rr-search"><small>Ara</small><input className="rr-in" aria-label="Gönderilemeyen tekliflerde ara" placeholder="Barkod, stok kodu veya ürün adı" value={search} onChange={event => { setSearch(event.target.value); setPage(1) }} /></label>
@@ -109,6 +115,7 @@ function FailedPushesTab({ connectionId, kind, onOpenJob }: { connectionId: stri
   const query = useQuery({ queryKey: queryKeys.priceStockMonitor('failed-pushes', connectionId, kind, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<FailedPushes>(`/price-stock-monitor/${connectionId}/failed-pushes?${qs({ kind, page, pageSize: PAGE_SIZE })}`, { signal }) })
   const data = query.data
+  useClampPage(data, data?.totalCount, page, setPage)
   return <Body query={query} empty={!data?.items.length}>{data && <>
     <div className="md-wrap"><table className="md-tbl"><thead><tr><th>Zaman</th><th>Durum</th><th>Hata</th><th /></tr></thead><tbody>
       {data.items.map(item => <tr key={item.jobId}>
@@ -126,6 +133,7 @@ function LostLinksTab({ connectionId, notFound, rejected }: { connectionId: stri
   const query = useQuery({ queryKey: queryKeys.priceStockMonitor('lost-links', connectionId, health, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<LostLinks>(`/price-stock-monitor/${connectionId}/lost-links?${qs({ health, page, pageSize: PAGE_SIZE })}`, { signal }) })
   const data = query.data
+  useClampPage(data, data?.totalCount, page, setPage)
   return <>
     <div className="md-filters"><label className="rr-fld"><small>Durum</small><PanelSelect ariaLabel="Durum" value={health} onChange={value => { setHealth(value); setPage(1) }} width={240}
       options={[{ value: 'NOT_FOUND', label: `Bulunamadı (${notFound.toLocaleString('tr-TR')})` }, { value: 'REJECTED', label: `Reddedildi (${rejected.toLocaleString('tr-TR')})` }]} /></label></div>
@@ -177,6 +185,7 @@ export function ApiHealthAttemptsDialog({ connectionId, displayName, kind, onClo
   const query = useQuery({ queryKey: queryKeys.apiHealthSignals('attempts', connectionId, side, page), placeholderData: keepPreviousData,
     queryFn: ({ signal }) => hubPoll<Attempts>(`/api-health-signals/${connectionId}/attempts?${qs({ class: side, page, pageSize: PAGE_SIZE })}`, { signal }) })
   const data = query.data
+  useClampPage(data, data?.totalCount, page, setPage)
   const totals = data?.totals
   const count = (value: number | undefined) => value == null ? '—' : value.toLocaleString('tr-TR')
   const title = `${kind === 'rateLimit' ? 'Hız Sınırı' : 'Hata Oranı'} · ${displayName} (son 24 saat)`

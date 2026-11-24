@@ -22,12 +22,13 @@ function dayDate(iso: string) {
   return formatIstanbul(iso, { day: 'numeric', month: 'long', weekday: 'long' })
 }
 
-function dayLabel(iso: string) {
+// The day of a moment in Istanbul (the card's clock is Istanbul's too), as "2026-11-24": Bugün and Dün never follow the device's time zone.
+const istanbulDay = (value: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value)
+
+export function dayLabel(iso: string, now = new Date()) {
   const created = new Date(iso)
-  const today = new Date()
-  const yesterday = new Date(today.getTime() - 86_400_000)
-  if (created.toDateString() === today.toDateString()) return 'Bugün'
-  if (created.toDateString() === yesterday.toDateString()) return 'Dün'
+  if (istanbulDay(created) === istanbulDay(now)) return 'Bugün'
+  if (istanbulDay(created) === istanbulDay(new Date(now.getTime() - 86_400_000))) return 'Dün'
   return formatIstanbul(created, { day: 'numeric', month: 'long' })
 }
 
