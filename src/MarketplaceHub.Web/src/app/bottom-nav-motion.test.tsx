@@ -28,13 +28,14 @@ describe('the phone layers move with the shared motion tokens (kit "A · iOS Yay
     expect(tokens).toContain('--rv-ease-bar: var(--rv-ease-sheet);')
   })
 
-  it('moves the top bar and what sticks under it on one time and curve, with a registered length', () => {
-    expect(dock).toContain('@property --rv-topbar-offset { syntax: "<length>"; inherits: true; initial-value: 0px; }')
-    expect(dock).toContain('transition: --rv-topbar-offset var(--rv-motion-bar) var(--rv-ease-bar)')
-    expect(dock).toContain('.app-shell.stitch-shell:has(.rv-topbar.is-hidden) { --rv-topbar-offset: 0px; }')
+  it('slides the top bar on the bar tokens, and what sticks under it has a top that never changes (no animated offset, no dvh)', () => {
+    expect(dock).not.toContain('--rv-topbar-offset')
+    expect(dock).not.toMatch(/min-height: 100dvh/) // the page never re-lays-out with the browser toolbar; dvh stays on the full-screen layers only
+    expect(dock).toContain('min-height: 100svh;')
     expect(read('../styles/responsive.css')).toContain('html body .rv-topbar { transition: transform var(--rv-motion-bar) var(--rv-ease-bar);')
     expect(read('../styles/design-system.css')).toContain('transition: transform var(--rv-motion-bar) var(--rv-ease-bar); will-change: transform; }')
-    expect(read('../features/catalog/product-editor/product-editor-design-system.css')).toContain('.variant-table-head { top: var(--rv-topbar-offset); }')
+    expect(read('../features/catalog/product-editor/product-editor-design-system.css')).toContain('.variant-table-head { top: calc(61px + var(--m-safe-top, 0px)); }')
+    expect(read('../features/catalog/products-responsive.css')).not.toContain('--rv-topbar-offset')
     expect(read('../styles/responsive.css')).toContain('html body .app-shell.stitch-shell .rv-topbar { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }')
   })
 })
@@ -63,6 +64,9 @@ describe('useStuckHead', () => {
     return (async () => {
       await frameTick()
       expect(head.hasAttribute('data-stuck')).toBe(false)
+      top = 101
+      await frameTick()
+      expect(head.hasAttribute('data-stuck')).toBe(false) // 1 px down is inside the hysteresis band
       top = 161
       await frameTick()
       expect(head.hasAttribute('data-stuck')).toBe(true)

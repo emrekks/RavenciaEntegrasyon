@@ -86,12 +86,13 @@ describe('phone bottom navigation (CSS)', () => {
     expect(panel).toContain('border-radius: 14px')
     expect(panel).toContain('border: 1px solid var(--rv-color-border)')
     expect(panel).toContain('box-shadow: 0 4px 16px rgb(0 0 0 / 12%)')
-    expect(panel).toContain('color-mix(in srgb, var(--rv-color-surface) 88%, transparent)')
+    expect(panel).toContain('color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-panel-alpha), transparent)')
     expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-panel { width: calc(100% - 24px); }')
-    // Frosted glass under and behind the panel (blurred and faded, its top edge masked), the panel itself 88% surface with its own blur.
-    expect(phone).toContain('backdrop-filter: blur(4px)')
-    expect(phone).toContain('mask-image: linear-gradient(to bottom, transparent, #000 12px)')
-    expect(phone).toContain('backdrop-filter: blur(8px)')
+    // Frosted glass under and behind the panel (blurred and faded, its top edge masked), the panel itself 93% surface with its own blur (all in --rv-dock-* variables).
+    expect(phone).toContain('--rv-dock-blur: 1.5px; --rv-dock-tint: 18%; --rv-dock-panel-alpha: 93%; --rv-dock-panel-blur: 3px;')
+    expect(phone).toContain('backdrop-filter: blur(var(--rv-dock-blur))')
+    expect(phone).toContain('mask-image: linear-gradient(to bottom, transparent, #000 10px)')
+    expect(phone).toContain('backdrop-filter: blur(var(--rv-dock-panel-blur))')
     expect(phone).toContain('@supports not')
     expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 48px/)
     expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 54px; }')
