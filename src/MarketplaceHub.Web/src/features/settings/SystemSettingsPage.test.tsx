@@ -253,7 +253,10 @@ describe('SystemSettingsPage', () => {
 
   it('lists the active marketplace connections as a group with counts and totals', async () => {
     await renderPage('/settings?tab=database')
-    await settle()
+    // Each connection's count is a request of its own made only after the connection list has arrived and rendered:
+    // on a loaded machine that chain outlasts a fixed delay (the row still says "Sayılıyor…"), so wait for the counts.
+    const counts = () => Array.from(container.querySelectorAll('section[aria-label="Pazaryerleri"] .ss-dr-count')).map(item => item.textContent)
+    await vi.waitFor(() => expect(counts()).toEqual(['120 kayıt', '7 kayıt', '7 kayıt']))
     const group = container.querySelector('section[aria-label="Pazaryerleri"]')!
     const rows = Array.from(group.querySelectorAll<HTMLLabelElement>('.ss-dr-opt'))
     // the e-invoice provider is not offered; a passive connection still is
@@ -283,8 +286,10 @@ describe('SystemSettingsPage', () => {
     input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
     expect(confirm.disabled).toBe(false)
     click(confirm)
-    await settle()
-    const posts = apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/factory-reset'))
+    // The resets run one after the other, each after the previous answer: wait for the run to end, not a fixed delay.
+    await vi.waitFor(() => expect(apiState.calls.some(call => call.method === 'POST' && call.path === '/settings/factory-reset')).toBe(true))
+    await vi.waitFor(() => expect(group.querySelector('.ss-dr-prog')?.textContent).toBe('Tamamlandı'))
+    const posts =apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/factory-reset'))
     expect(posts.map(call => call.path)).toEqual(['/connections/c-ty/full-reset', '/settings/factory-reset'])
     expect(posts[0].headers?.['if-match']).toBe('"v5"')
     // Every reset of the run carries the password; the server checks it once for the run.
