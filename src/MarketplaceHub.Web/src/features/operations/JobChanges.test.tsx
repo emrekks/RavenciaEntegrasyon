@@ -151,6 +151,19 @@ describe('JobChanges', () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(answers.calls).toContain('/jobs/job-1/changes/export.xlsx?groups=rejected')
   })
+
+  it('exports with the search as typed right now, not the one the 350 ms delay has not applied yet', async () => {
+    URL.createObjectURL = () => 'blob:x'; URL.revokeObjectURL = () => undefined
+    answers.map.set('/jobs/job-1/changes/summary', { mode: 'SEND_LOG', outcome: null, counts: { ...counts, sent: 1 }, spawnedJobs: [], sourceTrigger: null, sourceOrderNumber: null })
+    answers.map.set('/jobs/job-1/changes', { items: [line({})], nextCursor: null, hasMore: false, page: 1, pageSize: 25, totalCount: 1 })
+    await show('PRICE_INVENTORY_SYNC')
+    const input = container.querySelector<HTMLInputElement>('.jc-search input')!
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'ABC'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.includes('Excel’e Aktar'))!
+    await act(async () => { button.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(answers.calls).toContain('/jobs/job-1/changes/export.xlsx?search=ABC')
+  })
 })
 
 describe('job-changes helpers', () => {
