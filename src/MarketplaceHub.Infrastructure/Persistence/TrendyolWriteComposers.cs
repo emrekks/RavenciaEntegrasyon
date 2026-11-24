@@ -656,7 +656,13 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         if (missingInventory.Count == rows.Count) return MissingInventory(missingInventory);
 
         var lines = new List<(PriceInventoryPushLine Line, bool Price, bool Stock)>();
+        var settled = new List<SettledOffer>();
         var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
+        // The price history of the offers with something to send, for what Pazarama holds (PazaramaHeldPrice).
+        var histories = await PazaramaPriceHistoryAsync(tenantId, rows
+            .Where(row => row.Inventory is not null && (row.Offer.LastStockProjectionVersion != row.Inventory.ProjectionVersion
+                || row.Offer.LastPriceHash != PazaramaPriceInventoryRules.PriceHash(PazaramaPrices(row.Offer).ListPrice, PazaramaPrices(row.Offer).SalePrice, row.Offer.PriceVersion)))
+            .Select(row => row.Offer.Id).Distinct().ToArray(), cancellationToken);
         foreach (var row in rows.Where(row => row.Inventory is not null))
         {
             var (storedList, storedSale) = PazaramaPrices(row.Offer);
@@ -682,24 +688,25 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // Owner rule of 18 Nov 2026: the price in force goes with every stock change (Pazarama's price request beside
             // its stock request, from the same line), with one documented exception: Pazarama refuses a price equal to the
             // value it holds ("A price or stock equal to the current value is refused", marketplace-docs/pazarama.md), and one
-            // such line sends a whole batch to manual review. So the price rides along only when it differs from the value
-            // Pazarama last confirmed for this barcode, or, with none confirmed, from the offer's stored price (the value read
-            // from Pazarama). A price change of the offer itself still goes as before.
-            // The value Pazarama holds as far as the panel knows: the one it last confirmed for this barcode, else the one last
-            // read from it or held before a panel price pulled the stored price (LastSent* without a code), else the stored price.
-            var confirmed = row.Offer.LastSentSalePrice is not null && (row.Offer.LastSentCode is null || string.Equals(row.Offer.LastSentCode, barcode, StringComparison.Ordinal))
-                ? (PazaramaPriceInventoryRules.Price(row.Offer.LastSentListPrice ?? row.Offer.LastSentSalePrice!.Value), PazaramaPriceInventoryRules.Price(row.Offer.LastSentSalePrice!.Value))
-                : (storedList, storedSale);
-            var differs = salePrice != confirmed.Item2 || listPrice != confirmed.Item1;
-            var sendsPrice = priceKnown && (priceChanged || differs);
+            // such line sends a whole batch to manual review. So the price goes only when it differs from the value Pazarama
+            // holds, as far as the panel knows it (O2, scan of 23 Nov 2026: a new price version alone, such as a VAT rate
+            // saved on a VAT-inclusive offer, sent the same price again). Known only while the stored price stayed the same
+            // since the mark: a different price in between may have reached Pazarama by a send whose result is still out.
+            var held = PazaramaHeldPrice(row.Offer, barcode, storedList, storedSale, histories.GetValueOrDefault(row.Offer.Id) ?? []);
+            var differs = held is not { } value || salePrice != value.Sale || listPrice != value.List;
+            var sendsPrice = priceKnown && differs;
             if (!sendsPrice && !stockChanged)
             {
+                // A new price version whose price Pazarama already holds: its mark moves on without a request, so it is not
+                // judged again every round; a price that differs later still goes.
+                if (priceKnown) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, row.Inventory.ProjectionVersion)); continue; }
                 if (Refuse(automatic, invalid, row.Variant.Id, row.Variant.Sku, "CHANNEL_OFFER_INVALID", $"'{row.Variant.Sku}' için Pazarama teklifinde TRY para birimi ve sıfırdan büyük satış fiyatı gerekir.") is { } refused) return refused;
                 continue;
             }
             lines.Add((new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, QuantityOmitted: !stockChanged, PriceOmitted: !sendsPrice, SafetyStock: row.Offer.SafetyStock,
                 PriceNote: !priceKnown ? PanelPriceOfferPolicy.PriceNotSentNote : null), sendsPrice, stockChanged));
         }
+        await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);
         // A barcode may be linked to two variants only by mistake; one request must not carry it twice.
         lines = lines.GroupBy(x => x.Line.Barcode, StringComparer.OrdinalIgnoreCase).Select(group => group.First()).Take(PazaramaPriceInventoryRules.MaxItemsPerRequest).ToList();
@@ -975,10 +982,71 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         return Hash(string.Create(CultureInfo.InvariantCulture, $"{listPrice:0.00}|{salePrice:0.00}|TRY|{offer.PriceVersion}"));
     }
 
-    internal static (decimal ListPrice, decimal SalePrice) PazaramaPrices(ChannelOffer offer)
+    // How many price versions back a Pazarama price mark is looked for (PazaramaHeldPrice); an older mark leaves the held
+    // price unknown, so the price goes, as before.
+    internal const int PazaramaPriceMarkVersionsBack = 64;
+
+    // One price version of an offer as its price history (ChannelPriceHistory) records it.
+    internal sealed record PriceHistoryVersion(long PriceVersion, decimal ListPrice, decimal SalePrice);
+
+    // The price Pazarama holds as far as the panel knows, or null when that is not known and the price goes.
+    // It is known only while the offer's stored price stayed what it is now since the price mark (LastPriceHash): the
+    // mark's version is found in the price history, and every version from it to the current one must be in the history
+    // with the current list and sale price. Any other price in between (a send whose result has not come, or stayed
+    // uncertain, may have taken it to Pazarama: review of 24 Nov 2026), a missing version, a mark further back than
+    // PazaramaPriceMarkVersionsBack, or no mark at all leaves it unknown. A version bump that kept the price (a VAT rate
+    // saved on a VAT-inclusive offer) keeps it known. Then: the price Pazarama last confirmed for this barcode, else one
+    // known without a code (read from it, or held before a panel price pulled the stored price), else the stored price
+    // the mark names. The mark does not say where it came from: a confirmed send, the catalog read, or a baseline that
+    // only decided not to send (automatic writes switched on, MarkCurrentValuesSentAsync; an offer opened under B,
+    // PanelPriceOffers). A baseline is taken as held too, which is what B decided (its values count as sent); a price that
+    // changes after it still goes.
+    internal static (decimal List, decimal Sale)? PazaramaHeldPrice(ChannelOffer offer, string barcode, decimal storedList, decimal storedSale, IReadOnlyCollection<PriceHistoryVersion> history)
     {
-        var salePrice = PazaramaPriceInventoryRules.Price(OutboundSalePrice(offer));
-        return (Math.Max(PazaramaPriceInventoryRules.Price(OutboundListPrice(offer)), salePrice), salePrice);
+        if (offer.LastPriceHash is null) return null;
+        var byVersion = history.GroupBy(row => row.PriceVersion).ToDictionary(group => group.Key, group => group.ToList());
+        long? markVersion = null;
+        for (var version = offer.PriceVersion; version >= 1 && version > offer.PriceVersion - PazaramaPriceMarkVersionsBack && markVersion is null; version--)
+            if (byVersion.TryGetValue(version, out var rows) && rows.Any(row => string.Equals(PazaramaMarkHash(offer, row), offer.LastPriceHash, StringComparison.Ordinal)))
+                markVersion = version;
+        if (markVersion is not { } mark) return null;
+        for (var version = mark; version <= offer.PriceVersion; version++)
+            if (!byVersion.TryGetValue(version, out var rows) || rows.Any(row => row.ListPrice != offer.ListPrice || row.SalePrice != offer.SalePrice))
+                return null;
+        if (offer.LastSentSalePrice is { } sale && (offer.LastSentCode is null || string.Equals(offer.LastSentCode, barcode, StringComparison.Ordinal)))
+            return (PazaramaPriceInventoryRules.Price(offer.LastSentListPrice ?? sale), PazaramaPriceInventoryRules.Price(sale));
+        return (storedList, storedSale);
+    }
+
+    // The price mark a Pazarama send of a recorded price version leaves, under the offer's VAT settings now.
+    private static string PazaramaMarkHash(ChannelOffer offer, PriceHistoryVersion row)
+    {
+        var (listPrice, salePrice) = PazaramaPrices(row.ListPrice, row.SalePrice, offer);
+        return PazaramaPriceInventoryRules.PriceHash(listPrice, salePrice, row.PriceVersion);
+    }
+
+    // The offers' recorded price versions within PazaramaPriceMarkVersionsBack of their current one.
+    private async Task<Dictionary<Guid, List<PriceHistoryVersion>>> PazaramaPriceHistoryAsync(Guid tenantId, Guid[] offerIds, CancellationToken cancellationToken)
+    {
+        if (offerIds.Length == 0) return [];
+        var rows = await (from history in db.ChannelPriceHistory.AsNoTracking()
+                          join offer in db.ChannelOffers.AsNoTracking() on new { history.TenantId, history.OfferId } equals new { offer.TenantId, OfferId = offer.Id }
+                          where history.TenantId == tenantId && offerIds.Contains(history.OfferId)
+                              && history.PriceVersion <= offer.PriceVersion && history.PriceVersion > offer.PriceVersion - PazaramaPriceMarkVersionsBack
+                          select new { history.OfferId, history.PriceVersion, history.ListPrice, history.SalePrice })
+            .ToListAsync(cancellationToken);
+        return rows.GroupBy(row => row.OfferId).ToDictionary(group => group.Key, group => group.Select(row => new PriceHistoryVersion(row.PriceVersion, row.ListPrice, row.SalePrice)).ToList());
+    }
+
+    internal static (decimal ListPrice, decimal SalePrice) PazaramaPrices(ChannelOffer offer) => PazaramaPrices(offer.ListPrice, offer.SalePrice, offer);
+
+    // Pazarama's prices for a stored list and sale price under the offer's VAT settings.
+    private static (decimal ListPrice, decimal SalePrice) PazaramaPrices(decimal storedList, decimal storedSale, ChannelOffer settings)
+    {
+        var outboundSale = ChannelOfferPricePolicy.Outbound(storedSale, settings.VatRate, settings.VatInclusion, settings.RoundingMode);
+        var outboundList = Math.Max(ChannelOfferPricePolicy.Outbound(storedList, settings.VatRate, settings.VatInclusion, settings.RoundingMode), outboundSale);
+        var salePrice = PazaramaPriceInventoryRules.Price(outboundSale);
+        return (Math.Max(PazaramaPriceInventoryRules.Price(outboundList), salePrice), salePrice);
     }
 
     internal static string PttAvmPriceHash(ChannelOffer offer) =>
