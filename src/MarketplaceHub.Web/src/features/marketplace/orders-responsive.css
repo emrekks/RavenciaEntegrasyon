@@ -47,7 +47,7 @@
 }
 @media (max-width: 1024px) {
   /* Cargo logos keep a 20px height in the cards now that they have no badge. */
-  .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon { width: auto; max-width: 96px; height: 20px; max-height: none; }
+  .app-shell.stitch-shell main :is(.order-reference-row, .return-reference-row, .invoice-reference-row) .cargo-provider-icon.cargo-provider-icon { width: auto; max-width: 96px; height: 20px; max-height: 28px; }
 }
 
 /* Phone order card: no checkbox. Long-press selects (the card tints), a tap on a selected card
