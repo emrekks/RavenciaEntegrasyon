@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isLinkRevocationStatus, linkRevocationActionLabel, linkRevocationConfirmCopy, linkRevocationNote, linkRevocationStatusLabel, linkRevocationTone, type InvoiceLinkRevocation } from './invoice-link-revocation'
 
-const item: InvoiceLinkRevocation = { deliveryStateId: 's', packageId: 'p', platformCode: 'TRENDYOL', platformName: 'Trendyol', packageNumber: '4052072376', status: 'REVOCATION_REQUIRED', errorCode: null, mode: 'AUTOMATIC', instructions: 'x', canAct: true, blockedReason: null, updatedAt: '2026-10-20T10:00:00Z' }
+const item: InvoiceLinkRevocation = { deliveryStateId: 's', packageId: 'p', platformCode: 'TRENDYOL', platformName: 'Trendyol', packageNumber: '4050000001', status: 'REVOCATION_REQUIRED', errorCode: null, mode: 'AUTOMATIC', instructions: 'x', canAct: true, blockedReason: null, updatedAt: '2026-10-20T10:00:00Z' }
 
 describe('invoice link revocation copy', () => {
   it('names each state in plain Turkish', () => {

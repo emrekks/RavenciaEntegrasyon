@@ -59,7 +59,7 @@ public sealed class MarketplaceSyncContentionTests
     public void TargetedReadRetriesRatherThanReportingSuccessWithoutProcessing(string jobType)
     {
         var result = MarketplaceSyncExecutionLock.ContentionResult(jobType,
-            "{\"externalOrderId\":\"4736002251\",\"packageNumber\":\"5467917398\"}");
+            "{\"externalOrderId\":\"4730000001\",\"packageNumber\":\"5460000001\"}");
         Assert.Equal(JobCompletionKind.Retry, result.Kind);
         Assert.False(result.Succeeded);
         Assert.Equal("TARGETED_ORDER_SYNC_BUSY", result.ErrorCode);

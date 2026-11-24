@@ -24,12 +24,12 @@ public sealed class TrendyolAdapterAuditTests
         Assert.Null(TrendyolHttpClient.RetryAfterDelay(null, now));
     }
 
-    // 11738971444 as Trendyol reads it: the package's own totals are taken as they are.
+    // 11700000003 as Trendyol reads it: the package's own totals are taken as they are.
     [Fact]
     public void PackageAmountsAreThePackagesOwnTotals()
     {
         const string json = """
-        {"content":[{"id":"4268578123","orderNumber":"11738971444","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,
+        {"content":[{"id":"4260000001","orderNumber":"11700000003","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,
           "grossAmount":1598.00,"totalDiscount":80.98,"totalTyDiscount":0.00,"totalPrice":1517.02,"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10},
           {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10}

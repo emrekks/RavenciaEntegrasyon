@@ -14,22 +14,22 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [
             {
-              "shipmentPackageId": 4052072376,
-              "orderNumber": "11476852228", "orderDate": 1782998302000, "currencyCode": "TRY",
+              "shipmentPackageId": 4050000001,
+              "orderNumber": "11400000002", "orderDate": 1782998302000, "currencyCode": "TRY",
               "customerFirstName": "Leyla",
               "status": "Delivered",
               "lastModifiedDate": 1786454029672,
-              "cargoTrackingNumber": 62755229958101,
+              "cargoTrackingNumber": 62700000000001,
               "cargoProviderName": "hepsiJET",
               "shipmentAddress": { "firstName": "Leyla", "city": "Istanbul" },
               "lines": []
             },
             {
-              "shipmentPackageId": 4052072377,
-              "orderNumber": "11476852229", "orderDate": 1782998302000, "currencyCode": "TRY",
+              "shipmentPackageId": 4050000002,
+              "orderNumber": "11400000003", "orderDate": 1782998302000, "currencyCode": "TRY",
               "status": "Delivered",
               "lastModifiedDate": 1786454029672,
-              "cargoTrackingNumber": 7340037147068871,
+              "cargoTrackingNumber": 7340000000000001,
               "cargoProviderName": "PTT",
               "lines": []
             }
@@ -39,13 +39,13 @@ public sealed class TrendyolCatalogMapperTests
         }
         """;
 
-        var package = TrendyolJsonMapper.ShipmentPackage(json, "4052072376");
+        var package = TrendyolJsonMapper.ShipmentPackage(json, "4050000001");
 
         Assert.NotNull(package);
-        Assert.Equal("11476852228", package.ExternalOrderId);
-        Assert.Equal("4052072376", package.Package.ExternalPackageId);
+        Assert.Equal("11400000002", package.ExternalOrderId);
+        Assert.Equal("4050000001", package.Package.ExternalPackageId);
         Assert.Equal("hepsiJET", package.Package.CargoProviderExternalId);
-        Assert.Equal("62755229958101", package.Package.CargoTrackingNumber);
+        Assert.Equal("62700000000001", package.Package.CargoTrackingNumber);
         Assert.NotNull(package.OrderSnapshot);
         Assert.Contains("Leyla", package.OrderSnapshot.CustomerSnapshotJson);
         Assert.Contains("Istanbul", package.OrderSnapshot.ShipmentAddressSnapshotJson);
@@ -60,8 +60,8 @@ public sealed class TrendyolCatalogMapperTests
             new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, []));
 
         var orderV2 = Package(null, null);
-        var fallback = Package("hepsiJET", "62755229958101");
-        var orderV2WithCargo = Package("PTT", "7340037147068871");
+        var fallback = Package("hepsiJET", "62700000000001");
+        var orderV2WithCargo = Package("PTT", "7340000000000001");
 
         Assert.Same(fallback, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2, fallback));
         Assert.Same(orderV2WithCargo, TrendyolJsonMapper.PreferShipmentPackageWithCargo(orderV2WithCargo, fallback));
@@ -75,13 +75,13 @@ public sealed class TrendyolCatalogMapperTests
             new RemotePackage("package-1", null, "Delivered", DateTimeOffset.UnixEpoch, provider, trackingNumber, [], Invoice: invoice));
 
         var v2 = Package(null, null, new("Invoiced", "INV-42", null, DateTimeOffset.UnixEpoch.AddHours(2)));
-        var fallback = Package("hepsiJET", "62755229958101", new("NotInvoiced", null, null, DateTimeOffset.UnixEpoch.AddHours(1)));
+        var fallback = Package("hepsiJET", "62700000000001", new("NotInvoiced", null, null, DateTimeOffset.UnixEpoch.AddHours(1)));
 
         var merged = TrendyolJsonMapper.PreferShipmentPackageWithCargo(v2, fallback);
 
         Assert.NotNull(merged);
         Assert.Equal("hepsiJET", merged.Package.CargoProviderExternalId);
-        Assert.Equal("62755229958101", merged.Package.CargoTrackingNumber);
+        Assert.Equal("62700000000001", merged.Package.CargoTrackingNumber);
         Assert.Equal("Invoiced", merged.Package.Invoice?.RawStatus);
         Assert.Equal("INV-42", merged.Package.Invoice?.InvoiceNumber);
     }
@@ -91,11 +91,11 @@ public sealed class TrendyolCatalogMapperTests
     {
         const string payload = """
         {
-          "orderNumber": "11376153333", "currencyCode": "TRY",
+          "orderNumber": "11300000001", "currencyCode": "TRY",
           "claimId": "claim-1",
           "orderDate": 1782998302000,
           "claimDate": 1783069920000,
-          "orderOutboundPackageId": "3968176322"
+          "orderOutboundPackageId": "3960000001"
         }
         """;
 
@@ -104,7 +104,7 @@ public sealed class TrendyolCatalogMapperTests
         Assert.NotNull(projection);
         Assert.Equal(DateTimeOffset.UnixEpoch, projection.LastModifiedAt);
         Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot(projection.CustomerSnapshotJson));
-        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"3968176322"}"""));
+        Assert.True(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"claimId":"claim-1","claimDate":"2026-07-03T09:12:00Z","orderOutboundPackageId":"3960000001"}"""));
         Assert.False(TrendyolJsonMapper.IsReturnClaimReadModelSnapshot("""{"customerFirstName":"Ada","customerLastName":"Yılmaz"}"""));
         // The claim names no storefront: unknown, not TR.
         Assert.Null(projection.StoreFrontCode);
@@ -122,11 +122,11 @@ public sealed class TrendyolCatalogMapperTests
         var payload = $$"""
         {
           {{field}}
-          "orderNumber": "11376153333", "currencyCode": "TRY",
+          "orderNumber": "11300000001", "currencyCode": "TRY",
           "claimId": "claim-1",
           "orderDate": 1782998302000,
           "claimDate": 1783069920000,
-          "orderOutboundPackageId": "3968176322"
+          "orderOutboundPackageId": "3960000001"
         }
         """;
 
@@ -149,7 +149,7 @@ public sealed class TrendyolCatalogMapperTests
         var payload = $$"""
         {
           {{currency}}
-          "orderNumber": "11608377831", "claimId": "claim-2",
+          "orderNumber": "11600000003", "claimId": "claim-2",
           "orderDate": 1782998302000, "claimDate": 1783069920000,
           "items": [{
             "orderLine": { "id": 502, {{price}} "merchantSku": "SKU-2", "productName": "Kazak" },
@@ -182,12 +182,12 @@ public sealed class TrendyolCatalogMapperTests
     {
         var payload = $$"""
         {
-          "orderNumber": "11608377830", "currencyCode": "TRY",
+          "orderNumber": "11600000002", "currencyCode": "TRY",
           "claimId": "claim-1",
           "orderDate": 1782998302000,
           "claimDate": 1783069920000,
           "lastModifiedDate": 1783069920000,
-          "orderOutboundPackageId": "3968176322",
+          "orderOutboundPackageId": "3960000001",
           "items": [{
             "orderLine": { "id": 501, "barcode": "869000000701", "merchantSku": "SKU-1", "productName": "Kazak", "price": 499, "vatRate": 10 },
             "claimItems": [{ "id": "ci-1", "orderLineItemId": 901, "customerClaimItemReason": { "code": "{{reasonCode}}", "name": "Neden" } }]
@@ -307,7 +307,7 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-ptt-1",
-              "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
+              "orderNumber": "11500000004", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "WaitingInAction" },
               "cargoProvider": "PTT",
               "cargoSenderNumber": "PTT-123456789",
@@ -333,7 +333,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [{
             "claimId": "claim-waiting-action-1",
-            "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
+            "orderNumber": "11500000004", "orderDate": 1782998302000, "currencyCode": "TRY",
             "claimItemStatus": { "name": "WaitingInAction" },
             "lastModifiedDate": 1789890000000,
             "items": []
@@ -356,7 +356,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [{
             "claimId": "claim-waiting-action-due-1",
-            "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
+            "orderNumber": "11500000004", "orderDate": 1782998302000, "currencyCode": "TRY",
             "claimItemStatus": { "name": "WaitingInAction" },
             "lastModifiedDate": 1789890000000,
             "autoApproveDate": 1789980000000,
@@ -380,7 +380,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [{
             "claimId": "claim-rejected-with-deadline-1",
-            "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
+            "orderNumber": "11500000004", "orderDate": 1782998302000, "currencyCode": "TRY",
             "claimItemStatus": { "name": "Rejected" },
             "claimDate": 1789980000000,
             "lastModifiedDate": 1790152800000,
@@ -405,12 +405,12 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-rejected-package-1",
-              "orderNumber": "11593067976", "orderDate": 1782998302000, "currencyCode": "TRY",
+              "orderNumber": "11500000005", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "Accepted" },
               "rejectedPackageInfo": {
                 "cargoProviderName": "PTT Kargo Marketplace",
-                "cargoTrackingNumber": 7340037147068871,
-                "cargoTrackingLink": "https://tracking.example.test/7340037147068871"
+                "cargoTrackingNumber": 7340000000000001,
+                "cargoTrackingLink": "https://tracking.example.test/7340000000000001"
               },
               "lastModifiedDate": 1789890000000,
               "items": []
@@ -424,8 +424,8 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal("PTT Kargo Marketplace", claim.CargoProviderName);
-        Assert.Equal("7340037147068871", claim.CargoTrackingNumber);
-        Assert.Equal("https://tracking.example.test/7340037147068871", claim.CargoTrackingLink);
+        Assert.Equal("7340000000000001", claim.CargoTrackingNumber);
+        Assert.Equal("https://tracking.example.test/7340000000000001", claim.CargoTrackingLink);
     }
 
     [Fact]
@@ -436,14 +436,14 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-rejected-reship-1",
-              "orderNumber": "11633780933", "orderDate": 1782998302000, "currencyCode": "TRY",
+              "orderNumber": "11600000004", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "Rejected" },
               "cargoProviderName": "PTT Kargo",
-              "cargoTrackingNumber": "7340037640876324",
+              "cargoTrackingNumber": "7340000000000002",
               "rejectedPackageInfo": {
                 "cargoProviderName": "Trendyol Express",
-                "cargoTrackingNumber": "7330037747126806",
-                "cargoTrackingLink": "https://tracking.example.test/7330037747126806"
+                "cargoTrackingNumber": "7330000000000011",
+                "cargoTrackingLink": "https://tracking.example.test/7330000000000011"
               },
               "replacementOutboundpackageinfo": {
                 "cargoProviderName": "Yurtiçi Kargo",
@@ -461,8 +461,8 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal("Trendyol Express", claim.CargoProviderName);
-        Assert.Equal("7330037747126806", claim.CargoTrackingNumber);
-        Assert.Equal("https://tracking.example.test/7330037747126806", claim.CargoTrackingLink);
+        Assert.Equal("7330000000000011", claim.CargoTrackingNumber);
+        Assert.Equal("https://tracking.example.test/7330000000000011", claim.CargoTrackingLink);
     }
 
     // Owner, 18 Nov 2026 (1000000001): the exchange request comes from the claim's explicit data only, the reason code
@@ -579,11 +579,11 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-return-package-1",
-              "orderNumber": "11593067976", "orderDate": 1782998302000, "currencyCode": "TRY",
+              "orderNumber": "11500000005", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "Accepted" },
               "returnPackageInfo": {
                 "cargoProvider": { "name": "PTT Kargo" },
-                "cargoTrackingNumber": "7340037147068871"
+                "cargoTrackingNumber": "7340000000000001"
               },
               "lastModifiedDate": 1789890000000,
               "items": []
@@ -597,7 +597,7 @@ public sealed class TrendyolCatalogMapperTests
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
         Assert.Equal("PTT Kargo", claim.CargoProviderName);
-        Assert.Equal("7340037147068871", claim.CargoTrackingNumber);
+        Assert.Equal("7340000000000001", claim.CargoTrackingNumber);
     }
 
     [Fact]

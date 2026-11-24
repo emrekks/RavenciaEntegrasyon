@@ -379,14 +379,14 @@ public sealed class BackgroundProcessingAuditTests
     public void TheOpenPackageScanResumesFromItsSavedPosition()
     {
         var recent = new OrderReadService.TrendyolOpenScanPosition(false, "3345");
-        var older = new OrderReadService.TrendyolOpenScanPosition(true, "11697863999");
+        var older = new OrderReadService.TrendyolOpenScanPosition(true, "11600000006");
 
         Assert.Equal(recent, OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.TrendyolOpenScanCursor(recent)));
         Assert.Equal(older, OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.TrendyolOpenScanCursor(older)));
         Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(true, null), OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.TrendyolOpenScanCursor(new(true, null))));
         // Another cursor (none, or the Hepsiburada lifecycle cursor) starts a new scan.
         Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(false, null), OrderReadService.ReadTrendyolOpenScanCursor(null));
-        Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(false, null), OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.HepsiburadaLifecycleCursor("4736002251")));
+        Assert.Equal(new OrderReadService.TrendyolOpenScanPosition(false, null), OrderReadService.ReadTrendyolOpenScanCursor(OrderReadService.HepsiburadaLifecycleCursor("4730000001")));
         Assert.Equal(["3346", "3400"], OrderReadService.TrendyolOpenScanRemaining(["3400", "3345", "3100", "3346", "3346"], "3345"));
         Assert.Equal(["1", "2"], OrderReadService.TrendyolOpenScanRemaining(["2", "1"], null));
     }

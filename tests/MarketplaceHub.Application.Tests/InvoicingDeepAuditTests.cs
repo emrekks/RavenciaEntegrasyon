@@ -110,7 +110,7 @@ public sealed class InvoicingDeepAuditTests
     [Fact]
     public void Trendyol_invoice_link_body_sends_the_package_as_a_number_and_drops_panel_fields()
     {
-        using var payload = JsonDocument.Parse("""{"shipmentPackageId":"3361298374","invoiceLink":"https://panel.example.test/x/content","invoiceDateTime":1760000000000,"invoiceNumber":"GIB2026000000001","micro":false,"orderNumber":"1"}""");
+        using var payload = JsonDocument.Parse("""{"shipmentPackageId":"3360000001","invoiceLink":"https://panel.example.test/x/content","invoiceDateTime":1760000000000,"invoiceNumber":"GIB2026000000001","micro":false,"orderNumber":"1"}""");
 
         var body = TrendyolHttpClient.InvoiceLinkBody(payload.RootElement);
 
@@ -118,7 +118,7 @@ public sealed class InvoicingDeepAuditTests
         var json = JsonSerializer.Serialize(body);
         using var sent = JsonDocument.Parse(json);
         Assert.Equal(JsonValueKind.Number, sent.RootElement.GetProperty("shipmentPackageId").ValueKind);
-        Assert.Equal(3361298374L, sent.RootElement.GetProperty("shipmentPackageId").GetInt64());
+        Assert.Equal(3360000001L, sent.RootElement.GetProperty("shipmentPackageId").GetInt64());
         Assert.Equal("GIB2026000000001", sent.RootElement.GetProperty("invoiceNumber").GetString());
         Assert.False(sent.RootElement.TryGetProperty("micro", out _));
         Assert.False(sent.RootElement.TryGetProperty("orderNumber", out _));

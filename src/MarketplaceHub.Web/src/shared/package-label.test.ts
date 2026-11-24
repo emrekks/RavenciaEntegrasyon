@@ -3,11 +3,11 @@ import { formatPackageLabel } from './package-label'
 
 describe('formatPackageLabel', () => {
   it('drops the virtual order: prefix', () => {
-    expect(formatPackageLabel('order:PTTEM-U43FJA722-181026')).toBe('PTTEM-U43FJA722-181026')
+    expect(formatPackageLabel('order:PTTEM-UTEST0001-181026')).toBe('PTTEM-UTEST0001-181026')
   })
 
   it('keeps a real package number as it is', () => {
-    expect(formatPackageLabel('3271827381')).toBe('3271827381')
+    expect(formatPackageLabel('3270000001')).toBe('3270000001')
     expect(formatPackageLabel('reorder:12')).toBe('reorder:12')
   })
 

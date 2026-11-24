@@ -12,7 +12,7 @@ public sealed class ReportOrderProfitTests
         new(new ReportPeriod(new DateOnly(2026, 10, 25), new DateOnly(2026, 10, 25), new DateTimeOffset(2026, 10, 24, 21, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 25, 21, 0, 0, TimeSpan.Zero)),
             ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
             new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol", false) },
-            [new() { Id = order, ConnectionId = store, OrderNumber = "11750129638", DerivedStatus = "DELIVERED", Amount = amount, ListAmount = 470.63m, LineValue = 465.92m,
+            [new() { Id = order, ConnectionId = store, OrderNumber = "11700000004", DerivedStatus = "DELIVERED", Amount = amount, ListAmount = 470.63m, LineValue = 465.92m,
                 RealAt = new DateTimeOffset(2026, 10, 25, 17, 46, 0, TimeSpan.Zero), OrderedAt = new DateTimeOffset(2026, 10, 25, 20, 46, 0, TimeSpan.Zero), StoreFrontCode = storeFront, UnreadableLines = unreadableLines }],
             new Dictionary<Guid, ReportOrderExtra>(),
             [new() { Id = line, OrderId = order, Title = "Anne Penye Bluz", Sku = "RYP00101", Barcode = "RYP00101", UnitPrice = 465.92m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = cost }],
@@ -30,7 +30,7 @@ public sealed class ReportOrderProfitTests
 
         var view = Assert.Single(ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders));
 
-        // 25 Oct 2026, #11750129638: 465.92 − 160 cost − 95.98 commission (%20.6) − 98.34 cargo − 13.19 service fee − 4.24
+        // 25 Oct 2026, #11700000004: 465.92 − 160 cost − 95.98 commission (%20.6) − 98.34 cargo − 13.19 service fee − 4.24
         // withholding (1 % of 423.56) + 6.78 net VAT (42.36 sales VAT − 14.55 cost − 16.00 commission − 16.39 cargo − 2.20 fee).
         decimal Cost(string key) => view.Costs.Single(cost => cost.Key == key).Amount!.Value;
         Assert.Equal((95.98m, 98.34m, 13.19m, 4.24m, -6.78m), (Cost("commission"), Cost("cargo"), Cost("serviceFee"), Cost("stoppage"), Cost("netVat")));
@@ -140,7 +140,7 @@ public sealed class ReportOrderProfitTests
     public void A_billed_trendyol_cargo_is_real_without_a_tariff()
     {
         var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
-        var billed = new ReportFinance([], [new() { ConnectionId = store, InvoiceSerialNumber = "DDF2026000001", OrderNumber = "11750129638", ShipmentPackageType = "Gönderi Kargo Bedeli", Amount = 98.34m }],
+        var billed = new ReportFinance([], [new() { ConnectionId = store, InvoiceSerialNumber = "DDF2026000001", OrderNumber = "11700000004", ShipmentPackageType = "Gönderi Kargo Bedeli", Amount = 98.34m }],
             new HashSet<(Guid, string)>(), new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = null });
         var input = Input(store, order, line, 160m, billed);
 
@@ -151,7 +151,7 @@ public sealed class ReportOrderProfitTests
         Assert.Equal(100.95m, view.Profit);
     }
 
-    // Live, 29 Oct 2026 #11762777840: MZ032YAD4 sold at 675, paid 633.81 after the seller's discount and coupon.
+    // Live, 29 Oct 2026 #11700000006: MZ032YAD4 sold at 675, paid 633.81 after the seller's discount and coupon.
     private static (ReportInput Input, Guid Order) RateOrder(string orderRate, DateTimeOffset soldAt, ReportFinance? finance = null)
     {
         var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
@@ -159,7 +159,7 @@ public sealed class ReportOrderProfitTests
         var start = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(3)).ToUniversalTime();
         var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
             new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol", false) },
-            [new() { Id = order, ConnectionId = store, OrderNumber = "11762777840", DerivedStatus = "DELIVERED", Amount = 633.81m, ListAmount = 675m, LineValue = 633.81m,
+            [new() { Id = order, ConnectionId = store, OrderNumber = "11700000006", DerivedStatus = "DELIVERED", Amount = 633.81m, ListAmount = 675m, LineValue = 633.81m,
                 RealAt = soldAt, OrderedAt = soldAt, StoreFrontCode = "TR" }],
             new Dictionary<Guid, ReportOrderExtra>(),
             [new() { Id = line, OrderId = order, Title = "Anne Penye Bluz", Sku = "MZ032YAD4", Barcode = "MZ032YAD4", UnitPrice = 633.81m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = 200m }],
@@ -198,7 +198,7 @@ public sealed class ReportOrderProfitTests
             RequestedType = type,
             Category = MarketplaceFinanceCategories.Sale,
             TransactionDate = soldAt.AddDays(2),
-            OrderNumber = "11762777840",
+            OrderNumber = "11700000006",
             Barcode = "MZ032YAD4",
             CommissionAmount = commission
         };

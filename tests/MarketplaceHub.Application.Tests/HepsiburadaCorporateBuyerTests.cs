@@ -6,7 +6,7 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// 16 Nov 2026: Hepsiburada order 4476971250 belonged to a company (the seller panel showed Kurumsal Müşteri, a company
+// 16 Nov 2026: Hepsiburada order 4470000001 belonged to a company (the seller panel showed Kurumsal Müşteri, a company
 // name, a VKN and a tax office) and was issued an e-Archive to 11111111111, because the placeholder identity was read as
 // "the marketplace says individual". Hepsiburada names no buyer kind; beside its identity field the tax number and tax
 // office decide, and anything unclear waits for the owner. Every value here is synthetic.
@@ -19,7 +19,7 @@ public sealed class HepsiburadaCorporateBuyerTests
     private const string Corporate = OrderBuyerTypeView.Corporate;
     private const string Waits = OrderBuyerTypeView.CorporateTaxIdMissing;
 
-    // The order detail's shape, exactly the keys order 4476971250 holds on live (16 Nov 2026), with synthetic values.
+    // The order detail's shape, exactly the keys order 4470000001 holds on live (16 Nov 2026), with synthetic values.
     internal const string CorporateCustomer = """{"customerId":"c-synthetic","marketplaceInvoiceStatus":"NOT_INVOICED","name":"Hesap Sahibi Örnek"}""";
     internal const string CorporateInvoiceAddress = $$"""
         {"address":"Örnek Mah. Deneme Sk. No:1","addressId":"a-synthetic","alternatePhoneNumber":"","city":"İstanbul","countryCode":"TR",
@@ -71,7 +71,7 @@ public sealed class HepsiburadaCorporateBuyerTests
     }
 
     [Fact]
-    public void Order_4476971250_shape_is_a_corporate_buyer_and_its_invoice_goes_to_the_company()
+    public void Order_4470000001_shape_is_a_corporate_buyer_and_its_invoice_goes_to_the_company()
     {
         var buyer = TrendyolEFaturamCanonicalPayload.ResolveBuyerType(CorporateCustomer, CorporateInvoiceAddress);
         Assert.Equal(new OrderBuyerTypeView(Corporate, "Vergi numarası var"), buyer);
@@ -96,7 +96,7 @@ public sealed class HepsiburadaCorporateBuyerTests
     }
 
     [Fact]
-    public async Task Order_4476971250_shape_asks_the_taxpayer_lookup_with_its_vkn()
+    public async Task Order_4470000001_shape_asks_the_taxpayer_lookup_with_its_vkn()
     {
         var registered = new LookupOnlyProvider(new(EInvoiceTaxpayerState.Registered, "ÖRNEK TİCARET", [new("urn:mail:defaultpk@example.test", "PK")]));
         var eInvoice = await Resolve(registered, "HEPSIBURADA", CorporateCustomer, CorporateInvoiceAddress);

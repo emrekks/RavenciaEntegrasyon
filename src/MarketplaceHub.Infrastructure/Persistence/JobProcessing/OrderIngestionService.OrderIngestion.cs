@@ -229,7 +229,7 @@ internal sealed partial class OrderIngestionService
             }
         }
         // O8: a split parent is known by its children naming it as their origin, in this read or among the order's stored
-        // packages, whatever status Trendyol lists it under (live: 4084999185 and three more, read as their own packages
+        // packages, whatever status Trendyol lists it under (live: 4080000001 and three more, read as their own packages
         // after the split and refused as PACKAGE_QUANTITY_INVARIANT_REJECTED on every run). Its lines live on in the
         // children; a read that brings nothing but known parents of a stored order changes nothing and is skipped quietly.
         var splitParentIds = usesTrendyolPackageStatuses
@@ -518,7 +518,7 @@ internal sealed partial class OrderIngestionService
                     }
                 }
                 // PTT AVM sends no status time, so its package event is named by the package status alone; Pazarama's is its
-                // items' latest history entry, and an item can change status with no new entry (live 674544454: status 7 with
+                // items' latest history entry, and an item can change status with no new entry (live 674000001: status 7 with
                 // the history ending at 11). A line cancelled or returned while the package keeps its status (another line
                 // still waits or stays delivered) then arrives under the event already recorded. Its lines' quantities
                 // follow the read, or the cancelled line kept its stock and the returned one read as kept.

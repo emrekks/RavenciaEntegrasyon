@@ -97,7 +97,7 @@ public static partial class TrendyolJsonMapper
 
     private static bool? BoolAny(JsonElement value, params string[] names) => RemoteFields.LooseBool(value, names);
     // orderDate is Trendyol's "GMT+3" epoch: the Turkey wall-clock time written as if it were UTC, three hours ahead of
-    // the real instant (C13; proven on live 2 Nov 2026: order 11776722829 arrived 19:01:53Z with orderDate 22:01:41Z).
+    // the real instant (C13; proven on live 2 Nov 2026: order 11700000011 arrived 19:01:53Z with orderDate 22:01:41Z).
     // lastModifiedDate, createdDate, claimDate (documented as GMT) and agreedDeliveryDate (23:59 Istanbul) are real
     // UTC epochs and are read as they are.
     // An epoch outside the DateTimeOffset range reads as no date (ADAPTOR-TY-HB-5): its package is refused or falls back

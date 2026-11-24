@@ -12,19 +12,19 @@ public sealed class ReportOrderCommissionTests
         new DateTimeOffset(2026, 10, 24, 21, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 25, 21, 0, 0, TimeSpan.Zero));
     private static readonly DateTimeOffset At = new(2026, 10, 25, 17, 46, 0, TimeSpan.Zero);
 
-    // Live 25 Oct 2026, order 11750129638: one 465.92 TL line, cost 160 TL, at a 98.34 TL cargo tariff.
+    // Live 25 Oct 2026, order 11700000004: one 465.92 TL line, cost 160 TL, at a 98.34 TL cargo tariff.
     private static (ReportInput Input, Guid Order) Trendyol(bool commissionOnLine, bool otherLineWithCommission = false)
     {
         var (store, order, line, other, otherLine) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         var finance = new ReportFinance([], [], new HashSet<(Guid, string)>(), new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = null },
             new Dictionary<Guid, ReportCargoSample> { [store] = new(98.34m, 1) });
-        List<ReportOrderRow> orders = [new() { Id = order, ConnectionId = store, OrderNumber = "11750129638", DerivedStatus = "DELIVERED", Amount = 465.92m, ListAmount = 470.63m, LineValue = 465.92m,
+        List<ReportOrderRow> orders = [new() { Id = order, ConnectionId = store, OrderNumber = "11700000004", DerivedStatus = "DELIVERED", Amount = 465.92m, ListAmount = 470.63m, LineValue = 465.92m,
             RealAt = At, OrderedAt = At.AddHours(3), StoreFrontCode = "TR" }];
         List<ReportLineRow> lines = [new() { Id = line, OrderId = order, Title = "Anne Penye Bluz", Sku = "RYP00101", Barcode = "RYP00101", UnitPrice = 465.92m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = 160m }];
         var extras = new Dictionary<Guid, ReportLineExtra> { [line] = commissionOnLine ? new() { Id = line, CommissionType = "number", Commission = "20.6" } : new() { Id = line } };
         if (otherLineWithCommission)
         {
-            orders.Add(new() { Id = other, ConnectionId = store, OrderNumber = "11750129639", DerivedStatus = "DELIVERED", Amount = 465.92m, LineValue = 465.92m, RealAt = At, OrderedAt = At, StoreFrontCode = "TR" });
+            orders.Add(new() { Id = other, ConnectionId = store, OrderNumber = "11700000005", DerivedStatus = "DELIVERED", Amount = 465.92m, LineValue = 465.92m, RealAt = At, OrderedAt = At, StoreFrontCode = "TR" });
             lines.Add(new() { Id = otherLine, OrderId = other, Title = "Anne Penye Bluz", Sku = "RYP00101", UnitPrice = 465.92m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = 160m });
             extras[otherLine] = new() { Id = otherLine, CommissionType = "number", Commission = "20.6" };
         }

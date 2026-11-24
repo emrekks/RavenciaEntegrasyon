@@ -11,7 +11,7 @@ const claim = (id: string, extra: Record<string, unknown> = {}) => ({
   productCount: 1, primaryBarcode: null, lines: [], packageNumber: null, invoiceStatus: 'FATURA_BILINMIYOR', grossAmount: 100, discountAmount: 0, isMicroExport: false,
   connectionId: 'c', platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', lineStatuses: {}, returnAmounts: null, rowKey: null, ...extra
 })
-// Trendyol return 11738971444 as Trendyol's own panel shows it: 2 × 799,00 sold, 80,98 off, 1.517,02 invoiced.
+// Trendyol return 11700000003 as Trendyol's own panel shows it: 2 × 799,00 sold, 80,98 off, 1.517,02 invoiced.
 const trendyolAmounts = { saleAmount: 1598, discountAmount: 80.98, invoicedAmount: 1517.02, refundAmount: null }
 const returnedLine = {
   id: 'l1', sku: 'MZ035DYD25', barcode: 'MZ035DYD25', title: 'Penye Bluz', quantity: 2, orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 2, deliveredQuantity: 2, returnedQuantity: 2,
@@ -128,7 +128,7 @@ describe('returns page', () => {
     expect(second.querySelector('[title="Pazaryeri iade tutarını bildirmedi."]')).not.toBeNull()
   })
 
-  // Live 6 Nov 2026: Pazarama return 674544454's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok";
+  // Live 6 Nov 2026: Pazarama return 674000001's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok";
   // the catalog's photo of the line now stands behind the marketplace's.
   it('falls back to the catalog photo when the marketplace photo of a returned line does not load', async () => {
     const { host } = renderPage()
@@ -146,12 +146,12 @@ describe('returns page', () => {
     const original = hubApi.getMockImplementation()!
     hubApi.mockImplementationOnce(async (path: string) => {
       if (path.startsWith('/returns/summary')) return original(path)
-      return { items: [claim('9', { platformCode: 'PAZARAMA', platformDisplayName: 'Pazarama', cargoTrackingNumber: 'PZ15649905156', cargoTrackingLink: 'https://example.com/track' })], nextCursor: null, hasMore: false, totalCount: 1 }
+      return { items: [claim('9', { platformCode: 'PAZARAMA', platformDisplayName: 'Pazarama', cargoTrackingNumber: 'PZ10000000001', cargoTrackingLink: 'https://example.com/track' })], nextCursor: null, hasMore: false, totalCount: 1 }
     })
     const { host } = renderPage()
-    await waitFor(() => host.textContent!.includes('PZ15649905156'))
+    await waitFor(() => host.textContent!.includes('PZ10000000001'))
     const cargoCell = host.querySelector<HTMLElement>('[data-l="Kargo"]')!
-    expect(cargoCell.textContent).toContain('PZ15649905156')
+    expect(cargoCell.textContent).toContain('PZ10000000001')
     expect(cargoCell.textContent).toContain('İade Kargo Kodu')
     expect(host.querySelector('.rr-ordercell')!.textContent).not.toContain('İade Kargo Kodu')
     expect(cargoCell.querySelector('[title="Pazarama\'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."]')).not.toBeNull()

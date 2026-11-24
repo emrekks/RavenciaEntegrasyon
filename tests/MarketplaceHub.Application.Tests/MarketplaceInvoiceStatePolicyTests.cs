@@ -267,13 +267,13 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperReadsNestedCarrierAndNumericTrackingFieldsForShipmentPackages()
     {
         const string json = """
-            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"cargoProvider":{"name":"HepsiJet","shortName":"HEPSIJET"},"cargoTrackingNumber":62755229958101,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
+            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"cargoProvider":{"name":"HepsiJet","shortName":"HEPSIJET"},"cargoTrackingNumber":62700000000001,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
             """;
 
         var package = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Packages);
 
         Assert.Equal("HepsiJet", package.CargoProviderExternalId);
-        Assert.Equal("62755229958101", package.CargoTrackingNumber);
+        Assert.Equal("62700000000001", package.CargoTrackingNumber);
     }
 
     [Fact]
@@ -382,19 +382,19 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void PackageRead_ProvidesAllOrderLinesForHistoricalOrderFallback()
     {
         const string json = """
-            {"content":[{"id":"3968176322","orderNumber":"11376153333","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1783441320000,"packageTotalPrice":1355.20,"packageTotalDiscount":83.70,"lines":[
+            {"content":[{"id":"3960000001","orderNumber":"11300000001","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1783441320000,"packageTotalPrice":1355.20,"packageTotalDiscount":83.70,"lines":[
               {"lineId":"line-1","stockCode":"RYP00204","productName":"First item","quantity":1,"lineItemPrice":539.90,"vatRate":10},
               {"lineId":"line-2","stockCode":"MZ043DDC05","productName":"Second item","quantity":1,"lineItemPrice":899.00,"vatRate":10}
             ]}]}
             """;
 
-        var package = TrendyolJsonMapper.ShipmentPackage(json, "3968176322");
+        var package = TrendyolJsonMapper.ShipmentPackage(json, "3960000001");
 
         Assert.NotNull(package?.OrderSnapshot);
         Assert.Equal(2, package.OrderSnapshot!.Lines.Count);
         Assert.Single(package.OrderSnapshot.Packages);
         Assert.Equal(1_355.20m, package.OrderSnapshot.NetAmount);
-        Assert.Equal(2, TrendyolJsonMapper.MergeOrderPackages([package.OrderSnapshot], "11376153333")!.Lines.Count);
+        Assert.Equal(2, TrendyolJsonMapper.MergeOrderPackages([package.OrderSnapshot], "11300000001")!.Lines.Count);
     }
 
     [Fact]

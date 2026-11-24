@@ -27,15 +27,15 @@ public static class InvoicingCapabilities
 
 public static class OneTimeInvoiceDeliveryPolicy
 {
-    public const string TargetOrderNumber = "4486229624";
+    public const string TargetOrderNumber = "4480000001";
     public const string PriorNoWriteFailureCode = "HEPSIBURADA_CAPABILITY_NOT_ENABLED";
     public const string DeliveryAlreadyFailedErrorCode = "DELIVERY_ALREADY_FAILED";
 
     public static bool IsAuthorizedTarget(string? orderNumber) =>
-        orderNumber is TargetOrderNumber or "4034357330";
+        orderNumber is TargetOrderNumber or "4030000001";
 
     public static bool IsAuthorizedStageDocument(string? orderNumber, Guid invoiceId) =>
-        orderNumber == "4034357330" && invoiceId == Guid.Parse("01a125c4-a478-74a8-8865-943228b09515")
+        orderNumber == "4030000001" && invoiceId == Guid.Parse("01a125c4-a478-74a8-8865-943228b09515")
         || orderNumber == TargetOrderNumber && invoiceId == Guid.Parse("01a121b0-28bf-7bc7-9e3e-0c1ca397c0ae");
 
     public static bool IsEligibleSourceFailure(string? latestErrorCode, bool hasPriorNoWriteAttempt) =>

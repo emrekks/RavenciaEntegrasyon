@@ -23,7 +23,7 @@ public sealed class EfaturamIstanbulTimeTests
           "Note":"Satış faturası",
           "IssuedAt":"2026-10-19T22:45:10.123+00:00",
           "Order":{
-            "OrderNumber":"4227866665",
+            "OrderNumber":"4220000001",
             "OrderedAt":"2026-10-19T22:30:00+00:00",
             "CustomerSnapshotJson":"{\"customerFirstName\":\"Ali\",\"customerLastName\":\"Veli\"}",
             "InvoiceAddressSnapshotJson":"{\"fullAddress\":\"Test adres\",\"city\":\"İstanbul\",\"district\":\"Şişli\"}"

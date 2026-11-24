@@ -108,7 +108,7 @@ public sealed class ReportsTests
         // Hepsiburada charges 20 % VAT on top: 49.14 x 1.20 = 58.97 a unit.
         Assert.Equal((decimal)expected, ReportBuckets.EstimatedCommission("HEPSIBURADA", "object", "49.14", "18", null, (decimal)keptAmount, keptUnits));
 
-    // Live order 4091991027: the line carries {"amount": 232.02} and Hepsiburada's Commission record charged 278.42.
+    // Live order 4090000001: the line carries {"amount": 232.02} and Hepsiburada's Commission record charged 278.42.
     [Fact]
     public void A_hepsiburada_estimate_matches_the_commission_record_hepsiburada_charges()
     {
@@ -515,7 +515,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         }
     }
 
-    // Live, 1-2 Nov 2026, order 11772267262: list 1,127.17, seller discount 76.28, Trendyol discount 150.00 (75 on each
+    // Live, 1-2 Nov 2026, order 11700000010: list 1,127.17, seller discount 76.28, Trendyol discount 150.00 (75 on each
     // of two lines), paid 900.89. Trendyol pays its discount to the seller, so the revenue is 1,050.89 and the discount
     // shown is the seller's 76.28, on the overview and in the reports alike.
     [PostgreSqlFact]

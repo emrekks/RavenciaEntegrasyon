@@ -4,7 +4,7 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // Trendyol's orderDate is a "GMT+3" epoch (Turkey wall-clock time written as if it were UTC); its other dates are real
-// UTC epochs. Live 2 Nov 2026: order 11776722829 arrived 19:01:53Z, orderDate 22:01:41Z, lastModifiedDate 19:01:46Z,
+// UTC epochs. Live 2 Nov 2026: order 11700000011 arrived 19:01:53Z, orderDate 22:01:41Z, lastModifiedDate 19:01:46Z,
 // agreedDeliveryDate 20:59Z (23:59 Istanbul).
 public sealed class TrendyolOrderTimeTests
 {

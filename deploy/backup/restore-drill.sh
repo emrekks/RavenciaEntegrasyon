@@ -143,11 +143,24 @@ sudo docker run -d --name "$db_container" --network "$network" --network-alias p
   -v "$db_volume:/var/lib/postgresql" \
   "$postgres_image" >/dev/null
 
-for _ in $(seq 1 30); do
-  if sudo docker exec "$db_container" pg_isready -U marketplacehub -d marketplacehub >/dev/null 2>&1; then break; fi
+# The image first runs initdb under a socket-only bootstrap server and then restarts the real one, so a socket
+# pg_isready can pass while the server is about to stop (a deploy's rehearsal psql failed that way). Wait, bounded, until
+# the final server answers over TCP (the bootstrap one never listens there) and runs a query on the target database.
+db_ready_timeout="${RAVENCIA_DRILL_DB_READY_TIMEOUT_SECONDS:-120}"
+[[ "$db_ready_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_DRILL_DB_READY_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+db_ready_deadline=$(( $(date -u +%s) + db_ready_timeout ))
+# The single-quoted command is expanded inside the container.
+# shellcheck disable=SC2016
+until sudo docker exec "$db_container" sh -ceu 'pg_isready -q -h 127.0.0.1 -U marketplacehub -d marketplacehub
+    test "$(PGPASSWORD="$(cat /run/secrets/postgres_password)" psql -X -h 127.0.0.1 -U marketplacehub -d marketplacehub -Atc "select 1")" = 1' \
+    >/dev/null 2>&1; do
+  if (( $(date -u +%s) >= db_ready_deadline )); then
+    echo "Restore drill: isolated PostgreSQL $db_container did not accept a query on marketplacehub within ${db_ready_timeout}s." >&2
+    sudo docker logs --tail 40 "$db_container" >&2 || true
+    exit 1
+  fi
   sleep 1
 done
-sudo docker exec "$db_container" pg_isready -U marketplacehub -d marketplacehub >/dev/null
 # Once the owner has set up the app database roles (docs/RUNBOOK-GERI-ALMA.md section 7) the dump carries GRANTs and
 # default privileges for marketplacehub_owner and marketplacehub_app. Roles live in the cluster, not in the dump: without
 # them the restore below stops at the first GRANT and every deploy's migration rehearsal fails. NOLOGIN here; the

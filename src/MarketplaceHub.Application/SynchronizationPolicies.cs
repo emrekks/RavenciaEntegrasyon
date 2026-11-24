@@ -49,7 +49,7 @@ public static class PazaramaOrderHistoryPolicy
     public const int InitialLookbackMonths = 3;
     public const int IncrementalLookbackDays = 2;
     // The recovery read (every 15 minutes) looks a week back. Pazarama lists an order only once it is created on its
-    // side, which can be a day after its orderDate: live 500506964, orderDate 29 Oct 17:48, created (status 3) 30 Oct
+    // side, which can be a day after its orderDate: live 500000001, orderDate 29 Oct 17:48, created (status 3) 30 Oct
     // 17:48:55 Istanbul time, read three minutes later. A two-day re-read keeps one day of margin; the week keeps more.
     public const int RecoveryLookbackDays = 7;
     public const int PageSize = 100;
@@ -187,7 +187,7 @@ public static class HepsiburadaReturnHistoryPolicy
     public static bool ImportsClaim(DateTimeOffset? orderCreatedAt, DateTimeOffset anchor, bool orderStored) =>
         orderStored || IsOrderWithinReturnHistory(orderCreatedAt, anchor);
 
-    // Hepsiburada's status-change filter misses claims in a pass of minutes (23 Oct 2026: claim 318311246, opened on
+    // Hepsiburada's status-change filter misses claims in a pass of minutes (23 Oct 2026: claim 318000001, opened on
     // 19 Oct and waiting for an answer, was never listed by an incremental pass while full passes find claims), so an
     // incremental pass looks back at least two days; a claim listed again is only updated.
     public static readonly TimeSpan IncrementalLookback = TimeSpan.FromDays(2);

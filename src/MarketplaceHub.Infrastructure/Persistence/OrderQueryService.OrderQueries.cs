@@ -73,9 +73,9 @@ internal sealed partial class OrderQueryService
                 && !CurrentShipmentPackages().Any(package => package.TenantId == tenantId && package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled));
     }
 
-    internal IQueryable<Order> ExcludeStaleUnpackagedHepsiburadaOrders(IQueryable<Order> query, Guid tenantId)
+    internal IQueryable<Order> ExcludeStaleUnpackagedHepsiburadaOrders(IQueryable<Order> query, Guid tenantId, bool keepManualResends = false)
     {
-        return query.ExcludeStaleUnpackaged(db, tenantId, timeProvider.GetUtcNow());
+        return query.ExcludeStaleUnpackaged(db, tenantId, timeProvider.GetUtcNow(), keepManualResends);
     }
 
     internal static bool SearchesCustomerSnapshot(string term) => term.Any(char.IsLetter);

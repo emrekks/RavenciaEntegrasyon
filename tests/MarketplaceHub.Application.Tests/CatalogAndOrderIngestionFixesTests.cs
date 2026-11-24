@@ -85,12 +85,12 @@ public sealed class CatalogAndOrderIngestionFixesTests
         var other = Guid.NewGuid();
         PackageLineAllocation Row(Guid packageId, string eventId, decimal shipped) => new() { Id = Guid.CreateVersion7(), PackageId = packageId, OrderLineId = line, SourceEventId = eventId, AllocatedQuantity = 1, ShippedQuantity = shipped };
 
-        var byLine = OrderIngestionService.AllocationsByLine([Row(package, "4302382330:1793743762226", 0), Row(package, "4302382330:1793876113007", 1), Row(package, "4302382330:1793791774541", 1), Row(package, "seed", 0), Row(other, "9:1793743762226", 0)]);
+        var byLine = OrderIngestionService.AllocationsByLine([Row(package, "4300000001:1793743762226", 0), Row(package, "4300000001:1793876113007", 1), Row(package, "4300000001:1793791774541", 1), Row(package, "seed", 0), Row(other, "9:1793743762226", 0)]);
 
         Assert.Equal(2, byLine.Count);
-        Assert.Equal("4302382330:1793876113007", byLine.Values.Single(x => x.PackageId == package).SourceEventId);
-        Assert.Equal(1793876113007, OrderIngestionService.PackageEventInstant("4302382330:1793876113007"));
-        Assert.Equal(1789229541000, OrderIngestionService.PackageEventInstant("order:PTT-1C2OSLF2R-120926:1789229541000"));
+        Assert.Equal("4300000001:1793876113007", byLine.Values.Single(x => x.PackageId == package).SourceEventId);
+        Assert.Equal(1793876113007, OrderIngestionService.PackageEventInstant("4300000001:1793876113007"));
+        Assert.Equal(1789229541000, OrderIngestionService.PackageEventInstant("order:PTT-0TEST0001-120926:1789229541000"));
         Assert.Equal(long.MinValue, OrderIngestionService.PackageEventInstant("seed"));
     }
 
@@ -113,16 +113,16 @@ public sealed class CatalogAndOrderIngestionFixesTests
     [Fact]
     public void SplitParentsAreThePackagesAChildNamesAsItsOrigin()
     {
-        var parents = OrderIngestionService.SplitParentIds([("4085035430", "4084999185"), ("4084999185", null), ("P-1", "P-1"), ("4111016887", " "), ("C-2", "4110933059")]);
+        var parents = OrderIngestionService.SplitParentIds([("4080000002", "4080000001"), ("4080000001", null), ("P-1", "P-1"), ("4110000002", " "), ("C-2", "4110000001")]);
 
-        Assert.Equal(["4084999185", "4110933059"], parents.Order(StringComparer.Ordinal));
+        Assert.Equal(["4080000001", "4110000001"], parents.Order(StringComparer.Ordinal));
     }
 
     // T2-O8: a refused order is read again four times at most, 30 minutes, 2, 8 and 24 hours apart, three per run.
     [Fact]
     public void RefusedOrdersAreReadAgainAFewTimesFarApart()
     {
-        var entries = RejectedOrderRereadPolicy.Note([], ["11515777689", "11515777689", "11547099440"], Now);
+        var entries = RejectedOrderRereadPolicy.Note([], ["11500000002", "11500000002", "11500000003"], Now);
         Assert.Equal(2, entries.Count);
         Assert.Empty(RejectedOrderRereadPolicy.Due(entries, Now.AddMinutes(29)));
         var due = RejectedOrderRereadPolicy.Due(entries, Now.AddMinutes(30));

@@ -135,14 +135,20 @@ internal sealed partial class CatalogImportService(
     private static (string? State, string? Reason) PttAvmModelSaleState(RemoteCatalogProduct product) => ListingVerificationService.PttAvmModelSaleState(product);
 
     // A product the catalog read pulled: its model code (or the marketplace's product id), its first barcode and how many
-    // variants came with it. A failed batch marks each of its products with the error.
+    // variants came with it, and every variant's barcode (search and Excel). A failed batch marks each of its products with the error.
     private void RecordProductRead(RemoteCatalogProduct snapshot, string outcome, string? reason)
     {
         if (!run.ReadRecordingEnabled || run.ReadRecordingKind != "PRODUCT") return;
+        run.ReadRecorder.Add("PRODUCT", ProductReadRecord(snapshot, outcome, reason));
+    }
+
+    internal static JobReadRecord ProductReadRecord(RemoteCatalogProduct snapshot, string outcome, string? reason)
+    {
         var reference = string.IsNullOrWhiteSpace(snapshot.ProductMainId) ? snapshot.ExternalProductId : snapshot.ProductMainId!;
-        var barcode = snapshot.Variants.Select(x => x.Barcode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        var barcodes = snapshot.Variants.Select(x => x.Barcode?.Trim()).OfType<string>().Where(x => x.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+        var barcode = barcodes.FirstOrDefault();
         var secondary = barcode is null ? null : snapshot.Variants.Count > 1 ? $"{barcode} +{snapshot.Variants.Count - 1}" : barcode;
-        run.ReadRecorder.Add("PRODUCT", new JobReadRecord(reference, secondary, $"{snapshot.Variants.Count} varyant", outcome, reason));
+        return new JobReadRecord(reference, secondary, $"{snapshot.Variants.Count} varyant", outcome, reason, barcodes.Count > 1 ? barcodes : null);
     }
 
     // An offer the import seeded from PTT AVM already holds PTT AVM's price and stock: it is marked as sent, so the
