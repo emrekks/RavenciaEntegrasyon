@@ -29,7 +29,7 @@ export function StickyActionBar({ open = true, label, className, info, lead, doc
   // false once the page is scrolled to its end and the bar rests under the last card (bottom corners round like the
   // card's). data-docked is its opposite: the card above merges with a resting bar.
   const [barRef, stuck] = useStuckBottom<HTMLDivElement>()
-  if (inDock) return open ? <DockActions label={label} info={info ?? (lead ? { start: lead } : undefined)}>{children}</DockActions> : null
+  if (inDock) return open ? <DockActions label={label} info={info ?? (lead ? { end: lead } : undefined)}>{children}</DockActions> : null
   if (!open && !present) return null
   return <div ref={barRef} data-stuck={String(stuck)} data-docked={String(!stuck)} data-dock={dock ? undefined : 'inline'} className={`rv-action-bar${open ? '' : ' is-leaving'}${className ? ` ${className}` : ''}`} role="group" aria-label={label} inert={!open || undefined}>{open ? content : lastChildren.current}</div>
 }

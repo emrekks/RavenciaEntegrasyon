@@ -12,16 +12,27 @@
 .rv-dock-layer { display: none; }
 @media (max-width: 768px) {
   .app-shell.stitch-shell { --rv-dock-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); --rv-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px)); }
-  .app-shell.stitch-shell:has(.rv-dock-layer[data-rows="2"]) { --rv-bottom-nav-space: calc(124px + env(safe-area-inset-bottom, 0px)); }
+  .app-shell.stitch-shell:has(.rv-dock-layer[data-mode="task"]) { --rv-bottom-nav-space: calc(88px + env(safe-area-inset-bottom, 0px)); }
+  .app-shell.stitch-shell:has(.rv-dock-layer[data-rows="2"]) { --rv-bottom-nav-space: calc(116px + env(safe-area-inset-bottom, 0px)); }
   :root { --rv-dock-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); --rv-dock-extra: 0px; }
-  :root:has(.rv-dock-layer[data-rows="2"]) { --rv-dock-extra: 40px; }
-  html body .app-shell.stitch-shell > main { padding-top: env(safe-area-inset-top, 0px); padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }
-  /* There is no top bar on a phone (Menü holds the bell and the theme): nothing sticks under it any more. */
-  .app-shell.stitch-shell { --rv-topbar-height: 0px; }
-  html body .app-shell.stitch-shell main .product-add-wizardbar { top: 0; }
-  html body .app-shell.stitch-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
-  html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
-  html body .app-shell.stitch-shell .rv-topbar .rv-topbar-search { display: none; }
+  :root:has(.rv-dock-layer[data-rows="2"]) { --rv-dock-extra: 28px; }
+  /* The phone's top bar is 48 px (and the safe area) and is fixed; the page keeps that room whether the bar shows or not, so nothing
+     jumps. Sticky things under it sit at its height while it shows and at the top edge while it is hidden. */
+  html body .app-shell.stitch-shell > main { padding-top: calc(48px + env(safe-area-inset-top, 0px)); padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom 180ms ease; }
+  .app-shell.stitch-shell { --rv-topbar-height: calc(48px + env(safe-area-inset-top, 0px)); }
+  .app-shell.stitch-shell:has(.rv-phonebar.is-hidden) { --rv-topbar-height: env(safe-area-inset-top, 0px); }
+  html body .app-shell.stitch-shell main .product-add-wizardbar { top: var(--rv-topbar-height); }
+  html body .app-shell.stitch-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { top: var(--rv-topbar-height); }
+  .rv-phonebar { position: fixed; inset: 0 0 auto 0; z-index: 85; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: calc(48px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 12px 0 16px; background: var(--rv-color-bg); border-bottom: 1px solid transparent; transition: transform 180ms ease, border-color 180ms ease; }
+  .rv-phonebar.is-scrolled { border-bottom-color: var(--rv-color-border); }
+  .rv-phonebar.is-hidden { transform: translateY(-100%); }
+  .rv-phonebar-title { min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; opacity: 0; transition: opacity 180ms ease; }
+  .rv-phonebar-title.is-shown { opacity: 1; }
+  .rv-phonebar-tools { display: flex; flex: none; gap: 8px; }
+  .rv-phonebar-tool { position: relative; display: grid; place-items: center; box-sizing: border-box; width: 36px; height: 36px; min-width: 0; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; cursor: pointer; }
+  .rv-phonebar-tool .ui-icon.is-error { color: var(--rv-color-danger); }
+  .rv-phonebar-badge { position: absolute; top: -6px; right: -6px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-bg); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
+  .rv-phonebar-badge.is-error { background: var(--rv-color-danger); }
   /* A field that takes focus is never left behind the bar. */
   .app-shell.stitch-shell :is(input, textarea, select, button, [tabindex]) { scroll-margin-bottom: calc(var(--rv-bottom-nav-space) + 8px); }
   /* A page bar that holds text boxes stays in the page, sticky above the dock. */
@@ -30,9 +41,9 @@
   /* The panel: top row (tabs or status strip) over the bottom row (targets or the task bar). */
   .rv-dock-layer { position: fixed; right: 12px; bottom: var(--rv-dock-bottom); left: 12px; z-index: 87; box-sizing: border-box; display: flex; flex-direction: column; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 30%); }
   /* The gap under the panel (8 px and the safe area) is the page colour, so no page text reads there. */
-  .rv-dock-layer::after { content: ""; position: absolute; right: -12px; bottom: calc(-1 * var(--rv-dock-bottom)); left: -12px; z-index: -1; height: var(--rv-dock-bottom); background: var(--rv-color-bg); pointer-events: none; }
+  /* (offsets are from the padding box: 1 px more than the 12 px side and the gap below, for the border) */
+  .rv-dock-layer::after { content: ""; position: absolute; right: -13px; bottom: calc(-1px - var(--rv-dock-bottom)); left: -13px; z-index: -1; height: calc(var(--rv-dock-bottom) + 1px); background: var(--rv-color-bg); pointer-events: none; }
   .rv-dock-top { position: relative; display: block; box-sizing: border-box; height: 0; overflow: hidden; border-radius: 13px 13px 0 0; transition: height 180ms ease; }
-  .rv-dock-layer[data-rows="2"] .rv-dock-top { height: 40px; }
   .rv-dock-bottom { position: relative; flex: none; height: 52px; }
   .rv-dock, .rv-taskbar { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; transition: opacity 180ms ease, visibility 180ms; }
   .rv-dock-layer[data-mode="task"] .rv-dock, .rv-dock-layer[data-mode="dock"] .rv-taskbar { visibility: hidden; opacity: 0; pointer-events: none; }
@@ -47,49 +58,71 @@
   .rv-dock-icon { position: relative; display: inline-grid; }
   .rv-dock-badge { position: absolute; top: -7px; left: 11px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-surface); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
 
-  /* Task bar: Menü, then the page's buttons in one row. */
+  /* Task bar: one row, 56 px, items 40 px high and centred: [Menü] [primary, stretching] [İleri] [Diğer]. */
+  .rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 56px; }
   .rv-taskbar { gap: 8px; padding: 0 8px; }
   .rv-taskbar-menu { position: relative; display: grid; flex: none; place-items: center; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 10px; cursor: pointer; }
   .rv-taskbar-menu .rv-dock-badge { top: -6px; left: auto; right: -5px; }
-  .rv-taskbar-actions { display: flex; flex: 1; align-items: center; min-width: 0; }
-  .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: safe flex-end; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .rv-taskbar-group::-webkit-scrollbar { display: none; }
+  .rv-taskbar-actions { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+  .rv-taskbar-group { display: flex; flex: 1; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
   .rv-taskbar-group > div:not([role="group"]) { display: contents; }
-  .rv-taskbar-group :is(button, a) { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 36px; min-height: 0; margin: 0; padding: 0 12px; border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
-  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 1 auto; min-width: min-content; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; text-overflow: ellipsis; }
+  .rv-taskbar-group :is(button, a) { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; min-height: 0; margin: 0; padding: 0 14px; border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+  /* The primary action's label is never cut: it takes what it needs, the chip and the step give way first (below). */
+  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 0 auto; padding: 0 12px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
+  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) :is(svg, .rr-bulk-badge) { display: none; }
   .rv-taskbar-group :is(button, a):disabled { opacity: .5; cursor: default; }
+  .rv-taskbar-group :is(.rr-danger, .is-danger) { color: var(--rv-color-danger); }
+  /* What the page's buttons do not show in the bar: the others wait in the Diğer list (dock-actions.tsx tags them). */
+  .rv-taskbar-group [data-dock-other] { display: none; }
   /* A page's two label lengths ("Taslak Olarak Kaydet" / "Taslak"): the short one fits here. */
-  .rv-taskbar-group .submit-label-long { display: none; }
-  .rv-taskbar-group .rr-lbl-long { display: none; }
+  .rv-taskbar-group .submit-label-long, .rv-taskbar-group .rr-lbl-long { display: none; }
   .rv-taskbar-group .rr-lbl-short { display: inline; }
-  /* Selection bars: a secondary button is its icon (the name stays as aria-label) with its count as a badge; the primary keeps its words. */
-  .rv-taskbar-group :is(.rr-bulk-clear, .rr-bulk-act):not(.rr-primary) { position: relative; width: 36px; padding: 0; }
-  .rv-taskbar-group .rr-bulk-clear > span:not(.rr-ico), .rv-taskbar-group .rr-bulk-act:not(.rr-primary) > .rr-bulk-lbl { display: none; }
-  .rv-taskbar-group .rr-bulk-badge { position: absolute; top: -6px; right: -6px; display: inline-grid; place-items: center; box-sizing: border-box; min-width: 18px; height: 18px; padding: 0 5px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1; }
-  .rv-taskbar-group .rr-primary > .rr-bulk-badge { display: none; }
-  .rv-taskbar-group [data-dock-icon] { width: 36px; padding: 0; }
-  .rv-taskbar-group [data-dock-icon] > span { display: none; }
-  .rv-taskbar-group [role="group"] { flex: none; }
+  .rv-taskbar-group .rr-bulk-badge { display: none; }
+  /* The step to the next screen: "İleri" and its arrow, whatever the page called it. */
+  .rv-taskbar-group [data-dock-step] { flex: 0 1 auto; width: auto; padding: 0 12px; }
+  .rv-taskbar-group [data-dock-step] > span { display: none; }
+  .rv-taskbar-group [data-dock-step]::before { content: "İleri"; }
+  /* The selection chip: "3 Seçili" and its cross, left of the primary button. */
+  .rv-taskbar-group [data-dock-clear] { flex: 0 1 auto; width: auto; min-width: 0; padding: 0 10px 0 12px; font-size: 0; }
+  .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count) " Seçili"; font-size: 13px; }
+  .rv-taskbar-group [data-dock-clear] > span { display: none; }
+  .rv-taskbar-group [data-dock-clear] > svg { width: 14px; height: 14px; }
+  .rv-taskbar-group [role="group"]:not(:has(button:not([data-dock-other]), a:not([data-dock-other]))) { display: none; }
+  /* Narrow phones: the selection chip is the count and its cross, the row is tighter; narrower still, İleri is only its arrow. */
+  @media (max-width: 400px) {
+    .rv-taskbar { gap: 6px; padding: 0 6px; }
+    .rv-taskbar-actions, .rv-taskbar-group { gap: 6px; }
+    .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count); }
+    .rv-taskbar-group [data-dock-clear] { padding: 0 8px 0 10px; }
+    .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { padding: 0 10px; font-size: 12.5px; }
+  }
+  @media (max-width: 370px) {
+    .rv-taskbar-group [data-dock-step]::before { content: none; }
+    .rv-taskbar-group [data-dock-step] { width: 40px; padding: 0; }
+  }
+  /* Diğer: the other actions in a small list right above the bar, 44 px rows. */
+  .rv-taskbar-more { position: relative; flex: none; }
+  .rv-taskbar-more-button { display: grid; place-items: center; box-sizing: border-box; width: 40px; height: 40px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 10px; cursor: pointer; }
+  .rv-taskbar-more-button .ui-icon { transform: rotate(90deg); }
+  .rv-taskbar-more-scrim { position: fixed; inset: 0; z-index: -1; }
+  .rv-taskbar-more-list { position: absolute; right: 0; bottom: calc(100% + 14px); z-index: 2; box-sizing: border-box; display: flex; flex-direction: column; width: min(280px, calc(100vw - 48px)); padding: 6px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: 0 12px 28px -12px rgb(0 0 0 / 40%); }
+  .rv-taskbar-more-summary { padding: 6px 10px 8px; color: var(--rv-color-muted); font-size: 12px; line-height: 1.3; }
+  .rv-taskbar-more-item { display: flex; align-items: center; gap: 12px; box-sizing: border-box; width: 100%; height: 44px; min-height: 0; padding: 0 10px; color: var(--rv-color-ink); background: none; border: 0; border-radius: 8px; font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
+  .rv-taskbar-more-item:disabled { opacity: .45; cursor: default; }
+  .rv-taskbar-more-item.is-danger { color: var(--rv-color-danger); }
+  .rv-taskbar-more-icon { display: inline-grid; flex: none; color: var(--rv-color-muted); }
+  .rv-taskbar-more-icon svg { width: 20px; height: 20px; }
+  .rv-taskbar-more-item.is-danger .rv-taskbar-more-icon { color: inherit; }
 
-  /* The status strip: the top row in task mode where the page has no tabs; it folds away on scroll down and returns on scroll up. */
-  .rv-dock-info { box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 40px; padding: 0 14px; font-size: 12px; line-height: 1; color: var(--rv-color-muted); }
-  .rv-dock-info[data-visible="false"] { visibility: hidden; }
-  .rv-dock-info > * { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-dock-info > .rv-dock-info-slot { display: contents; }
-  /* The state on the left keeps its words (up to 72%); the short summary on the right gives way first. */
-  .rv-dock-info-start { flex: 0 1 auto; max-width: 72%; }
-  .rv-dock-info-end { flex: 1 1 0; justify-content: flex-end; margin-left: auto; color: var(--rv-color-muted); }
-  .rv-dock-info > * > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* The warning strip: the top row of the same panel, 28 px, only while the page has a warning (otherwise it takes no room). */
+  .rv-dock-layer[data-rows="2"] .rv-dock-top { height: 28px; }
+  .rv-dock-info { box-sizing: border-box; display: flex; align-items: center; gap: 12px; height: 28px; padding: 0 14px; font-size: 12px; line-height: 1; color: var(--rv-color-muted); }
+  .rv-dock-info > .rv-dock-info-slot { display: flex; align-items: center; min-width: 0; height: 100%; }
+  .rv-dock-info-start { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rv-dock-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 0; height: 28px; margin: 0; padding: 0; color: inherit; background: none; border: 0; border-radius: 0; font: inherit; font-weight: 600; white-space: nowrap; }
   button.rv-dock-chip { cursor: pointer; }
   .rv-dock-chip.is-warn { color: var(--rv-color-warning); }
   .rv-dock-chip-action { min-height: 0; padding: 0 0 0 6px; color: var(--rv-color-primary-text); background: none; border: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
-  .rv-dock-info .rr-grow { flex: none; }
-  .rv-dock-info > .rv-dock-bell { flex: none; margin-left: 12px; gap: 4px; min-height: 0; height: 28px; padding: 0; color: var(--rv-color-ink); background: none; border: 0; font: inherit; font-weight: 700; cursor: pointer; }
-  .rv-dock-info-slot:empty + .rv-dock-bell { margin-left: auto; }
-  .rv-dock-bell.is-error > .ui-icon, .rv-dock-pill-bell.is-error > .ui-icon { color: var(--rv-color-danger); }
-  /* Unread notifications: a small pill right above the dock, at its right end. */
-  .rv-dock-pill-bell { position: absolute; right: 0; bottom: calc(100% + 8px); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 3px; width: 44px; height: 32px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 10px; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 30%); font: inherit; font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer; }
 
   /* The keyboard is open while a text box has focus: the bar steps aside. */
   body:has(:is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"], [type="file"], [type="color"]), textarea, select, [contenteditable=""], [contenteditable="true"]):focus) .rv-dock-layer { display: none; }
@@ -100,8 +133,6 @@
   .rv-fullmenu-head h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
   .rv-fullmenu-tools { display: flex; gap: 8px; }
   .rv-fullmenu-tool { position: relative; display: grid; place-items: center; width: 36px; height: 36px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
-  .rv-fullmenu-tool-badge { position: absolute; top: -7px; right: -7px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-bg); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
-  .rv-fullmenu-tool-badge.is-error { background: var(--rv-color-danger); }
   .rv-fullmenu-store { flex: 1; min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
   .rv-fullmenu-search { display: flex; flex: none; align-items: center; gap: 8px; box-sizing: border-box; height: 36px; margin: 0 16px 4px; padding: 0 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
   .rv-fullmenu-search:focus-within { border-color: var(--rv-color-primary); }
@@ -128,9 +159,9 @@
   html body .rv-fullmenu .rv-fullmenu-search input:focus, html body .rv-fullmenu .rv-fullmenu-search input:focus-visible { border: 0; outline: 0; box-shadow: none; }
   @keyframes rv-fullmenu-in { from { transform: translateY(100%); } }
 
-  /* Notifications: a panel dropping from the top edge (safe area + 8 px, 12 px in from the sides), at most 75% of the screen,
+  /* Notifications: a panel dropping from just under the top bar (12 px in from the sides), at most 75% of the screen,
      over the full-screen menu too; the dimmed page behind only closes it. Wherever it is opened from, it opens here. */
-  html body .rv-notification-history { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 20px)); border-radius: 14px; outline: 0; transform-origin: top center; animation: rv-sheet-down 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
+  html body .rv-notification-history { top: calc(48px + env(safe-area-inset-top, 0px) + 4px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(75dvh, calc(100dvh - 48px - env(safe-area-inset-top, 0px) - 16px)); border-radius: 14px; outline: 0; transform-origin: top center; animation: rv-sheet-down 200ms cubic-bezier(.2, .8, .2, 1) backwards; }
   @keyframes rv-sheet-down { from { transform: translateY(-28px); opacity: 0; } }
   /* The live toast keeps its behaviour and shows above the dock (and its pill) instead of at the top. */
   html body .app-toast-stack, html body .app-toast:not(.app-toast-stack > *) { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 52px + var(--rv-dock-extra) + 56px); left: 12px; width: auto; }

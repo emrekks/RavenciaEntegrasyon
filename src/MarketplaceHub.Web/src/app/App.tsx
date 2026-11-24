@@ -84,18 +84,23 @@ function Shell({ me }: { me: Me }) {
   const [invitationsClosed, setInvitationsClosed] = useState(() => readSessionItem(invitationsLaterKey) === '1')
   const closeInvitations = () => { writeSessionItem(invitationsLaterKey, '1'); setInvitationsClosed(true) }
   const [topbarHidden, setTopbarHidden] = useState(false)
+  // The phone's top bar draws its line only while the page is scrolled.
+  const [pageScrolled, setPageScrolled] = useState(false)
   useEffect(() => {
     let last = window.scrollY
     let frame = 0
     const onScroll = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
+        // A layer that locks the page (the menu, the notification panel, a window) leaves the bar where it is.
+        if (document.body.style.overflow === 'hidden') return
         const y = Math.max(0, window.scrollY)
+        setPageScrolled(y > 0)
         const delta = y - last
         if (y < 64) setTopbarHidden(false)
-        else if (delta > 6) setTopbarHidden(true)
-        else if (delta < -6) setTopbarHidden(false)
-        if (Math.abs(delta) > 6 || y < 64) last = y
+        else if (delta > 8) setTopbarHidden(true)
+        else if (delta < -8) setTopbarHidden(false)
+        if (Math.abs(delta) > 8 || y < 64) last = y
       })
     }
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -240,6 +245,35 @@ function Shell({ me }: { me: Me }) {
   useLayoutEffect(() => applyAppearance(), [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey, visualTheme])
   const pageNames: Record<string, string> = { '/dashboard': 'Genel Bakış', '/products': 'Ürünler', '/products/new': 'Yeni Ürün', '/imports': 'İçe Aktarımlar', '/orders': 'Siparişler', '/returns': 'İadeler', '/invoices': 'Faturalar', '/reports': 'Raporlar', '/promotions': 'Promosyon', '/questions': 'Ürün Soruları', '/jobs': 'İşlem Takibi', '/integrations': 'Entegrasyonlar', '/mappings/categories': 'Eşleştirmeler', '/settings': 'Sistem Ayarları', '/settings/appearance': 'Görünüm Ayarları' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün Düzenle' : location.pathname.startsWith('/returns/') ? 'İade Detayları' : location.pathname.startsWith('/imports/') ? 'İçe Aktarma Ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform Ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi Ayrıntıları' : 'Ravencia')
+  // The phone bar names the page only once the page's own title has scrolled away.
+  const [titleShown, setTitleShown] = useState(false)
+  useEffect(() => {
+    if (!phone || typeof IntersectionObserver === 'undefined') return undefined
+    let current: Element | null = null
+    let observer: IntersectionObserver | null = null
+    let frame = 0
+    let wait = 0
+    // The page's heading is replaced when the page finishes loading, so the watch follows the element that is there now. A page with
+    // no heading of its own (a moment after it opened) gets its name in the bar.
+    const bind = () => {
+      const heading = document.querySelector('main h1')
+      if (heading === current) return
+      observer?.disconnect()
+      window.clearTimeout(wait)
+      current = heading
+      if (!heading) { setTitleShown(false); wait = window.setTimeout(() => setTitleShown(true), 700); return }
+      // The bar's own height (it grows with the safe area): any part of the heading below it counts as seen.
+      const barHeight = document.querySelector('.rv-phonebar')?.getBoundingClientRect().height ?? 56
+      observer = new IntersectionObserver(([entry]) => setTitleShown(!entry.isIntersecting), { rootMargin: '-' + Math.round(barHeight) + 'px 0px 0px 0px' })
+      observer.observe(heading)
+    }
+    const main = document.querySelector('main')
+    const mutations = new MutationObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(bind) })
+    if (main) mutations.observe(main, { childList: true, subtree: true })
+    setTitleShown(false)
+    bind()
+    return () => { cancelAnimationFrame(frame); window.clearTimeout(wait); mutations.disconnect(); observer?.disconnect() }
+  }, [phone, location.pathname])
   const displayName = me.displayName || me.email
   const initials = displayName.trim().split(/\s+/).map(part => part[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR') || 'RA'
   const unreadNotificationCount = notifications.filter(notification => !notification.read).length
@@ -304,6 +338,7 @@ function Shell({ me }: { me: Me }) {
       <div className="sidebar-side-bottom"><div className="settings-nav">{entryItem(settingsEntry)}<button type="button" className="logout-link" aria-label="Oturumu Kapat" title="Oturumu Kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu Kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
     <main ref={mainRef}>
+      {phone && <header className={`rv-phonebar${topbarHidden ? ' is-hidden' : ''}${pageScrolled ? ' is-scrolled' : ''}`}><span className={`rv-phonebar-title${titleShown ? ' is-shown' : ''}`} aria-hidden={titleShown ? undefined : 'true'}>{pageName}</span><div className="rv-phonebar-tools"><button type="button" className="rv-phonebar-tool" aria-label={unreadNotificationCount > 0 ? `Bildirim geçmişini aç, ${unreadNotificationCount} okunmamış` : 'Bildirim geçmişini aç'} aria-haspopup="dialog" aria-expanded={notificationsShown} onClick={openNotifications}><UiIcon name="bell" size={18} className={unreadError ? 'is-error' : undefined} />{unreadNotificationCount > 0 && <span className={`rv-phonebar-badge${unreadError ? ' is-error' : ''}`} aria-hidden="true">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button><button type="button" className="rv-phonebar-tool" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /></button></div></header>}
       {!phone && <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>}
       {notificationsShown && createPortal(<><div className="rv-notification-dim" aria-hidden="true" onClick={phone ? closeNotifications : undefined} /><div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-modal={phone || undefined} aria-label="Bildirim geçmişi" tabIndex={-1}>{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { if (phone) notificationSheet.leaveTo(href); else { setNotificationsOpen(false); navigate(href) } }} onCleared={() => setNotifications([])} /></Suspense> })()}</div></>, document.body)}
       {invitations.data?.length && !invitationsClosed ? <Suspense fallback={null}><WorkspaceInvitationsPrompt invitations={invitations.data} onClose={closeInvitations} onSignOut={() => void logout()} /></Suspense> : null}
@@ -312,8 +347,8 @@ function Shell({ me }: { me: Me }) {
       <ShellPages me={me} />
     </main>
     {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
-    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} storeName={displayName} theme={visualTheme} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} onSearch={() => setQuickSearchOpen(true)} onToggleTheme={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
-    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders', '/questions'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0), '/questions': Math.max(0, questionWaitingSummary.data?.totalCount ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} unread={unreadNotificationCount} unreadError={unreadError} onOpenNotifications={openNotifications} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
+    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} storeName={displayName} onSearch={() => setQuickSearchOpen(true)} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
+    <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders', '/questions'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0), '/questions': Math.max(0, questionWaitingSummary.data?.totalCount ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
     </div></DockContext.Provider>
 }
 

@@ -201,29 +201,50 @@ describe('phone shell (no top bar)', () => {
   const stubPhone = () => vi.stubGlobal('matchMedia', (query: string) => ({ matches: phoneQuery(query), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
   afterEach(() => { try { localStorage.clear() } catch { /* nothing */ } })
 
-  it('draws no top bar, the dock instead, and no notification pill while nothing is unread', async () => {
+  it('draws the thin phone bar (bell and theme, no hamburger, no search) and the dock, and no notification pill or bell in the dock', async () => {
     stubPhone()
     server.me = [{ status: 200, body: active }]
     const { host } = mount('/orders')
     await waitFor(() => host.querySelector('.rv-dock'))
     expect(host.querySelector('header.rv-topbar')).toBeNull()
-    expect(host.querySelector('.rv-dock-pill-bell')).toBeNull()
+    const bar = host.querySelector('header.rv-phonebar')!
+    const labels = [...bar.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? '')
+    expect(labels).toHaveLength(2)
+    expect(labels[0]).toMatch(/^Bildirim geçmişini aç/)
+    expect(labels[1]).toMatch(/ temaya geç$/)
+    expect(host.querySelector('.rv-dock-pill-bell, .rv-dock-bell')).toBeNull()
   })
 
-  it('shows the pill when a notification is unread, opens the sheet from it, and a press on the dimmed page only closes it', async () => {
+  it('opens the notification panel from the bell of the phone bar; a press on the dimmed page only closes it', async () => {
     stubPhone()
     server.me = [{ status: 200, body: active }]
     const { host } = mount('/orders')
     await waitFor(() => host.querySelector('.rv-dock'))
     act(() => { appendNotification('Fatura gönderilemedi', 'error') })
-    const pill = await waitFor(() => host.querySelector<HTMLButtonElement>('.rv-dock-pill-bell'))
-    expect(pill.classList.contains('is-error')).toBe(true)
-    act(() => { pill.click() })
+    const bell = await waitFor(() => host.querySelector<HTMLButtonElement>('.rv-phonebar-tool'))
+    await waitFor(() => host.querySelector('.rv-phonebar-badge'))
+    expect(host.querySelector('.rv-phonebar-badge')?.classList.contains('is-error')).toBe(true)
+    act(() => { bell.click() })
     const sheet = await waitFor(() => document.querySelector<HTMLElement>('#rv-notification-history'))
     expect(sheet.getAttribute('aria-modal')).toBe('true')
     act(() => { document.querySelector<HTMLElement>('.rv-notification-dim')!.click() })
     await waitFor(() => document.querySelector('#rv-notification-history') === null || undefined)
     expect(host.querySelector('.rv-dock [aria-current="page"]')?.getAttribute('aria-label')).toBe('Siparişler')
+  })
+
+  it('hides the phone bar while the page is scrolled down and brings it back when scrolled up', async () => {
+    stubPhone()
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount('/orders')
+    await waitFor(() => host.querySelector('.rv-phonebar'))
+    const scrollTo = (y: number) => { Object.defineProperty(window, 'scrollY', { value: y, configurable: true }); act(() => { window.dispatchEvent(new Event('scroll')) }) }
+    scrollTo(300)
+    await waitFor(() => host.querySelector('.rv-phonebar.is-hidden'))
+    expect(host.querySelector('.rv-phonebar.is-scrolled')).not.toBeNull()
+    scrollTo(240)
+    await waitFor(() => host.querySelector('.rv-phonebar:not(.is-hidden)'))
+    scrollTo(0)
+    await waitFor(() => host.querySelector('.rv-phonebar:not(.is-scrolled)'))
   })
 })
 
