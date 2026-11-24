@@ -40,7 +40,8 @@ const barLabelOf = (element: HTMLElement) => (element.querySelector('.submit-lab
 
 // Reads the page's buttons in the group and tags the ones that leave the bar (data-dock-other) or stay as the lone short one
 // (data-dock-keep). The tags are plain attributes on the page's own elements; the page keeps its handlers and states.
-function sortActions(group: HTMLElement): Other[] {
+// `squeezed`: the row does not fit, so even a lone short button goes into the Diğer list.
+function sortActions(group: HTMLElement, squeezed = false): Other[] {
   const candidates = [...group.querySelectorAll<HTMLElement>('button, a[href]')].filter(element => {
     // The menu a primary button opens (an anchored popover) is not one of the actions.
     const anchor = element.closest('.rr-anchor')
@@ -48,7 +49,7 @@ function sortActions(group: HTMLElement): Other[] {
   })
   for (const element of candidates) { element.removeAttribute('data-dock-other'); element.removeAttribute('data-dock-keep') }
   const others = candidates.filter(element => !isPrimary(element) && !element.matches('[data-dock-step], [data-dock-clear]'))
-  if (others.length === 1 && barLabelOf(others[0]).length <= shortLabel) { others[0].setAttribute('data-dock-keep', ''); return [] }
+  if (!squeezed && others.length === 1 && barLabelOf(others[0]).length <= shortLabel) { others[0].setAttribute('data-dock-keep', ''); return [] }
   for (const element of others) element.setAttribute('data-dock-other', '')
   return others.map(element => ({
     element,
@@ -69,11 +70,24 @@ export function DockActions({ label, info, children }: { label: string; info?: D
   const [others, setOthers] = useState<Other[]>([])
   const signature = useRef('')
   const [open, setOpen] = useState(false)
+  // A turned screen changes what fits: the row is fitted again.
+  const [, refit] = useState(0)
+  useEffect(() => { const onResize = () => refit(value => value + 1); window.addEventListener('resize', onResize); return () => window.removeEventListener('resize', onResize) }, [])
   // After every render of the page's buttons: sort them again (a button may appear, or switch to disabled).
   // eslint-disable-next-line react-hooks/exhaustive-deps -- runs after every render on purpose; it sets state only when the sorted buttons changed
   useLayoutEffect(() => {
     if (!group.current) return
-    const next = sortActions(group.current)
+    const element = group.current
+    // Fit the row: the labelled step first gives way to its arrow, then a lone short button moves into the Diğer list; the
+    // primary label is never cut.
+    // (the row is end-aligned, and an overflow to the left is not counted in scrollWidth: it is measured start-aligned)
+    const overflows = () => { element.style.justifyContent = 'flex-start'; const over = element.scrollWidth > element.clientWidth + 1; element.style.justifyContent = ''; return over }
+    element.removeAttribute('data-dock-compact')
+    let next = sortActions(element)
+    if (overflows()) {
+      element.setAttribute('data-dock-compact', '')
+      if (overflows() && element.querySelector('[data-dock-keep]')) next = sortActions(element, true)
+    }
     const nextSignature = next.map(item => `${item.label}|${item.disabled}|${item.danger}`).join(';')
     if (nextSignature !== signature.current) { signature.current = nextSignature; setOthers(next) }
   })

@@ -67,7 +67,7 @@
   .rv-taskbar-group > div:not([role="group"]) { display: contents; }
   .rv-taskbar-group :is(button, a) { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 40px; min-height: 0; margin: 0; padding: 0 14px; border-radius: 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
   /* The primary action's label is never cut: it takes what it needs, the chip and the step give way first (below). */
-  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 0 auto; padding: 0 12px; font-size: 14px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
+  .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) { flex: 1 1 auto; min-width: min-content; padding: 0 10px; font-size: 14px; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
   .rv-taskbar-group :is(.rr-primary, .is-primary, [data-dock-primary]) :is(svg, .rr-bulk-badge) { display: none; }
   .rv-taskbar-group :is(button, a):disabled { opacity: .5; cursor: default; }
   .rv-taskbar-group :is(.rr-danger, .is-danger) { color: var(--rv-color-danger); }
@@ -78,7 +78,7 @@
   .rv-taskbar-group .rr-lbl-short { display: inline; }
   .rv-taskbar-group .rr-bulk-badge { display: none; }
   /* The step to the next screen: "İleri" and its arrow, whatever the page called it. */
-  .rv-taskbar-group [data-dock-step] { flex: 0 1 auto; width: auto; padding: 0 12px; }
+  .rv-taskbar-group [data-dock-step] { flex: 0 1 auto; width: auto; padding: 0 10px; font-size: 13px; }
   .rv-taskbar-group [data-dock-step] > span { display: none; }
   .rv-taskbar-group [data-dock-step]::before { content: attr(data-dock-step); }
   .rv-taskbar-group [data-dock-step-back] { flex-direction: row-reverse; }
@@ -88,12 +88,18 @@
   .rv-taskbar-group [data-dock-clear] > span { display: none; }
   .rv-taskbar-group [data-dock-clear] > svg { width: 14px; height: 14px; }
   .rv-taskbar-group [role="group"]:not(:has(button:not([data-dock-other]), a:not([data-dock-other]))) { display: none; }
-  /* Narrow phones: the selection chip is the count and its cross; on phones up to 420 px the step is only its arrow (its name stays as the aria-label), so the primary label is never cut. */
+  /* Narrow phones: the selection chip is the count and its cross; the step keeps its name from 350 px up (the second step's back button shortens to its short name on 370 px and below), the primary label is never cut. */
   @media (max-width: 400px) {
     .rv-taskbar-group [data-dock-clear]::before { content: attr(data-dock-count); }
     .rv-taskbar-group [data-dock-clear] { padding: 0 8px 0 10px; }
   }
-  @media (max-width: 420px) {
+  @media (max-width: 370px) {
+    .rv-taskbar-group [data-dock-step][data-dock-step-short]::before { content: attr(data-dock-step-short); }
+  }
+  /* Set by dock-actions.tsx when the row does not fit: the step shows only its arrow. */
+  .rv-taskbar-group[data-dock-compact] [data-dock-step][data-dock-step]::before { content: none; }
+  .rv-taskbar-group[data-dock-compact] [data-dock-step][data-dock-step] { width: 40px; padding: 0; }
+  @media (max-width: 349px) {
     .rv-taskbar-group [data-dock-step]::before { content: none; }
     .rv-taskbar-group [data-dock-step] { width: 40px; padding: 0; }
   }
