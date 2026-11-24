@@ -467,14 +467,20 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .GroupBy(x => x.ProductId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
             var stockByProduct = variantsByProductForFilter.ToDictionary(x => x.Key, x => ProductStockPolicy.TotalStock(x.Value, inventoryByVariant));
+            // GAP is decided per model (the list groups by model code): the models whose cards still have stock.
+            var stockedModels = allProducts
+                .Where(product => !ProductDraftPolicy.IsDraft(product.Status) && stockByProduct.GetValueOrDefault(product.Id) > 0)
+                .Select(product => ProductFamilyKey(product, variantsByProductForFilter.GetValueOrDefault(product.Id) ?? []))
+                .ToHashSet(StringComparer.Ordinal);
             // A stock filter shows the cards the stock counts count (ProductSummaryAsync): never a draft.
             allProducts = allProducts.Where(product => !ProductDraftPolicy.IsDraft(product.Status) && stock.Trim().ToUpperInvariant() switch
             {
                 "OUT" => stockByProduct.GetValueOrDefault(product.Id) <= 0,
                 "LOW" => stockByProduct.GetValueOrDefault(product.Id) > 0
                     && ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
-                // Some variant sold out while the product still has stock (one size of a colour is enough).
-                "GAP" => stockByProduct.GetValueOrDefault(product.Id) > 0
+                // Some variant sold out while the model still has stock (one size of a colour is enough; a colour sold out
+                // in every size is listed too, so a model of one-size colours shows its sold-out colours).
+                "GAP" => stockedModels.Contains(ProductFamilyKey(product, variantsByProductForFilter.GetValueOrDefault(product.Id) ?? []))
                     && ProductStockPolicy.HasSoldOutVariant(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
                 "OK" => stockByProduct.GetValueOrDefault(product.Id) > 0
                     && !ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),

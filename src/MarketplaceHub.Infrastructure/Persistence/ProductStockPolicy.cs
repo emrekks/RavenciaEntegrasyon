@@ -18,7 +18,7 @@ internal static class ProductStockPolicy
         });
     }
 
-    // A product with any variant sold out while others still have stock: the Tükenen Varyantlar list.
+    // A card with any variant sold out; the Tükenen Varyantlar list keeps it while its model still has stock.
     public static bool HasSoldOutVariant(IEnumerable<ProductVariant> variants, IReadOnlyDictionary<Guid, decimal> inventoryByVariant)
         => variants.Any(variant => inventoryByVariant.GetValueOrDefault(variant.Id) <= 0m);
 
