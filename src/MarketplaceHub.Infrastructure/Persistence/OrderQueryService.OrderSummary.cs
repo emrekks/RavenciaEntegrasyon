@@ -147,7 +147,7 @@ internal sealed partial class OrderQueryService
     private async Task<Func<OrderListQuery, IQueryable<Order>>> SummaryOrdersAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(options.Search)) return tabOptions => FilteredOrders(tenantId, tabOptions with { Sort = null });
-        var matched = await FilteredOrders(tenantId, options with { Status = null, Sort = null }).Select(order => order.Id).ToListAsync(cancellationToken);
+        var matched = await FilteredOrders(tenantId, options with { Status = null, Sort = null }, keepManualResends: true).Select(order => order.Id).ToListAsync(cancellationToken);
         return tabOptions => FilteredOrders(tenantId, tabOptions with { Search = null, Sort = null }).Where(order => matched.Contains(order.Id));
     }
 
