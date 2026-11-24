@@ -16,6 +16,7 @@ import { ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, Produ
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { usePageEntryReveal } from './hooks/usePageEntryReveal'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
+import { stuckChangeEvent } from '../shared/hooks/useStuckHead'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
 import { readNotificationHistory, registerNotificationActorResolver, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification } from '../shared/notifications'
@@ -101,6 +102,8 @@ function Shell({ me }: { me: Me }) {
         frame = 0
         // A layer that locks the page (the menu, the notification panel, a window) leaves the bar where it is.
         if (document.body.style.overflow === 'hidden') { last = window.scrollY; return }
+        // A sticky head is stuck under the bar (a table's head): the bar stays shown, so nothing under the head changes position while it scrolls.
+        if (document.querySelector('[data-stuck]')) { setTopbarHidden(false); last = window.scrollY; run = 0; return }
         const y = window.scrollY
         const max = document.documentElement.scrollHeight - window.innerHeight
         if (y <= 0 || y >= max - 1) { last = Math.min(Math.max(y, 0), Math.max(max, 0)); run = 0; if (y <= 0) setTopbarHidden(false); return }
@@ -113,7 +116,8 @@ function Shell({ me }: { me: Me }) {
       })
     }
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll) }
+    window.addEventListener(stuckChangeEvent, onScroll)
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', onScroll); window.removeEventListener(stuckChangeEvent, onScroll) }
   }, [])
   const location = useLocation()
   const navigate = useNavigate()
