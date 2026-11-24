@@ -313,7 +313,7 @@ function Shell({ me }: { me: Me }) {
       <ShellPages me={me} />
     </main>
     {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
-    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} profile={{ name: displayName, subtitle: [userRoleLabels[(me.role ?? '').toUpperCase() as UserRole] ?? me.role, me.displayName ? me.email : ''].filter(Boolean).join(' · ') || undefined, to: '/settings?tab=auth' }} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
+    {phone && fullMenu.open && <FullScreenMenu groups={phoneMenuGroups} profile={{ name: displayName, role: userRoleLabels[(me.role ?? '').toUpperCase() as UserRole] ?? me.role ?? undefined, email: me.displayName ? me.email : undefined }} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
     <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders', '/questions'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0), '/questions': Math.max(0, questionWaitingSummary.data?.totalCount ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
     </div></DockContext.Provider>
 }

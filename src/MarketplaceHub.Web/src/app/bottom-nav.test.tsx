@@ -26,7 +26,7 @@ const groups: MenuGroup[] = [
   { label: 'Sistem', entries: [{ to: '/settings', icon: 'settings', label: 'Sistem Ayarları', end: true }] },
 ]
 
-const profile = { name: 'Ayşe Yılmaz', subtitle: 'Hesap Sahibi · ayse@ravencia.com', to: '/settings?tab=auth' }
+const profile = { name: 'Ayşe Yılmaz', role: 'Hesap Sahibi', email: 'ayse@ravencia.com' }
 let pathNow = ''
 function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone?: boolean; count?: number; slotCounts?: Record<string, number>; children?: ReactNode }) {
   const dock = useDockHostState(phone)
@@ -169,13 +169,18 @@ describe('Ravencia Dock', () => {
     const system = document.querySelector('.rv-fullmenu-group[aria-label="Sistem"]')!
     expect(system.querySelector('h3')?.textContent).toBe('Sistem')
     expect(document.querySelector('.rv-fullmenu-store')).toBeNull()
-    // The profile card is the first item of the scrolling list: initials avatar, name, role and e-mail, an arrow to the account page.
-    const card = document.querySelector('.rv-fullmenu-body > .rv-fullmenu-profile')!
-    expect(card.getAttribute('href')).toBe('/settings?tab=auth')
+    // The profile card is the last item of the scrolling list, after the groups: initials avatar, name, role and e-mail, an arrow to the account page.
+    const card = document.querySelector('.rv-fullmenu-body > .rv-fullmenu-profile:last-child')!
+    expect(document.querySelector('.rv-fullmenu-body > :first-child')?.classList.contains('rv-fullmenu-group')).toBe(true)
+    // Only a picture of who is signed in: a plain block, not a link, no arrow, nothing to tab to.
+    expect(card.tagName).toBe('DIV')
+    expect(card.getAttribute('href')).toBeNull()
+    expect(card.querySelector('a, button, [tabindex]')).toBeNull()
     expect(card.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('AY')
     expect(card.querySelector('strong')?.textContent).toBe('Ayşe Yılmaz')
     expect(card.querySelector('small')?.textContent).toBe('Hesap Sahibi · ayse@ravencia.com')
-    expect(card.querySelector('.rv-fullmenu-chev')).not.toBeNull()
+    expect(card.querySelector('.rv-fullmenu-role')?.textContent).toBe('Hesap Sahibi')
+    expect(card.querySelector('.rv-fullmenu-chev')).toBeNull()
     const rows = [...system.querySelectorAll('.rv-fullmenu-row')]
     expect(rows.map(row => row.textContent)).toEqual(['Sistem Ayarları', 'Çıkış'])
     expect(rows[1].classList.contains('is-danger')).toBe(true)
