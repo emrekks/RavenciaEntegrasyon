@@ -22,7 +22,7 @@
   .app-shell.stitch-shell main .rv-action-bar[data-dock="inline"] { bottom: var(--rv-bottom-nav-space); }
 
   .rv-dock-layer { position: fixed; right: 12px; bottom: var(--rv-dock-bottom); left: 12px; z-index: 87; display: block; height: 52px; pointer-events: none; }
-  .rv-dock, .rv-taskbar { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 30%); transition: opacity 180ms ease, visibility 180ms; pointer-events: auto; }
+  .rv-dock, .rv-taskbar { position: absolute; inset: 0; box-sizing: border-box; display: flex; align-items: center; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; box-shadow: 0 8px 20px -10px rgb(0 0 0 / 30%); transition: opacity 180ms ease, visibility 180ms, border-radius 180ms ease; pointer-events: auto; }
   .rv-dock-layer[data-mode="task"] .rv-dock, .rv-dock-layer[data-mode="dock"] .rv-taskbar { visibility: hidden; opacity: 0; pointer-events: none; }
 
   /* Dock slots: icon only; the open page's slot widens (180 ms) to icon and label in a pill. */
@@ -35,7 +35,7 @@
   .rv-dock-label { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 600; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
   .rv-dock-slot:focus-visible, .rv-dock-search:focus-visible, .rv-taskbar-menu:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
   .rv-dock-icon { position: relative; display: inline-grid; }
-  .rv-dock-badge { position: absolute; top: -8px; left: 11px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-danger); border: 1px solid var(--rv-color-surface); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
+  .rv-dock-badge { position: absolute; top: -8px; left: 11px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 1px solid var(--rv-color-surface); border-radius: 8px; font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
   .rv-dock-slot-center { align-items: flex-start; cursor: default; }
   .rv-dock-search { display: grid; flex: none; place-items: center; width: 42px; height: 42px; min-height: 0; margin-top: -13px; padding: 0; color: #fff; background: var(--rv-color-primary-fill); border: 0; border-radius: 14px; box-shadow: 0 8px 16px -6px color-mix(in srgb, var(--rv-color-primary-fill) 70%, transparent); cursor: pointer; -webkit-tap-highlight-color: transparent; }
 
@@ -63,14 +63,16 @@
   .rv-taskbar-group [data-dock-icon] > span { display: none; }
   .rv-taskbar-group [role="group"] { flex: none; }
 
-  /* The status strip above the task bar: one line, 12 px; it goes on scroll down and returns on scroll up. */
-  .rv-dock-info { position: absolute; right: 0; bottom: calc(100% + 6px); left: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 26px; font-size: 12px; line-height: 1; color: var(--rv-color-muted); visibility: hidden; opacity: 0; transform: translateY(6px); transition: opacity 180ms ease, transform 180ms ease, visibility 180ms; pointer-events: none; }
-  .rv-dock-info[data-visible="true"] { visibility: visible; opacity: 1; transform: none; }
-  .rv-dock-info > * { box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 9px; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; text-overflow: ellipsis; white-space: nowrap; pointer-events: auto; }
+  /* The status strip is the top row of the task bar's card: one panel, 28 px of strip over the 52 px bar, a 1 px divider between. It folds away on scroll down (the panel drops to 52 px) and returns on scroll up. */
+  .rv-dock-layer::after { content: ""; position: absolute; right: -12px; bottom: calc(-1 * var(--rv-dock-bottom)); left: -12px; z-index: -1; height: var(--rv-dock-bottom); background: var(--rv-color-bg); }
+  .rv-dock-info { position: absolute; right: 0; bottom: 100%; left: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 0; padding: 0 14px; overflow: hidden; font-size: 12px; line-height: 1; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-bottom: 0; border-radius: 14px 14px 0 0; opacity: 0; visibility: hidden; transition: height 180ms ease, opacity 180ms ease, visibility 180ms; }
+  .rv-dock-info[data-visible="true"] { height: 29px; opacity: 1; visibility: visible; }
+  .rv-dock-layer:has(.rv-dock-info[data-visible="true"]) .rv-taskbar { border-top-left-radius: 0; border-top-right-radius: 0; }
+  .rv-dock-info > * { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rv-dock-info-start { flex: 0 1 auto; }
-  .rv-dock-info-end { flex: 0 1 auto; margin-left: auto; }
+  .rv-dock-info-end { flex: 0 1 auto; margin-left: auto; color: var(--rv-color-muted); }
   .rv-dock-info > * > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .rv-dock-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 0; height: 100%; margin: 0; padding: 0; color: inherit; background: none; border: 0; border-radius: 0; font: inherit; font-weight: 600; white-space: nowrap; }
+  .rv-dock-chip { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 0; height: 28px; margin: 0; padding: 0; color: inherit; background: none; border: 0; border-radius: 0; font: inherit; font-weight: 600; white-space: nowrap; }
   button.rv-dock-chip { cursor: pointer; }
   .rv-dock-chip.is-warn { color: var(--rv-color-warning); }
   .rv-dock-chip-action { min-height: 0; padding: 0 0 0 6px; color: var(--rv-color-primary-text); background: none; border: 0; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
