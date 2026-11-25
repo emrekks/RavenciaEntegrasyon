@@ -1,4 +1,4 @@
-import { parseTrCount, parseTrMeasure } from '../../../shared/tr-number'
+import { parseTrCount, parseTrMeasure, trNumberInput } from '../../../shared/tr-number'
 
 // The product editor's readers of a field's text (B1, 23 Nov 2026). Every number box of the editor is a text box holding
 // Turkish text: a type="number" box gave "1.250" typed in a tr-TR browser as 1.25 and "1.250,50" as 1.2505 (measured in
@@ -12,6 +12,19 @@ export function parseEditorNumber(value: string | number): number {
   const text = value.trim()
   if (text === '') return 0
   return parseTrMeasure(text) ?? Number.NaN
+}
+
+// A numeric category attribute (D-1, scan 25 Nov 2026): a text box holding Turkish text read by parseEditorNumber, never
+// type="number" (a tr-TR browser turned "1,125" into 1.125 and so 1125, and refused a decimal comma). A stored number
+// opens as Turkish text ("1,5", trNumberInput), so an untouched value reads back unchanged.
+export const attributeNumberHelp = '12,5 biçiminde yazın (ondalık için virgül, nokta yalnız binlik ayırıcıdır).'
+export function attributeNumberUnreadable(text: string): boolean { return text.trim() !== '' && Number.isNaN(parseEditorNumber(text)) }
+// The typed value a saved product attribute opens with: its text, its number as Turkish text, or evet / hayır.
+export function savedAttributeText(attribute: { textValue?: string | null; numberValue?: number | null; booleanValue?: boolean | null }): string | null {
+  if (attribute.textValue != null) return attribute.textValue
+  if (attribute.numberValue != null) return trNumberInput(attribute.numberValue)
+  if (attribute.booleanValue != null) return attribute.booleanValue ? 'evet' : 'hayır'
+  return null
 }
 
 // A stock or safety stock as typed: a Turkish whole number ("1.000" is 1000); a fraction, "1e3", "0x10" or a negative is

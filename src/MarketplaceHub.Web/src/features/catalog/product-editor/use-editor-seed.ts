@@ -20,6 +20,7 @@ import { Product, normalizeVariantOptionName, variantOptionEntries } from '../sh
 import { PendingProductMediaFile } from './editor-types'
 import { seedVariantMediaRefs, sortVariantsAlphabetically } from './editor-helpers'
 import { editorWarrantyText } from './required-fields'
+import { savedAttributeText } from './editor-number'
 import type { EditorProps } from './editor-types'
 import type { EditorStateResult } from './use-editor-state'
 import type { EditorMediaPointerResult } from './use-editor-media-pointer'
@@ -104,7 +105,7 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
       return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand, loadedVersion: variant.version } : {}), salePrice: panelPrices(variant, product).salePrice ?? 0, listPrice: panelPrices(variant, product).listPrice ?? 0, costPrice: variant.costPrice ?? null, ...(editProductId ? { loadedCostPrice: variant.costPrice ?? null } : {}), mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
-    for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
+    for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else { const text = savedAttributeText(attribute); if (text != null) typed[attribute.attributeId] = text } }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
     setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
