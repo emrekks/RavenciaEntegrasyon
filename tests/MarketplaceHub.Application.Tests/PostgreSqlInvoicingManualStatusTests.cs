@@ -556,8 +556,10 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
                 Assert.Null((await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == shopify.Package.Id)).ManualInvoiceStatus);
                 Assert.Equal("UPLOADED", (await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == partly.Package.Id)).ManualInvoiceStatus);
                 Assert.Equal(0, await CountDeliveryJobsAsync(trendyol.Tenant.Id));
-                // An earlier delivery whose result is uncertain: its read-back is still queued, read only.
-                db.ManualOrderInvoiceDeliveryStates.Add(new ManualOrderInvoiceDeliveryState { Id = Guid.CreateVersion7(), TenantId = trendyol.Tenant.Id, DocumentId = document.Id, ConnectionId = trendyol.Marketplace.Id, PackageId = trendyol.Package.Id, IdempotencyKey = $"manual-invoice-delivery:{document.Id:N}:{trendyol.Package.Id:N}", RequestHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{document.DocumentUrl}\n{document.InvoiceNumber}\n{document.IssuedAt:O}"))), Status = "UNKNOWN", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+                // An earlier delivery whose result is uncertain: its read-back is still queued, read only. Its hash is the
+                // stored document's (the database keeps microseconds).
+                var stored = await db.ManualOrderInvoiceDocuments.AsNoTracking().SingleAsync(x => x.Id == document.Id);
+                db.ManualOrderInvoiceDeliveryStates.Add(new ManualOrderInvoiceDeliveryState { Id = Guid.CreateVersion7(), TenantId = trendyol.Tenant.Id, DocumentId = document.Id, ConnectionId = trendyol.Marketplace.Id, PackageId = trendyol.Package.Id, IdempotencyKey = $"manual-invoice-delivery:{document.Id:N}:{trendyol.Package.Id:N}", RequestHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{stored.DocumentUrl}\n{stored.InvoiceNumber}\n{stored.IssuedAt:O}"))), Status = "UNKNOWN", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
                 await db.SaveChangesAsync();
             }
             Assert.Equal(StatusCodes.Status202Accepted, await CallAsync(trendyol, (http, db) =>
