@@ -45,6 +45,23 @@ done
 assert_eq 5 "$(grep -cE "evt\.Meta\.http_verb in \[" "$whitelist")" "every rule is limited to named verbs"
 assert_not_contains "$(cat "$whitelist")" "source_ip" "no rule is by IP"
 
+# Scan report A-11: only requests that carry a cookie and got a working answer (2xx/304) are dropped; the API's own
+# problem+json 404 (a deleted record, after the session was accepted) is the one exception, on the API rule only.
+assert_contains "$(grep -E '^filter:' "$whitelist")" "JsonExtract(evt.Line.Raw, 'request.headers.Cookie[0]') != ''" "the filter needs a Cookie header"
+assert_eq 5 "$(grep -cF "evt.Meta.http_status matches '^(2[0-9][0-9]|304)\$'" "$whitelist")" "every rule needs a 2xx or 304 answer"
+assert_eq 1 "$(grep -cF "evt.Meta.http_status == '404'" "$whitelist")" "a 404 is kept in one rule only"
+assert_contains "$(grep -F "evt.Meta.http_status == '404'" "$whitelist")" "JsonExtract(evt.Line.Raw, 'resp_headers.Content-Type[0]') startsWith 'application/problem+json'" "that 404 must be the API's problem+json answer"
+api_rule_block="$(grep -n "http_status == '404'" "$whitelist" | cut -d: -f1)"
+api_path_line="$(grep -n "http_path matches '\^/api/" "$whitelist" | cut -d: -f1)"
+assert_eq "$((api_rule_block + 1))" "$api_path_line" "the 404 exception belongs to the API rule"
+status_rule="$(grep -oE "http_status matches '[^']+'" "$whitelist" | head -n 1 | sed -E "s/^http_status matches '//; s/'\$//")"
+for status in 200 201 204 206 304; do
+  if printf '%s\n' "$status" | grep -qE -- "$status_rule"; then pass "status $status may be dropped"; else fail "status $status not accepted"; fi
+done
+for status in 301 302 400 401 403 404 405 429 500 502 2000 20; do
+  if printf '%s\n' "$status" | grep -qE -- "$status_rule"; then fail "status $status accepted"; else pass "status $status stays visible"; fi
+done
+
 whitelisted() {
   local path="$1" rule
   for rule in "${regexes[@]}"; do

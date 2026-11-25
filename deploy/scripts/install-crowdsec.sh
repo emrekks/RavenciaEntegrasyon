@@ -10,8 +10,8 @@ set -Eeuo pipefail
 #   - collections: linux, sshd, caddy, http-cve, base-http-scenarios, whitelists;
 #   - firewall bouncer: nftables, IPv4 + IPv6, input and forward hooks;
 #   - parser whitelist ravencia/panel-whitelist (s02-enrich): the panel's own request shapes, never an IP;
-#   - allowlists github-actions and ravencia-private, refreshed daily by
-#     ravencia-crowdsec-allowlist.timer.
+#   - postoverflow whitelist ravencia/github-actions-ssh (GitHub Actions ranges, SSH scenarios only) and allowlist
+#     ravencia-private, refreshed daily by ravencia-crowdsec-allowlist.timer.
 # Ending the simulation is the owner's manual step (docs/CI-CD-DEPLOY.md, "CrowdSec"), after reviewing the alerts:
 #   bash deploy/scripts/install-crowdsec.sh --enforce
 # turns global simulation off (bans reach nftables) and lets CrowdSec pull the community blocklist (the repository's
@@ -72,6 +72,13 @@ sudo -n install -m 0600 "$config_dir/crowdsec-firewall-bouncer.yaml.local" /etc/
 # request shape, not by IP. Simulation and --enforce runs alike; the reloads below pick it up.
 sudo -n install -d -m 0755 /etc/crowdsec/parsers/s02-enrich
 sudo -n install -m 0644 "$config_dir/ravencia-panel-whitelist.yaml" /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml
+# GitHub Actions ranges are exempt from the SSH scenarios only (scan report A-11): ravencia-crowdsec-allowlist writes its
+# postoverflow whitelist here (the unit may write nothing else under /etc) and drops the every-scenario allowlist, but
+# only while the marker below exists. Running this script is the owner's switch; no deploy writes the marker. Back to
+# the old allowlist: sudo rm /etc/ravencia/crowdsec-ssh-only-allowlist (docs/CI-CD-DEPLOY.md, "CrowdSec").
+sudo -n install -d -m 0755 /etc/crowdsec/postoverflows/s01-whitelist
+sudo -n install -d -m 0755 /etc/ravencia
+sudo -n touch /etc/ravencia/crowdsec-ssh-only-allowlist
 
 sudo -n cscli hub update >/dev/null
 sudo -n cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/caddy \
