@@ -99,17 +99,14 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     </Link>
   }
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} data-menu={menuOpen ? 'open' : undefined} inert={layerOpen || undefined}>
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
     <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
-      {/* While the menu is open the pill and this button fade out (inert); only the cross on the right stays. */}
-      <Link to={homePage.to} className={'rv-dock-round rv-dock-home' + (isActive(homePage.to, homePage.end) ? ' is-active' : '')} aria-label="Ana Sayfa" aria-current={isActive(homePage.to, homePage.end) ? 'page' : undefined} onClick={follow(homePage.to)} tabIndex={menuOpen ? -1 : undefined} inert={menuOpen || undefined}>
-        <span className="rv-dock-icon"><UiIcon name="dashboard" size={22} /></span>
-      </Link>
-      <div className="rv-dock-pill" inert={menuOpen || undefined}>
+      {slot(homePage, true)}
+      <div className="rv-dock-pill">
         {pillPages.map(page => slot(page))}
       </div>
-      <button type="button" ref={menuSlotRef} className="rv-dock-round" aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
-        <span className="rv-dock-icon rv-dock-swap"><UiIcon className="rv-swap-a" name="menu" size={22} /><UiIcon className="rv-swap-b" name="close" size={22} />{!menuOpen ? badge(menuCount) : null}</span>
+      <button type="button" ref={menuSlotRef} className={'rv-dock-round' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
+        <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen ? badge(menuCount) : null}</span>
       </button>
     </nav>
     <div className="rv-dock-panel" inert={!task || undefined}>
@@ -146,9 +143,6 @@ export function useExitPresence(open: boolean) {
   return { present, closing: present && !open }
 }
 
-const settingsPath = '/settings'
-const settingsEntry: MenuEntry = { to: settingsPath, icon: 'settings', label: 'Sistem Ayarları', end: true }
-
 export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname, closing = false }: {
   closing?: boolean
   groups: MenuGroup[]
@@ -172,9 +166,9 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     if (document.querySelector('.rv-notification-history')) return
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
     if (event.key !== 'Tab') return
-    // The menu and the dock's cross (the one part left in the dock) form the cycle.
+    // The dock stays usable (it holds the Kapat slot), so the cycle runs through the menu and then the dock.
     const scopes = [rootRef.current, document.querySelector('.rv-dock')]
-    const items = scopes.flatMap(scope => scope ? [...scope.querySelectorAll<HTMLElement>(scope === rootRef.current ? focusableSelector : '.rv-dock-round')] : []).filter(element => element.offsetParent !== null || element === document.activeElement)
+    const items = scopes.flatMap(scope => scope ? [...scope.querySelectorAll<HTMLElement>(focusableSelector)] : []).filter(element => element.offsetParent !== null || element === document.activeElement)
     if (!items.length) return
     const first = items[0]
     const last = items[items.length - 1]
@@ -193,28 +187,29 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     const countLabel = typeof entry.count === 'number' && entry.count > 999 ? '999 üzeri' : entry.count?.toLocaleString('tr-TR')
     return <Link key={entry.to} to={entry.to} className={`rv-fullmenu-row${active ? ' is-current' : ''}`} aria-current={active ? 'page' : undefined} aria-label={hasCount ? `${entry.label}, ${countLabel} ${entry.noun ?? 'bildirim'}` : undefined}
       onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); onNavigate(entry.to) }}>
-      <UiIcon name={entry.icon} size={22} />
+      <UiIcon name={entry.icon} size={20} />
       <span className="rv-fullmenu-name">{entry.label}</span>
       {hasCount ? <span className={`rv-fullmenu-count${entry.warn ? ' is-warn' : ''}`} aria-hidden="true">{entry.count! > 999 ? '999+' : entry.count!.toLocaleString('tr-TR')}</span> : null}
+      <UiIcon className="rv-fullmenu-chev" name="chevronRight" size={16} />
     </Link>
   }
-  const heading = (label: string) => <h3>{label}<UiIcon name="chevronRight" size={14} /></h3>
-  // The settings page is the round gear button at the bottom, not a row; a group left with nothing else drops its heading too.
-  const shown = groups.map(group => ({ group, entries: group.entries.filter(entry => entry.to !== settingsPath) })).filter(item => item.entries.length)
+  // The profile card is only a picture of who is signed in: the person's picture (or initials), name and, when the session has
+  // them, role and e-mail. A plain block: no link, no arrow, not in the tab order; a screen reader reads it as text.
+  const profileCard = <div className="rv-fullmenu-profile">
+    <UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} />
+    <span className="rv-fullmenu-profile-copy"><strong>{profile.name}</strong>{profile.role || profile.email ? <small>{profile.role ? <span className="rv-fullmenu-role">{profile.role}</span> : null}{profile.email ? <span className="rv-fullmenu-email">{profile.role ? ' · ' : ''}{profile.email}</span> : null}</small> : null}</span>
+  </div>
   return <div ref={rootRef} className={'rv-fullmenu' + (closing ? ' is-closing' : '')} role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1} inert={closing || undefined}>
+    <header className="rv-fullmenu-head"><h2>Menü</h2></header>
     <div className="rv-fullmenu-body">
-      {shown.map(({ group, entries }, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
-        {index > 0 ? heading(group.label) : null}
-        <div className="rv-fullmenu-list">{entries.map(row)}</div>
-      </section>)}
-      <section className="rv-fullmenu-group" aria-label="Hesap">
-        {heading('Hesap')}
+      {groups.map((group, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
+        <h3>{group.label}</h3>
         <div className="rv-fullmenu-list">
-          <div className="rv-fullmenu-profile"><UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} /><span className="rv-fullmenu-name">{profile.name}</span></div>
-          {row(settingsEntry)}
-          <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={22} /><span className="rv-fullmenu-name">Çıkış Yap</span></button>
+          {group.entries.map(row)}
+          {index === groups.length - 1 ? <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={20} /><span className="rv-fullmenu-name">Çıkış</span></button> : null}
         </div>
-      </section>
+      </section>)}
+      {profileCard}
     </div>
   </div>
 }
