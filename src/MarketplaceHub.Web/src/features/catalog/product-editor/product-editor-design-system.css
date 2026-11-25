@@ -884,9 +884,9 @@ html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > 
   .variant-platform-pricing-modal > header > .modal-close { flex: none; }
   .variant-platform-pricing-modal .variant-platform-pricing-product-context { flex-wrap: wrap; row-gap: 2px; }
   .variant-platform-pricing-modal .variant-platform-pricing-product-context > strong { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  /* Kategori Özellikleri: a value list opens as wide as its bar (at least 200px) on the side that keeps it on screen
+  /* Kategori Özellikleri: a value list opens exactly as wide as its bar (no fixed minimum) on the side that keeps it on screen
      (ProductEditorPages picks the side with that width); a fixed 320px list started 148px off the left edge. */
-  :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; min-width: 200px; max-width: calc(100vw - 24px); }
+  :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; max-width: calc(100vw - 24px); }
   /* Yayınlama: "Aktif Bağlantı" keeps one line in its narrow fact cell (it was cut by 8px): 6px sides instead of 10/8. */
   .app-shell.stitch-shell main .publish-platform-facts .publish-platform-status.publish-platform-status { padding-inline: 6px; white-space: nowrap; }
 }

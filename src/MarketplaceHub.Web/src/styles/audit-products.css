@@ -65,7 +65,7 @@
 
 /* Category attribute dropdowns open exactly as wide as their bar (they were a fixed 320 px under a 400 px bar). */
 @media (min-width: 761px) {
-  :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; min-width: 200px; max-width: calc(100vw - 32px); }
+  :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; max-width: calc(100vw - 32px); }
 }
 
 :root:root body .date-range-picker-popover header > button {
