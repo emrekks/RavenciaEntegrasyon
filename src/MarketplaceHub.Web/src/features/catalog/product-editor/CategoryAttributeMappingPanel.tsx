@@ -10,7 +10,7 @@ import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { touchScreen } from './editor-helpers'
-import { attributeNumberHelp, attributeNumberUnreadable } from './editor-number'
+import { AttributeTextValueInput } from './AttributeTextValueInput'
 
 export function CategoryAttributeValueDropdown({
   attributeName,
@@ -154,11 +154,8 @@ export function CategoryAttributeMappingPanel({
               <CategoryAttributeValueDropdown attributeName={displayName} required={item.isRequired} values={item.attribute.values} selectedValues={selectedValues} onToggleValue={valueId => onToggleValue(item.attributeId, valueId)} />
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <PanelSelect ariaLabel={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={next => onTextChange(item.attributeId, next)} options={[{ value: '', label: 'Değer Seçin' }, { value: 'evet', label: 'Evet' }, { value: 'hayır', label: 'Hayır' }]} />
-            ) : item.attribute.dataType === 'NUMBER' ? (
-              // D-1: a Turkish text box ("12,5"), never type="number"; text the reader refuses stays on screen, marked.
-              <input aria-label={`${displayName} değeri`} value={typedValue} onChange={event => onTextChange(item.attributeId, event.target.value)} type="text" inputMode="decimal" autoComplete="off" aria-invalid={attributeNumberUnreadable(typedValue) || undefined} title={attributeNumberUnreadable(typedValue) ? `Sayı okunamadı; ${attributeNumberHelp}` : undefined} placeholder="Örn. 12,5" />
             ) : (
-              <input aria-label={`${displayName} değeri`} value={typedValue} onChange={event => onTextChange(item.attributeId, event.target.value)} type="text" placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
+              <AttributeTextValueInput numeric={item.attribute.dataType === 'NUMBER'} ariaLabel={`${displayName} değeri`} value={typedValue} onChange={next => onTextChange(item.attributeId, next)} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
             )}
           </article>
         })}

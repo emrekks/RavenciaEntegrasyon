@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { AttributeTextValueInput } from './AttributeTextValueInput'
 import { CategoryAttributeMappingPanel } from './CategoryAttributeMappingPanel'
 import { productAttributePayload } from './editor-helpers'
 import { attributeNumberUnreadable, savedAttributeText } from './editor-number'
@@ -36,5 +37,16 @@ describe('numeric category attribute', () => {
     expect(box(render('12,5'))).toContain('inputMode="decimal"')
     expect(box(render('12,5'))).not.toContain('aria-invalid')
     expect(box(render('12.5'))).toContain('aria-invalid="true"')
+  })
+  // Review of D-1: Seçenekler ve Özellikler's own value box (EditorOptionsSection) was still type="number".
+  it('gives every typed attribute value box of the editor the same Turkish text box', () => {
+    const numeric = renderToStaticMarkup(<AttributeTextValueInput numeric value="12.5" onChange={() => undefined} placeholder="Değer girin" />)
+    expect(numeric).toContain('type="text"')
+    expect(numeric).toContain('inputMode="decimal"')
+    expect(numeric).toContain('aria-invalid="true"')
+    expect(renderToStaticMarkup(<AttributeTextValueInput numeric={false} value="Pamuk" onChange={() => undefined} placeholder="Değer girin" />)).not.toContain('inputMode')
+    const sources = import.meta.glob('./*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+    expect(sources['./EditorOptionsSection.tsx']).toContain(`<AttributeTextValueInput numeric={item.attribute.dataType === 'NUMBER'}`)
+    for (const file of ['./EditorOptionsSection.tsx', './CategoryAttributeMappingPanel.tsx']) expect(sources[file]).not.toMatch(/type=\{[^}]*'number'|type="number"/)
   })
 })
