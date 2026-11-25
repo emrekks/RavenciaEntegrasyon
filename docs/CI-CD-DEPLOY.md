@@ -438,9 +438,19 @@ varsayılan log sürücüsü journald (`tag {{.Name}}`, compose ile aynı).
 deposu (`noble` paketi), journald kaynakları (`deploy/crowdsec/acquis-ravencia.yaml`: sshd ve Caddy JSON erişim
 logu), koleksiyonlar `linux`, `sshd`, `caddy`, `http-cve`, `base-http-scenarios` ve `whitelists` ayrıştırıcısı,
 nftables firewall bouncer (IPv4 + IPv6, `input` ve `forward` kancaları, öncelik -10: Docker'a giden 80/443
-trafiği `forward`'dan geçer, iptables'taki `DOCKER-USER` karşılığı). İzin listeleri (`cscli allowlists`):
-`github-actions` (api.github.com/meta `actions`, `ravencia-crowdsec-allowlist.timer` ile her gün) ve
-`ravencia-private`. Kontrol: `sudo cscli metrics show acquisition parsers`, `sudo cscli alerts list`.
+trafiği `forward`'dan geçer, iptables'taki `DOCKER-USER` karşılığı). Muafiyetler (`ravencia-crowdsec-allowlist.timer`
+her gün yeniler): GitHub Actions aralıkları (api.github.com/meta `actions`) **yalnız SSH senaryolarından**
+(`crowdsecurity/ssh-*`) muaftır: postoverflow beyaz listesi
+`/etc/crowdsec/postoverflows/s01-whitelist/ravencia-github-actions-ssh.yaml` (tarama raporu A-11, 26 Kasım 2026;
+önceden `github-actions` izin listesiydi ve her senaryodan muaftı, HTTP taraması da görünmüyordu). Deploy anahtarı
+zorunlu komutla sınırlı olsa da muafiyet kaldırılmadı: zorunlu komut anahtarın ne yapabileceğini sınırlar, banı
+engellemez; paylaşımlı bir GitHub runner IP'si başkası yüzünden `ssh-bf` banı alırsa deploy durur. Dosya yalnız
+`crowdsec -t` kabul edip CrowdSec yeniden yüklendikten sonra yerinde kalır (yoksa önceki geri konur, birim hata verir,
+alarm gelir); eski `github-actions` izin listesi ancak bundan sonra silinir. `ravencia-private` (loopback, özel ve
+link-local aralıklar) izin listesi olarak kalır. Bilinen artık risk: postoverflow beyaz listesi topluluk blok listesi
+kararlarını kapsamaz; `--enforce` sonrası bir GitHub runner IP'si blok listesindeyse o deploy SSH'ta zaman aşımına düşer
+(yeniden çalıştırmak başka bir runner'a gider; `sudo cscli decisions list --ip <IP>`). Kontrol:
+`sudo cscli metrics show acquisition parsers`, `sudo cscli alerts list`.
 
 İlk kurulum **simülasyon modunda** başlar (3 Kasım 2026): uyarılar kaydedilir, hiçbir IP banlanmaz ve topluluk
 blok listesi çekilmez (`/etc/crowdsec/config.yaml.local`). fail2ban bu süre boyunca çalışmaya devam eder.
@@ -456,8 +466,15 @@ demektir. Beyaz liste kapsamı: panel API önekleri altındaki `GET`/`HEAD` okum
 (deploy sonrası eski chunk 404'leri), simgeler/manifest/`robots.txt` ve SPA sayfaları. Görünür kalan: `.env`, `.git`,
 `*.php`, `/wp-*`, `/phpmyadmin`, bilinmeyen `/api/*` önekleri, `/api/v1/hooks` ve `/api/v1/public`, segmentinde
 nokta, `%`, tırnak geçen her yol ve API'ye her `POST`/`PUT`/`DELETE` (giriş denemeleri dahil). Caddy erişim logu
-sorgu dizesini `?redacted` yaptığından sorgu ile kural atlatılamaz. Çevrimdışı kontrol:
-`bash tests/ops/test-crowdsec-whitelist.sh` (CI `ops` işi de çalıştırır).
+sorgu dizesini `?redacted` yaptığından sorgu ile kural atlatılamaz. **Kimden düşer (A-11, 26 Kasım 2026):** yalnız
+`Cookie` başlığı taşıyan **ve** sunucudan 2xx/304 alan istek. Caddy logu çerezin yalnız varlığını yazar
+(`"Cookie":["REDACTED"]`, ad ya da değer yok); bu istemcinin taklit edebileceği bir işarettir, belirleyici olan
+sunucunun seçtiği durum kodudur: 401 (oturum yok/bitmiş), 403, 400 ve yönlendirme 404'ü hiç düşmez. Tek istisna API'nin
+kendi "kayıt yok" 404'üdür (`Content-Type: application/problem+json`, oturum kabul edildikten sonra uç noktanın yazdığı;
+bilinmeyen bir rota boş 404 döner): 25 Kasım'da canlıda sahibin telefonu 3 saniyede 7 farklı yolda bu 404'ü aldı.
+User-Agent'sız ya da tarayıcı/kütüphane imzalı istek yine hiç düşmez. Eski sürümün 404 alan chunk'ları (statik dosya)
+`http-probing` ve tarama senaryolarına zaten girmez. Çevrimdışı kontrol: `bash tests/ops/test-crowdsec-whitelist.sh`
+ve `bash tests/ops/test-crowdsec-allowlist-refresh.sh` (CI `ops` işi de çalıştırır).
 
 Kurmak/güncellemek (sahibin adımı, simülasyonda da `--enforce`'ta da; deploy bunu yapmaz), sunucuda repo kökünde
 `git pull` sonrası:
@@ -473,13 +490,39 @@ Doğrulamak:
 
 ```bash
 sudo cscli parsers list | grep ravencia/panel-whitelist          # "local" olarak görünür
-# Panel isteği: çıktıda "ravencia/panel-whitelist" satırı ve "whitelisted" beklenir
-sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/api/v1/products/01a1cb3e-b2c9-7ff0-a46d-064b479b831c","headers":{"User-Agent":["Mozilla/5.0"]}},"status":404}'
-# Tarayıcı isteği: beyaz listeden geçmez, http-probing / http-sensitive-files kovalarına düşer
-sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/.env","headers":{"User-Agent":["Mozilla/5.0"]}},"status":404}'
+# 1) Oturumlu panel okuması (çerez + 200): çıktıda "ravencia/panel-whitelist" satırı ve "whitelisted" beklenir
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/api/v1/products/01a1cb3e-b2c9-7ff0-a46d-064b479b831c","headers":{"User-Agent":["Mozilla/5.0"],"Cookie":["REDACTED"]}},"status":200,"resp_headers":{"Content-Type":["application/json"]}}'
+# 2) Silinmiş kayıt (çerez + API'nin problem+json 404'ü): "whitelisted" beklenir
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/api/v1/products/01a1cb3e-b2c9-7ff0-a46d-064b479b831c","headers":{"User-Agent":["Mozilla/5.0"],"Cookie":["REDACTED"]}},"status":404,"resp_headers":{"Content-Type":["application/problem+json"]}}'
+# 3) Aynı yol, çerezli ama 401 (oturum yok): beyaz listeden GEÇMEZ
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/api/v1/products/01a1cb3e-b2c9-7ff0-a46d-064b479b831c","headers":{"User-Agent":["Mozilla/5.0"],"Cookie":["REDACTED"]}},"status":401,"resp_headers":{"Content-Type":["application/problem+json"]}}'
+# 4) Çerezsiz 200: GEÇMEZ.  5) Tarayıcı imzalı tarama (/.env 404): GEÇMEZ, http-probing / http-sensitive-files kovalarına düşer
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/api/v1/products/01a1cb3e-b2c9-7ff0-a46d-064b479b831c","headers":{"User-Agent":["Mozilla/5.0"]}},"status":200}'
+sudo cscli explain --type caddy -v --log '{"level":"info","ts":1794506610.3,"logger":"http.log.access.log0","msg":"handled request","request":{"remote_ip":"203.0.113.7","client_ip":"203.0.113.7","proto":"HTTP/2.0","method":"GET","host":"panel.ravencia.com","uri":"/.env","headers":{"User-Agent":["Mozilla/5.0"],"Cookie":["REDACTED"]}},"status":404}'
+# GitHub aralıkları: postoverflow dosyası yerinde, eski izin listesi yok
+sudo head -n 8 /etc/crowdsec/postoverflows/s01-whitelist/ravencia-github-actions-ssh.yaml
+sudo cscli allowlists list                         # yalnız ravencia-private kalır
 sudo cscli metrics show acquisition whitelists     # Caddy satırında "Lines whitelisted" artar
 sudo cscli alerts list                             # birkaç gün içinde kendi IP'nizle http-* uyarısı kalmamalı
 ```
+
+**A-11 daraltmasını kurmak (sahibin adımı, simülasyon sürerken; bu PR canlıya çıktıktan sonra):** sunucuda repo kökünde
+`git pull` sonrası sırayla:
+
+```bash
+bash deploy/scripts/install-crowdsec.sh               # beyaz listeyi ve yeni birimi kurar, simülasyon işareti korunur
+sudo systemctl start ravencia-crowdsec-allowlist.service
+journalctl -u ravencia-crowdsec-allowlist -n 10       # "SSH scenarios only (reloaded)" ve "Allowlist github-actions removed"
+sudo cscli simulation status                          # "global simulation: enabled" kalmalı
+```
+Ardından yukarıdaki beş `cscli explain` ile doğrulayın ve 2–3 gün `sudo cscli alerts list`'te kendi IP'nizle `http-*`
+uyarısı olmadığını, bir deploy'un sorunsuz geçtiğini görün; `--enforce` ancak bundan sonra.
+**Geri almak:** `git checkout <önceki sha> -- deploy/crowdsec/ravencia-panel-whitelist.yaml && sudo install -m 0644
+deploy/crowdsec/ravencia-panel-whitelist.yaml /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml && sudo
+rm -f /etc/crowdsec/postoverflows/s01-whitelist/ravencia-github-actions-ssh.yaml && sudo systemctl reload crowdsec`, sonra
+GitHub aralıklarını eski izin listesine geri almak için önceki sürümün `crowdsec-allowlist-refresh.sh`'ını bir kez
+çalıştırın (`git show <önceki sha>:deploy/scripts/crowdsec-allowlist-refresh.sh | sudo bash`). Kalıcı geri dönüş için bu
+commit'in geri alınması da yayınlanmalı; yoksa günlük zamanlayıcı ertesi gün yeni düzeni yeniden kurar.
 
 **Banı açmak (sahibin adımı)**: beyaz liste kurulduktan sonra en az 2–3 gün normal kullanımda
 `sudo cscli alerts list` içinde sahibin IP'siyle (TurkNet/mobil) yeni `http-*` uyarısı çıkmadığını görün; çıkarsa
