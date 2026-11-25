@@ -67,6 +67,9 @@ internal static class AcceptedReturnPolicy
         where claim.TenantId == tenantId && claim.Status != ReturnClaimStatus.Cancelled
         select new ClaimLine { OrderId = claim.OrderId, OrderLineId = line.OrderLineId, Quantity = line.Quantity, RawStatus = line.RawStatus, ClaimStatus = claim.Status };
 
+    // The claim's raw status Refunded, trimmed of what string.Trim strips and in any case, as CountsAsReturn compares it.
+    internal static readonly string RefundedClaimPattern = ReturnSearchText.TrimmedIgnoreCasePattern(ReturnCustomerRequestPolicy.RefundedRawStatus);
+
     /// <summary>
     /// ReturnCustomerRequestPolicy.CountsAsReturn as a database condition, the one copy the invoice (InvoiceSaleReturns,
     /// through ClaimLines), the overview (DashboardReadService.AcceptedReturnQuantities) and the reports (ReportsService
@@ -76,7 +79,7 @@ internal static class AcceptedReturnPolicy
     /// exchange request (ExchangeNoReturnPlatform; a Trendyol exchange request counts as before, review 18 Nov 2026).
     /// </summary>
     public static Expression<Func<ReturnClaim, bool>> CountsAsReturnInDatabase(AppDbContext db) => claim =>
-        claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
+        Regex.IsMatch(claim.RawStatus, RefundedClaimPattern)
         || claim.ResolvedWith != ReturnCustomerRequestPolicy.Change
             && (claim.ResolvedWith == ReturnCustomerRequestPolicy.Refund || claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
                 || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId

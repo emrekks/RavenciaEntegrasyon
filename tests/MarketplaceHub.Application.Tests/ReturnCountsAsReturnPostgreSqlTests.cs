@@ -13,7 +13,8 @@ public sealed class ReturnCountsAsReturnPostgreSqlTests(PostgreSqlTenantIsolatio
 {
     private static readonly string?[] Requests = [null, ReturnCustomerRequestPolicy.Refund, ReturnCustomerRequestPolicy.Change];
     private static readonly string?[] Outcomes = [null, ReturnCustomerRequestPolicy.Refund, ReturnCustomerRequestPolicy.Change];
-    private static readonly string[] RawStatuses = ["Accepted", "Refunded", "Rejected"];
+    // Refunded written with white space .NET trims (a tab, an ideographic space) or another case is still Refunded.
+    private static readonly string[] RawStatuses = ["Accepted", "Refunded", "Rejected", " refunded\t", "REFUNDED" + (char)0x3000];
     private static readonly string[] Platforms = ["HEPSIBURADA", "TRENDYOL"];
 
     [Fact]
