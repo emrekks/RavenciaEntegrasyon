@@ -8,6 +8,10 @@ describe('Toplu Değer Ata', () => {
 
   it('checks each value as the product editor does', () => {
     expect(bulkFieldIssue('desi', '0,5')).toBeNull()
+    // A two-decimal desi whose double is not exact (1,15 × 100 = 114,999…) is still two decimals (scan D-11).
+    expect(bulkFieldIssue('desi', '1,15')).toBeNull()
+    expect(bulkFieldIssue('desi', '4,35')).toBeNull()
+    expect(bulkFieldIssue('desi', '1,155')).not.toBeNull()
     // A point is a thousands point, never a decimal point: "0.5" is refused, "1.250" is 1250 and "12.500" over the limit.
     expect(bulkFieldIssue('desi', '0.5')).not.toBeNull()
     expect(bulkFieldIssue('desi', '1.250')).toBeNull()

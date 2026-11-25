@@ -32,6 +32,8 @@ describe('promotion offers', () => {
     expect(keep({ category: 'Etek' })).toBe(false)
     expect(keep({ minStock: '5', maxStock: '11' })).toBe(true)
     expect(keep({ minStock: '12' })).toBe(false)
+    // Typed the Turkish way: 1.250 is a thousand two hundred and fifty, not 1,25 (scan D-11).
+    expect(keep({ maxStock: '1.250' })).toBe(true)
     // Kolon Seçimi: Plus leaves 0,40 (%0,1).
     expect(keep({ column: 'plus', minProfit: '0', maxProfit: '1' })).toBe(true)
     expect(keep({ column: 'plus', minShare: '5' })).toBe(false)

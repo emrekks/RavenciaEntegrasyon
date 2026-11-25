@@ -1,5 +1,5 @@
 import { invoiceStatusLabel } from '../../shared/status-labels'
-import { newIdempotencyKey } from '../../shared/idempotency'
+import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../shared/idempotency'
 import { invoiceFailureReason } from './invoice-failure-reasons'
 import { formatDateTime } from '../../shared/format-date'
 
@@ -150,4 +150,13 @@ export function manualDeliveryIdempotencyKey(documentId: string) {
 function readable(code: string) {
   const text = code.trim().replace(/[_-]+/g, ' ').toLowerCase()
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : '—'
+}
+
+/**
+ * Sends one press of "Belgeyi Yükle" (the invoice's private archive only; nothing is issued or delivered). The same file
+ * keeps its key while no answer came (a resend after a lost answer replays the first upload); after a refusal or a
+ * server error the next press gets a fresh key, so the old refusal is not replayed for 24 hours.
+ */
+export function sendInvoiceDocumentUpload<T>(invoiceId: string, file: Pick<File, 'name' | 'size' | 'lastModified'>, send: (key: string) => Promise<T>) {
+  return sendWithVersionedIdempotencyKey(`invoice-document:${invoiceId}:${file.name}:${file.size}:${file.lastModified}`, send)
 }

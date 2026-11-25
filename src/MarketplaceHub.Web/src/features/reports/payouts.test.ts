@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateNote, isRolledToPayoutDay, lastPayout, lineMoney, nextPayout, otherCurrenciesText, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+import { emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, lastPayout, lineMoney, nextPayout, otherCurrenciesText, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
 
 describe('estimate note', () => {
   it('explains the deductions taken off a Trendyol payout day to come', () => {
@@ -27,19 +27,6 @@ describe('payout day roll', () => {
     expect(isRolledToPayoutDay({ kind: 'PAYOUT', platformCode: 'HEPSIBURADA' })).toBe(false)
     expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'N11' })).toBe(false)
     expect(rolledPayoutNote).toBe('Ödeme günü geçmiş, vadesi henüz dolmamış satışlar sonraki ödeme gününe aktarıldı.')
-  })
-})
-
-describe('amount filter', () => {
-  it('reads Turkish thousands and decimals, and a dot followed by two digits as a decimal point', () => {
-    expect(parseAmount('1.250')).toBe(1250)
-    expect(parseAmount('1.250,5')).toBe(1250.5)
-    expect(parseAmount('1250,50')).toBe(1250.5)
-    expect(parseAmount('1500.50')).toBe(1500.5)
-    expect(parseAmount('1.250.000')).toBe(1250000)
-    expect(parseAmount(' ₺ 980 ')).toBe(980)
-    expect(parseAmount('')).toBeNull()
-    expect(parseAmount('abc')).toBeNull()
   })
 })
 
@@ -103,5 +90,20 @@ describe('last payout', () => {
     expect(lastPayout({ lastPaid: null }, [zero], 'TR_GULF')).toBe(zero)
     expect(lastPayout({ lastPaid: null }, [], 'TR_GULF')).toBeNull()
     expect(lastPayout({ lastPaid: paid }, [zero], 'ALL')).toBe(paid)
+  })
+})
+
+describe('payout amount filter', () => {
+  const groups = [group({ key: 'a', amount: 12.5 }), group({ key: 'b', amount: 1250 }), group({ key: 'c', amount: 980 })]
+  const kept = (min: string, max = '') => filterGroups(groups, { ...emptyPayoutFilters, min, max }).map(item => item.key)
+  it('reads Turkish thousands and decimals', () => {
+    expect(kept('1.250')).toEqual(['b'])
+    expect(kept('12,5', '12.5')).toEqual(['a'])
+    expect(kept('₺ 980', '980')).toEqual(['c'])
+  })
+  it('filters nothing on a bound it cannot read, never another number', () => {
+    expect(kept('1,250.50')).toEqual(['a', 'b', 'c'])
+    expect(kept('0.125')).toEqual(['a', 'b', 'c'])
+    expect(kept('abc')).toEqual(['a', 'b', 'c'])
   })
 })

@@ -278,6 +278,9 @@ describe('QuestionsPage workspace flows', () => {
     await settle()
     expect(container.querySelector('.rv-question-meta a')?.getAttribute('href')).toContain('HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Sipariş #HB-12345')
+    // The card names the day with the time, and a passed deadline reads Süre Doldu without kaldı (scan D-11).
+    expect(container.querySelector('.rv-question-card time')?.textContent).toMatch(/^\d{2}\.\d{2}(\.\d{4})? · \d{2}:\d{2}$/u)
+    expect(container.querySelector('.rv-question-card')?.textContent).not.toContain('Doldu kaldı')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün boyu kaç santimetredir?')
     input(composer(), 'x')
     expect(button('Gönder').disabled).toBe(false)

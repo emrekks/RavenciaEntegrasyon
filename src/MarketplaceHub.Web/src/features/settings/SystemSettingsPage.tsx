@@ -7,7 +7,7 @@ import { LoadingState, Modal } from '../../shared/components'
 import { normalizeShippingLabelSettings, useShippingLabelSettings } from '../shipping'
 import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
-import { marketplaceResetCount, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
+import { isReauthRefusal, marketplaceResetCount, partialResetMessage, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
 import { connectionFullResetSupported } from '../marketplace/connection-data-reset'
 import { dataResetConfirmWord, panelResetAlreadyRunning, panelResetAlreadyRunningMessage, panelResetConfirmed, togglePanelResetCategories } from './panel-factory-reset'
 import type { Connection } from '../marketplace/shared'
@@ -153,18 +153,31 @@ export function SystemSettingsPage() {
     const resetConfirmWord = dataResetConfirmWord(resetView.data?.groups.length ?? 0, resetScopes.length)
     if ((!resetScopes.length && !marketplacePicked.length) || !panelResetConfirmed(resetConfirmation, resetConfirmWord)) return
     setResetBusy(true); setNotice(null)
+    // The marketplaces first, one after the other; then the catalog cleanup.
+    const chosen = (resetConnections.data ?? []).filter(item => marketplacePicked.includes(item.id))
+    const resetIds: string[] = []
+    let refused: unknown = null
+    // A run that stopped part-way says exactly what was and was not reset. The reset marketplaces leave the choice, so a
+    // second press resets only what is left; a refused authenticator code is emptied, since a code works once and the
+    // next step needs a fresh one (the server's check is not relaxed for it).
+    const stopped = (reason: unknown, panelLeft: boolean) => {
+      setMarketplacePicked(current => current.filter(id => !resetIds.includes(id)))
+      if (isReauthRefusal(reason)) setResetFactor('')
+      const names = (keep: (id: string) => boolean) => chosen.filter(item => keep(item.id)).map(item => item.displayName)
+      fail(partialResetMessage({ reset: names(id => resetIds.includes(id)), notReset: names(id => !resetIds.includes(id)), panelLeft, reason }))
+    }
     try {
-      // The marketplaces first, one after the other; then the catalog cleanup.
-      const chosen = (resetConnections.data ?? []).filter(item => marketplacePicked.includes(item.id))
       if (chosen.length) {
         const ok = await runMarketplaceResets(chosen, {
-          request: item => hubApi<ApiAnswer<'postConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName, ...reauthBody(resetPassword, resetFactor) }) }),
+          request: item => hubApi<ApiAnswer<'postConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation: item.displayName, ...reauthBody(resetPassword, resetFactor) }) })
+            .catch((reason: unknown) => { refused = reason; throw reason }),
           poll: item => hubPoll<ApiAnswer<'getConnectionsByIdFullReset'>>(`/connections/${item.id}/full-reset`),
           sleep: ms => new Promise(resolve => window.setTimeout(resolve, ms)),
-          onProgress: (id, state) => setMarketplaceProgress(current => ({ ...current, [id]: state })),
+          onProgress: (id, state) => { if (state.state === 'done') resetIds.push(id); setMarketplaceProgress(current => ({ ...current, [id]: state })) },
           isCancelled: () => resetCancelled.current
         })
-        if (!ok) { if (!resetCancelled.current) fail('Pazaryeri sıfırlaması tamamlanamadı; sonraki işlemler başlatılmadı. Ayrıntı ilgili satırda.'); return }
+        // A cancelled run (the page left) takes the reset marketplaces off the choice too, so nothing resets them twice.
+        if (!ok) { if (resetCancelled.current) setMarketplacePicked(current => current.filter(id => !resetIds.includes(id))); else stopped(refused ?? new Error('Pazaryeri sıfırlaması tamamlanamadı; ayrıntı ilgili satırda.'), resetScopes.length > 0); return }
         setMarketplacePicked([])
         if (!resetScopes.length) succeed(`${chosen.length} pazaryeri bağlantısı tam sıfırlandı. Otomatik eşitleme açıksa kayıtlar yeniden çekilir.`)
       }
@@ -178,6 +191,9 @@ export function SystemSettingsPage() {
       await client.invalidateQueries()
     } catch (reason) {
       if (panelResetAlreadyRunning(reason)) { fail(panelResetAlreadyRunningMessage); await client.invalidateQueries({ queryKey: queryKeys.panelFactoryReset() }); return }
+      // The marketplaces were reset and the catalog cleanup was refused: both said in one notice.
+      if (resetIds.length) { stopped(reason, true); return }
+      if (isReauthRefusal(reason)) setResetFactor('')
       fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.')
     } finally { setResetBusy(false) }
   }

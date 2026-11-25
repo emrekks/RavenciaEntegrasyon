@@ -265,7 +265,7 @@ export function useAppearanceSettings() {
     initialDraft: () => settings
   })
 
-  async function save(next: AppearanceSettings, overVersion?: number) {
+  async function save(next: AppearanceSettings, overVersion?: number, keptDraft?: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)
     // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first. The version
     // is the one the draft was made from, so a draft kept over newer settings is refused, not written over them.
@@ -280,7 +280,7 @@ export function useAppearanceSettings() {
       throw error
     }
     client.setQueryData(appearanceSettingsQueryKey, rememberAppearance(saved))
-    commit({ value: normalizeAppearanceSettings(saved.settings), version: saved.version })
+    commit({ value: normalizeAppearanceSettings(saved.settings), version: saved.version }, keptDraft)
   }
 
   // The draft is written over the newer settings, knowingly.
@@ -288,5 +288,11 @@ export function useAppearanceSettings() {
     return save(draft, serverVersion)
   }
 
-  return { ...query, settings, draft, setDraft, save, conflict, acceptServer, overwrite }
+  // Saving or deleting a colour theme writes the theme change only: the saved appearance with it, never the rest of the
+  // draft (an unapplied font or colour stays a preview, still unsaved, with the same change made to it).
+  function saveThemeChange(change: (value: AppearanceSettings) => AppearanceSettings) {
+    return save(change(base?.value ?? settings), undefined, change(draft))
+  }
+
+  return { ...query, settings, draft, setDraft, save, saveThemeChange, conflict, acceptServer, overwrite }
 }
