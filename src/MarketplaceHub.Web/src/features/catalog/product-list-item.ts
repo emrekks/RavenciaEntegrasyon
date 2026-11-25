@@ -48,7 +48,7 @@ export function readProductListItem(item: ProductListItem): Product {
     vatRate: orNull(item.vatRate), vatInclusion: orNull(item.vatInclusion), deliveryDays: orNull(item.deliveryDays), familyOrderedMediaUrls: orNull(item.familyOrderedMediaUrls),
     familyProductIds: orNull(item.familyProductIds), familyVersions: orNull(item.familyVersions),
     familyGalleries: item.familyGalleries ? item.familyGalleries.map(gallery => ({ ...gallery, sizeChartUrl: orNull(gallery.sizeChartUrl) })) : null,
-    sizeChartUrl: orNull(item.sizeChartUrl), familyImageUrl: orNull(item.familyImageUrl),
+    sizeChartUrl: orNull(item.sizeChartUrl), familyImageUrl: orNull(item.familyImageUrl), familyKey: orNull(item.familyKey),
     variants: item.variants.map(readVariant)
   }
 }

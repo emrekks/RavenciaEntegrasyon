@@ -3328,6 +3328,7 @@ export type ProductView = {
   familyGalleries?: null | ProductFamilyGalleryView[]
   sizeChartUrl?: null | string
   familyImageUrl?: null | string
+  familyKey?: null | string
 }
 
 export type PromotionOfferDetail = {

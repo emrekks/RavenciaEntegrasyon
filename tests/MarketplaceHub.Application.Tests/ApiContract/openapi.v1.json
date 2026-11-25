@@ -39883,6 +39883,12 @@
               "null",
               "string"
             ]
+          },
+          "familyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

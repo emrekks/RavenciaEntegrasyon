@@ -336,6 +336,27 @@ public sealed class FamilyChangesRegressionPostgreSqlTests(PostgreSqlTenantIsola
         Assert.All(filteredFamily, card => Assert.Equal(Url("haki-1"), card.FamilyImageUrl));
     }
 
+    // Scan 25 Nov 2026 (D-3): a model is BRAND + MODEL CODE. The list names each card's family with the server's own key,
+    // so the web groups cards and sends bulk actions by it: the same model code under another brand is another family.
+    [PostgreSqlFact]
+    public async Task TheProductList_NamesEachCardsFamily_ByBrandAndModelCode()
+    {
+        var seed = await SeedAsync(live: false, siyahGalleryHoldsBordo: false);
+        var haki = seed.Cards["Haki"].Id;
+        await using (var db = fixture.CreateContext())
+            // Haki leaves the model for a card of its own under the other brand, its variants keeping the model code.
+            await db.Products.Where(x => x.Id == haki).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.BrandId, seed.OtherBrandId).SetProperty(x => x.FamilyId, (Guid?)null));
+        await using var read = fixture.CreateContext();
+        var page = await Catalog(read).ListProductsAsync(seed.Tenant.Id, 100, null, null, null, null, null, null, CancellationToken.None);
+        var family = page.Items.Where(item => seed.Cards.Values.Any(card => card.Id == item.Id)).ToList();
+        Assert.All(family, card => Assert.Equal(ProductFamilyKeyPolicy.FamilyKey(card.Id, card.BrandId, card.ModelCode), card.FamilyKey));
+        var hakiKey = family.Single(card => card.Id == haki).FamilyKey;
+        Assert.StartsWith($"model:{seed.OtherBrandId:D}:", hakiKey);
+        var others = family.Where(card => card.Id != haki).Select(card => card.FamilyKey).Distinct().ToList();
+        Assert.Single(others);
+        Assert.NotEqual(hakiKey, others[0]);
+    }
+
     // Live MZ051BYC today (read-only dry run, 12.11.2026): the Siyah card's gallery holds every colour's pictures in
     // front of its own. Hepsiburada, N11 and Pazarama send Siyah's sizes Siyah's pictures; PttAVM's one family product
     // takes each card's pictures through the same rule, so Siyah's pictures go there too.
