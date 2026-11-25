@@ -38,10 +38,11 @@ public sealed partial class N11HttpClient : IProductPort
         var pageNumber = int.TryParse(page.Cursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<AdapterPageResult<RemoteCatalogProduct>>();
-        var result = await SendAsync(account, HttpMethod.Get, ProductPage(pageNumber, Math.Clamp(page.Limit, 1, ProductPageSize), filter), cancellationToken);
+        var size = Math.Clamp(page.Limit, 1, ProductPageSize);
+        var result = await SendAsync(account, HttpMethod.Get, ProductPage(pageNumber, size, filter), cancellationToken);
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
-        try { return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(N11ProductMapper.Page(document.RootElement), result.RateLimit); }
+        try { return AdapterResult<AdapterPageResult<RemoteCatalogProduct>>.Success(N11ProductMapper.Page(document.RootElement, size, pageNumber), result.RateLimit); }
         catch (JsonException)
         {
             return Failure<AdapterPageResult<RemoteCatalogProduct>>(AdapterErrorClass.ContractViolation, "N11_PRODUCT_CONTRACT_INVALID", "N11 ürün sorgulama yanıtı beklenen sayfa yapısında değil.", HttpStatusCode.BadGateway);
@@ -148,7 +149,9 @@ public static class N11ProductMapper
 {
     private const string BrandAttributeId = "1";
 
-    public static AdapterPageResult<RemoteCatalogProduct> Page(JsonElement root)
+    // pageSize and requestedPage are the request's own: a page without totalPages is unknown, not the last one (B-2); it
+    // is followed while it comes back full.
+    public static AdapterPageResult<RemoteCatalogProduct> Page(JsonElement root, int? pageSize = null, int? requestedPage = null)
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
             throw new JsonException("n11 product page has no content array.");
@@ -160,9 +163,11 @@ public static class N11ProductMapper
             if (product is null) issues.Add(new("PRODUCT_INVALID", Text(item, "n11ProductId") ?? "unknown", "N11 ürünü içeri alınmadı: ürün kodu veya stok kodu yok."));
             else items.Add(product);
         }
-        var page = Long(root, "number") ?? Long(root, "page") ?? 0;
-        var totalPages = Long(root, "totalPages") ?? 0;
-        var hasMore = content.GetArrayLength() > 0 && page + 1 < totalPages;
+        var page = Long(root, "number") ?? Long(root, "page") ?? requestedPage ?? 0;
+        var received = content.GetArrayLength();
+        var hasMore = received > 0 && (Long(root, "totalPages") is { } totalPages
+            ? page + 1 < totalPages
+            : pageSize is > 0 && received >= pageSize);
         var total = Long(root, "totalElements");
         return new(items, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, total is null ? null : (int)Math.Min(total.Value, int.MaxValue), issues);
     }

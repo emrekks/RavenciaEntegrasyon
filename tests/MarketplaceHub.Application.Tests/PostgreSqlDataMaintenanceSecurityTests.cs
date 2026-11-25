@@ -303,6 +303,92 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // Scan 25 Nov 2026 A-5: Ayarlar › Veri › Siparişler without Stok ve Fiyatlar removed the order lines and left their stock
+    // movements under the removed ids, so the order read again took its units a second time. The panel reset now carries
+    // them as the connection full reset does (OrderLineStockCarry).
+    [PostgreSqlFact]
+    public async Task PanelOrdersReset_ThenResync_DoesNotTakeAnOpenOrdersStockTwice()
+    {
+        var seed = NewSeed("dm-pstock");
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, Title = "Stok ürünü", Description = "Panel sıfırlama testi", Status = ProductStatus.Active, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        var inStock = NewStockVariant(seed, product, "PRESET-A", "8690000000325");
+        var shortStock = NewStockVariant(seed, product, "PRESET-B", "8690000000332");
+        var inStockItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, VariantId = inStock.Id, LocationCode = "MAIN", OnHand = 10m, Available = 10m };
+        var shortStockItem = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, VariantId = shortStock.Id, LocationCode = "MAIN", OnHand = 2m, Available = 2m };
+        var processorConfiguration = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var project = typeof(MarketplaceJobProcessor).GetMethod("ProjectOrderReservations", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        try
+        {
+            await SeedAsync(seed, db =>
+            {
+                db.Products.Add(product);
+                db.ProductVariants.AddRange(inStock, shortStock);
+                db.InventoryItems.AddRange(inStockItem, shortStockItem);
+            });
+
+            var (firstOrder, firstLines) = NewOpenOrder(seed, inStock, shortStock);
+            await using (var db = fixture.CreateContext())
+            {
+                db.Orders.Add(firstOrder);
+                db.OrderLines.AddRange(firstLines);
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, processorConfiguration, fixture.TimeProvider);
+                await (Task)project.Invoke(processor, [seed.Tenant.Id, seed.Marketplace.Id, firstLines.Select(line => (line, fixture.Now)).ToList(), CancellationToken.None])!;
+                await db.SaveChangesAsync();
+            }
+            await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 0m);
+
+            // Siparişler only (it brings Faturalar with it); Stok ve Fiyatlar stays.
+            await using (var db = fixture.CreateContext())
+            {
+                var payload = System.Text.Json.JsonSerializer.Serialize(new { KeepSessionId = (Guid?)null, ActorUserId = Guid.CreateVersion7(), Categories = new[] { "ORDERS" } });
+                var result = await new PanelFactoryResetService(db, fixture.TimeProvider, new NoDashboard(), NullLogger<PanelFactoryResetService>.Instance)
+                    .RunAsync(seed.Tenant.Id, Guid.CreateVersion7(), payload, CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+            await using (var verification = fixture.CreateContext())
+            {
+                Assert.False(await verification.Orders.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+                Assert.False(await verification.OrderLines.AnyAsync(x => x.TenantId == seed.Tenant.Id));
+                // The reset changes no stock: the units the order took stay taken under the lines' carry keys.
+                var carryKey = OrderInventoryStockPolicy.ResetCarryKey(seed.Marketplace.Id, firstOrder.ExternalOrderId, "line-b");
+                Assert.Equal(carryKey, (await verification.StockLedgerEntries.AsNoTracking().SingleAsync(x => x.InventoryItemId == shortStockItem.Id && x.MovementType == OrderInventoryStockPolicy.ShortfallMovementType)).SourceId);
+            }
+            await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 0m);
+
+            // The order is read again under new ids.
+            var (secondOrder, secondLines) = NewOpenOrder(seed, inStock, shortStock);
+            await using (var db = fixture.CreateContext())
+            {
+                db.Orders.Add(secondOrder);
+                db.OrderLines.AddRange(secondLines);
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, processorConfiguration, fixture.TimeProvider);
+                await (Task)project.Invoke(processor, [seed.Tenant.Id, seed.Marketplace.Id, secondLines.Select(line => (line, fixture.Now.AddMinutes(5))).ToList(), CancellationToken.None])!;
+                await db.SaveChangesAsync();
+            }
+
+            await AssertStockAsync(inStockItem.Id, onHand: 7m, reserved: 0m);
+            await AssertStockAsync(shortStockItem.Id, onHand: 0m, reserved: 0m);
+            await using var after = fixture.CreateContext();
+            var itemIds = new[] { inStockItem.Id, shortStockItem.Id };
+            Assert.False(await after.StockLedgerEntries.AnyAsync(x => itemIds.Contains(x.InventoryItemId) && x.SourceId.StartsWith(OrderInventoryStockPolicy.ResetCarryPrefix)));
+            Assert.Equal(2, await after.StockLedgerEntries.CountAsync(x => itemIds.Contains(x.InventoryItemId) && x.MovementType == "ORDER_STOCK_BASELINE"));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.OperationalIssues.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.StockReservations.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.StockLedgerEntries.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.InventoryItems.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.OrderLines.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.ProductVariants.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await cleanup.Products.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private async Task AssertStockAsync(Guid inventoryItemId, decimal onHand, decimal reserved)
     {
         await using var db = fixture.CreateContext();
@@ -423,6 +509,86 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         {
             await DeleteTenantAsync(seed.Tenant.Id);
         }
+    }
+
+    // B-7 (scan 25 Nov 2026): Bağlantıyı Sil holds the connection's sync locks like the full reset. A job a worker holds now
+    // makes it answer that the delete waits for it, with nothing removed.
+    [PostgreSqlFact]
+    public async Task ConnectionDelete_WaitsForAJobAWorkerHolds()
+    {
+        var seed = NewSeed("dm-dlease");
+        var leased = DeleteTestJob(seed, JobStatus.Leased, fixture.Now.AddMinutes(5));
+        try
+        {
+            await SeedAsync(seed, db => db.IntegrationJobs.Add(leased));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.False(result.Succeeded);
+            Assert.Equal((OperationalDataMaintenanceService.ConnectionDeleteDeferredCode, 409), (result.Error!.Code, result.Error.Status));
+            Assert.Contains("bitince yeniden deneyin", result.Error.Message);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal("ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+            Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(JobStatus.Leased, (await verification.IntegrationJobs.SingleAsync(x => x.Id == leased.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A sync running on the connection holds one of its locks: the delete waits for it, then goes once the lock is free.
+    // A job whose lease ran out long ago does not hold the delete up and stays for the hourly sweep; the others go.
+    [PostgreSqlFact]
+    public async Task ConnectionDelete_WaitsForARunningSync_ThenKeepsOnlyTheLeasedJob()
+    {
+        var seed = NewSeed("dm-dlock");
+        var stale = DeleteTestJob(seed, JobStatus.Leased, fixture.Now.AddHours(-1));
+        var waiting = DeleteTestJob(seed, JobStatus.Pending, null);
+        try
+        {
+            await SeedAsync(seed, db => db.IntegrationJobs.AddRange(stale, waiting));
+
+            await using (var syncDb = fixture.CreateContext())
+            {
+                var running = await MarketplaceSyncExecutionLock.AcquireGroupAsync(syncDb, seed.Marketplace.Id, MarketplaceSyncExecutionLock.OrdersGroup, TimeSpan.Zero, fixture.TimeProvider, CancellationToken.None);
+                Assert.NotNull(running);
+                await using (running)
+                {
+                    await using var db = fixture.CreateContext();
+                    var busy = await NewService(db)
+                        .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                    Assert.Equal(OperationalDataMaintenanceService.ConnectionDeleteDeferredCode, busy.Error?.Code);
+                }
+            }
+            await using (var verification = fixture.CreateContext())
+                Assert.Equal("ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewService(db)
+                    .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                Assert.True(result.Succeeded, result.Error?.Message);
+            }
+            await using var after = fixture.CreateContext();
+            Assert.Equal("DELETED", (await after.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+            Assert.Equal([stale.Id], await after.IntegrationJobs.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync());
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private IntegrationJob DeleteTestJob(Seed seed, JobStatus status, DateTimeOffset? leaseExpiresAt)
+    {
+        var job = ConnectionReferencePlan.NewJob(seed.Tenant.Id, seed.Marketplace.Id, MarketplaceJobTypes.OrderSync, $"dm-delete:{Guid.NewGuid():N}", "{}", "corr", JobPriorityPolicy.Default, "schedule", fixture.Now);
+        job.Status = status;
+        job.LeaseExpiresAt = leaseExpiresAt;
+        return job;
     }
 
     private sealed class RecordingNotifications(bool succeeds) : IInstantNotificationService

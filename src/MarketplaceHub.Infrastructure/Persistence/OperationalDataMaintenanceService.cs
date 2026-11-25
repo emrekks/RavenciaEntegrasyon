@@ -22,6 +22,52 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         // deleted: a live marketplace's orders invoiced through a STAGE provider are tests, a STAGE marketplace's orders
         // invoiced through the live provider are not.
         if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken, fiscalOnly: true) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // B-7 (scan 25 Nov 2026): like the full reset, the delete holds every sync lock of the connection, so no job of it
+        // writes while its rows go. A sync that holds a lock, or a job a worker holds right now, answers that the delete
+        // waits for it; nothing is removed or written to the marketplace then.
+        var locks = new List<IAsyncDisposable>();
+        try
+        {
+            if (!await HoldConnectionForDeleteAsync(tenantId, connectionId, locks, cancellationToken)) return ConnectionDeleteDeferred();
+            return await DeleteHeldConnectionAsync(tenantId, actorUserId, connection, correlationId, cancellationToken);
+        }
+        finally
+        {
+            // The first lock opened the database connection the others share; it closes it, so it goes last.
+            for (var index = locks.Count - 1; index >= 0; index--) await locks[index].DisposeAsync();
+        }
+    }
+
+    internal static readonly TimeSpan ConnectionDeleteLockWait = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ConnectionDeletePoll = TimeSpan.FromMilliseconds(200);
+    internal const string ConnectionDeleteDeferredCode = "CONNECTION_DELETE_DEFERRED";
+
+    private static ServiceResult<OperationalDataResetView> ConnectionDeleteDeferred() =>
+        ServiceResult<OperationalDataResetView>.Fail(ConnectionDeleteDeferredCode, "Bağlantıda süren bir işlem var; hiçbir şey silinmedi. Süren işlem (ör. ürün aktarımı) bitince yeniden deneyin.", 409);
+
+    // Every sync lane of the connection, then no job of it leased by a worker (a stale lease that has run out does not
+    // count; its job stays for the hourly leftover sweep). Both within ConnectionDeleteLockWait.
+    private async Task<bool> HoldConnectionForDeleteAsync(Guid tenantId, Guid connectionId, List<IAsyncDisposable> locks, CancellationToken cancellationToken)
+    {
+        var deadline = timeProvider.GetUtcNow() + ConnectionDeleteLockWait;
+        foreach (var group in SyncLockGroups)
+        {
+            var remaining = deadline - timeProvider.GetUtcNow();
+            var acquired = await MarketplaceSyncExecutionLock.AcquireGroupAsync(db, connectionId, group, remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero, timeProvider, cancellationToken);
+            if (acquired is null) return false;
+            locks.Add(acquired);
+        }
+        while (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == JobStatus.Leased && x.LeaseExpiresAt > timeProvider.GetUtcNow(), cancellationToken))
+        {
+            if (timeProvider.GetUtcNow() >= deadline) return false;
+            await Task.Delay(ConnectionDeletePoll, timeProvider, cancellationToken);
+        }
+        return true;
+    }
+
+    private async Task<ServiceResult<OperationalDataResetView>> DeleteHeldConnectionAsync(Guid tenantId, Guid actorUserId, PlatformConnection connection, string correlationId, CancellationToken cancellationToken)
+    {
+        var connectionId = connection.Id;
         // The order notification registered at the marketplace goes first, as Webhook'u Kapat does: once the
         // connection's keys are gone nothing could remove it any more.
         var webhookNotice = await CloseMarketplaceWebhookAsync(connection, correlationId, cancellationToken);
@@ -135,22 +181,19 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         """, cancellationToken);
 
     // KeepIssued: an order with an issued invoice stays with its packages and lines.
-    // CarryStock: the units a removed line took from stock stay taken. Its ORDER_LINE ledger rows and reservations
-    // move from the line's id to its carry key (OrderInventoryStockPolicy.ResetCarryKey), and the line the next sync
-    // imports under the same marketplace ids takes them over instead of taking the units again (29 Oct 2026, P-2).
-    // A reservation another removal already left under the same key and item keeps the line's id.
-    private Task DeleteOrdersAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false, bool carryStock = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+    // CarryStock: the units a removed line took from stock stay taken (OrderLineStockCarry, shared with the panel reset).
+    // It carries every line of the scope, so it is not combined with KeepIssued.
+    private async Task DeleteOrdersAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false, bool carryStock = false)
+    {
+        if (carryStock && keepIssued) throw new ArgumentException("A stock carry covers every order line of the scope; it cannot keep issued orders.", nameof(carryStock));
+        if (carryStock) await OrderLineStockCarry.CarryAsync(db, tenantId, connectionId, cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($$"""
         CREATE TEMP TABLE IF NOT EXISTS purge_orders ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_orders;
         INSERT INTO purge_orders SELECT o."Id" FROM sales.orders o WHERE o."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR o."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=o."Id" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
         CREATE TEMP TABLE IF NOT EXISTS purge_order_lines ("Key" text PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_order_lines;
         INSERT INTO purge_order_lines SELECT replace(l."Id"::text, '-', '') FROM sales.order_lines l JOIN purge_orders o ON o."Id"=l."OrderId" WHERE l."TenantId"={{tenantId}};
-        CREATE TEMP TABLE IF NOT EXISTS carry_order_lines ("SourceId" text PRIMARY KEY, "CarryKey" text NOT NULL) ON COMMIT DROP;
-        TRUNCATE carry_order_lines;
-        INSERT INTO carry_order_lines SELECT l."Id"::text, {{OrderInventoryStockPolicy.ResetCarryPrefix}} || o."ConnectionId"::text || ':' || o."ExternalOrderId" || ':' || l."ExternalLineId" FROM sales.order_lines l JOIN sales.orders o ON o."TenantId"=l."TenantId" AND o."Id"=l."OrderId" JOIN purge_orders p ON p."Id"=o."Id" WHERE {{carryStock}} AND l."TenantId"={{tenantId}};
-        UPDATE inventory.stock_reservations r SET "SourceId"=c."CarryKey", "Version"=r."Version"+1 FROM carry_order_lines c WHERE r."TenantId"={{tenantId}} AND r."SourceType"='ORDER_LINE' AND r."SourceId"=c."SourceId" AND NOT EXISTS (SELECT 1 FROM inventory.stock_reservations x WHERE x."TenantId"={{tenantId}} AND x."SourceType"='ORDER_LINE' AND x."SourceId"=c."CarryKey" AND x."InventoryItemId"=r."InventoryItemId");
-        UPDATE inventory.stock_ledger_entries e SET "SourceId"=c."CarryKey" FROM carry_order_lines c WHERE e."TenantId"={{tenantId}} AND e."SourceType"='ORDER_LINE' AND e."SourceId"=c."SourceId";
         INSERT INTO purge_files SELECT d."FileAssetId" FROM sales.shipment_documents d JOIN sales.shipment_packages p ON p."Id"=d."PackageId" JOIN purge_orders o ON o."Id"=p."OrderId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         -- An order's uploaded invoice documents and the invoice references the marketplace reported hold a restricting key
         -- to the order and its packages: left behind, they failed the whole reset (P-6 reading, 29 Oct 2026).
@@ -168,6 +211,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         DELETE FROM sales.order_lines l USING purge_orders o WHERE l."TenantId"={{tenantId}} AND l."OrderId"=o."Id";
         DELETE FROM sales.orders o USING purge_orders p WHERE o."TenantId"={{tenantId}} AND o."Id"=p."Id";
         """, cancellationToken);
+    }
 
     // ImportedOnly (full reset): of the connection's products only those its own import created go. A product created
     // on the panel, or matched to a panel product by its codes, keeps its row and loses only the link (30 Oct 2026
@@ -210,8 +254,9 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         """, cancellationToken);
 
     private Task DeleteConnectionArtifactsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        DELETE FROM integration.job_attempts a USING integration.jobs j WHERE a."TenantId"={{tenantId}} AND a."JobId"=j."Id" AND j."ConnectionId"={{connectionId}};
-        DELETE FROM integration.jobs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        -- A job a worker holds stays (its lease ran out, or it was leased after the check); the hourly sweep removes it later.
+        DELETE FROM integration.job_attempts a USING integration.jobs j WHERE a."TenantId"={{tenantId}} AND a."JobId"=j."Id" AND j."TenantId"={{tenantId}} AND j."ConnectionId"={{connectionId}} AND j."Status"<>'LEASED';
+        DELETE FROM integration.jobs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "Status"<>'LEASED';
         DELETE FROM integration.reconciliation_differences d USING integration.reconciliation_runs r WHERE d."TenantId"={{tenantId}} AND d."RunId"=r."Id" AND r."ConnectionId"={{connectionId}};
         DELETE FROM integration.reconciliation_runs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM catalog.category_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};

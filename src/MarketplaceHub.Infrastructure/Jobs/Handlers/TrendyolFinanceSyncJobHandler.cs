@@ -27,6 +27,10 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
     // Ten payouts a page: 400 payouts, years of weekly payouts in several regions.
     private const int MaximumPayoutPages = 40;
     private static readonly TimeSpan StatementFreshFor = TimeSpan.FromMinutes(30);
+    // The last page: an empty one, or the one totalPages names. A page that sent no totalPages is unknown (B-2): it
+    // is followed while it comes back full, so a full first page is never taken as the last one.
+    internal static bool LastPage(int page, int received, int? totalPages, int pageSize) =>
+        received == 0 || (totalPages is { } total ? page + 1 >= total : received < pageSize);
 
     public bool Handles(string jobType) => jobType == MarketplaceJobTypes.TrendyolFinanceSync;
 
@@ -130,7 +134,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
             var result = await finance.GetPayoutOrdersAsync(context, page, cancellationToken);
             if (!result.IsSuccess) return await PayoutFailureAsync(request, result.Error!, now, cancellationToken);
             remote.AddRange(result.Value!.Items);
-            if (result.Value.Items.Count == 0 || page + 1 >= result.Value.TotalPages) break;
+            if (LastPage(page, result.Value.Items.Count, result.Value.TotalPages, TrendyolFinanceRequestContract.PayoutOrderPageSize)) break;
         }
         var ids = remote.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).ToList();
         var stored = (await db.MarketplacePayoutOrders
@@ -198,7 +202,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     records.AddRange(query.Source == MarketplaceFinanceSources.MoneyMovements ? value.Items.Select(x => x with { Source = query.Source }) : value.Items);
                     skipped.AddRange(value.Skipped);
                     telemetry.Received += value.Items.Count + value.Skipped.Count;
-                    if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) { pagesEnded = true; break; }
+                    if (LastPage(page, value.Items.Count + value.Skipped.Count, value.TotalPages, TrendyolFinanceRequestContract.PageSize)) { pagesEnded = true; break; }
                 }
                 // The payout is not marked read with records left unread.
                 if (!pagesEnded)
@@ -282,7 +286,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                 records.AddRange(query.Source == MarketplaceFinanceSources.MoneyMovements ? value.Items.Select(x => x with { Source = query.Source }) : value.Items);
                 skipped.AddRange(value.Skipped);
                 telemetry.Received += value.Items.Count + value.Skipped.Count;
-                if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) { pagesEnded = true; break; }
+                if (LastPage(page, value.Items.Count + value.Skipped.Count, value.TotalPages, TrendyolFinanceRequestContract.PageSize)) { pagesEnded = true; break; }
             }
             if (!pagesEnded) return new(records, cargo, PageCap("cari hesap kayıtları"));
         }
@@ -311,7 +315,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                         return new(records, cargo, result.Error);
                     }
                     items.AddRange(result.Value!.Items);
-                    if (result.Value.Items.Count == 0 || page + 1 >= result.Value.TotalPages) { pagesEnded = true; break; }
+                    if (LastPage(page, result.Value.Items.Count, result.Value.TotalPages, TrendyolFinanceRequestContract.PageSize)) { pagesEnded = true; break; }
                 }
                 if (!pagesEnded) return new(records, cargo, PageCap("kargo faturası satırları"));
                 cargo[serial] = items;

@@ -64,8 +64,9 @@ public static class HepsiburadaFinanceMapper
                     Text(item, "invoiceNumber"), Text(item, "sku"), amount.Value, Money(item, "netAmount").Value, currency, Bool(item, "isIncome"),
                     Time(item, "orderDate"), Time(item, "invoiceDate"), Time(item, "dueDate"), Time(item, "paymentDate"), item.GetRawText()));
             }
-        // A null count is no count (TryGetInt32 would throw on it): the page's own size stands in, as when it is missing.
-        var count = RemoteJson.Int32(root, "count") ?? items.Count + skipped.Count;
+        // A missing or null count is unknown (B-2), never the page's own size: that made a full first page the last one.
+        // TryGetInt32 would throw on a null; RemoteJson.Int32 reads it as no count.
+        var count = RemoteJson.Int32(root, "count");
         return new(items, count, skipped);
     }
 

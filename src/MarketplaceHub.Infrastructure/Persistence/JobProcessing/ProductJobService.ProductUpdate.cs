@@ -286,7 +286,10 @@ internal sealed partial class ProductJobService
         var outcome = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{effectKey}:result"), submit.Value!.ExternalOperationId, cancellationToken);
         if (!outcome.IsSuccess) { TrackResultFailure(outcome.Error); return JobExecutionResult.ManualReview("PAZARAMA_SALE_STATUS_RESULT_UNKNOWN", "Satışa açma/kapatma istendi ama sonucu okunamadı; ürünleri Pazarama panelinden kontrol edin.", submit.Value.ExternalOperationId); }
         var succeededCodes = outcome.Value!.Lines.Where(x => x.Succeeded).Select(x => x.ExternalKey).ToList();
-        var failed = outcome.Value.Lines.Where(x => !x.Succeeded).ToList();
+        // B-4: a failed line Pazarama did not refuse (a timeout, 5xx, open circuit or quota wait on its barcode, or an answer
+        // without its result) is uncertain: it is reported for review, never as a refusal, and nothing is sent again.
+        var failed = outcome.Value.Lines.Where(x => !x.Succeeded && !x.Retryable).ToList();
+        var uncertain = outcome.Value.Lines.Where(x => !x.Succeeded && x.Retryable).ToList();
         if (succeededCodes.Count > 0)
         {
             // A product closed for sale takes no price or stock updates; opening it brings its offer back.
@@ -297,6 +300,12 @@ internal sealed partial class ProductJobService
         }
         foreach (var line in failed)
             await RecordIssue(tenantId, $"pazarama-sale-status:{connectionId:N}:{line.ExternalKey}", SafeCode(line.ErrorCode) ?? "PAZARAMA_SALE_STATUS_REJECTED", $"Pazarama satışa {(payload.Close ? "kapatma" : "açma")} işlemini reddetti: {line.ExternalKey}{(string.IsNullOrWhiteSpace(line.Status) ? "" : " · " + line.Status)}", cancellationToken);
+        foreach (var line in uncertain)
+            await RecordIssue(tenantId, $"pazarama-sale-status:{connectionId:N}:{line.ExternalKey}", SafeCode(line.ErrorCode) ?? "PAZARAMA_SALE_STATUS_UNCERTAIN", $"Pazarama satışa {(payload.Close ? "kapatma" : "açma")} sonucu belirsiz: {line.ExternalKey}{(string.IsNullOrWhiteSpace(line.Status) ? "" : " · " + line.Status)}. Pazarama panelinden kontrol edin; yeniden gönderilmedi.", cancellationToken);
+        // The issues are saved here: the job's own result does not save the unit of work.
+        if (failed.Count + uncertain.Count > 0) await db.SaveChangesAsync(cancellationToken);
+        if (uncertain.Count > 0)
+            return JobExecutionResult.ManualReview("PAZARAMA_SALE_STATUS_RESULT_UNKNOWN", $"Pazarama satışa açma/kapatma isteğinde {uncertain.Count} barkodun sonucu belirsiz{(failed.Count > 0 ? $", {failed.Count} barkod reddedildi" : "")}; Pazarama panelinden kontrol edin.", submit.Value.ExternalOperationId);
         if (failed.Count == 0) return JobExecutionResult.Success();
         return succeededCodes.Count == 0
             ? JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_REJECTED", "Pazarama satışa açma/kapatma isteğindeki tüm barkodları reddetti.", submit.Value.ExternalOperationId)
@@ -366,8 +375,11 @@ internal sealed partial class ProductJobService
             foreach (var listing in listings)
             {
                 if (string.IsNullOrWhiteSpace(listing.ExternalBarcode) || !byBarcode.TryGetValue(listing.ExternalBarcode, out var line)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_ARCHIVE_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_ARCHIVE_BATCH_CONTRACT_INVALID", "Arşiv batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
-                var status = line.Succeeded ? (payload.Archived ? "ARCHIVE_ACCEPTED" : "UNARCHIVE_ACCEPTED") : "ARCHIVE_REJECTED";
-                var code = line.Succeeded ? null : SafeCode(line.ErrorCode) ?? "PRODUCT_ARCHIVE_REJECTED";
+                // A failed line the marketplace marks retryable is not a refusal (B-4): its result is unknown, so it stays
+                // in the read-back below (ARCHIVE_RECONCILING) instead of being recorded as rejected.
+                var uncertain = !line.Succeeded && line.Retryable;
+                var status = line.Succeeded ? (payload.Archived ? "ARCHIVE_ACCEPTED" : "UNARCHIVE_ACCEPTED") : uncertain ? "ARCHIVE_RECONCILING" : "ARCHIVE_REJECTED";
+                var code = line.Succeeded ? null : SafeCode(line.ErrorCode) ?? (uncertain ? "PRODUCT_ARCHIVE_UNCONFIRMED" : "PRODUCT_ARCHIVE_REJECTED");
                 listing.ActualStatus = status; listing.RejectionCode = code;
                 if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = status; state.LastRejectionCode = code; state.Version++; }
             }
@@ -378,7 +390,7 @@ internal sealed partial class ProductJobService
         }
         if (phase != "RECONCILE") return JobExecutionResult.Blocked("PRODUCT_ARCHIVE_PHASE_INVALID", "Ürün arşiv işi bilinmeyen bir fazda.");
 
-        var pending = 0; var succeeded = 0; var rejected = listings.Count(x => x.ActualStatus == "ARCHIVE_REJECTED"); string? firstCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        var pending = 0; var succeeded = 0; var rejected = listings.Count(x => x.ActualStatus == "ARCHIVE_REJECTED"); string? firstCode = listings.Where(x => x.ActualStatus == "ARCHIVE_REJECTED").Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         foreach (var listing in listings.Where(x => x.ActualStatus != "ARCHIVE_REJECTED"))
         {
             if (string.IsNullOrWhiteSpace(listing.ExternalBarcode)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "REMOTE_BARCODE_REQUIRED", JobExecutionResult.ManualReview("REMOTE_BARCODE_REQUIRED", "Arşiv read-back için barkod eksik."), cancellationToken);

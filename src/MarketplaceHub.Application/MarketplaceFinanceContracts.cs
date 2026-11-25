@@ -26,7 +26,9 @@ public sealed record RemoteStatementRecord(
     string? Currency = null,
     string? InvoiceNumber = null);
 
-public sealed record RemoteStatementPage(IReadOnlyList<RemoteStatementRecord> Items, int Page, int TotalPages, long TotalElements, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
+// TotalPages (and Count on RemoteFinanceRecordPage) is null when the page did not send it: unknown, never "this was the last
+// page" (B-2). The reader then follows the pages while they come back full.
+public sealed record RemoteStatementPage(IReadOnlyList<RemoteStatementRecord> Items, int Page, int? TotalPages, long TotalElements, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
 {
     public IReadOnlyList<RemoteSkippedFinanceRecord> Skipped { get; init; } = Skipped ?? [];
 }
@@ -38,12 +40,12 @@ public sealed record RemoteSkippedFinanceRecord(string Key, string Description);
 
 public sealed record RemoteCargoInvoiceItem(string? ShipmentPackageType, string? ParcelUniqueId, string? OrderNumber, decimal Amount, int? Desi, string RawJson);
 
-public sealed record RemoteCargoInvoicePage(IReadOnlyList<RemoteCargoInvoiceItem> Items, int Page, int TotalPages);
+public sealed record RemoteCargoInvoicePage(IReadOnlyList<RemoteCargoInvoiceItem> Items, int Page, int? TotalPages);
 
 // A payout Trendyol made (payment-order: only paid ones are listed), as sent.
 public sealed record RemotePayoutOrder(string ExternalId, string? Status, string? PaymentType, decimal Amount, DateTimeOffset? PayoutDate, string? RegionCode, string? RegionName, string RawJson);
 
-public sealed record RemotePayoutOrderPage(IReadOnlyList<RemotePayoutOrder> Items, int Page, int TotalPages);
+public sealed record RemotePayoutOrderPage(IReadOnlyList<RemotePayoutOrder> Items, int Page, int? TotalPages);
 
 // Trendyol's accounting services (Cari Hesap Ekstresi), read only. A window may span at most 15 days.
 public interface ITrendyolFinancePort
@@ -88,7 +90,7 @@ public sealed record RemoteFinanceRecord(string Id, string? TransactionType, str
     string? Sku, decimal? Amount, decimal? NetAmount, string? Currency, bool? IsIncome, DateTimeOffset? OrderDate, DateTimeOffset? InvoiceDate, DateTimeOffset? DueDate,
     DateTimeOffset? PaymentDate, string RawJson);
 
-public sealed record RemoteFinanceRecordPage(IReadOnlyList<RemoteFinanceRecord> Items, int Count, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
+public sealed record RemoteFinanceRecordPage(IReadOnlyList<RemoteFinanceRecord> Items, int? Count, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
 {
     public IReadOnlyList<RemoteSkippedFinanceRecord> Skipped { get; init; } = Skipped ?? [];
 }

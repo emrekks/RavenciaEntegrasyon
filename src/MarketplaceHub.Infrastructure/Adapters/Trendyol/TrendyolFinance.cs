@@ -68,6 +68,7 @@ internal static class TrendyolFinanceRequestContract
     public const string Settlements = "SETTLEMENTS";
     public const string OtherFinancials = "OTHER_FINANCIALS";
     public const int PageSize = 500;
+    public const int PayoutOrderPageSize = 10;
     public static readonly TimeSpan MaximumWindow = TimeSpan.FromDays(15);
 
     // supplierId is listed as a required query parameter next to the seller id in the path.
@@ -90,7 +91,7 @@ internal static class TrendyolFinanceRequestContract
 
     // At most ten payouts a page (the documented maximum).
     public static string PayoutOrdersPath(string sellerId, int page) =>
-        $"finance/che/sellers/{Uri.EscapeDataString(sellerId)}/payment-order?page={Math.Max(0, page)}&size=10";
+        $"finance/che/sellers/{Uri.EscapeDataString(sellerId)}/payment-order?page={Math.Max(0, page)}&size={PayoutOrderPageSize}";
 
     public static string CargoInvoiceItemsPath(string sellerId, string invoiceSerialNumber, int page) =>
         $"finance/che/sellers/{Uri.EscapeDataString(sellerId)}/cargo-invoice/{Uri.EscapeDataString(invoiceSerialNumber)}/items?page={Math.Max(0, page)}&size={PageSize}";
@@ -135,7 +136,7 @@ internal static class TrendyolFinanceMapper
         // window was written as read. A page without the list that counts none (or sends no count) stays empty.
         else if (Number(root, "totalElements") is > 0)
             throw new JsonException("Finance page counts records but has no content list.");
-        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0, (long)(Number(root, "totalElements") ?? items.Count + skipped.Count), skipped);
+        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages"), (long)(Number(root, "totalElements") ?? items.Count + skipped.Count), skipped);
     }
 
     // Left out or null: readable, no value. Sent but not a number: unreadable.
@@ -160,7 +161,7 @@ internal static class TrendyolFinanceMapper
                 var amount = Number(item, "amount") ?? throw new JsonException("Payment order has no amount.");
                 items.Add(new(id, Text(item, "status"), Text(item, "paymentType"), amount, Time(item, "payoutDate"), Text(item, "regionCode"), Text(item, "regionName"), item.GetRawText()));
             }
-        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0);
+        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages"));
     }
 
     public static RemoteCargoInvoicePage CargoPage(string json)
@@ -176,7 +177,7 @@ internal static class TrendyolFinanceMapper
                 var amount = Number(item, "amount") ?? throw new JsonException("Cargo invoice line has no amount.");
                 items.Add(new(Text(item, "shipmentPackageType"), Text(item, "parcelUniqueId"), Text(item, "orderNumber"), amount, Int(item, "desi"), item.GetRawText()));
             }
-        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0);
+        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages"));
     }
 
     // Ids and numbers come as JSON numbers or strings ("725041340"); RemoteFields.Text reads either as trimmed text and

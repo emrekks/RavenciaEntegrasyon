@@ -285,6 +285,40 @@ public sealed class ProductImportGoldenPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Equal(0, await read.IntegrationJobs.CountAsync(x => x.TenantId == tenant.Id && (x.JobType == MarketplaceJobTypes.StockProjectionDispatch || x.JobType == MarketplaceJobTypes.PriceInventorySync)));
     }
 
+    // B-6: an offer the import opens (or reprices) carries the price mark its own platform's send leaves behind. It was the
+    // Trendyol-format mark on every platform, so N11 and Pazarama saw a price change that was never made and sent it.
+    [PostgreSqlTheory]
+    [InlineData("N11")]
+    [InlineData("Pazarama")]
+    public async Task ImportedOffer_CarriesItsOwnPlatformsPriceMark(string marketplace)
+    {
+        var (platform, products) = MappedPage(marketplace);
+        var now = fixture.Now;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"pmark-{Guid.NewGuid():N}"[..30], DisplayName = "price mark", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = platform, Environment = "PRODUCTION", DisplayName = marketplace, ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = "{}", Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            await seed.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, new RefusingReferences(), new CatalogPage(products), null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, """{"full":true,"includeArchived":true,"includeDrafts":true}""", $"price-mark-{Guid.NewGuid():N}", CancellationToken.None);
+            Assert.True(result.Kind is JobCompletionKind.Succeeded or JobCompletionKind.ManualReview, $"{result.Kind} {result.ErrorCode} {result.ErrorSummary}");
+        }
+
+        await using var read = fixture.CreateContext();
+        var offers = await read.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.NotEmpty(offers);
+        Assert.All(offers, offer =>
+        {
+            Assert.Equal(PriceInventoryComposer.CurrentPriceHash(platform, offer), offer.LastPriceHash);
+            Assert.NotEqual(PriceInventoryComposer.StandardPriceHash(offer), offer.LastPriceHash);
+        });
+    }
+
     private static (string Platform, IReadOnlyList<RemoteCatalogProduct> Products) MappedPage(string marketplace)
     {
         switch (marketplace)

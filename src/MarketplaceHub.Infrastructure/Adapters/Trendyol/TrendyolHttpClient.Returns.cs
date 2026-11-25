@@ -36,7 +36,7 @@ public sealed partial class TrendyolHttpClient
         if (response.Error?.HttpStatus == (int)HttpStatusCode.NotFound && string.Equals(authorized.Connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase))
             return await PollClaimsByStatusAsync(authorized, window, page, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
-        try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(TrendyolJsonMapper.Returns(response.Value!), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract()); }
+        try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(TrendyolJsonMapper.Returns(response.Value!, ClaimPageSize(page.Limit), Page(page.Cursor)), response.RateLimit); } catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract()); }
     }
 
     async Task<AdapterResult<RemoteReturnClaim>> IReturnPort.GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken)
@@ -118,9 +118,11 @@ public sealed partial class TrendyolHttpClient
 
     internal static readonly string[] ClaimStatuses = ["Created", "WaitingInAction", "WaitingFraudCheck", "Accepted", "Cancelled", "Rejected", "Unresolved", "InAnalysis"];
 
+    internal static int ClaimPageSize(int limit) => Math.Clamp(limit, 1, 200);
+
     internal static string ClaimsEndpoint(string sellerId, int limit, int pageNumber, ReturnPollWindow window, string? claimItemStatus = null)
     {
-        var query = new List<string> { $"size={Math.Clamp(limit, 1, 200).ToString(CultureInfo.InvariantCulture)}", $"page={pageNumber.ToString(CultureInfo.InvariantCulture)}" };
+        var query = new List<string> { $"size={ClaimPageSize(limit).ToString(CultureInfo.InvariantCulture)}", $"page={pageNumber.ToString(CultureInfo.InvariantCulture)}" };
         if (window.ModifiedAfter is { } after) query.Add("startDate=" + after.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
         if (window.ModifiedBefore is { } before) query.Add("endDate=" + before.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
         if (claimItemStatus is not null) query.Add("claimItemStatus=" + claimItemStatus);
@@ -168,7 +170,7 @@ public sealed partial class TrendyolHttpClient
             if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
             try
             {
-                var result = TrendyolJsonMapper.Returns(response.Value!);
+                var result = TrendyolJsonMapper.Returns(response.Value!, ClaimPageSize(page.Limit), bucket.Page);
                 logger.LogInformation("Trendyol claims bucket {Status} page {Page} returned {Count} claims.", bucket.Status, bucket.Page, result.Items.Count);
                 claims.AddRange(result.Items);
                 if (result.HasMore) nextPages.Add((bucket.Status, bucket.Page + 1));

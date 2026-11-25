@@ -84,15 +84,16 @@ public sealed class AdapterRemoteValueTests
         Assert.Equal("20", TrendyolEFaturamJsonMapper.InvoiceStatus("""{"content":[{"status":"20"}]}""", "ref-1", "aaa-1").RawStatus);
     }
 
-    // O9: Hepsiburada's finance count may be null; the page's own size stands in.
+    // O9: Hepsiburada's finance count may be null; it is read as unknown (B-2), not as the page's own size.
     [Fact]
-    public void AFinancePageWithANullCountCountsItsItems()
+    public void AFinancePageWithANullCountLeavesTheCountUnknown()
     {
         using var json = JsonDocument.Parse("""{"count":null,"items":[{"id":"1","amount":{"value":10,"currencyCode":"949"},"dueDate":"2026-11-10T00:00:00"}]}""");
 
         var page = HepsiburadaFinanceMapper.Page(json.RootElement);
 
-        Assert.Equal(1, page.Count);
+        Assert.Single(page.Items);
+        Assert.Null(page.Count);
     }
 
     // D13: a question without any date is not stored as asked in 1970; one with only its last change is dated by it.

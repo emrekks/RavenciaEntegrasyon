@@ -350,6 +350,13 @@ public sealed class PazaramaProductWriteTests
         Assert.Equal("PAZARAMA_SALE_STATUS_REJECTED", failed.ErrorCode);
         Assert.False(missing.Succeeded);
         Assert.Equal("PAZARAMA_SALE_STATUS_UNCONFIRMED", missing.ErrorCode);
+        // B-4: no result, or a row without its success field, is unknown (retryable), never a refusal.
+        Assert.False(failed.Retryable);
+        Assert.True(missing.Retryable);
+        var noSuccess = PazaramaProductWriteMapper.SaleResult(Parse("""{"data":{"result":[{"message":null,"code":"B4"}]}}"""), "B4");
+        Assert.False(noSuccess.Succeeded);
+        Assert.True(noSuccess.Retryable);
+        Assert.NotEqual("PAZARAMA_SALE_STATUS_REJECTED", noSuccess.ErrorCode);
     }
 
     [Fact]
@@ -466,5 +473,21 @@ public sealed class PazaramaProductWriteTests
         var message = ProductApprovalReconciliationPolicy.DeadlineExpiredMessage("Pazarama", started, started.AddDays(7));
         Assert.Contains("7 gün", message, StringComparison.Ordinal);
         Assert.Contains("bulunamadı", message, StringComparison.Ordinal);
+    }
+
+    // B-4: after the first barcode, a failed sale-status write keeps its own error class; only Validation is a refusal.
+    [Theory]
+    [InlineData(AdapterErrorClass.Validation, false, "PAZARAMA_SALE_STATUS_REJECTED")]
+    [InlineData(AdapterErrorClass.TransientNetwork, true, "PAZARAMA_SALE_STATUS_UNCERTAIN")]
+    [InlineData(AdapterErrorClass.Remote5xx, true, "PAZARAMA_SALE_STATUS_UNCERTAIN")]
+    [InlineData(AdapterErrorClass.RateLimit, true, "PAZARAMA_SALE_STATUS_UNCERTAIN")]
+    public void A_later_barcode_failure_keeps_its_error_class(AdapterErrorClass errorClass, bool retryable, string code)
+    {
+        var line = PazaramaProductWriteMapper.SaleFailure("B2", new(errorClass, "X", "Pazarama hatası.", null, null, null));
+
+        Assert.Equal("B2", line.ExternalKey);
+        Assert.False(line.Succeeded);
+        Assert.Equal(retryable, line.Retryable);
+        Assert.Equal(code, line.ErrorCode);
     }
 }
