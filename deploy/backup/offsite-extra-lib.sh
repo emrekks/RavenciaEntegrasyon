@@ -25,7 +25,9 @@ extra_backup_root() {
 }
 
 # The owner's age public key: deploy/secrets/backup_age_recipient.txt when present, else the one the panel's Google Drive
-# backup uses (iam.tenant_settings "offsite-backup", Sistem Ayarları › Google Drive Yedeği). Prints nothing when none.
+# backup uses (iam.tenant_settings "offsite-backup", Sistem Ayarları › Google Drive Yedeği) of the host tenant only: the
+# tenant the server was bootstrapped with, while active (OffsiteBackupSettingsService.HostTenantAsync), never whichever
+# tenant saved the setting last. Prints nothing when none.
 extra_recipient() {
   local secrets_dir="$1" recipient=""
   if [[ -n "${RAVENCIA_EXTRA_RECIPIENT:-}" ]]; then recipient="$RAVENCIA_EXTRA_RECIPIENT"
@@ -36,7 +38,7 @@ extra_recipient() {
     postgres="$(extra_service_container postgres)"
     if [[ -n "$postgres" ]]; then
       recipient="$("${sudo_cmd[@]}" docker exec "$postgres" psql -X -U marketplacehub -d marketplacehub -At -c \
-        "select \"ValueJson\"::jsonb->>'ageRecipient' from iam.tenant_settings where \"Key\" = 'offsite-backup' order by \"UpdatedAt\" desc limit 1" 2>/dev/null || true)"
+        "select s.\"ValueJson\"::jsonb->>'ageRecipient' from iam.bootstrap_state b join iam.tenants t on t.\"Id\" = b.\"TenantId\" join iam.tenant_settings s on s.\"TenantId\" = b.\"TenantId\" and s.\"Key\" = 'offsite-backup' where b.\"Key\" = 'initial-owner' and t.\"Status\" = 'ACTIVE'" 2>/dev/null || true)"
     fi
   fi
   if [[ "$recipient" =~ ^age1[0-9a-z]{58}$ ]]; then printf '%s' "$recipient"; fi
