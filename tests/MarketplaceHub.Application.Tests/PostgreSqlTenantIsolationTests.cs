@@ -2590,7 +2590,11 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
         var oldProductSync = Finished("scheduled", JobStatus.Succeeded, 400, MarketplaceJobTypes.ProductSync);
         var oldPending = Finished("scheduled", JobStatus.Pending, 400);
         oldPending.CompletedAt = null;
-        var all = new[] { oldScheduledSuccess, recentScheduledSuccess, oldScheduledDead, youngerScheduledDead, oldEffectJob, oldProductSync, oldPending };
+        // Scan 25 Nov 2026 (E-5): a webhook ingest job lives as long as its inbox row (30 days): a delivery repeated after the
+        // job went but while the inbox row stays would otherwise queue the processed order again.
+        var webhookAfterTwoWeeks = Finished("webhook", JobStatus.Succeeded, 20, MarketplaceJobTypes.WebhookIngest);
+        var webhookAfterAMonth = Finished("webhook", JobStatus.Succeeded, 40, MarketplaceJobTypes.WebhookIngest);
+        var all = new[] { oldScheduledSuccess, recentScheduledSuccess, oldScheduledDead, youngerScheduledDead, oldEffectJob, oldProductSync, oldPending, webhookAfterTwoWeeks, webhookAfterAMonth };
 
         await using (var setup = fixture.CreateContext())
         {
@@ -2615,6 +2619,8 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             Assert.Contains(oldEffectJob.Id, remaining);
             Assert.Contains(oldProductSync.Id, remaining);
             Assert.Contains(oldPending.Id, remaining);
+            Assert.Contains(webhookAfterTwoWeeks.Id, remaining);
+            Assert.DoesNotContain(webhookAfterAMonth.Id, remaining);
             Assert.False(await db.JobAttempts.AsNoTracking().AnyAsync(attempt => attempt.JobId == oldScheduledSuccess.Id));
         }
         finally
@@ -2641,7 +2647,7 @@ public sealed partial class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsola
             job.CompletedAt = now.AddDays(-ageDays);
             return job;
         }
-        var oldWebhook = Finished("webhook", JobStatus.Succeeded, 20, MarketplaceJobTypes.WebhookIngest);
+        var oldWebhook = Finished("webhook", JobStatus.Succeeded, 40, MarketplaceJobTypes.WebhookIngest); // past the inbox row's 30 days (E-5)
         var recentWebhook = Finished("webhook", JobStatus.Succeeded, 3, MarketplaceJobTypes.WebhookIngest);
         var oldVerification = Finished("effect-reconcile", JobStatus.Succeeded, 20, MarketplaceJobTypes.ExternalEffectReconcile);
         var deadManual = Finished("manual:scheduled:orders", JobStatus.Dead, 20, MarketplaceJobTypes.OrderSync);
