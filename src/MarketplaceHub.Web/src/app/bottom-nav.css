@@ -145,37 +145,58 @@
   /* The keyboard is open while a text box has focus: the bar steps aside. */
   body:has(:is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"], [type="file"], [type="color"]), textarea, select, [contenteditable=""], [contenteditable="true"]):focus) .rv-dock-layer { display: none; }
 
-  /* Full-screen menu: the page's colour over the top bar (z 85 on a phone); the dock (87) stays above it, sheets and dialogs (900+) above both. */
-  .rv-fullmenu { position: fixed; inset: 0; z-index: 86; display: flex; flex-direction: column; box-sizing: border-box; padding: calc(14px + env(safe-area-inset-top, 0px)) 0 calc(var(--rv-dock-bottom) + 56px + 14px); color: var(--rv-color-ink); background: var(--rv-color-bg); outline: 0; animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet) both; }
-  .rv-fullmenu-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px 12px; }
-  .rv-fullmenu-head h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
-  /* The profile card: the first item of the list, scrolling with it. */
-  .rv-fullmenu-profile { display: flex; align-items: center; gap: 12px; box-sizing: border-box; min-height: 68px; margin: 12px 0 0; padding: 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; text-decoration: none; -webkit-tap-highlight-color: transparent; }
-  .rv-fullmenu-avatar { display: grid; flex: none; place-items: center; width: 44px; height: 44px; overflow: hidden; color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); border-radius: 50%; font-size: 16px; font-weight: 700; line-height: 1; }
-  :root:not([data-theme="light"]) .rv-fullmenu-avatar { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
-  .rv-fullmenu-avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .rv-fullmenu-profile-copy { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; }
-  .rv-fullmenu-profile-copy strong { overflow: hidden; font-size: 15px; font-weight: 600; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-fullmenu-profile-copy small { display: flex; min-width: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.25; white-space: nowrap; }
-  .rv-fullmenu-role { flex: none; }
-  .rv-fullmenu-email { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
-  .rv-fullmenu-group:first-child h3 { margin-top: 0; }
-  .rv-fullmenu-body { flex: 1; min-height: 0; padding: 0 16px 12px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  /* Full-screen menu, Shopify-admin style (owner, 25 Nov 2026), dark on both themes: a drawer from the left, 88% of the screen, the page pushed
+     to the right behind it as a rounded, dimmed card (the strip on the right takes the tap that closes it). Own logo and icons. The dock (87)
+     steps aside while it is open; the drawer's own Ayarlar pill and cross float at its bottom. */
+  :root { --rv-menu-w: 88vw; }
+  .rv-fullmenu { position: fixed; inset: 0; z-index: 86; outline: 0; pointer-events: none; }
+  .rv-fullmenu > * { pointer-events: auto; }
+  .rv-fullmenu-drawer { position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; display: flex; flex-direction: column; box-sizing: border-box; width: var(--rv-menu-w); padding: calc(16px + env(safe-area-inset-top, 0px)) 0 0 env(safe-area-inset-left, 0px); overflow: hidden; color: #e3e3e3; background: linear-gradient(135deg, #0b0b0c 0%, #131315 100%); animation: rv-slide-in-left var(--rv-motion-sheet) var(--rv-ease-sheet) both; }
+  .rv-fullmenu-logo { flex: none; width: 28px; height: 28px; margin: 0 0 28px 20px; object-fit: contain; }
+  .rv-fullmenu-search { display: flex; flex: none; align-items: center; gap: 10px; box-sizing: border-box; height: 42px; margin: 0 16px 8px; padding: 0 12px; color: #b4b4b9; background: rgb(255 255 255 / 14%); border-radius: 10px; }
+  .rv-fullmenu-search input { flex: 1; min-width: 0; height: 100%; min-height: 0; margin: 0; padding: 0; color: #f1f1f2; background: none; border: 0; outline: 0; font: inherit; font-size: 16px; }
+  .rv-fullmenu-search input::placeholder { color: #9a9a9f; }
+  .rv-fullmenu-search input::-webkit-search-cancel-button { display: none; }
+  .rv-fullmenu-search:focus-within { box-shadow: 0 0 0 2px rgb(255 255 255 / 28%); }
+  .rv-fullmenu-body { flex: 1; min-height: 0; box-sizing: border-box; padding: 0 12px calc(48px + 20px + 16px + env(safe-area-inset-bottom, 0px)); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
   .rv-fullmenu-body::-webkit-scrollbar { display: none; }
-  .rv-fullmenu-row.is-danger { width: 100%; color: var(--rv-color-danger); background: none; border: 0; font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
-  .rv-fullmenu-row.is-danger > .ui-icon { color: inherit; }
-  .rv-fullmenu-group h3 { margin: 14px 0 6px 4px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; line-height: 1.2; }
+  .rv-fullmenu-group h3 { display: flex; align-items: center; gap: 4px; margin: 16px 0 4px 8px; color: #8a8a8a; font-size: 13px; font-weight: 500; line-height: 1.2; }
   .rv-fullmenu-list { display: flex; flex-direction: column; }
-  .rv-fullmenu-row { display: flex; align-items: center; gap: 12px; box-sizing: border-box; min-width: 0; height: 48px; padding: 0 12px; color: var(--rv-color-ink); border-radius: 12px; font-size: 14px; font-weight: 500; text-decoration: none; -webkit-tap-highlight-color: transparent; }
-  .rv-fullmenu-row > .ui-icon { flex: none; color: var(--rv-color-muted); }
-  .rv-fullmenu-row > .rv-fullmenu-chev { color: var(--rv-color-muted); opacity: .7; }
+  .rv-fullmenu-row, .rv-fullmenu-profile { display: flex; align-items: center; gap: 12px; box-sizing: border-box; width: 100%; min-width: 0; height: 44px; min-height: 0; margin: 0; padding: 0 8px; color: #e3e3e3; background: none; border: 0; border-radius: 12px; font: inherit; font-size: 16px; font-weight: 500; text-align: left; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+  .rv-fullmenu-row { cursor: pointer; }
+  .rv-fullmenu-row > .ui-icon { flex: none; width: 20px; height: 20px; color: #b4b4b9; }
   .rv-fullmenu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rv-fullmenu-row.is-current { color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); font-weight: 600; }
-  :root:not([data-theme="light"]) .rv-fullmenu-row.is-current { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
-  .rv-fullmenu-row.is-current > .ui-icon { color: inherit; }
-  .rv-fullmenu-count { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 10px; font-size: 11px; font-weight: 700; }
-  .rv-fullmenu-count.is-warn { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
-  .rv-fullmenu :is(a, button):focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
+  .rv-fullmenu-row.is-current { color: #fff; font-weight: 600; background: rgb(255 255 255 / 12%); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 5%), inset 0 1px 6px rgb(255 255 255 / 6%); }
+  .rv-fullmenu-row.is-current > .ui-icon { color: #fff; }
+  .rv-fullmenu-row.is-danger { color: #ff9b9b; }
+  .rv-fullmenu-row.is-danger > .ui-icon { color: inherit; }
+  .rv-fullmenu-count { display: inline-flex; flex: none; align-items: center; justify-content: center; box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; color: #fff; background: rgb(255 255 255 / 18%); border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .rv-fullmenu-count.is-warn { color: #f5c46b; background: rgb(245 196 107 / 16%); }
+  .rv-fullmenu-profile { cursor: default; }
+  .rv-fullmenu-avatar { display: grid; flex: none; place-items: center; width: 28px; height: 28px; overflow: hidden; color: #fff; background: rgb(255 255 255 / 18%); border-radius: 50%; font-size: 12px; font-weight: 700; line-height: 1; }
+  .rv-fullmenu-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .rv-fullmenu-empty { margin: 24px 8px; color: #8a8a8a; font-size: 14px; }
+  .rv-fullmenu :is(a, button, input):focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+  .rv-fullmenu-search input:focus-visible { outline: 0; }
+  /* Two parts float at the bottom of the drawer, content slides under them: the Ayarlar pill and the cross. */
+  .rv-fullmenu-float { position: absolute; right: 0; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); left: 0; display: flex; justify-content: center; gap: 8px; pointer-events: none; }
+  .rv-fullmenu-float > * { pointer-events: auto; }
+  .rv-fullmenu-settings, .rv-fullmenu-close { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: 48px; min-height: 0; margin: 0; color: #fff; background: #2a2a2b; border: 0; border-radius: 24px; box-shadow: 0 4px 14px rgb(0 0 0 / 40%); font: inherit; font-size: 16px; font-weight: 500; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform var(--rv-motion-press-duration) var(--rv-ease-out); }
+  .rv-fullmenu-settings { gap: 8px; padding: 0 20px; }
+  .rv-fullmenu-close { width: 48px; padding: 0; }
+  .rv-fullmenu-settings:active, .rv-fullmenu-close:active { transform: scale(.96); }
+  /* The page behind: a rounded card in the strip on the right, dimmed; its corners are cut by the strip's own shadow (the drawer's colour). */
+  .rv-fullmenu-peek { position: absolute; z-index: 0; top: 0; right: 0; bottom: 0; left: var(--rv-menu-w); display: block; min-height: 0; padding: 0; background: transparent; border: 0; border-radius: 24px 0 0 24px; box-shadow: 0 0 0 100vmax #101012; cursor: pointer; animation: rv-fade-in var(--rv-motion-sheet) var(--rv-ease-sheet) both; }
+  html[data-rv-menu] .app-shell.stitch-shell > main { transform: translateX(var(--rv-menu-w)); filter: brightness(.62); }
+  html[data-rv-menu="open"] .app-shell.stitch-shell > main { animation: rv-menu-push var(--rv-motion-sheet) var(--rv-ease-sheet) both; }
+  html[data-rv-menu="closing"] .app-shell.stitch-shell > main { animation: rv-menu-push var(--rv-motion-exit) var(--rv-ease-exit) reverse both; }
+  @keyframes rv-menu-push { from { transform: none; filter: none; } to { transform: translateX(var(--rv-menu-w)); filter: brightness(.62); } }
+  /* Leaving: the drawer and the page go back on the shared exit (the way they came), and no second tap while they go. */
+  .rv-fullmenu.is-closing { pointer-events: none; }
+  .rv-fullmenu.is-closing .rv-fullmenu-drawer { animation: rv-drawer-out-left var(--rv-motion-exit) var(--rv-ease-exit) forwards; }
+  .rv-fullmenu.is-closing .rv-fullmenu-peek { animation: none; opacity: 0; transition: opacity var(--rv-motion-exit) var(--rv-ease-exit); }
+  /* Opened, the dock steps aside. */
+  .rv-dock-layer[data-menu] { visibility: hidden; opacity: 0; pointer-events: none; }
 
   /* Notifications: a panel dropping from just under the top bar (12 px in from the sides), at most 75% of the screen,
      over the full-screen menu too; the dimmed page behind only closes it. Wherever it is opened from, it opens here. */
@@ -186,7 +207,7 @@
   /* The live toast keeps its behaviour and shows above the dock (and its pill) instead of at the top. */
   html body .app-toast-stack, html body .app-toast:not(.app-toast-stack > *) { top: auto; right: 12px; bottom: calc(var(--rv-dock-bottom) + 56px + var(--rv-dock-extra) + 12px); left: 12px; width: auto; }
   @media (prefers-reduced-motion: reduce) {
-    .rv-fullmenu, .rv-fullmenu.is-closing, html body .rv-notification-history { animation: none; }
+    html body .rv-fullmenu .rv-fullmenu-drawer, html body .rv-fullmenu.is-closing .rv-fullmenu-drawer, html body .rv-fullmenu .rv-fullmenu-peek, html[data-rv-menu] body .app-shell.stitch-shell > main, html body .rv-notification-history { animation: none; transition: none; }
     .rv-dock, .rv-dock-panel, .rv-dock-slot, .rv-dock-round, html body .app-shell.stitch-shell > main { transition: none; }
   }
 }
