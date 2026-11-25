@@ -369,7 +369,8 @@ internal sealed partial class CatalogImportService
             };
             // The price came from the marketplace, so it counts as already sent there (at the panel price, the difference
             // rides with the next stock send: the marketplace's value is the known one).
-            offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
+            // B-6: the mark of this platform's own send (N11, Pazarama and PTT AVM hash other values than Trendyol's format).
+            offer.LastPriceHash = PriceInventoryComposer.CurrentPriceHash(importPlatformCode ?? "", offer);
             if (panel is not null) (offer.LastSentSalePrice, offer.LastSentListPrice) = (salePrice, listPrice);
             db.ChannelOffers.Add(offer);
             run.PriceChangedVariantIds.Add(variant.Id);
@@ -418,7 +419,7 @@ internal sealed partial class CatalogImportService
             offer.PriceVersion++;
             // The new price is the one the marketplace already holds; without this marker the next
             // price-and-stock send would push it back as a local change.
-            offer.LastPriceHash = PriceInventoryComposer.StandardPriceHash(offer);
+            offer.LastPriceHash = PriceInventoryComposer.CurrentPriceHash(importPlatformCode ?? "", offer);
             db.ChannelPriceHistory.Add(new ChannelPriceHistory
             {
                 Id = Guid.CreateVersion7(),
