@@ -253,8 +253,12 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
 - The claim list documents `RefundAmount` ("İade edilen tutarın bilgisidir") and `RefundCurrency` (hepsiburada-api-son.md
   "Talep Detayını Listeleme" :25925, :26004; the claim-package notification sample :26925 carries `"refundAmount": 0`
   on a rejected claim). Its list sample (:26160) shows no such key, so a claim without it is possible.
-- `HepsiburadaJsonMapper.ClaimRefundAmount` takes a positive lira amount only (0 = not paid yet, another currency =
-  unknown) into `ReturnClaim.RefundAmount`; any read that brings it sets it, a read without it keeps it. The İadeler
+- "0 = not paid yet" is an inference from one docs sample (a rejected claim with `refundAmount` 0 and an empty
+  `refundDate`), not a documented rule; what a reversed refund sends is unknown.
+- `HepsiburadaJsonMapper.ClaimRefundAmount` takes a positive lira amount only (another currency = unknown) and only
+  while the claim is `Refunded` with a non-empty `refundDate` when sent (live 25 Nov 2026: the one refunded claim
+  snapshot had both) into `ReturnClaim.RefundAmount`. A fresh refunded read without it keeps the stored amount; a fresh
+  read of a claim no longer `Refunded` clears it; an older snapshot (`IsStaleReturnObservation`) changes nothing. The İadeler
   row shows it as "İade Tutarı" (`ReturnMarketplaceAmounts.Line`, one-line claims). Before this the claim JSON was not
   kept, so only a claim-built order line snapshot showed it: live 25 Nov 2026, 1 of 9 Hepsiburada return lines (that
   snapshot's refundAmount was a positive number equal to the line price); the other 8 read "İade Tutarı —".

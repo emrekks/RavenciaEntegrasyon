@@ -1643,12 +1643,18 @@ public sealed class HepsiburadaAdapterTests
     [InlineData("\"refundAmount\": 0, \"refundCurrency\": \"\",", null)]
     [InlineData("\"refundAmount\": 865.72, \"refundCurrency\": \"EUR\",", null)]
     [InlineData("", null)]
-    public void ClaimMapper_ReadsTheRefundAmountOnlyWhenHepsiburadaReportsOne(string refundFields, string? expected)
+    [InlineData("\"refundAmount\": 865.72, \"refundDate\": \"2026-11-12T10:00:00\",", "865.72")]
+    // Docs sample of a rejected claim: refundAmount 0 and an empty refundDate; an empty refundDate is no refund.
+    [InlineData("\"refundAmount\": 865.72, \"refundDate\": \"\",", null)]
+    // Not refunded (any other status): no amount, whatever the field says.
+    [InlineData("\"refundAmount\": 865.72,", null, "Rejected")]
+    [InlineData("\"refundAmount\": 865.72,", null, "AwaitingAction")]
+    public void ClaimMapper_ReadsTheRefundAmountOnlyWhenHepsiburadaReportsOne(string refundFields, string? expected, string status = "Refunded")
     {
         using var json = JsonDocument.Parse($$"""
         {
           "claimNumber": "714000001",
-          "status": "Refunded",
+          "status": "{{status}}",
           "claimType": "Return",
           "claimDate": "2026-11-10T12:15:00Z",
           "orderNumber": "HB-2026-REFUND",

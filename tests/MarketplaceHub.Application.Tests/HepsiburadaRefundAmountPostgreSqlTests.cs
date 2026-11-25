@@ -40,10 +40,27 @@ public sealed class HepsiburadaRefundAmountPostgreSqlTests(PostgreSqlTenantIsola
             var row = Assert.Single(page.Items);
             Assert.Equal(new ReturnAmountsView(null, null, null, 865.72m), row.ReturnAmounts);
         }
+
+        // An older snapshot of the claim as not refunded changes nothing.
+        await using (var db = fixture.CreateContext())
+            await Processor(db).UpsertReturn(tenant.Id, connection.Id, Claim(fixture.Now.AddHours(-3), null, "Rejected"), CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(865.72m, (await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).RefundAmount);
+
+        // Review, 25 Nov 2026: a fresh read of the claim no longer refunded (rejected or reversed, refundAmount 0 read as
+        // unknown) drops the old amount, so it is never shown as the refund.
+        await using (var db = fixture.CreateContext())
+            await Processor(db).UpsertReturn(tenant.Id, connection.Id, Claim(fixture.Now.AddMinutes(-10), null, "Rejected"), CancellationToken.None);
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Null((await db.ReturnClaims.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id)).RefundAmount);
+            var page = await Service(db).ReturnsAsync(tenant.Id, 20, null, new ReturnListQuery(), false, CancellationToken.None);
+            Assert.Null(Assert.Single(page.Items).ReturnAmounts);
+        }
     }
 
-    private RemoteReturnClaim Claim(DateTimeOffset modified, decimal? refund) =>
-        new("hb-claim-refund", "hb-refund-1", "Refunded", "Return", null, null, modified,
+    private RemoteReturnClaim Claim(DateTimeOffset modified, decimal? refund, string status = "Refunded") =>
+        new("hb-claim-refund", "hb-refund-1", status, "Return", null, null, modified,
             [new RemoteReturnLine("ol-1", "ol-1", 1)], "{}", RequestedAt: fixture.Now.AddDays(-3), RefundAmount: refund);
 
     private MarketplaceJobProcessor Processor(AppDbContext db) =>
