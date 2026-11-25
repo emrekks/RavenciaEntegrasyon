@@ -25,6 +25,16 @@ describe('order delivery line', () => {
     expect(ring.cls).toBe('crit')
   })
 
+  it('counts an order late by less than a day as late, in hours (scan D-11)', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T09:00:00Z'))
+    const delivery = deliveryText(order({ shipmentDueAt: '2026-11-01T03:30:00Z' }))
+    expect(delivery.kind).toBe('late')
+    expect(orderRingDetail(delivery)).toEqual({ text: '5 saat gecikti', cls: 'bad' })
+    expect(dueLineTitle(delivery)).toBe('Geciken: kargoya verme süresi geçti.')
+    expect(orderRingDetail(deliveryText(order({ shipmentDueAt: '2026-11-01T08:50:00Z' }))).text).toBe('1 saat gecikti')
+  })
+
   it('says the shipped order was handed to the carrier', () => {
     const delivery = deliveryText(order({ derivedStatus: 'SHIPPED' }))
     expect(delivery.kind).toBe('shipping')

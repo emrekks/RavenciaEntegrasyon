@@ -14,6 +14,7 @@ import '../commission-tariffs.css'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { EmptyState } from '../../../shared/components/EmptyState'
 import { queryKeys } from '../../../shared/api/query-keys'
+import { parseTrNumber } from '../../../shared/tr-number'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -198,11 +199,8 @@ export type OfferFilter = { name: string; barcode: string; model: string; minSto
 export const noOfferFilter: OfferFilter = { name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '', column: '', minProfit: '', maxProfit: '', minShare: '', maxShare: '' }
 type OfferRow = OfferProduct & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }
 
-const number = (text: string) => {
-  const cleaned = text.trim().replace(',', '.').replace('−', '-')
-  const value = Number(cleaned)
-  return cleaned && Number.isFinite(value) ? value : null
-}
+// A filter bound typed the Turkish way ("1.250" is 1250, "12,5" twelve and a half), as the commission tariff filters read it.
+const number = (text: string) => parseTrNumber(text)
 const has = (value: string | null | undefined, term: string) => !term.trim() || (value ?? '').toLocaleLowerCase('tr').includes(term.trim().toLocaleLowerCase('tr'))
 
 // Whether a row passes the filter; prices(row, column) are the offered prices of the picked column (a model's sizes may

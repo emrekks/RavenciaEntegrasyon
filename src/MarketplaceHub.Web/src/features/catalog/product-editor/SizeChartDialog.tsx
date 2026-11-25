@@ -51,7 +51,11 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
 
   // The panel's Beden order wins; the server's list covers a size the editor does not show.
   const rowSizes = sizes.length ? sizes : info.data?.sizes ?? []
-  if (info.data && draft === null) setDraft(initialSizeChartDraft(rowSizes, info.data.measurements))
+  const [openedDraft, setOpenedDraft] = useState<SizeChartDraft | null>(null)
+  if (info.data && draft === null) { const initial = initialSizeChartDraft(rowSizes, info.data.measurements); setDraft(initial); setOpenedDraft(initial) }
+  // Typed measures, a drawing under way or a drawn chart not used yet keep the window open on a click outside (scan
+  // D-11); the cross and Escape still close it.
+  const unsaved = running || result !== null || (draft !== null && JSON.stringify(draft) !== JSON.stringify(openedDraft))
 
   useEffect(() => {
     if (!running) return
@@ -117,7 +121,7 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
       : <Button disabled={!draft || !aiReady || running} onClick={() => void generate()}>{running ? 'Oluşturuluyor…' : 'Oluştur'}</Button>}
   </>
 
-  return <Modal open title="Beden Tablosu Oluştur" className="size-chart-modal" onClose={close} description="Ölçüler cm cinsindendir. Tablo yalnız girdiğiniz sayılarla çizilir; Kullan görseli ürünün son görseli olarak ekler ve Kaydet ile ürüne bağlanır; pazaryerine Hızlı Güncelle, Platformlarda Güncelle ya da Yayınla ile gider." footer={footer}>
+  return <Modal open title="Beden Tablosu Oluştur" className="size-chart-modal" onClose={close} keepOpenOnOutsideClick={unsaved} description="Ölçüler cm cinsindendir. Tablo yalnız girdiğiniz sayılarla çizilir; Kullan görseli ürünün son görseli olarak ekler ve Kaydet ile ürüne bağlanır; pazaryerine Hızlı Güncelle, Platformlarda Güncelle ya da Yayınla ile gider." footer={footer}>
     {info.isPending ? <p className="size-chart-note" role="status"><UiIcon name="loader" /> Ölçüler yükleniyor…</p>
       : info.isError ? <p className="error size-chart-error" role="alert">{info.error instanceof Error ? info.error.message : 'Beden tablosu bilgisi alınamadı.'}</p>
       : !draft || !draft.rows.length ? <p className="error size-chart-error" role="alert">Bu ürünün Beden değeri yok.</p>

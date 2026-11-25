@@ -13,7 +13,7 @@ const listPage = (after: string | null) => ({
       { id: 'v1', sku: 'RYP-1-S', barcode: '869001', modelCode: 'RYP001', optionSignature: 'Renk:Bej|Beden:S', status: 'ACTIVE', version: 1, onHand: 4, available: 4, salePrice: 450, listPrice: 500, currency: 'TRY', mediaUrls: ['/api/v1/files/product-media/a/content'], options: { Renk: 'Bej', Beden: 'S' }, productId: 'p1' },
       { id: 'v2', sku: 'RYP-1-M', modelCode: 'RYP001', optionSignature: 'Renk:Bej|Beden:M', status: 'ACTIVE', version: 1, onHand: 0, available: 0, options: { Renk: 'Bej', Beden: 'M' }, productId: 'p1' }
     ],
-    primaryImageUrl: '/api/v1/files/product-media/a/content', totalStock: 4, startingPrice: 450, currency: 'TRY', modelCode: 'RYP001', activePlatforms: ['Trendyol'],
+    primaryImageUrl: '/api/v1/files/product-media/a/content', totalStock: 4, startingPrice: fixture.startingPrice, currency: 'TRY', modelCode: 'RYP001', activePlatforms: ['Trendyol'],
     platformStatuses: [{ platform: 'Trendyol', status: 'ACTIVE', matchedVariantCount: 2, variantCount: 2, isChecking: false, platformCode: 'TRENDYOL', missingVariantCount: 0, onSaleVariantCount: 2, offSaleVariantCount: 0, offSaleStockZeroVariantCount: 0 }],
     categoryPath: 'Giyim > Kazak', hasCustomMediaOrder: false
   }],
@@ -21,7 +21,7 @@ const listPage = (after: string | null) => ({
 })
 const requested: string[] = []
 // The list's total; a test that walks to page 2 raises it so the page is not clamped back to the first.
-const fixture = { totalCount: 2 }
+const fixture: { totalCount: number; startingPrice: number | null } = { totalCount: 2, startingPrice: 450 }
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
@@ -45,6 +45,7 @@ beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   requested.length = 0
   fixture.totalCount = 2
+  fixture.startingPrice = 450
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -87,6 +88,14 @@ describe('ProductsPage on the slim list answer', () => {
     const trendyol = row.querySelector('.rr-pm[aria-label^="Trendyol"]')
     expect(trendyol?.className).toContain('rr-on')
     expect(row.querySelector('img')?.getAttribute('src')).toBe('/api/v1/files/product-media/a/content')
+  })
+
+  it('shows an unknown price as a dash, never as 0,00 TL', async () => {
+    fixture.startingPrice = null
+    await render()
+    const row = Array.from(container.querySelectorAll('tbody tr')).find(item => item.textContent?.includes('Triko Kazak'))!
+    const price = row.querySelector('td[data-l="Fiyat"] b')?.textContent ?? ''
+    expect(price).toBe('—')
   })
 
   // RoleAuthorizationMiddleware answers products/{id}/bulk-field with 403 to every role but the owner and administrators.

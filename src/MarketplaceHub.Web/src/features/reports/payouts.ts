@@ -164,12 +164,13 @@ export function payoutState(group: PayoutGroup): Exclude<PayoutState, 'ALL'> {
 }
 
 // An amount typed the Turkish way or with a decimal point: "1.250" = 1250, "1.250,5" = 1250.5, "1250,50" = 1250.5, and
-// "1250.50" = 1250.5 (a single dot with exactly two digits after it and no comma is a decimal point, not thousands).
+// "1250.50" = 1250.5 and "12.5" = 12.5 (a single dot with one or two digits after it and no comma is a decimal point,
+// not thousands).
 export function parseAmount(text: string): number | null {
   const value = text.trim().replace(/[\s₺]/gu, '')
   if (value === '') return null
   const normalized = value.includes(',') ? value.replace(/\./g, '').replace(',', '.')
-    : /^-?\d+\.\d{2}$/u.test(value) ? value
+    : /^-?\d+\.\d{1,2}$/u.test(value) ? value
     : value.replace(/\./g, '')
   const number = Number(normalized)
   return Number.isFinite(number) ? number : null

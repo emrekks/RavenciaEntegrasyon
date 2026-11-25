@@ -9,7 +9,7 @@ import { Pager } from './Pager'
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ControlSize = 'sm' | 'md' | 'lg'
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
-type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string; /** What the window is for, behind a "?" beside its title; live facts stay in `description`. */ hint?: ReactNode }
+type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string; /** What the window is for, behind a "?" beside its title; live facts stay in `description`. */ hint?: ReactNode; /** A click outside leaves the window open (unsaved changes); the cross and Escape still close it. */ keepOpenOnOutsideClick?: boolean }
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
@@ -125,12 +125,12 @@ export function Pagination({ page, totalPages, hasNext, onPageChange, onPrevious
   return <Pager page={page} totalPages={totalPages} hasNext={hasNext} onPageChange={onPageChange} onPrevious={onPrevious} onNext={onNext} disabled={disabled} className={className} ariaLabel={ariaLabel} />
 }
 
-export function Modal({ open, title, onClose, children, footer, description, className, hint }: DialogSurfaceProps) {
+export function Modal({ open, title, onClose, children, footer, description, className, hint, keepOpenOnOutsideClick = false }: DialogSurfaceProps) {
   const dialogRef = useDialogSurface(open, onClose)
   const titleId = useId()
   const descriptionId = useId()
   if (!open) return null
-  return <div className="rv-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={dialogRef} className={['rv-modal', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-modal-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>
+  return <div className="rv-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !keepOpenOnOutsideClick) onClose() }}><section ref={dialogRef} className={['rv-modal', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-modal-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>
 }
 
 export function Drawer({ open, title, onClose, children, footer, description, className, hint }: DialogSurfaceProps) {

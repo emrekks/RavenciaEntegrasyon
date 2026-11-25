@@ -36,6 +36,8 @@ describe('amount filter', () => {
     expect(parseAmount('1.250,5')).toBe(1250.5)
     expect(parseAmount('1250,50')).toBe(1250.5)
     expect(parseAmount('1500.50')).toBe(1500.5)
+    // One digit after a single point is a decimal point too (scan D-11): 12.5 is twelve and a half, not 125.
+    expect(parseAmount('12.5')).toBe(12.5)
     expect(parseAmount('1.250.000')).toBe(1250000)
     expect(parseAmount(' ₺ 980 ')).toBe(980)
     expect(parseAmount('')).toBeNull()
