@@ -193,10 +193,12 @@ public sealed partial class OperationalDataMaintenanceService
             DELETE FROM catalog.product_change_entries WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM integration.connection_backoffs WHERE "ConnectionId"={{connectionId}};
             DELETE FROM integration.sync_cursors WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
-            -- The open problems about the connection, its orders or its invoices have nothing left to point at.
+            -- The open problems about the connection, its orders or its invoices have nothing left to point at. A key names
+            -- the connection in either form: with hyphens ("D") or without ("N", e.g. trendyol-finance:{id:N}).
             UPDATE ops.operational_issues i SET "Status"='Resolved', "ResolvedAt"={{timeProvider.GetUtcNow()}}
             WHERE i."TenantId"={{tenantId}} AND i."Status"<>'Resolved'
               AND (strpos(i."DedupeKey", CAST({{connectionId}} AS text)) > 0
+                OR strpos(i."DedupeKey", replace(CAST({{connectionId}} AS text), '-', '')) > 0
                 OR EXISTS (SELECT 1 FROM purge_orders o WHERE strpos(i."DedupeKey", o."Id"::text) > 0)
                 OR EXISTS (SELECT 1 FROM purge_invoices p WHERE strpos(i."DedupeKey", p."Id"::text) > 0)
                 -- An order shortfall issue is keyed by its order line (N format): only the removed orders' lines close theirs.
