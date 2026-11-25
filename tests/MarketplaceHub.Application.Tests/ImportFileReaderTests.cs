@@ -293,7 +293,10 @@ public sealed class ImportFileReaderTests
 
         if (expected is null)
         {
-            Assert.StartsWith("vatRate: ", Assert.Single(row.Errors), StringComparison.Ordinal);
+            var error = Assert.Single(row.Errors);
+            Assert.StartsWith("vatRate: ", error, StringComparison.Ordinal);
+            // A removal says what an empty cell does in an import (a new card's VAT stays empty), not the transfer's wording.
+            if (cellContent.Contains("<t>-</t>", StringComparison.Ordinal)) Assert.Equal($"vatRate: {ImportFileReader.VatRemovalInvalid}", error);
             Assert.Null(ImportJobProcessor.FileVatRate(row.Values));
         }
         else

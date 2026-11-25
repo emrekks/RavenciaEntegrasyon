@@ -160,7 +160,12 @@ internal sealed partial class InvoiceReconciliationService(
             // every six hours; the sweep keeps its position, so a cut-short run resumes it.
             // Scan 25 Nov 2026 (A-3): the waiting orders rotate on their own cursor (the run's
             // ORDER_INVOICE_RECONCILIATION row, as on the other platforms) and wrap at the end, so more than
-            // a batch of them no longer keeps the same first orders and starves the rest and the sweep.
+            // a batch of them no longer keeps the same first orders. While a sweep is due they take at most
+            // the batch less TrendyolInvoiceReconciliationPolicy.SweepReservedSlots, so a long waiting list never
+            // leaves the sweep without room; otherwise they take the whole batch.
+            invoiceCursor = await Cursor(tenantId, connectionId, TrendyolInvoiceReconciliationPolicy.SweepCursorResource, cancellationToken);
+            var sweepDue = TrendyolInvoiceReconciliationPolicy.SweepDue(invoiceCursor.OpaqueCursor, invoiceCursor.LastSuccessAt, now);
+            var unresolvedLimit = TrendyolInvoiceReconciliationPolicy.WaitingLimit(batchSize, sweepDue);
             unresolvedCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
             var unresolvedAfterOrderId = OrderInvoiceReconciliationBatchPolicy.ReadCursor(unresolvedCursor.OpaqueCursor);
             var unresolvedQuery = TrendyolUnresolvedInvoiceOrders(tenantId, connectionId);
@@ -170,25 +175,24 @@ internal sealed partial class InvoiceReconciliationService(
             var unresolvedAfterCursor = await unresolvedAfterCursorQuery
                 .OrderBy(order => order.Id)
                 .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
-                .Take(batchSize)
+                .Take(unresolvedLimit)
                 .ToListAsync(cancellationToken);
             IReadOnlyCollection<OrderInvoiceReconciliationCandidate> unresolvedWrapped = [];
-            if (unresolvedAfterOrderId is { } unresolvedWrapOrderId && unresolvedAfterCursor.Count < batchSize)
+            if (unresolvedAfterOrderId is { } unresolvedWrapOrderId && unresolvedAfterCursor.Count < unresolvedLimit)
             {
                 unresolvedWrapped = await unresolvedQuery
                     .Where(order => order.Id.CompareTo(unresolvedWrapOrderId) <= 0)
                     .OrderBy(order => order.Id)
                     .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
-                    .Take(batchSize - unresolvedAfterCursor.Count)
+                    .Take(unresolvedLimit - unresolvedAfterCursor.Count)
                     .ToListAsync(cancellationToken);
             }
-            var unresolved = OrderInvoiceReconciliationBatchPolicy.Select(unresolvedAfterCursor, unresolvedWrapped, batchSize);
+            var unresolved = OrderInvoiceReconciliationBatchPolicy.Select(unresolvedAfterCursor, unresolvedWrapped, unresolvedLimit);
             externalOrderIds = unresolved.Select(candidate => candidate.ExternalOrderId).ToList();
             cursorAfterOrder = unresolved.Select(_ => (string?)null).ToList();
             unresolvedCursorAfterOrder = unresolved.Select(candidate => OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId)).ToList();
-            invoiceCursor = await Cursor(tenantId, connectionId, TrendyolInvoiceReconciliationPolicy.SweepCursorResource, cancellationToken);
             var sweepRoom = batchSize - unresolved.Count;
-            if (sweepRoom > 0 && TrendyolInvoiceReconciliationPolicy.SweepDue(invoiceCursor.OpaqueCursor, invoiceCursor.LastSuccessAt, now))
+            if (sweepRoom > 0 && sweepDue)
             {
                 var unresolvedIds = unresolved.Select(candidate => candidate.OrderId).ToList();
                 var sweepQuery = TrendyolInvoiceSweepOrders(tenantId, connectionId, now).Where(order => !unresolvedIds.Contains(order.Id));
@@ -480,7 +484,9 @@ internal sealed partial class InvoiceReconciliationService(
     // Trendyol orders with a package whose local sale invoice still waits for its confirmation on the platform: sent and
     // not confirmed yet (TrendyolInvoiceReconciliationPolicy.AwaitingConfirmationStatuses), or Completed without a
     // confirmed delivery to this package. A cancelled, rejected, draft or in-review invoice is not read here: a read
-    // never moves it (scan 25 Nov 2026, A-3); its package is still read by the six-hourly sweep.
+    // never moves it (scan 25 Nov 2026, A-3). The six-hourly sweep reads only packages of the last 90 days whose local
+    // MarketplaceInvoiceStatus is not Invoiced, so such an invoice's package already read as invoiced is not read again
+    // there; a removal (REVOKED) of its invoice on Trendyol reaches the panel through the order reads.
     private IQueryable<Order> TrendyolUnresolvedInvoiceOrders(Guid tenantId, Guid connectionId) =>
         db.Orders.AsNoTracking()
             .Where(order => order.TenantId == tenantId

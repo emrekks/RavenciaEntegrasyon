@@ -763,6 +763,13 @@ public static class TrendyolInvoiceReconciliationPolicy
         InvoiceStatus.Submitted, InvoiceStatus.Accepted, InvoiceStatus.MarketplacePending, InvoiceStatus.MarketplaceFailed
     ];
 
+    // While a sweep is due, the orders waiting for confirmation leave this many places of the batch to it (half of a
+    // batch of 20 or less), so a long waiting list cannot keep the sweep from ever running (scan 25 Nov 2026, A-3).
+    public const int SweepReservedSlots = 10;
+
+    public static int WaitingLimit(int batchSize, bool sweepDue) =>
+        sweepDue ? batchSize - Math.Min(SweepReservedSlots, batchSize / 2) : batchSize;
+
     // A sweep in progress (a saved position) always continues; otherwise one starts six hours after the last finished.
     public static bool SweepDue(string? sweepPosition, DateTimeOffset? lastSweepCompletedAt, DateTimeOffset now) =>
         !string.IsNullOrWhiteSpace(sweepPosition)

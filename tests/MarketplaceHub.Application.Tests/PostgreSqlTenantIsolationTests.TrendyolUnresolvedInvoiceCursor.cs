@@ -44,6 +44,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
         var orderPort = NotInvoicedPackagePort();
         try
         {
+            // The sweep finished just now, so the waiting orders take the whole batch.
+            await SeedFinishedSweepAsync(seed);
             await RunTrendyolInvoiceCheckAsync(seed.Tenant.Id, seed.Connection.Id, orderPort, """{"batchSize":3}""", "a3-cursor-run-1");
             Assert.Equal(seed.WaitingPackages[..3], orderPort.PackageReadCalls);
 
@@ -61,6 +63,54 @@ public sealed partial class PostgreSqlTenantIsolationTests
         {
             await DeleteUnresolvedInvoiceTestTenantAsync(seed.Tenant.Id);
         }
+    }
+
+    // While a sweep is due, 45 waiting orders leave ten places of the batch of 50 to it; when it is not due they take
+    // the whole batch.
+    [PostgreSqlTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TrendyolInvoiceCheck_ADueSweepKeepsItsPlacesBesideALongWaitingList(bool sweepDue)
+    {
+        var seed = await SeedUnresolvedInvoiceOrdersAsync(sweepDue ? "a3-reserve-due" : "a3-reserve-idle", stuck: 12, waiting: 45, stuckSweepable: true);
+        var orderPort = NotInvoicedPackagePort();
+        try
+        {
+            if (!sweepDue) await SeedFinishedSweepAsync(seed);
+            await RunTrendyolInvoiceCheckAsync(seed.Tenant.Id, seed.Connection.Id, orderPort, "{}", "a3-reserve-run");
+
+            var waitingRead = orderPort.PackageReadCalls.Where(seed.WaitingPackages.Contains).ToList();
+            var sweepRead = orderPort.PackageReadCalls.Except(seed.WaitingPackages).ToList();
+            if (sweepDue)
+            {
+                Assert.Equal(seed.WaitingPackages[..40], waitingRead);
+                Assert.Equal(10, sweepRead.Count);
+            }
+            else
+            {
+                Assert.Equal(seed.WaitingPackages, waitingRead);
+                Assert.Empty(sweepRead);
+            }
+        }
+        finally
+        {
+            await DeleteUnresolvedInvoiceTestTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private async Task SeedFinishedSweepAsync(UnresolvedInvoiceSeed seed)
+    {
+        await using var db = fixture.CreateContext();
+        db.SyncCursors.Add(new SyncCursor
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            ConnectionId = seed.Connection.Id,
+            ResourceType = TrendyolInvoiceReconciliationPolicy.SweepCursorResource,
+            LastSuccessAt = fixture.Now,
+            Version = 1
+        });
+        await db.SaveChangesAsync();
     }
 
     private sealed record UnresolvedInvoiceSeed(Tenant Tenant, PlatformConnection Connection, Guid[] WaitingOrderIds, string[] WaitingPackages);
@@ -82,8 +132,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
     }
 
     // Stuck orders have lower ids than the waiting ones, so an id-ordered first batch is all stuck. Their packages read
-    // as invoiced on the platform, so the sweep has nothing of them to read.
-    private async Task<UnresolvedInvoiceSeed> SeedUnresolvedInvoiceOrdersAsync(string code, int stuck, int waiting)
+    // as invoiced on the platform, so the sweep has nothing of them to read, unless stuckSweepable leaves them unknown.
+    private async Task<UnresolvedInvoiceSeed> SeedUnresolvedInvoiceOrdersAsync(string code, int stuck, int waiting, bool stuckSweepable = false)
     {
         var tenant = NewTenant(code);
         var connection = NewQuestionConnection(tenant);
@@ -107,8 +157,8 @@ public sealed partial class PostgreSqlTenantIsolationTests
             var orderId = Guid.Parse($"{prefix}-1c00-7000-8000-{index + 1:D12}");
             var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, $"{code}-order-{index}", isReturnClaim: false, now);
             var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"{code}-package-{index}", now);
-            if (isStuck) package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
-            else { waitingIds.Add(orderId); waitingPackages.Add(package.ExternalPackageId); }
+            if (isStuck && !stuckSweepable) package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced;
+            if (!isStuck) { waitingIds.Add(orderId); waitingPackages.Add(package.ExternalPackageId); }
             orders.Add(order);
             packages.Add(package);
             invoices.Add(new Invoice

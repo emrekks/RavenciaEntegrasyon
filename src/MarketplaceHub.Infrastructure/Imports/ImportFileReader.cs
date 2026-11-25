@@ -294,10 +294,17 @@ public static class ImportFileReader
     }
 
     // The row's KDV cell as the product transfer reads it; Empty when the cell is empty or the file has no KDV column.
-    internal static ProductTransferValue VatRate(IReadOnlyDictionary<string, string> values, bool fromCsv) =>
-        values.TryGetValue("vatRate", out var text) && !string.IsNullOrWhiteSpace(text)
-            ? ProductTransferFileParser.ParseVat(text, fromCsv)
-            : ProductTransferValue.Empty;
+    // A removal ("-", "SİL") is refused with the import's own wording: the transfer's "empty leaves it unchanged" does
+    // not hold for a new card, whose VAT stays empty.
+    internal static ProductTransferValue VatRate(IReadOnlyDictionary<string, string> values, bool fromCsv)
+    {
+        if (!values.TryGetValue("vatRate", out var text) || string.IsNullOrWhiteSpace(text)) return ProductTransferValue.Empty;
+        var trimmed = text.Trim();
+        if (trimmed is "-" or "–" or "—" || CatalogKeyNormalizer.Key(trimmed) == "SIL") return ProductTransferValue.Invalid(VatRemovalInvalid);
+        return ProductTransferFileParser.ParseVat(text, fromCsv);
+    }
+
+    public const string VatRemovalInvalid = "KDV oranı silinemez. Hücre boşsa mevcut üründe KDV değişmez, yeni üründe boş kalır.";
 
     private static bool Ambiguous(IReadOnlyDictionary<string, string> values, string field) =>
         values.TryGetValue(field, out var text) && ProductTransferFileParser.IsAmbiguousThousands(string.Concat(text.Where(character => !char.IsWhiteSpace(character))));
