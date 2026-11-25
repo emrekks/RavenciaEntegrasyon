@@ -366,8 +366,11 @@ internal sealed partial class ProductJobService
             foreach (var listing in listings)
             {
                 if (string.IsNullOrWhiteSpace(listing.ExternalBarcode) || !byBarcode.TryGetValue(listing.ExternalBarcode, out var line)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_ARCHIVE_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_ARCHIVE_BATCH_CONTRACT_INVALID", "Arşiv batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
-                var status = line.Succeeded ? (payload.Archived ? "ARCHIVE_ACCEPTED" : "UNARCHIVE_ACCEPTED") : "ARCHIVE_REJECTED";
-                var code = line.Succeeded ? null : SafeCode(line.ErrorCode) ?? "PRODUCT_ARCHIVE_REJECTED";
+                // A failed line the marketplace marks retryable is not a refusal (B-4): its result is unknown, so it stays
+                // in the read-back below (ARCHIVE_RECONCILING) instead of being recorded as rejected.
+                var uncertain = !line.Succeeded && line.Retryable;
+                var status = line.Succeeded ? (payload.Archived ? "ARCHIVE_ACCEPTED" : "UNARCHIVE_ACCEPTED") : uncertain ? "ARCHIVE_RECONCILING" : "ARCHIVE_REJECTED";
+                var code = line.Succeeded ? null : SafeCode(line.ErrorCode) ?? (uncertain ? "PRODUCT_ARCHIVE_UNCONFIRMED" : "PRODUCT_ARCHIVE_REJECTED");
                 listing.ActualStatus = status; listing.RejectionCode = code;
                 if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = status; state.LastRejectionCode = code; state.Version++; }
             }
@@ -378,7 +381,7 @@ internal sealed partial class ProductJobService
         }
         if (phase != "RECONCILE") return JobExecutionResult.Blocked("PRODUCT_ARCHIVE_PHASE_INVALID", "Ürün arşiv işi bilinmeyen bir fazda.");
 
-        var pending = 0; var succeeded = 0; var rejected = listings.Count(x => x.ActualStatus == "ARCHIVE_REJECTED"); string? firstCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+        var pending = 0; var succeeded = 0; var rejected = listings.Count(x => x.ActualStatus == "ARCHIVE_REJECTED"); string? firstCode = listings.Where(x => x.ActualStatus == "ARCHIVE_REJECTED").Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
         foreach (var listing in listings.Where(x => x.ActualStatus != "ARCHIVE_REJECTED"))
         {
             if (string.IsNullOrWhiteSpace(listing.ExternalBarcode)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "REMOTE_BARCODE_REQUIRED", JobExecutionResult.ManualReview("REMOTE_BARCODE_REQUIRED", "Arşiv read-back için barkod eksik."), cancellationToken);

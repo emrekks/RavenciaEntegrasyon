@@ -467,4 +467,20 @@ public sealed class PazaramaProductWriteTests
         Assert.Contains("7 gün", message, StringComparison.Ordinal);
         Assert.Contains("bulunamadı", message, StringComparison.Ordinal);
     }
+
+    // B-4: after the first barcode, a failed sale-status write keeps its own error class; only Validation is a refusal.
+    [Theory]
+    [InlineData(AdapterErrorClass.Validation, false, "PAZARAMA_SALE_STATUS_REJECTED")]
+    [InlineData(AdapterErrorClass.TransientNetwork, true, "PAZARAMA_SALE_STATUS_UNCERTAIN")]
+    [InlineData(AdapterErrorClass.Remote5xx, true, "PAZARAMA_SALE_STATUS_UNCERTAIN")]
+    [InlineData(AdapterErrorClass.RateLimit, true, "PAZARAMA_SALE_STATUS_UNCERTAIN")]
+    public void A_later_barcode_failure_keeps_its_error_class(AdapterErrorClass errorClass, bool retryable, string code)
+    {
+        var line = PazaramaProductWriteMapper.SaleFailure("B2", new(errorClass, "X", "Pazarama hatası.", null, null, null));
+
+        Assert.Equal("B2", line.ExternalKey);
+        Assert.False(line.Succeeded);
+        Assert.Equal(retryable, line.Retryable);
+        Assert.Equal(code, line.ErrorCode);
+    }
 }
