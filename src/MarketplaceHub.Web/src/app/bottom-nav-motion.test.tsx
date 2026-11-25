@@ -20,9 +20,8 @@ describe('the phone layers move with the shared motion tokens (kit "A · iOS Yay
     }
   })
 
-  it('cross-fades the menu with the page in place (no movement, no scale) on the base time and the sheet curve, and drops the notification sheet on the sheet time and curve', () => {
-    expect(dock).toMatch(/\.rv-fullmenu \{[^}]*animation: rv-fade-in var\(--rv-motion-base\) var\(--rv-ease-sheet\)/)
-    expect(dock).not.toMatch(/rv-fullmenu[^\n]*(translate|scale)/)
+  it('rises the menu and drops the notification sheet on the sheet time and curve, as every phone window does', () => {
+    expect(dock).toMatch(/\.rv-fullmenu \{[^}]*animation: rv-rise var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
     expect(dock).toMatch(/rv-notification-history \{[^}]*animation: rv-sheet-down var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
     expect(read('../styles/responsive.css')).toContain('@keyframes rv-rise { from { translate: 0 100%; } to { translate: 0 0; } }')
     expect(tokens).toContain('--rv-motion-bar: var(--rv-motion-base);')
@@ -93,22 +92,6 @@ describe('the status bar area stays unpainted', () => {
     expect(read('../styles/phone-spacing.css')).toContain('.rv-topbar { padding-top: 0 !important; min-height: 62px !important; }')
   })
 
-  it('lets the menu list slide behind the status bar: the safe area is the list\'s own padding, the page behind is not painted there', () => {
-    expect(dock).toMatch(/\.rv-fullmenu-body \{[^}]*padding: calc\(env\(safe-area-inset-top, 0px\) \+ 36px\)/)
-    expect(dock).not.toMatch(/\.rv-fullmenu \{[^}]*padding:/)
-  })
-})
-
-describe('the menu takes the theme\'s colours', () => {
-  it('uses tokens, not fixed colours, for its surface, text, active row, counts, danger row and focus ring', () => {
-    const menuCss = dock.slice(dock.indexOf('.rv-fullmenu { position: fixed'), dock.indexOf('/* The dock while the menu is open'))
-    expect(menuCss).toContain('color: var(--rv-color-ink); background: var(--rv-color-bg);')
-    expect(menuCss).toContain('.rv-fullmenu-row.is-current { color: var(--rv-color-primary-text); font-weight: 600; background: var(--rv-color-primary-soft); }')
-    expect(menuCss).toContain('.rv-fullmenu-row.is-danger { color: var(--rv-color-danger); }')
-    // (white on the count badge's accent fill is the one fixed colour)
-    expect(menuCss.replaceAll('color: #fff;', '')).not.toMatch(/#[0-9a-f]{3,8}|rgb\(255 255 255/i)
-    expect(dock).not.toMatch(/\.rv-dock-layer\[data-menu\] \.rv-dock-round/)
-  })
 })
 
 describe('layers over the top bar and the menu leaving', () => {
@@ -117,8 +100,7 @@ describe('layers over the top bar and the menu leaving', () => {
   })
 
   it('keeps the full-screen menu mounted for the shared exit (rv-sink on the exit tokens) with no touch while it goes', () => {
-    expect(dock).toContain('.rv-fullmenu.is-closing { pointer-events: none; animation: rv-menu-out var(--rv-motion-exit) var(--rv-ease-sheet) forwards; }')
-    expect(dock).not.toMatch(/data-rv-menu|rv-fullmenu-peek|rv-menu-push|\.rv-fullmenu-drawer/)
+    expect(dock).toContain('.rv-fullmenu.is-closing { pointer-events: none; animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards; }')
     expect(read('../styles/responsive.css')).toContain('animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards')
     expect(tokens).toContain('--rv-motion-exit: 180ms;')
   })

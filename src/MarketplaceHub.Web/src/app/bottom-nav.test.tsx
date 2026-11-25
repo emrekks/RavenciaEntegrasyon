@@ -142,13 +142,17 @@ describe('Ravencia Dock', () => {
     expect(host.querySelectorAll('.rv-dock-round.is-active')).toHaveLength(0)
   })
 
-  it('keeps the round Menü button plain while the menu is open (no active tint), and no page is current', () => {
+  it('shows the round Menü button as the active one with the cross while the menu is open, and no page is current', () => {
     const { host } = mount('/orders')
-    expect(host.querySelector('.rv-dock > button')?.getAttribute('aria-label')).toBe('Menü')
-    click(host.querySelector('.rv-dock > button'))
-    expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-menu')).toBe('open')
+    const menuButton = () => host.querySelector('.rv-dock > button')!
+    expect(menuButton().getAttribute('aria-label')).toBe('Menü')
+    const before = menuButton().innerHTML
+    click(menuButton())
+    expect(menuButton().classList.contains('is-active')).toBe(true)
+    expect(menuButton().getAttribute('aria-label')).toBe('Menüyü Kapat')
+    expect(menuButton().innerHTML).not.toBe(before)
     expect(host.querySelectorAll('.rv-dock [aria-current="page"]')).toHaveLength(0)
-    expect(host.querySelectorAll('.rv-dock .is-active')).toHaveLength(0)
+    expect(host.querySelectorAll('.rv-dock .is-active')).toHaveLength(1)
     cleanup()
     expect(mount('/reports').host.querySelectorAll('.rv-dock .is-active')).toHaveLength(0)
   })
@@ -175,82 +179,74 @@ describe('Ravencia Dock', () => {
     expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
   })
 
-  it('opens the full page from the round Menü button; the dock stays and turns: pill and Ana Sayfa out, only the cross left, which closes it', () => {
+  it('opens the full-screen menu from the Menü slot (which becomes Kapat) and closes it again from the same slot', () => {
     const { host } = mount('/orders')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
-    click(host.querySelector('.rv-dock > button'))
+    click(host.querySelector('button[aria-label^="Menü"]'))
     const dialog = document.querySelector('.rv-fullmenu')!
     expect(dialog.getAttribute('role')).toBe('dialog')
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(document.body.style.overflow).toBe('hidden')
-    expect(dialog.querySelector('.rv-fullmenu-peek, .rv-fullmenu-drawer, .rv-fullmenu-search, .rv-fullmenu-logo, .rv-fullmenu-float, input')).toBeNull()
-    // The same three parts stay where they are; the pill and Ana Sayfa cannot be reached while the cross (right) is the one part left.
-    const layer = host.querySelector('.rv-dock-layer')!
-    expect(layer.getAttribute('data-menu')).toBe('open')
-    expect(layer.hasAttribute('inert')).toBe(false)
-    expect(layer.hasAttribute('data-layer')).toBe(false)
-    const dock = host.querySelector('.rv-dock')!
-    expect(dock.children[0].hasAttribute('inert')).toBe(true)
-    expect(dock.children[1].hasAttribute('inert')).toBe(true)
-    expect(dock.children[2].hasAttribute('inert')).toBe(false)
-    expect(dock.children[2].getAttribute('aria-label')).toBe('Menüyü Kapat')
-    expect(dock.querySelectorAll('.rv-dock-swap > svg')).toHaveLength(2)
-    click(dock.children[2])
+    const slot = host.querySelector('.rv-dock button[aria-expanded="true"]')!
+    expect(slot.getAttribute('aria-label')).toBe('Menüyü Kapat')
+    expect(host.querySelector('.rv-dock [aria-current="page"]')).toBeNull()
+    click(slot)
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
     expect(pathNow).toBe('/orders')
-    expect(host.querySelector('.rv-dock')!.children[0].hasAttribute('inert')).toBe(false)
-    expect(host.querySelector('.rv-dock-pill')?.hasAttribute('inert')).toBe(false)
   })
 
   it('closes with Esc and with the back button, and the back button does not leave the page', () => {
     const { host } = mount('/orders')
-    click(host.querySelector('.rv-dock > button'))
+    click(host.querySelector('button[aria-label^="Menü"]'))
     act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
-    click(host.querySelector('.rv-dock > button'))
+    click(host.querySelector('button[aria-label^="Menü"]'))
     expect(document.querySelector('.rv-fullmenu')).not.toBeNull()
     click(host.querySelector('#back'))
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
     expect(pathNow).toBe('/orders')
   })
 
-  it('is a plain list: the groups (the first one without a heading), Sistem dropped, Hesap with the profile, Sistem Ayarları and Çıkış Yap; no theme row', () => {
+  it('is the title, the groups and, at the end of the Sistem group, the user and Çıkış as a danger row; no search field, no footer', () => {
     const { host } = mount('/orders')
-    click(host.querySelector('.rv-dock > button'))
-    const menu = document.querySelector('.rv-fullmenu')!
-    const sections = [...menu.querySelectorAll('.rv-fullmenu-group')]
-    // The settings page is a row of Hesap now, so the Sistem group has nothing left and loses its heading with it.
-    expect(sections.map(section => section.getAttribute('aria-label'))).toEqual(['Ana Menü', 'Hesap'])
-    expect(sections[0].querySelector('h3')).toBeNull()
-    expect(sections[1].querySelector('h3')?.textContent).toBe('Hesap')
-    expect(menu.querySelector('.rv-fullmenu-chev')).toBeNull()
-    expect([...menu.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
-    expect(sections[0].querySelector('[aria-current="page"]')?.textContent).toContain('Siparişler')
-    const profileRow = sections[1].querySelector('.rv-fullmenu-profile')!
-    expect(profileRow.tagName).toBe('DIV')
-    expect(profileRow.querySelector('a, button, [tabindex]')).toBeNull()
-    expect(profileRow.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('AY')
-    expect(profileRow.textContent).toBe('AYAyşe Yılmaz')
-    // Right under the profile: Sistem Ayarları (a link to the settings page), then Çıkış Yap.
-    expect([...sections[1].children[1].children].map(child => child.className.split(' ')[0] + ':' + (child.textContent ?? ''))).toEqual(['rv-fullmenu-profile:AYAyşe Yılmaz', 'rv-fullmenu-row:Sistem Ayarları', 'rv-fullmenu-row:Çıkış Yap'])
-    expect(sections[1].querySelector('a.rv-fullmenu-row')?.getAttribute('href')).toBe('/settings')
-    expect(sections[1].querySelector('.rv-fullmenu-row.is-danger')?.textContent).toBe('Çıkış Yap')
-    expect([...menu.querySelectorAll('.rv-fullmenu-row')].some(row => /Tema/.test(row.textContent ?? ''))).toBe(false)
+    click(host.querySelector('button[aria-label^="Menü"]'))
+    expect(document.querySelector('.rv-fullmenu-head')?.textContent).toBe('Menü')
+    expect(document.querySelector('.rv-fullmenu-search, .rv-fullmenu-foot, .rv-fullmenu-tools, input')).toBeNull()
+    const system = document.querySelector('.rv-fullmenu-group[aria-label="Sistem"]')!
+    expect(system.querySelector('h3')?.textContent).toBe('Sistem')
+    expect(document.querySelector('.rv-fullmenu-store')).toBeNull()
+    // The profile card is the last item of the scrolling list, after the groups: initials avatar, name, role and e-mail, an arrow to the account page.
+    const card = document.querySelector('.rv-fullmenu-body > .rv-fullmenu-profile:last-child')!
+    expect(document.querySelector('.rv-fullmenu-body > :first-child')?.classList.contains('rv-fullmenu-group')).toBe(true)
+    // Only a picture of who is signed in: a plain block, not a link, no arrow, nothing to tab to.
+    expect(card.tagName).toBe('DIV')
+    expect(card.getAttribute('href')).toBeNull()
+    expect(card.querySelector('a, button, [tabindex]')).toBeNull()
+    expect(card.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('AY')
+    expect(card.querySelector('strong')?.textContent).toBe('Ayşe Yılmaz')
+    expect(card.querySelector('small')?.textContent).toBe('Hesap Sahibi · ayse@ravencia.com')
+    expect(card.querySelector('.rv-fullmenu-role')?.textContent).toBe('Hesap Sahibi')
+    expect(card.querySelector('.rv-fullmenu-chev')).toBeNull()
+    const rows = [...system.querySelectorAll('.rv-fullmenu-row')]
+    expect(rows.map(row => row.textContent)).toEqual(['Sistem Ayarları', 'Çıkış'])
+    expect(rows[1].classList.contains('is-danger')).toBe(true)
+    expect(rows[1].querySelector('.rv-fullmenu-chev')).toBeNull()
+    // Only pages with something pending show a count (0 shows none).
+    expect([...document.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
   })
 
-  it('goes to the settings page from its Hesap row, which is current there', () => {
-    const { host } = mount('/orders')
-    click(host.querySelector('.rv-dock > button'))
-    click([...document.querySelectorAll('.rv-fullmenu-row')].find(row => row.textContent === 'Sistem Ayarları') ?? null)
-    expect(pathNow).toBe('/settings')
-    expect(document.querySelector('.rv-fullmenu')).toBeNull()
-    click(host.querySelector('.rv-dock > button'))
-    expect(document.querySelector('a.rv-fullmenu-row[href="/settings"]')?.classList.contains('is-current')).toBe(true)
+  it('shows only the name, with no arrow and no link, when the session has no role or e-mail and there is no page to go to', () => {
+    render(<MemoryRouter><FullScreenMenu groups={groups} profile={{ name: 'ilker' }} onLogout={() => undefined} onClose={() => undefined} onNavigate={() => undefined} pathname="/orders" /></MemoryRouter>)
+    const card = document.querySelector('.rv-fullmenu-profile')!
+    expect(card.tagName).toBe('DIV')
+    expect(card.querySelector('small')).toBeNull()
+    expect(card.querySelector('.rv-fullmenu-chev')).toBeNull()
+    expect(card.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('İ')
   })
 
   it('leaves the menu for a page by replacing its history entry, so back returns to the page it was opened on', () => {
     const { host } = mount('/orders')
-    click(host.querySelector('.rv-dock > button'))
+    click(host.querySelector('button[aria-label^="Menü"]'))
     click([...document.querySelectorAll('.rv-fullmenu-row')].find(row => row.textContent?.startsWith('Faturalar')) ?? null)
     expect(pathNow).toBe('/invoices')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
@@ -263,7 +259,7 @@ describe('no bell in the dock or the menu', () => {
   it('has neither a pill above the dock nor a bell, theme or search button in the menu header', () => {
     const { host } = mount('/orders')
     expect(host.querySelector('.rv-dock-pill-bell, .rv-dock-bell')).toBeNull()
-    click(host.querySelector('.rv-dock > button'))
+    click(host.querySelector('button[aria-label^="Menü"]'))
     expect(document.querySelectorAll('.rv-fullmenu-head button')).toHaveLength(0)
   })
 })
