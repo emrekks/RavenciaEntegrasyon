@@ -186,7 +186,8 @@ function lowStockSizeLabel(variant: Variant) {
 function lowStockMissingVariantCount(group: ProductGroup) {
   return group.variants.filter(item => item.variant.onHand <= 0).length
 }
-// Two lists: Düşük Stok Renkleri (a colour with at least half its variants sold out, the products page's low-stock count)
+// Two lists: Düşük Stok Renkleri (a colour with at least half its variants sold out, a whole colour too, while the model
+// still has stock: the products page's low-stock count)
 // and Tükenen Varyantlar (any variant sold out, a whole colour too, while the model still has stock, read when its tab is opened).
 export function LowStockDetailsModal({ products: lowProducts, loading: lowLoading, error: lowError, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string, modelCode?: string) => void }) {
   const [mode, setMode] = useState<'LOW' | 'GAP'>('LOW')
@@ -247,7 +248,7 @@ export function LowStockDetailsModal({ products: lowProducts, loading: lowLoadin
   useEffect(() => { setOpenFamilies(new Set()); setOpenColors(new Set()) }, [search, categoryFilter, sort, mode])
 
   const low = mode === 'LOW'
-  return <RrModal crumb="Stok Takibi" label="Düşük Stok" title={<>Düşük Stok<TitleHint label="Düşük Stok">Model koduna göre gruplanmış, tükenen varyantı olan ürünler. <b>Düşük stok:</b> bir renkteki varyantların en az yarısı tükenmiş. <b>Tükenen varyant:</b> stoğu süren modelde en az bir beden, seçenek ya da renk bitmiş.</TitleHint></>} size="lg" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}>
+  return <RrModal crumb="Stok Takibi" label="Düşük Stok" title={<>Düşük Stok<TitleHint label="Düşük Stok">Model koduna göre gruplanmış, tükenen varyantı olan ürünler. <b>Düşük stok:</b> stoğu süren modelde bir rengin varyantlarının en az yarısı tükenmiş; tamamen biten renkler de dahil. <b>Tükenen varyant:</b> stoğu süren modelde en az bir beden, seçenek ya da renk bitmiş.</TitleHint></>} size="lg" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}>
     <ViewTabsWithMore className="rr-low-tabs" more={[]} ariaLabel="Düşük stok" value={mode} onChange={value => setMode(value as typeof mode)} items={[{ value: 'LOW', label: 'Düşük Stok Renkleri' }, { value: 'GAP', label: 'Tükenen Varyantlar' }]} />
     {loading ? <RrLoading text={low ? 'Düşük stok ürünleri yükleniyor…' : 'Tükenen varyantlar yükleniyor…'} /> : error ? <RrError error={error} /> : !groups.length ? <EmptyState icon="stock" title={low ? 'Düşük Stok Ürün Yok' : 'Tükenen Varyant Yok'}>Tüm ürünlerin stoğu yeterli.</EmptyState> : <>
       <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Stok eksiklerinde ara" /></span><PanelSelect ariaLabel="Kategori" value={categoryFilter} onChange={setCategoryFilter} width={220} options={[{ value: '', label: 'Tüm Kategoriler' }, ...categoryOptions.map(category => ({ value: category, label: category }))]} /><PanelSelect ariaLabel="Sıralama" value={sort} onChange={setSort} width={260} options={[{ value: 'NEWEST', label: 'Eklenme Sırası (Yeniden Eskiye)' }, { value: 'MODEL_ASC', label: 'Model Kodu (A-Z)' }, { value: 'MODEL_DESC', label: 'Model Kodu (Z-A)' }, { value: 'MISSING_DESC', label: 'Eksik Varyant (Çoktan Aza)' }, { value: 'MISSING_ASC', label: 'Eksik Varyant (Azdan Çoğa)' }]} /></div>
