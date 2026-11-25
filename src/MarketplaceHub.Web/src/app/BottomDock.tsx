@@ -99,14 +99,17 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     </Link>
   }
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} data-menu={menuOpen ? 'open' : undefined} inert={layerOpen || menuOpen || undefined}>
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} data-menu={menuOpen ? 'open' : undefined} inert={layerOpen || undefined}>
     <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
-      {slot(homePage, true)}
-      <div className="rv-dock-pill">
+      {/* While the menu is open the same round button is the gear (Sistem Ayarları): the icons cross-fade in place. */}
+      <Link to={menuOpen ? settingsPath : homePage.to} className={'rv-dock-round' + (isActive(homePage.to, homePage.end) ? ' is-active' : '')} aria-label={menuOpen ? 'Sistem Ayarları' : 'Ana Sayfa'} aria-current={isActive(homePage.to, homePage.end) ? 'page' : undefined} onClick={follow(menuOpen ? settingsPath : homePage.to)}>
+        <span className="rv-dock-icon rv-dock-swap"><UiIcon className="rv-swap-a" name="dashboard" size={22} /><UiIcon className="rv-swap-b" name="settings" size={22} /></span>
+      </Link>
+      <div className="rv-dock-pill" inert={menuOpen || undefined}>
         {pillPages.map(page => slot(page))}
       </div>
       <button type="button" ref={menuSlotRef} className={'rv-dock-round' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
-        <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen ? badge(menuCount) : null}</span>
+        <span className="rv-dock-icon rv-dock-swap"><UiIcon className="rv-swap-a" name="menu" size={22} /><UiIcon className="rv-swap-b" name="close" size={22} />{!menuOpen ? badge(menuCount) : null}</span>
       </button>
     </nav>
     <div className="rv-dock-panel" inert={!task || undefined}>
@@ -143,6 +146,8 @@ export function useExitPresence(open: boolean) {
   return { present, closing: present && !open }
 }
 
+const settingsPath = '/settings'
+
 export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname, closing = false, theme = 'light', onToggleTheme }: {
   closing?: boolean
   groups: MenuGroup[]
@@ -155,7 +160,6 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   onToggleTheme?: () => void
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const [query, setQuery] = useState('')
   useScrollLock(true, false, { layer: false })
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true })
@@ -164,17 +168,14 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     main?.setAttribute('inert', '')
     return () => main?.removeAttribute('inert')
   }, [])
-  // The page is pushed aside by the drawer (bottom-nav.css, html[data-rv-menu]), and slides back with it.
-  useEffect(() => {
-    document.documentElement.setAttribute('data-rv-menu', closing ? 'closing' : 'open')
-  }, [closing])
-  useEffect(() => () => document.documentElement.removeAttribute('data-rv-menu'), [])
   const trap = (event: KeyboardEvent | ReactKeyboardEvent) => {
     // The notification sheet over the menu owns Esc and Tab while it is open.
     if (document.querySelector('.rv-notification-history')) return
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
     if (event.key !== 'Tab') return
-    const items = [...(rootRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])].filter(element => element.offsetParent !== null || element === document.activeElement)
+    // The menu and the dock's two round buttons (the gear and the cross) form the cycle.
+    const scopes = [rootRef.current, document.querySelector('.rv-dock')]
+    const items = scopes.flatMap(scope => scope ? [...scope.querySelectorAll<HTMLElement>(scope === rootRef.current ? focusableSelector : '.rv-dock-round')] : []).filter(element => element.offsetParent !== null || element === document.activeElement)
     if (!items.length) return
     const first = items[0]
     const last = items[items.length - 1]
@@ -187,51 +188,35 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     document.addEventListener('keydown', listener)
     return () => document.removeEventListener('keydown', listener)
   })
-  const needle = query.trim().toLocaleLowerCase('tr-TR')
-  const matches = (label: string) => !needle || label.toLocaleLowerCase('tr-TR').includes(needle)
   const row = (entry: MenuEntry): ReactNode => {
     const hasCount = typeof entry.count === 'number' && entry.count > 0
     const active = entry.end ? pathname === entry.to : pathname === entry.to || pathname.startsWith(`${entry.to}/`)
     const countLabel = typeof entry.count === 'number' && entry.count > 999 ? '999 üzeri' : entry.count?.toLocaleString('tr-TR')
     return <Link key={entry.to} to={entry.to} className={`rv-fullmenu-row${active ? ' is-current' : ''}`} aria-current={active ? 'page' : undefined} aria-label={hasCount ? `${entry.label}, ${countLabel} ${entry.noun ?? 'bildirim'}` : undefined}
       onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); onNavigate(entry.to) }}>
-      <UiIcon name={entry.icon} size={20} />
+      <UiIcon name={entry.icon} size={22} />
       <span className="rv-fullmenu-name">{entry.label}</span>
       {hasCount ? <span className={`rv-fullmenu-count${entry.warn ? ' is-warn' : ''}`} aria-hidden="true">{entry.count! > 999 ? '999+' : entry.count!.toLocaleString('tr-TR')}</span> : null}
     </Link>
   }
-  const heading = (label: string) => <h3>{label}<UiIcon name="chevronRight" size={12} /></h3>
-  const shown = groups.map(group => ({ group, entries: group.entries.filter(entry => matches(entry.label)) })).filter(item => item.entries.length)
-  const themeLabel = theme === 'light' ? 'Koyu Tema' : 'Açık Tema'
-  const showTheme = Boolean(onToggleTheme) && matches(themeLabel)
-  const showLogout = matches('Çıkış Yap')
-  const showProfile = matches(profile.name) || matches('Hesap')
-  const showAccount = showTheme || showLogout || showProfile
+  const heading = (label: string) => <h3>{label}<UiIcon name="chevronRight" size={14} /></h3>
+  // The settings page is the round gear button at the bottom, not a row; a group left with nothing else drops its heading too.
+  const shown = groups.map(group => ({ group, entries: group.entries.filter(entry => entry.to !== settingsPath) })).filter(item => item.entries.length)
   return <div ref={rootRef} className={'rv-fullmenu' + (closing ? ' is-closing' : '')} role="dialog" aria-modal="true" aria-label="Menü" tabIndex={-1} inert={closing || undefined}>
-    <div className="rv-fullmenu-drawer">
-      <img className="rv-fullmenu-logo" src="/pack/brand/ravencia-symbol-dark-128.webp" alt="Ravencia" />
-      <label className="rv-fullmenu-search"><UiIcon name="search" size={18} /><input type="search" placeholder="Ara" aria-label="Menüde Ara" autoComplete="off" value={query} onChange={event => setQuery(event.target.value)} /></label>
-      <div className="rv-fullmenu-body">
-        {shown.map(({ group, entries }) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
-          {group !== groups[0] ? heading(group.label) : null}
-          <div className="rv-fullmenu-list">{entries.map(row)}</div>
-        </section>)}
-        {showAccount ? <section className="rv-fullmenu-group" aria-label="Hesap">
-          {heading('Hesap')}
-          <div className="rv-fullmenu-list">
-            {showProfile ? <div className="rv-fullmenu-profile"><UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} /><span className="rv-fullmenu-name">{profile.name}</span></div> : null}
-            {showTheme ? <button type="button" className="rv-fullmenu-row" onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={20} /><span className="rv-fullmenu-name">{themeLabel}</span></button> : null}
-            {showLogout ? <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={20} /><span className="rv-fullmenu-name">Çıkış Yap</span></button> : null}
-          </div>
-        </section> : null}
-        {!shown.length && !showAccount ? <p className="rv-fullmenu-empty">Eşleşen menü yok.</p> : null}
-      </div>
-      <div className="rv-fullmenu-float">
-        <Link to="/settings" className="rv-fullmenu-settings" onClick={event => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return; event.preventDefault(); onNavigate('/settings') }}><UiIcon name="settings" size={20} />Ayarlar</Link>
-        <button type="button" className="rv-fullmenu-close" aria-label="Menüyü Kapat" onClick={onClose}><UiIcon name="close" size={20} /></button>
-      </div>
+    <div className="rv-fullmenu-body">
+      {shown.map(({ group, entries }, index) => <section className="rv-fullmenu-group" key={group.label} aria-label={group.label}>
+        {index > 0 ? heading(group.label) : null}
+        <div className="rv-fullmenu-list">{entries.map(row)}</div>
+      </section>)}
+      <section className="rv-fullmenu-group" aria-label="Hesap">
+        {heading('Hesap')}
+        <div className="rv-fullmenu-list">
+          <div className="rv-fullmenu-profile"><UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} /><span className="rv-fullmenu-name">{profile.name}</span></div>
+          {onToggleTheme ? <button type="button" className="rv-fullmenu-row" onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={22} /><span className="rv-fullmenu-name">{theme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button> : null}
+          <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={22} /><span className="rv-fullmenu-name">Çıkış Yap</span></button>
+        </div>
+      </section>
     </div>
-    <button type="button" className="rv-fullmenu-peek" tabIndex={-1} aria-label="Menüyü Kapat" onClick={onClose} />
   </div>
 }
 
