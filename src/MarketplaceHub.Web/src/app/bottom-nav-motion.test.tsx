@@ -81,14 +81,23 @@ describe('useStuckHead', () => {
 
 describe('the dock counts', () => {
   it('hang off the icon, 9 px up and 3 px past its right edge, 16 px high with a ring in the part colour (10/700 text, 99+ at most)', () => {
-    expect(dock).toMatch(/\.rv-dock-badge \{ position: absolute; top: -9px; right: -3px;[^}]*min-width: 16px; height: 16px; padding: 0 4px;[^}]*0 0 0 1\.5px var\(--rv-dock-ring, var\(--rv-color-surface\)\);[^}]*font-size: 10px; font-weight: 700;/)
+    expect(dock).toMatch(/\.rv-dock-badge \{ position: absolute; top: -8px; right: -5px;[^}]*min-width: 14px; height: 14px; padding: 0 3px;[^}]*0 0 0 1\.5px var\(--rv-dock-ring, var\(--rv-color-surface\)\);[^}]*font-size: 9px; font-weight: 700;/)
   })
 })
 
 describe('the status bar area stays unpainted', () => {
+  it('sets the see-through state deliberately: Home Screen app under a translucent status bar, no theme-color, no fixed or sticky surface within 10 px of the top edge', () => {
+    const html = read('../../index.html')
+    expect(html).toContain('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />')
+    expect(html).toContain('<meta name="apple-mobile-web-app-capable" content="yes" />')
+    expect(html).toContain('viewport-fit=cover')
+    expect(html).not.toMatch(/<meta name="theme-color"/)
+    expect(dock).toContain(':root { --rv-top-gap: max(env(safe-area-inset-top, 0px), 10px); }')
+    expect(dock).toContain(".rv-fullmenu { position: fixed; inset: var(--rv-top-gap) 0 0;")
+  })
   it('starts the top bar under the safe area (margin and sticky top), which it also clears when it slides away, with no padding of its own', () => {
-    expect(dock).toContain('.rv-topbar { top: env(safe-area-inset-top, 0px); margin-top: env(safe-area-inset-top, 0px); }')
-    expect(dock).toContain('.rv-topbar.is-hidden { transform: translateY(calc(-100% - env(safe-area-inset-top, 0px) - 1px)); }')
+    expect(dock).toContain('.rv-topbar { top: var(--rv-top-gap); margin-top: var(--rv-top-gap); }')
+    expect(dock).toContain('.rv-topbar.is-hidden { transform: translateY(calc(-100% - var(--rv-top-gap) - 1px)); }')
     expect(read('../styles/phone-spacing.css')).toContain('.rv-topbar { padding-top: 0 !important; min-height: 62px !important; }')
   })
 
