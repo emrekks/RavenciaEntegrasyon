@@ -91,6 +91,8 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toMatch(/\.rv-dock-round \{ width: 56px; height: 56px; border-radius: 50%/)
     expect(phone).toMatch(/\.rv-dock-panel \{[^}]*height: 56px; border-radius: 28px/)
     expect(phone).toContain('.rv-dock-slot:active, .rv-dock-round:active { transform: scale(.96); }')
+    // The six icons are 22 px with a 2.5 px stroke (the global .ui-icon rule held them at 16 px).
+    expect(phone).toContain('.rv-dock-icon > .ui-icon { width: 22px; height: 22px; stroke-width: 2.5px; }')
     expect(phone).toMatch(/\.rv-dock-slot\.is-active, \.rv-dock-round\.is-active \{ color: var\(--rv-color-primary-text\); background-color: color-mix\(in srgb, var\(--rv-color-primary\) var\(--rv-dock-active-tint\)/)
     expect(phone).toContain('--rv-dock-active-tint: 14%')
     expect(phone).toContain('--rv-dock-active-tint: 24%')

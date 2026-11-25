@@ -58,7 +58,10 @@
   .rv-dock-slot:active, .rv-dock-round:active { transform: scale(.96); }
   .rv-dock-slot:focus-visible, .rv-dock-round:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
   .rv-dock-icon { position: relative; display: inline-grid; }
-  .rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 4px); box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 2px var(--rv-color-surface); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
+  /* The icons: 22 px (the global .ui-icon rule had held them at 16 px). Their stroke does not scale with the box (non-scaling-stroke), so it is set
+     to match: 2 px at 16 px -> 2.5 px at 22 px. */
+  .rv-dock-icon > .ui-icon { width: 22px; height: 22px; stroke-width: 2.5px; }
+  .rv-dock-badge { position: absolute; top: -8px; left: calc(100% - 1px); box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 2px var(--rv-color-surface); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }
 
   /* Task bar: one row in the wide 56 px panel, labelled buttons side by side, 40 px high, radius 20, 8 px apart, 8 px in. There is no Menü and no Geri
      here (the way back is the top bar's "‹ Liste"; the dock comes back when the page is left). The row is fitted by dock-actions.tsx:
