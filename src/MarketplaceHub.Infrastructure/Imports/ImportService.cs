@@ -35,11 +35,20 @@ public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, Cu
         var expectedMime = session.SourceType == ImportSourceType.Csv ? "text/csv" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; if (!string.Equals(upload.ContentType, expectedMime, StringComparison.OrdinalIgnoreCase)) return Invalid<ImportSessionView>("file", "Dosya MIME türü import kaynağıyla eşleşmiyor.");
         var prefix = buffer.ToArray().AsSpan(0, (int)Math.Min(4, buffer.Length)); if (session.SourceType == ImportSourceType.Xlsx && (prefix.Length < 4 || prefix[0] != (byte)'P' || prefix[1] != (byte)'K')) return Invalid<ImportSessionView>("file", "XLSX magic-byte doğrulaması başarısız.");
         var hash = Convert.ToHexString(SHA256.HashData(buffer.ToArray())); var existing = await db.FileAssets.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Classification == "IMPORT_SOURCE" && x.Sha256 == hash && x.ArchivedAt == null, cancellationToken);
-        if (existing is null)
+        // A new file gets its final name only after its row is saved (disposing it uncommitted removes it).
+        IStagedPrivateFile? staged = null;
+        try
         {
-            var assetId = Guid.CreateVersion7(); var extension = session.SourceType == ImportSourceType.Csv ? ".csv" : ".xlsx"; buffer.Position = 0; var stored = await files.SaveAsync(tenantId, $"{assetId:N}{extension}", expectedMime, buffer, _maximumBytes, cancellationToken); existing = new FileAsset { Id = assetId, TenantId = tenantId, Classification = "IMPORT_SOURCE", RelativePath = stored, OriginalNameSafe = Path.GetFileName(upload.FileName), MimeType = expectedMime, SizeBytes = buffer.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() }; db.FileAssets.Add(existing);
+            if (existing is null)
+            {
+                var assetId = Guid.CreateVersion7(); var extension = session.SourceType == ImportSourceType.Csv ? ".csv" : ".xlsx"; buffer.Position = 0; staged = await files.StageAsync(tenantId, $"{assetId:N}{extension}", expectedMime, buffer, _maximumBytes, cancellationToken); existing = new FileAsset { Id = assetId, TenantId = tenantId, Classification = "IMPORT_SOURCE", RelativePath = staged.RelativePath, OriginalNameSafe = Path.GetFileName(upload.FileName), MimeType = expectedMime, SizeBytes = buffer.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() }; db.FileAssets.Add(existing);
+            }
+            session.SourceAssetId = existing.Id; session.UpdatedAt = timeProvider.GetUtcNow(); session.Version++; await db.SaveChangesAsync(cancellationToken); staged?.Commit(); return ServiceResult<ImportSessionView>.Ok(Map(session));
         }
-        session.SourceAssetId = existing.Id; session.UpdatedAt = timeProvider.GetUtcNow(); session.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<ImportSessionView>.Ok(Map(session));
+        finally
+        {
+            if (staged is not null) await staged.DisposeAsync();
+        }
     }
 
     public async Task<ServiceResult<ImportSessionView>> ConfigureColumnsAsync(Guid tenantId, Guid sessionId, long expectedVersion, UpdateColumnMappingCommand command, CancellationToken cancellationToken)

@@ -10,9 +10,32 @@ public interface ITenantContextAccessor
 public interface IPrivateFileStorage
 {
     Task<string> SaveAsync(Guid tenantId, string relativeName, string mimeType, Stream content, long maximumBytes, CancellationToken cancellationToken);
+    // Writes the file under a temporary name next to its final place. The caller commits it once the database row that
+    // points at RelativePath is saved; disposing it uncommitted removes the temporary file, so a failed database write
+    // never leaves a file under a name a row could point at. Stores without staging write the final file at once.
+    async Task<IStagedPrivateFile> StageAsync(Guid tenantId, string relativeName, string mimeType, Stream content, long maximumBytes, CancellationToken cancellationToken) =>
+        new CommittedPrivateFile(await SaveAsync(tenantId, relativeName, mimeType, content, maximumBytes, cancellationToken));
+    // Removes temporary files that were never committed (a process that died between the write and the commit) and are
+    // older than the given time; returns how many went.
+    Task<int> SweepStagedAsync(DateTimeOffset olderThan, CancellationToken cancellationToken) => Task.FromResult(0);
     Task<Stream> OpenReadAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken);
     // Removes a stored file of the tenant; false when it was already gone.
     Task<bool> DeleteAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken);
+}
+
+public interface IStagedPrivateFile : IAsyncDisposable
+{
+    // The stored path the database row records (the final name).
+    string RelativePath { get; }
+    // Moves the temporary file to its final name; call it after the database commit.
+    void Commit();
+}
+
+public sealed class CommittedPrivateFile(string relativePath) : IStagedPrivateFile
+{
+    public string RelativePath { get; } = relativePath;
+    public void Commit() { }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 
 public interface IJobLeaseService

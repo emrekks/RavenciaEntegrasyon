@@ -42,15 +42,21 @@ public static partial class CatalogEndpoints
         var asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
         if (asset is null)
         {
-            buffer.Position = 0; var id = Guid.CreateVersion7(); var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{(file.ContentType == "image/jpeg" ? ".jpg" : ".png")}", file.ContentType, buffer, MaxUploadBytes, http.RequestAborted);
-            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+            buffer.Position = 0; var id = Guid.CreateVersion7();
+            // The file gets its final name only after its row is saved (disposing it uncommitted removes it).
+            await using var staged = await storage.StageAsync(tenant.TenantId, $"{id:N}{(file.ContentType == "image/jpeg" ? ".jpg" : ".png")}", file.ContentType, buffer, MaxUploadBytes, http.RequestAborted);
+            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "PRODUCT_MEDIA", RelativePath = staged.RelativePath, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = file.ContentType, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
             db.FileAssets.Add(asset);
-            try { await db.SaveChangesAsync(http.RequestAborted); }
+            try
+            {
+                await db.SaveChangesAsync(http.RequestAborted);
+                staged.Commit();
+            }
             catch (DbUpdateException)
             {
                 // K11: a parallel upload of the same image may have stored it first (the partial unique index
                 // UX_file_assets_active_product_media_sha256 refuses the second); reuse that asset. The file
-                // written here stays unreferenced.
+                // written here is never committed and goes when the stage is disposed.
                 db.ChangeTracker.Clear();
                 asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
                 if (asset is null) throw;

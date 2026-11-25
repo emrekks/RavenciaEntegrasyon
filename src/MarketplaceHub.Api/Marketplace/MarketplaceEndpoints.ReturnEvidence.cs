@@ -42,10 +42,12 @@ public static partial class MarketplaceEndpoints
             var id = Guid.CreateVersion7();
             var extension = mimeType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
             buffer.Position = 0;
-            var stored = await storage.SaveAsync(tenant.TenantId, $"{id:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
-            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "RETURN_EVIDENCE", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+            // The file gets its final name only after its row is saved (disposing it uncommitted removes it).
+            await using var staged = await storage.StageAsync(tenant.TenantId, $"{id:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
+            asset = new FileAsset { Id = id, TenantId = tenant.TenantId, Classification = "RETURN_EVIDENCE", RelativePath = staged.RelativePath, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
             db.FileAssets.Add(asset);
             await db.SaveChangesAsync(http.RequestAborted);
+            staged.Commit();
         }
         return Results.Created($"/api/v1/files/return-evidence/{asset.Id:D}", new { asset.Id, asset.MimeType, asset.SizeBytes, asset.Sha256 });
     }

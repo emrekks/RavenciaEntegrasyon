@@ -7,7 +7,7 @@ namespace MarketplaceHub.Api.Operations;
 /// <summary>
 /// Runs the hourly leftover sweep shortly after start and then every hour: unreferenced old files are handed to the
 /// purge (<see cref="FileAssetReferences.MarkOrphansAsync"/>), purged files leave disk and their rows
-/// (<see cref="PurgedFileRetention"/>), replaced keys and deleted connections' settings go (<see cref="ConnectionLeftovers"/>).
+/// (<see cref="PurgedFileRetention"/>), uploads never committed after a day leave disk, replaced keys and deleted connections' settings go (<see cref="ConnectionLeftovers"/>).
 /// Each step runs on its own, so one failing does not hold the others back.
 /// </summary>
 public sealed class PurgedFileRetentionService(IServiceScopeFactory scopes, TimeProvider timeProvider, ILogger<PurgedFileRetentionService> logger) : BackgroundService
@@ -26,7 +26,8 @@ public sealed class PurgedFileRetentionService(IServiceScopeFactory scopes, Time
                 var purged = await StepAsync("purged files", (services, now) => PurgedFileRetention.SweepAsync(services.GetRequiredService<AppDbContext>(), services.GetRequiredService<IPrivateFileStorage>(), now, stoppingToken, services.GetService<ProductMediaRenditions>()), stoppingToken);
                 var keys = await StepAsync("replaced keys", (services, _) => ConnectionLeftovers.RemoveRevokedCredentialsAsync(services.GetRequiredService<AppDbContext>(), stoppingToken), stoppingToken);
                 var connections = await StepAsync("deleted connections", (services, now) => ConnectionLeftovers.SweepDeletedConnectionsAsync(services.GetRequiredService<AppDbContext>(), now, stoppingToken), stoppingToken);
-                logger.LogInformation("Leftover sweep: {Orphans} unreferenced files marked for purge, {Purged} files purged, {Keys} replaced keys deleted, {Connections} deleted connections removed.", orphans, purged, keys, connections);
+                var staged = await StepAsync("uncommitted files", (services, now) => services.GetRequiredService<IPrivateFileStorage>().SweepStagedAsync(now - PrivateFileStorage.StagedMaximumAge, stoppingToken), stoppingToken);
+                logger.LogInformation("Leftover sweep: {Orphans} unreferenced files marked for purge, {Purged} files purged, {Staged} uncommitted temporary files removed, {Keys} replaced keys deleted, {Connections} deleted connections removed.", orphans, purged, staged, keys, connections);
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
         }

@@ -113,18 +113,20 @@ public static partial class InvoicingEndpoints
 
         var now = timeProvider.GetUtcNow();
         var documentId = Guid.CreateVersion7();
-        Guid? assetId = null;
+        Guid? assetId = file is null ? null : Guid.CreateVersion7();
+        // The PDF gets its final name only after its row is committed below (disposing it uncommitted removes it).
+        await using var fileBuffer = new MemoryStream(bytes ?? [], writable: false);
+        await using var stagedPdf = assetId is { } newAssetId
+            ? await storage.StageAsync(tenant.TenantId, $"{newAssetId:N}.pdf", "application/pdf", fileBuffer, maximumBytes, http.RequestAborted)
+            : null;
         string documentUrl;
-        if (file is null) documentUrl = externalUrl;
+        if (file is null || stagedPdf is null) documentUrl = externalUrl;
         else
         {
             var publicBaseUrl = configuration["Marketplace:PublicBaseUrl"] ?? string.Empty;
             try { documentUrl = ManualOrderInvoiceDocumentLink.Create(protection, publicBaseUrl, tenant.TenantId, documentId); }
             catch (ArgumentException) { return Problem(http, new("INVOICE_PUBLIC_DOCUMENT_URL_UNAVAILABLE", "Manuel PDF iletimi için herkese açık HTTPS belge sunucusu yapılandırılmalıdır.", 409)); }
-            assetId = Guid.CreateVersion7();
-            await using var fileBuffer = new MemoryStream(bytes!, writable: false);
-            var stored = await storage.SaveAsync(tenant.TenantId, $"{assetId.Value:N}.pdf", "application/pdf", fileBuffer, maximumBytes, http.RequestAborted);
-            db.FileAssets.Add(new FileAsset { Id = assetId.Value, TenantId = tenant.TenantId, Classification = "INVOICE_DOCUMENT_MANUAL", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file!.FileName), MimeType = "application/pdf", SizeBytes = bytes!.LongLength, Sha256 = sha256!, Status = "ACTIVE", CreatedAt = now });
+            db.FileAssets.Add(new FileAsset { Id = assetId!.Value, TenantId = tenant.TenantId, Classification = "INVOICE_DOCUMENT_MANUAL", RelativePath = stagedPdf.RelativePath, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = "application/pdf", SizeBytes = bytes!.LongLength, Sha256 = sha256!, Status = "ACTIVE", CreatedAt = now });
         }
 
         var activeDocuments = await db.ManualOrderInvoiceDocuments
@@ -174,6 +176,7 @@ public static partial class InvoicingEndpoints
         try { await db.SaveChangesAsync(http.RequestAborted); }
         catch (DbUpdateException) { return Problem(http, new("MANUAL_INVOICE_DOCUMENT_CONFLICT", "Siparişin manuel fatura belgesi eşzamanlı olarak değişti. Sayfayı yenileyip tekrar deneyin.", 409)); }
         await mutationTransaction.CommitAsync(http.RequestAborted);
+        stagedPdf?.Commit();
         return Results.Ok(new { document.Id, document.DocumentType, document.DocumentUrl, document.InvoiceNumber, document.Status, duplicate = false });
     }
 }
