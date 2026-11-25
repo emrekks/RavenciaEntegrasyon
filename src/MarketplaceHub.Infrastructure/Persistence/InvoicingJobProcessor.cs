@@ -708,6 +708,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         return true;
     }
 
+    // The order's own status says it was cancelled as a whole (a partly cancelled order is not, and still delivers).
+    private async Task<bool> OrderFullyCancelledAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
+        !DashboardMetricPolicy.IsInvoiceEligibleOrder(await db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && order.Id == orderId).Select(order => order.DerivedStatus).SingleOrDefaultAsync(cancellationToken)
+            ?? string.Empty);
+
     private static Guid? ReadExchangeResendClaimId(string payloadJson)
     {
         try
@@ -754,6 +760,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status))
             throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
                 $"Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; Hepsiburada'ya yeniden gönderilmedi ({facts})."));
+        if (await OrderFullyCancelledAsync(tenantId, invoice.OrderId, cancellationToken))
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.OrderCancelledCode,
+                $"Sipariş iptal edildi; fatura Hepsiburada'ya yeniden gönderilmedi ({facts})."));
         var state = await db.MarketplaceDeliveryStates.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
         var document = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
         // The SAME link means the one this package's delivery carried (E-Faturam's URL or the panel link), never the one
@@ -864,6 +873,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             item => item.TenantId == tenantId && item.DocumentId == document.Id && item.PackageId == package.Id,
             cancellationToken);
         inspectionOnly |= ManualInvoiceDeliveryPolicy.RequiresReadOnlyInspection(state?.Status);
+        // A fully cancelled order's document is not sent (scan A-2, as the delivery endpoint): a job queued before the
+        // cancellation stops here, and only the read-back of a delivery whose earlier result is uncertain still runs. Its
+        // state leaves "sırada" for FAILED with the reason, so the owner does not see a delivery waiting for ever.
+        if (!inspectionOnly && !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus))
+            return await StopManualOrderInvoiceDelivery(state, "FAILED", InvoiceDeliveryGuardPolicy.OrderCancelledCode, null,
+                "Sipariş iptal edildi; manuel fatura belgesi pazaryerine gönderilmedi.", cancellationToken);
         var documentHash = Hash($"{document.DocumentUrl}\n{document.InvoiceNumber}\n{document.IssuedAt:O}");
         if (state is not null && !string.Equals(state.RequestHash, documentHash, StringComparison.Ordinal))
         {
@@ -1143,6 +1158,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         // ManualReview belongs to the owner: no delivery job (automatic, recovery or retry) takes the invoice out of it.
         // The owner's own "Tekrar Gönder" moves it to MarketplacePending before its job runs (EnqueueDeliveryAsync); the
         // one-time delivery the owner authorized for a fixed order keeps its own checks.
+        // A job queued before the order was cancelled (EnqueueDeliveryAsync refuses one after it) sends nothing either.
+        if (await OrderFullyCancelledAsync(tenantId, invoice.OrderId, cancellationToken))
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.OrderCancelledCode,
+                "Sipariş iptal edildi; fatura linki pazaryerine gönderilmedi. Kesilmiş faturanın e-Arşiv iptali gerekli."));
         if (invoice.Status == InvoiceStatus.ManualReview && oneTimeAuthorization is null)
             throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.ManualReviewOwnerOnlyCode,
                 "Fatura incelemede; pazaryerine iletim yalnız sizin işleminizle (Tekrar Gönder) başlar. Otomatik iş faturanın durumunu değiştirmedi."));

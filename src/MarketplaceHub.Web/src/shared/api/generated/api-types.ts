@@ -7545,6 +7545,17 @@ export interface ApiOperations {
     response: VersionedSettingsView
     errorStatus: 400 | 401 | 429 | 500
   }
+  getSettingsShippingLabelTemplates: {
+    method: "GET"
+    path: "/api/v1/settings/shipping-label-templates"
+    pathParams: Record<string, never>
+    query: Record<string, never>
+    headers: Record<string, never>
+    body: never
+    status: 200
+    response: VersionedSettingsView
+    errorStatus: 400 | 401 | 429 | 500
+  }
   getSettingsUsers: {
     method: "GET"
     path: "/api/v1/settings/users"
@@ -10550,6 +10561,24 @@ export interface ApiOperations {
   putSettingsShippingLabel: {
     method: "PUT"
     path: "/api/v1/settings/shipping-label"
+    pathParams: Record<string, never>
+    query: Record<string, never>
+    headers: {
+      /** The token GET /api/v1/auth/csrf issued, with its cookie (every write but the webhooks). */
+      "X-CSRF-TOKEN": string
+      /** Optional: with one, a repeated request replays the first answer instead of running again; up to 256 characters. */
+      "Idempotency-Key"?: string
+      /** The version read ("v{version}"); without it the write does not check the version, unless the service requires one once a value is stored. */
+      "If-Match"?: string
+    }
+    body: JsonElement
+    status: 200
+    response: VersionedSettingsView
+    errorStatus: 400 | 401 | 403 | 409 | 412 | 422 | 428 | 429 | 500
+  }
+  putSettingsShippingLabelTemplates: {
+    method: "PUT"
+    path: "/api/v1/settings/shipping-label-templates"
     pathParams: Record<string, never>
     query: Record<string, never>
     headers: {

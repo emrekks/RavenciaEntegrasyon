@@ -385,6 +385,11 @@ export const backOffice = [
   // Sistem Ayarları
   ['GET /settings/appearance', appearanceSettings],
   ['GET /settings/shipping-label', shippingLabelSettings],
+  // The account's label templates (one list for every device of the account).
+  ['GET /settings/shipping-label-templates', { settings: { templates: [
+    { id: 'template-a4', name: 'A4 Depo', savedAt: '2026-10-18T09:00:00Z', settings: shippingLabelSettings.settings },
+    { id: 'template-sticker', name: 'Sticker 100x150', savedAt: '2026-10-19T09:00:00Z', settings: { ...shippingLabelSettings.settings, defaultFormat: 'sticker' } },
+  ] }, version: 2 }],
   ['GET /auth/security-status', { totpState: 'ENABLED', recoveryCodesRemaining: 7 }],
   ['GET /auth/sessions', securitySessions],
   ['GET /settings/alert-email', alertEmail],

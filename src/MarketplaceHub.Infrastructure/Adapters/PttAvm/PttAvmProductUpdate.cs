@@ -30,16 +30,9 @@ public sealed partial class PttAvmHttpClient
 
         // The variant list first, read fresh: a list read only in part may leave this product out, and a product left out
         // reads as one without variants.
-        var variantList = await VariantListAsync(account, refresh: true, cancellationToken);
-        if (!variantList.IsSuccess && variantList.Error!.Code == VariantListIncompleteCode)
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için güncelleme gönderilmedi.", HttpStatusCode.Conflict);
-        if (!variantList.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(variantList.Error!, variantList.RateLimit);
-        var current = await ReadProductPageAsync(account, null, draft.Barcode, cancellationToken);
+        var current = await ReadForVariantSafeWriteAsync(account, draft.Barcode, "güncelleme gönderilmedi", cancellationToken);
         if (!current.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(current.Error!, current.RateLimit);
-        if ((current.Value!.Issues ?? []).Any(issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE"
-                || issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Identity.StartsWith(draft.Barcode + ":", StringComparison.OrdinalIgnoreCase)))
-            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için güncelleme gönderilmedi.", HttpStatusCode.Conflict);
-        var listed = current.Value.Items;
+        var listed = current.Value!.Items;
         // The upsert opens a new product under a barcode PTT AVM does not hold: an update goes only to a product it lists.
         if (PttAvmProductPayloadRules.FamilyProduct(draft.Barcode, listed) is null)
             return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductUpdateRules.ProductNotFoundCode, $"PttAVM'de '{draft.Barcode}' barkodlu ürün bulunamadı; güncelleme yeni ürün açacağı için gönderilmedi. Ürünü önce yayınlayın veya eşleştirin.", HttpStatusCode.Conflict);

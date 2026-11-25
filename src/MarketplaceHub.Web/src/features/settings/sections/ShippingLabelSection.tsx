@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { LoadingState, Modal, TitleHint } from '../../../shared/components'
-import { cloneShippingLabelLayout, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, draggedShippingLabelPosition, labelBlockContentHeight, resizedShippingLabelPosition, shippingLabelCaptionStyle, shippingLabelDragStarted, shippingLabelFieldsPerRow, shippingLabelFitsText, shippingLabelShowsBarcodeText, type ShippingLabelCaptionStyle, normalizeShippingLabelSettings, overflowingLabelBlocks, ShippingLabelBlockBody, shippingLabelBlockCatalog, shippingLabelFields, ShippingLabelFit, shippingLabelLayoutIssues, shippingLabelSizeMm, shippingLabelTextSize, shippingLabelTextSizes, stackShippingLabelLayout, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings, type ShippingLabelValues } from '../../shipping'
+import { cloneShippingLabelLayout, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, draggedShippingLabelPosition, labelBlockContentHeight, resizedShippingLabelPosition, shippingLabelCaptionStyle, shippingLabelDragStarted, shippingLabelFieldsPerRow, shippingLabelFitsText, shippingLabelShowsBarcodeText, type ShippingLabelCaptionStyle, normalizeShippingLabelSettings, overflowingLabelBlocks, ShippingLabelBlockBody, shippingLabelBlockCatalog, shippingLabelFields, ShippingLabelFit, shippingLabelLayoutIssues, shippingLabelSizeMm, shippingLabelTextSize, shippingLabelTextSizes, stackShippingLabelLayout, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings, type ShippingLabelTemplate, type ShippingLabelValues, useShippingLabelTemplates } from '../../shipping'
 import { SettingsNotice, type SettingsNoticeState } from '../SettingsNotifications'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { type ShippingSection, SettingsIcon, SettingsGlyph, SettingsPaneHead, SettingsBar, SettingsSwitch } from '../settings-ui'
@@ -8,19 +8,10 @@ import { type ShippingSection, SettingsIcon, SettingsGlyph, SettingsPaneHead, Se
 type ShippingDesignerTab = 'general' | 'text' | 'barcode'
 type ShippingResizeDirection = 'n' | 'e' | 's' | 'w'
 type ShippingRotateDirection = 'nw' | 'ne' | 'se' | 'sw'
-type ShippingLabelTemplate = { id: string; name: string; savedAt: string; settings: ShippingLabelSettings }
-const shippingLabelTemplateStorageKey = 'ravencia.shippingLabelTemplates'
 const shippingResizeDirections: ShippingResizeDirection[] = ['n', 'e', 's', 'w']
 const shippingRotateDirections: ShippingRotateDirection[] = ['nw', 'ne', 'se', 'sw']
 const shippingResizeDirectionLabels: Record<ShippingResizeDirection, string> = { n: 'üst kenar', e: 'sağ kenar', s: 'alt kenar', w: 'sol kenar' }
 const shippingRotateDirectionLabels: Record<ShippingRotateDirection, string> = { nw: 'sol üst köşe', ne: 'sağ üst köşe', se: 'sağ alt köşe', sw: 'sol alt köşe' }
-
-function loadShippingLabelTemplates(): ShippingLabelTemplate[] {
-  try {
-    const value = JSON.parse(localStorage.getItem(shippingLabelTemplateStorageKey) ?? '[]')
-    return Array.isArray(value) ? value.filter(item => item && typeof item.id === 'string' && typeof item.name === 'string' && item.settings) : []
-  } catch { return [] }
-}
 
 const shippingBlockLabels: Record<ShippingLabelBlockKind, string> = { trackingBarcode: 'Takip Barkodu', address: 'Teslimat Adresi', orderInfo: 'Paket / Sipariş Bilgileri', packageBarcode: 'Paket Barkodu', sender: 'Gönderici ve Kargo Bilgileri', custom: 'Özel İçerik Bloğu' }
 const shippingAlignOptions = [['left', 'Sol'], ['center', 'Orta'], ['right', 'Sağ']] as const
@@ -31,7 +22,10 @@ export function ShippingLabelSettingsPanel({ section, settings, saved, dirty, sa
   const [designerTab, setDesignerTab] = useState<ShippingDesignerTab>('general')
   const [customTitle, setCustomTitle] = useState('')
   const [customText, setCustomText] = useState('')
-  const [templates, setTemplates] = useState<ShippingLabelTemplate[]>(() => loadShippingLabelTemplates())
+  // The account's templates (every device shows the same list); this device's own copy only while they cannot be read.
+  const accountTemplates = useShippingLabelTemplates()
+  const templates = accountTemplates.templates
+  const [templateSaving, setTemplateSaving] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateNameDraft, setTemplateNameDraft] = useState('')
   const [templateNameOpen, setTemplateNameOpen] = useState(false)
@@ -185,22 +179,23 @@ export function ShippingLabelSettingsPanel({ section, settings, saved, dirty, sa
     const within = (value: number, minimum: number, maximum: number) => Math.round(Math.min(Math.max(minimum, maximum), Math.max(minimum, value)) * 10) / 10
     updateBlock(block.id, { position: { ...position, x: within(position.x + delta[0], minX, 100 - position.width - minX), y: within(position.y + delta[1], minY, 100 - position.height - minY) } })
   }
-  function saveTemplate(name: string) {
+  async function saveTemplate(name: string) {
     const trimmed = name.trim()
     if (!trimmed) {
       setTemplateNotice({ kind: 'error', message: 'Şablon adı gerekli.' })
       return
     }
     const template: ShippingLabelTemplate = { id: `template-${Date.now()}`, name: trimmed.slice(0, 80), savedAt: new Date().toISOString(), settings: JSON.parse(JSON.stringify(settings)) as ShippingLabelSettings }
-    const next = [...templates.filter(item => item.name !== template.name), template]
+    setTemplateSaving(true)
     try {
-      localStorage.setItem(shippingLabelTemplateStorageKey, JSON.stringify(next))
-      setTemplates(next)
+      await accountTemplates.saveTemplate(template)
       setSelectedTemplateId(template.id)
       setTemplateNameOpen(false)
-      setTemplateNotice({ kind: 'success', message: `“${template.name}” şablonu kaydedildi.` })
-    } catch {
-      setTemplateNotice({ kind: 'error', message: 'Şablon kaydedilemedi. Tarayıcı depolamasına erişim izni verin.' })
+      setTemplateNotice({ kind: 'success', message: `“${template.name}” şablonu hesaba kaydedildi; tüm cihazlarda görünür.` })
+    } catch (error) {
+      setTemplateNotice({ kind: 'error', message: `Şablon kaydedilemedi. ${error instanceof Error ? error.message : ''}`.trim() })
+    } finally {
+      setTemplateSaving(false)
     }
   }
   function applyTemplate(id: string) {
@@ -213,12 +208,17 @@ export function ShippingLabelSettingsPanel({ section, settings, saved, dirty, sa
       onChange(nextSettings)
     }
   }
-  function deleteTemplate() {
+  async function deleteTemplate() {
     if (!selectedTemplateId) return
-    const next = templates.filter(item => item.id !== selectedTemplateId)
-    setTemplates(next)
-    setSelectedTemplateId('')
-    try { localStorage.setItem(shippingLabelTemplateStorageKey, JSON.stringify(next)) } catch { /* Private browsing may disallow local storage. */ }
+    setTemplateSaving(true)
+    try {
+      await accountTemplates.deleteTemplate(selectedTemplateId)
+      setSelectedTemplateId('')
+    } catch (error) {
+      setTemplateNotice({ kind: 'error', message: `Şablon silinemedi. ${error instanceof Error ? error.message : ''}`.trim() })
+    } finally {
+      setTemplateSaving(false)
+    }
   }
   function commitDimension(key: 'stickerWidthMm' | 'stickerHeightMm', value: string, fallback: number) {
     const parsed = Number(value)
@@ -336,7 +336,7 @@ export function ShippingLabelSettingsPanel({ section, settings, saved, dirty, sa
           <span className="ss-grow" />
           <PanelSelect className="ss-dz-template" ariaLabel="Kayıtlı şablon seçin" value={selectedTemplateId} onChange={applyTemplate} placeholder="Şablon Seçin…" options={templates.map(template => ({ value: template.id, label: template.name }))} />
           <button type="button" className="ss-btn" onClick={() => { setTemplateNameDraft(`${format === 'a4' ? 'A4' : 'Sticker'} şablonu`); setTemplateNotice(null); setTemplateNameOpen(true) }}><SettingsIcon name="save" />Şablon Kaydet</button>
-          <button type="button" className="ss-btn" disabled={!selectedTemplateId} onClick={() => setTemplateDeleteOpen(true)}><SettingsIcon name="trash" />Şablonu Sil</button>
+          <button type="button" className="ss-btn" disabled={!selectedTemplateId || templateSaving} onClick={() => setTemplateDeleteOpen(true)}><SettingsIcon name="trash" />Şablonu Sil</button>
           <button type="button" className="ss-btn" title="Blokları içeriklerine göre boyutlandırıp aralarında eşit boşlukla alt alta dizer" onClick={tidyLayout}><SettingsIcon name="layout" />Düzeni Toparla</button>
           <button type="button" className="ss-btn is-quiet" onClick={() => setLayoutResetOpen(true)}><SettingsIcon name="reset" />Varsayılanı Yükle</button>
         </div>
@@ -389,11 +389,11 @@ export function ShippingLabelSettingsPanel({ section, settings, saved, dirty, sa
       {bar}
     </>}
 
-    <Modal open={templateNameOpen} title="Şablon Kaydet" hint="Geçerli kâğıt yerleşimini bir adla saklayın; sonra tek seçimle geri yükleyin. Şablonlar bu tarayıcıda saklanır." className="ss-modal is-sm" onClose={() => setTemplateNameOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setTemplateNameOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-primary" disabled={!templateNameDraft.trim()} onClick={() => saveTemplate(templateNameDraft)}>Kaydet</button></>}>
-      <label className="ss-fld"><small>Şablon Adı</small><input className="ss-in" data-autofocus value={templateNameDraft} maxLength={80} onChange={event => setTemplateNameDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveTemplate(templateNameDraft) }} /></label>
+    <Modal open={templateNameOpen} title="Şablon Kaydet" hint="Geçerli kâğıt yerleşimini bir adla saklayın; sonra tek seçimle geri yükleyin. Şablonlar hesabınızda saklanır; tüm bilgisayar ve telefonlarda aynı liste görünür." className="ss-modal is-sm" onClose={() => setTemplateNameOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setTemplateNameOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-primary" disabled={!templateNameDraft.trim() || templateSaving} onClick={() => void saveTemplate(templateNameDraft)}>Kaydet</button></>}>
+      <label className="ss-fld"><small>Şablon Adı</small><input className="ss-in" data-autofocus value={templateNameDraft} maxLength={80} onChange={event => setTemplateNameDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !templateSaving) void saveTemplate(templateNameDraft) }} /></label>
       <div className="ss-sum"><div><SettingsIcon name="layout" /><span>{format === 'a4' ? `A4 · Sayfada ${settings.a4LabelsPerPage} Etiket` : `Sticker · ${settings.stickerWidthMm} × ${settings.stickerHeightMm} mm`}<small>{layout.length} blok · gönderici {settings.senderName || '—'}</small></span><span /></div></div>
     </Modal>
-    <Modal open={templateDeleteOpen && Boolean(selectedTemplate)} title="Şablonu Sil" description={selectedTemplate ? `“${selectedTemplate.name}” şablonu bu tarayıcıdan silinecek. Kâğıttaki yerleşim değişmez.` : undefined} className="ss-modal is-sm" onClose={() => setTemplateDeleteOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setTemplateDeleteOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-danger is-solid" onClick={() => { deleteTemplate(); setTemplateDeleteOpen(false) }}>Şablonu Sil</button></>}>
+    <Modal open={templateDeleteOpen && Boolean(selectedTemplate)} title="Şablonu Sil" description={selectedTemplate ? `“${selectedTemplate.name}” şablonu hesaptan silinecek; hiçbir cihazda görünmez. Kâğıttaki yerleşim değişmez.` : undefined} className="ss-modal is-sm" onClose={() => setTemplateDeleteOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setTemplateDeleteOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-danger is-solid" disabled={templateSaving} onClick={() => { void deleteTemplate(); setTemplateDeleteOpen(false) }}>Şablonu Sil</button></>}>
       <div className="ss-callout"><SettingsIcon name="alert" /><span><b>Bu işlem geri alınamaz.</b> Aynı yerleşimi yeniden kullanmak için önce yeni adla kaydedin.</span></div>
     </Modal>
     <Modal open={layoutResetOpen} title="Varsayılan Yerleşimi Yükle" description={format === 'sticker' ? 'Kâğıttaki blokların yerine Trendyol Express’in 100 × 100 mm sticker’ına benzeyen varsayılan yerleşim gelir; sticker ölçüsü de 100 × 100 mm olur. Kaydedene kadar hesabınızdaki düzen değişmez.' : 'Kâğıttaki blokların yerine varsayılan yerleşim gelir. Kaydedene kadar hesabınızdaki düzen değişmez.'} className="ss-modal is-sm" onClose={() => setLayoutResetOpen(false)} footer={<><button type="button" className="ss-btn" onClick={() => setLayoutResetOpen(false)}>Vazgeç</button><button type="button" className="ss-btn is-primary" onClick={() => { resetLayout(); setLayoutResetOpen(false) }}>Varsayılanı Yükle</button></>}>

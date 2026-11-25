@@ -169,6 +169,8 @@ public static class ApiErrorCatalog
         new("SHIPMENT_PAYMENT_PENDING", 409, "Trendyol ödeme onayı vermeden sipariş işleme alınamaz."),
         new("SHIPPING_LABEL_SETTINGS_INVALID", 400, "Kargo etiketi ayarları JSON nesnesi olmalıdır."),
         new("SHIPPING_LABEL_SETTINGS_TOO_LARGE", 413, "Kargo etiketi ayarları çok büyük."),
+        new("SHIPPING_LABEL_TEMPLATES_INVALID", 400, "Etiket şablonları geçersiz; adları ve ayarları kontrol edip yeniden deneyin."),
+        new("SHIPPING_LABEL_TEMPLATES_TOO_LARGE", 413, "Etiket şablonları çok büyük."),
         new("SHOPIFY_CONNECTION_ID_INVALID", 400, "Shopify bağlantı seçimi geçersiz."),
         new("SHOPIFY_CSV_EXTENSION_INVALID", 415, "Yalnız .csv uzantılı Shopify dışa aktarım dosyaları kabul edilir."),
         new("SHOPIFY_CSV_FILE_REQUIRED", 400, "Shopify sipariş dışa aktarım CSV dosyasını seçin."),

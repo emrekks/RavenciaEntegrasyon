@@ -42,10 +42,11 @@ jobs:
         id: hash
         run: |
           set -Eeuo pipefail
-          backend="$(git ls-tree -r HEAD -- src tests skills global.json Directory.Build.props Directory.Packages.props MarketplaceHub.sln .editorconfig .config .github/workflows/ci.yml Dockerfile .dockerignore \
-            | awk -F'\t' '$2 !~ /^src\/MarketplaceHub\.Web\//' | sha256sum | cut -d' ' -f1)"
-          # The frontend checks its generated API types against the API's contract file, so a change to it re-runs the frontend.
-          frontend="$(git ls-tree -r HEAD -- src/MarketplaceHub.Web tests/MarketplaceHub.Application.Tests/ApiContract .github/workflows/ci.yml deploy/caddy .dockerignore | sha256sum | cut -d' ' -f1)"
+          # The input lists live in deploy/scripts/release-scope.sh, the one place the web-only release reads too (A-8).
+          # shellcheck source=deploy/scripts/release-scope.sh
+          source deploy/scripts/release-scope.sh
+          backend="$(backend_inputs_hash HEAD)"
+          frontend="$(frontend_inputs_hash HEAD)"
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
 

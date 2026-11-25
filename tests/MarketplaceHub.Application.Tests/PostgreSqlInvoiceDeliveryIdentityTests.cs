@@ -196,6 +196,65 @@ public sealed class PostgreSqlInvoiceDeliveryIdentityTests(PostgreSqlTenantIsola
         }
     }
 
+    // Scan A-2: a delivery job queued before the order was cancelled sends nothing when it runs, for the issued invoice
+    // and for a hand-uploaded document alike; the job stops with INVOICE_DELIVERY_ORDER_CANCELLED.
+    [PostgreSqlFact]
+    public async Task ADeliveryJobOfACancelledOrderSendsNoInvoiceLink()
+    {
+        var seed = NewSeed("cancelled-order-delivery");
+        seed.Order.DerivedStatus = "CANCELLED";
+        await SeedAsync(seed);
+        try
+        {
+            var marketplace = new ScriptedMarketplace();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, marketplace).ProcessAsync(seed.Tenant.Id, seed.Marketplace.Id, InvoicingJobTypes.MarketplaceDelivery,
+                    DeliveryPayload(seed), "cancelled-order-delivery", CancellationToken.None);
+                Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+                Assert.Equal(InvoiceDeliveryGuardPolicy.OrderCancelledCode, result.ErrorCode);
+            }
+
+            Assert.Empty(marketplace.Deliveries);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.MarketplaceDeliveryStates.AnyAsync(item => item.InvoiceId == seed.Invoice.Id));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task AManualDocumentDeliveryJobOfACancelledOrderSendsNothing()
+    {
+        var seed = NewSeed("cancelled-order-manual");
+        seed.Order.DerivedStatus = "CANCELLED";
+        var (document, state) = NewManualDocument(seed);
+        await SeedAsync(seed, db => { db.ManualOrderInvoiceDocuments.Add(document); db.ManualOrderInvoiceDeliveryStates.Add(state); });
+        try
+        {
+            var marketplace = new ScriptedMarketplace();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, marketplace).ProcessAsync(seed.Tenant.Id, seed.Marketplace.Id, InvoicingJobTypes.ManualOrderInvoiceDelivery,
+                    ManualPayload(document, seed), "cancelled-order-manual", CancellationToken.None);
+                Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+                Assert.Equal(InvoiceDeliveryGuardPolicy.OrderCancelledCode, result.ErrorCode);
+            }
+
+            Assert.Empty(marketplace.Deliveries);
+            await using var verification = fixture.CreateContext();
+            // The owner no longer sees the delivery waiting: it is FAILED with the reason.
+            var stored = await verification.ManualOrderInvoiceDeliveryStates.SingleAsync(item => item.Id == state.Id);
+            Assert.Equal(("FAILED", InvoiceDeliveryGuardPolicy.OrderCancelledCode), (stored.Status, stored.ErrorCode));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private const string DocumentUrl = "https://documents.example.test/identity/invoice.pdf";
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

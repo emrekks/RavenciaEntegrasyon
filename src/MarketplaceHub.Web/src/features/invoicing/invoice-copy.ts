@@ -160,3 +160,6 @@ function readable(code: string) {
 export function sendInvoiceDocumentUpload<T>(invoiceId: string, file: Pick<File, 'name' | 'size' | 'lastModified'>, send: (key: string) => Promise<T>) {
   return sendWithVersionedIdempotencyKey(`invoice-document:${invoiceId}:${file.name}:${file.size}:${file.lastModified}`, send)
 }
+
+/** The one sentence every e-Arşiv cancellation shows next to its button or its confirmation (scan A-2). */
+export const invoiceCancellationWarning = 'Bu e-Arşiv fatura sağlayıcıda iptal edilecek. İşlem geri alınamaz.'

@@ -347,6 +347,50 @@ public sealed class ApiEndToEndTests(ApiEndToEndFixture fixture) : IClassFixture
         }
     }
 
+    // Label templates belong to the account (owner, 26 Nov 2026): one list per tenant with its version. A list with two
+    // templates under one name is refused whole; a saved template's settings are normalized like the label settings;
+    // a stored list is written only over the version read (412 on a stale one, 428 without If-Match).
+    [PostgreSqlFact]
+    public async Task ShippingLabelTemplates_AreOneVersionedListPerTenant()
+    {
+        var (client, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Administrator);
+        using (client)
+        using (signIn)
+        {
+            using var read = await client.GetAsync("/api/v1/settings/shipping-label-templates");
+            Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+            var version = (await read.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("version").GetInt64();
+            HttpRequestMessage Save(object body, long? ifMatch)
+            {
+                var request = Keyed(HttpMethod.Put, "/api/v1/settings/shipping-label-templates", csrf, Guid.NewGuid().ToString(), body);
+                if (ifMatch is > 0) request.Headers.TryAddWithoutValidation("If-Match", $"\"v{ifMatch}\"");
+                return request;
+            }
+
+            using var duplicate = await client.SendAsync(Save(new { templates = new object[] { new { id = "a", name = "Depo", settings = new { } }, new { id = "b", name = "Depo", settings = new { } } } }, version));
+            Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+            Assert.Equal("SHIPPING_LABEL_TEMPLATES_INVALID", (await ApiTestHost.ProblemAsync(duplicate)).GetProperty("code").GetString());
+
+            var templates = new { templates = new object[] { new { id = "template-1", name = $"  Depo {fixture.Run}  ", savedAt = "2026-11-26T09:00:00Z", settings = new { senderName = "Örnek Mağaza", printer = "dropped" } } } };
+            using var saved = await client.SendAsync(Save(templates, version));
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            var body = await saved.Content.ReadFromJsonAsync<JsonElement>();
+            var savedVersion = body.GetProperty("version").GetInt64();
+            Assert.True(savedVersion > version);
+            var template = Assert.Single(body.GetProperty("settings").GetProperty("templates").EnumerateArray());
+            Assert.Equal($"Depo {fixture.Run}", template.GetProperty("name").GetString());
+            Assert.Equal("Örnek Mağaza", template.GetProperty("settings").GetProperty("senderName").GetString());
+            Assert.False(template.GetProperty("settings").TryGetProperty("printer", out _));
+
+            using var again = await client.GetAsync("/api/v1/settings/shipping-label-templates");
+            Assert.Equal(savedVersion, (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("version").GetInt64());
+            using var stale = await client.SendAsync(Save(templates, savedVersion + 100));
+            Assert.Equal(HttpStatusCode.PreconditionFailed, stale.StatusCode);
+            using var blind = await client.SendAsync(Save(new { templates = Array.Empty<object>() }, null));
+            Assert.Equal((HttpStatusCode)428, blind.StatusCode);
+        }
+    }
+
     // A record written before keys were scoped to the user (raw key) whose outcome is unknown still stops
     // a blind replay of the same key.
     [PostgreSqlFact]

@@ -268,6 +268,9 @@ public static class InvoiceDeliveryGuardPolicy
     public const string CancelledJobCode = "INVOICE_DELIVERY_CANCELLED_BY_INVOICE_STATE";
     // A delivery job found the invoice in ManualReview: only the owner's own action takes it out (5 Nov 2026).
     public const string ManualReviewOwnerOnlyCode = "INVOICE_MANUAL_REVIEW_OWNER_ONLY";
+    // A delivery job (queued before the order was cancelled, or by any path) found the order fully cancelled: the invoice
+    // link is not sent; the issued invoice waits for its e-Arşiv cancellation (scan A-2).
+    public const string OrderCancelledCode = "INVOICE_DELIVERY_ORDER_CANCELLED";
 
     // AdjustmentRequired is the invoice of an order cancelled, or returned in full, after issuing. A partial return no
     // longer moves the invoice there: it is still delivered and the returned lines get their own note
