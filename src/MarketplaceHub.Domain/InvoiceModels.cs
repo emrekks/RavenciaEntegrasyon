@@ -44,7 +44,9 @@ public static class InvoiceStateMachine
             [InvoiceStatus.CancellationPending] = [InvoiceStatus.Cancelled, InvoiceStatus.CancellationRejected],
             // A refused cancellation can be requested again from the panel.
             [InvoiceStatus.CancellationRejected] = [InvoiceStatus.CancellationPending],
-            [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting]
+            // The owner's own actions only (background jobs never move an invoice out of review): a new submission, or
+            // the e-Archive cancellation of an issued invoice whose order was cancelled (scan A-2).
+            [InvoiceStatus.ManualReview] = [InvoiceStatus.Submitting, InvoiceStatus.CancellationPending]
         };
 
     public static bool CanTransition(InvoiceStatus current, InvoiceStatus next) =>

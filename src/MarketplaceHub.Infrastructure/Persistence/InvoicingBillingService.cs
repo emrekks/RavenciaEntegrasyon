@@ -1607,12 +1607,20 @@ public sealed partial class InvoicingBillingService(
         if (invoice.InvoiceType != "EARSIVFATURA") return ServiceResult<Guid>.Fail("EINVOICE_CANCELLATION_WORKFLOW_REQUIRED", "Bu otomatik iptal servisi yalnız E-Arşiv faturalar içindir; E-Fatura için mevzuata uygun itiraz/iptal süreci manuel yürütülmelidir.", 422);
         // The cancellation and the stop of the waiting deliveries are saved in one transaction.
         // A refused cancellation, or a pending one whose job ended, is requested again; a running one is waited for.
-        if (!InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, await HasActiveInvoiceJobAsync(tenantId, invoice.Id, cancellationToken)))
+        // An issued invoice in the owner's review is cancelled only for a cancelled order or an open adjustment notice (A-2).
+        var fromReview = invoice.Status == InvoiceStatus.ManualReview;
+        if (fromReview ? !await CancellationFromReviewAllowedAsync(invoice, cancellationToken)
+                : !InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, await HasActiveInvoiceJobAsync(tenantId, invoice.Id, cancellationToken)))
             return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", invoice.Status == InvoiceStatus.CancellationPending
                 ? "Bu faturanın iptal işlemi hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin."
-                : "Fatura mevcut durumdan bu işleme geçemez.", 409);
+                : fromReview
+                    ? "İncelemedeki fatura yalnız siparişi iptal edildiyse veya düzeltme uyarısı açıksa iptal edilebilir."
+                    : "Fatura mevcut durumdan bu işleme geçemez.", 409);
         await using var transaction = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(cancellationToken) : null;
-        var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired, InvoiceStatus.CancellationRejected, InvoiceStatus.CancellationPending], InvoiceStatus.CancellationPending, cancellationToken);
+        InvoiceStatus[] cancellable = fromReview
+            ? [InvoiceStatus.ManualReview]
+            : [InvoiceStatus.Accepted, InvoiceStatus.Completed, InvoiceStatus.AdjustmentRequired, InvoiceStatus.CancellationRejected, InvoiceStatus.CancellationPending];
+        var queued = await EnqueueWrite(tenantId, id, expectedVersion, idempotencyKey, correlationId, InvoicingJobTypes.InvoiceCancellation, InvoicingCapabilities.InvoiceCancel, cancellable, InvoiceStatus.CancellationPending, cancellationToken);
         if (!queued.Succeeded) return queued;
         // A delivery still waiting in the queue would send the link of an invoice that is being cancelled.
         if (await InvoiceAdjustmentTracking.CancelPendingDeliveryJobsAsync(db, tenantId, id, timeProvider.GetUtcNow(), cancellationToken) > 0)
@@ -1821,6 +1829,17 @@ public sealed partial class InvoicingBillingService(
         db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.Id == orderId
             && (order.DerivedStatus == "CANCELLED" || order.DerivedStatus == "CANCELED"), cancellationToken);
 
+    // Scan A-2: an issued e-Archive in review whose order was cancelled, or whose adjustment notice the invoice scan opened.
+    private async Task<bool> CancellationFromReviewAllowedAsync(Invoice invoice, CancellationToken cancellationToken)
+    {
+        if (!InvoiceCancellationOutcomePolicy.CanRequestFromReview(invoice.Status, invoice.InvoiceType, invoice.ExternalReference, orderCancelled: true, adjustmentNoticeOpen: true)) return false;
+        if (await OrderCancelledAsync(invoice.TenantId, invoice.OrderId, cancellationToken)) return true;
+        var noticeKey = InvoiceAdjustmentTracking.AdjustmentIssueKey(invoice.Id);
+        var noticeOpen = await db.OperationalIssues.AsNoTracking().AnyAsync(issue => issue.TenantId == invoice.TenantId && issue.DedupeKey == noticeKey
+            && issue.Code == InvoiceAdjustmentTracking.AdjustmentRequiredCode && issue.Status == IssueStatus.Open, cancellationToken);
+        return InvoiceCancellationOutcomePolicy.CanRequestFromReview(invoice.Status, invoice.InvoiceType, invoice.ExternalReference, orderCancelled: false, noticeOpen);
+    }
+
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {
         if (ShopifyManualInvoicePolicy.IsManualOnly(connection?.PlatformCode, invoice.SequencePurpose)
@@ -1860,6 +1879,8 @@ public sealed partial class InvoicingBillingService(
             actions.Add(RetryDeliveryAction);
         if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired or InvoiceStatus.CancellationRejected or InvoiceStatus.CancellationPending)
             && InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, invoice.Status == InvoiceStatus.CancellationPending && await HasActiveInvoiceJobAsync(invoice.TenantId, invoice.Id, cancellationToken))
+            && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
+        else if (invoice.Status == InvoiceStatus.ManualReview && await CancellationFromReviewAllowedAsync(invoice, cancellationToken)
             && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
         if (invoice.Status == InvoiceStatus.CancellationPending && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         return actions;

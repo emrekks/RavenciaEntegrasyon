@@ -923,6 +923,55 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Scan A-2: an issued e-Archive in the owner's review is offered Fatura İptal Et only when its order was cancelled or
+    // its adjustment notice is open; the owner's request moves it to CancellationPending and queues the cancellation job.
+    // A review invoice of an order that stands, without the notice, is offered nothing and refused.
+    [PostgreSqlTheory]
+    [InlineData("CANCELLED", false, true)]
+    [InlineData("DELIVERED", true, true)]
+    [InlineData("DELIVERED", false, false)]
+    public async Task A2_AnIssuedInvoiceInReviewIsCancelledOnlyByTheOwnerForACancelledOrder(string orderStatus, bool noticeOpen, bool offered)
+    {
+        var seed = NewSeed($"a2-review-{orderStatus}-{noticeOpen}", InvoiceStatus.ManualReview);
+        seed.Order.DerivedStatus = orderStatus;
+        seed.Provider.SettingsJson = JsonSerializer.Serialize(new { ExternalWritesEnabled = true });
+        await SeedAsync(seed, db =>
+        {
+            if (noticeOpen)
+                db.OperationalIssues.Add(new OperationalIssue
+                {
+                    TenantId = seed.Tenant.Id,
+                    Code = InvoiceAdjustmentTracking.AdjustmentRequiredCode,
+                    Status = IssueStatus.Open,
+                    DedupeKey = InvoiceAdjustmentTracking.AdjustmentIssueKey(seed.Invoice.Id),
+                    Summary = "Fatura incelemede; e-Arşiv iptali gerekli.",
+                    OccurrenceCount = 1,
+                    FirstSeenAt = fixture.Now,
+                    LastSeenAt = fixture.Now
+                });
+        });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var service = NewBillingService(db, OpenWrites);
+                var actions = (await service.GetAsync(seed.Tenant.Id, seed.Invoice.Id, CancellationToken.None)).Value!.AllowedActions;
+                Assert.Equal(offered, actions.Contains("CANCEL"));
+                var queued = await service.EnqueueCancellationAsync(seed.Tenant.Id, seed.Invoice.Id, seed.Invoice.Version, $"a2-review-{orderStatus}", "a2-review", CancellationToken.None);
+                Assert.Equal(offered, queued.Succeeded);
+                if (!offered) Assert.Equal("INVOICE_STATE_INVALID", queued.Error!.Code);
+            }
+
+            await using var verification = fixture.CreateContext();
+            Assert.Equal(offered ? InvoiceStatus.CancellationPending : InvoiceStatus.ManualReview, (await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id)).Status);
+            Assert.Equal(offered, await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceCancellation));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // One rule for every marketplace (5 Nov 2026): a package holding a product line that could not be read is kept for
     // shipping, but the last check before issuing stops the invoice with Okunamayan Ürün Satırı until a read fills it in.
     [PostgreSqlTheory]
