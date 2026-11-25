@@ -46,25 +46,25 @@
      the block that holds it is lifted above the bar, so the dimmed scrim covers the bar as it covers the page and takes its touches. */
   html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }
   /* Dock mode: ONE floating capsule (Ana Sayfa, Siparişler, Ürünler, Sorular, Menü: five equal slots) with a lighter inner pill under the open page that glides to the next
-     slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (80 % of the screen, 380 px at most, 62 px high;
+     slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (the screen less 10 px at each side, 380 px at most, 62 px high, so a slot is 66 px or more;
      22 px icons with a 10 px label under each, always shown; it never shrinks on a scroll). */
-  :root { --rv-dock-w: min(80vw, 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
+  :root { --rv-dock-w: min(calc(100vw - 20px), 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
   .rv-dock { position: relative; display: flex; align-items: center; box-sizing: border-box; width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2); pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar); }
   .rv-dock, .rv-dock-panel { background: var(--rv-color-surface); box-shadow: var(--rv-dock-shadow); }
   .rv-dock-panel { position: relative; box-sizing: border-box; width: calc(100% - 8px); min-width: 0; height: 56px; border-radius: 28px; pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar); }
   .rv-dock-layer[data-mode="task"] .rv-dock, .rv-dock-layer[data-mode="dock"] .rv-dock-panel { visibility: hidden; opacity: 0; pointer-events: none; }
 
-  /* The open page's inner pill (the glide): inside its slot, 2 px from each side of it (the slot less 4 px wide), the capsule's height less 12 px, fully round,
-     so it keeps 6 px from the capsule's inner edge all round (4 px padding + 2) and is concentric with its round ends; its place is --rv-dock-i slots from the left, in
+  /* The open page's inner pill (the glide): inside its slot, .5 px from each side of it (the slot less 1 px wide, 66 px or more: the widest label, Ana Sayfa, keeps 8 px at both sides), the capsule height less 9 px, fully round,
+     so it keeps 4.5 px from the capsule's inner edge all round (4 px padding + .5) and is concentric with its round ends; its place is --rv-dock-i slots from the left, in
      percentages of the capsule, so it follows the capsule while it eases between its two sizes (BottomDock.tsx animates left and width the same way when the open
      page changes, stretching to 1.6 slots at most). No open page (a page outside the dock): it is not drawn. */
-  .rv-dock-glide { position: absolute; top: 6px; bottom: 6px; left: calc(6px + var(--rv-dock-i, 0) * ((100% - 8px) / 5)); z-index: 0; width: calc((100% - 8px) / 5 - 4px); border-radius: 999px; background-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-dock-active-tint), var(--rv-color-surface)); pointer-events: none; transition: none; }
+  .rv-dock-glide { position: absolute; top: 4.5px; bottom: 4.5px; left: calc(4.5px + var(--rv-dock-i, 0) * ((100% - 8px) / 5)); z-index: 0; width: calc((100% - 8px) / 5 - 1px); border-radius: 999px; background-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-dock-active-tint), var(--rv-color-surface)); pointer-events: none; transition: none; }
   .rv-dock[data-none] > .rv-dock-glide { opacity: 0; }
   /* Icon-only targets: five equal slots, the capsule's inner height; the open one has the accent icon (its pill is the glide behind it). Hover, press and keyboard focus
-     draw the same pill shape as the glide (the slot less 2 px all round) behind the icon: a lighter tone for hover (only where a real pointer hovers), the open
+     draw the same pill shape as the glide (the slot less 1 px all round) behind the icon: a lighter tone for hover (only where a real pointer hovers), the open
      tone for a press, an outline for the focus; never wider than the slot. */
   .rv-dock-slot { position: relative; z-index: 1; display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box; height: 100%; margin: 0; padding: 0; min-width: 0; min-height: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 999px; font: inherit; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; outline: 0; transition: transform var(--rv-motion-press-duration) var(--rv-ease-out), color var(--rv-dock-color-motion) var(--rv-dock-ease); }
-  .rv-dock-slot::before { content: ""; position: absolute; inset: 2px; z-index: -1; border-radius: 999px; background-color: transparent; transition: background-color var(--rv-dock-color-motion) var(--rv-dock-ease); }
+  .rv-dock-slot::before { content: ""; position: absolute; inset: .5px; z-index: -1; border-radius: 999px; background-color: transparent; transition: background-color var(--rv-dock-color-motion) var(--rv-dock-ease); }
   .rv-dock-slot.is-active { color: var(--rv-color-primary-text); }
   .rv-dock-slot:not(.is-active):active::before { background-color: color-mix(in srgb, var(--rv-color-primary) var(--rv-dock-active-tint), var(--rv-color-surface)); }
   @media (hover: hover) { .rv-dock-slot:not(.is-active):hover::before { background-color: color-mix(in srgb, var(--rv-color-primary) calc(var(--rv-dock-active-tint) / 2), var(--rv-color-surface)); } }

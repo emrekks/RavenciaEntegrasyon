@@ -115,11 +115,11 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     // wide): its edges stay between the two slots, so it never reaches past the capsule's inner edge.
     const step = (dock.clientWidth - 8) / 5
     const now = glide.getBoundingClientRect()
-    const start = (now.left - dock.getBoundingClientRect().left - 6) / step
-    const span = (now.width + 4) / step
+    const start = (now.left - dock.getBoundingClientRect().left - 4.5) / step
+    const span = (now.width + 1) / step
     if (Math.abs(start - found) < 0.01 && Math.abs(span - 1) < 0.01) return
-    const left = (slots: number) => 'calc(6px + ' + slots + ' * ((100% - 8px) / 5))'
-    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 5) - 4px)'
+    const left = (slots: number) => 'calc(4.5px + ' + slots + ' * ((100% - 8px) / 5))'
+    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 5) - 1px)'
     const reach = Math.abs(found - start)
     const extra = Math.min(reach, 0.6)
     const easing = getComputedStyle(document.documentElement).getPropertyValue('--rv-ease-sheet').trim() || 'ease'

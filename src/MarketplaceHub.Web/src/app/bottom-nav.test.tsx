@@ -86,10 +86,10 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('--rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%)')
     expect(phone).toContain('--rv-dock-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%), 0 0 24px rgb(0 0 0 / 40%), 0 4px 12px rgb(0 0 0 / 30%)')
     expect(phone).toContain('.rv-dock, .rv-dock-panel { background: var(--rv-color-surface); box-shadow: var(--rv-dock-shadow); }')
-    expect(phone).toContain(':root { --rv-dock-w: min(80vw, 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
+    expect(phone).toContain(':root { --rv-dock-w: min(calc(100vw - 20px), 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
     expect(phone).not.toContain('data-compact')
     expect(phone).toContain('width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2);')
-    expect(phone).toContain('.rv-dock-glide { position: absolute; top: 6px; bottom: 6px; left: calc(6px + var(--rv-dock-i, 0) * ((100% - 8px) / 5));')
+    expect(phone).toContain('.rv-dock-glide { position: absolute; top: 4.5px; bottom: 4.5px; left: calc(4.5px + var(--rv-dock-i, 0) * ((100% - 8px) / 5));')
     expect(phone).toMatch(/\.rv-dock-panel \{[^}]*height: 56px; border-radius: 28px/)
     expect(phone).toContain('.rv-dock-slot:active { transform: scale(.96); }')
     // The five icons are 24 px with a 2 px stroke (the global .ui-icon rule held them at 16 px).

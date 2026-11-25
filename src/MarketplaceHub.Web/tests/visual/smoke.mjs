@@ -99,8 +99,8 @@ async function badgeStep() {
   } catch (error) { failures.push('dock count step: ' + String(error.message).split(/\r?\n/)[0]) }
   await context.close()
 }
-// The dock's inner pill (the glide) in every slot: it keeps 4 px at least from the capsule's inner edge on every side (6 px by design),
-// is never wider than its slot, and is concentric with the capsule's round ends in the first and the last slot.
+// The dock's inner pill (the glide) in every slot: it keeps 4 px at least from the capsule's inner edge on every side (4.5 px by design),
+// is never wider than its slot, leaves its label 8 px at both sides, and is concentric with the capsule's round ends in the first and the last slot.
 async function glideStep() {
   const context = await browser.newContext({ viewport: { width: 360, height: 780 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -142,7 +142,10 @@ async function glideStep() {
           const box = dock.getBoundingClientRect(); const pill = glide.getBoundingClientRect(); const slot = dock.querySelectorAll('.rv-dock-slot')[index].getBoundingClientRect()
           const gaps = [pill.left - box.left, box.right - pill.right, pill.top - box.top, box.bottom - pill.bottom]
           if (Math.min(...gaps) < 4) problems.push(index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
-          if (pill.width > slot.width - 3.5 || pill.left < slot.left + 1.5 || pill.right > slot.right - 1.5) problems.push(index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
+          if (pill.width > slot.width || pill.left < slot.left - 0.01 || pill.right > slot.right + 0.01) problems.push(index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
+          const labelBox = dock.querySelectorAll('.rv-dock-slot')[index].querySelector('.rv-dock-label').getBoundingClientRect()
+          const room = Math.min(labelBox.left - pill.left, pill.right - labelBox.right)
+          if (room < 8) problems.push(index + ' label too close to its pill edge ' + room.toFixed(1))
           if ((index === 0 || index === 4) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push(index + ' not concentric')
         }
         return problems
