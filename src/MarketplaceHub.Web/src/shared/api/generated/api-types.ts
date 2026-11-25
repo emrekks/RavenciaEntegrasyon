@@ -7062,19 +7062,6 @@ export interface ApiOperations {
     response: MarketplaceQuestionSyncStateView[]
     errorStatus: 400 | 401 | 429 | 500
   }
-  getReferenceDataBrands: {
-    method: "GET"
-    path: "/api/v1/reference-data/brands"
-    pathParams: Record<string, never>
-    query: {
-      connectionId: string
-    }
-    headers: Record<string, never>
-    body: never
-    status: 200
-    response: ReferenceDataView
-    errorStatus: 400 | 401 | 429 | 500
-  }
   getReferenceDataBrandsLookup: {
     method: "GET"
     path: "/api/v1/reference-data/brands/lookup"

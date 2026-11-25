@@ -19233,49 +19233,6 @@
         }
       }
     },
-    "/api/v1/reference-data/brands": {
-      "get": {
-        "tags": [
-          "reference-data"
-        ],
-        "operationId": "getReferenceDataBrands",
-        "parameters": [
-          {
-            "name": "connectionId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReferenceDataView"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthenticated"
-          },
-          "429": {
-            "$ref": "#/components/responses/TooManyRequests"
-          },
-          "500": {
-            "$ref": "#/components/responses/ServerError"
-          }
-        }
-      }
-    },
     "/api/v1/reference-data/brands/lookup": {
       "get": {
         "tags": [

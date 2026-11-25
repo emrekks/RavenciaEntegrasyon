@@ -446,7 +446,6 @@ export const catalog = [
   ['GET /reference-data/brands/summary', { ...referenceBrands, itemCount: referenceBrands.items.length }],
   ['GET /reference-data/brands/unmapped', [{ externalId: '8803', name: 'Nova Jeans', occurrences: 14, lastSeenAt: '2026-10-19T22:15:00+03:00' }]],
   ['GET /reference-data/brands/lookup', ({ url }) => { const items = referenceBrands.items.filter(item => (url.searchParams.get('ids') ?? '').split(',').includes(item.externalId)); return { ...referenceBrands, itemCount: items.length, items } }],
-  ['GET /reference-data/brands', referenceBrands],
   ['GET /catalog/categories', { items: categories, totalCount: categories.length, hasMore: false, nextCursor: null }],
   ['GET /catalog/brands', { items: brands, totalCount: brands.length, hasMore: false, nextCursor: null }],
   ['^/catalog/categories/([^/]+)/attribute-requirements$', ({ match }) => match[1] === 'cat-trenckot' ? trenchRequirements : genericRequirements],
