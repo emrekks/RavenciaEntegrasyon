@@ -190,7 +190,7 @@ guard_disk_space() {
       test "$path" != "$newest" || continue
       backup_time="$(backup_set_epoch "${path##*/}")"
       test -n "$backup_time" || continue
-      test "$backup_time" -lt "$daily_cutoff" && test "$backup_time" -lt "$recent_cutoff" || continue
+      if test "$backup_time" -ge "$daily_cutoff" || test "$backup_time" -ge "$recent_cutoff"; then continue; fi
       if test "$guard_pass" = weekly && test "$backup_time" -lt "$weekly_cutoff"; then continue; fi
       rm -rf -- "$path"
       projected="$(projected_disk_percent "$estimate_kib")"
