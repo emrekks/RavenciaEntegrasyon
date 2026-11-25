@@ -86,9 +86,18 @@ describe('the dock counts', () => {
 })
 
 describe('the status bar area stays unpainted', () => {
+  it('sets the see-through state deliberately: Home Screen app under a translucent status bar, no theme-color, no fixed or sticky surface within 10 px of the top edge', () => {
+    const html = read('../../index.html')
+    expect(html).toContain('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />')
+    expect(html).toContain('<meta name="apple-mobile-web-app-capable" content="yes" />')
+    expect(html).toContain('viewport-fit=cover')
+    expect(html).not.toMatch(/<meta name="theme-color"/)
+    expect(dock).toContain(':root { --rv-top-gap: max(env(safe-area-inset-top, 0px), 10px); }')
+    expect(dock).toContain(".rv-fullmenu { position: fixed; inset: var(--rv-top-gap) 0 0;")
+  })
   it('starts the top bar under the safe area (margin and sticky top), which it also clears when it slides away, with no padding of its own', () => {
-    expect(dock).toContain('.rv-topbar { top: env(safe-area-inset-top, 0px); margin-top: env(safe-area-inset-top, 0px); }')
-    expect(dock).toContain('.rv-topbar.is-hidden { transform: translateY(calc(-100% - env(safe-area-inset-top, 0px) - 1px)); }')
+    expect(dock).toContain('.rv-topbar { top: var(--rv-top-gap); margin-top: var(--rv-top-gap); }')
+    expect(dock).toContain('.rv-topbar.is-hidden { transform: translateY(calc(-100% - var(--rv-top-gap) - 1px)); }')
     expect(read('../styles/phone-spacing.css')).toContain('.rv-topbar { padding-top: 0 !important; min-height: 62px !important; }')
   })
 
