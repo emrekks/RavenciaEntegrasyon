@@ -11,13 +11,23 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // - Trendyol: amount (sale price per unit), discount (discount per unit), price (invoiced price per unit); the
 //   per-unit discountDetails are summed when the whole line is returned. A line built from a claim carries only
 //   price (getClaims orderLine), so only the invoiced amount is known there.
-// - Hepsiburada: the claim's refundAmount, when the snapshot is that claim (number = claim number).
+// - Hepsiburada: the claim's refundAmount, kept with the claim (ReturnClaim.RefundAmount, see Line) or read from the
+//   snapshot when the order was built from that claim (number = claim number).
 // - n11: price (sale price per unit); for a single unit also sellerInvoiceAmount and totalSellerDiscountPrice.
 // - Pazarama, PTT AVM, Shopify: no amount is stored for the returned line, so every figure stays unknown.
 // A figure the marketplace did not write stays null: it is shown as unknown, never filled in from the order.
 public static class ReturnMarketplaceAmounts
 {
-    public static ReturnAmountsView? Line(string? platformCode, string? sourceSnapshotJson, decimal returnedQuantity, string? externalClaimId)
+    // claimRefundAmount: the amount the marketplace reported refunding for the whole claim (ReturnClaim.RefundAmount);
+    // the caller passes it only when this line is the claim's only line, so it is never counted twice.
+    public static ReturnAmountsView? Line(string? platformCode, string? sourceSnapshotJson, decimal returnedQuantity, string? externalClaimId, decimal? claimRefundAmount = null)
+    {
+        var view = Snapshot(platformCode, sourceSnapshotJson, returnedQuantity, externalClaimId);
+        if (claimRefundAmount is not { } refund || returnedQuantity <= 0 || view?.RefundAmount is not null) return view;
+        return (view ?? new ReturnAmountsView(null, null, null, null)) with { RefundAmount = MoneyRounding.Round(refund) };
+    }
+
+    private static ReturnAmountsView? Snapshot(string? platformCode, string? sourceSnapshotJson, decimal returnedQuantity, string? externalClaimId)
     {
         if (string.IsNullOrWhiteSpace(sourceSnapshotJson) || returnedQuantity <= 0) return null;
         try

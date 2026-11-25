@@ -861,7 +861,7 @@ public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewSta
 // CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
 // ResolvedWith: how an approved claim was closed (REFUND or CHANGE, Hepsiburada finalizedWith); null = unknown.
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null, DateTimeOffset? RequestedAt = null,
-    RemoteReplacementPackage? ReplacementPackage = null, bool? ReplacementInfoPresent = null);
+    RemoteReplacementPackage? ReplacementPackage = null, bool? ReplacementInfoPresent = null, decimal? RefundAmount = null);
 // The package a marketplace sends for an exchange (Trendyol getClaims replacementOutboundpackageinfo); null when it names none.
 // ReplacementInfoPresent: whether the claim carried the field at all (Trendyol only; null elsewhere), for the read log.
 public sealed record RemoteReplacementPackage(string PackageId, string? CargoProviderName, string? CargoTrackingNumber, string? CargoTrackingLink);

@@ -35,7 +35,8 @@
       "ResolvedWith": null,
       "RequestedAt": "2026-10-09T21:00:00+00:00",
       "ReplacementPackage": null,
-      "ReplacementInfoPresent": null
+      "ReplacementInfoPresent": null,
+      "RefundAmount": null
     },
     {
       "ExternalClaimId": "98766",
@@ -72,7 +73,8 @@
       "ResolvedWith": null,
       "RequestedAt": "2026-10-10T21:00:00+00:00",
       "ReplacementPackage": null,
-      "ReplacementInfoPresent": null
+      "ReplacementInfoPresent": null,
+      "RefundAmount": null
     },
     {
       "ExternalClaimId": "98767",
@@ -109,7 +111,8 @@
       "ResolvedWith": null,
       "RequestedAt": "2026-10-11T21:00:00+00:00",
       "ReplacementPackage": null,
-      "ReplacementInfoPresent": null
+      "ReplacementInfoPresent": null,
+      "RefundAmount": null
     }
   ],
   "NextCursor": "1",

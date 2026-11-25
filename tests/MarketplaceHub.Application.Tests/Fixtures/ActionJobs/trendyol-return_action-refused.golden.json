@@ -358,6 +358,7 @@
           "RawStatus": "Accepted",
           "ReasonCode": "UNFIT",
           "ReasonText": "Customer note",
+          "RefundAmount": null,
           "RejectedPackageState": null,
           "ReplacementCargoProviderName": "Aras Kargo Marketplace",
           "ReplacementCargoTrackingLink": "https://tracking.example.test/?id=111111111-1111-1111-1111-11111111",

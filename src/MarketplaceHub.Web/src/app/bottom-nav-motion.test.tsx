@@ -99,6 +99,18 @@ describe('the status bar area stays unpainted', () => {
   })
 })
 
+describe('the menu takes the theme\'s colours', () => {
+  it('uses tokens, not fixed colours, for its surface, text, active row, counts, danger row and focus ring', () => {
+    const menuCss = dock.slice(dock.indexOf('.rv-fullmenu { position: fixed'), dock.indexOf('/* The dock while the menu is open'))
+    expect(menuCss).toContain('color: var(--rv-color-ink); background: var(--rv-color-bg);')
+    expect(menuCss).toContain('.rv-fullmenu-row.is-current { color: var(--rv-color-primary-text); font-weight: 600; background: var(--rv-color-primary-soft); }')
+    expect(menuCss).toContain('.rv-fullmenu-row.is-danger { color: var(--rv-color-danger); }')
+    // (white on the count badge's accent fill is the one fixed colour)
+    expect(menuCss.replaceAll('color: #fff;', '')).not.toMatch(/#[0-9a-f]{3,8}|rgb\(255 255 255/i)
+    expect(dock).not.toMatch(/\.rv-dock-layer\[data-menu\] \.rv-dock-round/)
+  })
+})
+
 describe('layers over the top bar and the menu leaving', () => {
   it('lifts the filter block above the top bar while a layer is open, so its scrim covers the bar', () => {
     expect(dock).toContain('html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }')

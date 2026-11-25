@@ -34,7 +34,8 @@
     "ResolvedWith": null,
     "RequestedAt": "2021-10-14T11:03:17.676+00:00",
     "ReplacementPackage": null,
-    "ReplacementInfoPresent": null
+    "ReplacementInfoPresent": null,
+    "RefundAmount": null
   },
   "order": {
     "ExternalOrderId": "2152988946",

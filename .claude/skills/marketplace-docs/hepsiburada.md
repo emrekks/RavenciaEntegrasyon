@@ -249,6 +249,20 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
   inside a replacement-package notification (`ClaimPackageOrder`) keeps the older lenient reading. Live 15 Nov 2026:
   2 Hepsiburada orders hold ClaimCreated lines, both with packages and amounts (none left half-built).
 
+## Claim refund amount (25 Nov 2026)
+- The claim list documents `RefundAmount` ("İade edilen tutarın bilgisidir") and `RefundCurrency` (hepsiburada-api-son.md
+  "Talep Detayını Listeleme" :25925, :26004; the claim-package notification sample :26925 carries `"refundAmount": 0`
+  on a rejected claim). Its list sample (:26160) shows no such key, so a claim without it is possible.
+- "0 = not paid yet" is an inference from one docs sample (a rejected claim with `refundAmount` 0 and an empty
+  `refundDate`), not a documented rule; what a reversed refund sends is unknown.
+- `HepsiburadaJsonMapper.ClaimRefundAmount` takes a positive lira amount only (another currency = unknown) and only
+  while the claim is `Refunded` with a non-empty `refundDate` when sent (live 25 Nov 2026: the one refunded claim
+  snapshot had both) into `ReturnClaim.RefundAmount`. A fresh refunded read without it keeps the stored amount; a fresh
+  read of a claim no longer `Refunded` clears it; an older snapshot (`IsStaleReturnObservation`) changes nothing. The İadeler
+  row shows it as "İade Tutarı" (`ReturnMarketplaceAmounts.Line`, one-line claims). Before this the claim JSON was not
+  kept, so only a claim-built order line snapshot showed it: live 25 Nov 2026, 1 of 9 Hepsiburada return lines (that
+  snapshot's refundAmount was a positive number equal to the line price); the other 8 read "İade Tutarı —".
+
 ## Product update status, field by field (18 Nov 2026)
 - `GET /ticket-api/api/integrator/status/{trackingId}` answers per item (`IntegratorImportStatusItemDto`): `hbSku`,
   `message`, `productStatus` (`COMPLETED` | `UNCOMPLETED` in the schema; live answers also carry review states the mapper

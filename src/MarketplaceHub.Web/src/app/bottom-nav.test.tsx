@@ -45,7 +45,7 @@ function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone
   searchNow = location.search
   return <BackTargetContext.Provider value={backHost}><DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
-    {menu.open && <FullScreenMenu groups={groups} profile={profile} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} theme="light" onToggleTheme={() => undefined} />}
+    {menu.open && <FullScreenMenu groups={groups} profile={profile} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
     <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} /><button type="button" id="topback" onClick={goBack}>üst geri</button>
     {children}
   </DockContext.Provider></BackTargetContext.Provider>
@@ -142,13 +142,13 @@ describe('Ravencia Dock', () => {
     expect(host.querySelectorAll('.rv-dock-round.is-active')).toHaveLength(0)
   })
 
-  it('keeps the round Menü button for opening only: the dock hides while the drawer is open, no page is current', () => {
+  it('keeps the round Menü button plain while the menu is open (no active tint), and no page is current', () => {
     const { host } = mount('/orders')
     expect(host.querySelector('.rv-dock > button')?.getAttribute('aria-label')).toBe('Menü')
     click(host.querySelector('.rv-dock > button'))
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-menu')).toBe('open')
     expect(host.querySelectorAll('.rv-dock [aria-current="page"]')).toHaveLength(0)
-    expect(host.querySelectorAll('.rv-dock .is-active')).toHaveLength(1)
+    expect(host.querySelectorAll('.rv-dock .is-active')).toHaveLength(0)
     cleanup()
     expect(mount('/reports').host.querySelectorAll('.rv-dock .is-active')).toHaveLength(0)
   })
@@ -175,7 +175,7 @@ describe('Ravencia Dock', () => {
     expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
   })
 
-  it('opens the full page from the round Menü button; the dock stays and turns: pill out, gear on the left, cross on the right, which closes it', () => {
+  it('opens the full page from the round Menü button; the dock stays and turns: pill and Ana Sayfa out, only the cross left, which closes it', () => {
     const { host } = mount('/orders')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
     click(host.querySelector('.rv-dock > button'))
@@ -184,22 +184,22 @@ describe('Ravencia Dock', () => {
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(document.body.style.overflow).toBe('hidden')
     expect(dialog.querySelector('.rv-fullmenu-peek, .rv-fullmenu-drawer, .rv-fullmenu-search, .rv-fullmenu-logo, .rv-fullmenu-float, input')).toBeNull()
-    // The same three parts stay where they are; the pill cannot be reached, the left round button is the gear, the right one the cross.
+    // The same three parts stay where they are; the pill and Ana Sayfa cannot be reached while the cross (right) is the one part left.
     const layer = host.querySelector('.rv-dock-layer')!
     expect(layer.getAttribute('data-menu')).toBe('open')
     expect(layer.hasAttribute('inert')).toBe(false)
     expect(layer.hasAttribute('data-layer')).toBe(false)
-    expect(host.querySelector('.rv-dock-pill')?.hasAttribute('inert')).toBe(true)
     const dock = host.querySelector('.rv-dock')!
-    expect(dock.children[0].getAttribute('aria-label')).toBe('Sistem Ayarları')
-    expect(dock.children[0].getAttribute('href')).toBe('/settings')
+    expect(dock.children[0].hasAttribute('inert')).toBe(true)
+    expect(dock.children[1].hasAttribute('inert')).toBe(true)
+    expect(dock.children[2].hasAttribute('inert')).toBe(false)
     expect(dock.children[2].getAttribute('aria-label')).toBe('Menüyü Kapat')
-    expect(dock.querySelectorAll('.rv-dock-swap > svg')).toHaveLength(4)
+    expect(dock.querySelectorAll('.rv-dock-swap > svg')).toHaveLength(2)
     click(dock.children[2])
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
     expect(pathNow).toBe('/orders')
+    expect(host.querySelector('.rv-dock')!.children[0].hasAttribute('inert')).toBe(false)
     expect(host.querySelector('.rv-dock-pill')?.hasAttribute('inert')).toBe(false)
-    expect(host.querySelector('.rv-dock')!.children[0].getAttribute('aria-label')).toBe('Ana Sayfa')
   })
 
   it('closes with Esc and with the back button, and the back button does not leave the page', () => {
@@ -214,16 +214,15 @@ describe('Ravencia Dock', () => {
     expect(pathNow).toBe('/orders')
   })
 
-  it('is a plain list: the groups (the first one without a heading), Sistem dropped for the gear, Hesap with the profile, the theme and Çıkış Yap', () => {
+  it('is a plain list: the groups (the first one without a heading), Sistem dropped, Hesap with the profile, Sistem Ayarları and Çıkış Yap; no theme row', () => {
     const { host } = mount('/orders')
     click(host.querySelector('.rv-dock > button'))
     const menu = document.querySelector('.rv-fullmenu')!
     const sections = [...menu.querySelectorAll('.rv-fullmenu-group')]
-    // The settings row is gone (the gear replaces it), so Sistem has nothing left and loses its heading with it.
+    // The settings page is a row of Hesap now, so the Sistem group has nothing left and loses its heading with it.
     expect(sections.map(section => section.getAttribute('aria-label'))).toEqual(['Ana Menü', 'Hesap'])
     expect(sections[0].querySelector('h3')).toBeNull()
     expect(sections[1].querySelector('h3')?.textContent).toBe('Hesap')
-    expect([...menu.querySelectorAll('.rv-fullmenu-row')].some(row => row.textContent === 'Sistem Ayarları')).toBe(false)
     expect(menu.querySelector('.rv-fullmenu-chev')).toBeNull()
     expect([...menu.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
     expect(sections[0].querySelector('[aria-current="page"]')?.textContent).toContain('Siparişler')
@@ -232,18 +231,21 @@ describe('Ravencia Dock', () => {
     expect(profileRow.querySelector('a, button, [tabindex]')).toBeNull()
     expect(profileRow.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('AY')
     expect(profileRow.textContent).toBe('AYAyşe Yılmaz')
-    const rows = [...sections[1].querySelectorAll('.rv-fullmenu-row')]
-    expect(rows.map(row => row.textContent)).toEqual(['Koyu Tema', 'Çıkış Yap'])
-    expect(rows[1].classList.contains('is-danger')).toBe(true)
+    // Right under the profile: Sistem Ayarları (a link to the settings page), then Çıkış Yap.
+    expect([...sections[1].children[1].children].map(child => child.className.split(' ')[0] + ':' + (child.textContent ?? ''))).toEqual(['rv-fullmenu-profile:AYAyşe Yılmaz', 'rv-fullmenu-row:Sistem Ayarları', 'rv-fullmenu-row:Çıkış Yap'])
+    expect(sections[1].querySelector('a.rv-fullmenu-row')?.getAttribute('href')).toBe('/settings')
+    expect(sections[1].querySelector('.rv-fullmenu-row.is-danger')?.textContent).toBe('Çıkış Yap')
+    expect([...menu.querySelectorAll('.rv-fullmenu-row')].some(row => /Tema/.test(row.textContent ?? ''))).toBe(false)
   })
 
-  it('runs the theme switch from its Hesap row and goes to the settings page from the gear in the dock', () => {
+  it('goes to the settings page from its Hesap row, which is current there', () => {
     const { host } = mount('/orders')
     click(host.querySelector('.rv-dock > button'))
-    click([...document.querySelectorAll('.rv-fullmenu-row')].find(row => row.textContent === 'Koyu Tema') ?? null)
-    click(host.querySelector('.rv-dock')!.children[0])
+    click([...document.querySelectorAll('.rv-fullmenu-row')].find(row => row.textContent === 'Sistem Ayarları') ?? null)
     expect(pathNow).toBe('/settings')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
+    click(host.querySelector('.rv-dock > button'))
+    expect(document.querySelector('a.rv-fullmenu-row[href="/settings"]')?.classList.contains('is-current')).toBe(true)
   })
 
   it('leaves the menu for a page by replacing its history entry, so back returns to the page it was opened on', () => {

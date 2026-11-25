@@ -179,7 +179,7 @@ function orderDetail({ match }) {
 
 // ---------------------------------------------------------------------------------------------------------- returns
 
-function claim({ id, platformCode, externalClaimId, orderNumber, status, rawStatus, reasonCode = null, reasonText = null, actionDueAt = null, approvedAt = null, customer, orderedAt, cargo = null, tracking = null, orderCargo = null, orderTracking = null, packageNumber, invoiceStatus = 'FATURA_KONTROLDE', lines, discount = 0, lineStatuses = null, estimated = false, sellerDescription = null }) {
+function claim({ id, platformCode, externalClaimId, orderNumber, status, rawStatus, reasonCode = null, reasonText = null, actionDueAt = null, approvedAt = null, customer, orderedAt, cargo = null, tracking = null, orderCargo = null, orderTracking = null, packageNumber, invoiceStatus = 'FATURA_KONTROLDE', lines, discount = 0, lineStatuses = null, estimated = false, sellerDescription = null, amounts = null }) {
   const grossAmount = Math.round(lines.reduce((sum, item) => sum + item.unitPrice * item.orderedQuantity, 0) * 100) / 100
   return {
     id, externalClaimId, orderNumber, status, rawStatus, reasonText, reasonCode, actionDueAt: actionDueAt ? ist(actionDueAt) : null, approvedAt: approvedAt ? ist(approvedAt) : null,
@@ -187,7 +187,7 @@ function claim({ id, platformCode, externalClaimId, orderNumber, status, rawStat
     orderAmount: Math.round((grossAmount - discount) * 100) / 100, currency: 'TRY', cargoProviderName: cargo, cargoTrackingNumber: tracking, cargoTrackingLink: null,
     orderCargoProviderName: orderCargo, orderCargoTrackingNumber: orderTracking, primaryImageUrl: lines.find(item => item.imageUrl)?.imageUrl ?? null,
     productCount: lines.length, primaryBarcode: lines[0]?.barcode ?? null, lines, packageNumber, invoiceStatus, grossAmount, discountAmount: discount, isMicroExport: false,
-    connectionId: connectionIds[platformCode], platformCode, platformDisplayName: platformNames[platformCode], lineStatuses, actionDueAtEstimated: estimated
+    connectionId: connectionIds[platformCode], platformCode, platformDisplayName: platformNames[platformCode], lineStatuses, actionDueAtEstimated: estimated, returnAmounts: amounts
   }
 }
 
@@ -196,6 +196,7 @@ export const returns = [
     id: 'r-2001', platformCode: 'TRENDYOL', externalClaimId: 'f3a9c1e2-7d44-4b8a-9a51-2c6e0d9b1a77', orderNumber: '10400000003', status: 'ACTION_REQUIRED', rawStatus: 'WaitingInAction',
     reasonCode: 'SIZE_TOO_SMALL', reasonText: 'Normalde M giyiyorum ama kalıbı dar, bir beden büyüğünü alacağım.', actionDueAt: '2026-10-21 08:00',
     customer: 'Gizem Aksoy', orderedAt: '2026-10-08 14:10', cargo: MNG, tracking: '7330000000000006', packageNumber: '3180000006',
+    amounts: { saleAmount: 749.9, discountAmount: 37.5, invoicedAmount: 712.4, refundAmount: null },
     lines: [line('r-2001-l1', { sku: 'RVK-ELB-0661-YSL-M', barcode: '8684471266617', title: 'Kadın Saten Midi Elbise', price: 749.9, raw: 'WaitingInAction', model: 'RVK-ELB-0661', options: 'Renk: Yeşil | Beden: M', image: photo })]
   }),
   claim({
@@ -243,6 +244,14 @@ export const returns = [
     reasonCode: 'OTHER', reasonText: 'Ürün beklediğim gibi değil.', customer: 'Nazlı Tekin', orderedAt: '2026-09-28 16:15',
     cargo: MNG, tracking: '7330000000000003', packageNumber: '3180000001', sellerDescription: 'Ürün kullanılmış olarak geri gönderildi; itiraz edildi.',
     lines: [line('r-2008-l1', { sku: 'RVK-BOT-0820-SYH-38', barcode: '8684471208202', title: 'Kadın Bilekte Deri Bot', price: 1349.9, vat: 20, raw: 'Unresolved', model: 'RVK-BOT-0820', options: 'Renk: Siyah | Beden: 38' })]
+  }),
+  // A refunded Hepsiburada claim: Hepsiburada reports only the refunded amount (claim refundAmount).
+  claim({
+    id: 'r-2009', platformCode: 'HEPSIBURADA', externalClaimId: 'HBR-76900001', orderNumber: '4260000001', status: 'COMPLETED', rawStatus: 'Refunded',
+    reasonCode: 'Bedeni / boyutu büyük geldi', reasonText: null, approvedAt: '2026-10-16 11:20', customer: 'Selin Uçar', orderedAt: '2026-10-02 09:12',
+    cargo: SENDEO, tracking: 'SND2026101300118', packageNumber: '5420000001', invoiceStatus: 'FATURA_BEKLIYOR',
+    amounts: { saleAmount: null, discountAmount: null, invoicedAmount: null, refundAmount: 1249.9 },
+    lines: [line('r-2009-l1', { sku: 'RVK-TRC-0512-BEJ-M', barcode: '0RVK05120M', title: 'Kadın Trençkot', price: 1249.9, vat: 20, raw: 'Refunded', model: 'RVK-TRC-0512', options: 'Renk: Bej | Beden: M' })]
   }),
 ]
 

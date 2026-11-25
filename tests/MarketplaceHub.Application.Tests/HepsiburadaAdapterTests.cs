@@ -1634,6 +1634,41 @@ public sealed class HepsiburadaAdapterTests
         Assert.Equal("customer-return-17", claim.CargoTrackingNumber);
     }
 
+    // Claim list RefundAmount ("İade edilen tutarın bilgisidir"): a positive lira amount is the refund; the 0 Hepsiburada
+    // writes before it pays, another currency or a missing field stay unknown.
+    [Theory]
+    [InlineData("\"refundAmount\": 865.72, \"refundCurrency\": \"TRY\",", "865.72")]
+    [InlineData("\"RefundAmount\": \"865.72\",", "865.72")]
+    [InlineData("\"refundAmount\": { \"amount\": 865.72, \"currency\": \"TRY\" },", "865.72")]
+    [InlineData("\"refundAmount\": 0, \"refundCurrency\": \"\",", null)]
+    [InlineData("\"refundAmount\": 865.72, \"refundCurrency\": \"EUR\",", null)]
+    [InlineData("", null)]
+    [InlineData("\"refundAmount\": 865.72, \"refundDate\": \"2026-11-12T10:00:00\",", "865.72")]
+    // Docs sample of a rejected claim: refundAmount 0 and an empty refundDate; an empty refundDate is no refund.
+    [InlineData("\"refundAmount\": 865.72, \"refundDate\": \"\",", null)]
+    // Not refunded (any other status): no amount, whatever the field says.
+    [InlineData("\"refundAmount\": 865.72,", null, "Rejected")]
+    [InlineData("\"refundAmount\": 865.72,", null, "AwaitingAction")]
+    public void ClaimMapper_ReadsTheRefundAmountOnlyWhenHepsiburadaReportsOne(string refundFields, string? expected, string status = "Refunded")
+    {
+        using var json = JsonDocument.Parse($$"""
+        {
+          "claimNumber": "714000001",
+          "status": "{{status}}",
+          "claimType": "Return",
+          "claimDate": "2026-11-10T12:15:00Z",
+          "orderNumber": "HB-2026-REFUND",
+          "quantity": 1,
+          {{refundFields}}
+          "line": { "lineItemId": "line-refund" }
+        }
+        """);
+
+        var claim = HepsiburadaJsonMapper.ReturnClaim(json.RootElement);
+
+        Assert.Equal(expected is null ? null : decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), claim.RefundAmount);
+    }
+
     [Fact]
     public void ClaimMapper_MapsTheFlatFieldsDocumentedByHepsiburada()
     {

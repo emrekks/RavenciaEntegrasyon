@@ -120,7 +120,7 @@ internal sealed partial class ReturnQueryService
                 variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
                 variant?.ModelCode ?? sourceSnapshot?.ModelCode,
                 string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
-                source is null ? null : ReturnMarketplaceAmounts.Line(platformCode, source.SourceSnapshotJson, line.Quantity, claim.ExternalClaimId),
+                source is null ? null : ReturnMarketplaceAmounts.Line(platformCode, source.SourceSnapshotJson, line.Quantity, claim.ExternalClaimId, sourceLines.Count == 1 ? claim.RefundAmount : null),
                 line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller,
                 HeldByDecision(line.Id), ReturnCustomerRequestPolicy.StockDispositionAllowed(claim.Status, line.RawStatus, ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith)), pendingStockLineIds.Contains(line.Id),
                 images.FallbackImageUrl);
