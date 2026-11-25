@@ -1,9 +1,9 @@
 /*
  * Phone navigation (owner, 25 Nov 2026; the structure of Shopify's admin dock, our own icons and colours): up to 760 px
  * (shared/phone-shell.ts) three opaque parts float free over the content at the bottom, 8 px apart, 12 px (and the safe area) above the
- * edge, centred (292 px wide with the three-slot pill) (BottomDock.tsx):
- *  - left a 56 x 56 round Ana Sayfa button, in the middle a 56 px pill with three icon-only 52 x 48 slots (Siparişler, Ürünler,
- *    Sorular; 4 px inside, no labels but aria-labels), right a 56 x 56 round Menü button. The open page is tinted (a 52 x 48 pill in the
+ * edge, centred (344 px wide with the four-slot pill: it fits a 360 px phone with 8 px at the sides) (BottomDock.tsx):
+ *  - left a 56 x 56 round Ana Sayfa button, in the middle a 56 px pill with four icon-only 52 x 48 slots (Siparişler, İadeler,
+ *    Ürünler, Sorular; 4 px inside, no labels but aria-labels), right a 56 x 56 round Menü button. The open page is tinted (a 52 x 48 pill in the
  *    pill, the round button when it is Ana Sayfa) with the accent-coloured icon; while the menu is open Menü is the active one and shows the cross.
  *    Search lives in the top bar only.
  *  - No blur, no frosted band, no border: a shadow only (a 1 px inner line and a darker shadow on the dark theme). The page flows

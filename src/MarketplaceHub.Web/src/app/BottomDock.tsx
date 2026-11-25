@@ -35,10 +35,11 @@ export function useDockHostState(phone: boolean) {
 export { DockContext }
 
 type DockTarget = { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }
-// The pill: three icon-only slots (Siparişler, Ürünler, Sorular); Ana Sayfa (left) and Menü (right) are the round buttons beside it.
+// The pill: four icon-only slots (Siparişler, İadeler, Ürünler, Sorular); Ana Sayfa (left) and Menü (right) are the round buttons beside it.
 const homePage: DockTarget = { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true }
 const pillPages: DockTarget[] = [
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
+  { to: '/returns', icon: 'returns', label: 'İadeler', noun: 'bekleyen iade' },
   { to: '/products', icon: 'products', label: 'Ürünler' },
   { to: '/questions', icon: 'questions', label: 'Sorular', aria: 'Ürün Soruları', noun: 'cevaplanmamış' },
 ]
