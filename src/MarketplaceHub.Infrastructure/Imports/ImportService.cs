@@ -81,6 +81,11 @@ public sealed class ImportService(AppDbContext db, IPrivateFileStorage files, Cu
         // the session ended) it is refused with 409 instead of a failed state transition (500).
         var session = await db.ImportSessions.SingleAsync(x => x.TenantId == tenantId && x.Id == sessionId, cancellationToken);
         if (session.Status is not (ImportSessionStatus.ReviewRequired or ImportSessionStatus.ReadyToApply)) return Conflict<ImportCandidateView>("IMPORT_DECISIONS_CLOSED", "Bu aktarımda kararlar artık değiştirilemez.");
+        // Uygula already queued (or leased) a job for this session: a changed decision would raise the session's version
+        // and the next Uygula would open a second job beside it; it is refused until that job has ended.
+        var applyKeyPrefix = $"import-apply:{session.Id}:";
+        if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == "IMPORT_APPLY" && x.JobDedupKey.StartsWith(applyKeyPrefix) && x.Status != JobStatus.Succeeded && x.Status != JobStatus.Dead && x.Status != JobStatus.Cancelled, cancellationToken))
+            return Conflict<ImportCandidateView>("IMPORT_APPLY_QUEUED", "Bu aktarım uygulanmak üzere sıraya alındı; iş bitene kadar kararlar değiştirilemez.");
         if (!Enum.TryParse<ImportDecisionKind>(command.Decision, true, out var decision)) return Invalid<ImportCandidateView>("decision", "Karar CREATE, LINK veya SKIP olmalıdır.");
         if (decision == ImportDecisionKind.Link && (command.ProductId is null || command.VariantId is null || !await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.Id == command.VariantId && x.ProductId == command.ProductId, cancellationToken))) return Invalid<ImportCandidateView>("variantId", "LINK kararı tenant içindeki geçerli product/variant ister.");
         var current = await db.ImportDecisions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CandidateId == candidateId, cancellationToken); if (current is null) { current = new ImportDecision { Id = Guid.CreateVersion7(), TenantId = tenantId, CandidateId = candidateId, ActorUserId = userId, DecidedAt = timeProvider.GetUtcNow() }; db.ImportDecisions.Add(current); } else { current.Version++; current.DecidedAt = timeProvider.GetUtcNow(); current.ActorUserId = userId; }

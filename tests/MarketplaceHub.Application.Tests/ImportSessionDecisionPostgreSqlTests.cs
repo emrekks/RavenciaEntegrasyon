@@ -72,6 +72,51 @@ public sealed class ImportSessionDecisionPostgreSqlTests(PostgreSqlTenantIsolati
         }
     }
 
+    // A changed decision while Uygula's job waits in the queue or runs would raise the session's version, and the next
+    // Uygula would open a second IMPORT_APPLY job: it is a 409 until that job has ended.
+    [PostgreSqlFact]
+    public async Task ADecision_IsRefusedWhileTheApplyJobIsQueuedOrLeased_AndOpenAgainOnceItEnded()
+    {
+        var (tenantId, session, candidate) = await SeedAsync("import-apply-queued", ImportSessionStatus.ReviewRequired);
+        var userId = Guid.CreateVersion7();
+        await using (var db = fixture.CreateContext())
+            Assert.True((await Service(db).DecideAsync(tenantId, userId, session.Id, candidate.Id, candidate.Version, new ImportDecisionCommand("CREATE", null, null), CancellationToken.None)).Succeeded);
+        Guid jobId;
+        await using (var db = fixture.CreateContext())
+        {
+            var enqueued = await Service(db).EnqueueApplyAsync(tenantId, session.Id, "corr-e4", CancellationToken.None);
+            Assert.True(enqueued.Succeeded, enqueued.Error?.Message);
+            jobId = enqueued.Value;
+        }
+
+        foreach (var status in new[] { JobStatus.Pending, JobStatus.Leased })
+        {
+            await using (var db = fixture.CreateContext())
+                await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, status));
+            await using (var db = fixture.CreateContext())
+            {
+                var version = (await db.ImportMatchCandidates.AsNoTracking().SingleAsync(x => x.Id == candidate.Id)).Version;
+                var refused = await Service(db).DecideAsync(tenantId, userId, session.Id, candidate.Id, version, new ImportDecisionCommand("SKIP", null, null), CancellationToken.None);
+                Assert.False(refused.Succeeded);
+                Assert.Equal((409, "IMPORT_APPLY_QUEUED"), (refused.Error!.Status, refused.Error.Code));
+            }
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(ImportDecisionKind.Create, (await db.ImportDecisions.AsNoTracking().SingleAsync(x => x.CandidateId == candidate.Id)).Decision);
+            Assert.Equal(1, await db.IntegrationJobs.CountAsync(x => x.TenantId == tenantId && x.JobType == "IMPORT_APPLY"));
+            await db.IntegrationJobs.Where(x => x.Id == jobId).ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, JobStatus.Dead));
+        }
+
+        // The job ended without applying: the decision can be changed again.
+        await using (var db = fixture.CreateContext())
+        {
+            var version = (await db.ImportMatchCandidates.AsNoTracking().SingleAsync(x => x.Id == candidate.Id)).Version;
+            var changed = await Service(db).DecideAsync(tenantId, userId, session.Id, candidate.Id, version, new ImportDecisionCommand("SKIP", null, null), CancellationToken.None);
+            Assert.True(changed.Succeeded, changed.Error?.Message);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task OneFileColumn_MappedToTwoFields_IsRefusedWith422()
     {
