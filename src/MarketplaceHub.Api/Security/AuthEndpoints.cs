@@ -266,7 +266,7 @@ public static class AuthEndpoints
         if (await PasswordCheck.IsBlockedAsync(context, users, user, signedIn: true)) return await EndSessionAfterFailuresAsync(session, db, context, time, "network-blocked");
         // The second factor already passed in this session and only the workspace is still to be chosen (G8).
         if (session.TenantId is null && await db.AuditLogs.AsNoTracking().AnyAsync(x => x.Action == AuthAudit.MfaSucceeded && x.TargetId == session.Id.ToString("D"), context.RequestAborted))
-            return await FinishMfaSignInAsync(session, user, request.TenantId, db, context, time);
+            return await FinishMfaSignInAsync(session, user, request.TenantId, db, context, time, hasher);
         var security = await db.UserSecurities.SingleAsync(x => x.UserId == session.UserId, context.RequestAborted);
         var accepted = false;
         if (request.RecoveryCode is { Length: > 0 })
@@ -290,13 +290,13 @@ public static class AuthEndpoints
         await PasswordCheck.RegisterSuccessAsync(context, users, user);
         // Also the record FinishMfaSignInAsync's workspace step (and ChangePasswordAsync) looks for.
         AuthAudit.Record(db, context, AuthAudit.MfaSucceeded, session.UserId, session.TenantId, request.RecoveryCode is { Length: > 0 } ? "recovery-code" : "totp", time.GetUtcNow(), session.Id);
-        return await FinishMfaSignInAsync(session, user, request.TenantId, db, context, time);
+        return await FinishMfaSignInAsync(session, user, request.TenantId, db, context, time, hasher);
     }
 
     // After the second factor: a session that started without a workspace (an account with several and an authenticator,
     // G8) takes the one requested, or the only one. With several and none chosen it stays at this step, the second
     // factor recorded as passed, and the answer lists the workspaces by name; the next request only names one.
-    private static async Task<IResult> FinishMfaSignInAsync(UserSession session, ApplicationUser user, Guid? requestedTenantId, AppDbContext db, HttpContext context, TimeProvider time)
+    private static async Task<IResult> FinishMfaSignInAsync(UserSession session, ApplicationUser user, Guid? requestedTenantId, AppDbContext db, HttpContext context, TimeProvider time, TokenHasher hasher)
     {
         if (session.TenantId is null)
         {
@@ -314,7 +314,11 @@ public static class AuthEndpoints
         // A forced password change follows the second factor.
         session.State = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : SessionState.Active;
         session.ExpiresAt = SessionLifetime.IdleExpiry(session, time.GetUtcNow());
-        await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
+        // The session's token changes as it gains the second factor (as after a password change): a token seen before
+        // the step, the half-signed-in cookie, signs nothing in.
+        var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw);
+        await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, SessionLifetime.CookieExpiry(session));
+        return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
     private static async Task<IResult> TenantSelectionRequiredAsync(HttpContext context, AppDbContext db, IReadOnlyList<TenantMembership> memberships)

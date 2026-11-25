@@ -39,11 +39,30 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
             Assert.All(firstCodes, code => Assert.Matches("^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$", code));
 
             // A second device signs in with a recovery code.
-            var (second, secondCsrf) = await SignInAsync(email, "MFA_CHALLENGE");
+            var second = fixture.Host!.CreateClient();
+            var secondCsrf = await fixture.Host.CsrfAsync(second);
+            string halfSignedIn;
+            using (var signIn = await second.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", secondCsrf, new { email, password = ApiEndToEndFixture.Password })))
+            {
+                Assert.Equal("MFA_CHALLENGE", (await signIn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("state").GetString());
+                halfSignedIn = SessionToken(signIn);
+            }
             using (second)
             {
                 using (var challenge = await second.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/mfa/challenge", secondCsrf, new { code = (string?)null, recoveryCode = firstCodes[0] })))
+                {
                     Assert.Equal(HttpStatusCode.OK, challenge.StatusCode);
+                    // Scan 25 Nov 2026 (E-5): the session's token changes as it gains the second factor; the
+                    // half-signed-in token seen before it signs nothing in.
+                    Assert.NotEqual(halfSignedIn, SessionToken(challenge));
+                }
+                using (var stale = fixture.Host!.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = false }))
+                using (var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me"))
+                {
+                    request.Headers.Add("Cookie", $"{SessionAuthMiddleware.PilotLocalCookieName}={halfSignedIn}");
+                    using var me = await stale.SendAsync(request);
+                    Assert.Equal(HttpStatusCode.Unauthorized, me.StatusCode);
+                }
 
                 // Replacing the authenticator takes the current factor as well as the password.
                 using (var passwordOnly = await first.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/mfa/setup", firstCsrf, new { password = ApiEndToEndFixture.Password })))
@@ -192,6 +211,10 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
         Assert.Equal(expectedState, (await signIn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("state").GetString());
         return (client, csrf);
     }
+
+    private static string SessionToken(HttpResponseMessage response) =>
+        Assert.Single(response.Headers.GetValues("Set-Cookie"), value => value.StartsWith(SessionAuthMiddleware.PilotLocalCookieName + "=", StringComparison.Ordinal))
+            .Split(';')[0][(SessionAuthMiddleware.PilotLocalCookieName.Length + 1)..];
 
     private static async Task<byte[]> StartSetupAsync(HttpClient client, string csrf, object body)
     {
