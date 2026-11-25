@@ -96,6 +96,27 @@ public static class TrendyolEFaturamCanonicalPayload
         return (recipientName, recipientSurname);
     }
 
+    /// <summary>
+    /// The buyer's tax or identity number as the invoice reads it (the invoice address first, then the customer; FindTaxId's
+    /// keys), "" when neither holds a valid one. The invoice preview shows this one (scan 25 Nov 2026 C-6), so the number on
+    /// screen is the number the invoice carries.
+    /// </summary>
+    public static string RecipientTaxId(string? customerJson, string? addressJson)
+    {
+        foreach (var json in new[] { addressJson, customerJson })
+        {
+            if (string.IsNullOrWhiteSpace(json)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(json);
+                var taxId = FindTaxId(document.RootElement);
+                if (ValidTaxId(taxId)) return taxId;
+            }
+            catch (JsonException) { }
+        }
+        return "";
+    }
+
     private static (string TaxId, bool IsCorporate) RecipientTaxIdentity(JsonElement customer, JsonElement addressRoot, string invoiceType)
     {
         var taxId = FindTaxId(addressRoot);
