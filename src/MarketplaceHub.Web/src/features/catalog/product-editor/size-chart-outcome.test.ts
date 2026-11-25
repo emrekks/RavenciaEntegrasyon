@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { ApiRequestError } from '../../../shared/api'
-import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage, unknownSizeChartOutcomeMessage } from './size-chart-outcome'
+import { ApiRequestError, clientTimeoutCode, clientWriteTimeoutMessage } from '../../../shared/api'
+import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage, sizeChartGenerateInit, sizeChartTimeoutMessage, unknownSizeChartOutcomeMessage } from './size-chart-outcome'
 
 describe('a size chart try whose answer was lost', () => {
   it('never shows the cryptic idempotency text: the key held as unknown or running reads as a plain retry hint', () => {
@@ -29,5 +29,21 @@ describe('a size chart try whose answer was lost', () => {
     expect(chartDrawnMeanwhile(null, '/b.png')).toBe('/b.png')
     expect(chartDrawnMeanwhile('/a.png', '/a.png')).toBeNull()
     expect(chartDrawnMeanwhile('/a.png', null)).toBeNull()
+  })
+})
+
+describe('a size chart drawing that outlasts the panel\'s wait', () => {
+  it('waits longer than the slowest drawing (180 s) instead of the 90 s write limit', () => {
+    const init = sizeChartGenerateInit('key-1', '{}', new AbortController().signal)
+    expect(init.timeoutMs).toBeGreaterThan(180_000)
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe('key-1')
+  })
+
+  it('reads the panel\'s own time-out as an uncertain result to look at again shortly', () => {
+    const reason = new ApiRequestError(clientWriteTimeoutMessage, 0, clientTimeoutCode)
+    expect(isUnknownSizeChartOutcome(reason)).toBe(true)
+    expect(sizeChartFailureMessage(reason)).toBe(sizeChartTimeoutMessage)
+    expect(sizeChartTimeoutMessage).toContain('sonuç belirsiz')
+    expect(sizeChartTimeoutMessage).toContain('Birazdan tekrar bakın')
   })
 })

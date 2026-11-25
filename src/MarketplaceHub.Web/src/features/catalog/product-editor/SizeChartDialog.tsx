@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
-import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage } from './size-chart-outcome'
+import { chartDrawnMeanwhile, isUnknownSizeChartOutcome, sizeChartFailureMessage, sizeChartGenerateInit } from './size-chart-outcome'
 import { Button, FieldHelp, IconButton, Modal, UiIcon } from '../../../shared/components'
 import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft } from './size-chart-measurements'
 import './size-chart.css'
@@ -80,7 +80,7 @@ export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productI
       // replays the chart it drew (or answers that it is still drawing) instead of a second paid run; a drawn chart or
       // an answered error renews it.
       const body = JSON.stringify(checked.payload)
-      const generated = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('size-chart', productId, drawKey, body), key => hubApi<SizeChartResult>(`/products/${productId}/size-chart/generate`, { method: 'POST', headers: { 'Idempotency-Key': key }, body, signal: controller.signal }))
+      const generated = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('size-chart', productId, drawKey, body), key => hubApi<SizeChartResult>(`/products/${productId}/size-chart/generate`, sizeChartGenerateInit(key, body, controller.signal)))
       setDrawKey(newIdempotencyKey('draw'))
       if (controller.signal.aborted) return
       setResult(generated)
