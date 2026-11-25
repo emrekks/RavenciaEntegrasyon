@@ -192,7 +192,38 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteReadGuardTenantAsync(tenant.Id); }
     }
 
-    // Pazarama's open-order scan reads whole order-date windows when more orders are open than one run reads by number. A
+    // Review of 25 Nov 2026: the last-day read that follows a month stopped at its cap leaves the month unread, so the
+    // incomplete-list issue stays open through it; only a whole month read closes it (it used to flip open and closed).
+    [PostgreSqlFact]
+    public async Task B10_ALastDayReadAfterAStoppedMonthKeepsTheIncompleteListIssueOpen()
+    {
+        var (tenant, connection, _) = await SeedReadGuardConnectionAsync("b10-hb-cancel-issue", "HEPSIBURADA", "ORDER_LIFECYCLE");
+        var port = new PagingCancellationPort(int.MaxValue);
+        async Task<int> RunAsync()
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, port, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                Assert.Equal(JobCompletionKind.Succeeded, (await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaOrderStatusSync, "{}", "b10-hb-cancel-issue", CancellationToken.None)).Kind);
+            }
+            await using var check = fixture.CreateContext();
+            return await check.OperationalIssues.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id && x.Code == "HEPSIBURADA_CANCELLED_LIST_INCOMPLETE" && x.ResolvedAt == null);
+        }
+        try
+        {
+            Assert.Equal(1, await RunAsync());
+            port.LastPage = 2;
+            var narrow = port.Calls;
+            Assert.Equal(1, await RunAsync());
+            Assert.InRange((fixture.TimeProvider.GetUtcNow() - port.Since[narrow]).TotalDays, 0.9, 1.1);
+            var wide = port.Calls;
+            Assert.Equal(0, await RunAsync());
+            Assert.InRange((fixture.TimeProvider.GetUtcNow() - port.Since[wide]).TotalDays, 29.9, 30.1);
+        }
+        finally { await DeleteReadGuardTenantAsync(tenant.Id); }
+    }
+
+    // Pazarama's open-order scan) reads whole order-date windows when more orders are open than one run reads by number. A
     // window cut at its page cap used to be reported while the scan still finished and moved its watermark; now the scan
     // stops there with the same code and the watermark stays.
     [PostgreSqlFact]
@@ -311,6 +342,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
     private sealed class PagingCancellationPort(int lastPage) : IHepsiburadaInvoiceStatusPort
     {
         public int Calls { get; private set; }
+        public int LastPage { get; set; } = lastPage;
         // The start of the window each list read asked for.
         public List<DateTimeOffset> Since { get; } = [];
 
@@ -319,7 +351,7 @@ public sealed partial class PostgreSqlTenantIsolationTests
             Calls++;
             Since.Add(since);
             var number = page.Cursor is null ? 1 : int.Parse(page.Cursor, System.Globalization.CultureInfo.InvariantCulture);
-            var more = number < lastPage;
+            var more = number < LastPage;
             return Task.FromResult(AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Success(new([], more ? (number + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : null, more)));
         }
 

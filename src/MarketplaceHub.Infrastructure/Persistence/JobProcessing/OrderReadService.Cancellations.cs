@@ -62,11 +62,12 @@ internal sealed partial class OrderReadService
         else
         {
             await ResolveIssue(tenantId, $"hepsiburada-cancelled:{connectionId}", cancellationToken);
-            await ResolveIssue(tenantId, incompleteKey, cancellationToken);
             cursor.LastSuccessAt = now;
             cursor.Version++;
             if (window.Wide)
             {
+                // Only a whole month read closes the stop: a last-day read after a stopped month leaves the month unread.
+                await ResolveIssue(tenantId, incompleteKey, cancellationToken);
                 wideCursor.LastSuccessAt = now;
                 wideCursor.Version++;
                 SetWideMark(wideCursor, null);
