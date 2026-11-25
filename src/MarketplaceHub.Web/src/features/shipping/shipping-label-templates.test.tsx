@@ -37,7 +37,7 @@ vi.mock('../../shared/api', async importOriginal => {
   return { ...original, hubApi }
 })
 
-import { deviceShippingLabelTemplatesKey, deviceShippingLabelTemplatesMovedKey, mergeShippingLabelTemplates, useShippingLabelTemplates, type ShippingLabelTemplate } from './shipping-label-templates'
+import { deviceShippingLabelTemplatesKey, deviceShippingLabelTemplatesMovedKey, deviceShippingLabelTemplatesOwnerKey, mergeShippingLabelTemplates, useShippingLabelTemplates, type ShippingLabelTemplate } from './shipping-label-templates'
 import { normalizeShippingLabelSettings } from './shipping-label'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -213,5 +213,28 @@ describe('useShippingLabelTemplates', () => {
 
     expect(server.version).toBe(2)
     expect(names(hook.templates)).toEqual(['Depo', 'Mağaza'])
+  })
+
+  it('a device list belongs to the first account seen on it: a staff member of A, then the owner of B, moves nothing to B', async () => {
+    server.templates = []
+    server.version = 1
+    // A staff member of account A opens the designer first: the device list is A's, and A's staff may not write it.
+    await openOnDevice([template('p1', 'Gönderen A', 'A Mağazası')], 'OPERATIONS')
+    expect(localStorage.getItem(deviceShippingLabelTemplatesOwnerKey)).toBe('tenant-1')
+    act(() => root.unmount())
+    container.remove()
+
+    // The owner of account B signs in on the same browser.
+    container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(['me'], { id: 'user-2', email: 'owner-b@example.com', displayName: 'B Sahibi', role: 'OWNER', state: 'ACTIVE', tenantId: 'tenant-2' })
+    await act(async () => { root.render(<QueryClientProvider client={client}><Probe /></QueryClientProvider>) })
+    await settle()
+
+    expect(server.puts).toHaveLength(0)
+    expect(hook.templates).toEqual([])
+    expect(localStorage.getItem(deviceShippingLabelTemplatesMovedKey)).toBeNull()
   })
 })

@@ -36,7 +36,8 @@ export const personalStorageKeyPrefixes = [
 // labels printed on this device, and the answered idempotency keys (a resend after sign-in must not repeat an answered
 // request). The label templates live on the account since 26 Nov 2026 (GET/PUT settings/shipping-label-templates):
 // ravencia.shippingLabelTemplates is the list a browser kept before, moved to the account once and never deleted, and
-// ravencia.shippingLabelTemplatesMoved marks that move (shipping-label-templates.ts).
+// ravencia.shippingLabelTemplatesMoved marks that move, ravencia.shippingLabelTemplatesOwner the account the list belongs to
+// (shipping-label-templates.ts).
 // ravencia.printedShippingLabels is kept here although the 15 Nov 2026 scan (WEB-ALTYAPI-9) proposed clearing it at
 // sign-out: it records which labels this device printed (order ids and a format, no buyer data, a bounded recent list)
 // and only backs up the server's labelPrintedAt when the label-printed call failed (label-printed.ts); clearing it would

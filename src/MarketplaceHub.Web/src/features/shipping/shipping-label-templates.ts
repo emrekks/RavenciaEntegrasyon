@@ -13,12 +13,15 @@ import { normalizeShippingLabelSettings, type ShippingLabelSettings } from './sh
 // into a list other devices already filled by name, the account's template winning and the device's one kept beside
 // it as "<ad> (Bu Cihaz)". A template the account already holds as it is is not added twice. The device remembers the
 // tenant it moved them to (ravencia.shippingLabelTemplatesMoved), so a template deleted later is not brought back. While
-// the account's list cannot be read, the device's own copy is shown and nothing is written to the account.
+// the account's list cannot be read, the device's own copy is shown and nothing is written to the account. The list
+// moves only to the account it belongs to (ravencia.shippingLabelTemplatesOwner): the first account seen on the browser.
 
 export type ShippingLabelTemplate = { id: string; name: string; savedAt: string; settings: ShippingLabelSettings }
 
 export const deviceShippingLabelTemplatesKey = 'ravencia.shippingLabelTemplates'
 export const deviceShippingLabelTemplatesMovedKey = 'ravencia.shippingLabelTemplatesMoved'
+// The account (tenant id) the device list belongs to: the first one seen on this browser, whatever the role.
+export const deviceShippingLabelTemplatesOwnerKey = 'ravencia.shippingLabelTemplatesOwner'
 export const shippingLabelTemplatesQueryKey = queryKeys.shippingLabelTemplates()
 const templatesPath = '/settings/shipping-label-templates'
 const maximumNameLength = 80
@@ -42,6 +45,18 @@ export function loadDeviceShippingLabelTemplates(): ShippingLabelTemplate[] {
 
 function movedToTenant(): string | null {
   try { return localStorage.getItem(deviceShippingLabelTemplatesMovedKey) } catch { return null }
+}
+
+function deviceListOwner(): string | null {
+  try { return localStorage.getItem(deviceShippingLabelTemplatesOwnerKey) } catch { return null }
+}
+
+// Records the account the device list belongs to; a store that refuses the write leaves it unclaimed, so nothing moves.
+function claimDeviceList(tenantId: string): string | null {
+  try {
+    localStorage.setItem(deviceShippingLabelTemplatesOwnerKey, tenantId)
+    return localStorage.getItem(deviceShippingLabelTemplatesOwnerKey)
+  } catch { return null }
 }
 
 function markMoved(tenantId: string) {
@@ -135,6 +150,10 @@ async function changeAccount(client: QueryClient, current: TemplatesEnvelope | u
 export async function moveDeviceTemplatesToAccount(client: QueryClient, read: TemplatesEnvelope, me: Pick<Me, 'role' | 'tenantId'> | undefined) {
   const tenantId = me?.tenantId
   if (!tenantId || movedToTenant() !== null) return 0
+  // The device list belongs to the first account seen on this browser, whatever the role (its sender name and address
+  // are that account's): a list without a known owner is claimed by the first account signed in, and only that account
+  // ever takes it. Another account signing in later on the same browser gets nothing from it.
+  if ((deviceListOwner() ?? claimDeviceList(tenantId)) !== tenantId) return 0
   const device = loadDeviceShippingLabelTemplates()
   if (device.length === 0) { markMoved(tenantId); return 0 }
   // Only the owner and administrators write the account's templates; another role keeps the device's copy for later.
