@@ -29,3 +29,19 @@ describe('İadeler order column width', () => {
     expect(width('.rr-tbl.rr-tbl.rr-has-select col.rr-c-order') + width('.rr-tbl.rr-tbl.rr-has-select col.rr-c-prod')).toBe(544)
   })
 })
+
+// A Bilgiler "Label: value" line breaks inside the line when it does not fit (never nowrap, never an ellipsis), on Siparişler and İadeler.
+describe('Bilgiler code lines never leave the cell', () => {
+  const plineRules = css.split('\n').filter(line => line.includes('.rr-pline small:not(.rr-card-only)') && line.includes('white-space'))
+  it('every table rule for the product lines wraps with overflow-wrap anywhere and has no ellipsis', () => {
+    expect(plineRules.length).toBeGreaterThanOrEqual(2)
+    for (const rule of plineRules) {
+      expect(rule).toContain('white-space: normal')
+      expect(rule).toContain('overflow-wrap: anywhere')
+      expect(rule).not.toContain('ellipsis')
+    }
+  })
+  it('no nowrap rule still lists the product lines', () => {
+    expect(css.split('\n').filter(line => line.includes('.rr-pline small:not(.rr-card-only)') && line.includes('white-space: nowrap'))).toEqual([])
+  })
+})

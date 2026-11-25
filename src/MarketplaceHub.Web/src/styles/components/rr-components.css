@@ -1237,7 +1237,7 @@ main .rr.rr.rr-returns .rr-tbl.rr-tbl th .rr-hf { max-width: 100%; min-width: 0;
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num:not(.rr-shipdate)) { white-space: nowrap; overflow-wrap: normal; }
 /* owner, 14 Nov: a buyer name never breaks inside a word, and each Bilgiler "Label: value" line stays on one line */
 :root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
-:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: nowrap; overflow-wrap: normal; }
+:root:root:root:root main .rr.rr.rr-orders .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: normal; overflow-wrap: anywhere; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl { min-width: 1476px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl:has(col.rr-c-buyer) { min-width: 1608px; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl.rr-has-select { min-width: 1490px; }
@@ -1264,7 +1264,10 @@ main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl td.rr-mid .rr-ring > span 
 main .rr.rr.rr.rr.rr.rr-returns .rr-tbl.rr-tbl.rr-tbl .rr-reasoncell > small { -webkit-line-clamp: 2; line-clamp: 2; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(th:first-child, td:first-child) { padding-left: 12px; }
 /* owner, 14 Nov: İadeler follows the Siparişler one-line rules - order lines, tracking number, Bilgiler lines and buyer words never break inside */
-:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num, .rr-pline small:not(.rr-card-only)) { white-space: nowrap; overflow-wrap: normal; }
+:root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl :is(.rr-ordercell small, .rr-cargocell small.rr-num) { white-space: nowrap; overflow-wrap: normal; }
+/* 25 Nov: a Bilgiler "Label: value" line (Barkod, Stok Kodu, Model Kodu...) stays on one line while it fits; when it does not, the code breaks
+   inside the line (no ellipsis, the code stays readable) and never runs into the next column. */
+main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-pline small:not(.rr-card-only) { white-space: normal; overflow-wrap: anywhere; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl .rr-ordercell small .rr-nv { display: block; overflow-wrap: normal; white-space: nowrap; }
 :root:root:root:root main .rr.rr.rr-returns .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: normal !important; word-break: normal !important; hyphens: manual !important; }
 /* owner, 14 Nov night: the first column is not pinned - it scrolls with the rest of the table. */

@@ -175,7 +175,7 @@ describe('Ravencia Dock', () => {
     expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
   })
 
-  it('opens the drawer from the round Menü button, hides the dock while it is open and closes from its cross, the strip beside it or Esc', () => {
+  it('opens the full page from the round Menü button; the dock stays and turns: pill out, gear on the left, cross on the right, which closes it', () => {
     const { host } = mount('/orders')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
     click(host.querySelector('.rv-dock > button'))
@@ -183,20 +183,23 @@ describe('Ravencia Dock', () => {
     expect(dialog.getAttribute('role')).toBe('dialog')
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(document.body.style.overflow).toBe('hidden')
-    expect(document.documentElement.getAttribute('data-rv-menu')).toBe('open')
-    // The three parts of the dock are hidden (and cannot be reached) while the drawer is open, and it is no layer over the page.
+    expect(dialog.querySelector('.rv-fullmenu-peek, .rv-fullmenu-drawer, .rv-fullmenu-search, .rv-fullmenu-logo, .rv-fullmenu-float, input')).toBeNull()
+    // The same three parts stay where they are; the pill cannot be reached, the left round button is the gear, the right one the cross.
     const layer = host.querySelector('.rv-dock-layer')!
     expect(layer.getAttribute('data-menu')).toBe('open')
-    expect(layer.hasAttribute('inert')).toBe(true)
+    expect(layer.hasAttribute('inert')).toBe(false)
     expect(layer.hasAttribute('data-layer')).toBe(false)
-    click(dialog.querySelector('.rv-fullmenu-close'))
+    expect(host.querySelector('.rv-dock-pill')?.hasAttribute('inert')).toBe(true)
+    const dock = host.querySelector('.rv-dock')!
+    expect(dock.children[0].getAttribute('aria-label')).toBe('Sistem Ayarları')
+    expect(dock.children[0].getAttribute('href')).toBe('/settings')
+    expect(dock.children[2].getAttribute('aria-label')).toBe('Menüyü Kapat')
+    expect(dock.querySelectorAll('.rv-dock-swap > svg')).toHaveLength(4)
+    click(dock.children[2])
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
-    expect(document.documentElement.hasAttribute('data-rv-menu')).toBe(false)
     expect(pathNow).toBe('/orders')
-    click(host.querySelector('.rv-dock > button'))
-    click(document.querySelector('.rv-fullmenu-peek'))
-    expect(document.querySelector('.rv-fullmenu')).toBeNull()
-    expect(host.querySelector('.rv-dock-layer')?.hasAttribute('inert')).toBe(false)
+    expect(host.querySelector('.rv-dock-pill')?.hasAttribute('inert')).toBe(false)
+    expect(host.querySelector('.rv-dock')!.children[0].getAttribute('aria-label')).toBe('Ana Sayfa')
   })
 
   it('closes with Esc and with the back button, and the back button does not leave the page', () => {
@@ -211,59 +214,34 @@ describe('Ravencia Dock', () => {
     expect(pathNow).toBe('/orders')
   })
 
-  it('is a dark drawer: logo, search, the groups (the first one without a heading), Sistem and Hesap with the profile, the theme and Çıkış Yap, and the Ayarlar pill and cross floating at the bottom', () => {
+  it('is a plain list: the groups (the first one without a heading), Sistem dropped for the gear, Hesap with the profile, the theme and Çıkış Yap', () => {
     const { host } = mount('/orders')
     click(host.querySelector('.rv-dock > button'))
-    const drawer = document.querySelector('.rv-fullmenu-drawer')!
-    expect(drawer.querySelector('img.rv-fullmenu-logo')?.getAttribute('alt')).toBe('Ravencia')
-    expect(drawer.querySelector('.rv-fullmenu-search input')?.getAttribute('placeholder')).toBe('Ara')
-    const sections = [...drawer.querySelectorAll('.rv-fullmenu-group')]
-    expect(sections.map(section => section.getAttribute('aria-label'))).toEqual(['Ana Menü', 'Sistem', 'Hesap'])
+    const menu = document.querySelector('.rv-fullmenu')!
+    const sections = [...menu.querySelectorAll('.rv-fullmenu-group')]
+    // The settings row is gone (the gear replaces it), so Sistem has nothing left and loses its heading with it.
+    expect(sections.map(section => section.getAttribute('aria-label'))).toEqual(['Ana Menü', 'Hesap'])
     expect(sections[0].querySelector('h3')).toBeNull()
-    expect(sections[1].querySelector('h3')?.textContent).toBe('Sistem')
-    expect(sections[2].querySelector('h3')?.textContent).toBe('Hesap')
-    // Rows are plain: no arrows; only pages with something pending show a count (0 shows none).
-    expect(drawer.querySelector('.rv-fullmenu-chev')).toBeNull()
-    expect([...drawer.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
+    expect(sections[1].querySelector('h3')?.textContent).toBe('Hesap')
+    expect([...menu.querySelectorAll('.rv-fullmenu-row')].some(row => row.textContent === 'Sistem Ayarları')).toBe(false)
+    expect(menu.querySelector('.rv-fullmenu-chev')).toBeNull()
+    expect([...menu.querySelectorAll('.rv-fullmenu-count')].map(count => count.textContent)).toEqual(['2', '3', '7'])
     expect(sections[0].querySelector('[aria-current="page"]')?.textContent).toContain('Siparişler')
-    // Hesap: the profile is only a picture of who is signed in (no link, nothing to tab to), then the theme and Çıkış Yap.
-    const profileRow = sections[2].querySelector('.rv-fullmenu-profile')!
+    const profileRow = sections[1].querySelector('.rv-fullmenu-profile')!
     expect(profileRow.tagName).toBe('DIV')
     expect(profileRow.querySelector('a, button, [tabindex]')).toBeNull()
     expect(profileRow.querySelector('.rv-fullmenu-avatar')?.textContent).toBe('AY')
     expect(profileRow.textContent).toBe('AYAyşe Yılmaz')
-    const rows = [...sections[2].querySelectorAll('.rv-fullmenu-row')]
+    const rows = [...sections[1].querySelectorAll('.rv-fullmenu-row')]
     expect(rows.map(row => row.textContent)).toEqual(['Koyu Tema', 'Çıkış Yap'])
     expect(rows[1].classList.contains('is-danger')).toBe(true)
-    const floating = drawer.querySelector('.rv-fullmenu-float')!
-    expect(floating.querySelector('a.rv-fullmenu-settings')?.getAttribute('href')).toBe('/settings')
-    expect(floating.querySelector('a.rv-fullmenu-settings')?.textContent).toBe('Ayarlar')
-    expect(floating.querySelector('button.rv-fullmenu-close')?.getAttribute('aria-label')).toBe('Menüyü Kapat')
   })
 
-  it('filters the rows while typing in the search field and says so when nothing matches', () => {
-    const { host } = mount('/orders')
-    click(host.querySelector('.rv-dock > button'))
-    const input = document.querySelector<HTMLInputElement>('.rv-fullmenu-search input')!
-    const type = (value: string) => act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value)
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    type('ürün')
-    expect([...document.querySelectorAll('.rv-fullmenu-row')].map(row => row.textContent?.replace(/\d+$/, ''))).toEqual(['Ürün Soruları'])
-    type('çıkış')
-    expect([...document.querySelectorAll('.rv-fullmenu-row')].map(row => row.textContent)).toEqual(['Çıkış Yap'])
-    type('zzz')
-    expect(document.querySelector('.rv-fullmenu-empty')?.textContent).toBe('Eşleşen menü yok.')
-    type('')
-    expect(document.querySelectorAll('.rv-fullmenu-row').length).toBeGreaterThan(5)
-  })
-
-  it('runs the theme switch from its Hesap row and goes to the settings page from the Ayarlar pill', () => {
+  it('runs the theme switch from its Hesap row and goes to the settings page from the gear in the dock', () => {
     const { host } = mount('/orders')
     click(host.querySelector('.rv-dock > button'))
     click([...document.querySelectorAll('.rv-fullmenu-row')].find(row => row.textContent === 'Koyu Tema') ?? null)
-    click(document.querySelector('.rv-fullmenu-settings'))
+    click(host.querySelector('.rv-dock')!.children[0])
     expect(pathNow).toBe('/settings')
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
   })
