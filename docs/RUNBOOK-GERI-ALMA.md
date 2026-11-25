@@ -217,7 +217,7 @@ ve `journalctl -u ravencia-restore-drill -n 50`'de sonucun başarılı olduğunu
 **Drive kopyası (zamanlı kısım, anahtarsız):** aynı tatbikat sonunda `deploy/backup/offsite-drill.sh record` çalışır.
 Sunucuda ne Google yetkisi (yenileme belirteci veritabanında şifreli, yalnız uygulama kullanır) ne de age **özel** anahtarı
 vardır; bu yüzden zamanlı kısım Drive'dan **indirmez ve çözmez**. Yaptığı: worker'ın yükleme kaydını (Sistem Ayarları ›
-Google Drive Yedeği durumu, salt okunur) okur; kopya kapalıysa, son başarılı yükleme 36 saatten eskiyse, art arda hata ya
+Google Drive Yedeği durumu, salt okunur) okur; kopya kapalıysa, son başarılı yükleme 36 saatten eskiyse, uygulamanın alarm eşiği kadar (3) art arda hata ya
 da geçersiz yetki varsa, kaydın boyutu/MD5'i yoksa ya da kopyadaki set burada yoksa veya sağlama toplamları tutmuyorsa
 tatbikat başarısız olur (alarm gelir). Başarılı satır `Off-site record check passed: set=... NOT tested: download from
 Drive and decryption ...` der: indirme ve çözme bu satırla kanıtlanmış **değildir**.
@@ -234,7 +234,13 @@ Drive and decryption ...` der: indirme ve çözme bu satırla kanıtlanmış **d
    Betik age başlığını, boyut ve MD5'i worker'ın kaydıyla (set son gönderilen setse), çözmeyi (uygulama imajındaki
    `age`, ağsız konteyner, anahtar salt okunur bağlanır), arşivdeki yolları, `SHA256SUMS`'u, sunucudaki aynı setle
    aynılığı denetler ve seti geçici bir volume'den `restore-drill.sh` ile atılacak konteynerlere geri yükler (şemalar,
-   migration'lar, API ve Worker sağlığı). Çözülmüş dosyalar, geçici volume ve konteynerler her durumda silinir.
+   migration'lar, API ve Worker sağlığı). Arşivde normal dosya ve dizin dışında bir üye (sembolik/sert bağlantı, aygıt)
+   varsa açmadan durur; dosyalar `--no-same-owner` ile açılır. **Çözülmüş set diske yazılır:** `mktemp -d` ile
+   `$TMPDIR`'ın (verilmezse `/tmp`, sunucuda kök diskte) altında yalnız root'un okuyabildiği (0700) bir dizine; en yüksek
+   anda kopyanın yaklaşık iki katı (bugün ~140 MB'lık kopya için ~300 MB), ayrıca geçici Docker volume'ünde bir kat
+   daha (`/var/lib/docker`). Başka bir diske almak için: `sudo TMPDIR=/mnt/bos-disk bash deploy/backup/offsite-drill.sh
+   restore …`; `df -h /tmp /var/lib/docker` ile yeri önce görün. Çözülmüş dosyalar, geçici volume ve konteynerler her
+   durumda silinir.
    Beklenen son satır: `Off-site restore drill passed: set=... decrypted=yes checksums=ok restore=ok`.
 4. Ne çıkarsa çıksın anahtarı ve kopyayı silin: `shred -u /dev/shm/anahtar.txt && rm -f /dev/shm/*.tar.age`.
 Başarısızlık "wrong key or a damaged copy", "does not match the worker's upload record" ya da bir sağlama hatası

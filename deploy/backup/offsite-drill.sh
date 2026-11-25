@@ -32,6 +32,10 @@ backup_volume="marketplacehub_backup_staging"
 # Two uploads a day (09:30 and 21:30 UTC): 36 hours means at least two slots were missed.
 max_age_hours="${RAVENCIA_OFFSITE_MAX_AGE_HOURS:-36}"
 set_pattern='^[0-9]{8}T[0-9]{6}Z$'
+# Failed runs in a row before the record check fails: the same number at which the app alerts the owner
+# (OffsiteBackupRules.AlertAfterFailures in src/MarketplaceHub.Application/OffsiteBackupContracts.cs; this copy has no
+# source tree, so tests/ops/test-offsite-drill.sh checks the two stay equal). One failed run is retried within minutes.
+alert_after_failures=3
 
 usage() {
   echo "usage: offsite-drill.sh record" >&2
@@ -92,7 +96,7 @@ run_record() {
     echo "Off-site record check FAILED: the Google authorization is invalid since $auth_invalid; reconnect it in the panel." >&2
     exit 1
   fi
-  if [[ ! "$failures" =~ ^[0-9]+$ ]] || (( failures > 0 )); then
+  if [[ ! "$failures" =~ ^[0-9]+$ ]] || (( failures >= alert_after_failures )); then
     echo "Off-site record check FAILED: the last $failures Drive copy runs failed (see the panel's Google Drive Yedeği card)." >&2
     exit 1
   fi
@@ -191,6 +195,15 @@ run_restore() {
   [[ -s "$work_dir/set.tar" ]] || { echo "Decrypting $copy_name produced nothing." >&2; exit 1; }
   echo "Off-site restore drill: decrypted."
 
+  # Only regular files and directories ("-" and "d" in the listing): no symlink, hard link, device or FIFO.
+  if ! tar -tvf "$work_dir/set.tar" > "$work_dir/types"; then
+    echo "The decrypted archive is not a readable tar." >&2
+    exit 1
+  fi
+  if grep -qv '^[-d]' "$work_dir/types"; then
+    echo "The archive holds a member that is not a regular file or directory: '$(grep -v '^[-d]' "$work_dir/types" | head -n 1)'." >&2
+    exit 1
+  fi
   # Every member must sit under "<set>/": no absolute path, no "..".
   tar -tf "$work_dir/set.tar" > "$work_dir/members" || { echo "The decrypted archive is not a readable tar." >&2; exit 1; }
   while IFS= read -r member; do
@@ -199,7 +212,7 @@ run_restore() {
       exit 1
     fi
   done < "$work_dir/members"
-  tar -xf "$work_dir/set.tar" -C "$work_dir/extract"
+  tar --no-same-owner -xf "$work_dir/set.tar" -C "$work_dir/extract"
   rm -f -- "$work_dir/set.tar"
   for file in manifest.json database.dump private-volumes.tar.gz SHA256SUMS; do
     [[ -s "$work_dir/extract/$set_name/$file" ]] || { echo "The copy of $set_name has no $file." >&2; exit 1; }

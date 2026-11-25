@@ -90,7 +90,12 @@ run_record "true|$((now - 40 * 3600))|$set_name|1|0123456789abcdef0123456789abcd
 assert_eq 1 "$record_status" "record: a copy older than 36 hours fails"
 assert_contains "$output" "40 hours old" "record: says how old"
 run_record "true|$((now - 3600))|$set_name|1|0123456789abcdef0123456789abcdef|3||1|$now"
-assert_eq 1 "$record_status" "record: failing runs fail"
+assert_eq 1 "$record_status" "record: three failing runs (the app's alert threshold) fail"
+run_record "true|$((now - 3600))|$set_name|1|0123456789abcdef0123456789abcdef|2||1|$now"
+assert_eq 0 "$record_status" "record: fewer failing runs than the app's alert threshold pass"
+app_threshold="$(sed -nE 's/^ *public const int AlertAfterFailures = ([0-9]+);.*//p' "$repository_root/src/MarketplaceHub.Application/OffsiteBackupContracts.cs")"
+script_threshold="$(sed -nE 's/^alert_after_failures=([0-9]+)$//p' "$script")"
+assert_eq "$app_threshold" "$script_threshold" "record: the failure threshold is the app's AlertAfterFailures"
 run_record "true|$((now - 3600))|$set_name|1|0123456789abcdef0123456789abcdef|0|2026-11-20T10:00:00Z|1|$now"
 assert_eq 1 "$record_status" "record: an invalid authorization fails"
 run_record "true||||||||$now"
@@ -191,9 +196,39 @@ run_restore "$copies/evil/$set_name.tar.age"
 assert_eq 1 "$restore_status" "restore: a path outside the set fails"
 assert_contains "$output" "unexpected path: 'other/" "restore: names the path"
 
+# A copy with a symbolic link inside the set.
+link_root="$work/link"
+mkdir -p "$link_root"
+cp -R "$backups/$set_name" "$link_root/"
+link_made=false
+if ln -s /etc/passwd "$link_root/$set_name/passwd-link" 2>/dev/null; then link_made=true; fi
+mkdir -p "$copies/link"
+{ printf 'age-encryption.org/v1
+'; tar -C "$link_root" -cf - "$set_name"; } > "$copies/link/$set_name.tar.age"
+if [[ "$link_made" == true ]] && tar -tvf <(tail -n +2 "$copies/link/$set_name.tar.age") | grep -q "^l"; then
+  run_restore "$copies/link/$set_name.tar.age"
+  assert_eq 1 "$restore_status" "restore: a symbolic link in the copy fails"
+  assert_contains "$output" "not a regular file or directory" "restore: says why"
+  assert_eq 0 "$(leftovers)" "restore: nothing left after a symbolic link"
+else
+  pass "symbolic link case skipped (this file system stores no symbolic links: Windows)"
+fi
+
 printf 'no key here\n' > "$work/not-a-key.txt"
 status=0
 output="$(bash "$script" restore "$copies/evil/$set_name.tar.age" "$work/not-a-key.txt" 2>&1)" || status=$?
 assert_eq 1 "$status" "restore: an identity without a private key is refused"
+
+# A copy with a hard link inside the set.
+hard_root="$work/hard"
+mkdir -p "$hard_root"
+cp -R "$backups/$set_name" "$hard_root/"
+ln "$hard_root/$set_name/manifest.json" "$hard_root/$set_name/manifest-link"
+mkdir -p "$copies/hard"
+{ printf 'age-encryption.org/v1\n'; tar -C "$hard_root" -cf - "$set_name"; } > "$copies/hard/$set_name.tar.age"
+run_restore "$copies/hard/$set_name.tar.age"
+assert_eq 1 "$restore_status" "restore: a hard link in the copy fails"
+assert_contains "$output" "not a regular file or directory" "restore: says why for a hard link"
+assert_eq 0 "$(leftovers)" "restore: nothing left after a hard link"
 
 finish "offsite drill"
