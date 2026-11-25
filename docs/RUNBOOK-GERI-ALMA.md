@@ -247,10 +247,20 @@ adımı yeni kopyayla tekrarlayın; yine başarısızsa age açık anahtarının
 (`rolsuper = t`, canlıda doğrulandı). Bir SQL enjeksiyonu `COPY ... TO PROGRAM` ile konteynerde komut çalıştırabilir.
 Hedef: migrate `marketplacehub_owner`, API/Worker `marketplacehub_app` (ikisi de süper değil); `marketplacehub` yalnız
 yedek, healthwatch ve salt-okunur rol betiği için kalır. Deploy bunu **yapmaz**; adımlar sessiz bir saatte, deploy
-kilidi tutulurken, sırayla:
+kilidi tutulurken, sırayla. Komutlar sunucuda `ubuntu` olarak deploy checkout'unun kökünde (`git pull` ile `main`'de)
+çalışır.
 
+0. Ön koşullar (hepsi sağlanmadan adım 3'e geçmeyin):
+   - Süren deploy yok: kendi bilgisayarınızda `gh run list --workflow deploy.yml --limit 3` → hiçbiri `in_progress`
+     değil; adımlar bitene kadar `main`'e gönderim yapılmasın (oturumlara söyleyin).
+   - Canlı sürüm, izole tatbikatta iki rolü `NOLOGIN` önceden yaratan `restore-drill.sh`'ı taşıyor (repo'da var;
+     sunucudaki kök kopyada kontrol: `grep -c marketplacehub_app /usr/local/lib/ravencia/deploy/backup/restore-drill.sh`
+     → 1'den büyük). Değilse önce bir deploy.
+   - Disk ve sağlık: `df -h /` (%80'in altı), `sudo docker ps` (dört konteyner `healthy`), `sudo systemctl --failed`
+     (ravencia-* yok).
 1. Durumu gör (salt okur): `bash deploy/scripts/install-app-db-roles.sh --check`; çalışacak SQL:
-   `bash deploy/scripts/install-app-db-roles.sh --print-sql`.
+   `bash deploy/scripts/install-app-db-roles.sh --print-sql`. Beklenen: `marketplacehub` `rolsuper = t`, nesnelerin
+   sahibi `marketplacehub`, oturumlar `marketplacehub` (ve `ravencia_ro`).
 2. Yedek: `sudo systemctl start ravencia-backup.service` ve `journalctl -u ravencia-backup -n 5` ("verified").
 3. Rolleri kur: `bash deploy/scripts/install-app-db-roles.sh --apply`. Tek işlem: iki rol, veritabanı/şema/tablo/
    dizi/fonksiyon sahipliği `marketplacehub_owner`'a, satır yetkileri `marketplacehub_app`'e, sonraki migration'lar
@@ -286,14 +296,30 @@ kilidi tutulurken, sırayla:
    `sudo cp deploy/secrets/app_db_connection.txt deploy/secrets/app_db_connection.superuser.txt` (geri dönüş için),
    `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.app-role.txt deploy/secrets/app_db_connection.txt`,
    sonra `gh workflow run deploy.yml --ref main` (API/Worker yeni bağlantıyla yeniden yaratılır).
-6. Doğrula: `/prod-sql "select usename, count(*) from pg_stat_activity where datname='marketplacehub' group by 1"` →
-   API/Worker oturumları `marketplacehub_app`; `/prod-sql "select rolname, rolsuper from pg_roles where rolname like
-   'marketplacehub%'"` → `_app` ve `_owner` için `f`; `/prod-logs errors --since 30m` boş (özellikle `42501
-   permission denied`). Bir sonraki migration'lı deploy'da migrate `marketplacehub_owner` ile çalışır.
+   Deploy bitince API ve Worker'ın yeni bağlantıyla açıldığını görün: `sudo docker ps` (ikisi `healthy`) ve
+   `curl -fsS https://panel.ravencia.com/health/live` (hazırlık `/health/ready` yalnız sunucudan: `sudo docker exec marketplacehub-api-1 dotnet api/MarketplaceHub.Api.dll healthcheck && echo ready`).
+6. Doğrula (salt okur). Sunucuda: `bash deploy/scripts/install-app-db-roles.sh --check` → `marketplacehub_app` ve
+   `marketplacehub_owner` için `rolsuper = f`, nesnelerin sahibi `marketplacehub_owner` (pg_trgm'in birkaç nesnesi
+   `marketplacehub`'ta kalır), oturumlar `marketplacehub_app`. Ya da kendi bilgisayarınızda `/prod-sql` ile şu dosya:
+   ```sql
+   SELECT rolname, rolsuper FROM pg_roles WHERE rolname LIKE 'marketplacehub%' ORDER BY 1;
+   SELECT usename, application_name, count(*) FROM pg_stat_activity WHERE datname = 'marketplacehub' GROUP BY 1, 2 ORDER BY 1, 2;
+   SELECT has_table_privilege('marketplacehub_app', 'ops.audit_logs', 'UPDATE') AS audit_update,
+          has_table_privilege('marketplacehub_app', 'public."__EFMigrationsHistory"', 'DELETE') AS history_delete;
+   ```
+   → `_app` ve `_owner` `f`; API/Worker oturumları `marketplacehub_app`; iki yetki `f`. Sonra
+   `/prod-logs errors --since 30m` boş olmalı (özellikle `42501 permission denied`). Bir sonraki migration'lı deploy'da
+   migrate `marketplacehub_owner` ile çalışır: o deploy'un logunda migrate'in başarılı olduğunu ve `--check`'te yeni
+   tabloların sahibinin `marketplacehub_owner` olduğunu görün.
 
-**Geri dönüş:** `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.superuser.txt
-deploy/secrets/app_db_connection.txt` ve yeniden deploy (süper kullanıcı her nesneye erişir; sahipliği geri almak
-gerekmez). Migrate değişikliği geri alınırsa `migrate_db_connection.txt` dosyası durabilir.
+**Geri dönüş** (adım 5'ten sonra herhangi bir anda; `42501` hataları ya da sağlıksız API/Worker):
+1. `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.superuser.txt deploy/secrets/app_db_connection.txt`
+2. `gh workflow run deploy.yml --ref main` (API/Worker süper kullanıcıyla yeniden yaratılır; süper kullanıcı her nesneye
+   erişir, sahipliği geri almak gerekmez).
+3. Doğrula: `--check`'te oturumlar yeniden `marketplacehub`, `/prod-logs errors --since 30m` boş.
+Migrate de geri alınacaksa yamanın geri alınışı (`git revert <yama commit'i>`) gönderilir; `migrate_db_connection.txt`
+dosyası durabilir. Adım 3'ten sonra ama 5'ten önce geri dönmek gerekmez: o sırada her şey `marketplacehub` ile çalışır.
+Rolleri tamamen kaldırmak gerekmez ve önerilmez (yedekler onlara `GRANT` taşır).
 **Riskler:** (a) kodda bugün görülmeyen süper kullanıcı gerektiren bir yol (ör. `ALTER`, `TRUNCATE` gerçek tabloda)
 `42501` ile düşer, hata loglarında görünür — geri dönüşle kapanır; (b) yeni şema/tablo açan migration'lar
 varsayılan yetkilerle kapsanır (`marketplacehub_owner`'ın ve `marketplacehub`'ın yarattıkları), ama `marketplacehub`
