@@ -23,6 +23,7 @@ public static class ApiErrorCatalog
         new("AD_REPORT_FILE_SIZE", 413, "Dosya en fazla 10 MiB olabilir."),
         new("AD_REPORT_FORM_REQUIRED", 400, "multipart/form-data biçiminde bir .xlsx dosyası gönderilmelidir."),
         new("ADAPTER_ERROR", 502, "Pazaryeri yanıtı alınamadı."),
+        new("ADMIN_PROTECTED", 403, "Bir yöneticinin parolasını veya iki adımlı doğrulamasını yalnız bir sahip sıfırlayabilir."),
         new("AI_BUSY", 429, "Aynı anda en fazla … beden tablosu hazırlanabilir; biri bitince tekrar deneyin."),
         new("AI_SETTINGS_INVALID", 400, "Yapay zekâ ayarları geçersiz."),
         new("AI_SKILL_FILE_INVALID", 422, "Yalnız .skill ya da .zip uzantılı beceri dosyası yüklenebilir."),
