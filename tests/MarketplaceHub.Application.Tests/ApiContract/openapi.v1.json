@@ -11314,6 +11314,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -31002,6 +31009,83 @@
           }
         }
       },
+      "JobModelGroupCardView": {
+        "required": [
+          "job",
+          "productId"
+        ],
+        "type": "object",
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/JobSummaryView"
+          },
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "optionSignature": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "variantCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "JobModelGroupView": {
+        "required": [
+          "key",
+          "cardCount",
+          "cards"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "modelCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cardCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "variantCount": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobModelGroupCardView"
+            }
+          }
+        }
+      },
       "JobOrderContextView": {
         "required": [
           "orderId",
@@ -31625,6 +31709,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "modelGroup": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobModelGroupView"
+              }
             ]
           }
         }

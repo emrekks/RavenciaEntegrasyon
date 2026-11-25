@@ -39,6 +39,8 @@ const QueueQuotaView = lazy(() => import('./QueueQuotaView'))
 const NotificationCenter = lazy(() => import('./NotificationCenter'))
 // İş detayı › Gidenler ve Değişenler, loaded when a price/stock or product import job is opened.
 const JobChanges = lazy(() => import('./JobChanges'))
+// A model's colour cards of one send as one row (JobModelGroupRows), loaded the first time the list holds one.
+const JobModelGroupRows = lazy(() => import('./JobModelGroupRows'))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? platformDisplayNames.TRENDYOL_EFATURAM : marketplacePlatformLabel(code)
@@ -53,6 +55,7 @@ import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
 import { isContinuingJob, isWaitingJob, queuedWait, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { JobStateGlyph } from './job-state-glyph'
+import { rowJobs } from './job-model-rows'
 import { useTabSlide } from '../../shared/tab-slide'
 import { connectionQueries, queryKeys } from '../../shared/api/query-keys'
 
@@ -288,7 +291,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
     <div className="jobs-reference-drawer-header">
       <div>
         <h2 id="job-detail-title">{selected ? jobTitle(selected.jobType, selected.marketplace, selected.resource) : 'İşlem Ayrıntısı'}</h2>
-        <p>{selected ? `${jobSubtitle(selected.jobType, selected.resource)}${selected.batchCount > 1 ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
+        <p>{selected ? `${jobSubtitle(selected.jobType, selected.resource)}${selected.batchCount > 1 && !isProductLevelJob(selected.jobType) ? ` · Toplu işlem (${selected.batchCount} job)` : ''}` : 'İşlem ayrıntısı yükleniyor'}</p>
       </div>
       <button type="button" className="jobs-reference-drawer-close" aria-label="Detay panelini kapat" onClick={onClose}><UiIcon name="close" /></button>
     </div>
@@ -318,7 +321,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
         {canSendOneTimeInvoice && invoice && <section className="jobs-reference-order-context jobs-reference-one-time-invoice"><div><span className="jobs-reference-section-kicker">Tek Seferlik Dış İşlem</span><h3>Faturayı Hepsiburada’ya İlet<TitleHint label="Faturayı Hepsiburada’ya İlet">Yalnız bu faturayı gönderir; fiyat, stok, sipariş veya iade yazma ayarlarını açmaz.</TitleHint></h3><p>Sipariş #{invoice.orderNumber} · Fatura {invoice.invoiceNumber} · Paket {formatPackageLabel(invoice.externalPackageId)}</p>{!oneTimeDeliveryOpen ? <button type="button" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => setOneTimeDeliveryOpen(true)}>Tek Seferlik Gönderimi Hazırla</button> : <form onSubmit={event => { event.preventDefault(); if (!oneTimeDeliveryConfirmed) return; oneTimeInvoiceDelivery.mutate({ id: job.id, confirmed: true, orderNumber: invoice.orderNumber }) }}><p>Hepsiburada canlı ortamındaki bu siparişe mevcut faturanın PDF bağlantısı iletilecek. Belirsiz bir yanıt olursa sistem otomatik tekrar göndermeyecek.</p><label className="check"><input type="checkbox" checked={oneTimeDeliveryConfirmed} onChange={event => setOneTimeDeliveryConfirmed(event.target.checked)} /> Yalnızca #{invoice.orderNumber} siparişine bu faturanın iletilmesini onaylıyorum.</label><div className="job-detail-actions"><button type="submit" disabled={oneTimeInvoiceDelivery.isPending || !oneTimeDeliveryConfirmed}>{oneTimeInvoiceDelivery.isPending ? 'Kuyruğa Alınıyor…' : 'Faturayı Bir Kez İlet'}</button><button type="button" className="secondary" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => { setOneTimeDeliveryOpen(false); setOneTimeDeliveryConfirmed(false) }}>Vazgeç</button></div></form>}{oneTimeInvoiceDelivery.isError && <div role="alert" className="error">Tek seferlik fatura işlemi başlatılamadı. Hata ayrıntısı için işlemi yeniden yükleyin.</div>}</div></section>}
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}
-        {job.batchCount > 1 ? <section className="jobs-reference-batch-context" aria-labelledby="job-batch-title"><div className="jobs-reference-batch-heading"><div><span className="jobs-reference-section-kicker">Toplu İşlem</span><h3 id="job-batch-title">{job.batchCount} İş · {detail.data.relatedOrders.length} Sipariş</h3></div><span className="jobs-reference-batch-note">Sonuçlar sipariş bazında</span></div><div className="jobs-reference-batch-list">{detail.data.relatedOrders.map(order => <article key={order.orderId}><div><strong>Sipariş #{order.orderNumber}</strong><small>{order.customerName ?? 'Müşteri bilgisi yok'} · {order.lineCount} ürün satırı</small></div><span>{order.cargoProvider ?? 'Kargo bilgisi yok'}</span><b>{statusLabel(order.status)}</b></article>)}{detail.data.relatedOrders.length === 0 && <p>Sipariş bağlantısı bulunamadı.</p>}</div></section> : detail.data.order && <section className="jobs-reference-order-context" aria-labelledby="job-order-context-title"><div><span className="jobs-reference-section-kicker">İlgili Sipariş</span><h3 id="job-order-context-title">Sipariş #{detail.data.order.orderNumber}</h3><p>{detail.data.order.customerName ?? 'Müşteri bilgisi yok'} · {detail.data.order.lineCount} ürün satırı</p></div><div className="jobs-reference-order-facts"><p><small>Dış Sipariş ID</small><strong>{detail.data.order.externalOrderId}</strong></p><p><small>Sipariş Durumu</small><strong>{statusLabel(detail.data.order.status)}</strong></p><p><small>Sipariş Tarihi</small><strong>{formatOptionalJobTime(detail.data.order.orderedAt)}</strong></p><p><small>Sipariş Tutarı</small><strong>{formatMoney(detail.data.order.netAmount, detail.data.order.currency)}</strong></p>{detail.data.order.externalPackageId && <p><small>Paket No</small><strong>{formatPackageLabel(detail.data.order.externalPackageId)}</strong></p>}{detail.data.order.cargoTrackingNumber && <p><small>Kargo Takip No</small><strong>{detail.data.order.cargoTrackingNumber}</strong></p>}</div></section>}
+        {job.batchCount > 1 && !isProductLevelJob(job.jobType) ? <section className="jobs-reference-batch-context" aria-labelledby="job-batch-title"><div className="jobs-reference-batch-heading"><div><span className="jobs-reference-section-kicker">Toplu İşlem</span><h3 id="job-batch-title">{job.batchCount} İş · {detail.data.relatedOrders.length} Sipariş</h3></div><span className="jobs-reference-batch-note">Sonuçlar sipariş bazında</span></div><div className="jobs-reference-batch-list">{detail.data.relatedOrders.map(order => <article key={order.orderId}><div><strong>Sipariş #{order.orderNumber}</strong><small>{order.customerName ?? 'Müşteri bilgisi yok'} · {order.lineCount} ürün satırı</small></div><span>{order.cargoProvider ?? 'Kargo bilgisi yok'}</span><b>{statusLabel(order.status)}</b></article>)}{detail.data.relatedOrders.length === 0 && <p>Sipariş bağlantısı bulunamadı.</p>}</div></section> : detail.data.order && <section className="jobs-reference-order-context" aria-labelledby="job-order-context-title"><div><span className="jobs-reference-section-kicker">İlgili Sipariş</span><h3 id="job-order-context-title">Sipariş #{detail.data.order.orderNumber}</h3><p>{detail.data.order.customerName ?? 'Müşteri bilgisi yok'} · {detail.data.order.lineCount} ürün satırı</p></div><div className="jobs-reference-order-facts"><p><small>Dış Sipariş ID</small><strong>{detail.data.order.externalOrderId}</strong></p><p><small>Sipariş Durumu</small><strong>{statusLabel(detail.data.order.status)}</strong></p><p><small>Sipariş Tarihi</small><strong>{formatOptionalJobTime(detail.data.order.orderedAt)}</strong></p><p><small>Sipariş Tutarı</small><strong>{formatMoney(detail.data.order.netAmount, detail.data.order.currency)}</strong></p>{detail.data.order.externalPackageId && <p><small>Paket No</small><strong>{formatPackageLabel(detail.data.order.externalPackageId)}</strong></p>}{detail.data.order.cargoTrackingNumber && <p><small>Kargo Takip No</small><strong>{detail.data.order.cargoTrackingNumber}</strong></p>}</div></section>}
         <section className="jobs-reference-facts-section" aria-labelledby="job-facts-title"><div className="jobs-reference-section-heading"><div><span className="jobs-reference-section-kicker">Kayıt Ayrıntıları</span><h3 id="job-facts-title">Teknik Bilgiler</h3></div><span>İşlemin kimliği ve yürütme zamanları</span></div><div className="job-detail-facts"><p><small>Pazaryeri</small><strong><PlatformSquareMark code={platformCodeFromName(job.marketplace)} name={job.marketplace} size="sm" /> {job.marketplace}</strong></p><p><small>İşlem</small><strong>{jobTypeCode(job.jobType, job.marketplace)}</strong></p><p><small>Dış Kimlik</small><strong>{job.externalId ?? '—'}</strong></p><p><small>Deneme Sayısı</small><strong>{jobAttemptsText(job)}</strong></p>{(job.waitingChecks ?? 0) > 0 && <p><small>Durum Kontrolü</small><strong>{job.waitingChecks}</strong></p>}<p><small>Oluşturulma</small><strong>{formatOptionalJobTime(job.createdAt)}</strong></p><p><small>İlk Çalışma Başlangıcı</small><strong>{formatOptionalJobTime(job.startedAt)}</strong></p><p><small>Son Deneme Başlangıcı</small><strong>{formatOptionalJobTime(job.lastAttemptStartedAt ?? job.startedAt)}</strong></p>{job.status === 'LEASED' && <p><small>Son Worker Sinyali</small><strong>{formatOptionalJobTime(job.heartbeatAt)}</strong></p>}<p><small>Tamamlanma</small><strong>{formatOptionalJobTime(job.completedAt)}</strong></p><p><small>Son Deneme Süresi</small><strong>{jobAttemptDuration(job)}</strong></p><p><small>İlk Hata</small><strong>{formatOptionalJobTime(job.firstFailedAt)}</strong></p><p><small>Son Hata</small><strong>{formatOptionalJobTime(job.lastFailedAt)}</strong></p><p><small>{waiting ? 'Sonraki Kontrol' : 'Sonraki Deneme'}</small><strong>{formatOptionalJobTime(job.nextRetryAt)}</strong></p><p><small>Korelasyon No</small><strong>{job.correlationId}</strong></p></div></section>
         {elevated && <div className="job-detail-actions">{retryable && <button type="button" disabled={actionPending} onClick={() => void confirmAction(job.id, 'retry')}>Manuel Yeniden Dene</button>}{cancellable && <button type="button" className="secondary" disabled={actionPending} onClick={() => void confirmAction(job.id, 'cancel')}>{actionPending ? selectedIsRunning ? 'Durduruluyor…' : 'İptal Ediliyor…' : selectedIsRunning ? 'Durdur' : 'İptal Et'}</button>}</div>}
         {action.isError && actionOnThisJob && <div role="alert" className="error">İşlem güncellenemedi.</div>}
@@ -326,6 +329,23 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
       </div>
     })()}
   </DialogSurface></div></>
+}
+
+// One job of the list; a colour card inside a model row names its colour and variants instead of the job type.
+function JobListRow({ job, onOpen, card }: { job: JobSummary; onOpen: (id: string) => void; card?: { colour: string; variantCount: number | null | undefined } }) {
+  const presentation = jobPresentation(job.jobType, job.resource)
+  const time = formatJobTime(job.createdAt)
+  const typeDescriptionId = `job-type-description-${job.id}`
+  const cardLine = card ? [card.variantCount != null ? `${card.variantCount} Varyant` : null, job.externalId].filter(Boolean).join(' · ') : ''
+  return <tr className={`jobs-reference-row${card ? ' jobs-model-card-row' : ''}`} aria-describedby={typeDescriptionId} onClick={() => onOpen(job.id)} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen(job.id) } }}>
+    <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content">{card
+      ? <><strong>{card.colour}</strong><small>{cardLine || jobSubtitle(job.jobType, job.resource)}</small></>
+      : <><strong>{jobTitle(job.jobType, job.marketplace, job.resource)}</strong><small>{jobSubtitle(job.jobType, job.resource)}{job.externalId ? ` · ${job.externalId}` : ''}{job.batchCount > 1 ? ` · ${job.batchCount} kayıt birlikte` : ''}</small></>}<span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
+    <td><span className={`jobs-reference-status ${jobStateTone(job)}`}><JobStateGlyph tone={jobStateTone(job)} />{jobStateLabel(job)}</span></td>
+    <td className="jobs-reference-attempt">{jobAttemptsText(job)}</td>
+    <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {isContinuingJob(job) ? 'sıradaki pencere okunuyor' : queuedWait(job) ? queuedWait(job)!.line : job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>
+    <td><span className="jobs-reference-correlation" title={job.correlationId}>{job.correlationId}</span></td>
+  </tr>
 }
 
 // The categories are the second level under İşler: one segmented strip of equal text buttons (the dashboard's period
@@ -397,6 +417,9 @@ export function JobsPage({ me }: { me: Me }) {
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
   const cardFilterCount = [platforms.length > 0, Boolean(direction), Boolean(status), timeRange !== '24h'].filter(Boolean).length
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The model rows opened to list their cards (by group key): a refresh keeps them open.
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleGroup = (key: string) => setOpenGroups(current => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next })
   // A job opened from an API Sağlık detail window opens over that window, which stays open underneath.
   const [jobOverDialog, setJobOverDialog] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info' | 'warning'; context?: NotificationContext } | null>(null)
@@ -432,7 +455,7 @@ export function JobsPage({ me }: { me: Me }) {
   const serverPageSize = jobListServerPageSize(pageSize)
   const list = useInfiniteQuery({
     queryKey: queryKeys.jobs('page', serverStatus, timeRange, category, direction, platform, serverPageSize),
-    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize })}`, { signal: context.signal }),
+    queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform, limit: serverPageSize, groupBy: 'model' })}`, { signal: context.signal }),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
@@ -444,7 +467,7 @@ export function JobsPage({ me }: { me: Me }) {
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
     queryKey: queryKeys.jobs('page-head', serverStatus, timeRange, category, direction, platform, serverPageSize),
-    queryFn: ({ signal }) => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize })}`, { signal }),
+    queryFn: ({ signal }) => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform, limit: serverPageSize, groupBy: 'model' })}`, { signal }),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
@@ -469,7 +492,7 @@ export function JobsPage({ me }: { me: Me }) {
     },
     onError: (error, variables) => {
       const failure = notificationError(error, 'İşlem güncellenemedi.')
-      const job = rawJobs.find(candidate => candidate.id === variables.id)
+      const job = rawJobs.flatMap(rowJobs).find(candidate => candidate.id === variables.id)
       setFeedback({ message: failure.message, tone: 'danger', context: { ...(job ? jobNotificationContext(job) : { jobId: variables.id }), title: variables.verb === 'retry' ? 'İşlem Yeniden Denenemedi' : 'İşlem İptal Edilemedi', code: failure.code } })
     }
   })
@@ -506,27 +529,37 @@ export function JobsPage({ me }: { me: Me }) {
     setSelectedId(job.id)
   }, [lookupTerm, lookupItems])
   const rawJobs = useMemo(() => {
-    // A refetch can shift rows between pages while new jobs arrive, so a job is shown once.
+    // A refetch can shift rows between pages while new jobs arrive, so a job is shown once; a looked-up job already in
+    // a model row stays in that row.
     const seen = new Set<string>()
     const loaded = (list.data?.pages ?? []).flatMap(page => page.items)
-    const jobs = [...loaded, ...lookupItems].filter(job => !seen.has(job.id) && Boolean(seen.add(job.id)))
+    const jobs = [...loaded, ...lookupItems].filter(row => {
+      const ids = rowJobs(row).map(job => job.id)
+      if (ids.some(id => seen.has(id))) return false
+      for (const id of ids) seen.add(id)
+      return true
+    })
     return lookupItems.length ? jobs.sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)) : jobs
   }, [list.data, lookupItems])
   const rangeFiltered = useMemo(() => {
     if (timeRange === 'all') return rawJobs
     const now = Date.now()
-    return rawJobs.filter(job => lookupIds.has(job.id) || isJobInTimeRange(job, timeRange, now))
+    // A model row stays while any of its jobs is in the range, as the server chose it.
+    return rawJobs.filter(row => rowJobs(row).some(job => lookupIds.has(job.id) || isJobInTimeRange(job, timeRange, now)))
   }, [rawJobs, timeRange, lookupIds])
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('tr-TR')
     const categoryMatcher = jobCategoryMatcher(category)
-    return rangeFiltered.filter(job => {
-      const matchCategory = categoryMatcher(job.jobType)
+    // A model row's jobs share its type; a status or a search term keeps the row when any of its jobs matches.
+    return rangeFiltered.filter(row => {
+      const matchCategory = categoryMatcher(row.jobType)
       if (!matchCategory) return false
-      if (direction && jobPresentation(job.jobType).direction !== direction) return false
-      if (statusChips.length && !statusChips.includes(jobStatusChip(isContinuingJob(job) ? 'CONTINUING' : job.status))) return false
-      if (!term || lookupIds.has(job.id)) return true
-      return [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId, job.externalId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
+      if (direction && jobPresentation(row.jobType).direction !== direction) return false
+      const jobs = rowJobs(row)
+      if (statusChips.length && !jobs.some(job => statusChips.includes(jobStatusChip(isContinuingJob(job) ? 'CONTINUING' : job.status)))) return false
+      if (!term || jobs.some(job => lookupIds.has(job.id))) return true
+      const groupValues = row.modelGroup ? [row.modelGroup.modelCode, row.modelGroup.title] : []
+      return [...groupValues, ...jobs.flatMap(job => [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId, job.externalId])].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
   }, [rangeFiltered, category, direction, search, statusChips, lookupIds])
   // A count toggles its filter; several can be on at once and tapping one again takes it off.
@@ -535,6 +568,8 @@ export function JobsPage({ me }: { me: Me }) {
     const toggle = () => setStatusChips(current => current.includes(chip) ? current.filter(item => item !== chip) : [...current, chip])
     return { role: 'button', tabIndex: 0, 'aria-pressed': on, className: `${chip}${on ? ' is-on' : ''}`, onClick: toggle, onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } } } as const
   }
+  // A page holds rows: a model row is one, however many cards it lists. The footer also says how many jobs they are.
+  const filteredJobCount = useMemo(() => filtered.reduce((total, row) => total + rowJobs(row).length, 0), [filtered])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const currentPage = Math.min(pageNumber, totalPages)
   const pageJobs = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
@@ -560,7 +595,7 @@ export function JobsPage({ me }: { me: Me }) {
   const cancellable = selected && !['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
   const selectedIsRunning = selected?.status === 'LEASED'
   const countRows = useMemo(() => {
-    const rows = serverCounts.data ?? rangeFiltered.map(job => ({ status: isContinuingJob(job) ? 'CONTINUING' as const : job.status, jobType: job.jobType, count: 1 }))
+    const rows = serverCounts.data ?? rangeFiltered.flatMap(rowJobs).map(job => ({ status: isContinuingJob(job) ? 'CONTINUING' as const : job.status, jobType: job.jobType, count: 1 }))
     return direction ? rows.filter(row => jobPresentation(row.jobType).direction === direction) : rows
   }, [serverCounts.data, rangeFiltered, direction])
   const statusSummary = useMemo(() => {
@@ -616,21 +651,13 @@ export function JobsPage({ me }: { me: Me }) {
       </div>
       {list.isLoading ? <Busy text="İşlemler yükleniyor…" /> : list.isError && !list.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem listesi alınamadı.</div> : <>
         <div className="jobs-reference-table-scroll"><table className="jobs-reference-table"><thead><tr><th>İşlem Türü</th><th>Durum</th><th>Deneme</th><th>Zaman</th><th>Correlation ID</th></tr></thead><tbody>
-          {pageJobs.map(job => {
-            const presentation = jobPresentation(job.jobType, job.resource)
-            const time = formatJobTime(job.createdAt)
-            const typeDescriptionId = `job-type-description-${job.id}`
-            return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedId(job.id) } }}>
-              <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{jobTitle(job.jobType, job.marketplace, job.resource)}</strong><small>{jobSubtitle(job.jobType, job.resource)}{job.externalId ? ` · ${job.externalId}` : ''}{job.batchCount > 1 ? ` · ${job.batchCount} kayıt birlikte` : ''}</small><span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
-              <td><span className={`jobs-reference-status ${jobStateTone(job)}`}><JobStateGlyph tone={jobStateTone(job)} />{jobStateLabel(job)}</span></td>
-              <td className="jobs-reference-attempt">{jobAttemptsText(job)}</td>
-              <td><div className="jobs-reference-time"><strong>{time.time}</strong><small>{time.day} · {isContinuingJob(job) ? 'sıradaki pencere okunuyor' : queuedWait(job) ? queuedWait(job)!.line : job.attemptCount > 0 ? `son deneme ${jobAttemptDuration(job)}` : 'çalışma başlamadı'}</small></div></td>
-              <td><span className="jobs-reference-correlation" title={job.correlationId}>{job.correlationId}</span></td>
-            </tr>
-          })}
+          {pageJobs.map(row => row.modelGroup
+            // Until the model row's code arrives, its newest job shows as a plain row.
+            ? <Suspense key={row.modelGroup.key} fallback={<JobListRow job={row} onOpen={setSelectedId} />}><JobModelGroupRows group={row.modelGroup} open={openGroups.has(row.modelGroup.key)} onToggle={toggleGroup} title={jobTitle(row.jobType, row.marketplace, row.resource)} attempts={jobAttemptsText(row)} time={formatJobTime(row.createdAt)} correlationId={row.correlationId} renderCard={(job, colour, variantCount) => <JobListRow key={job.id} job={job as JobSummary} onOpen={setSelectedId} card={{ colour, variantCount }} />} /></Suspense>
+            : <JobListRow key={row.id} job={row} onOpen={setSelectedId} />)}
           {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={5}><ListEmptyState icon="jobs" noun="İşlem" hasActiveFilters={cardFilterCount > 0 || search.trim() !== '' || statusChips.length > 0 || moreOnServer} onClear={clearFilters} filteredHint={moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen işlem yok.'} emptyHint="Pazaryeriyle yapılan okuma ve gönderim işleri burada listelenir." /></td></tr>}
         </tbody></table></div>
-        {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
+        {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}{filteredJobCount > filtered.length ? ` (${filteredJobCount.toLocaleString('tr-TR')} iş)` : ''}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
       </>}
       </>}
     </div>

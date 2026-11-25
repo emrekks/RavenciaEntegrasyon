@@ -75,12 +75,14 @@ export function isJobInTimeRange(job: { createdAt: string; completedAt: string |
 
 // One cursor page of the job list: the same filters as the list plus the job types of the selected tab and the
 // cursor of the previous page, so every filter is applied by the server on every page.
-export function jobPageQueryString(status: string, timeRange: JobListTimeRange, options: { jobTypes?: readonly string[] | null; after?: string | null; limit?: number; platform?: string | null } = {}, now = Date.now()) {
+// groupBy 'model': a model's product jobs of one send come as one row (job-model-group.ts); limit then counts rows.
+export function jobPageQueryString(status: string, timeRange: JobListTimeRange, options: { jobTypes?: readonly string[] | null; after?: string | null; limit?: number; platform?: string | null; groupBy?: 'model' } = {}, now = Date.now()) {
   const params = new URLSearchParams(jobListQueryString(status, timeRange, now).slice(1))
   if (options.platform) params.set('platforms', options.platform)
   if (options.jobTypes?.length) params.set('jobTypes', options.jobTypes.join(','))
   params.set('limit', String(options.limit ?? jobPageSize))
   if (options.after) params.set('after', options.after)
+  if (options.groupBy) params.set('groupBy', options.groupBy)
   return `?${params.toString()}`
 }
 

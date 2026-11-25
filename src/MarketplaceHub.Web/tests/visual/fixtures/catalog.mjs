@@ -336,6 +336,39 @@ const jobs = [
   job({ id: 'job-pub-p1-trendyol', connectionId: 'c-ty', jobType: 'PRODUCT_PUBLICATION', status: 'SUCCEEDED', createdAt: '2026-10-12T11:00:00+03:00', startedAt: '2026-10-12T11:00:02+03:00', completedAt: '2026-10-12T11:03:20+03:00', marketplace: 'Trendyol', externalId: 'RVN-TRC-2401', correlationId: 'corr-pub-2401', progress: { current: 4, total: 4, label: 'Varyantlar yayında' } })
 ]
 
+// İş Takibi's model rows (groupBy=model): one send's colour cards of one model. A 7-colour, 21-variant Hepsiburada
+// publish that went through, and a Trendyol update of a 4-colour model with one colour failed.
+const modelGroupCards = new Map()
+function modelSend({ key, connectionId, jobType, marketplace, correlationId, modelCode, title, start, colours, sizes, failed = [] }) {
+  return colours.map((colour, index) => {
+    const createdAt = new Date(Date.parse(start) + index * 1000).toISOString().replace('.000Z', 'Z')
+    const dead = failed.includes(colour)
+    const item = job({ id: `job-${modelCode.toLowerCase()}-${index + 1}`, connectionId, jobType, status: dead ? 'DEAD' : 'SUCCEEDED', attemptCount: dead ? 5 : 1, createdAt, startedAt: createdAt, completedAt: new Date(Date.parse(createdAt) + 42_000).toISOString(), marketplace, externalId: `${marketplace === 'Hepsiburada' ? 'hb' : 'ty'}-${(0x5c2a9e17 + index * 7919).toString(16)}-4f1d-9a2b-${modelCode.slice(-4)}`, errorCode: dead ? 'CREATE_REJECTED' : null, errorSummary: dead ? 'Görsel çözünürlüğü yetersiz; renk kartı reddedildi.' : null, correlationId })
+    modelGroupCards.set(item.id, { key, modelCode, title, productId: `p-${modelCode}-${index + 1}`, optionSignature: `Renk: ${colour} | Beden: ${sizes[0]}`, variantCount: sizes.length })
+    return item
+  }).reverse()
+}
+jobs.splice(2, 0,
+  ...modelSend({ key: 'c-hb|PRODUCT_CREATE|send-5c2a9e17|model:rvn:RVN-ELB-0901', connectionId: 'c-hb', jobType: 'PRODUCT_CREATE', marketplace: 'Hepsiburada', correlationId: 'send-5c2a9e17', modelCode: 'RVN-ELB-0901', title: 'Kruvaze Yaka Midi Elbise', start: '2026-10-20T06:10:00Z', colours: ['Siyah', 'Ekru', 'Lacivert', 'Bordo', 'Haki', 'Pudra', 'Antrasit'], sizes: ['S', 'M', 'L'] }),
+  ...modelSend({ key: 'c-ty|PRODUCT_UPDATE|send-81d04b3e|model:rvn:RVN-GML-0450', connectionId: 'c-ty', jobType: 'PRODUCT_UPDATE', marketplace: 'Trendyol', correlationId: 'send-81d04b3e', modelCode: 'RVN-GML-0450', title: 'Oversize Keten Gömlek', start: '2026-10-20T06:05:00Z', colours: ['Beyaz', 'Bej', 'Mavi', 'Yeşil'], sizes: ['S', 'M', 'L', 'XL'], failed: ['Mavi'] }))
+
+// The grouped page: a model's cards of one send as one row, the newest card's job carrying them oldest first.
+function jobRows(items) {
+  const rows = []
+  const groups = new Map()
+  for (const item of items) {
+    const card = modelGroupCards.get(item.id)
+    if (!card) { rows.push(item); continue }
+    if (groups.has(card.key)) continue
+    const members = jobs.filter(entry => modelGroupCards.get(entry.id)?.key === card.key).slice().reverse()
+    const cards = members.map(member => { const meta = modelGroupCards.get(member.id); return { job: member, productId: meta.productId, title: meta.title, optionSignature: meta.optionSignature, variantCount: meta.variantCount } })
+    const row = { ...members[members.length - 1], modelGroup: { key: card.key, modelCode: card.modelCode, title: card.title, cardCount: cards.length, variantCount: cards.reduce((total, entry) => total + entry.variantCount, 0), cards } }
+    groups.set(card.key, row)
+    rows.push(row)
+  }
+  return rows
+}
+
 function jobsMatching(url) {
   const query = url.searchParams
   let since = query.get('dateFrom') ?? query.get('since')
@@ -435,7 +468,7 @@ export const catalog = [
 
   // Jobs
   ['GET /jobs', ({ url }) => jobsMatching(url)],
-  ['GET /jobs/page', ({ url }) => { const items = jobsMatching(url); return { items, nextCursor: null, hasMore: false, totalCount: items.length, supportedFilters: null } }],
+  ['GET /jobs/page', ({ url }) => { const matching = jobsMatching(url); const items = url.searchParams.get('groupBy') === 'model' ? jobRows(matching) : matching; return { items, nextCursor: null, hasMore: false, totalCount: items.length, supportedFilters: null } }],
   ['GET /jobs/counts', jobCounts],
   ['GET /jobs/metrics', jobMetrics],
   ['GET /jobs/metrics/lanes', laneMetrics],

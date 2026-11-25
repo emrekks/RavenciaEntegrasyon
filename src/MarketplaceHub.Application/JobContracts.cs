@@ -120,7 +120,20 @@ public sealed record JobSummaryView(
     int AttemptBudget = 0,
     bool Waiting = false,
     // The payload's resourceType (CATEGORIES, BRANDS ...): which list a reference sync reads.
-    string? Resource = null);
+    string? Resource = null,
+    // The grouped list (JobListQuery.GroupByModel) only: the model's colour cards one send queued to the connection
+    // together, this row being the newest of them. Null for a job shown on its own.
+    JobModelGroupView? ModelGroup = null);
+
+// One model (brand + model code, ProductFamilyKeyPolicy) on one connection, one job type and one send (the correlation
+// id the requests of one user action share): the jobs of its colour cards. CardCount: the distinct cards. VariantCount:
+// the variants the jobs' payloads carried, null when a job's payload does not say (never guessed).
+public sealed record JobModelGroupView(string Key, string? ModelCode, string? Title, int CardCount, int? VariantCount, IReadOnlyList<JobModelGroupCardView> Cards);
+
+// A colour card's job in the group, oldest first (the order the send queued them). OptionSignature: the card's first
+// variant's options, from which the panel reads the colour as everywhere else. VariantCount: the card's variants the
+// job's payload carried; null when it does not say.
+public sealed record JobModelGroupCardView(JobSummaryView Job, Guid ProductId, string? Title, string? OptionSignature, int? VariantCount);
 
 public sealed record JobOrderContextView(
     Guid OrderId,
@@ -194,7 +207,9 @@ public sealed record JobVariantResultView(string? Barcode, string? StockCode, st
 // Ids: only these jobs (at most MaximumIds), so a screen can follow the jobs it started with one read.
 // Search: the jobs one identifier names, whatever their age: the job id, the correlation id or a marketplace id in the
 // payload (externalOrderId and the like), each matched whole (JobOperationsService.MatchingSearch).
-public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, IReadOnlyList<Guid>? Ids = null, string? Search = null)
+// GroupByModel (paged list only): a model's product jobs of one send come as one row (JobSummaryView.ModelGroup,
+// JobModelGroupPolicy); Limit then counts rows, a group being one, and a group is never split across pages.
+public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, IReadOnlyList<Guid>? Ids = null, string? Search = null, bool GroupByModel = false)
 {
     public const int MaximumSearchLength = 200;
     // Shorter terms would match too many payload values; the job id and correlation id still match at any length.

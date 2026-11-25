@@ -1,6 +1,18 @@
 // Idempotency-Key values. The server replays the stored answer of any finished request (below 500) that comes again
 // with the same key and the same body, and refuses the same key with a different body.
 
+/**
+ * One id for every request of one user action (Yayınla, Platformlarda Güncelle, a bulk publish), sent as X-Correlation-ID:
+ * the jobs it queues share it, so İşlem Takibi shows a model's cards of that send as one row (JobModelGroupPolicy).
+ */
+export function newSendCorrelationId() {
+  return crypto.randomUUID().replace(/-/g, '')
+}
+
+export function sendCorrelationHeader(correlationId: string) {
+  return { 'X-Correlation-ID': correlationId }
+}
+
 /** A fresh key for one attempt; `scope` only helps reading server logs. */
 export function newIdempotencyKey(scope?: string) {
   const id = crypto.randomUUID()

@@ -214,3 +214,24 @@
 :root:root body .app-shell.stitch-shell main .jobs-reference-table td.jobs-reference-empty .rv-empty-state { margin: 0 auto; }
 /* A job opened from an API Sağlık detail window opens above it (that window keeps its place beneath). */
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-drawer-backdrop.is-over-dialog, .jobs-reference-drawer-backdrop.is-over-dialog { z-index: 1100; }
+
+/* Model rows (job-model-group.ts): one row for a model's colour cards of one send. The chevron in the icon's place opens
+   it (Tümünü Aç / Kapat); its cards follow as indented job rows on a soft ground; the state line under the badge says
+   how the cards ended when they differ ("5 Başarılı · 2 Başarısız"), on two lines where the column is narrow (1280 px). */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle { min-height: 0; padding: 0; color: var(--rv-color-ink); cursor: pointer; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle:hover { border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 1px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle svg { transition: transform .16s ease; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-state { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-state .jobs-reference-status { max-width: 100%; margin: 0; justify-content: flex-start; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-state small { max-width: 100%; color: var(--rv-color-muted); font-size: 12px; line-height: 15px; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td { background: color-mix(in srgb, var(--rv-color-surface-raised) 55%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td:first-child { padding-left: 44px; }
+@media (prefers-reduced-motion: reduce) { .app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle svg { transition: none; } }
+@media (max-width: 760px) {
+  /* phone-spacing.css sets every job card's margin with !important; a colour card keeps its indent under its model row. */
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table > tbody > tr.jobs-model-card-row { margin-left: 16px !important; background: var(--rv-color-surface-raised); }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td { background: none; }
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td:first-child { padding-left: 0 !important; }
+}

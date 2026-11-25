@@ -2,7 +2,7 @@ import type { ApiAnswer } from '../../../shared/api/api-answer'
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, newSendCorrelationId, sendCorrelationHeader } from '../../../shared/idempotency'
 import { followJobOutcomes, groupedOutcomeFeedback, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { PlatformUpdateDialog, isPlatformUpdateSelectable, isPlatformUpdateWritable, type PlatformUpdateTarget } from '../product-editor/PlatformUpdateDialog'
@@ -121,6 +121,8 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     const requests = bulkPlatformUpdateRequests(ready, updateConnections, pickedIds, fields, () => newIdempotencyKey('bulk-update-group'))
     if (!requests.length) return
     setSubmitting(true)
+    // One id for this send: İşlem Takibi lists a model's cards of it as one row.
+    const sendHeaders = sendCorrelationHeader(newSendCorrelationId())
     const followed: FollowedJob[] = []
     const failures = new Map<string, string[]>()
     const platformOf = (connectionId: string) => bulkPublishPlatformName(updateConnections.find(connection => connection.id === connectionId)?.platformCode ?? '')
@@ -128,7 +130,7 @@ export function BulkPlatformUpdateDialog({ productIds, cardCount, connections, p
     await mapWithConcurrency(requests, sendConcurrency, async (request: BulkUpdateRequest) => {
       try {
         const accepted = request.kind === 'product'
-          ? await hubApi<ApiAnswer<'postProductsByIdUpdateJobs'>>(`/products/${request.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: request.connectionId, fields: request.fields, sendGroupId: request.sendGroupId }) })
+          ? await hubApi<ApiAnswer<'postProductsByIdUpdateJobs'>>(`/products/${request.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...sendHeaders }, body: JSON.stringify({ connectionId: request.connectionId, fields: request.fields, sendGroupId: request.sendGroupId }) })
           : await hubApi<ApiAnswer<'postProductsByProductIdConnectionsByConnectionIdPriceInventorySyncJobs'>>(`/products/${request.productId}/connections/${request.connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: request.price, stock: request.stock }) })
         const what = request.kind === 'product' ? productInformationLabel(request.fields) : request.price && request.stock ? 'fiyat-stok' : request.price ? 'fiyat' : 'stok'
         if (accepted?.jobId) followed.push({ jobId: accepted.jobId, platformName: platformOf(request.connectionId), what, label: titleOf(request.productId), update: true })

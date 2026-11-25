@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, newSendCorrelationId, sendCorrelationHeader } from '../../../shared/idempotency'
 import { followJobOutcomes, groupedOutcomeFeedback, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
@@ -60,6 +60,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   // The slices of the run and the first one not sent yet: a run cut short (network, server) goes on from there. Each
   // slice names its stores: a store with records that have required gaps gets only its ready records.
   const planRef = useRef<{ chunks: Array<{ productIds: string[]; connectionIds: string[] }>; total: number } | null>(null)
+  const runIdRef = useRef<string | null>(null)
   const [resumeAt, setResumeAt] = useState<number | null>(null)
   // A selected id the list no longer holds counts as unknown in the summary instead of being dropped from the total.
   const selectedRecords = useMemo(() => {
@@ -92,6 +93,9 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   async function publish(resume: boolean) {
     const plan = resume && planRef.current ? planRef.current : bulkPublishPlan(productIds, knownRecords, connectionIds, readiness.byConnection)
     planRef.current = plan
+    // One id for the whole run, its resumed rest included: İşlem Takibi lists a model's cards of it as one row.
+    if (!resume || !runIdRef.current) runIdRef.current = newSendCorrelationId()
+    const runHeaders = sendCorrelationHeader(runIdRef.current)
     const first = resume ? resumeAt ?? 0 : 0
     let index = first
     let total = resume ? result ?? emptyResult : emptyResult
@@ -102,7 +106,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     try {
       for (; index < plan.chunks.length; index++) {
         const chunk = plan.chunks[index]
-        const part = await hubApi<ApiAnswer<'postProductsBulkPublicationJobs'>>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
+        const part = await hubApi<ApiAnswer<'postProductsBulkPublicationJobs'>>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication'), ...runHeaders }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
         total = addBulkPublicationResult(total, part); sent = addBulkPublicationResult(sent, part)
         setResult(total)
         setProgress(plan.chunks.slice(0, index + 1).reduce((count, item) => count + item.productIds.length, 0))

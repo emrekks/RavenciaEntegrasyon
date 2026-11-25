@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
+public sealed partial class JobOperationsService(AppDbContext db, TimeProvider timeProvider) : IJobOperationsService
 {
     public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken)
     {
@@ -34,13 +34,15 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     {
         var query = FilteredJobs(tenantId, listQuery);
         if (query is null) return ServiceResult<PageResult<JobSummaryView>>.Ok(new([], null, false));
+        (DateTimeOffset CreatedAt, Guid Id)? cursor = null;
         if (!string.IsNullOrWhiteSpace(listQuery.After))
         {
             if (!JobListCursor.TryDecode(listQuery.After, out var afterCreatedAt, out var afterId))
                 return ServiceResult<PageResult<JobSummaryView>>.Fail("JOB_CURSOR_INVALID", "Listenin devamı okunamadı. Listeyi yenileyip tekrar deneyin.", 400);
-            // Same order as the page: newest first, Id breaks ties among jobs created in the same instant.
-            query = query.Where(x => x.CreatedAt < afterCreatedAt || (x.CreatedAt == afterCreatedAt && x.Id.CompareTo(afterId) < 0));
+            cursor = (afterCreatedAt, afterId);
         }
+        if (listQuery.GroupByModel) return ServiceResult<PageResult<JobSummaryView>>.Ok(await ModelGroupedPageAsync(tenantId, query, cursor, listQuery.EffectiveLimit, cancellationToken));
+        if (cursor is { } after) query = AfterPosition(query, after.CreatedAt, after.Id);
         var limit = listQuery.EffectiveLimit;
         var rows = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit;
@@ -48,6 +50,15 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var nextCursor = hasMore ? JobListCursor.Encode(jobs[^1].CreatedAt, jobs[^1].Id) : null;
         return ServiceResult<PageResult<JobSummaryView>>.Ok(new(await SummariesAsync(tenantId, jobs, cancellationToken), nextCursor, hasMore));
     }
+
+    // The jobs after a page's last one, in the page's order: newest first, Id breaking ties among jobs created in the
+    // same instant (compared by PostgreSQL, so the order is the index's).
+    private static IQueryable<IntegrationJob> AfterPosition(IQueryable<IntegrationJob> query, DateTimeOffset createdAt, Guid id) =>
+        query.Where(x => x.CreatedAt < createdAt || (x.CreatedAt == createdAt && x.Id.CompareTo(id) < 0));
+
+    // The jobs up to and including that position: what earlier pages held (the cursor is their last job).
+    private static IQueryable<IntegrationJob> UpToPosition(IQueryable<IntegrationJob> query, DateTimeOffset createdAt, Guid id) =>
+        query.Where(x => x.CreatedAt > createdAt || (x.CreatedAt == createdAt && x.Id.CompareTo(id) >= 0));
 
     // Null when a filter can never match (an unknown status), so the caller answers with an empty list.
     private IQueryable<IntegrationJob>? FilteredJobs(Guid tenantId, JobListQuery listQuery)

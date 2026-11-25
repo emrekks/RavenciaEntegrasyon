@@ -2,7 +2,7 @@
 // jobs queued card by card, every outcome recorded for the save's result. Moved out of useEditorSubmit unchanged.
 import type { QueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
-import { newIdempotencyKey } from '../../../shared/idempotency'
+import { newIdempotencyKey, newSendCorrelationId, sendCorrelationHeader } from '../../../shared/idempotency'
 import { recordProductUpdateNotices, type ProductUpdateAccepted } from './product-update-notices'
 import { type FollowedJob } from '../../../shared/job-outcome'
 import { platformUpdatePlan, productInformationLabel } from './platform-update-fields'
@@ -38,6 +38,8 @@ export type MarketplaceSends = {
 export async function sendToMarketplaces({ publicationConnectionIds, connectionPlatformName, platformUpdate, showFeedback, updates, connections, product, productToEdit, linkRowsBySku, followedJobs, form, client, publications, publicationErrors }: MarketplaceSends) {
   for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
     const platformName = connectionPlatformName(connectionId)
+    // The jobs this send queues on this store share one id: İşlem Takibi lists the model's cards as one row.
+    const sendHeaders = sendCorrelationHeader(newSendCorrelationId())
     const progress = publicationConnectionIds.length > 1 ? ` (${connectionIndex + 1}/${publicationConnectionIds.length})` : ''
     showFeedback(platformUpdate ? 'Güncelleme Kuyruğa Alınıyor' : 'Yayın Kuyruğa Alınıyor', platformUpdate ? `${platformName}: güncelleme işleri kuyruğa alınıyor${progress}…` : `${platformName}: yayın işleri kuyruğa alınıyor${progress}…`, 'info', { persistent: true, key: productSaveToastKey })
     const update: MarketplaceUpdateOutcome = { platformName, queued: { productInformation: false, priceInventory: false } }
@@ -62,7 +64,7 @@ export async function sendToMarketplaces({ publicationConnectionIds, connectionP
           for (const card of familyPlan.send) {
             const cardName = familyCardName(card)
             try {
-              const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
+              const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...sendHeaders }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
               recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
               if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: informationLabel, update: true, ...(familyPlan.send.length > 1 ? { card: cardName } : {}) })
               family.queuedCards++
@@ -128,7 +130,7 @@ export async function sendToMarketplaces({ publicationConnectionIds, connectionP
             if (!(reason instanceof ApiRequestError) || reason.status !== 404) throw reason
           }
           await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
-          const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
+          const publicationJob = await hubApi<PublicationAccepted>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...sendHeaders }, body: JSON.stringify({ connectionId }) })
           await client.invalidateQueries({ queryKey: queryKeys.publicationStatus(familyProductId, connectionId) })
           if (publicationJob?.jobId) followedJobs.push({ jobId: publicationJob.jobId, platformName, what: 'ürün', card: familyIds.length > 1 ? preferredColorOption(variantOptionEntries(cardVariants[0] ?? product.variants[0]))?.value ?? '' : undefined })
           outcome.enqueuedCards++
