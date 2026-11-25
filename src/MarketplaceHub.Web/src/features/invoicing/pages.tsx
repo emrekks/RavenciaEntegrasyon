@@ -54,7 +54,7 @@ import { formatDate, formatDateTime, formatIstanbul, fromDateTimeLocal, istanbul
 import { formatMoney } from '../../shared/format-money'
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
 import { invoiceWorkspaceStatus, isInvoiceFailureStatus } from './invoice-workspace-status'
-import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, invoiceErrorText, invoiceReopenNote, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, invoiceErrorText, invoiceReopenNote, localValidationNotice, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { isLinkRevocationStatus, linkRevocationStatusLabel } from './invoice-link-revocation'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
@@ -839,7 +839,9 @@ export function InvoiceDetailPage() {
       return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...(!versionless ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ confirmed }) }) })
     },
     onSuccess: (value, variables) => {
-      setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey })))
+      if (variables.action === 'VALIDATE') setNotice(...localValidationNotice(value as InvoiceDetail | null))
+      else setNotice(variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', 'info')
+      setConfirmed(false); void Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey })))
       // A send is followed to its result (gönderildi / gönderilemedi with the reason); the page's own status follows too.
       const jobId = (value as { jobId?: string } | null)?.jobId
       const what = variables.action === 'SUBMIT' ? 'fatura kesimi' : variables.action === 'CANCEL' ? 'fatura iptali' : 'fatura iletimi'

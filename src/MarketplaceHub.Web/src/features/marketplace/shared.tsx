@@ -66,7 +66,9 @@ export function orderDisplayShipment(item: Pick<Order, 'platformCode' | 'package
 // Returns list row (docs/tasarim-onerileri/iadeler-yeni.html): order info, buyer, products with a unit price column whose
 // prices line up with each product, cargo, invoice, reason, a status ring and the "İşlemler" menu.
 export function returnDateText(value: string | null | undefined) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : formatIstanbul(date, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
-export const invoiceRing: Record<string, [RingTone, number]> = { 'Fatura Bekliyor': ['wait', 0.2], 'Fatura İletiliyor': ['move', 0.66], 'Faturası Mevcut': ['ok', 1], 'Fatura İletilemedi': ['bad', 0.66], 'Fatura Oluşturulamadı': ['bad', 0.33], 'Fatura İptal': ['off', 0] }
+// States waiting for the seller (a correction, a review, an unknown or unread E-Faturam answer) read amber, never grey.
+const invoiceAttentionLabels = ['Fatura Düzeltme Gerekli', 'İnceleme Gerekli', 'Fatura Sonucu Belirsiz', 'E-Faturam Cevap Bekleniyor']
+export const invoiceRing: Record<string, [RingTone, number]> = { 'Fatura Bekliyor': ['wait', 0.2], 'Fatura İletiliyor': ['move', 0.66], 'Faturası Mevcut': ['ok', 1], 'Fatura İletilemedi': ['bad', 0.66], 'Fatura Oluşturulamadı': ['bad', 0.33], 'Fatura İptal': ['off', 0], ...Object.fromEntries(invoiceAttentionLabels.map(label => [label, ['wait', 0.66] as [RingTone, number]])) }
 export const invoiceFailureText: Record<string, string> = { 'Fatura İletilemedi': 'Fatura pazar yerine iletilemedi. Ayrıntılar Faturalar sayfasında.', 'Fatura Oluşturulamadı': 'Fatura oluşturulamadı. Ayrıntılar Faturalar sayfasında.' }
 // setByHand: the seller set the status by hand (W13); the ring says so under its label.
 export function ReturnInvoiceRing({ status, isMicroExport, setByHand = false }: { status: string; isMicroExport: boolean; setByHand?: boolean }) {
@@ -74,8 +76,8 @@ export function ReturnInvoiceRing({ status, isMicroExport, setByHand = false }: 
   const label = invoiceStatusDisplayLabel(status, isMicroExport)
   const [baseTone, progress] = invoiceRing[base] ?? ['off', 0]
   // Micro-export invoices read blue while they are pending, so they stand apart from the domestic ones; done stays
-  // green and a failure stays red.
-  const tone: RingTone = isMicroExport && baseTone !== 'ok' && baseTone !== 'bad' ? 'move' : baseTone
+  // green, a failure stays red and a state waiting for the seller stays amber.
+  const tone: RingTone = isMicroExport && baseTone !== 'ok' && baseTone !== 'bad' && !invoiceAttentionLabels.includes(base) ? 'move' : baseTone
   // Short states ("Faturası Mevcut") stay on one line; long ones break only between word pairs, so
   // "İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
   const words = label.split(' ')

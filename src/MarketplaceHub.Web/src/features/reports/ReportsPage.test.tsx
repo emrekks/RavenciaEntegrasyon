@@ -658,6 +658,11 @@ describe('ReportsPage', () => {
     // The platforms add up into a Toplam row under the table.
     const total = Array.from(panel.querySelectorAll('.reports-table')).find(table => table.querySelector('.reports-total-row'))?.querySelector('.reports-total-row')
     expect(total?.textContent).toContain('Toplam')
+    // Scan C-9: its İade Oranı is the server's rate (the summary's), never worked out again here (0 of 5 would read %0).
+    const table = total!.closest('table')!
+    const rateColumn = [...table.querySelectorAll('thead th')].findIndex(cell => cell.textContent?.includes('İade Oranı'))
+    expect(rateColumn).toBeGreaterThan(-1)
+    expect(total!.querySelectorAll('td')[rateColumn].textContent).toBe(formatPercent(report.summary.returnRate))
   })
 
   it('opens Kârlılık on the revenue, the costed revenue, the net profit and the net profit\'s two rates', async () => {
