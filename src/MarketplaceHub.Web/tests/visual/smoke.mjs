@@ -114,13 +114,16 @@ async function glideStep() {
       const bad = await page.evaluate(compactNow => {
         const layer = document.querySelector('.rv-dock-layer'); if (compactNow) layer.setAttribute('data-compact', ''); else layer.removeAttribute('data-compact')
         const dock = document.querySelector('.rv-dock'); const glide = dock.querySelector('.rv-dock-glide'); const problems = []
-        for (let index = 0; index < 6; index += 1) {
+        for (let index = 0; index < 5; index += 1) {
           dock.style.setProperty('--rv-dock-i', String(index))
           const box = dock.getBoundingClientRect(); const pill = glide.getBoundingClientRect(); const slot = dock.querySelectorAll('.rv-dock-slot')[index].getBoundingClientRect()
           const gaps = [pill.left - box.left, box.right - pill.right, pill.top - box.top, box.bottom - pill.bottom]
           if (Math.min(...gaps) < 4) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
           if (pill.width > slot.width - 3.5 || pill.left < slot.left + 1.5 || pill.right > slot.right - 1.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
-          if ((index === 0 || index === 5) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' not concentric')
+          const label = dock.querySelectorAll('.rv-dock-slot')[index].querySelector('.rv-dock-label').getBoundingClientRect()
+          if (!compactNow && (label.width > slot.width - 4 || label.height < 11)) problems.push('ease ' + index + ' label cut ' + label.width.toFixed(1) + '/' + slot.width.toFixed(1) + '/' + label.height.toFixed(1))
+          if (compactNow && label.height > 0.5) problems.push('compact ' + index + ' label still shown')
+          if ((index === 0 || index === 4) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' not concentric')
         }
         return problems
       }, compact)
