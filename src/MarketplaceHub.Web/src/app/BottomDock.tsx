@@ -35,18 +35,17 @@ export function useDockHostState(phone: boolean) {
 export { DockContext }
 
 type DockTarget = { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }
-// The capsule: six icon-only slots, Ana Sayfa, Siparişler, İadeler, Ürünler, Sorular and (a button) Menü last.
+// The capsule: five icon-only slots, Ana Sayfa, Siparişler, Ürünler, Sorular and (a button) Menü last. İadeler lives in the menu (its count is in the Menü badge).
 const homePage: DockTarget = { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true }
 const pillPages: DockTarget[] = [
   homePage,
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
-  { to: '/returns', icon: 'returns', label: 'İadeler', noun: 'bekleyen iade' },
   { to: '/products', icon: 'products', label: 'Ürünler' },
   { to: '/questions', icon: 'questions', label: 'Sorular', aria: 'Ürün Soruları', noun: 'cevaplanmamış' },
 ]
 
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
-// One floating opaque capsule in dock mode (our own icons and colours): six equal slots with a lighter inner pill under the open page that glides to the next
+// One floating opaque capsule in dock mode (our own icons and colours): five equal slots with a lighter inner pill under the open page that glides to the next
 // slot (stretching over both on the way). In task mode it gives way to one wide panel (the page's buttons), with the warning strip as a small pill above it.
 // `compact` is the top bar's hidden state (App.tsx: a scroll down), so the two ease away and come back together.
 const menuIndex = pillPages.length
@@ -99,6 +98,7 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
     const count = slotCounts[page.to] ?? 0
     return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={ariaFor(page, count)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
       <span className="rv-dock-icon"><UiIcon name={page.icon} size={22} />{badge(count)}</span>
+      <span className="rv-dock-label">{page.label}</span>
     </Link>
   }
   // Where the inner pill stands: the open page's slot (Menü while the menu is open); outside the dock's pages it keeps its last place, undrawn.
@@ -115,13 +115,13 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
     // The pill starts where it is drawn now (an unfinished glide goes on from its current place) and ends in the open slot. Places are in slots, written as
     // percentages of the capsule, so a capsule that is easing between its sizes carries the pill with it. On the way it stretches by 0.6 slot at most (1.6 slots
     // wide): its edges stay between the two slots, so it never reaches past the capsule's inner edge.
-    const step = (dock.clientWidth - 8) / 6
+    const step = (dock.clientWidth - 8) / 5
     const now = glide.getBoundingClientRect()
     const start = (now.left - dock.getBoundingClientRect().left - 6) / step
     const span = (now.width + 4) / step
     if (Math.abs(start - found) < 0.01 && Math.abs(span - 1) < 0.01) return
-    const left = (slots: number) => 'calc(6px + ' + slots + ' * ((100% - 8px) / 6))'
-    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 6) - 4px)'
+    const left = (slots: number) => 'calc(6px + ' + slots + ' * ((100% - 8px) / 5))'
+    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 5) - 4px)'
     const reach = Math.abs(found - start)
     const extra = Math.min(reach, 0.6)
     const easing = getComputedStyle(document.documentElement).getPropertyValue('--rv-ease-sheet').trim() || 'ease'
@@ -135,6 +135,7 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
       {pillPages.map(page => slot(page))}
       <button type="button" ref={menuSlotRef} className={'rv-dock-slot' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
         <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen ? badge(menuCount) : null}</span>
+        <span className="rv-dock-label">{menuOpen ? 'Kapat' : 'Menü'}</span>
       </button>
     </nav>
     <div className="rv-dock-panel" inert={!task || undefined}>

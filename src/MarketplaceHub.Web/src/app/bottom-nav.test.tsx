@@ -76,7 +76,7 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
     // Room under the content: 56 + 12 + 16 and the safe area (the warning pill adds 40); the parts sit 12 px and the safe area above the edge.
-    expect(phone).toContain('--rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 74px)')
+    expect(phone).toContain('--rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 78px)')
     expect(phone).toContain('--rv-dock-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 4px), 12px)')
     const layer = phone.match(/\.rv-dock-layer \{ position: fixed[^}]*\}/)![0]
     expect(layer).toContain('pointer-events: none')
@@ -86,18 +86,18 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('--rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%)')
     expect(phone).toContain('--rv-dock-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%), 0 0 24px rgb(0 0 0 / 40%), 0 4px 12px rgb(0 0 0 / 30%)')
     expect(phone).toContain('.rv-dock, .rv-dock-panel { background: var(--rv-color-surface); box-shadow: var(--rv-dock-shadow); }')
-    expect(phone).toContain(':root { --rv-dock-w: min(88vw, 420px); --rv-dock-h: 58px; --rv-dock-icon: 24px; --rv-dock-motion: 360ms; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
-    expect(phone).toContain('.rv-dock-layer[data-compact] { --rv-dock-w: min(max(73vw, 276px), 336px); --rv-dock-h: 48px; --rv-dock-icon: 22px; }')
+    expect(phone).toContain(':root { --rv-dock-w: min(80vw, 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-motion: 360ms; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
+    expect(phone).toContain('.rv-dock-layer[data-compact] { --rv-dock-w: min(max(66vw, 248px), 312px); --rv-dock-h: 48px; --rv-dock-icon: 22px; }')
     expect(phone).toContain('width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2);')
-    expect(phone).toContain('.rv-dock-glide { position: absolute; top: 6px; bottom: 6px; left: calc(6px + var(--rv-dock-i, 0) * ((100% - 8px) / 6));')
+    expect(phone).toContain('.rv-dock-glide { position: absolute; top: 6px; bottom: 6px; left: calc(6px + var(--rv-dock-i, 0) * ((100% - 8px) / 5));')
     expect(phone).toMatch(/\.rv-dock-panel \{[^}]*height: 56px; border-radius: 28px/)
     expect(phone).toContain('.rv-dock-slot:active { transform: scale(.96); }')
-    // The six icons are 24 px with a 2 px stroke (the global .ui-icon rule held them at 16 px).
+    // The five icons are 24 px with a 2 px stroke (the global .ui-icon rule held them at 16 px).
     expect(phone).toContain('.rv-dock-icon > .ui-icon { width: var(--rv-dock-icon); height: var(--rv-dock-icon); stroke-width: 2px;')
     expect(phone).toContain('.rv-dock-slot.is-active { color: var(--rv-color-primary-text); }')
     expect(phone).toContain('--rv-dock-active-tint: 14%')
     expect(phone).toContain('--rv-dock-active-tint: 24%')
-    expect(css).not.toMatch(/backdrop-filter|rv-dock-blur|rv-dock-tint|rv-dock-panel-alpha|rv-dock-panel-blur|rv-dock-label|\.rv-dock-layer::before/)
+    expect(css).not.toMatch(/backdrop-filter|rv-dock-blur|rv-dock-tint|rv-dock-panel-alpha|rv-dock-panel-blur|\.rv-dock-layer::before/)
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
     // The warning is a 32 px pill floating above the task panel.
@@ -114,19 +114,19 @@ describe('phone bottom navigation (CSS)', () => {
 })
 
 describe('Ravencia Dock', () => {
-  it('is one capsule of six icon-only slots (Ana Sayfa, Siparişler, İadeler, Ürünler, Sorular, Menü) with a glide pill; no Ara here; the open page is the active one', () => {
+  it('is one capsule of five icon-only slots (Ana Sayfa, Siparişler, Ürünler, Sorular, Menü) with a label under each icon and a glide pill; no Ara here; the open page is the active one', () => {
     const { host } = mount('/orders')
     const dock = host.querySelector('.rv-dock')!
     expect(dock.getAttribute('aria-label')).toBe('Alt menü')
-    expect([...dock.children].map(part => part.className.split(' ')[0])).toEqual(['rv-dock-glide', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot'])
+    expect([...dock.children].map(part => part.className.split(' ')[0])).toEqual(['rv-dock-glide', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot', 'rv-dock-slot'])
     expect(dock.children[1].getAttribute('aria-label')).toBe('Ana Sayfa')
     expect(dock.children[1].getAttribute('href')).toBe('/dashboard')
-    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'İadeler', 'Ürünler', 'Ürün Soruları', 'Menü'])
-    expect(dock.children[6].getAttribute('aria-label')).toBe('Menü')
+    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Ürün Soruları', 'Menü'])
+    expect(dock.children[5].getAttribute('aria-label')).toBe('Menü')
     expect(dock.querySelector('[aria-label="Ara"], .rv-dock-search')).toBeNull()
-    // Icons only: every part has its icon and no text; the names are aria-labels.
-    for (const part of dock.querySelectorAll('.rv-dock-slot, .rv-dock-round')) { expect(part.textContent).toBe(''); expect(part.querySelector('svg')).toBeTruthy() }
-    expect(dock.querySelector('.rv-dock-label')).toBeNull()
+    // Every slot has its icon and a short label under it; the accessible name is the aria-label (label and count in one, no double reading).
+    expect([...dock.querySelectorAll('.rv-dock-slot')].map(part => part.querySelector('.rv-dock-label')?.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Sorular', 'Menü'])
+    for (const part of dock.querySelectorAll('.rv-dock-slot')) { expect(part.querySelector('svg')).toBeTruthy(); expect(part.getAttribute('aria-label')).toContain(part.querySelector('.rv-dock-label')!.textContent!) }
     expect(dock.querySelector('.rv-dock-glide')?.getAttribute('aria-hidden')).toBe('true')
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
     const current = dock.querySelectorAll('[aria-current="page"]')
@@ -150,7 +150,7 @@ describe('Ravencia Dock', () => {
     expect(glide(dashboard).parentElement!.style.getPropertyValue('--rv-dock-i')).toBe('0')
     cleanup()
     const questions = mount('/questions').host
-    expect(glide(questions).parentElement!.style.getPropertyValue('--rv-dock-i')).toBe('4')
+    expect(glide(questions).parentElement!.style.getPropertyValue('--rv-dock-i')).toBe('3')
     expect(questions.querySelector('.rv-dock')!.hasAttribute('data-none')).toBe(false)
     cleanup()
     const reports = mount('/reports').host
@@ -158,7 +158,7 @@ describe('Ravencia Dock', () => {
     cleanup()
     const open = mount('/orders').host
     click(open.querySelector('button[aria-label^="Menü"]'))
-    expect(glide(open).parentElement!.style.getPropertyValue('--rv-dock-i')).toBe('5')
+    expect(glide(open).parentElement!.style.getPropertyValue('--rv-dock-i')).toBe('4')
   })
 
   it('shows the round Menü button as the active one with the cross while the menu is open, and no page is current', () => {
@@ -186,13 +186,12 @@ describe('Ravencia Dock', () => {
     expect(menuPendingTotal(groups, ['/orders'])).toBe(10)
     // Pages with a target of their own in the dock are not counted twice in the Menü badge.
     expect(menuPendingTotal(groups, ['/orders', '/questions'])).toBe(3)
-    expect(menuPendingTotal(groups, ['/orders', '/returns', '/questions'])).toBeLessThanOrEqual(3)
+    expect(menuPendingTotal(groups, ['/orders', '/questions'])).toBeLessThanOrEqual(3)
     cleanup()
-    const counted = mount('/dashboard', { slotCounts: { '/orders': 9, '/returns': 4, '/questions': 120 } }).host
+    const counted = mount('/dashboard', { slotCounts: { '/orders': 9, '/questions': 120 } }).host
     expect(counted.querySelector('a[href="/orders"] .rv-dock-badge')?.textContent).toBe('9')
     expect(counted.querySelector('a[href="/questions"] .rv-dock-badge')?.textContent).toBe('99+')
-    expect(counted.querySelector('a[href="/returns"] .rv-dock-badge')?.textContent).toBe('4')
-    expect(counted.querySelector('a[href="/returns"]')?.getAttribute('aria-label')).toBe('İadeler, 4 bekleyen iade')
+    expect(counted.querySelector('a[href="/returns"]')).toBeNull()
     expect(counted.querySelector('a[href="/questions"]')?.getAttribute('aria-label')).toBe('Ürün Soruları, 120 cevaplanmamış')
     cleanup()
     expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
