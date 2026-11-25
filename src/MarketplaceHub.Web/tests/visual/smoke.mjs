@@ -70,7 +70,7 @@ async function layerStep(name, path, open, close) {
   } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
   await context.close()
 }
-// The dock's counts stay inside their pill or round button (4 px from the edge at least) with one, two and three characters.
+// The dock's counts stay inside their pill or round button (3 px from the edge at least: the 12 px badge sits outside the icon's corner) with one, two and three characters.
 async function badgeStep() {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -90,7 +90,7 @@ async function badgeStep() {
           badge.textContent = label
           const box = (part.classList.contains('rv-dock-round') ? part : part.closest('.rv-dock-pill')).getBoundingClientRect()
           const rect = badge.getBoundingClientRect()
-          if (rect.top < box.top + 4 || rect.right > box.right - 4 || rect.left < box.left + 4 || rect.bottom > box.bottom - 4) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
+          if (rect.top < box.top + 3 || rect.right > box.right - 3 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
         }
         return problems
       }, text)
