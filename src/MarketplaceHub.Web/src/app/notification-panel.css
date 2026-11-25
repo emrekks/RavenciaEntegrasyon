@@ -52,7 +52,13 @@
 .rv-notification-logo { display: block; width: 32px; height: 32px; padding: 0; object-fit: cover; background: transparent; border: 0; }
 /* E-Faturam's mark is a wordmark on a transparent file: it keeps a light tile so it stays legible. */
 .rv-notification-logo.platform-logo-trendyol-efaturam { box-sizing: border-box; padding: 3px; object-fit: contain; background: #fff; }
-.rv-notification-history-item.is-read .rv-notification-icon { opacity: .75; }
+/* Read records recede: lighter title, quieter text and meta, a fainter tile and edge. Colour tokens only, no opacity on the row, so the text keeps its contrast. */
+.rv-notification-history-item.is-read .rv-notification-icon { opacity: .6; }
+.rv-notification-history-item.is-read .rv-notification-title { color: var(--rv-color-muted); font-weight: 500; }
+.rv-notification-history-item.is-read .rv-notification-text { color: var(--rv-color-subtle); }
+.rv-notification-history-item.is-read .rv-notification-meta { color: var(--rv-color-subtle); }
+.rv-notification-history-item.is-read .rv-notification-count { color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-muted) 12%, transparent); }
+.rv-notification-history-item.is-read.is-error { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
 
 .rv-notification-card { min-width: 0; color: var(--rv-color-ink); }
 .rv-notification-history-top { display: flex; align-items: center; gap: 8px; min-height: 20px; }
@@ -76,6 +82,7 @@
 .rv-notification-go, .rv-notification-more, .rv-notification-mark-read { display: inline-flex; align-items: center; gap: 4px; width: auto; height: 32px; min-height: 0; padding: 0 8px; background: none; border: 0; border-radius: 7px; font: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .rv-notification-go { color: var(--rv-color-primary); }
 .rv-notification-history-item.is-error .rv-notification-go { color: var(--rv-color-danger); }
+.rv-notification-history-item.is-read .rv-notification-go { color: var(--rv-color-primary-text); }
 .rv-notification-more { color: var(--rv-color-muted); }
 .rv-notification-mark-read { width: 32px; justify-content: center; margin-left: auto; padding: 0; color: var(--rv-color-muted); }
 .rv-notification-go:hover, .rv-notification-more:hover, .rv-notification-mark-read:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); }

@@ -600,6 +600,17 @@ export function InvoicesPage() {
     setTab(nextTab)
     setSearchParams(current => { const params = new URLSearchParams(current); params.set('tab', nextTab); return params }, { replace: true })
   }
+  // A summary card opens its tab (the same selectTab the strip calls); when the strip is off screen it scrolls into view.
+  function metricTab(value: string) {
+    const active = tab === value
+    function open() {
+      selectTab(value)
+      const strip = document.querySelector('.invoice-reference-tabs')
+      const top = strip?.getBoundingClientRect().top
+      if (strip && top !== undefined && (top < 0 || top > window.innerHeight * 0.6)) strip.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    }
+    return { role: 'button' as const, tabIndex: 0, 'aria-pressed': active, onClick: open, onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open() } } }
+  }
   // A tab slides the list in from its side and starts the page from its top (shared/tab-slide.tsx).
   const tabSlide = useTabSlide(tab, tabs.map(([value]) => value))
   return <section className="content f3 invoices-page reference-invoices-page">
@@ -608,10 +619,10 @@ export function InvoicesPage() {
     </div>
     {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} title={messageTitle} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
-      <article className="invoice-metric-pending" title="Paket bazlı işlem"><CardBackgroundIcon name="fileClock" tone="warn" /><small>Fatura Bekleyen</small><strong><CountUp value={cardCountText(pageData ? counts.unInvoiced : undefined, { hasSource: metricSource })} /></strong></article>
-      <article className="invoice-metric-due" title="Teslimden 4 gün geçen"><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={cardCountText(pageData ? counts.dueSoon : undefined, { hasSource: metricSource })} /></strong></article>
-      <article className="invoice-metric-complete" title="İkinci fatura kapalı"><CardBackgroundIcon name="fileCheck" tone="ok" /><small>Faturalandırılan</small><strong><CountUp value={cardCountText(pageData ? counts.invoiced : undefined, { hasSource: metricSource })} /></strong></article>
-      <article className="invoice-metric-total" title="Fatura çalışma alanındaki paketler"><CardBackgroundIcon name="orders" /><small>Toplam Paket</small><strong><CountUp value={cardCountText(pageData?.totalPackageCount, { hasSource: metricSource })} /></strong></article>
+      <article className={`invoice-metric-pending${tab === 'UNINVOICED' ? ' is-active' : ''}`} title="Paket bazlı işlem" {...metricTab('UNINVOICED')}><CardBackgroundIcon name="fileClock" tone="warn" /><small>Fatura Bekleyen</small><strong><CountUp value={cardCountText(pageData ? counts.unInvoiced : undefined, { hasSource: metricSource })} /></strong></article>
+      <article className={`invoice-metric-due${tab === 'DUE_SOON' ? ' is-active' : ''}`} title="Teslimden 4 gün geçen" {...metricTab('DUE_SOON')}><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={cardCountText(pageData ? counts.dueSoon : undefined, { hasSource: metricSource })} /></strong></article>
+      <article className={`invoice-metric-complete${tab === 'INVOICED' ? ' is-active' : ''}`} title="İkinci fatura kapalı" {...metricTab('INVOICED')}><CardBackgroundIcon name="fileCheck" tone="ok" /><small>Faturalandırılan</small><strong><CountUp value={cardCountText(pageData ? counts.invoiced : undefined, { hasSource: metricSource })} /></strong></article>
+      <article className={`invoice-metric-total${tab === 'ALL' ? ' is-active' : ''}`} title="Fatura çalışma alanındaki paketler" {...metricTab('ALL')}><CardBackgroundIcon name="orders" /><small>Toplam Paket</small><strong><CountUp value={cardCountText(pageData?.totalPackageCount, { hasSource: metricSource })} /></strong></article>
     </div>
     <div className="invoice-reference-filter-shell">
       <ViewTabsWithMore more={[]} className="invoice-reference-tabs" ariaLabel="Fatura görünümleri" value={tab} onChange={selectTab} items={tabs.map(([value, label]) => ({ value, label: viewTabLabel(({ ALL: 'all', UNINVOICED: 'invoiceMissing', INVOICED: 'invoiceDone', DUE_SOON: 'due', HIDDEN: 'hidden' } as const)[value], label), count: !pageData ? (query.isError ? unknownCount : undefined) : (value === 'ALL' ? counts.all : value === 'UNINVOICED' ? counts.unInvoiced : value === 'INVOICED' ? counts.invoiced : value === 'DUE_SOON' ? counts.dueSoon : counts.hidden).toLocaleString('tr-TR') }))} />
