@@ -581,7 +581,9 @@ describe('SystemSettingsPage', () => {
     } finally { Object.assign(offsiteView, saved) }
   })
 
-  it('makes the key, downloads it, asks for the stored-file tick and the password once, saves with the defaults, then goes to Google', async () => {
+  // Scan 25 Nov 2026 (D-6): the save and the consent address go in one request, verified once, so an owner with MFA
+  // needs one authenticator code (it works once; a second request with it was refused).
+  it('makes the key, downloads it, asks for the stored-file tick and the password once, saves with the defaults in the request that goes to Google', async () => {
     const saved = { ...offsiteView }
     Object.assign(offsiteView, { connected: false, ageRecipient: null as string | null, enabled: false })
     vi.mocked(generateBackupKeyPair).mockClear()
@@ -601,10 +603,13 @@ describe('SystemSettingsPage', () => {
       act(() => { form.requestSubmit() })
       await settle()
       const sequence = apiState.calls.filter(call => call.path === '/settings/offsite-backup' && call.method === 'PUT' || call.path === '/settings/offsite-backup/google/authorize')
-      expect(sequence.map(call => call.path)).toEqual(['/settings/offsite-backup', '/settings/offsite-backup/google/authorize'])
-      expect(JSON.parse(sequence[0].body!)).toMatchObject({ enabled: true, folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12, password: 'my-password' })
-      expect(JSON.parse(sequence[0].body!).ageRecipient).toMatch(/^age1newkey/u)
-      expect(JSON.parse(sequence[1].body!).password).toBe('my-password')
+      expect(sequence.map(call => call.path)).toEqual(['/settings/offsite-backup/google/authorize'])
+      const sent = JSON.parse(sequence[0].body!)
+      expect(sent.password).toBe('my-password')
+      expect(sent.settings).toMatchObject({ enabled: true, folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12 })
+      expect(sent.settings.ageRecipient).toMatch(/^age1newkey/u)
+      expect(sent.settings.password).toBeUndefined()
+      expect(sequence[0].headers?.['if-match']).toBe(`"v${offsiteView.version}"`)
     } finally { Object.assign(offsiteView, saved) }
   })
 
