@@ -383,7 +383,7 @@
 .ss-page .ss-pv-line span:last-child { color: var(--p-muted); font-variant-numeric: tabular-nums; }
 
 /* Popups */
-.app-shell.stitch-shell main .ss-page .ss-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100vh - 48px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 12px 32px rgb(0 0 0 / 22%); }
+.app-shell.stitch-shell main .ss-page .ss-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - 48px); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: 0 12px 32px rgb(0 0 0 / 22%); }
 .app-shell.stitch-shell main .ss-page .ss-modal.is-sm { width: min(460px, 100%); }
 .app-shell.stitch-shell main .ss-page .ss-modal.is-md { width: min(640px, 100%); }
 .app-shell.stitch-shell main .ss-page .ss-modal.is-lg { width: min(880px, 100%); }
