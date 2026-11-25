@@ -109,6 +109,27 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(summary?.textContent).not.toContain('Fatura işlemleri kayıt bazında yürütülür')
   })
 
+  it('a summary card opens its tab (mouse and keyboard), the open tab card is pressed', async () => {
+    const card = (name: string) => container.querySelector<HTMLElement>(`.invoice-reference-metrics .${name}`)!
+    const activeTab = () => container.querySelector('.invoice-reference-tabs [aria-selected="true"], .invoice-reference-tabs .is-active')?.textContent ?? ''
+    expect(card('invoice-metric-due').getAttribute('aria-pressed')).toBe('true')
+    expect(card('invoice-metric-total').getAttribute('aria-pressed')).toBe('false')
+    act(() => card('invoice-metric-total').click())
+    await settle()
+    expect(activeTab()).toContain('Tümü')
+    expect(card('invoice-metric-total').getAttribute('aria-pressed')).toBe('true')
+    expect(card('invoice-metric-due').getAttribute('aria-pressed')).toBe('false')
+    act(() => { card('invoice-metric-pending').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) })
+    await settle()
+    expect(activeTab()).toContain('Faturalandırılmamışlar')
+    act(() => { card('invoice-metric-complete').dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })) })
+    await settle()
+    expect(activeTab()).toContain('Faturalandırılmışlar')
+    act(() => card('invoice-metric-due').click())
+    await settle()
+    expect(activeTab()).toContain('Süresi Yaklaşanlar')
+  })
+
   it('shows recognizable labels for structured address fields in invoice details', async () => {
     const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
       .find(item => item.textContent?.includes('SH-1001'))!
