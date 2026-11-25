@@ -70,7 +70,7 @@ async function layerStep(name, path, open, close) {
   } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
   await context.close()
 }
-// The dock's counts stay inside their pill or round button (3 px from the edge at least: the 12 px badge sits outside the icon's corner) with one, two and three characters.
+// The dock's counts stay inside the capsule (3 px from the edge at least: the 12 px badge sits outside the icon's corner) with one, two and three characters.
 async function badgeStep() {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -82,13 +82,13 @@ async function badgeStep() {
     await page.locator('.rv-dock').waitFor({ timeout: 15000 })
     for (const text of ['5', '12', '99+']) {
       const bad = await page.evaluate(label => {
-        const parts = [...document.querySelectorAll('.rv-dock-slot, .rv-dock-round')]
+        const parts = [...document.querySelectorAll('.rv-dock-slot')]
         const problems = []
         for (const part of parts) {
           let badge = part.querySelector('.rv-dock-badge')
           if (!badge) { badge = document.createElement('span'); badge.className = 'rv-dock-badge'; part.querySelector('.rv-dock-icon').append(badge) }
           badge.textContent = label
-          const box = (part.classList.contains('rv-dock-round') ? part : part.closest('.rv-dock-pill')).getBoundingClientRect()
+          const box = part.closest('.rv-dock').getBoundingClientRect()
           const rect = badge.getBoundingClientRect()
           if (rect.top < box.top + 3 || rect.right > box.right - 3 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
         }

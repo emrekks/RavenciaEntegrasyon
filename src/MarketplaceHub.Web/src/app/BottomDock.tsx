@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { UiIcon, UserAvatar, type BackTarget, type UiIconName } from '../shared/components'
 import { DockContext, type DockHost } from '../shared/components/dock-actions'
@@ -35,9 +35,10 @@ export function useDockHostState(phone: boolean) {
 export { DockContext }
 
 type DockTarget = { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }
-// The pill: four icon-only slots (Siparişler, İadeler, Ürünler, Sorular); Ana Sayfa (left) and Menü (right) are the round buttons beside it.
+// The capsule: six icon-only slots, Ana Sayfa, Siparişler, İadeler, Ürünler, Sorular and (a button) Menü last.
 const homePage: DockTarget = { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true }
 const pillPages: DockTarget[] = [
+  homePage,
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
   { to: '/returns', icon: 'returns', label: 'İadeler', noun: 'bekleyen iade' },
   { to: '/products', icon: 'products', label: 'Ürünler' },
@@ -45,11 +46,13 @@ const pillPages: DockTarget[] = [
 ]
 
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
-// Three free-floating opaque parts in dock mode (Shopify-style structure, our own icons and colours): a round Ana Sayfa button, the pill with
-// Siparişler, Ürünler and Sorular, a round Menü button. In task mode the three give way to one wide panel (the page's buttons), with the warning
-// strip as a small pill above it.
-export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
+// One floating opaque capsule in dock mode (our own icons and colours): six equal slots with a lighter inner pill under the open page that glides to the next
+// slot (stretching over both on the way). In task mode it gives way to one wide panel (the page's buttons), with the warning strip as a small pill above it.
+// `compact` is the top bar's hidden state (App.tsx: a scroll down), so the two ease away and come back together.
+const menuIndex = pillPages.length
+export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
   menuOpen: boolean
+  compact?: boolean
   menuCount: number
   // The pending count drawn on a page's own target ("/orders": 9).
   slotCounts: Record<string, number>
@@ -91,21 +94,39 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   }
   const badge = (count: number) => count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null
   const ariaFor = (page: DockTarget, count: number) => count > 0 ? (page.aria ?? page.label) + ', ' + count + ' ' + (page.noun ?? 'bekleyen') : (page.aria ?? page.label)
-  const slot = (page: DockTarget, round = false) => {
+  const slot = (page: DockTarget) => {
     const active = isActive(page.to, page.end)
     const count = slotCounts[page.to] ?? 0
-    return <Link key={page.to} to={page.to} className={(round ? 'rv-dock-round' : 'rv-dock-slot') + (active ? ' is-active' : '')} aria-label={ariaFor(page, count)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
+    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={ariaFor(page, count)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
       <span className="rv-dock-icon"><UiIcon name={page.icon} size={22} />{badge(count)}</span>
     </Link>
   }
+  // Where the inner pill stands: the open page's slot (Menü while the menu is open); outside the dock's pages it keeps its last place, undrawn.
+  const found = menuOpen ? menuIndex : pillPages.findIndex(page => isActive(page.to, page.end))
+  const lastIndex = useRef(Math.max(found, 0))
+  const glideRef = useRef<HTMLSpanElement>(null)
+  const index = found >= 0 ? found : lastIndex.current
+  useLayoutEffect(() => {
+    const from = lastIndex.current
+    if (found < 0) return
+    lastIndex.current = found
+    const glide = glideRef.current
+    if (!glide || from === found || typeof glide.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    // One slot is the pill's width less its 6 px of extra; on the way it stretches over both slots (the near edge stays, then the far edge arrives).
+    const slotWidth = glide.offsetWidth - 6
+    const width = glide.offsetWidth
+    const reach = Math.abs(found - from) * slotWidth
+    const at = (slots: number) => 'translateX(' + slots * slotWidth + 'px)'
+    const mid = found > from ? at(from) : at(found)
+    const easing = getComputedStyle(document.documentElement).getPropertyValue('--rv-ease-sheet').trim() || 'ease'
+    glide.animate([{ transform: at(from), width: width + 'px' }, { transform: mid, width: width + reach + 'px', offset: 0.5 }, { transform: at(found), width: width + 'px' }], { duration: 320, easing })
+  }, [found])
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
-    <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
-      {slot(homePage, true)}
-      <div className="rv-dock-pill">
-        {pillPages.map(page => slot(page))}
-      </div>
-      <button type="button" ref={menuSlotRef} className={'rv-dock-round' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-compact={compact && !menuOpen ? '' : undefined} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
+    <nav className="rv-dock" aria-label="Alt menü" data-none={found < 0 ? '' : undefined} style={{ '--rv-dock-i': index } as CSSProperties} inert={task || undefined}>
+      <span ref={glideRef} className="rv-dock-glide" aria-hidden="true" />
+      {pillPages.map(page => slot(page))}
+      <button type="button" ref={menuSlotRef} className={'rv-dock-slot' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
         <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen ? badge(menuCount) : null}</span>
       </button>
     </nav>
