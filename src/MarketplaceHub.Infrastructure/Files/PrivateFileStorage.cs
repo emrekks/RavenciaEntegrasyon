@@ -49,20 +49,47 @@ public sealed class PrivateFileStorage(string root) : IPrivateFileStorage
             TryDelete(temporary);
             throw;
         }
-        return new StagedFile(temporary, target, relative.Replace('\\', '/'));
+        return new StagedFile(this, temporary, target, relative.Replace('\\', '/'));
     }
 
-    public Task<int> SweepStagedAsync(DateTimeOffset olderThan, CancellationToken cancellationToken)
+    // How a staged file reaches its final name; tests replace it to make the rename fail.
+    internal Action<string, string> MoveFile { get; init; } = (from, to) => File.Move(from, to, overwrite: false);
+
+    // A temporary file older than the cut-off whose final name a database row records was saved but never renamed (the
+    // rename after the commit failed): it is renamed now, never deleted. Any other old temporary file is a write whose
+    // row was never saved (a process that died in between) and goes.
+    public async Task<StagedSweepResult> SweepStagedAsync(DateTimeOffset olderThan, Func<string, CancellationToken, Task<bool>> isReferenced, CancellationToken cancellationToken)
     {
-        if (!Directory.Exists(_root)) return Task.FromResult(0);
-        var removed = 0;
-        foreach (var file in Directory.EnumerateFiles(_root, "*" + StagedSuffix, SearchOption.AllDirectories))
+        if (!Directory.Exists(_root)) return new(0, 0, 0);
+        int removed = 0, completed = 0, kept = 0;
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
+        foreach (var file in Directory.EnumerateFiles(_root, "*" + StagedSuffix, options))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (File.GetLastWriteTimeUtc(file) >= olderThan.UtcDateTime) continue;
+            var target = file[..^StagedSuffix.Length];
+            var relative = Path.GetRelativePath(_root, target).Replace('\\', '/');
+            if (await isReferenced(relative, cancellationToken))
+            {
+                if (TryComplete(file, target)) completed++;
+                else kept++;
+                continue;
+            }
             if (TryDelete(file)) removed++;
         }
-        return Task.FromResult(removed);
+        return new(removed, completed, kept);
+    }
+
+    private bool TryComplete(string temporary, string target)
+    {
+        if (File.Exists(target)) return false;
+        try
+        {
+            MoveFile(temporary, target);
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     private static bool TryDelete(string path)
@@ -77,28 +104,35 @@ public sealed class PrivateFileStorage(string root) : IPrivateFileStorage
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    private sealed class StagedFile(string temporary, string target, string relativePath) : IStagedPrivateFile
+    private sealed class StagedFile(PrivateFileStorage storage, string temporary, string target, string relativePath) : IStagedPrivateFile
     {
-        private bool _committed;
+        // Set before the rename: Commit is called only after the row is saved, so from then on the file is never deleted
+        // here, whether the rename worked or not.
+        private bool _commitStarted;
         public string RelativePath { get; } = relativePath;
 
+        // A rename that fails after the commit leaves the temporary file in place and does not fail the request (its row
+        // is saved): the next read of the file, or the hourly sweep, finishes the rename.
         public void Commit()
         {
-            if (_committed) return;
-            File.Move(temporary, target, overwrite: false);
-            _committed = true;
+            if (_commitStarted) return;
+            _commitStarted = true;
+            storage.TryComplete(temporary, target);
         }
 
         public ValueTask DisposeAsync()
         {
-            if (!_committed) TryDelete(temporary);
+            if (!_commitStarted) TryDelete(temporary);
             return ValueTask.CompletedTask;
         }
     }
 
     public Task<Stream> OpenReadAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken)
     {
-        Stream stream = new FileStream(ResolveForTenant(tenantId, storedPath), FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
+        var full = ResolveForTenant(tenantId, storedPath);
+        // A saved row whose rename failed: its file still has the temporary name; finish the rename once.
+        if (!File.Exists(full) && File.Exists(full + StagedSuffix)) TryComplete(full + StagedSuffix, full);
+        Stream stream = new FileStream(full, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous);
         return Task.FromResult(stream);
     }
 

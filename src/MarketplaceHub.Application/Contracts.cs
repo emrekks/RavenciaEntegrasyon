@@ -15,9 +15,10 @@ public interface IPrivateFileStorage
     // never leaves a file under a name a row could point at. Stores without staging write the final file at once.
     async Task<IStagedPrivateFile> StageAsync(Guid tenantId, string relativeName, string mimeType, Stream content, long maximumBytes, CancellationToken cancellationToken) =>
         new CommittedPrivateFile(await SaveAsync(tenantId, relativeName, mimeType, content, maximumBytes, cancellationToken));
-    // Removes temporary files that were never committed (a process that died between the write and the commit) and are
-    // older than the given time; returns how many went.
-    Task<int> SweepStagedAsync(DateTimeOffset olderThan, CancellationToken cancellationToken) => Task.FromResult(0);
+    // Temporary files older than the given time: one whose final path a row records (isReferenced) was saved but not
+    // renamed, and is renamed now; any other was never saved (a process that died in between) and is removed.
+    Task<StagedSweepResult> SweepStagedAsync(DateTimeOffset olderThan, Func<string, CancellationToken, Task<bool>> isReferenced, CancellationToken cancellationToken) =>
+        Task.FromResult(new StagedSweepResult(0, 0, 0));
     Task<Stream> OpenReadAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken);
     // Removes a stored file of the tenant; false when it was already gone.
     Task<bool> DeleteAsync(Guid tenantId, string storedPath, CancellationToken cancellationToken);
@@ -30,6 +31,10 @@ public interface IStagedPrivateFile : IAsyncDisposable
     // Moves the temporary file to its final name; call it after the database commit.
     void Commit();
 }
+
+// Removed: never-saved temporary files deleted. Completed: saved ones renamed to their final name. Kept: saved ones whose
+// rename failed again (they stay; nothing is deleted).
+public sealed record StagedSweepResult(int Removed, int Completed, int Kept);
 
 public sealed class CommittedPrivateFile(string relativePath) : IStagedPrivateFile
 {

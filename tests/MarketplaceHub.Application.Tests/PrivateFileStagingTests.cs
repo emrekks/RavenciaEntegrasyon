@@ -75,9 +75,56 @@ public sealed class PrivateFileStagingTests : IDisposable
         var now = DateTimeOffset.UtcNow;
         File.SetLastWriteTimeUtc(old, now.UtcDateTime - TimeSpan.FromDays(2));
 
-        Assert.Equal(1, await storage.SweepStagedAsync(now - PrivateFileStorage.StagedMaximumAge, CancellationToken.None));
+        var saved = Path.Combine(directory, "saved.pdf");
+        await File.WriteAllBytesAsync(saved + ".staged", [7]);
+        File.SetLastWriteTimeUtc(saved + ".staged", now.UtcDateTime - TimeSpan.FromDays(2));
+        var savedRelative = $"{_tenant:N}/saved.pdf";
+
+        var result = await storage.SweepStagedAsync(now - PrivateFileStorage.StagedMaximumAge,
+            (relative, _) => Task.FromResult(relative == savedRelative), CancellationToken.None);
+
+        Assert.Equal(new StagedSweepResult(1, 1, 0), result);
         Assert.False(File.Exists(old));
         Assert.True(File.Exists(fresh));
         Assert.True(File.Exists(Path.Combine(_root, kept)));
+        // The saved row's file is finished, never deleted.
+        Assert.True(File.Exists(saved));
+        Assert.False(File.Exists(saved + ".staged"));
+    }
+
+    [Fact]
+    public async Task ARenameThatFailsAfterTheSaveKeepsTheFileAndTheNextReadFinishesIt()
+    {
+        var failing = new PrivateFileStorage(_root) { MoveFile = (_, _) => throw new IOException("disk busy") };
+        string relativePath;
+        await using (var staged = await ((IPrivateFileStorage)failing).StageAsync(_tenant, "a.pdf", "application/pdf", new MemoryStream([1, 2, 3]), 1024, CancellationToken.None))
+        {
+            relativePath = staged.RelativePath;
+            staged.Commit();
+        }
+
+        Assert.False(File.Exists(Path.Combine(_root, relativePath)));
+        Assert.True(File.Exists(Path.Combine(_root, relativePath) + ".staged"));
+
+        IPrivateFileStorage storage = new PrivateFileStorage(_root);
+        await using (var opened = await storage.OpenReadAsync(_tenant, relativePath, CancellationToken.None)) Assert.Equal(3, opened.Length);
+        Assert.True(File.Exists(Path.Combine(_root, relativePath)));
+        Assert.False(File.Exists(Path.Combine(_root, relativePath) + ".staged"));
+    }
+
+    [Fact]
+    public async Task TheSweepKeepsASavedFileItCannotRename()
+    {
+        var failing = new PrivateFileStorage(_root) { MoveFile = (_, _) => throw new IOException("disk busy") };
+        var directory = Path.Combine(_root, _tenant.ToString("N"));
+        Directory.CreateDirectory(directory);
+        var staged = Path.Combine(directory, "saved.pdf.staged");
+        await File.WriteAllBytesAsync(staged, [1]);
+        File.SetLastWriteTimeUtc(staged, DateTime.UtcNow - TimeSpan.FromDays(2));
+
+        var result = await failing.SweepStagedAsync(DateTimeOffset.UtcNow - PrivateFileStorage.StagedMaximumAge, (_, _) => Task.FromResult(true), CancellationToken.None);
+
+        Assert.Equal(new StagedSweepResult(0, 0, 1), result);
+        Assert.True(File.Exists(staged));
     }
 }
