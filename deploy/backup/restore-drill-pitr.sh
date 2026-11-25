@@ -78,5 +78,15 @@ tenants="$(sudo docker exec "$container" psql -X -U marketplacehub -d marketplac
 migrations="$(sudo docker exec "$container" psql -X -U marketplacehub -d marketplacehub -Atc 'select count(*) from public."__EFMigrationsHistory"')"
 [[ "$tenants" =~ ^[1-9][0-9]*$ && "$migrations" =~ ^[1-9][0-9]*$ ]] || { echo "PITR drill: restored database is empty." >&2; exit 1; }
 stopped="$(sudo docker logs "$container" 2>&1 | grep -oE 'recovery stopping before [^,]*, time [0-9: +-]+' | tail -n 1 || true)"
-printf 'PITR drill passed: base=%s target=%s %s tenants=%s migrations=%s durationSeconds=%s\n' \
-  "$base" "$target_utc" "${stopped:-(target after the last archived transaction)}" "$tenants" "$migrations" "$(( $(date -u +%s) - started_at ))"
+# The last transaction replayed (it stays readable after the promotion): never after the target, and how far before it
+# recovery stopped is the data a restore to that time would lose.
+replayed_epoch="$(sudo docker exec "$container" psql -X -U marketplacehub -d marketplacehub -Atc \
+  "select coalesce(extract(epoch from pg_last_xact_replay_timestamp())::bigint::text, '')")"
+if [[ "$replayed_epoch" =~ ^[0-9]+$ ]]; then
+  (( replayed_epoch <= target_epoch )) || { echo "PITR drill: recovery replayed a transaction after the target ($(date -u -d "@$replayed_epoch" '+%Y-%m-%d %H:%M:%S+00'))." >&2; exit 1; }
+  replayed="lastReplayed=$(date -u -d "@$replayed_epoch" '+%Y-%m-%dT%H:%M:%SZ') gapToTargetSeconds=$(( target_epoch - replayed_epoch ))"
+else
+  replayed="lastReplayed=(no transaction replayed after the base backup)"
+fi
+printf 'PITR drill passed: base=%s target=%s %s %s tenants=%s migrations=%s durationSeconds=%s\n' \
+  "$base" "$target_utc" "${stopped:-(target after the last archived transaction)}" "$replayed" "$tenants" "$migrations" "$(( $(date -u +%s) - started_at ))"
