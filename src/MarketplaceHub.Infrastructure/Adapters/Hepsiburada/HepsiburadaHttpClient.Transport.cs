@@ -106,11 +106,14 @@ public sealed partial class HepsiburadaHttpClient
         return wait > TimeSpan.Zero ? wait : TimeSpan.Zero;
     }
 
+    internal static readonly TimeSpan MinimumRateLimitWait = TimeSpan.FromSeconds(1);
+
     internal static AdapterError Error(HttpStatusCode status, TimeSpan? retryAfter, string? requestId) => status switch
     {
         HttpStatusCode.Unauthorized => new(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIALS_REJECTED", "Hepsiburada HTTP 401: entegratör kullanıcı adı ve servis anahtarı bu ortama uymuyor. Aynı aktif Entegratörlerim kaydından alınan kullanıcı adı ve canlı servis anahtarını kontrol edin.", (int)status, null, requestId),
         HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "HEPSIBURADA_ACCESS_FORBIDDEN", "Hepsiburada HTTP 403: mağaza veya endpoint erişim yetkisi reddedildi. Mağaza ID’sini ve entegratör erişim yetkisini kontrol edin.", (int)status, null, requestId),
-        HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "HEPSIBURADA_RATE_LIMITED", "Hepsiburada istek sınırına ulaşıldı.", 429, retryAfter ?? TimeSpan.FromSeconds(5), requestId),
+        // B-10: a rate limit header that says 0 (or less) is never "retry at once": at least one second.
+        HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "HEPSIBURADA_RATE_LIMITED", "Hepsiburada istek sınırına ulaşıldı.", 429, retryAfter is { } wait ? (wait < MinimumRateLimitWait ? MinimumRateLimitWait : wait) : TimeSpan.FromSeconds(5), requestId),
         HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "HEPSIBURADA_RESOURCE_NOT_FOUND", "Hepsiburada kaynağı bulunamadı.", 404, null, requestId),
         HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "HEPSIBURADA_REMOTE_TIMEOUT", "Hepsiburada isteği kendi tarafında zaman aşımına uğrattı; yeniden denenecek.", 408, retryAfter ?? TimeSpan.FromSeconds(15), requestId),
         HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "HEPSIBURADA_CONFLICT", "Hepsiburada isteği kaydın mevcut durumuyla çakıştığı için reddetti.", 409, null, requestId),

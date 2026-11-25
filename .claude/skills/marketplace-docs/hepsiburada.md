@@ -31,7 +31,8 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs` (+ the `Hepsiburada
 - Repo docs say orders 1000/s and catalog 180/min per IP; a May 2024 changelog snippet says 10k per 10 s
   (**unverified** directly). Jan 2026 changelog: catalog burst measured in 5 s windows, excess blocks the IP and
   unblocking needs a ticket with a static IP (number **unverified**).
-- Reads `X-RateLimit-Limit/Remaining/Reset` and `Retry-After`; retry waits Retry-After, else the reset time.
+- Reads `X-RateLimit-Limit/Remaining/Reset` and `Retry-After`; retry waits Retry-After, else the reset time; a 429
+  whose wait reads 0 or less waits 1 s (`HepsiburadaHttpClient.MinimumRateLimitWait`, scan B-10, 25 Nov 2026).
   Request id header `X-Request-Id`. Timeout 30 s.
 - Seller cancellations max 100 per day. Inventory upload: adapter caps 1000 items ("4000 was never confirmed");
   the price-inventory result check in `MarketplaceJobProcessor.PriceInventory.cs` uses the same constant (`MaxInventoryUploadItems`).

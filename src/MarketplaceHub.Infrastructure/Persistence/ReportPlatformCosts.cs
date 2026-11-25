@@ -32,9 +32,15 @@ internal static class ReportPlatformCosts
                 {
                     // Barem below 400 TL for hepsiJET and Sürat only (43.99 / 75.99 + VAT from 21 Sep 2026), otherwise the
                     // 5 Oct 2026 desi table; a 10.99 + VAT service fee on every delivery.
+                    // C-10 (25 Nov 2026): Kolay Gelsin, DHL and Yurtiçi have their own tables; a carrier not known (or not
+                    // named) takes no barem, only the hepsiJET table (the barem is hepsiJET's and Sürat's alone); a parcel
+                    // over 30 desi takes at least the PDF's 31 desi price.
                     var company = HepsiburadaCarrier(carrier);
                     var baremable = company is "HEPSIJET" or "SURAT" && parcel < 10m;
-                    var cargo = baremable && amount < 200m ? 43.99m : baremable && amount < 400m ? 75.99m : Desi(HepsiburadaTable[company], parcel);
+                    var table = HepsiburadaTable[company == Unknown ? "HEPSIJET" : company];
+                    var cargo = baremable && amount < 200m ? 43.99m : baremable && amount < 400m ? 75.99m
+                        : parcel > 30m && HepsiburadaOver30.TryGetValue(company == Unknown ? "HEPSIJET" : company, out var over30) ? over30
+                        : Desi(table, parcel);
                     return new(Shipping(cargo * Vat, returned), ServiceFee(platformCode).PerOrder, Stoppage(keptVatFree), 0m);
                 }
             case "N11":
@@ -91,12 +97,34 @@ internal static class ReportPlatformCosts
     private static string Fold(string? carrier) =>
         (carrier ?? "").ToUpperInvariant().Replace('İ', 'I').Replace('Ü', 'U').Replace('Ç', 'C').Replace('Ş', 'S').Replace('Ö', 'O').Replace('Ğ', 'G');
 
-    private static string HepsiburadaCarrier(string? carrier) => Fold(carrier) switch
+    private const string Unknown = "UNKNOWN";
+
+    // A Hepsiburada order whose carrier is not known (or not named): its cargo is the hepsiJET table without a barem, an
+    // assumption the report and the order profit say as such (unknown stays unknown, never shown as the carrier's price).
+    internal static bool UnknownCarrier(string platformCode, string? carrier) => platformCode == "HEPSIBURADA" && HepsiburadaCarrier(carrier) == Unknown;
+
+    internal static string HepsiburadaCarrier(string? carrier) => Fold(carrier) switch
     {
         var name when name.Contains("ARAS") => "ARAS",
         var name when name.Contains("PTT") => "PTT",
         var name when name.Contains("SURAT") => "SURAT",
-        _ => "HEPSIJET"
+        var name when name.Contains("YURTICI") => "YURTICI",
+        var name when name.Contains("DHL") => "DHL",
+        var name when name.Contains("KOLAY") => "KOLAYGELSIN",
+        var name when name.Contains("HEPSIJET") || name.Contains("HEPSI JET") => "HEPSIJET",
+        _ => Unknown
+    };
+
+    // The 5 Oct 2026 PDF's 31 desi price (TL without VAT), the least a parcel over 30 desi costs; Kolay Gelsin's is not
+    // in the source (docs/KARGO-TARIFELERI-2026.md), so its parcel keeps the 30 desi price.
+    private static readonly Dictionary<string, decimal> HepsiburadaOver30 = new()
+    {
+        ["HEPSIJET"] = 390.99m,
+        ["ARAS"] = 361.46m,
+        ["PTT"] = 720.28m,
+        ["SURAT"] = 460.95m,
+        ["YURTICI"] = 589.18m,
+        ["DHL"] = 638.98m
     };
 
     private static string N11Carrier(string? carrier) => Fold(carrier) switch
@@ -109,7 +137,8 @@ internal static class ReportPlatformCosts
 
     private static string PazaramaCarrier(string? carrier) => Fold(carrier).Contains("PTT") ? "PTT" : "ARAS";
 
-    // TL without VAT, desi 1 to 30 (a parcel up to one desi takes the first); a heavier parcel takes the 30 desi price.
+    // TL without VAT, desi 1 to 30 (a parcel up to one desi takes the first); a heavier parcel takes the 30 desi price
+    // (Hepsiburada: HepsiburadaOver30 where the source has it).
     private static readonly Dictionary<string, decimal[]> HepsiburadaTable = new()
     {
         ["HEPSIJET"] = [81.99m, 81.99m, 99.99m, 107.99m, 115.99m, 124.99m, 133.99m, 141.99m, 149.99m, 159.99m, 166.99m, 174.99m, 189.99m, 194.99m, 201.99m,
@@ -119,7 +148,13 @@ internal static class ReportPlatformCosts
         ["PTT"] = [93.95m, 93.95m, 115.09m, 115.09m, 119.79m, 126.83m, 133.87m, 147.97m, 162.07m, 183.21m, 192.60m, 201.99m, 211.39m, 220.78m, 230.18m,
             239.58m, 248.97m, 258.37m, 267.76m, 277.16m, 286.55m, 293.60m, 303.00m, 312.39m, 321.78m, 331.18m, 340.57m, 349.97m, 359.36m, 368.75m],
         ["SURAT"] = [97.55m, 97.55m, 110.05m, 120.00m, 125.99m, 138.57m, 147.83m, 157.24m, 166.64m, 175.90m, 187.76m, 195.66m, 203.56m, 211.47m, 219.23m,
-            227.41m, 239.40m, 251.39m, 263.51m, 275.50m, 287.90m, 298.94m, 309.98m, 321.01m, 332.05m, 342.68m, 353.44m, 364.07m, 374.70m, 385.32m]
+            227.41m, 239.40m, 251.39m, 263.51m, 275.50m, 287.90m, 298.94m, 309.98m, 321.01m, 332.05m, 342.68m, 353.44m, 364.07m, 374.70m, 385.32m],
+        ["KOLAYGELSIN"] = [100.91m, 100.91m, 111.65m, 123.47m, 133.15m, 143.89m, 153.57m, 164.31m, 173.98m, 185.81m, 196.55m, 208.37m, 219.12m, 230.94m, 242.76m,
+            254.58m, 266.41m, 278.23m, 290.05m, 301.87m, 313.69m, 325.51m, 337.34m, 349.16m, 360.98m, 372.80m, 384.62m, 396.44m, 408.26m, 420.08m],
+        ["DHL"] = [100.99m, 100.99m, 110.99m, 126.99m, 137.99m, 153.99m, 162.99m, 172.99m, 182.99m, 192.99m, 203.99m, 214.99m, 224.99m, 234.99m, 249.99m,
+            286.99m, 301.99m, 321.99m, 346.99m, 364.99m, 378.99m, 386.99m, 413.99m, 440.99m, 467.99m, 494.99m, 521.99m, 548.99m, 575.99m, 602.99m],
+        ["YURTICI"] = [135.08m, 138.51m, 147.26m, 150.21m, 167.73m, 173.59m, 196.04m, 204.40m, 216.55m, 226.24m, 248.21m, 264.79m, 275.08m, 296.52m, 315.03m,
+            323.77m, 342.31m, 355.04m, 365.26m, 376.53m, 395.06m, 413.60m, 421.33m, 431.17m, 464.25m, 513.54m, 532.06m, 546.72m, 552.55m, 573.05m]
     };
 
     private static readonly Dictionary<string, decimal[]> N11Table = new()

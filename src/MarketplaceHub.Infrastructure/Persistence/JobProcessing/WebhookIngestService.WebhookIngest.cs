@@ -88,11 +88,13 @@ internal sealed partial class WebhookIngestService
             // ISLEYICI-12: an order the notice could not map joins the re-read list as it does from an order page; without
             // it the order waited for the stream to bring it again.
             NoteRefusedOrders(page.Issues);
-            await SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
             // The webhook carries no storefront header; orderCountryCode names the customer's
             // storefront (TR, DE, AE…), which later targeted reads ask first.
             if (configuration.GetValue("Marketplace:PersistOrderSnapshots", true))
                 await UpsertOrders(tenantId, connectionId, [.. page.Items.Select(order => order with { StoreFrontCode = TrendyolWebhookStorefront(order.RawJson) })], cancellationToken);
+            // B-10: saved after the upsert, so an order the upsert refused (a package kept without a line it could not
+            // read, a package whose quantities do not add up) joins the re-read list too; before, it was saved first.
+            await SaveRefusedOrdersForRereadAsync(tenantId, connectionId, cancellationToken);
         }
         var inbox = await db.InboxMessages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken); if (inbox is not null) inbox.ProcessedAt = timeProvider.GetUtcNow(); await db.SaveChangesAsync(cancellationToken); return true;
     }

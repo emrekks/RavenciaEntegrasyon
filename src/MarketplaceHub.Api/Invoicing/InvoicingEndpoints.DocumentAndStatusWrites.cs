@@ -76,7 +76,7 @@ public static partial class InvoicingEndpoints
         return Results.Created($"/api/v1/invoices/{id:D}/documents/{document.Id:D}/content", new { document.Id, document.DocumentType, document.Sha256, document.CreatedAt, duplicate = false });
     }
 
-    private static async Task<IResult> UpdateShopifyInvoiceStatusAsync(Guid id, ShopifyInvoiceStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    internal static async Task<IResult> UpdateShopifyInvoiceStatusAsync(Guid id, ShopifyInvoiceStatusCommand command, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (RequireIdempotency(http) is { } idempotencyFailure) return idempotencyFailure;
@@ -91,6 +91,7 @@ public static partial class InvoicingEndpoints
         if (invoice.PackageId is not { } packageId) return Problem(http, new("SHOPIFY_INVOICE_PACKAGE_REQUIRED", "Manuel Shopify fatura durumu bir sipariş paketine bağlı olmalıdır.", 422));
         var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == packageId && x.OrderId == invoice.OrderId, http.RequestAborted);
         if (package is null) return Problem(http, new("SHOPIFY_INVOICE_PACKAGE_REQUIRED", "Shopify sipariş paketi bulunamadı.", 422));
+        if (await OrderCancelledAsync(db, tenant.TenantId, invoice.OrderId, http.RequestAborted)) return Problem(http, OrderCancelledError);
         var now = timeProvider.GetUtcNow();
         package.ManualInvoiceStatus = status;
         package.UpdatedAt = now;
@@ -99,6 +100,16 @@ public static partial class InvoicingEndpoints
         await db.SaveChangesAsync(http.RequestAborted);
         return Results.Ok(new { id = package.Id, status = status == "UPLOADED" ? "FATURA_KONTROLDE" : "FATURA_BEKLIYOR", version = package.Version });
     }
+
+    // A fully cancelled order (its own status CANCELLED) takes no hand-uploaded invoice, no delivery of one and no
+    // hand-set invoice status; a partly cancelled order is not cancelled and keeps all three. An invoice already issued
+    // is cancelled through Fatura İptal Et, which these checks do not touch.
+    internal static readonly ServiceError OrderCancelledError = new("ORDER_CANCELLED_INVOICE_LOCKED",
+        "Sipariş iptal edildi; bu siparişe fatura yüklenmez, pazaryerine iletilmez ve fatura durumu elle değiştirilmez. Kesilmiş fatura Fatura İptal Et ile iptal edilir.", 409);
+
+    internal static async Task<bool> OrderCancelledAsync(AppDbContext db, Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
+        !DashboardMetricPolicy.IsInvoiceEligibleOrder(await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == orderId).Select(x => x.DerivedStatus).SingleOrDefaultAsync(cancellationToken));
 
     internal static readonly HashSet<string> ManualInvoiceStatusPlatforms = new(["SHOPIFY", "N11", "PTTAVM", "PAZARAMA"], StringComparer.OrdinalIgnoreCase);
 
@@ -120,6 +131,12 @@ public static partial class InvoicingEndpoints
         // no invoice of its own, n11, PTT AVM and Pazarama report only invoices sent through the API.
         if (packagePlatforms.Any(x => !ManualInvoiceStatusPlatforms.Contains(x.PlatformCode))) return Problem(http, new("MANUAL_INVOICE_STATUS_PLATFORM_UNSUPPORTED", "Elle fatura durumu yalnızca Shopify, N11, PttAVM ve Pazarama siparişlerinde kullanılabilir; Trendyol ve Hepsiburada faturayı kendileri bildirir. Hiçbir sipariş güncellenmedi.", 422));
         var packages = await db.ShipmentPackages.Where(x => x.TenantId == tenant.TenantId && packageIds.Contains(x.Id)).ToListAsync(http.RequestAborted);
+        // A package of a fully cancelled order refuses the whole request, as a package of another marketplace does.
+        var orderIds = packages.Select(package => package.OrderId).Distinct().ToList();
+        var cancelled = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && orderIds.Contains(x.Id) && DashboardMetricPolicy.InvoiceExcludedOrderStatuses.Contains(x.DerivedStatus))
+            .CountAsync(http.RequestAborted);
+        if (cancelled > 0) return Problem(http, OrderCancelledError with { Message = $"{cancelled} seçili sipariş iptal edildi; iptal edilen siparişin fatura durumu elle değiştirilmez. Hiçbir sipariş güncellenmedi." });
         var now = timeProvider.GetUtcNow();
         foreach (var package in packages)
         {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, lineMoney, nextPayout, otherCurrenciesText, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+import { emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, lastPayout, lineMoney, nextPayout, otherCurrenciesText, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
 
 describe('estimate note', () => {
   it('explains the deductions taken off a Trendyol payout day to come', () => {
@@ -78,6 +78,18 @@ describe('other currencies', () => {
     expect(text).toContain('(1 kayıt)')
     expect(lineMoney(100, 'USD')).toContain('$')
     expect(lineMoney(100, undefined)).toContain('₺')
+  })
+})
+
+// C-11 (25 Nov 2026): Son Ödeme of a picked region passes over a payout that paid nothing, as the server does for all.
+describe('last payout', () => {
+  it('takes the newest past payout that paid something in the picked region', () => {
+    const zero = group({ key: 'z', day: '2026-11-20', amount: 0, status: 'PAID' })
+    const paid = group({ key: 'p', day: '2026-11-13', amount: 250, status: 'PAID' })
+    expect(lastPayout({ lastPaid: null }, [zero, paid], 'TR_GULF')).toBe(paid)
+    expect(lastPayout({ lastPaid: null }, [zero], 'TR_GULF')).toBe(zero)
+    expect(lastPayout({ lastPaid: null }, [], 'TR_GULF')).toBeNull()
+    expect(lastPayout({ lastPaid: paid }, [zero], 'ALL')).toBe(paid)
   })
 })
 

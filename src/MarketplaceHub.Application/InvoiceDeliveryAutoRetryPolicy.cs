@@ -72,7 +72,9 @@ public static class InvoiceDeliveryAutoRetryPolicy
     public static UncertainResend UncertainResendDue(int attempts, DateTimeOffset uncertainSince, DateTimeOffset issuedAt, DateTimeOffset now)
     {
         if (attempts >= MaxAttempts || !InWindow(issuedAt, now)) return UncertainResend.Exhausted;
-        var wait = DelayAfter(Math.Max(1, attempts)) ?? TimeSpan.Zero;
+        // C-11: the wait before resend n+1 is the one after attempt n+1 (15 min, 1 h, 6 h, 24 h, 24 h); it used to take
+        // DelayAfter(attempts), so the first two resends both waited 15 minutes.
+        var wait = DelayAfter(Math.Min(Math.Max(0, attempts) + 1, MaxAttempts - 1)) ?? TimeSpan.Zero;
         return now >= uncertainSince + wait ? UncertainResend.Now : UncertainResend.Wait;
     }
 

@@ -170,6 +170,70 @@ public sealed class TrendyolFinanceSyncPostgreSqlTests(PostgreSqlTenantIsolation
         }
     }
 
+    // B-9 (25 Nov 2026): the newest payout's records fail on every run (Trendyol does not know it); the older payout is
+    // read all the same, and the failing one waits a day behind its issue instead of being asked again at once.
+    [PostgreSqlFact]
+    public async Task A_payout_that_keeps_failing_is_held_back_and_the_older_one_is_read()
+    {
+        var (tenantId, connectionId) = await SeedAsync("fin-payout-held");
+        try
+        {
+            var port = new FakeFinancePort { OlderPayout = true, FailRecordsOf = "PO-1" };
+            JobOutcome outcome;
+            var slices = 0;
+            do
+            {
+                outcome = await RunAsync(tenantId, connectionId, port, Now);
+                slices++;
+            }
+            while (outcome.Result.Continues && slices < 10);
+            Assert.True(outcome.Result.Succeeded, outcome.Result.ErrorSummary);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var payouts = await db.MarketplacePayoutOrders.AsNoTracking().Where(x => x.TenantId == tenantId).ToDictionaryAsync(x => x.ExternalId);
+                Assert.Null(payouts["PO-1"].LinesReadAt);
+                Assert.Equal(Now, payouts["PO-0"].LinesReadAt);
+                var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.DedupeKey == TrendyolFinanceSyncJobHandler.PayoutLinesKey(connectionId, "PO-1"));
+                Assert.Equal(IssueStatus.Open, issue.Status);
+                Assert.Equal(TrendyolFinanceSyncJobHandler.PayoutLinesFailureCode, issue.Code);
+            }
+
+            // An hour later the held-back payout is not asked again; a day later it is.
+            var failedReads = port.FailedRecordReads;
+            outcome = await RunAsync(tenantId, connectionId, port, Now.AddHours(1));
+            Assert.True(outcome.Result.Succeeded, outcome.Result.ErrorSummary);
+            Assert.Equal(failedReads, port.FailedRecordReads);
+            outcome = await RunAsync(tenantId, connectionId, port, Now.AddDays(1).AddHours(1));
+            Assert.True(outcome.Result.Succeeded, outcome.Result.ErrorSummary);
+            Assert.Equal(failedReads + 1, port.FailedRecordReads);
+
+            // Review of 25 Nov 2026: once the payout has left the 90-day read window it is not asked again, and its issue
+            // stays open but no longer promises a retry: it sends the owner to Trendyol's panel.
+            var beforeWindowEnd = port.FailedRecordReads;
+            slices = 0;
+            do
+            {
+                outcome = await RunAsync(tenantId, connectionId, port, Now.AddDays(95));
+                slices++;
+            }
+            while (outcome.Result.Continues && slices < 60);
+            Assert.True(outcome.Result.Succeeded, outcome.Result.ErrorSummary);
+            Assert.Equal(beforeWindowEnd, port.FailedRecordReads);
+            await using (var db = fixture.CreateContext())
+            {
+                var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.DedupeKey == TrendyolFinanceSyncJobHandler.PayoutLinesKey(connectionId, "PO-1"));
+                Assert.Equal(IssueStatus.Open, issue.Status);
+                Assert.Equal(TrendyolFinanceSyncJobHandler.PayoutOutOfWindowSummary("PO-1"), issue.Summary);
+                Assert.DoesNotContain("yeniden denenecek", issue.Summary, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     private async Task<JobOutcome> RunAsync(
 Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
     {
@@ -215,6 +279,11 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public int PayoutPageReads { get; private set; }
         public int PayoutRecordReads { get; private set; }
         public bool PayoutReadAskedSubType { get; private set; }
+        // A second payout, three days older than PO-1 (B-9).
+        public bool OlderPayout { get; init; }
+        // The payout whose records Trendyol answers 404 for, and how often it was asked.
+        public string? FailRecordsOf { get; init; }
+        public int FailedRecordReads { get; private set; }
 
         public Task<AdapterResult<RemoteStatementPage>> GetSettlementsAsync(AdapterContext context, string transactionType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken)
         {
@@ -248,7 +317,10 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public Task<AdapterResult<RemotePayoutOrderPage>> GetPayoutOrdersAsync(AdapterContext context, int page, CancellationToken cancellationToken)
         {
             PayoutPageReads++;
-            RemotePayoutOrder[] items = [new("PO-1", "PAID", "PAYMENT", 78.5m, Now.AddDays(-2).AddHours(3), "TR", "Türkiye", """{"id":"PO-1"}""")];
+            RemotePayoutOrder[] items = OlderPayout
+                ? [new("PO-1", "PAID", "PAYMENT", 78.5m, Now.AddDays(-2).AddHours(3), "TR", "Türkiye", """{"id":"PO-1"}"""),
+                    new("PO-0", "PAID", "PAYMENT", 10m, Now.AddDays(-5), "TR", "Türkiye", """{"id":"PO-0"}""")]
+                : [new("PO-1", "PAID", "PAYMENT", 78.5m, Now.AddDays(-2).AddHours(3), "TR", "Türkiye", """{"id":"PO-1"}""")];
             return Task.FromResult(AdapterResult<RemotePayoutOrderPage>.Success(new(items, 0, 1)));
         }
 
@@ -256,6 +328,11 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public Task<AdapterResult<RemoteStatementPage>> GetPayoutRecordsAsync(AdapterContext context, string source, string transactionType, string? transactionSubType, string paymentOrderId, int page, CancellationToken cancellationToken)
         {
             PayoutRecordReads++;
+            if (paymentOrderId == FailRecordsOf)
+            {
+                FailedRecordReads++;
+                return Task.FromResult(AdapterResult<RemoteStatementPage>.Failure(new(AdapterErrorClass.NotFound, "NOT_FOUND", "Kayıt bulunamadı.", 404, null, null)));
+            }
             PayoutReadAskedSubType |= transactionSubType is not null;
             payoutsRead = true;
             RemoteStatementRecord[] items = (source, transactionType) switch

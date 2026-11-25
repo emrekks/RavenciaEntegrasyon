@@ -168,7 +168,7 @@ export function OrderReferenceRow({ item, selected, onSelect, onMenuChange, onIn
   // The label printed here is the first package's: never offered on an exchange package row.
   const canPrintLabels = isCargoLabelStage && Boolean(shipment) && enabledLabelFormats.length > 0 && !exchangePackage
   // A cancelled order shows its invoice menu too (see, read, cancel the issued invoice), but nothing that issues an
-  // invoice, uploads one or sets its status by hand: the manual upload and status endpoints do not refuse a cancelled order.
+  // invoice, uploads one or sets its status by hand (the server refuses those too: ORDER_CANCELLED_INVOICE_LOCKED).
   const writeDisabled = (blocked: boolean): [boolean, string] => isCancelledOrder ? [true, cancelledOrderInvoiceWriteNote] : [blocked, invoiceCreationTooltip]
   const invoiceItems: Array<[ 'doc' | 'info' | 'edit' | 'upload' | 'open' | 'close', string, () => void, string?, boolean?, string?] | 'hr'> = invoiceNeedsAction
     ? [['doc', 'Fatura Oluştur', onInvoiceCreate, '', ...writeDisabled(!invoiceCreationEnabled)], ['info', 'Fatura Bilgileri', onInvoiceDetails], ...(isShopifyOrder ? [['edit', 'Fatura Durumunu Değiştir', () => setInvoiceStatusModalOpen(true), '', ...writeDisabled(!invoiceCreationEnabled && !item.invoiceId)] as ['edit', string, () => void, string, boolean, string]] : []), ['upload', 'Fatura Yükle', onInvoiceUpload, '', ...writeDisabled(!invoiceCreationEnabled && !item.invoiceId)]]

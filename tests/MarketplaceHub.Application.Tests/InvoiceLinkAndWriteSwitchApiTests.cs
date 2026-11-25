@@ -36,13 +36,13 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
         return (client, csrf);
     }
 
-    private async Task<(Guid ConnectionId, Guid OrderId, Guid PackageId)> SeedOrderAsync(WebApplicationFactory<SessionAuthMiddleware> host, string code, bool externalWrites)
+    private async Task<(Guid ConnectionId, Guid OrderId, Guid PackageId)> SeedOrderAsync(WebApplicationFactory<SessionAuthMiddleware> host, string code, bool externalWrites, string derivedStatus = "DELIVERED")
     {
         await using var scope = host.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var now = DateTimeOffset.UtcNow;
         var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = fixture.TenantId, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "PRODUCTION", DisplayName = $"sec {code}", ExternalStoreId = $"{code}-{fixture.Run}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = externalWrites ? """{"ExternalWritesEnabled":true}""" : "{}" };
-        var order = new Order { Id = Guid.CreateVersion7(), TenantId = fixture.TenantId, ConnectionId = connection.Id, ExternalOrderId = $"{code}-{fixture.Run}", OrderNumber = $"{code}-{fixture.Run}", Currency = "TRY", GrossAmount = 120m, NetAmount = 120m, OrderedAt = now.AddDays(-3), LastRemoteModifiedAt = now.AddDays(-3), CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "DELIVERED", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var order = new Order { Id = Guid.CreateVersion7(), TenantId = fixture.TenantId, ConnectionId = connection.Id, ExternalOrderId = $"{code}-{fixture.Run}", OrderNumber = $"{code}-{fixture.Run}", Currency = "TRY", GrossAmount = 120m, NetAmount = 120m, OrderedAt = now.AddDays(-3), LastRemoteModifiedAt = now.AddDays(-3), CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = derivedStatus, CreatedAt = now, UpdatedAt = now, Version = 1 };
         var package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = fixture.TenantId, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = $"{code}-pkg-{fixture.Run}", GrossAmount = 120m, NetAmount = 120m, CargoProviderExternalId = "YKMP", Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = now.AddDays(-1), MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 };
         db.PlatformConnections.Add(connection); db.Orders.Add(order); db.ShipmentPackages.Add(package);
         await db.SaveChangesAsync();
@@ -67,6 +67,32 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
     private static string PathOf(string url) => new Uri(url).PathAndQuery;
 
     private static string PdfAlias(string url) => PathOf(url)[..^"content".Length] + "invoice.pdf";
+
+    // 25 Nov 2026: a fully cancelled order (its package still live) takes no hand-uploaded invoice; nothing is stored.
+    [PostgreSqlFact]
+    public async Task A_cancelled_order_refuses_a_manual_invoice_upload()
+    {
+        using var host = Host();
+        var (_, orderId, _) = await SeedOrderAsync(host, "y08", externalWrites: false, derivedStatus: "CANCELLED");
+        var (admin, csrf) = await SignInAsync(host, fixture, MembershipRole.Administrator);
+        using (admin)
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(orderId.ToString("D")), "orderId");
+            var file = new ByteArrayContent(Encoding.ASCII.GetBytes("%PDF-1.4\n% cancelled\n%%EOF\n")); file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+            form.Add(file, "file", "invoice.pdf");
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/invoice-workspace/manual-documents") { Content = form };
+            request.Headers.Add("X-CSRF-TOKEN", csrf);
+            request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
+            using var response = await admin.SendAsync(request);
+            var text = await response.Content.ReadAsStringAsync();
+            Assert.True(response.StatusCode == HttpStatusCode.Conflict, $"{(int)response.StatusCode}: {text}");
+            Assert.Contains("ORDER_CANCELLED_INVOICE_LOCKED", text, StringComparison.Ordinal);
+            await using var scope = host.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await db.ManualOrderInvoiceDocuments.AnyAsync(x => x.OrderId == orderId));
+        }
+    }
 
     [PostgreSqlFact]
     public async Task A_replaced_manual_document_link_answers_404_and_its_file_is_archived()
