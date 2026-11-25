@@ -54,7 +54,7 @@ import { formatDate, formatDateTime, formatIstanbul, fromDateTimeLocal, istanbul
 import { formatMoney } from '../../shared/format-money'
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
 import { invoiceWorkspaceStatus, isInvoiceFailureStatus } from './invoice-workspace-status'
-import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, invoiceErrorText, invoiceReopenNote, localValidationNotice, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { adjustmentRequiredStatus, handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceDeliveryRetryDetail, invoiceDeliveryRetryText, invoiceDetailActionLabel, invoiceErrorText, invoiceReopenNote, localValidationNotice, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, sendInvoiceDocumentUpload, returnedLineText, saleReturnTitle, type SaleReturnScope, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { isLinkRevocationStatus, linkRevocationStatusLabel } from './invoice-link-revocation'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { unknownCount } from '../../shared/tab-counts'
@@ -850,7 +850,7 @@ export function InvoiceDetailPage() {
     onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })
   const upload = useMutation({
-    mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return hubApi<ApiAnswer<'postInvoicesByIdDocumentsManual'>>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': `invoice-document:${id}:${file.name}:${file.size}:${file.lastModified}` }, body: form }) },
+    mutationFn: (file: File) => { const form = new FormData(); form.append('file', file); return sendInvoiceDocumentUpload(id, file, key => hubApi<ApiAnswer<'postInvoicesByIdDocumentsManual'>>(`/invoices/${id}/documents/manual`, { method: 'POST', headers: { 'Idempotency-Key': key }, body: form })) },
     onSuccess: async result => { setNotice(result.duplicate ? 'Bu fatura belgesi zaten güvenli arşivde bulunuyor.' : 'Fatura belgesi güvenli özel arşive yüklendi. Belge henüz pazaryerine veya E‑Faturam’a iletilmedi.', 'success'); setUploadFile(null); await Promise.all(invoiceCopies(id).map(queryKey => client.invalidateQueries({ queryKey }))) },
     onError: error => setNotice(error instanceof Error ? error.message : 'Fatura belgesi yüklenemedi.', 'error')
   })
