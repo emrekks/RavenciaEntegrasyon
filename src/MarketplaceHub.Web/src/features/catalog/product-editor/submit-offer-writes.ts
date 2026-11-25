@@ -56,9 +56,30 @@ export type OfferWritesInput = {
 
 export const offerChangedMeanwhileMessage = (sku: string, platformName: string) => `${sku}: ${platformName} fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.`
 
-// Every (variant, store) price is its own row, so they are written a few at a time instead of one by one. Returns the
-// warning for the variants left without a price, if any.
-export async function runOfferWrites(input: OfferWritesInput): Promise<{ unpricedWarning: string | null }> {
+// One offer write the server refused (or that could not be made): the save goes on with the other marketplaces.
+export type OfferWriteFailure = { sku: string; connectionId: string; message: string }
+
+// The marketplaces whose price could not be written are not sent: each is named with what stopped it (A-6, scan 25 Nov
+// 2026). The others are written and sent as usual.
+export function offerWriteFailureWarnings(failures: readonly OfferWriteFailure[], platformName: (connectionId: string) => string): string[] {
+  const byConnection = new Map<string, string[]>()
+  for (const failure of failures) byConnection.set(failure.connectionId, [...(byConnection.get(failure.connectionId) ?? []), failure.message])
+  return [...byConnection].map(([connectionId, messages]) => {
+    const name = platformName(connectionId)
+    return `${name}: fiyat yazılamadığı için bu platforma gönderilmedi. ${[...new Set(messages)].join(' ')}`
+  })
+}
+
+// The send targets left once the marketplaces whose price write failed are taken out.
+export function connectionsWithWrittenOffers(connectionIds: readonly string[], failures: readonly OfferWriteFailure[]): string[] {
+  const failed = new Set(failures.map(failure => failure.connectionId))
+  return connectionIds.filter(connectionId => !failed.has(connectionId))
+}
+
+// Every (variant, store) price is its own row, so they are written a few at a time instead of one by one. A refused
+// write does not stop the others: each failure is returned with its marketplace (A-6). Returns the warning for the
+// variants left without a price, if any.
+export async function runOfferWrites(input: OfferWritesInput): Promise<{ unpricedWarning: string | null; failures: OfferWriteFailure[] }> {
   const { product, connections, form, platformUpdate, channelPricing } = input
   const bySku = rowsBySku(input.rows)
   const offerWrites = product.variants.flatMap(variant => {
@@ -66,6 +87,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     return row ? input.connectionIds.map(connectionId => ({ variant, row, connectionId })) : []
   })
   let offersWritten = 0
+  const failures: OfferWriteFailure[] = []
   const unpricedOfferSkus = new Set<string>()
   await mapWithConcurrency(offerWrites, channelOfferWriteConcurrency, async ({ variant, row, connectionId }) => {
     const pricing = input.channelPriceDraft(connectionId)
@@ -100,11 +122,15 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
         await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
       }
     } catch (reason) {
-      if (reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)) throw new Error(offerChangedMeanwhileMessage(row.sku, input.connectionPlatformName(connectionId)))
-      throw reason
+      const said = reason instanceof Error ? reason.message : 'Fiyat yazılamadı.'
+      const message = reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)
+        ? offerChangedMeanwhileMessage(row.sku, input.connectionPlatformName(connectionId))
+        : said.startsWith(`${row.sku}:`) ? said : `${row.sku}: ${said}`
+      failures.push({ sku: row.sku, connectionId, message })
+      return
     }
     offersWritten++
     if (offerWrites.length > channelOfferWriteConcurrency) input.showProgress(mediaSaveProgressMessage('prices', offersWritten, offerWrites.length))
   })
-  return { unpricedWarning: unpricedOfferWarning(unpricedOfferSkus) }
+  return { unpricedWarning: unpricedOfferWarning(unpricedOfferSkus), failures }
 }

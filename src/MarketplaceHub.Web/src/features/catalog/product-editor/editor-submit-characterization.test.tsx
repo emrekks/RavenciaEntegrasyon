@@ -30,6 +30,8 @@ const fixture = vi.hoisted(() => {
     refusePublishFor: null as string | null,
     liveTy: true,
     refusePatch: null as null | { status: number; code?: string },
+    // A-6: the channel offers whose id starts with this are refused with 412 (changed meanwhile elsewhere).
+    refuseOfferPrefix: null as string | null,
     // Answers the next PATCH with 412 without changing the product (a version raised by nothing the form shows).
     bumpVersionSilently: false,
     failUpload: false,
@@ -138,6 +140,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     }
     if (path.startsWith('/publication-jobs/') || path.startsWith('/jobs/')) return { job: { id: path.split('/')[2], status: 'SUCCEEDED', lastErrorSummary: null }, variantResults: { items: [] } }
     if (method === 'POST' && path === '/channel-offers') return { id: 'x', version: 4, listPrice: 1, salePrice: 1, currency: 'TRY' }
+    if (method === 'PATCH' && state.refuseOfferPrefix && path.startsWith(`/channel-offers/${state.refuseOfferPrefix}`)) throw new original.ApiRequestError('Sürüm değişti.', 412)
     if (method === 'PATCH' && path.startsWith('/channel-offers/')) return { id: path.split('/')[2], version: 4, listPrice: Number(body?.listPrice ?? 1), salePrice: Number(body?.salePrice ?? 1), currency: 'TRY' }
     if (path.startsWith('/mappings/categories?')) return fixture.connections.map(connection => ({ id: `cm-${connection.id}`, connectionId: connection.id, snapshotId: 's1', localId: state.categoryId, scopeExternalId: '', externalId: `${connection.id}-cat`, status: 'VERIFIED', verifiedAt: null, version: 1 }))
     if (path.startsWith('/mappings/categories/')) return { id: 'cm1', connectionId: 'ty', snapshotId: 's1', localId: state.categoryId, scopeExternalId: '', externalId: 'ty-cat', status: 'VERIFIED', verifiedAt: null, version: 1 }
@@ -538,5 +541,28 @@ describe('what a save sends and says (characterization, WEB-SAYFALAR-10)', () =>
     await click(publish)
     await settle()
     expect(outcome()).toMatchSnapshot()
+  })
+
+  // A-6 (scan 25 Nov 2026): one refused offer write stopped every later write and every send, and said nothing of it.
+  it('publish: an N11 offer refused with 412 sends Trendyol and names N11 as not sent', async () => {
+    fixture.state.liveTy = false
+    fixture.state.refuseOfferPrefix = 'n-'
+    await renderAt('/products/p1', undefined, <NewProductPage editProductId="p1" publishOnly />)
+    for (const head of [...document.querySelectorAll<HTMLButtonElement>('button.publish-platform-card-head')]) if (!head.disabled) await click(head)
+    await settle()
+    const publish = q<HTMLButtonElement>('.publish-selection-footer button[type="submit"]')
+    fixture.state.log.length = 0
+    fixture.state.toasts.length = 0
+    await click(publish)
+    await settle()
+    const requests = fixture.state.log as Array<{ method: string; path: string; ifMatch?: string; body?: { connectionId?: string } }>
+    // Every offer is tried (none stops the others), each at its loaded version.
+    expect(requests.filter(request => request.path.startsWith('/channel-offers/')).map(request => [request.path, request.ifMatch])).toEqual(['o-v1', 'n-v1', 'o-v2', 'n-v2', 'o-v3', 'n-v3', 'o-v4', 'n-v4'].map(id => [`/channel-offers/${id}`, '"v3"']))
+    expect(requests.filter(request => request.path === '/products/p1/publication-jobs').map(request => request.body?.connectionId)).toEqual(['ty'])
+    expect(requests.some(request => request.path === '/products/p1/listing-profiles/n11')).toBe(false)
+    const result = fixture.state.toasts.find(toast => Array.isArray(toast.lines) && (toast.lines as string[]).some(line => line.startsWith('N11: fiyat yazılamadığı')))
+    expect(result, JSON.stringify(fixture.state.toasts)).toMatchObject({ kind: 'error' })
+    expect((result!.lines as string[]).find(line => line.startsWith('N11:'))).toBe('N11: fiyat yazılamadığı için bu platforma gönderilmedi. RYP006-SY-S: N11 fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin. RYP006-SY-M: N11 fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin. RYP006-BD-S: N11 fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin. RYP006-BD-M: N11 fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.')
+    expect((result!.lines as string[]).some(line => line.startsWith('Trendyol:'))).toBe(true)
   })
 })

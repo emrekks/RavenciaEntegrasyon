@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft } from './marketplace-channel-pricing'
+import { channelPricingAfterRefill, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, keptChannelPricingDrafts } from './marketplace-channel-pricing'
 
 describe('marketplace channel pricing', () => {
+  // A-6: a save whose N11 price was refused refills from the saved product, but N11's typed card stays.
+  it('keeps the typed card of a marketplace whose price write failed through the refill', () => {
+    const typed = { ty: { listPrice: '130', salePrice: '111' }, n11: { listPrice: '150', salePrice: '140' } }
+    const kept = keptChannelPricingDrafts(typed, ['n11', 'pz'])
+    expect(kept).toEqual({ n11: { listPrice: '150', salePrice: '140' } })
+    expect(channelPricingAfterRefill({ ty: { listPrice: '130', salePrice: '111' }, n11: { listPrice: '120', salePrice: '110' } }, kept)).toEqual({ ty: { listPrice: '130', salePrice: '111' }, n11: { listPrice: '150', salePrice: '140' } })
+    expect(keptChannelPricingDrafts(typed, [])).toBeNull()
+    expect(channelPricingAfterRefill({ ty: { listPrice: '1', salePrice: '1' } }, null)).toEqual({ ty: { listPrice: '1', salePrice: '1' } })
+  })
+
   it('shows 0 in both inputs while the switch is off', () => {
     expect(channelPricingInputs(undefined)).toEqual({ listPrice: '0', salePrice: '0' })
     expect(emptyChannelPricingDraft).toEqual({ listPrice: '0', salePrice: '0' })

@@ -15,7 +15,7 @@ import { trNumberInput } from '../../../shared/tr-number'
 import { resetSeededFields, seedChannelFields, seedField } from './seeded-fields'
 import { editorDataStamp, editorSeedKey, editorOpenedDesi, editorVat } from '../product-editor-state'
 import { baselineWithWebColor } from './editor-reducer'
-import { copiedChannelPricing } from './marketplace-channel-pricing'
+import { channelPricingAfterRefill, copiedChannelPricing } from './marketplace-channel-pricing'
 import { Product, normalizeVariantOptionName, variantOptionEntries } from '../shared'
 import { PendingProductMediaFile } from './editor-types'
 import { seedVariantMediaRefs, sortVariantsAlphabetically } from './editor-helpers'
@@ -28,7 +28,7 @@ import type { VariantCodeMenusResult } from './use-variant-code-menus'
 import type { EditorDataResult } from './use-editor-data'
 
 export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPointerResult & EditorDirtyStateResult & VariantCodeMenusResult & EditorDataResult) {
-  const { editProductId, duplicateProductId, copyRemovedMedia, setForm, setAttributeSelections, setAttributeTextValues, setVariantAttributeIds, setVariantRows, setChannelPricing, setSeededProductId, initializedEditProductKey, initializedEditOptionsKey, initializedEditWebColorKey, setMediaFiles, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, setRemovedVariantIds, setRemovedVariantRows, setReplacedPlaceholderIds, requestBaseline, adjustBaseline, setWebColorAutoEnabled, setManualWebColorValueId, webColorSeed, webColorBaselineRequest, requestWebColorBaseline, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, mediaFilesKeptOnReseed, initialCustomChannelIds, channelPricingBase, setFieldErrors, initialEditMediaUrl, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, mediaAutoSaveInFlight, editorDirty, editorDirtyRef, restoreAfterSnapshot, productToEdit, seedProduct, requirements, allRequirements, webColorRequirement, optionRequirements } = c
+  const { editProductId, duplicateProductId, copyRemovedMedia, setForm, setAttributeSelections, setAttributeTextValues, setVariantAttributeIds, setVariantRows, setChannelPricing, setSeededProductId, initializedEditProductKey, initializedEditOptionsKey, initializedEditWebColorKey, setMediaFiles, setPendingFamilyMediaRemovals, setFamilyMediaOrder, setFamilyMediaOrderDirty, setSizeChartUrl, initialSizeChartUrl, sizeChartBeforeFamilyRemoval, setSizeChartPicking, setRemovedVariantIds, setRemovedVariantRows, setReplacedPlaceholderIds, requestBaseline, adjustBaseline, setWebColorAutoEnabled, setManualWebColorValueId, webColorSeed, webColorBaselineRequest, requestWebColorBaseline, setStaleProductVersion, allowReseedUntil, editorSaveInFlight, seededProduct, mediaFilesKeptOnReseed, channelPricingKeptOnReseed, initialCustomChannelIds, channelPricingBase, setFieldErrors, initialEditMediaUrl, initialEditModelCode, initialEditDesi, initialEditVariantMediaRefs, mediaAutoSaveInFlight, editorDirty, editorDirtyRef, restoreAfterSnapshot, productToEdit, seedProduct, requirements, allRequirements, webColorRequirement, optionRequirements } = c
   const seedForm = useEffectEvent(() => {
     const product = seedProduct
     if (!product) return
@@ -67,7 +67,10 @@ export function useEditorSeed(c: EditorProps & EditorStateResult & EditorMediaPo
     // offer there keeps its own price, and shows the first such variant's price.
     if (editProductId) {
       const customPrices = editorCustomChannelPrices(sortedVariants, product)
-      setChannelPricing(customPrices)
+      // A marketplace whose price the last save could not write keeps its typed card (A-6); its base stays the saved
+      // price, so the card still reads as changed and the next Kaydet writes it.
+      setChannelPricing(channelPricingAfterRefill(customPrices, channelPricingKeptOnReseed.current))
+      channelPricingKeptOnReseed.current = null
       channelPricingBase.current = customPrices
       seedChannelFields(customPrices)
       initialCustomChannelIds.current = new Set(Object.keys(customPrices))
