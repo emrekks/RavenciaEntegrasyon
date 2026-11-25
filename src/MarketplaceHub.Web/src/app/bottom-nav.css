@@ -62,12 +62,13 @@
   .rv-dock-slot:active, .rv-dock-round:active { transform: scale(.96); }
   .rv-dock-slot:focus-visible, .rv-dock-round:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -3px; }
   .rv-dock-icon { position: relative; display: inline-grid; }
-  /* The icons: 22 px (the global .ui-icon rule had held them at 16 px). Their stroke does not scale with the box (non-scaling-stroke), so it is set
-     to match and stay light: 1.75 px at 22 px. */
-  .rv-dock-icon > .ui-icon { width: 22px; height: 22px; stroke-width: 1.75px; }
-  /* The count sits at the icon's top right and stays inside its pill or round button (at least 4 px from the edge, also for two digits and 99+): it hangs
-     off the icon's right edge towards the left, 9 px above its top; a 1.5 px ring in the part's own colour keeps it apart from the icon. */
-  .rv-dock-badge { position: absolute; top: -9px; right: -3px; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 8px; box-shadow: 0 0 0 1.5px var(--rv-dock-ring, var(--rv-color-surface)); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; white-space: nowrap; }
+  /* The icons: 24 px (the global .ui-icon rule had held them at 16 px). Their stroke does not scale with the box (non-scaling-stroke), so it is set
+     to match: 2 px at 24 px. */
+  .rv-dock-icon > .ui-icon { width: 24px; height: 24px; stroke-width: 2px; }
+  /* The count sits at the icon's top right, small (14 px high, 9 px text) so it covers little of the icon, and stays inside its pill or round button (at least
+     4 px from the edge, also for two digits and 99+): it hangs off the icon's right edge, 8 px above its top; one digit is a 14 px circle, two or more
+     have 3 px at the sides; a 1.5 px ring in the part's own colour keeps it apart from the icon. */
+  .rv-dock-badge { position: absolute; top: -8px; right: -5px; box-sizing: border-box; min-width: 14px; height: 14px; padding: 0 3px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 7px; box-shadow: 0 0 0 1.5px var(--rv-dock-ring, var(--rv-color-surface)); font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; white-space: nowrap; }
   .rv-dock-slot.is-active, .rv-dock-round.is-active { --rv-dock-ring: color-mix(in srgb, var(--rv-color-primary) var(--rv-dock-active-tint), var(--rv-color-surface)); }
 
   /* Task bar: one row in the wide 56 px panel, labelled buttons side by side, 40 px high, radius 20, 8 px apart, 8 px in. There is no Menü and no Geri

@@ -81,7 +81,7 @@ describe('useStuckHead', () => {
 
 describe('the dock counts', () => {
   it('hang off the icon, 9 px up and 3 px past its right edge, 16 px high with a ring in the part colour (10/700 text, 99+ at most)', () => {
-    expect(dock).toMatch(/\.rv-dock-badge \{ position: absolute; top: -9px; right: -3px;[^}]*min-width: 16px; height: 16px; padding: 0 4px;[^}]*0 0 0 1\.5px var\(--rv-dock-ring, var\(--rv-color-surface\)\);[^}]*font-size: 10px; font-weight: 700;/)
+    expect(dock).toMatch(/\.rv-dock-badge \{ position: absolute; top: -8px; right: -5px;[^}]*min-width: 14px; height: 14px; padding: 0 3px;[^}]*0 0 0 1\.5px var\(--rv-dock-ring, var\(--rv-color-surface\)\);[^}]*font-size: 9px; font-weight: 700;/)
   })
 })
 
