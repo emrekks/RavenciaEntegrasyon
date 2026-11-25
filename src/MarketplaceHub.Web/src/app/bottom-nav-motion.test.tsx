@@ -80,8 +80,8 @@ describe('useStuckHead', () => {
 })
 
 describe('the dock counts', () => {
-  it('sit outside the top right corner of the icon (3 px over it at most), 12 px high with a ring in the part colour (8/700 text, tabular figures)', () => {
-    expect(dock).toContain('.rv-dock-badge { position: absolute; top: -9px; left: calc(100% - 3px); box-sizing: border-box; min-width: 12px; height: 12px; padding: 0 2.5px;')
+  it('sit on the top right corner of the icon by position alone (nothing is moved for them), 12 px high with a ring in the part colour (8/700 text, tabular figures)', () => {
+    expect(dock).toContain('.rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 3px); box-sizing: border-box; min-width: 12px; height: 12px; padding: 0 2.5px;')
     expect(dock).toContain('font-size: 8px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0; line-height: 12px;')
   })
 })
