@@ -12,3 +12,11 @@ export function fieldChoiceSteps({ hasMapping, hasFieldSource, chosenSource, cho
   if (hasFieldSource && !chosenSource) steps.push('delete-default')
   return steps
 }
+
+// What a refused step says. A removal refused after the new source was saved leaves both in place: the person is told
+// so plainly, and the field's lists are read again (independent review, 25 Nov 2026).
+export function fieldChoiceFailureMessage(failedStep: FieldChoiceStep | null, newSourceSaved: boolean, reason: string) {
+  if (newSourceSaved && (failedStep === 'delete-mapping' || failedStep === 'delete-default'))
+    return `Yeni eşleme kaydedildi, eskisi silinemedi; şimdilik ikisi birlikte duruyor. Eskisini yeniden kaldırın. (${reason})`
+  return reason
+}

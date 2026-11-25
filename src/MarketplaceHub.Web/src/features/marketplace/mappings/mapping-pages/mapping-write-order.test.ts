@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { directMappingsKeepingTargets } from '../../attribute-value-mapping'
-import { fieldChoiceSteps } from './field-choice'
+import { fieldChoiceFailureMessage, fieldChoiceSteps } from './field-choice'
 import { attributeFieldProgress } from './field-progress'
 
 // Scan 25 Nov 2026 (D-4): the mapping windows deleted an old mapping before the new one was saved, read an unknown
@@ -21,6 +21,14 @@ describe('field choice writes', () => {
   it('only removes on Kaldır', () => {
     expect(fieldChoiceSteps({ hasMapping: true, hasFieldSource: false, chosenSource: null, chosenLocalId: '' })).toEqual(['delete-mapping'])
     expect(fieldChoiceSteps({ hasMapping: false, hasFieldSource: true, chosenSource: null, chosenLocalId: '' })).toEqual(['delete-default'])
+  })
+})
+
+describe('a refused field choice', () => {
+  it('says both stay when the old one could not be removed after the new one was saved', () => {
+    expect(fieldChoiceFailureMessage('delete-mapping', true, 'Sunucu yanıt vermedi')).toContain('Yeni eşleme kaydedildi, eskisi silinemedi')
+    expect(fieldChoiceFailureMessage('delete-default', true, 'x')).toContain('ikisi birlikte duruyor')
+    expect(fieldChoiceFailureMessage('put-mapping', false, 'Eşleme reddedildi')).toBe('Eşleme reddedildi')
   })
 })
 
