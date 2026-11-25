@@ -756,6 +756,13 @@ public static class TrendyolInvoiceReconciliationPolicy
         ShipmentPackageStatus.PartiallyCancelled
     ];
 
+    // The local sale invoice states a marketplace read can still settle (MergeMarketplaceInvoiceState moves only these,
+    // and Completed); Completed is read only while its delivery to the package is not confirmed.
+    public static readonly InvoiceStatus[] AwaitingConfirmationStatuses =
+    [
+        InvoiceStatus.Submitted, InvoiceStatus.Accepted, InvoiceStatus.MarketplacePending, InvoiceStatus.MarketplaceFailed
+    ];
+
     // A sweep in progress (a saved position) always continues; otherwise one starts six hours after the last finished.
     public static bool SweepDue(string? sweepPosition, DateTimeOffset? lastSweepCompletedAt, DateTimeOffset now) =>
         !string.IsNullOrWhiteSpace(sweepPosition)

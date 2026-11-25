@@ -111,6 +111,8 @@ internal sealed partial class InvoiceReconciliationService(
             : DueInvoiceReconciliationOrders(tenantId, connectionId, now);
         SyncCursor? invoiceCursor = null;
         List<string?> cursorAfterOrder = [];
+        SyncCursor? unresolvedCursor = null;
+        List<string> unresolvedCursorAfterOrder = [];
         var sweepOrderIds = new HashSet<string>(StringComparer.Ordinal);
         var sweepFinishesWithBatch = false;
         if (targetedOrderId is not null)
@@ -153,16 +155,37 @@ internal sealed partial class InvoiceReconciliationService(
         }
         else if (isTrendyol)
         {
-            // Orders whose local invoice is not confirmed yet are read on every run. The other
+            // Orders whose local invoice still waits for its confirmation are read on every run. The other
             // shipped or delivered packages still uninvoiced on Trendyol are read in one sweep
             // every six hours; the sweep keeps its position, so a cut-short run resumes it.
-            var unresolved = await TrendyolUnresolvedInvoiceOrders(tenantId, connectionId)
+            // Scan 25 Nov 2026 (A-3): the waiting orders rotate on their own cursor (the run's
+            // ORDER_INVOICE_RECONCILIATION row, as on the other platforms) and wrap at the end, so more than
+            // a batch of them no longer keeps the same first orders and starves the rest and the sweep.
+            unresolvedCursor = await Cursor(tenantId, connectionId, "ORDER_INVOICE_RECONCILIATION", cancellationToken);
+            var unresolvedAfterOrderId = OrderInvoiceReconciliationBatchPolicy.ReadCursor(unresolvedCursor.OpaqueCursor);
+            var unresolvedQuery = TrendyolUnresolvedInvoiceOrders(tenantId, connectionId);
+            var unresolvedAfterCursorQuery = unresolvedQuery;
+            if (unresolvedAfterOrderId is { } unresolvedCursorOrderId)
+                unresolvedAfterCursorQuery = unresolvedAfterCursorQuery.Where(order => order.Id.CompareTo(unresolvedCursorOrderId) > 0);
+            var unresolvedAfterCursor = await unresolvedAfterCursorQuery
                 .OrderBy(order => order.Id)
                 .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
                 .Take(batchSize)
                 .ToListAsync(cancellationToken);
+            IReadOnlyCollection<OrderInvoiceReconciliationCandidate> unresolvedWrapped = [];
+            if (unresolvedAfterOrderId is { } unresolvedWrapOrderId && unresolvedAfterCursor.Count < batchSize)
+            {
+                unresolvedWrapped = await unresolvedQuery
+                    .Where(order => order.Id.CompareTo(unresolvedWrapOrderId) <= 0)
+                    .OrderBy(order => order.Id)
+                    .Select(order => new OrderInvoiceReconciliationCandidate(order.Id, order.ExternalOrderId))
+                    .Take(batchSize - unresolvedAfterCursor.Count)
+                    .ToListAsync(cancellationToken);
+            }
+            var unresolved = OrderInvoiceReconciliationBatchPolicy.Select(unresolvedAfterCursor, unresolvedWrapped, batchSize);
             externalOrderIds = unresolved.Select(candidate => candidate.ExternalOrderId).ToList();
             cursorAfterOrder = unresolved.Select(_ => (string?)null).ToList();
+            unresolvedCursorAfterOrder = unresolved.Select(candidate => OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId)).ToList();
             invoiceCursor = await Cursor(tenantId, connectionId, TrendyolInvoiceReconciliationPolicy.SweepCursorResource, cancellationToken);
             var sweepRoom = batchSize - unresolved.Count;
             if (sweepRoom > 0 && TrendyolInvoiceReconciliationPolicy.SweepDue(invoiceCursor.OpaqueCursor, invoiceCursor.LastSuccessAt, now))
@@ -217,6 +240,8 @@ internal sealed partial class InvoiceReconciliationService(
             cursorAfterOrder = selected.Select(candidate => OrderInvoiceReconciliationBatchPolicy.WriteCursor(candidate.OrderId)).ToList<string?>();
         }
 
+        // A rolled-back checkpoint keeps the positions it moved, so the retry and the next save carry them.
+        object[] keptCursors = [.. new object?[] { invoiceCursor, unresolvedCursor }.OfType<object>()];
         var batchObservedPackages = isTrendyol && sweepOrderIds.Count > 0
             ? await ReadTrendyolSweepPackageBatches(tenantId, connectionId, correlationId, sweepOrderIds, now, cancellationToken)
             : [];
@@ -305,22 +330,27 @@ internal sealed partial class InvoiceReconciliationService(
 
             // Checkpoint: the finished order's changes and the cursor position are saved together.
             var checkpointSaved = true;
+            var cursorMoved = false;
             if (invoiceCursor is not null && index < cursorAfterOrder.Count && cursorAfterOrder[index] is { } position)
             {
                 invoiceCursor.OpaqueCursor = position;
                 invoiceCursor.Version++;
-                checkpointSaved = await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
+                cursorMoved = true;
             }
-            else if (isTrendyol)
+            if (unresolvedCursor is not null && index < unresolvedCursorAfterOrder.Count)
             {
-                checkpointSaved = await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
+                unresolvedCursor.OpaqueCursor = unresolvedCursorAfterOrder[index];
+                unresolvedCursor.Version++;
+                cursorMoved = true;
             }
+            if (cursorMoved || isTrendyol)
+                checkpointSaved = await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, keptCursors);
 
             // A newer write landed on this order's invoice rows meanwhile: read the order once more against it.
             if (!checkpointSaved && !cancellationToken.IsCancellationRequested)
             {
                 await ReconcileOrderInvoiceAsync(externalOrderIds[index]);
-                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
+                await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, keptCursors);
             }
         }
 
@@ -341,7 +371,7 @@ internal sealed partial class InvoiceReconciliationService(
         }
 
         if (invoiceCursor is not null || isTrendyol)
-            await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, invoiceCursor);
+            await SaveOrderInvoiceCheckpointAsync(isTrendyol, cancellationToken, keptCursors);
 
         await UpdateOrderInvoiceReconciliationProgressAsync(
             tenantId,
@@ -447,7 +477,10 @@ internal sealed partial class InvoiceReconciliationService(
         return observed;
     }
 
-    // Trendyol orders with a package whose local sale invoice is not confirmed on the platform yet.
+    // Trendyol orders with a package whose local sale invoice still waits for its confirmation on the platform: sent and
+    // not confirmed yet (TrendyolInvoiceReconciliationPolicy.AwaitingConfirmationStatuses), or Completed without a
+    // confirmed delivery to this package. A cancelled, rejected, draft or in-review invoice is not read here: a read
+    // never moves it (scan 25 Nov 2026, A-3); its package is still read by the six-hourly sweep.
     private IQueryable<Order> TrendyolUnresolvedInvoiceOrders(Guid tenantId, Guid connectionId) =>
         db.Orders.AsNoTracking()
             .Where(order => order.TenantId == tenantId
@@ -461,18 +494,19 @@ internal sealed partial class InvoiceReconciliationService(
                     && invoice.OrderId == order.Id
                     && invoice.OriginalInvoiceId == null
                     && invoice.SequencePurpose == "SALE"
-                    && (invoice.Status != InvoiceStatus.Completed
-                        || db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
-                            && state.InvoiceId == invoice.Id
-                            && state.PackageId == package.Id
-                            && state.Status != "CONFIRMED")
-                        || !db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
-                            && state.InvoiceId == invoice.Id
-                            && state.PackageId == package.Id)
-                            && !db.MarketplaceDeliveries.Any(attempt => attempt.TenantId == tenantId
-                                && attempt.InvoiceId == invoice.Id
-                                && attempt.PackageId == package.Id
-                                && attempt.Status == "CONFIRMED")))));
+                    && (TrendyolInvoiceReconciliationPolicy.AwaitingConfirmationStatuses.Contains(invoice.Status)
+                        || invoice.Status == InvoiceStatus.Completed
+                            && (db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
+                                    && state.InvoiceId == invoice.Id
+                                    && state.PackageId == package.Id
+                                    && state.Status != "CONFIRMED")
+                                || !db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId
+                                    && state.InvoiceId == invoice.Id
+                                    && state.PackageId == package.Id)
+                                    && !db.MarketplaceDeliveries.Any(attempt => attempt.TenantId == tenantId
+                                        && attempt.InvoiceId == invoice.Id
+                                        && attempt.PackageId == package.Id
+                                        && attempt.Status == "CONFIRMED"))))));
 
     // Trendyol orders of the last 90 days with a shipped or delivered package still uninvoiced on the platform.
     private IQueryable<Order> TrendyolInvoiceSweepOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
@@ -546,7 +580,7 @@ internal sealed partial class InvoiceReconciliationService(
     // under it (version conflict), the checkpoint's changes are rolled back and dropped (the cursor given as
     // keep stays) and false is returned, so the caller reads that order again instead of failing the batch.
     // Everything else it changed (invoice delivery states, history, its cursor) is saved in the same transaction.
-    private async Task<bool> SaveOrderInvoiceCheckpointAsync(bool isTrendyol, CancellationToken cancellationToken, object? keep = null)
+    private async Task<bool> SaveOrderInvoiceCheckpointAsync(bool isTrendyol, CancellationToken cancellationToken, IReadOnlyCollection<object>? keep = null)
     {
         if (!isTrendyol) { await db.SaveChangesAsync(cancellationToken); return true; }
         const string savepoint = "order_invoice_checkpoint";
@@ -674,12 +708,12 @@ internal sealed partial class InvoiceReconciliationService(
     }
 
     // After a rolled-back checkpoint: forget its changes and the invoice rows it read, so a retry reads them fresh.
-    private void DiscardOrderInvoiceChanges(IEnumerable<EntityEntry> written, object? keep)
+    private void DiscardOrderInvoiceChanges(IEnumerable<EntityEntry> written, IReadOnlyCollection<object>? keep)
     {
         foreach (var entry in written) entry.State = EntityState.Detached;
         foreach (var entry in db.ChangeTracker.Entries().ToList())
         {
-            if (ReferenceEquals(entry.Entity, keep)) continue;
+            if (keep is not null && keep.Any(kept => ReferenceEquals(entry.Entity, kept))) continue;
             if (entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted
                 || entry.Entity is ShipmentPackage or Order or Invoice or MarketplaceDeliveryState or MarketplaceDelivery)
                 entry.State = EntityState.Detached;
