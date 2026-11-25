@@ -107,19 +107,26 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
   const glideRef = useRef<HTMLSpanElement>(null)
   const index = found >= 0 ? found : lastIndex.current
   useLayoutEffect(() => {
-    const from = lastIndex.current
     if (found < 0) return
     lastIndex.current = found
     const glide = glideRef.current
-    if (!glide || from === found || typeof glide.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    // One slot is the pill's width less its 6 px of extra; on the way it stretches over both slots (the near edge stays, then the far edge arrives).
-    const slotWidth = glide.offsetWidth - 6
-    const width = glide.offsetWidth
-    const reach = Math.abs(found - from) * slotWidth
-    const at = (slots: number) => 'translateX(' + slots * slotWidth + 'px)'
-    const mid = found > from ? at(from) : at(found)
+    const dock = glide?.parentElement
+    if (!glide || !dock || typeof glide.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    // The pill starts where it is drawn now (an unfinished glide goes on from its current place) and ends in the open slot. Places are in slots, written as
+    // percentages of the capsule, so a capsule that is easing between its sizes carries the pill with it. On the way it stretches by 0.6 slot at most (1.6 slots
+    // wide): its edges stay between the two slots, so it never reaches past the capsule's inner edge.
+    const step = (dock.clientWidth - 8) / 6
+    const now = glide.getBoundingClientRect()
+    const start = (now.left - dock.getBoundingClientRect().left - 6) / step
+    const span = (now.width + 4) / step
+    if (Math.abs(start - found) < 0.01 && Math.abs(span - 1) < 0.01) return
+    const left = (slots: number) => 'calc(6px + ' + slots + ' * ((100% - 8px) / 6))'
+    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 6) - 4px)'
+    const reach = Math.abs(found - start)
+    const extra = Math.min(reach, 0.6)
     const easing = getComputedStyle(document.documentElement).getPropertyValue('--rv-ease-sheet').trim() || 'ease'
-    glide.animate([{ transform: at(from), width: width + 'px' }, { transform: mid, width: width + reach + 'px', offset: 0.5 }, { transform: at(found), width: width + 'px' }], { duration: 320, easing })
+    glide.getAnimations().forEach(animation => animation.cancel())
+    glide.animate([{ left: left(start), width: width(span) }, { left: left((start + found) / 2 - extra / 2), width: width(1 + extra), offset: 0.5 }, { left: left(found), width: width(1) }], { duration: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rv-dock-glide-motion')) || 420, easing })
   }, [found])
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-compact={compact && !menuOpen ? '' : undefined} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
