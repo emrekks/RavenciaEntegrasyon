@@ -81,13 +81,14 @@
   .rv-dock-layer[data-compact] .rv-dock-label { max-height: 0; margin-top: 0; opacity: 0; }
   /* The icons: 24 px at ease, 22 px compact (the global .ui-icon rule had held them at 16 px). Their stroke does not scale with the box (non-scaling-stroke): 2 px. */
   .rv-dock-icon > .ui-icon { width: var(--rv-dock-icon); height: var(--rv-dock-icon); stroke-width: 2px; transition: width var(--rv-dock-motion) var(--rv-dock-ease), height var(--rv-dock-motion) var(--rv-dock-ease); }
-  /* The count sits outside the icon's top right corner (its bottom left corner 3 px over the corner of the icon box at most, so it does not cover the
-     strokes), small: 12 px high, 8 px text, tabular figures; one digit is a 12 px circle, two or more have 2.5 px at the sides. It stays at least 3 px inside the capsule
-     (also for 99+: an icon that has a count sits 4 px left, 6 px in the last slot, and 2 px lower, with no transition) and clear of the next slot's icon; a 1.5 px ring in
-     the open slot's pill colour (or the capsule's) keeps it apart from the icon. */
-  .rv-dock-badge { position: absolute; top: -9px; left: calc(100% - 3px); box-sizing: border-box; min-width: 12px; height: 12px; padding: 0 2.5px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 6px; box-shadow: 0 0 0 1.5px var(--rv-dock-ring, var(--rv-color-surface)); font-size: 8px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0; line-height: 12px; text-align: center; white-space: nowrap; }
-  .rv-dock-slot > .rv-dock-icon:has(> .rv-dock-badge) { transform: translate(-4px, 2px); transition: none; }
-  .rv-dock-slot:last-child > .rv-dock-icon:has(> .rv-dock-badge) { transform: translate(-6px, 2px); }
+  /* The count is placed on the icon's top right corner by position alone: no icon is ever moved for it (every icon sits exactly in the middle of its slot). Small: 12 px high, 8 px
+     text, tabular figures; one digit is a 12 px circle, two or more have 2.5 px at the sides. It hangs 6 px above the icon's top (the icon is 13 px under the capsule's top
+     edge, so the count and its 1.5 px ring keep 5 px from it, compact too) and 3 px over the icon's right edge (5 px compact, where the capsule leaves less room); in the
+     last slot (Menü) it is anchored by its right edge, 10 px past the icon, so that its ring keeps 5 px from the capsule's round end, also for 99+ (which then reaches over the
+     icon). A 1.5 px ring in the open slot's pill colour (or the capsule's) keeps it apart from the icon. */
+  .rv-dock-badge { position: absolute; top: -6px; left: calc(100% - 3px); box-sizing: border-box; min-width: 12px; height: 12px; padding: 0 2.5px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 6px; box-shadow: 0 0 0 1.5px var(--rv-dock-ring, var(--rv-color-surface)); font-size: 8px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0; line-height: 12px; text-align: center; white-space: nowrap; transition: none; }
+  .rv-dock-layer[data-compact] .rv-dock-badge { left: calc(100% - 5px); }
+  .rv-dock-slot:last-child > .rv-dock-icon > .rv-dock-badge { left: auto; right: -10px; }
   .rv-dock-slot.is-active { --rv-dock-ring: color-mix(in srgb, var(--rv-color-primary) var(--rv-dock-active-tint), var(--rv-color-surface)); }
 
   /* Task bar: one row in the wide 56 px panel, labelled buttons side by side, 40 px high, radius 20, 8 px apart, 8 px in. There is no Menü and no Geri

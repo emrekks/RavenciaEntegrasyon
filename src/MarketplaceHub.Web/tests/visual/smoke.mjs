@@ -70,7 +70,7 @@ async function layerStep(name, path, open, close) {
   } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
   await context.close()
 }
-// The dock's counts stay inside the capsule (3 px from the edge at least: the 12 px badge sits outside the icon's corner) with one, two and three characters.
+// The dock's counts stay inside the capsule (5 px from the capsule's top and right edge at least, ring included, 3 px from the others) with one, two and three characters.
 async function badgeStep() {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -90,7 +90,7 @@ async function badgeStep() {
           badge.textContent = label
           const box = part.closest('.rv-dock').getBoundingClientRect()
           const rect = badge.getBoundingClientRect()
-          if (rect.top < box.top + 3 || rect.right > box.right - 3 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
+          if (rect.top < box.top + 6.5 || rect.right > box.right - 6.5 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
         }
         return problems
       }, text)
@@ -113,7 +113,18 @@ async function glideStep() {
     for (const compact of [false, true]) {
       const bad = await page.evaluate(compactNow => {
         const layer = document.querySelector('.rv-dock-layer'); if (compactNow) layer.setAttribute('data-compact', ''); else layer.removeAttribute('data-compact')
-        const dock = document.querySelector('.rv-dock'); const glide = dock.querySelector('.rv-dock-glide'); const problems = []
+        const dockEl = document.querySelector('.rv-dock'); const slotsEl = [...dockEl.querySelectorAll('.rv-dock-slot')]; const early = []
+        for (const label of ['5', '26', '99+']) {
+          slotsEl.forEach((slotEl, i) => {
+            let badge = slotEl.querySelector('.rv-dock-badge'); if (!badge) { badge = document.createElement('span'); badge.className = 'rv-dock-badge'; slotEl.querySelector('.rv-dock-icon').append(badge) } badge.textContent = label
+            const box = dockEl.getBoundingClientRect(); const slotBox = slotEl.getBoundingClientRect(); const icon = slotEl.querySelector('.ui-icon').getBoundingClientRect(); const b = badge.getBoundingClientRect(); const text = slotEl.querySelector('.rv-dock-label').getBoundingClientRect()
+            const mode = (compactNow ? 'compact ' : 'ease ') + i + ' ' + label
+            if (Math.abs(icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)) > 0.5) early.push(mode + ' icon not centred in x ' + (icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)).toFixed(2))
+            if (compactNow ? Math.abs(icon.top + icon.height / 2 - (slotBox.top + slotBox.height / 2)) > 0.5 : Math.abs((icon.top - slotBox.top) - (slotBox.bottom - text.bottom)) > 0.5) early.push(mode + ' icon not centred in y')
+            if (b.top - box.top - 1.5 < 5 || box.right - b.right - 1.5 < 5) early.push(mode + ' count too near the capsule edge ' + (b.top - box.top - 1.5).toFixed(1) + '/' + (box.right - b.right - 1.5).toFixed(1))
+          })
+        }
+        const dock = document.querySelector('.rv-dock'); const glide = dock.querySelector('.rv-dock-glide'); const problems = [...early]
         for (let index = 0; index < 5; index += 1) {
           dock.style.setProperty('--rv-dock-i', String(index))
           const box = dock.getBoundingClientRect(); const pill = glide.getBoundingClientRect(); const slot = dock.querySelectorAll('.rv-dock-slot')[index].getBoundingClientRect()
