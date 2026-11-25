@@ -1,10 +1,11 @@
 /*
  * Phone navigation (owner, 25 Nov 2026; the structure of Shopify's admin dock, our own icons and colours): up to 760 px
  * (shared/phone-shell.ts) three opaque parts float free over the content at the bottom, 8 px apart, 12 px (and the safe area) above the
- * edge, centred (344 px wide, 8 px in from the sides on a 360 px phone) (BottomDock.tsx):
- *  - left a 56 x 56 round Ara button, in the middle a 56 px pill with four icon-only 52 x 48 slots (Ana Sayfa, Siparişler, Ürünler,
- *    Menü; 4 px inside, no labels but aria-labels), right a 56 x 56 round Sorular button. The open page is a tinted 52 x 48 pill with the
- *    accent-coloured icon; while the menu is open Menü is that slot and shows the cross.
+ * edge, centred (292 px wide with the three-slot pill) (BottomDock.tsx):
+ *  - left a 56 x 56 round Ana Sayfa button, in the middle a 56 px pill with three icon-only 52 x 48 slots (Siparişler, Ürünler,
+ *    Sorular; 4 px inside, no labels but aria-labels), right a 56 x 56 round Menü button. The open page is tinted (a 52 x 48 pill in the
+ *    pill, the round button when it is Ana Sayfa) with the accent-coloured icon; while the menu is open Menü is the active one and shows the cross.
+ *    Search lives in the top bar only.
  *  - No blur, no frosted band, no border: a shadow only (a 1 px inner line and a darker shadow on the dark theme). The page flows
  *    behind and between the parts.
  *  - Task mode ("Görev Kipi"): while a page has bottom actions (StickyActionBar, DraftSaveBar) the three give way to one wide 56 px
@@ -42,7 +43,7 @@
   /* The page's filter block (z-index 80, a stacking box of its own) held its dimmed sheet under the top bar (z-index 85): while a layer is open
      the block that holds it is lifted above the bar, so the dimmed scrim covers the bar as it covers the page and takes its touches. */
   html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }
-  /* Dock mode: Ara, the pill, Sorular. Task mode: the wide panel. One shows, the other waits (a short cross-fade). */
+  /* Dock mode: Ana Sayfa, the pill, Menü. Task mode: the wide panel. One shows, the other waits (a short cross-fade). */
   .rv-dock { display: flex; align-items: center; gap: 8px; pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar); }
   .rv-dock-pill, .rv-dock-round, .rv-dock-panel { background: var(--rv-color-surface); box-shadow: var(--rv-dock-shadow); }
   .rv-dock-pill { display: flex; align-items: center; box-sizing: border-box; height: 56px; padding: 4px; border-radius: 28px; }

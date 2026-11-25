@@ -46,7 +46,7 @@ function Harness({ phone = true, count = 0, slotCounts = {}, children }: { phone
   return <BackTargetContext.Provider value={backHost}><DockContext.Provider value={dock.host}>
     <button type="button" id="back" onClick={() => navigate(-1)}>geri</button>
     {menu.open && <FullScreenMenu groups={groups} profile={profile} onLogout={() => undefined} onClose={menu.closeMenu} onNavigate={menu.leaveTo} pathname={location.pathname} />}
-    <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} onSearch={() => undefined} /><button type="button" id="topback" onClick={goBack}>üst geri</button>
+    <BottomDock menuOpen={menu.open} menuCount={count} slotCounts={slotCounts} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={slotRef} onToggleMenu={menu.open ? menu.closeMenu : menu.openMenu} onNavigate={menu.leaveTo} /><button type="button" id="topback" onClick={goBack}>üst geri</button>
     {children}
   </DockContext.Provider></BackTargetContext.Provider>
 }
@@ -111,15 +111,16 @@ describe('phone bottom navigation (CSS)', () => {
 })
 
 describe('Ravencia Dock', () => {
-  it('is three parts: a round Ara button, a pill of four icon-only slots (Ana Sayfa, Siparişler, Ürünler, Menü) and a round Sorular button; the open page is the active one', () => {
+  it('is three parts: a round Ana Sayfa button, a pill of three icon-only slots (Siparişler, Ürünler, Sorular) and a round Menü button; no Ara here; the open page is the active one', () => {
     const { host } = mount('/orders')
     const dock = host.querySelector('.rv-dock')!
     expect(dock.getAttribute('aria-label')).toBe('Alt menü')
     expect([...dock.children].map(part => part.className.split(' ')[0])).toEqual(['rv-dock-round', 'rv-dock-pill', 'rv-dock-round'])
-    expect(dock.querySelector('.rv-dock-round.rv-dock-search')?.getAttribute('aria-label')).toBe('Ara')
-    expect([...dock.querySelectorAll('.rv-dock-pill .rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Menü'])
-    expect(dock.querySelector('a[href="/questions"]')?.getAttribute('aria-label')).toBe('Ürün Soruları')
-    expect(dock.querySelector('a[href="/questions"]')?.classList.contains('rv-dock-round')).toBe(true)
+    expect(dock.children[0].getAttribute('aria-label')).toBe('Ana Sayfa')
+    expect(dock.children[0].getAttribute('href')).toBe('/dashboard')
+    expect([...dock.querySelectorAll('.rv-dock-pill .rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Siparişler', 'Ürünler', 'Ürün Soruları'])
+    expect(dock.children[2].getAttribute('aria-label')).toBe('Menü')
+    expect(dock.querySelector('[aria-label="Ara"], .rv-dock-search')).toBeNull()
     // Icons only: every part has its icon and no text; the names are aria-labels.
     for (const part of dock.querySelectorAll('.rv-dock-slot, .rv-dock-round')) { expect(part.textContent).toBe(''); expect(part.querySelector('svg')).toBeTruthy() }
     expect(dock.querySelector('.rv-dock-label, .rv-dock-indicator')).toBeNull()
@@ -131,22 +132,23 @@ describe('Ravencia Dock', () => {
     expect(dock.querySelector('.is-active')?.getAttribute('aria-label')).toBe('Siparişler')
   })
 
-  it('makes the round Sorular button the active part on its page', () => {
-    const { host } = render(<MemoryRouter initialEntries={['/questions']}><Harness /></MemoryRouter>)
+  it('makes the round Ana Sayfa button the active part on the dashboard and the Sorular slot on its page', () => {
+    expect(mount('/dashboard').host.querySelector('.rv-dock-round.is-active')?.getAttribute('aria-label')).toBe('Ana Sayfa')
+    cleanup()
+    const { host } = mount('/questions')
     expect(host.querySelector('a[href="/questions"]')?.classList.contains('is-active')).toBe(true)
-    expect(host.querySelectorAll('.rv-dock-slot.is-active')).toHaveLength(0)
+    expect(host.querySelectorAll('.rv-dock-round.is-active')).toHaveLength(0)
   })
 
-  it('shows the Menü slot as the active one with the cross while the menu is open, and no page is current', () => {
+  it('shows the round Menü button as the active one with the cross while the menu is open, and no page is current', () => {
     const { host } = mount('/orders')
-    const slot = host.querySelector('.rv-dock-pill button')!
-    expect(slot.getAttribute('aria-label')).toBe('Menü')
-    expect(slot.querySelector('svg')).toBeTruthy()
-    const before = slot.innerHTML
-    click(slot)
-    expect(host.querySelector('.rv-dock-pill button')?.classList.contains('is-active')).toBe(true)
-    expect(host.querySelector('.rv-dock-pill button')?.getAttribute('aria-label')).toBe('Menüyü Kapat')
-    expect(host.querySelector('.rv-dock-pill button')?.innerHTML).not.toBe(before)
+    const menuButton = () => host.querySelector('.rv-dock > button')!
+    expect(menuButton().getAttribute('aria-label')).toBe('Menü')
+    const before = menuButton().innerHTML
+    click(menuButton())
+    expect(menuButton().classList.contains('is-active')).toBe(true)
+    expect(menuButton().getAttribute('aria-label')).toBe('Menüyü Kapat')
+    expect(menuButton().innerHTML).not.toBe(before)
     expect(host.querySelectorAll('.rv-dock [aria-current="page"]')).toHaveLength(0)
     expect(host.querySelectorAll('.rv-dock .is-active')).toHaveLength(1)
     cleanup()
