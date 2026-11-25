@@ -109,6 +109,14 @@ export function invoiceErrorText(code: string | null | undefined) {
   return reason.startsWith('İletilemedi: ') ? `Hata kodu: ${code}` : reason
 }
 
+/** The notice of "Yerel Doğrula": the invoice the server returns says whether the check passed (ValidationFailed, sent
+ * as VALIDATIONFAILED) and why; a failed check is red with its reason, never "tamamlandı" in green. */
+export function localValidationNotice(result: { status?: string | null; lastErrorCode?: string | null } | null | undefined): [string, 'success' | 'error'] {
+  const status = result?.status?.trim().toUpperCase().replace(/_/g, '') ?? ''
+  if (status === 'VALIDATIONFAILED') return [result?.lastErrorCode?.trim() ? `Yerel doğrulama başarısız: ${invoiceErrorText(result.lastErrorCode)}` : 'Yerel doğrulama başarısız.', 'error']
+  return ['Yerel doğrulama tamamlandı.', 'success']
+}
+
 export const adjustmentRequiredStatus = 'FATURA_DUZELTME_GEREKLI'
 
 /** The invoice status filter of the workspace; an issued invoice whose order was cancelled or returned reads "Düzeltme Gerekiyor". */
