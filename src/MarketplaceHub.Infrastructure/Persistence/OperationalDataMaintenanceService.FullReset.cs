@@ -196,7 +196,11 @@ public sealed partial class OperationalDataMaintenanceService
             -- The open problems about the connection, its orders or its invoices have nothing left to point at. A key names
             -- the connection in either form: with hyphens ("D") or without ("N", e.g. trendyol-finance:{id:N}).
             UPDATE ops.operational_issues i SET "Status"='Resolved', "ResolvedAt"={{timeProvider.GetUtcNow()}}
+            -- An open webhook-pause: / webhook-resume: record is the hourly upkeep's work list (a close or an opening still
+            -- owed at the marketplace), not a notice: it stays, as in the panel reset (PanelFactoryResetService.PendingWebhookRetryKeep).
             WHERE i."TenantId"={{tenantId}} AND i."Status"<>'Resolved'
+              AND NOT starts_with(i."DedupeKey", {{InstantNotificationService.PausePendingPrefix}})
+              AND NOT starts_with(i."DedupeKey", {{InstantNotificationService.ResumePendingPrefix}})
               AND (strpos(i."DedupeKey", CAST({{connectionId}} AS text)) > 0
                 OR strpos(i."DedupeKey", replace(CAST({{connectionId}} AS text), '-', '')) > 0
                 OR EXISTS (SELECT 1 FROM purge_orders o WHERE strpos(i."DedupeKey", o."Id"::text) > 0)
