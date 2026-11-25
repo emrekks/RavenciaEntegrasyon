@@ -85,6 +85,11 @@ BEGIN
   END LOOP;
 END
 $$;
+-- History the app only appends to: an audit row is never rewritten and the migration history is the migrate service's.
+-- The app keeps DELETE on ops.audit_logs: its 730-day retention (JobRetentionService.PurgeAuditLogsAsync) and the panel's
+-- factory reset remove rows. New tables of later migrations still get the default grants above.
+REVOKE UPDATE ON ops.audit_logs FROM marketplacehub_app;
+REVOKE UPDATE, DELETE ON public."__EFMigrationsHistory" FROM marketplacehub_app;
 GRANT CONNECT, TEMPORARY ON DATABASE marketplacehub TO marketplacehub_app;
 -- What later migrations (run as marketplacehub_owner) create, new schemas included.
 ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub_owner GRANT USAGE ON SCHEMAS TO marketplacehub_app;

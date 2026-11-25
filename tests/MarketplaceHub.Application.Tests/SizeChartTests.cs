@@ -530,10 +530,11 @@ public sealed class AiSettingsRoleTests
     public void Only_a_claude_key_shape_is_accepted(string key, bool expected) => Assert.Equal(expected, AiSettingsService.IsApiKeyShaped(key));
 
     [Fact]
-    public void Cost_uses_the_model_list_price_and_is_unknown_for_other_models()
+    public void Cost_uses_the_model_list_price_and_the_dearest_price_for_other_models()
     {
         Assert.Equal(0.005m, ClaudePricing.CostUsd("claude-sonnet-5-5", new ClaudeUsage(1000, 300, null, null)));
-        Assert.Null(ClaudePricing.CostUsd("some-other-model", new ClaudeUsage(1000, 300, null, null)));
+        // E-2: an unlisted model name must still count against the daily spend ceiling.
+        Assert.Equal(0.0125m, ClaudePricing.CostUsd("some-other-model", new ClaudeUsage(1000, 300, null, null)));
         Assert.Null(ClaudePricing.CostUsd("claude-sonnet-5-5", new ClaudeUsage(null, null, null, null)));
     }
 }

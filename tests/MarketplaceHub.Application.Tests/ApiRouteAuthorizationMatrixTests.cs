@@ -286,7 +286,6 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "GET    /api/v1/questions/report-reasons SignedIn",
         "POST   /api/v1/questions/sync Operations",
         "GET    /api/v1/questions/sync-state SignedIn",
-        "GET    /api/v1/reference-data/brands SignedIn",
         "GET    /api/v1/reference-data/brands/lookup SignedIn",
         "GET    /api/v1/reference-data/brands/search SignedIn",
         "GET    /api/v1/reference-data/brands/summary SignedIn",

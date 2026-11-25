@@ -305,4 +305,39 @@ public sealed class ImportFileReaderTests
             Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ImportJobProcessor.FileVatRate(row.Values));
         }
     }
+
+    private static MemoryStream Sheet(string rows)
+    {
+        var buffer = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("xl/worksheets/sheet1.xml").Open(), new UTF8Encoding(false));
+            writer.Write("<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" + rows + "</sheetData></worksheet>");
+        }
+        buffer.Position = 0;
+        return buffer;
+    }
+
+    private static string TextCell(string reference, string text) => $"<c r=\"{reference}\" t=\"inlineStr\"><is><t>{text}</t></is></c>";
+
+    // Scan 25 Nov 2026 (E-4): a price typed as text "1.250" in an XLSX is the CSV's ambiguity (1,25 TL or 1.250 TL), while
+    // a number cell holding 1.25 is that number; empty rows are skipped; formatted empty cells after the last title are no
+    // column.
+    [Fact]
+    public void Xlsx_TextNumberIsAmbiguous_EmptyRowsAreSkipped_AndTrailingEmptyHeaderCellsAreDropped()
+    {
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Ürün"] = "title", ["SKU"] = "sku", ["Fiyat"] = "salePrice" };
+        var rows = $"<row r=\"1\">{TextCell("A1", "Ürün")}{TextCell("B1", "SKU")}{TextCell("C1", "Fiyat")}<c r=\"D1\" s=\"3\"/><c r=\"E1\" s=\"3\"/></row>"
+            + $"<row r=\"2\">{TextCell("A2", "Bluz")}{TextCell("B2", "B-1")}{TextCell("C2", "1.250")}</row>"
+            + "<row r=\"3\"><c r=\"A3\" s=\"2\"/><c r=\"B3\" s=\"2\"><v></v></c></row>"
+            + $"<row r=\"4\">{TextCell("A4", "Etek")}{TextCell("B4", "E-1")}<c r=\"C4\"><v>1.25</v></c></row>";
+
+        var parsed = ImportFileReader.ReadXlsx(Sheet(rows), mappings, 64 * 1024 * 1024).ToList();
+
+        Assert.Equal([2, 4], parsed.Select(row => row.RowNumber));
+        var ambiguous = Assert.Single(parsed[0].Errors);
+        Assert.StartsWith("Fiyat: \"1.250\" belirsiz", ambiguous, StringComparison.Ordinal);
+        Assert.Empty(parsed[1].Errors);
+        Assert.Equal("1.25", parsed[1].Values["salePrice"]);
+    }
 }

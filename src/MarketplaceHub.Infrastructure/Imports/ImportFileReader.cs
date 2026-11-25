@@ -14,7 +14,7 @@ public static class ImportFileReader
 {
     // A CSV number written "1.250" (Turkish Excel's "#.##0") reads as a decimal point elsewhere: price 1,25 TL, stock 1.
     // A lone dot with exactly three digits after it is refused, as in the product file transfer, instead of guessed.
-    // An XLSX number cell holds the number itself, so only the CSV text is checked.
+    // An XLSX number cell holds the number itself; an XLSX text cell is checked like the CSV text.
     private static readonly HashSet<string> NumberFields = new(StringComparer.OrdinalIgnoreCase) { "listPrice", "salePrice", "stock", "desi", "vatRate", "warrantyMonths", "deliveryDays" };
 
     // Excel in Turkish locales saves CSV as Windows-1254 with ';' between fields. The reader accepts UTF-8
@@ -52,12 +52,30 @@ public static class ImportFileReader
         while (reader.Read())
         {
             if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "row") continue; rowNumber = RowNumber(reader, rowNumber, budget); var cells = ReadXlsxRow(reader.ReadSubtree(), sharedStrings, budget);
-            if (headers is null) { headers = Dense(cells, budget); if (headers.Count == 0 || headers.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("XLSX başlıkları geçersiz."); continue; }
+            if (headers is null)
+            {
+                // Excel writes formatted but empty cells after the last title (a coloured header band): they are no
+                // column, so they are dropped instead of making the whole file "invalid headers". A gap between titles
+                // still is.
+                headers = Dense(cells, budget);
+                while (headers.Count > 0 && string.IsNullOrWhiteSpace(headers[^1])) headers.RemoveAt(headers.Count - 1);
+                if (headers.Count == 0 || headers.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("XLSX başlıkları geçersiz.");
+                continue;
+            }
+            // An empty row (cleared contents, formatting left) is skipped, as in the CSV, instead of "title/sku: zorunlu".
+            if (cells.Values.All(cell => !cell.IsFormula && string.IsNullOrWhiteSpace(cell.Value))) continue;
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); var errors = new List<string>();
             foreach (var (index, cell) in cells)
             {
                 if (cell.IsFormula) { errors.Add($"{headers.ElementAtOrDefault(index) ?? index.ToString(CultureInfo.InvariantCulture)}: formül reddedildi."); continue; }
-                if (index < headers.Count && mappings.TryGetValue(headers[index], out var target)) values[target] = cell.Value.Trim();
+                if (index < headers.Count && mappings.TryGetValue(headers[index], out var target))
+                {
+                    values[target] = cell.Value.Trim();
+                    // A number typed as text ("1.250" in a text-formatted cell) is the CSV's ambiguity; a number cell holds
+                    // the number itself and is never checked.
+                    if (cell.IsText && NumberFields.Contains(target) && ProductTransferFileParser.IsAmbiguousThousands(string.Concat(cell.Value.Where(character => !char.IsWhiteSpace(character)))))
+                        errors.Add($"{headers[index]}: \"{cell.Value.Trim()}\" belirsiz: {ProductTransferFileParser.AmbiguousThousandsAdvice}");
+                }
             }
             ValidateRequired(values, errors); ValidateCardTerms(values, errors, fromCsv: false); yield return new ParsedImportRow(rowNumber, values, errors);
         }
@@ -242,7 +260,7 @@ public static class ImportFileReader
                 if (++budget.Cells > MaximumCells) throw new InvalidDataException($"XLSX en fazla {MaximumCells:N0} hücre içerebilir; dosyayı bölerek yükleyin.");
                 previous = index;
                 using var cellReader = reader.ReadSubtree(); while (cellReader.Read()) { if (cellReader.NodeType == XmlNodeType.Element && cellReader.LocalName == "f") { formula = true; cellReader.Skip(); } else if (cellReader.NodeType == XmlNodeType.Element && cellReader.LocalName is "v" or "t") value = cellReader.ReadElementContentAsString(); }
-                if (type == "s" && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var sharedIndex) && sharedIndex >= 0 && sharedIndex < sharedStrings.Count) value = sharedStrings[sharedIndex]; result[index] = new XlsxCell(value, formula);
+                if (type == "s" && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var sharedIndex) && sharedIndex >= 0 && sharedIndex < sharedStrings.Count) value = sharedStrings[sharedIndex]; result[index] = new XlsxCell(value, formula, type is "s" or "inlineStr" or "str");
             }
         }
         return result;
@@ -353,5 +371,5 @@ public static class ImportFileReader
         return rest.Length > 0 && !rest.All(character => char.IsAsciiDigit(character) || character is ' ' or '.' or ',' or '(' or ')');
     }
 
-    private sealed record XlsxCell(string Value, bool IsFormula);
+    private sealed record XlsxCell(string Value, bool IsFormula, bool IsText);
 }

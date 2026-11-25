@@ -39,6 +39,18 @@ public sealed class UserManagementGuardTests
         Assert.Null(UserManagementEndpoints.Guard(new TenantContext(Guid.CreateVersion7(), Tenant, "ADMINISTRATOR"), Member(Guid.CreateVersion7(), MembershipRole.Operations)));
     }
 
+    // Scan 25 Nov 2026 (E-5): a password or MFA reset hands over the sign-in, so an administrator resets only the roles
+    // below it; an owner resets an administrator.
+    [Fact]
+    public void OnlyAnOwnerResetsAnAdministratorsPasswordOrMfa()
+    {
+        var admin = Member(Guid.CreateVersion7(), MembershipRole.Administrator);
+        Assert.NotNull(UserManagementEndpoints.CredentialGuard(new TenantContext(Guid.CreateVersion7(), Tenant, "ADMINISTRATOR"), admin));
+        Assert.Null(UserManagementEndpoints.CredentialGuard(new TenantContext(Guid.CreateVersion7(), Tenant, "OWNER"), admin));
+        Assert.Null(UserManagementEndpoints.CredentialGuard(new TenantContext(Guid.CreateVersion7(), Tenant, "ADMINISTRATOR"), Member(Guid.CreateVersion7(), MembershipRole.Operations)));
+        Assert.NotNull(UserManagementEndpoints.CredentialGuard(new TenantContext(Guid.CreateVersion7(), Tenant, "ADMINISTRATOR"), Member(Guid.CreateVersion7(), MembershipRole.Owner)));
+    }
+
     [Theory]
     [InlineData("OWNER", MembershipRole.Owner)]
     [InlineData("administrator", MembershipRole.Administrator)]

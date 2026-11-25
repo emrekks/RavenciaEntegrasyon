@@ -170,6 +170,30 @@ done
 if (cd "$work/$created" && sha256sum -c --quiet SHA256SUMS); then pass "the checksums still match after the rename"; else fail "the checksums still match after the rename"; fi
 rm -rf -- "$stubs"
 
+# --- the disk guard gives up weekly sets before the monthly ones -----------
+rm -rf -- "${work:?}"/*
+# Newest, a weekly set (older than the daily window) and an August monthly set (older than the weekly window).
+make_sets 20261021T110000Z 20261001T203000Z 20260815T000000Z
+output="$(
+  # shellcheck source=deploy/backup/backup.sh
+  source "$repository_root/deploy/backup/backup.sh"
+  # Every set takes 10% of the disk; the limit leaves room for two.
+  projected_disk_percent() { find "$work" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' | wc -l | awk '{ print $1 * 10 }'; }
+  BACKUP_DISK_LIMIT_PERCENT=25 BACKUP_DISK_HARD_LIMIT_PERCENT=100 guard_disk_space
+)"
+assert_no_dir "$work/20261001T203000Z" "the disk guard removes the weekly set"
+assert_dir "$work/20260815T000000Z" "the disk guard keeps the older monthly set while a weekly one can go"
+assert_contains "$output" "Disk guard removed weekly backup set 20261001T203000Z" "reports the weekly removal"
+output="$(
+  # shellcheck source=deploy/backup/backup.sh
+  source "$repository_root/deploy/backup/backup.sh"
+  projected_disk_percent() { find "$work" -mindepth 1 -maxdepth 1 -type d -name '????????T??????Z' | wc -l | awk '{ print $1 * 10 }'; }
+  BACKUP_DISK_LIMIT_PERCENT=15 BACKUP_DISK_HARD_LIMIT_PERCENT=100 guard_disk_space
+)"
+assert_no_dir "$work/20260815T000000Z" "with no weekly set left the monthly set goes"
+assert_contains "$output" "Disk guard removed monthly backup set 20260815T000000Z" "reports the monthly removal"
+assert_dir "$work/20261021T110000Z" "the newest set always stays"
+
 # --- backup_set_epoch accepts only set names ------------------------------
 epoch_of() {
   (

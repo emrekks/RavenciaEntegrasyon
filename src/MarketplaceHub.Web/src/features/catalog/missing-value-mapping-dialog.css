@@ -4,7 +4,8 @@
 .missing-value-mapping-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  /* Above the windows it opens from (1000), below the toasts (1100), so a save message is not hidden behind it (F-4). */
+  z-index: calc(var(--rv-z-modal) + 50);
   display: grid;
   place-items: center;
   padding: 16px;

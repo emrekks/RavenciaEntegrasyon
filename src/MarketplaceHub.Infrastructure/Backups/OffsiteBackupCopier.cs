@@ -73,7 +73,8 @@ public sealed class OffsiteBackupCopier(
                 // A copy of this set counts as present only when it is the one this app sent last, byte count and MD5
                 // alike (age encryption differs on every run, so only the recorded copy can be checked).
                 var (_, state) = await settingsService.LoadAsync(tenantId, timeout.Token);
-                var present = PresentCopy(remote, objectName, state);
+                var extras = set.ExtrasFingerprint;
+                var present = PresentCopy(remote, objectName, state, extras);
                 long size;
                 string? md5;
                 if (present is not null)
@@ -95,7 +96,7 @@ public sealed class OffsiteBackupCopier(
                     }
                     remote.Add(uploaded);
                     result = OffsiteBackupRunResult.Uploaded;
-                    logger.LogInformation("Off-site backup {Set} uploaded to Google Drive ({Bytes} bytes, age-encrypted, from {PlainBytes} plain bytes; extras: {Extras})", set.Name, size, set.PlainBytes, string.Join(", ", set.Files.Select(file => file.Name).Where(file => file.StartsWith("extra/", StringComparison.Ordinal))) is { Length: > 0 } extras ? extras : "none");
+                    logger.LogInformation("Off-site backup {Set} uploaded to Google Drive ({Bytes} bytes, age-encrypted, from {PlainBytes} plain bytes; extras: {Extras})", set.Name, size, set.PlainBytes, string.Join(", ", set.Files.Select(file => file.Name).Where(file => file.StartsWith("extra/", StringComparison.Ordinal))) is { Length: > 0 } extraNames ? extraNames : "none");
                 }
 
                 // Retention only after this run's copy is safely there.
@@ -112,7 +113,7 @@ public sealed class OffsiteBackupCopier(
                 if (deleted > 0) logger.LogInformation("Off-site backup retention removed {Count} old copies from Google Drive", deleted);
 
                 var copies = remote.Count(item => OffsiteBackupRules.TryParseObjectName(item.Name, out _, out _));
-                await SucceededAsync(context, set.Name, size, md5, copies);
+                await SucceededAsync(context, set.Name, size, md5, copies, extras);
                 return result;
             }
         }
@@ -156,13 +157,16 @@ public sealed class OffsiteBackupCopier(
         }
     }
 
-    // The same-named Drive copy that is the one recorded as sent last (name, set, size and MD5 agree), or null.
-    internal static DriveObject? PresentCopy(IEnumerable<DriveObject> remote, string objectName, OffsiteBackupSettingsService.State state) =>
+    // The same-named Drive copy that is the one recorded as sent last (name, set, size and MD5 agree), or null. It is not
+    // present either when the host's extras changed since it was sent (a state from before the extras were recorded keeps
+    // its copy).
+    internal static DriveObject? PresentCopy(IEnumerable<DriveObject> remote, string objectName, OffsiteBackupSettingsService.State state, string? extras = null) =>
         state.LastMd5 is not { Length: > 0 } md5 || state.LastSet is null || OffsiteBackupRules.ObjectName(state.LastSet) != objectName
+        || extras is not null && state.LastExtras is { } sentExtras && !string.Equals(sentExtras, extras, StringComparison.Ordinal)
             ? null
             : remote.FirstOrDefault(item => item.Name == objectName && item.Size > 0 && item.Size == state.LastSize && string.Equals(item.Md5, md5, StringComparison.OrdinalIgnoreCase));
 
-    private async Task SucceededAsync(OffsiteBackupRunContext context, string setName, long size, string? md5, int copies)
+    private async Task SucceededAsync(OffsiteBackupRunContext context, string setName, long size, string? md5, int copies, string extras)
     {
         var now = timeProvider.GetUtcNow();
         DateTimeOffset? alertSent = null;
@@ -173,6 +177,7 @@ public sealed class OffsiteBackupCopier(
             state.LastSet = setName;
             state.LastSize = size;
             state.LastMd5 = md5;
+            state.LastExtras = extras;
             state.LastError = null;
             state.LastErrorAt = null;
             state.ConsecutiveFailures = 0;

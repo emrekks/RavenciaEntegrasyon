@@ -5,9 +5,12 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 // Removes old finished jobs (their attempts cascade), old webhook inbox rows, retired quota counters and
 // old settled marketplace-action records.
-// - "scheduled:" jobs and the short-lived reads ("webhook:", "effect-reconcile:", "manual:") go after the
-//   succeeded retention (14 days) when they succeeded or were cancelled, after the failed retention (30 days)
-//   otherwise. Their dedup keys carry a time bucket or an event id, and their work is idempotent.
+// - "scheduled:" jobs and the short-lived reads ("effect-reconcile:", "manual:") go after the succeeded retention
+//   (14 days) when they succeeded or were cancelled, after the failed retention (30 days) otherwise. Their dedup keys
+//   carry a time bucket or an event id, and their work is idempotent.
+// - A webhook ingest job ("webhook:") goes after the failed retention (30 days), as long as its inbox row is kept
+//   (Worker:JobRetention:InboxDays, 30): a delivery repeated while the inbox row stays finds its job and queues nothing
+//   (WebhookInboxWriter re-queues a job only when it is missing). Scan 25 Nov 2026, E-5.
 // - Every other finished job goes after the failed retention (30 days), unless its job type guards a
 //   marketplace or invoice effect (product create, price/stock writes, shipment and return actions, invoice
 //   submit/delivery/cancellation ...): its dedup key is what stops the effect from running twice, so it is
@@ -73,7 +76,7 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
                       AND (
                         (("JobDedupKey" LIKE 'scheduled:%'
                             OR (NOT ("JobType" = ANY({EffectGuardJobTypes}::text[]))
-                                AND ("JobDedupKey" LIKE 'webhook:%' OR "JobDedupKey" LIKE 'effect-reconcile:%' OR "JobDedupKey" LIKE 'manual:%')))
+                                AND ("JobDedupKey" LIKE 'effect-reconcile:%' OR "JobDedupKey" LIKE 'manual:%')))
                           AND (("Status" IN ('SUCCEEDED', 'CANCELLED') AND coalesce("CompletedAt", "CreatedAt") < {succeededCutoff})
                             OR ("Status" IN ('DEAD', 'MANUAL_REVIEW', 'BLOCKED') AND coalesce("CompletedAt", "CreatedAt") < {failedCutoff})))
                         OR (NOT ("JobType" = ANY({EffectGuardJobTypes}::text[]))

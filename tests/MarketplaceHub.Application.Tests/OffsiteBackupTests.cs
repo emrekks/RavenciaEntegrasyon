@@ -148,6 +148,19 @@ public sealed class OffsiteBackupRulesTests
         Assert.Null(OffsiteBackupCopier.PresentCopy([new("old", name, 10, "abc")], name, new OffsiteBackupSettingsService.State { LastSet = "20261113T085900Z", LastSize = 10 }));
     }
 
+    // Scan 25 Nov 2026 (E-5): a new escrow or WAL part on the host sends the newest set again instead of waiting for the
+    // next set; unchanged extras, or a state from before they were recorded, keep the copy on Drive.
+    [Fact]
+    public void PresentCopy_IsSentAgain_WhenTheHostsExtrasChanged()
+    {
+        const string name = "20261113T085900Z.tar.age";
+        var state = new OffsiteBackupSettingsService.State { LastSet = "20261113T085900Z", LastSize = 10, LastMd5 = "abc", LastExtras = "e1" };
+        DriveObject[] remote = [new("ok", name, 10, "abc")];
+        Assert.Equal("ok", OffsiteBackupCopier.PresentCopy(remote, name, state, "e1")?.Id);
+        Assert.Null(OffsiteBackupCopier.PresentCopy(remote, name, state, "e2"));
+        Assert.Equal("ok", OffsiteBackupCopier.PresentCopy(remote, name, new OffsiteBackupSettingsService.State { LastSet = "20261113T085900Z", LastSize = 10, LastMd5 = "abc" }, "e2")?.Id);
+    }
+
     [Fact]
     public async Task ResumableUpload_ACopyWhoseMd5DiffersFromTheSentStreamIsDeletedAndFails()
     {

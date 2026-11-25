@@ -257,7 +257,7 @@ public static class UserManagementEndpoints
     {
         if (Tenant(http) is not { } tenant) return ApiProblems.Unauthenticated(http);
         if (await TargetAsync(id, tenant, db, http) is not { } membership) return ApiProblems.NotFound(http, "Kullanıcı bulunamadı.");
-        if (Guard(tenant, membership) is { } refused) return refused;
+        if (CredentialGuard(tenant, membership) is { } refused) return refused;
         if (await SharedAccountAsync(membership, db, http)) return Conflict("USER_IN_OTHER_WORKSPACE", "Bu hesap başka bir çalışma alanına da üye; parolası buradan sıfırlanamaz.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
         var user = await users.FindByIdAsync(membership.UserId.ToString());
@@ -282,7 +282,7 @@ public static class UserManagementEndpoints
     {
         if (Tenant(http) is not { } tenant) return ApiProblems.Unauthenticated(http);
         if (await TargetAsync(id, tenant, db, http) is not { } membership) return ApiProblems.NotFound(http, "Kullanıcı bulunamadı.");
-        if (Guard(tenant, membership) is { } refused) return refused;
+        if (CredentialGuard(tenant, membership) is { } refused) return refused;
         if (await SharedAccountAsync(membership, db, http)) return Conflict("USER_IN_OTHER_WORKSPACE", "Bu hesap başka bir çalışma alanına da üye; iki adımlı doğrulaması buradan sıfırlanamaz.");
         if (await ReauthAsync(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
         var now = time.GetUtcNow();
@@ -337,6 +337,15 @@ public static class UserManagementEndpoints
     {
         if (target.UserId == actor.UserId) return Refused("SELF_CHANGE_REFUSED", "Kendi hesabınızı buradan değiştiremezsiniz; Güvenlik ayarlarını kullanın.");
         if (target.Role == MembershipRole.Owner && !IsOwner(actor)) return Refused("OWNER_PROTECTED", "Sahip hesabını yalnız bir sahip değiştirebilir.");
+        return null;
+    }
+
+    // A password or second-factor reset hands the actor the target's sign-in: an administrator may do it for the roles
+    // below it only, never for another administrator (scan 25 Nov 2026, E-5); an owner may for anyone but themself.
+    internal static IResult? CredentialGuard(TenantContext actor, TenantMembership target)
+    {
+        if (Guard(actor, target) is { } refused) return refused;
+        if (target.Role == MembershipRole.Administrator && !IsOwner(actor)) return Refused("ADMIN_PROTECTED", "Bir yöneticinin parolasını veya iki adımlı doğrulamasını yalnız bir sahip sıfırlayabilir.");
         return null;
     }
 
