@@ -24,11 +24,17 @@ public static class ClaudePricing
         ["claude-haiku-5-5"] = (0.10m, 0.50m, 0.01m, 0.125m),
     };
 
-    // Null when the model's price is unknown or the API reported no usage. Code-execution container time is billed
-    // separately by Anthropic and is not in this figure.
+    // A model missing from the table is priced at the table's dearest rates, so a typed model name can never take a run
+    // out of the daily spend ceiling (AiSpendLimit sums this figure).
+    private static readonly (decimal Input, decimal Output, decimal CacheRead, decimal CacheWrite) UnknownModel =
+        (PerMillion.Values.Max(x => x.Input), PerMillion.Values.Max(x => x.Output), PerMillion.Values.Max(x => x.CacheRead), PerMillion.Values.Max(x => x.CacheWrite));
+
+    // Null only when the API reported no usage. Code-execution container time is billed separately by Anthropic and is
+    // not in this figure.
     public static decimal? CostUsd(string model, ClaudeUsage usage)
     {
-        if (!PerMillion.TryGetValue(model, out var price) || usage.InputTokens is null && usage.OutputTokens is null) return null;
+        if (usage.InputTokens is null && usage.OutputTokens is null) return null;
+        var price = PerMillion.GetValueOrDefault(model, UnknownModel);
         var cost = (usage.InputTokens ?? 0) * price.Input + (usage.OutputTokens ?? 0) * price.Output
             + (usage.CacheReadInputTokens ?? 0) * price.CacheRead + (usage.CacheCreationInputTokens ?? 0) * price.CacheWrite;
         return Math.Round(cost / 1_000_000m, 6);
