@@ -131,7 +131,14 @@ export function OrderReferenceRow({ item, selected, onSelect, onMenuChange, onIn
   const detailOpenButton = <button type="button" className="rr-btn rr-detail-open" aria-haspopup="dialog" onClick={() => setDetailOpen(true)}>Detayları Aç</button>
   const closeDetailThen = (run: () => void) => () => { setDetailOpen(false); setDetailActionsOpen(false); run() }
   const detailPrimaryAction = isCancelledOrder ? null : isCargoTrackingStage ? (shipment?.cargoTrackingNumber ? <Link className="rr-btn rr-primary" to={`/shipments/${shipment.id}`}>Kargo Takip</Link> : null) : isCargoLabelStage && shipment ? <>{enabledLabelFormats.map(format => <button type="button" key={format} className="rr-btn rr-primary" disabled={labelBlockedByInvoice} onClick={closeDetailThen(() => onPrintLabel(format))}><RrIcon name="print" />{format === 'a4' ? 'A4' : 'Sticker'} Etiketi Yazdır</button>)}</> : null
-  const detailActions: Array<{ key: string; label: string; disabled?: boolean; run: () => void }> = isCancelledOrder ? [] : [
+  const invoiceDocumentHref = item.invoiceId ? `/api/v1/invoices/${item.invoiceId}/documents/latest/content` : item.invoiceDocumentUrl
+  // A cancelled order's sheet offers what its desktop invoice menu does: reading only, and the way to cancel the issued
+  // invoice on its detail page; nothing that issues, uploads or sets an invoice status.
+  const detailActions: Array<{ key: string; label: string; disabled?: boolean; run: () => void }> = isCancelledOrder ? (exchangePackage ? [] : [
+    ...(!invoiceNeedsAction && invoiceDocumentHref ? [{ key: 'invoice-view', label: 'Faturayı Gör', run: () => { window.open(invoiceDocumentHref, '_blank', 'noopener') } }] : []),
+    { key: 'invoice-info', label: 'Fatura Bilgileri', run: onInvoiceDetails },
+    ...(!invoiceNeedsAction ? [{ key: 'invoice-cancel', label: 'Fatura İptal Et', disabled: !item.invoiceId, run: () => navigate(`/invoices/${item.invoiceId}`) }] : [])
+  ]) : [
     ...(isShopifyOrder ? [{ key: 'status', label: 'Sipariş Durumunu Değiştir', run: onOrderStatusChange }] : normalizedOrderStatus === 'NEW' && canTakeIntoWork ? [{ key: 'process', label: processing ? 'İşleniyor…' : 'İşleme Al', disabled: processing, run: isHepsiburadaOrder ? onCreatePackage : onProcessOrder }] : []),
     ...(isHepsiburadaOrder && !['SHIPPED', 'UNDELIVERED', 'DELIVERED', 'RETURNED'].includes(normalizedOrderStatus) ? [{ key: 'package', label: 'Paket Oluştur', run: onCreatePackage }] : []),
     ...(canChangeCargo ? [{ key: 'courier', label: 'Başka Kargo Firması İle Gönder', run: onCourierChange }] : []),
@@ -160,7 +167,6 @@ export function OrderReferenceRow({ item, selected, onSelect, onMenuChange, onIn
   const labelPrinted = Boolean(item.labelPrintedAt) || (labelFormat ? printedLabels.has(printedShippingLabelKey(item.id, labelFormat)) : false)
   // The label printed here is the first package's: never offered on an exchange package row.
   const canPrintLabels = isCargoLabelStage && Boolean(shipment) && enabledLabelFormats.length > 0 && !exchangePackage
-  const invoiceDocumentHref = item.invoiceId ? `/api/v1/invoices/${item.invoiceId}/documents/latest/content` : item.invoiceDocumentUrl
   // A cancelled order shows its invoice menu too (see, read, cancel the issued invoice), but nothing that issues an
   // invoice, uploads one or sets its status by hand: the manual upload and status endpoints do not refuse a cancelled order.
   const writeDisabled = (blocked: boolean): [boolean, string] => isCancelledOrder ? [true, cancelledOrderInvoiceWriteNote] : [blocked, invoiceCreationTooltip]

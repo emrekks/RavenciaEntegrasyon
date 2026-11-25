@@ -78,4 +78,22 @@ describe('OrdersPage cancelled order invoice menu', () => {
     expect(shopify['Fatura Durumunu Değiştir'].disabled).toBe(true)
     expect(shopify['Fatura Yükle'].disabled).toBe(true)
   })
+
+  // The phone's detail sheet offers the same reading items and the way to the invoice's cancellation; Fatura Bilgileri
+  // drops its "Fatura Yükle ile ekleyin" hint on a cancelled order.
+  it('gives the phone detail sheet the reading items and no upload hint', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/orders']}><OrdersPage /></MemoryRouter></QueryClientProvider>) })
+    for (let index = 0; index < 20 && !container.textContent?.includes('10000000003'); index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    const row = [...container.querySelectorAll<HTMLTableRowElement>('tbody tr')].find(candidate => candidate.textContent?.includes('10000000002'))!
+    await act(async () => { row.querySelector<HTMLButtonElement>('.rr-detail-open')!.click() })
+    const sheet = document.querySelector<HTMLElement>('.rr-sheet')!
+    await act(async () => { sheet.querySelector<HTMLButtonElement>('.rr-sheet-trigger')!.click() })
+    const items = [...sheet.querySelectorAll<HTMLButtonElement>('.rr-sheet-menu [role="menuitem"]')]
+    expect(items.map(item => item.textContent)).toEqual(['Faturayı Gör', 'Fatura Bilgileri', 'Fatura İptal Et'])
+    expect(items.every(item => !item.disabled)).toBe(true)
+    await act(async () => { items[1].click() })
+    expect(document.body.textContent).toContain('Fatura ve Adres Bilgileri')
+    expect(document.body.textContent).not.toContain('Fatura Yükle ile siparişe ekleyin')
+  })
 })
