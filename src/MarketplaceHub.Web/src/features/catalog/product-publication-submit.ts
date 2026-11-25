@@ -115,7 +115,7 @@ export function refusalLines(name: string, refusals: ReadonlyArray<{ message: st
   const gaps = new Map<string, { values: string[]; cards: Set<string> }>()
   for (const refusal of refusals) {
     const label = missingMapping.exec(refusal.message.trim())?.[1]
-    if (!label) { lines.push(`${name}: gönderilmedi — ${refusal.message.replace(/s+$/u, '')}${refusal.note}`); continue }
+    if (!label) { lines.push(`${name}: gönderilmedi — ${refusal.message.replace(/\s+$/u, '')}${refusal.note}`); continue }
     const at = label.indexOf(': ')
     const attribute = at > 0 ? label.slice(0, at) : label
     const value = at > 0 ? label.slice(at + 2) : ''

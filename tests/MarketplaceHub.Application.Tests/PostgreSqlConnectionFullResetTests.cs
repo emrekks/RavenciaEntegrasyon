@@ -21,6 +21,16 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
         try
         {
             await SeedAsync(seed);
+            // A stock shortfall problem is keyed by its order line: the reset store's closes, another line's stays open.
+            OperationalIssue resetShortfall, otherShortfall;
+            await using (var db = fixture.CreateContext())
+            {
+                var resetLineId = await db.OrderLines.Where(x => x.TenantId == seed.Tenant.Id && x.OrderId == seed.ResetOrder.Id).Select(x => x.Id).SingleAsync();
+                resetShortfall = new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DedupeKey = $"stock-order-consumption:{resetLineId:N}", Code = "STOCK_ORDER_CONSUMPTION_BLOCKED", Summary = "Test", Status = IssueStatus.Open, FirstSeenAt = fixture.Now, LastSeenAt = fixture.Now, OccurrenceCount = 1 };
+                otherShortfall = new() { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, DedupeKey = $"stock-order-consumption:{Guid.CreateVersion7():N}", Code = "STOCK_ORDER_CONSUMPTION_BLOCKED", Summary = "Test", Status = IssueStatus.Open, FirstSeenAt = fixture.Now, LastSeenAt = fixture.Now, OccurrenceCount = 1 };
+                db.OperationalIssues.AddRange(resetShortfall, otherShortfall);
+                await db.SaveChangesAsync();
+            }
             var removedBefore = await CountsAsync(ConnectionDataInventory.Removed, seed.Reset.Id);
             var otherBefore = await CountsAsync(ConnectionDataInventory.Removed, seed.Other.Id);
             var keptBefore = await CountsAsync(ConnectionDataInventory.Kept, seed.Reset.Id);
@@ -69,6 +79,8 @@ public sealed partial class PostgreSqlConnectionFullResetTests(PostgreSqlTenantI
             // Problems about the store are closed; the other store's stay open.
             Assert.Equal(IssueStatus.Resolved, (await verification.OperationalIssues.SingleAsync(x => x.Id == seed.ResetIssue.Id)).Status);
             Assert.Equal(IssueStatus.Open, (await verification.OperationalIssues.SingleAsync(x => x.Id == seed.OtherIssue.Id)).Status);
+            Assert.Equal(IssueStatus.Resolved, (await verification.OperationalIssues.SingleAsync(x => x.Id == resetShortfall.Id)).Status);
+            Assert.Equal(IssueStatus.Open, (await verification.OperationalIssues.SingleAsync(x => x.Id == otherShortfall.Id)).Status);
             // The other store's waiting job was not cancelled.
             Assert.Equal(JobStatus.Pending, (await verification.IntegrationJobs.SingleAsync(x => x.Id == seed.OtherJob.Id)).Status);
             Assert.True(await verification.AuditLogs.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.Action == "CONNECTION_FULL_RESET" && x.TargetId == seed.Reset.Id.ToString("D")));

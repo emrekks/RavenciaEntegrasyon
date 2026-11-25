@@ -31,14 +31,27 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
         if (load.Account is null) return CredentialFailure<RemoteOperationRef>(load);
         if (draft.Variants is { Count: > 0 }) return await CreateVariantProductAsync(load.Account, draft, cancellationToken);
         if (WriteBlocked<RemoteOperationRef>(load.Account, "ürün") is { } blocked) return blocked;
+        return await CreateSingleProductAsync(load.Account, draft, cancellationToken);
+    }
 
-        // The variant-deletion guard on PTT AVM's side: the barcode must not be a product PTT AVM lists with variants.
-        var current = await ReadProductPageAsync(load.Account, null, draft.Barcode, cancellationToken);
+    // A product without variants. The variant-deletion guard on PTT AVM's side: the barcode must not be a product PTT
+    // AVM lists with variants. The variant list is read fresh, as for a family: a list that could not be read leaves
+    // the product looking as one without variants (unknown is not "absent"), and the send would delete them.
+    internal async Task<AdapterResult<RemoteOperationRef>> CreateSingleProductAsync(PttAvmRequestContext account, PttAvmProductPayloadRules.ProductDraft draft, CancellationToken cancellationToken)
+    {
+        var variantList = await VariantListAsync(account, refresh: true, cancellationToken);
+        if (!variantList.IsSuccess && variantList.Error!.Code == VariantListIncompleteCode)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı ({variantList.Error.SafeMessage}); silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
+        if (!variantList.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(variantList.Error!, variantList.RateLimit);
+        var current = await ReadProductPageAsync(account, null, draft.Barcode, cancellationToken);
         if (!current.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(current.Error!, current.RateLimit);
-        if (PttAvmProductPayloadRules.RemoteVariantRisk(draft.Barcode, current.Value!.Items) is { } risk)
+        if ((current.Value!.Issues ?? []).Any(issue => issue.Code == "PTTAVM_VARIANT_LIST_UNAVAILABLE"
+                || issue.Code == "PRODUCT_VARIANT_INVALID" && issue.Identity.StartsWith(draft.Barcode + ":", StringComparison.OrdinalIgnoreCase)))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, PttAvmProductPayloadRules.RemoteVariantUnreadableCode, $"PttAVM'de '{draft.Barcode}' ürününün varyantlarının tamamı okunamadı; silinecek varyant olup olmadığı bilinmediği için istek gönderilmedi.", HttpStatusCode.Conflict);
+        if (PttAvmProductPayloadRules.RemoteVariantRisk(draft.Barcode, current.Value.Items) is { } risk)
             return Failure<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "PTTAVM_VARIANT_DELETION_RISK", risk, HttpStatusCode.Conflict);
 
-        return await SendProductAsync(load.Account, draft, cancellationToken);
+        return await SendProductAsync(account, draft, cancellationToken);
     }
 
     // A model family with its variants. The variant list is read fresh (not from the scan's cache), then the parent

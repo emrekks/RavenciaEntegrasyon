@@ -143,6 +143,9 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         CREATE TEMP TABLE IF NOT EXISTS purge_orders ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_orders;
         INSERT INTO purge_orders SELECT o."Id" FROM sales.orders o WHERE o."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR o."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=o."Id" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
+        CREATE TEMP TABLE IF NOT EXISTS purge_order_lines ("Key" text PRIMARY KEY) ON COMMIT DROP;
+        TRUNCATE purge_order_lines;
+        INSERT INTO purge_order_lines SELECT replace(l."Id"::text, '-', '') FROM sales.order_lines l JOIN purge_orders o ON o."Id"=l."OrderId" WHERE l."TenantId"={{tenantId}};
         CREATE TEMP TABLE IF NOT EXISTS carry_order_lines ("SourceId" text PRIMARY KEY, "CarryKey" text NOT NULL) ON COMMIT DROP;
         TRUNCATE carry_order_lines;
         INSERT INTO carry_order_lines SELECT l."Id"::text, {{OrderInventoryStockPolicy.ResetCarryPrefix}} || o."ConnectionId"::text || ':' || o."ExternalOrderId" || ':' || l."ExternalLineId" FROM sales.order_lines l JOIN sales.orders o ON o."TenantId"=l."TenantId" AND o."Id"=l."OrderId" JOIN purge_orders p ON p."Id"=o."Id" WHERE {{carryStock}} AND l."TenantId"={{tenantId}};

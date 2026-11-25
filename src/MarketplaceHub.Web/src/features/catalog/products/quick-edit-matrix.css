@@ -70,7 +70,7 @@
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-apply { flex: 1 1 100%; }
 }
 /* The heading of the value in the boxes, above the size columns; the rows fade in (150 ms) when the value changes. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band { min-height: 32px; color: var(--rr-text); background: var(--rv-color-table-head); font-size: 13px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band { min-height: 32px; color: var(--rv-color-ink); background: var(--rv-color-table-head); font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band > b { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cr-band + .rr-cr-hrow { min-height: 32px; }
 @keyframes rr-cr-fade { from { opacity: 0; } to { opacity: 1; } }

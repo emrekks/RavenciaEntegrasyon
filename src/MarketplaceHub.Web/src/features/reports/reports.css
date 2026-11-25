@@ -745,7 +745,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-hero-bar i { position: absolute; inset: 0 auto 0 0; background: var(--reports-tone, var(--rv-color-muted)); border-radius: 2px; transition: width 700ms ease; }
 .app-shell.stitch-shell main .reports-page .reports-hero-bar.is-warn i { background: var(--rv-color-warning); }
 .app-shell.stitch-shell main .reports-page .reports-hero-bar.is-good i { background: var(--rv-color-accent); }
-.app-shell.stitch-shell main .reports-page /* A card without a rate keeps the bar's place empty, so the rows of cards side by side start level. */
+/* A card without a rate keeps the bar's place empty, so the rows of cards side by side start level. */
 .app-shell.stitch-shell main .reports-page .reports-hero-bar.is-empty { visibility: hidden; }
 .app-shell.stitch-shell main .reports-page .reports-hero-bar b { position: absolute; top: -3px; width: 2px; height: 10px; margin-left: -1px; background: var(--rv-color-ink); }
 /* The top block's explanation opens on the figure (pointer or focus); a row's on the whole row. */

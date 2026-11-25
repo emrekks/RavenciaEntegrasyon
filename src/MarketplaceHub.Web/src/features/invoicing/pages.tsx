@@ -205,7 +205,7 @@ function invoiceDeliveryTone(status: string | null | undefined): 'good' | 'warn'
   if (status) return 'warn'
   return 'neutral'
 }
-function normalizeAddressText(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/s+/g, ' ').trim() }
+function normalizeAddressText(value: string) { return value.toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ').trim() }
 function addressLines(value: string | null | undefined) {
   if (!value) return []
   try {

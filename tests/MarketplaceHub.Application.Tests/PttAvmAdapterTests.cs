@@ -1344,6 +1344,24 @@ public sealed class PttAvmAdapterTests
         Assert.Equal("NOT_FOUND", PttAvmProductPayloadRules.PublicationStatus("yeni-barkod", page.Items).Status);
     }
 
+    // A product sent without variants deletes the variants PTT AVM holds under it: with the variant list unread, whether
+    // it has any is unknown, and no write may leave the panel.
+    [Fact]
+    public async Task AProductWithoutVariantsIsNotSentWhileTheVariantListCannotBeRead()
+    {
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "UpdateProductsV3" => throw new InvalidOperationException("No write may leave the panel."),
+            _ => Respond(HttpStatusCode.InternalServerError, SecurityFault)
+        });
+
+        var result = await Client(handler, globalWrites: true).CreateSingleProductAsync(Account(status: "ACTIVE", connectionWrites: true), ProductDraft() with { Barcode = "FK4530", ProductCode = "FK4530" }, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.DoesNotContain(handler.Requests, request => request.Headers.TryGetValue("SOAPAction", out var action) && action.Contains("UpdateProductsV3", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void NoProductIsSentWhileExternalWritesAreOff() =>
         Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "ACTIVE", connectionWrites: false), "ürün")!.Error!.Code);

@@ -61,7 +61,7 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
                 ["attributes"] = attributes.Where(pair => !HepsiburadaProductPublicationComposer.ReservedAttributeKeys.Contains(pair.Key) && !pair.Key.StartsWith("Image", StringComparison.Ordinal))
                     .ToDictionary(pair => pair.Key, pair => (object?)pair.Value.Clone(), StringComparer.Ordinal),
                 ["kdv"] = String(attributes, "tax_vat_rate"),
-                ["warrantyPeriod"] = String(attributes, "GarantiSuresi"),
+                ["warrantyPeriod"] = Scalar(attributes, "GarantiSuresi"),
                 ["desi"] = String(attributes, "kg")
             };
             for (var imageIndex = 1; imageIndex <= 10; imageIndex++)
@@ -114,6 +114,10 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
 
     private static string? String(IReadOnlyDictionary<string, JsonElement> attributes, string key) =>
         attributes.TryGetValue(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    // The publication writes the warranty as a number (months); a text value is read as it is.
+    private static string? Scalar(IReadOnlyDictionary<string, JsonElement> attributes, string key) =>
+        attributes.TryGetValue(key, out var value) ? value.ValueKind switch { JsonValueKind.String => value.GetString(), JsonValueKind.Number => value.GetRawText(), _ => null } : null;
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }

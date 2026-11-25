@@ -3,7 +3,7 @@
 .rr-layer.rr-layer .md-lead { margin: 0 0 12px; }
 .rr-layer.rr-layer .md-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .rr-layer.rr-layer .md-tabs button { display: inline-flex; align-items: center; gap: 8px; min-height: 0; height: 36px; padding: 0 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; }
-.rr-layer.rr-layer .md-tabs button.md-on { color: var(--rr-text); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); font-weight: 600; }
+.rr-layer.rr-layer .md-tabs button.md-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); font-weight: 600; }
 .rr-layer.rr-layer .md-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
 .rr-layer.rr-layer .md-filters .rr-search { flex: 1 1 260px; max-width: 420px; }
 .rr-layer.rr-layer .md-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 12px; }
