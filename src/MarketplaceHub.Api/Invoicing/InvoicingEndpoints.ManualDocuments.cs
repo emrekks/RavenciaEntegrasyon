@@ -26,6 +26,7 @@ public static partial class InvoicingEndpoints
         if (!Guid.TryParse(form["orderId"], out var orderId)) return Problem(http, new("INVOICE_ORDER_REQUIRED", "Sipariş kimliği gereklidir.", 400));
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == orderId, http.RequestAborted);
         if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş bulunamadı.", 404));
+        if (!DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return Problem(http, OrderCancelledError);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId, http.RequestAborted);
         if (connection is null || !ManualInvoiceDeliveryPolicy.SupportsManualDocument(connection.PlatformCode))
             return Problem(http, new("INVOICE_MARKETPLACE_UNSUPPORTED", "Manuel fatura belgesi yalnız Trendyol, Hepsiburada, Shopify, N11, Pazarama veya PttAVM siparişlerine eklenebilir.", 422));

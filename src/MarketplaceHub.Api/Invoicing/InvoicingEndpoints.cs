@@ -168,7 +168,7 @@ public static partial class InvoicingEndpoints
         return endpoints;
     }
 
-    private sealed record ShopifyInvoiceStatusCommand(string Status);
+    internal sealed record ShopifyInvoiceStatusCommand(string Status);
     private sealed record LinkRevocationRequest(bool Confirmed);
 
     // Confirms the workspace selection. Queuing the batch is bounded by the server's lifetime only: not by the

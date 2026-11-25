@@ -107,6 +107,7 @@ public static class ApiErrorCatalog
         new("MFA_NOT_ENABLED", 409, "İki adımlı doğrulama açık değil."),
         new("N11_CONNECTION_INACTIVE", 409, "Kargo şablonları yalnız aktif veya doğrulanmış N11 bağlantısından okunur."),
         new("ONE_TIME_INVOICE_ORDER_NOT_AUTHORIZED", 403, "Tek seferlik fatura iletimi yalnızca yetkilendirilmiş test siparişleri için yetkilendirildi."),
+        new("ORDER_CANCELLED_INVOICE_LOCKED", 409, "Sipariş iptal edildi; bu siparişe fatura yüklenmez, pazaryerine iletilmez ve fatura durumu elle değiştirilmez. Kesilmiş fatura Fatura İptal Et ile iptal edilir."),
         new("ORDER_CONNECTION_REQUIRED", 422, "Siparişin aktif platform bağlantısı bulunamadı."),
         new("ORDER_FINANCE_UNSUPPORTED", 422, "Finans bilgisi yalnız Pazarama siparişlerinde okunur."),
         new("ORDER_REFRESH_FAILED", 502, "Sipariş pazaryerinden yenilenemedi."),
