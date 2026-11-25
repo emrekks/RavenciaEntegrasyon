@@ -25,6 +25,8 @@ done
 assert_contains "$sql" "ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO marketplacehub_app" "tables of migrations still run as marketplacehub are granted too"
 assert_contains "$sql" "ALTER DEFAULT PRIVILEGES FOR ROLE marketplacehub GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO marketplacehub_app" "sequences of migrations still run as marketplacehub are granted too"
 assert_contains "$sql" "ALTER ROLE marketplacehub_app SET idle_in_transaction_session_timeout = '5min'" "an idle open transaction of the app is cut after 5 minutes"
+assert_contains "$sql" "REVOKE UPDATE ON ops.audit_logs FROM marketplacehub_app;" "the app never rewrites an audit row"
+assert_contains "$sql" 'REVOKE UPDATE, DELETE ON public."__EFMigrationsHistory" FROM marketplacehub_app;' "the app never changes the migration history"
 assert_eq "1" "$(grep -c '^BEGIN;$' <<<"$sql")" "one transaction"
 assert_eq "1" "$(grep -c '^COMMIT;$' <<<"$sql")" "committed once at the end"
 
