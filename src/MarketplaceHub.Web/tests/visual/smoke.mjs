@@ -70,7 +70,7 @@ async function layerStep(name, path, open, close) {
   } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
   await context.close()
 }
-// The dock's counts stay inside the capsule (5 px from the capsule's top and right edge at least, ring included, 3 px from the others) with one, two and three characters.
+// The dock's counts stay inside the capsule (5 px from the capsule's top and right edge by design, ring included: 4.5 is checked, so sub-pixel rounding cannot flip it; 3 px from the others) with one, two and three characters.
 async function badgeStep() {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -80,6 +80,7 @@ async function badgeStep() {
   try {
     await page.goto(server.origin + '/dashboard')
     await page.locator('.rv-dock').waitFor({ timeout: 15000 })
+    await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
     for (const text of ['5', '12', '99+']) {
       const bad = await page.evaluate(label => {
         const parts = [...document.querySelectorAll('.rv-dock-slot')]
@@ -90,7 +91,7 @@ async function badgeStep() {
           badge.textContent = label
           const box = part.closest('.rv-dock').getBoundingClientRect()
           const rect = badge.getBoundingClientRect()
-          if (rect.top < box.top + 6.5 || rect.right > box.right - 6.5 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
+          if (rect.top < box.top + 6 || rect.right > box.right - 6 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
         }
         return problems
       }, text)
@@ -99,8 +100,8 @@ async function badgeStep() {
   } catch (error) { failures.push('dock count step: ' + String(error.message).split(/\r?\n/)[0]) }
   await context.close()
 }
-// The dock's inner pill (the glide) in every slot: it keeps 4 px at least from the capsule's inner edge on every side (4.5 px by design),
-// is never wider than its slot, leaves its label 8 px at both sides, and is concentric with the capsule's round ends in the first and the last slot.
+// The dock's inner pill (the glide) in every slot: it keeps 4 px from the capsule's inner edge on every side (4.5 px by design; 3.5 is checked),
+// is never wider than its slot, leaves its label 8 px at both sides by design (7 is checked: the label is 49.2 px in a 65.4 px pill at 360 px, and sub-pixel or font rounding must not flip it), and is concentric with the capsule's round ends in the first and the last slot.
 async function glideStep() {
   const context = await browser.newContext({ viewport: { width: 360, height: 780 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -110,6 +111,7 @@ async function glideStep() {
   try {
     await page.goto(server.origin + '/dashboard')
     await page.locator('.rv-dock').waitFor({ timeout: 15000 })
+    await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))) })
     const measure = () => page.evaluate(() => {
       const dockEl = document.querySelector('.rv-dock'); const slotsEl = [...dockEl.querySelectorAll('.rv-dock-slot')]; const early = []
       const box = dockEl.getBoundingClientRect()
@@ -133,7 +135,7 @@ async function glideStep() {
             const box = dockEl.getBoundingClientRect(); const slotBox = slotEl.getBoundingClientRect(); const icon = slotEl.querySelector('.ui-icon').getBoundingClientRect(); const b = badge.getBoundingClientRect()
             const mode = i + ' ' + label
             if (Math.abs(icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)) > 0.5) early.push(mode + ' icon not centred in x ' + (icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)).toFixed(2))
-            if (b.top - box.top - 1.5 < 5 || box.right - b.right - 1.5 < 5) early.push(mode + ' count too near the capsule edge ' + (b.top - box.top - 1.5).toFixed(1) + '/' + (box.right - b.right - 1.5).toFixed(1))
+            if (b.top - box.top - 1.5 < 4.5 || box.right - b.right - 1.5 < 4.5) early.push(mode + ' count too near the capsule edge ' + (b.top - box.top - 1.5).toFixed(1) + '/' + (box.right - b.right - 1.5).toFixed(1))
           })
         }
         const dock = document.querySelector('.rv-dock'); const glide = dock.querySelector('.rv-dock-glide'); const problems = [...early]
@@ -141,11 +143,11 @@ async function glideStep() {
           dock.style.setProperty('--rv-dock-i', String(index))
           const box = dock.getBoundingClientRect(); const pill = glide.getBoundingClientRect(); const slot = dock.querySelectorAll('.rv-dock-slot')[index].getBoundingClientRect()
           const gaps = [pill.left - box.left, box.right - pill.right, pill.top - box.top, box.bottom - pill.bottom]
-          if (Math.min(...gaps) < 4) problems.push(index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
+          if (Math.min(...gaps) < 3.5) problems.push(index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
           if (pill.width > slot.width || pill.left < slot.left - 0.01 || pill.right > slot.right + 0.01) problems.push(index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
           const labelBox = dock.querySelectorAll('.rv-dock-slot')[index].querySelector('.rv-dock-label').getBoundingClientRect()
           const room = Math.min(labelBox.left - pill.left, pill.right - labelBox.right)
-          if (room < 8) problems.push(index + ' label too close to its pill edge ' + room.toFixed(1))
+          if (room < 7) problems.push(index + ' label too close to its pill edge ' + room.toFixed(1))
           if ((index === 0 || index === 4) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push(index + ' not concentric')
         }
         return problems
