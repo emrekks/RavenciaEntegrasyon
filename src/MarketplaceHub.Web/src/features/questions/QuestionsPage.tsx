@@ -14,7 +14,7 @@ import { Button, EmptyState, LoadingState, Tabs, UiIcon } from '../../shared/com
 import { ListEmptyState } from '../../shared/components/EmptyState'
 import { platformLogoClass, platformLogoSource } from '../../shared/platform-logos'
 import { productImageFallbackUrls } from '../marketplace/product-image-lookups'
-import { questionDeadline } from './question-time'
+import { questionDeadline, questionDeadlineLabel } from './question-time'
 import { visibleQuestionConversation, type QuestionConversation } from './question-conversation'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { Modal } from '../../shared/components'
@@ -414,9 +414,9 @@ export function QuestionsPage() {
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>
               <span className="qi-item-logo"><img className={platformLogoClass(row.platformCode)} src={platformLogoSource(row.platformCode) ?? undefined} alt={displayPlatform(row.platformCode)} /></span>
               <span className="qi-item-top"><b>{row.customerName || 'Müşteri'}</b><span>{row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span></span>
-              <time dateTime={row.createdAt ?? undefined}>{formatDate(row.createdAt).split(' · ')[1] ?? ''}</time>
+              <time dateTime={row.createdAt ?? undefined}>{formatShortDate(row.createdAt, new Date(now))}</time>
               <span className="qi-item-text">{row.questionText}</span>
-              <span className="qi-item-meta">{deadline ? <span className={`qi-deadline${deadline.urgent ? ' is-urgent' : ''}`}><UiIcon name="clock" size={13} />{deadline.text === 'Süre doldu' ? 'Süre doldu' : `${deadline.text} kaldı`}</span> : <span className="qi-item-state"><StateGlyph state={state.glyph} />{state.label}</span>}{row.kind === 'ORDER' && row.externalOrderNumber && <span>Sipariş #{row.externalOrderNumber}</span>}{(answerDrafts[row.id] ?? '').trim() && <span className="qi-draft">Taslak</span>}</span>
+              <span className="qi-item-meta">{deadline ? <span className={`qi-deadline${deadline.urgent ? ' is-urgent' : ''}`}><UiIcon name="clock" size={13} />{questionDeadlineLabel(deadline)}</span> : <span className="qi-item-state"><StateGlyph state={state.glyph} />{state.label}</span>}{row.kind === 'ORDER' && row.externalOrderNumber && <span>Sipariş #{row.externalOrderNumber}</span>}{(answerDrafts[row.id] ?? '').trim() && <span className="qi-draft">Taslak</span>}</span>
             </button>
           })}
         </div>

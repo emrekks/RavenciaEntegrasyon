@@ -29,7 +29,8 @@ export function GoogleDriveCallbackPage() {
           .then(() => done('success', `Google Drive bağlandı${account}. İlk yedek gönderiliyor; durum burada güncellenir.`))
           .catch(() => { clearFirstRun(); done('success', `Google Drive bağlandı${account}. İlk yedek başlatılamadı; “Şimdi Gönder”e basın.`) })
       })
-      .catch((reason: unknown) => done('error', reason instanceof Error ? reason.message : 'Google Drive bağlanamadı.'))
+      // A refused or failed connection starts no first copy: the flag goes, so a later plain connect does not send one.
+      .catch((reason: unknown) => { clearFirstRun(); done('error', reason instanceof Error ? reason.message : 'Google Drive bağlanamadı.') })
   }, [client, location.search, navigate])
   return <section className="content"><LoadingState>Google Drive bağlanıyor…</LoadingState></section>
 }

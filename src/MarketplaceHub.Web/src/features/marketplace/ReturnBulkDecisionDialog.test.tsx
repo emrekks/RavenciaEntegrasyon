@@ -20,7 +20,7 @@ vi.mock('../../shared/api', async importOriginal => ({
   })
 }))
 
-import { ReturnBulkDecisionDialog, type BulkDecisionItem } from './ReturnBulkDecisionDialog'
+import { bulkDecisionTitle, ReturnBulkDecisionDialog, type BulkDecisionItem } from './ReturnBulkDecisionDialog'
 
 const line = (id: string, title: string, quantity: number) => ({ id, title, imageUrl: null, quantity, sku: `SKU-${id}`, barcode: null, color: null, size: null, modelCode: null, reason: null })
 const items: BulkDecisionItem[] = [
@@ -63,6 +63,11 @@ describe('bulk return approval dialog', () => {
     // One of two refused is a failure to read, not a partial success (owner, 7 Nov 2026).
     expect(kind).toBe('error')
     expect(message).toContain('Onaylanamayan sipariş: #200. Neden: Pazar yeri yanıt vermedi.')
+    // One done and one refused is titled Kısmen Tamamlandı, still red (scan D-11).
+    const counts = onDone.mock.calls[0]![4]
+    expect(counts).toEqual({ done: 1, failed: 1 })
+    expect(bulkDecisionTitle('APPROVE', kind, counts)).toBe('Toplu İade Kabulü Kısmen Tamamlandı')
+    expect(bulkDecisionTitle('APPROVE', 'error', { done: 0, failed: 2 })).toBe('Toplu İade Kabulü İletilemedi')
     expect(Array.from(document.querySelectorAll('button')).some(button => button.textContent === 'Kapat')).toBe(false)
   })
 

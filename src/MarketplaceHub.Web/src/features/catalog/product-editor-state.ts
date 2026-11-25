@@ -57,6 +57,9 @@ export function editorOpeningStock(stock: number | string | null | undefined) {
 // as it is), together with the cost the row was loaded with (null: it was empty). The server refuses the save when
 // the stored cost is no longer that one, so a cost set meanwhile elsewhere (ürün içe aktarma) is never overwritten unseen.
 export function editorVariantCostUpdate(row: { costPrice: number | null; loadedCostPrice?: number | null }): { costPrice: number | null; loadedCostPrice?: number | null } {
+  // A cost emptied in the editor clears the stored one: 0 is what the server stores as no cost (PositiveOrNull), under the
+  // same loaded-cost check (scan D-11). An empty cost that was empty stays unsent.
+  if (row.costPrice == null && row.loadedCostPrice != null) return { costPrice: 0, loadedCostPrice: row.loadedCostPrice }
   if (row.costPrice == null || row.costPrice === row.loadedCostPrice) return { costPrice: null }
   return { costPrice: row.costPrice, loadedCostPrice: row.loadedCostPrice ?? null }
 }

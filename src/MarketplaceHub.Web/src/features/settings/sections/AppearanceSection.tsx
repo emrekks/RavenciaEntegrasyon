@@ -163,11 +163,10 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
     }
     const id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const profile = { id, name: name.slice(0, 60), palette: { ...palette }, builtIn: false }
-    const nextDraft = { ...appearance.draft, colorThemes: [...appearance.draft.colorThemes, profile] }
     setBusy(true)
     setNotice(null)
     try {
-      await appearance.save(nextDraft)
+      await appearance.saveThemeChange(value => ({ ...value, colorThemes: [...value.colorThemes, profile] }))
       setSelectedThemeId(id)
       setNewThemeName('')
       succeed(`“${profile.name}” renk teması kaydedildi.`)
@@ -181,16 +180,16 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
   async function deleteColorTheme() {
     const theme = themeToDelete
     if (!theme || theme.builtIn) return
-    const nextThemes = appearance.draft.colorThemes.filter(item => item.id !== theme.id)
-    const nextDraft = { ...appearance.draft, colorThemes: nextThemes }
-    if (selectedThemeId === theme.id) {
-      setSelectedThemeId(defaultAppearanceColorTheme.id)
-      nextDraft.colors = { ...nextDraft.colors, dark: { ...defaultAppearanceColorTheme.palette } }
-    }
+    const wasSelected = selectedThemeId === theme.id
+    if (wasSelected) setSelectedThemeId(defaultAppearanceColorTheme.id)
     setBusy(true)
     setNotice(null)
     try {
-      await appearance.save(nextDraft)
+      await appearance.saveThemeChange(value => ({
+        ...value,
+        colorThemes: value.colorThemes.filter(item => item.id !== theme.id),
+        ...(wasSelected ? { colors: { ...value.colors, dark: { ...defaultAppearanceColorTheme.palette } } } : {})
+      }))
       succeed(`“${theme.name}” renk teması silindi.`)
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : 'Renk teması silinemedi.')

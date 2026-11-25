@@ -20,3 +20,14 @@ export function overdueShipmentDays(status: string, dueAtValue: string | null, n
 
   return Math.max(0, Math.floor((now - dueAt) / 86_400_000))
 }
+
+// The hours an order is past its ship-by time, with their fraction (0 when not late, or exempt): an order late by less than a day is
+// late too, not "Süre doldu" (scan D-11).
+export function overdueShipmentHours(status: string, dueAtValue: string | null, now = Date.now()) {
+  if (shipmentDeadlineExemptStatuses.has(status.toUpperCase()) || !dueAtValue) return 0
+
+  const dueAt = new Date(dueAtValue).getTime()
+  if (!Number.isFinite(dueAt) || dueAt < Date.UTC(2000, 0, 1) || now <= dueAt) return 0
+
+  return (now - dueAt) / 3_600_000
+}

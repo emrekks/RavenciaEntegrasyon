@@ -4,6 +4,7 @@
 // (at most 500 records each), so one model is never split over two requests.
 import type { ChunkRunResult } from './bulk-status-run'
 import { parseTrCount, parseTrMeasure } from '../../shared/tr-number'
+import { hasAtMostTwoDecimals } from './quick-price-edit'
 import { requiredFieldsSkipNotice, type RequiredFieldsSkipped } from './required-fields-skip'
 import { TURKISH_VAT_RATES } from './product-editor-state'
 import { isProductDeliveryDays, maxProductDeliveryDays } from './product-editor/product-delivery-days'
@@ -58,7 +59,7 @@ export function bulkFieldIssue(field: BulkFieldKey, value: string): string | nul
     case 'categoryId': return text ? null : 'Kategori seçin.'
     case 'desi': {
       const desi = decimalNumber(text)
-      return desi != null && desi > 0 && desi <= bulkMaxDesi && Math.round(desi * 100) === desi * 100 ? null : 'Desi sıfırdan büyük ve en fazla 9.999 olmalıdır (en çok iki ondalık, ör. 0,5).'
+      return desi != null && desi > 0 && desi <= bulkMaxDesi && hasAtMostTwoDecimals(desi) ? null : 'Desi sıfırdan büyük ve en fazla 9.999 olmalıdır (en çok iki ondalık, ör. 0,5).'
     }
     case 'warrantyMonths': {
       const months = wholeNumber(text)

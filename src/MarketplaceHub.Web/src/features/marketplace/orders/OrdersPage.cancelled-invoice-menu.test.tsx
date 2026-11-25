@@ -31,6 +31,7 @@ vi.mock('../../../shared/api', async importOriginal => {
 })
 
 import { OrdersPage } from './OrdersPage'
+import { invoiceInfoUploadHint } from './orders-page/OrderInvoiceModals'
 
 let container: HTMLDivElement
 let root: Root
@@ -95,5 +96,11 @@ describe('OrdersPage cancelled order invoice menu', () => {
     await act(async () => { items[1].click() })
     expect(document.body.textContent).toContain('Fatura ve Adres Bilgileri')
     expect(document.body.textContent).not.toContain('Fatura Yükle ile siparişe ekleyin')
+  })
+
+  // Fatura Yükle stores a PDF only; the hint of an order still to invoice names no picture format (scan D-11).
+  it('names PDF as the only file Fatura Yükle takes', () => {
+    expect(invoiceInfoUploadHint).toContain('Yalnız PDF')
+    expect(invoiceInfoUploadHint).not.toMatch(/JPE?G|PNG/u)
   })
 })

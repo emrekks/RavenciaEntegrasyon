@@ -73,3 +73,26 @@ export async function runMarketplaceResets(connections: BulkResetConnection[], d
   }
   return true
 }
+
+// The server's refusals of the password or the authenticator code on a reset (AuthEndpoints.ReauthenticateForResetAsync).
+const reauthRefusalCodes = new Set(['REAUTHENTICATION_REQUIRED', 'REAUTHENTICATION_FAILED', 'SECOND_FACTOR_FAILED'])
+export function isReauthRefusal(reason: unknown) {
+  const code = (reason as { code?: unknown } | null)?.code
+  return reason instanceof Error && typeof code === 'string' && reauthRefusalCodes.has(code)
+}
+
+/**
+ * What a run that stopped part-way did and did not reset, in one notice. An authenticator code works once, so when a
+ * later step of the run is refused for it the person is asked for a fresh code; pressing the button again resets only
+ * what is left (the reset ones are taken off the choice).
+ */
+export function partialResetMessage({ reset, notReset, panelLeft, reason }: { reset: string[]; notReset: string[]; panelLeft: boolean; reason: unknown }) {
+  const list = (names: string[]) => names.join(', ')
+  const left = [...(notReset.length ? [`${list(notReset)} pazaryeri ${notReset.length > 1 ? 'bağlantıları' : 'bağlantısı'}`] : []), ...(panelLeft ? ['seçilen panel verileri'] : [])]
+  const done = reset.length ? `${list(reset)} sıfırlandı. ` : ''
+  const leftText = left.join(' ve ')
+  const notDone = left.length ? `${leftText.charAt(0).toLocaleUpperCase('tr-TR')}${leftText.slice(1)} sıfırlanmadı` : ''
+  if (isReauthRefusal(reason)) return `${done}${notDone || 'Kalan adım başlatılamadı'}: doğrulama kabul edilmedi. Doğrulama kodu bir kez kullanılabilir; yeni kodu girip Sıfırla'ya yeniden basın, yalnız kalanlar sıfırlanır.`
+  const why = reason instanceof Error && reason.message ? reason.message : 'Sıfırlama tamamlanamadı.'
+  return `${done}${notDone ? `${notDone}: ` : ''}${why}`
+}

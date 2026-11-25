@@ -72,12 +72,14 @@ describe('product editor state', () => {
     ])
   })
 
-  it('sends a changed cost with the cost it was loaded with, and no cost for an untouched or cleared row', () => {
+  it('sends a changed or cleared cost with the cost it was loaded with, and no cost for an untouched row', () => {
     // The server compares loadedCostPrice with the stored cost and refuses a save over a cost set meanwhile.
     expect(editorVariantCostUpdate({ costPrice: 45, loadedCostPrice: 40 })).toEqual({ costPrice: 45, loadedCostPrice: 40 })
     expect(editorVariantCostUpdate({ costPrice: 30, loadedCostPrice: null })).toEqual({ costPrice: 30, loadedCostPrice: null })
     expect(editorVariantCostUpdate({ costPrice: 40, loadedCostPrice: 40 })).toEqual({ costPrice: null })
-    expect(editorVariantCostUpdate({ costPrice: null, loadedCostPrice: 40 })).toEqual({ costPrice: null })
+    // An emptied cost clears the stored one (0: no cost on the server), checked against the loaded cost.
+    expect(editorVariantCostUpdate({ costPrice: null, loadedCostPrice: 40 })).toEqual({ costPrice: 0, loadedCostPrice: 40 })
+    expect(editorVariantCostUpdate({ costPrice: null, loadedCostPrice: null })).toEqual({ costPrice: null })
     expect(JSON.parse(JSON.stringify(editorVariantCostUpdate({ costPrice: 12.5, loadedCostPrice: null })))).toEqual({ costPrice: 12.5, loadedCostPrice: null })
   })
 

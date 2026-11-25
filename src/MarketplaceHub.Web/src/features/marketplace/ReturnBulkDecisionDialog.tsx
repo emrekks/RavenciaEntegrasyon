@@ -60,7 +60,17 @@ type Props = {
   mode: 'APPROVE' | 'REJECT'
   items: BulkDecisionItem[]
   onClose: () => void
-  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>, target?: NotificationTarget | null) => void
+  onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>, target?: NotificationTarget | null, counts?: BulkDecisionCounts) => void
+}
+
+export type BulkDecisionCounts = { done: number; failed: number }
+
+// The notification title of a bulk decision. Some done and some refused reads "Kısmen Tamamlandı" (scan D-11), though
+// the notice stays red: one refused return is a failure to read (owner, 7 Nov 2026).
+export function bulkDecisionTitle(mode: 'APPROVE' | 'REJECT', kind: 'success' | 'info' | 'error', counts?: BulkDecisionCounts) {
+  const what = `Toplu İade ${mode === 'APPROVE' ? 'Kabulü' : 'Reddi'}`
+  if (counts && counts.done > 0 && counts.failed > 0) return `${what} Kısmen Tamamlandı`
+  return `${what} ${kind === 'success' ? 'İletildi' : kind === 'error' ? 'İletilemedi' : 'Kısmen Tamamlandı'}`
 }
 
 // Sends one decision per selected return, one after another. Every return keeps its own idempotency
@@ -168,7 +178,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
         }),
         ...(approving && stockTotal > 0 ? [{ label: 'Stok', value: `+${stocked.toLocaleString('tr-TR')} / ${stockTotal.toLocaleString('tr-TR')} adet stoğa eklendi`, tone: stocked < stockTotal ? 'error' as const : 'success' as const }] : []),
         ...(!approving ? [{ label: 'Ret Nedeni', value: usableReasons.find(reason => reason.id === reasonId)?.name ?? reasonId }] : [])
-      ], bulkTarget(results))
+      ], bulkTarget(results), { done: okCount, failed: failCount })
     if (approving) onClose()
   }
 

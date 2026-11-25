@@ -20,7 +20,7 @@ vi.mock('../../shared/api', async importOriginal => {
   return { ...original, hubApi }
 })
 
-import { useAppearanceSettings } from './appearance-settings'
+import { defaultAppearanceColorTheme, useAppearanceSettings } from './appearance-settings'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -104,5 +104,18 @@ describe('useAppearanceSettings draft', () => {
     await settle()
     expect(server.settings.fontFamily).toBe('segoe')
     expect(hook.draft.fontFamily).toBe('segoe')
+  })
+})
+
+describe('saving a colour theme', () => {
+  it('writes the theme only and keeps an unapplied font as an unsaved preview', async () => {
+    act(() => hook.setDraft({ ...hook.draft, fontFamily: 'segoe' }))
+    const profile = { id: 'custom-1', name: 'Örnek Tema', palette: { ...defaultAppearanceColorTheme.palette }, builtIn: false }
+    await act(async () => { await hook.saveThemeChange(value => ({ ...value, colorThemes: [...value.colorThemes, profile] })) })
+    await settle()
+    expect(server.settings.fontFamily).toBe('inter')
+    expect((server.settings.colorThemes as { id: string }[]).map(theme => theme.id)).toContain('custom-1')
+    expect(hook.draft.fontFamily).toBe('segoe')
+    expect(hook.draft.colorThemes.map(theme => theme.id)).toContain('custom-1')
   })
 })

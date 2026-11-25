@@ -63,4 +63,26 @@ describe('MarketplaceCodesDialog save', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['product', 'p-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['products'] })
   })
+
+  it('stays open on a click outside while a typed code is not saved', async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const onClose = vi.fn()
+    root = createRoot(container)
+    await act(async () => { root.render(<QueryClientProvider client={client}><MarketplaceCodesDialog productId="p-1" rows={[{ variantId: 'v-1', label: 'KZK-S' }]} onClose={onClose} /></QueryClientProvider>) })
+    await settle()
+    const backdrop = document.body.querySelector<HTMLElement>('.marketplace-codes-backdrop')!
+    const input = document.body.querySelector<HTMLInputElement>('input.marketplace-code-input')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'HBCV1')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => { backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    expect(onClose).not.toHaveBeenCalled()
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => { backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConnectionFullResetView } from '../marketplace/connection-data-reset'
-import { marketplaceResetCount, marketplaceResetTotal, progressText, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
+import { isReauthRefusal, marketplaceResetCount, marketplaceResetTotal, partialResetMessage, progressText, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
 
 const view = (status: string | null, percent: number | null = null, label: string | null = null, jobId = 'j1'): ConnectionFullResetView =>
   ({ items: [], keptProducts: 0, job: status ? { jobId, status, progressLabel: label, progressPercent: percent, createdAt: '2026-11-12T10:00:00Z' } : null })
@@ -61,5 +61,21 @@ describe('marketplace bulk reset', () => {
     })
     expect(ok).toBe(false)
     expect(progress.a).toEqual({ state: 'failed', message: 'Kayıt sürümü değişti.' })
+  })
+})
+
+describe('a reset run that stopped part-way', () => {
+  it('names what was reset and what was not, and asks for a fresh code after a refused one', async () => {
+    const { ApiRequestError } = await import('../../shared/api')
+    const refused = new ApiRequestError('İkinci doğrulama kodu kabul edilmedi.', 401, 'SECOND_FACTOR_FAILED')
+    expect(isReauthRefusal(refused)).toBe(true)
+    expect(isReauthRefusal(new ApiRequestError('Sunucu hatası.', 500, 'INTERNAL'))).toBe(false)
+    const message = partialResetMessage({ reset: ['Trendyol'], notReset: ['N11', 'Pazarama'], panelLeft: true, reason: refused })
+    expect(message).toBe("Trendyol sıfırlandı. N11, Pazarama pazaryeri bağlantıları ve seçilen panel verileri sıfırlanmadı: doğrulama kabul edilmedi. Doğrulama kodu bir kez kullanılabilir; yeni kodu girip Sıfırla'ya yeniden basın, yalnız kalanlar sıfırlanır.")
+  })
+
+  it('says the catalog cleanup was not run after the marketplaces, with the server reason', () => {
+    expect(partialResetMessage({ reset: ['Trendyol'], notReset: [], panelLeft: true, reason: new Error('Sıfırlama şu an başlatılamadı.') }))
+      .toBe('Trendyol sıfırlandı. Seçilen panel verileri sıfırlanmadı: Sıfırlama şu an başlatılamadı.')
   })
 })

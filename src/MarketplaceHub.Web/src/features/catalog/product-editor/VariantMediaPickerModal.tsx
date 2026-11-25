@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { TitleHint, UiIcon, DialogSurface } from '../../../shared/components'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { isSizeChartRef } from './size-chart-order'
@@ -38,9 +39,12 @@ export function VariantMediaPickerModal({
   onApply: () => void
   onClose: () => void
 }) {
+  // The ticks the window opened with: a changed choice keeps it open on a click outside (scan D-11).
+  const [openedRefs] = useState(selectedRefs)
+  const changed = openedRefs.length !== selectedRefs.length || openedRefs.some((ref, index) => ref !== selectedRefs[index])
   const selectedGroup = groups?.find(group => group.id === selectedGroupId)
   const selectedValue = selectedGroup?.values.find(value => value.id === selectedValueId)
-  return <div className="workspace-modal-backdrop variant-media-picker-backdrop" role="presentation" onMouseDown={onClose}>
+  return <div className="workspace-modal-backdrop variant-media-picker-backdrop" role="presentation" onMouseDown={() => { if (!changed) onClose() }}>
     <DialogSurface as="section" onClose={onClose} className={`workspace-modal variant-media-picker-modal${mode === 'bulk' ? ' is-bulk' : ''}`} aria-labelledby="variant-media-picker-title" onMouseDown={event => event.stopPropagation()}>
       <header>
         <div><p className="eyebrow">Varyant Görselleri</p><h2 id="variant-media-picker-title">{mode === 'bulk' ? 'Seçeneklere Görsel Ata' : 'Varyant Görsellerini Seç'}<TitleHint label={mode === 'bulk' ? 'Seçeneklere Görsel Ata' : 'Varyant Görsellerini Seç'}>{mode === 'bulk' ? 'Seçenek değerlerine görsel atayın; değerler arasında geçince seçimler korunur, hepsi tek seferde kaydedilir.' : 'Bu varyanta ait görselleri seçin; sıra ürün görsellerindeki sırayla aynı kaydedilir.'}</TitleHint></h2></div>

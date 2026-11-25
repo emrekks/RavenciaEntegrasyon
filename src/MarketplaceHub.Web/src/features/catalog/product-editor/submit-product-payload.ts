@@ -70,7 +70,8 @@ const variantAttributes = (row: VariantDraft, context: VariantPayloadContext) =>
 
 // The calculator's desi while its measures read, else the Desi field as typed; never a silent 1 (review 23 Nov, ORTA-3:
 // "12.5" in a measure gave 0 and the save stored desi 1). The save's checks stop an unreadable measure or desi first.
-const savedDesi = (context: VariantPayloadContext) => context.calculateDesi && context.calculatedDesi > 0 ? context.calculatedDesi : parseProductDesi(context.form.desi)
+// The calculated desi is rounded to two decimals, as the Desi field shows it and the server keeps it (scan D-11).
+const savedDesi = (context: VariantPayloadContext) => context.calculateDesi && context.calculatedDesi > 0 ? Number(context.calculatedDesi.toFixed(2)) : parseProductDesi(context.form.desi)
 
 const measurement = (context: VariantPayloadContext, value: string) => context.calculateDesi ? parseEditorNumber(value) || null : null
 
