@@ -64,7 +64,15 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-divider::before,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-divider::after { content: ""; flex: 1; height: 1px; background: var(--rr-line); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards .rr-kv { grid-template-columns: 110px minmax(0, 1fr); }
+/* Fatura ve Adres Bilgileri: two address cards side by side, each a heading and a frameless list (the card is the only frame),
+   a label column of 104 px at most, the value takes the rest and wraps by words. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards .rr-dsec { gap: 8px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) :is(.rr-two-cards .rr-kv, .rr-kv.rr-kv-flat) { grid-template-columns: fit-content(104px) minmax(0, 1fr); column-gap: 16px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards .rr-kv { border: 0; border-radius: 0; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-two-cards .rr-kv > * { padding-inline: 0; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) :is(.rr-two-cards .rr-kv, .rr-kv.rr-kv-flat) dd { display: block; white-space: normal; overflow-wrap: anywhere; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-kv.rr-kv-flat { grid-template-columns: fit-content(150px) minmax(0, 1fr); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-kv.rr-kv-flat dt { white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-rlabel.rr-sticker { width: min(380px, 100%); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); width: min(375px, 100%); height: 640px; overflow: hidden; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 14px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-h { display: grid; grid-template-columns: 28px 1fr 28px; align-items: center; gap: 8px; height: 52px; padding: 0 12px; text-align: center; background: var(--rr-surface); border-bottom: 1px solid var(--rr-line); }
