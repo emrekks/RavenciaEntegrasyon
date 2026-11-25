@@ -11,7 +11,9 @@ const server = vi.hoisted(() => ({
   down: false,
   puts: [] as Array<{ ifMatch: string | null; templates: Array<{ id: string; name: string; settings: { senderName?: string } }> }>,
   // Another device saves this list right before the next PUT lands.
-  meanwhile: null as unknown[] | null
+  meanwhile: null as unknown[] | null,
+  // The next GET reads the list now but answers only after this many milliseconds (a read overtaken by a save).
+  slowGetMs: 0
 }))
 
 vi.mock('../../shared/api', async importOriginal => {
@@ -28,7 +30,9 @@ vi.mock('../../shared/api', async importOriginal => {
       server.templates = sent.templates
       server.version++
     }
-    return { settings: server.templates === null ? null : { templates: server.templates }, version: server.version }
+    const answer = { settings: server.templates === null ? null : { templates: server.templates }, version: server.version }
+    if (init?.method !== 'PUT' && server.slowGetMs > 0) { const wait = server.slowGetMs; server.slowGetMs = 0; await new Promise(resolve => setTimeout(resolve, wait)) }
+    return answer
   })
   return { ...original, hubApi }
 })
@@ -75,6 +79,7 @@ beforeEach(() => {
   server.down = false
   server.puts = []
   server.meanwhile = null
+  server.slowGetMs = 0
 })
 
 afterEach(() => {
@@ -187,6 +192,26 @@ describe('useShippingLabelTemplates', () => {
 
     expect(server.puts.map(put => put.ifMatch)).toEqual(['"v1"', '"v2"'])
     expect(names(server.templates as ShippingLabelTemplate[])).toEqual(['Mağaza'])
+    await vi.waitFor(() => expect(names(hook.templates)).toEqual(['Mağaza']))
+    // A read that left before the save cannot bring the older list back.
+    await act(async () => { await client.refetchQueries({ queryKey: ['shipping-label-templates'] }) })
+    await settle()
     expect(names(hook.templates)).toEqual(['Mağaza'])
+  })
+
+  it('a read that left before a save and answers after it does not bring the older list back', async () => {
+    server.templates = [template('t1', 'Depo', 'Ravencia')]
+    server.version = 1
+    await openOnDevice([])
+
+    server.slowGetMs = 40
+    let lateRead: Promise<unknown> = Promise.resolve()
+    act(() => { lateRead = client.refetchQueries({ queryKey: ['shipping-label-templates'] }) })
+    await act(async () => { await hook.saveTemplate(template('t2', 'Mağaza', 'Ravencia')) })
+    await act(async () => { await lateRead; await new Promise(resolve => setTimeout(resolve, 60)) })
+    await settle()
+
+    expect(server.version).toBe(2)
+    expect(names(hook.templates)).toEqual(['Depo', 'Mağaza'])
   })
 })

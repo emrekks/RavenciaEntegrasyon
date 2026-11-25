@@ -82,8 +82,23 @@ export function mergeShippingLabelTemplates(account: readonly ShippingLabelTempl
   return { templates, added }
 }
 
+// A GET that started before a save may answer after it with the older list: the list this page already holds wins
+// while its version is newer, so a late read never puts back a template just deleted or drops one just saved.
+async function fetchAccount(client: QueryClient, signal: AbortSignal | undefined) {
+  const fetched = await hubApi<TemplatesEnvelope>(templatesPath, { signal })
+  const held = client.getQueryData<TemplatesEnvelope>(shippingLabelTemplatesQueryKey)
+  return held && held.version > fetched.version ? held : fetched
+}
+
 function readAccount(client: QueryClient) {
-  return client.fetchQuery({ queryKey: shippingLabelTemplatesQueryKey, queryFn: ({ signal }) => hubApi<TemplatesEnvelope>(templatesPath, { signal }), staleTime: 0 })
+  return client.fetchQuery({ queryKey: shippingLabelTemplatesQueryKey, queryFn: ({ signal }) => fetchAccount(client, signal), staleTime: 0 })
+}
+
+// The saved answer goes into the cache after any read still running is cancelled, so that read cannot overwrite it.
+async function storeSaved(client: QueryClient, saved: TemplatesEnvelope) {
+  await client.cancelQueries({ queryKey: shippingLabelTemplatesQueryKey })
+  const held = client.getQueryData<TemplatesEnvelope>(shippingLabelTemplatesQueryKey)
+  if (!held || held.version <= saved.version) client.setQueryData(shippingLabelTemplatesQueryKey, saved)
 }
 
 function writeAccount(templates: ShippingLabelTemplate[], version: number) {
@@ -102,8 +117,9 @@ async function changeAccount(client: QueryClient, current: TemplatesEnvelope | u
     const next = change(readTemplateList(envelope.settings))
     if (next === null) return envelope
     try {
+      await client.cancelQueries({ queryKey: shippingLabelTemplatesQueryKey })
       const saved = await writeAccount(next, envelope.version)
-      client.setQueryData(shippingLabelTemplatesQueryKey, saved)
+      await storeSaved(client, saved)
       return saved
     } catch (error) {
       if (attempt > 0 || !changedMeanwhile(error)) throw error
@@ -138,7 +154,7 @@ export function useShippingLabelTemplates() {
   const moveTried = useRef(false)
   const query = useQuery({
     queryKey: shippingLabelTemplatesQueryKey,
-    queryFn: ({ signal }) => hubApi<TemplatesEnvelope>(templatesPath, { signal }),
+    queryFn: ({ signal }) => fetchAccount(client, signal),
     staleTime: 60_000,
     retry: 2,
     refetchOnWindowFocus: true
