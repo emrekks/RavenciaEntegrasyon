@@ -11,7 +11,6 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { useToastStack } from '../../../shared/components/toast-stack-context'
 import { CardBackgroundIcon, StickyActionBar, TitleHint, useDockHost, useConfirmDialog } from '../../../shared/components'
 import { CountUp } from '../../../shared/components/CountUp'
-import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../../shared/ui/rr-components'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
@@ -232,19 +231,20 @@ export function LowStockDetailsModal({ products: lowProducts, loading: lowLoadin
   }, [categoryFilter, groups, search, sort, productRank])
   const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
   const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
-  // Model cards start closed and sit two to a row; opening one opens its row neighbour too, so the row stays level.
-  // One row of models and one colour are open at a time: opening another closes the one that was open.
+  // Model cards start closed and sit two to a row.
+  // One model and one colour are open at a time (an accordion): opening another closes the one that was open; the open
+  // model takes a full row of the grid and scrolls into view.
   const [openFamilies, setOpenFamilies] = useState<Set<string>>(new Set())
   const [openColors, setOpenColors] = useState<Set<string>>(new Set())
-  const twoColumns = useMediaQuery('(min-width: 761px)')
-  function toggleFamilyRow(index: number) {
-    const start = twoColumns ? index - index % 2 : index
-    const ids = filteredGroups.slice(start, start + (twoColumns ? 2 : 1)).map(group => group.id)
-    setOpenFamilies(current => current.has(filteredGroups[index].id) ? new Set() : new Set(ids))
+  function toggleFamily(id: string) {
+    setOpenFamilies(current => {
+      if (current.has(id)) return new Set()
+      window.requestAnimationFrame(() => document.querySelector(`[data-low-model="${id}"]`)?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }))
+      return new Set([id])
+    })
   }
-  // Pointing at (or focusing) a card lights up its whole row, so it is clear that both cards open together.
-  const [hotRow, setHotRow] = useState<number | null>(null)
-  const rowOf = (index: number) => twoColumns ? Math.floor(index / 2) : index
+  // A new search, category, sort or tab closes the open model.
+  useEffect(() => { setOpenFamilies(new Set()); setOpenColors(new Set()) }, [search, categoryFilter, sort, mode])
 
   const low = mode === 'LOW'
   return <RrModal crumb="Stok Takibi" label="Düşük Stok" title={<>Düşük Stok<TitleHint label="Düşük Stok">Model koduna göre gruplanmış, tükenen varyantı olan ürünler. <b>Düşük stok:</b> bir renkteki varyantların en az yarısı tükenmiş. <b>Tükenen varyant:</b> stoğu süren modelde en az bir beden, seçenek ya da renk bitmiş.</TitleHint></>} size="lg" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}>
@@ -253,8 +253,8 @@ export function LowStockDetailsModal({ products: lowProducts, loading: lowLoadin
       <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Stok eksiklerinde ara" /></span><PanelSelect ariaLabel="Kategori" value={categoryFilter} onChange={setCategoryFilter} width={220} options={[{ value: '', label: 'Tüm Kategoriler' }, ...categoryOptions.map(category => ({ value: category, label: category }))]} /><PanelSelect ariaLabel="Sıralama" value={sort} onChange={setSort} width={260} options={[{ value: 'NEWEST', label: 'Eklenme Sırası (Yeniden Eskiye)' }, { value: 'MODEL_ASC', label: 'Model Kodu (A-Z)' }, { value: 'MODEL_DESC', label: 'Model Kodu (Z-A)' }, { value: 'MISSING_DESC', label: 'Eksik Varyant (Çoktan Aza)' }, { value: 'MISSING_ASC', label: 'Eksik Varyant (Azdan Çoğa)' }]} /></div>
       <p className="rr-lead">{filteredGroups.length} model · {catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</p>
       {!filteredGroups.length && <p className="rr-lead">Arama veya filtreye uyan ürün bulunamadı.</p>}
-      <div className="rr-lowgrid">{filteredGroups.map((group, index) => { const image = productGroupImage(group) ?? lowStockProductImage(group.primary); const open = openFamilies.has(group.id); const missing = lowStockMissingVariantCount(group); const pairSide = twoColumns ? (index % 2 === 0 ? ' rr-pair-left' : ' rr-pair-right') : ''; return <article className={`rr-lowf${open ? ' rr-open' : ''}${hotRow === rowOf(index) ? ' rr-row-hot' : ''}${pairSide}`} key={group.id} onMouseEnter={() => setHotRow(rowOf(index))} onMouseLeave={() => setHotRow(null)}>
-        <div className="rr-lowf-h"><RrThumb src={image} alt={group.primary.title} onOpen={image ? () => onImageClick(image, group.primary.title, group.products.map(item => item.modelCode).find(value => value?.trim()) ?? undefined) : undefined} /><button type="button" className="rr-lowf-t" aria-expanded={open} title={twoColumns ? (open ? 'Bu satırdaki iki modeli kapat' : 'Bu satırdaki iki modeli aç') : undefined} onFocus={() => setHotRow(rowOf(index))} onBlur={() => setHotRow(null)} onClick={() => toggleFamilyRow(index)}><span><small>Model Kodu</small><b className="rr-num">{lowStockModelCode(group)}</b><em title={group.primary.title}>{group.primary.title}</em></span><span className="rr-lowf-c" title={`${missing} eksik · ${group.products.length} renk`}><b className="rr-num">{missing}</b></span><RrIcon name="chev" /></button></div>
+      <div className="rr-lowgrid">{filteredGroups.map(group => { const image = productGroupImage(group) ?? lowStockProductImage(group.primary); const open = openFamilies.has(group.id); const missing = lowStockMissingVariantCount(group); return <article className={`rr-lowf${open ? ' rr-open rr-lowf-full' : ''}`} key={group.id} data-low-model={group.id}>
+        <div className="rr-lowf-h"><RrThumb src={image} alt={group.primary.title} onOpen={image ? () => onImageClick(image, group.primary.title, group.products.map(item => item.modelCode).find(value => value?.trim()) ?? undefined) : undefined} /><button type="button" className="rr-lowf-t" aria-expanded={open} onClick={() => toggleFamily(group.id)}><span><small>Model Kodu</small><b className="rr-num">{lowStockModelCode(group)}</b><em title={group.primary.title}>{group.primary.title}</em></span><span className="rr-lowf-c" title={`${missing} eksik · ${group.products.length} renk`}><b className="rr-num">{missing}</b></span><RrIcon name="chev" /></button></div>
         {open && <section>{[...group.products].sort((left, right) => lowStockProductColor(left).localeCompare(lowStockProductColor(right), 'tr', { sensitivity: 'base' })).map(product => { const lowVariants = product.variants.filter(variant => variant.onHand <= 0).sort((left, right) => lowStockSizeLabel(left).localeCompare(lowStockSizeLabel(right), 'tr', { numeric: true, sensitivity: 'base' })); const colorOpen = openColors.has(product.id); return <div className={`rr-lowc${colorOpen ? ' rr-open' : ''}`} key={product.id}><button type="button" className="rr-lowc-h" aria-expanded={colorOpen} onClick={() => setOpenColors(current => current.has(product.id) ? new Set() : new Set([product.id]))}><b>{lowStockProductColor(product)}</b><span className="rr-lowc-n">{lowVariants.length} eksik varyant</span><RrIcon name="chev" /></button>{colorOpen && (lowVariants.length ? <div className="rr-lowvs">{lowVariants.map(variant => <div className="rr-lowv" key={variant.id}><span><b>{lowStockSizeLabel(variant)}</b><small>Stok Kodu: {variant.sku}{variant.barcode ? ` · Barkod: ${variant.barcode}` : ''}</small></span><span className={variant.onHand === 0 ? 'rr-zero' : 'rr-low'}>{variant.onHand === 0 ? 'Stoksuz' : <>Kalan <b className="rr-num">{variant.onHand}</b></>}</span></div>)}</div> : <p className="rr-lead">Bu renkte kritik stok varyantı bulunamadı.</p>)}</div> })}</section>}
       </article> })}</div>
     </>}
