@@ -135,22 +135,19 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         """, cancellationToken);
 
     // KeepIssued: an order with an issued invoice stays with its packages and lines.
-    // CarryStock: the units a removed line took from stock stay taken. Its ORDER_LINE ledger rows and reservations
-    // move from the line's id to its carry key (OrderInventoryStockPolicy.ResetCarryKey), and the line the next sync
-    // imports under the same marketplace ids takes them over instead of taking the units again (29 Oct 2026, P-2).
-    // A reservation another removal already left under the same key and item keeps the line's id.
-    private Task DeleteOrdersAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false, bool carryStock = false) => db.Database.ExecuteSqlInterpolatedAsync($$"""
+    // CarryStock: the units a removed line took from stock stay taken (OrderLineStockCarry, shared with the panel reset).
+    // It carries every line of the scope, so it is not combined with KeepIssued.
+    private async Task DeleteOrdersAsync(Guid tenantId, Guid? connectionId, CancellationToken cancellationToken, bool keepIssued = false, bool carryStock = false)
+    {
+        if (carryStock && keepIssued) throw new ArgumentException("A stock carry covers every order line of the scope; it cannot keep issued orders.", nameof(carryStock));
+        if (carryStock) await OrderLineStockCarry.CarryAsync(db, tenantId, connectionId, cancellationToken);
+        await db.Database.ExecuteSqlInterpolatedAsync($$"""
         CREATE TEMP TABLE IF NOT EXISTS purge_orders ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_orders;
         INSERT INTO purge_orders SELECT o."Id" FROM sales.orders o WHERE o."TenantId"={{tenantId}} AND (CAST({{connectionId}} AS uuid) IS NULL OR o."ConnectionId"={{connectionId}}) AND NOT ({{keepIssued}} AND EXISTS (SELECT 1 FROM billing.invoices i WHERE i."TenantId"={{tenantId}} AND i."OrderId"=o."Id" AND (i."Status" NOT IN ('Draft', 'Validating', 'ValidationFailed', 'Ready', 'Rejected', 'CancelledLocal') OR i."IssuedAt" IS NOT NULL OR i."EttnUuid" IS NOT NULL OR i."InvoiceNumber" IS NOT NULL)));
         CREATE TEMP TABLE IF NOT EXISTS purge_order_lines ("Key" text PRIMARY KEY) ON COMMIT DROP;
         TRUNCATE purge_order_lines;
         INSERT INTO purge_order_lines SELECT replace(l."Id"::text, '-', '') FROM sales.order_lines l JOIN purge_orders o ON o."Id"=l."OrderId" WHERE l."TenantId"={{tenantId}};
-        CREATE TEMP TABLE IF NOT EXISTS carry_order_lines ("SourceId" text PRIMARY KEY, "CarryKey" text NOT NULL) ON COMMIT DROP;
-        TRUNCATE carry_order_lines;
-        INSERT INTO carry_order_lines SELECT l."Id"::text, {{OrderInventoryStockPolicy.ResetCarryPrefix}} || o."ConnectionId"::text || ':' || o."ExternalOrderId" || ':' || l."ExternalLineId" FROM sales.order_lines l JOIN sales.orders o ON o."TenantId"=l."TenantId" AND o."Id"=l."OrderId" JOIN purge_orders p ON p."Id"=o."Id" WHERE {{carryStock}} AND l."TenantId"={{tenantId}};
-        UPDATE inventory.stock_reservations r SET "SourceId"=c."CarryKey", "Version"=r."Version"+1 FROM carry_order_lines c WHERE r."TenantId"={{tenantId}} AND r."SourceType"='ORDER_LINE' AND r."SourceId"=c."SourceId" AND NOT EXISTS (SELECT 1 FROM inventory.stock_reservations x WHERE x."TenantId"={{tenantId}} AND x."SourceType"='ORDER_LINE' AND x."SourceId"=c."CarryKey" AND x."InventoryItemId"=r."InventoryItemId");
-        UPDATE inventory.stock_ledger_entries e SET "SourceId"=c."CarryKey" FROM carry_order_lines c WHERE e."TenantId"={{tenantId}} AND e."SourceType"='ORDER_LINE' AND e."SourceId"=c."SourceId";
         INSERT INTO purge_files SELECT d."FileAssetId" FROM sales.shipment_documents d JOIN sales.shipment_packages p ON p."Id"=d."PackageId" JOIN purge_orders o ON o."Id"=p."OrderId" WHERE d."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
         -- An order's uploaded invoice documents and the invoice references the marketplace reported hold a restricting key
         -- to the order and its packages: left behind, they failed the whole reset (P-6 reading, 29 Oct 2026).
@@ -168,6 +165,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         DELETE FROM sales.order_lines l USING purge_orders o WHERE l."TenantId"={{tenantId}} AND l."OrderId"=o."Id";
         DELETE FROM sales.orders o USING purge_orders p WHERE o."TenantId"={{tenantId}} AND o."Id"=p."Id";
         """, cancellationToken);
+    }
 
     // ImportedOnly (full reset): of the connection's products only those its own import created go. A product created
     // on the panel, or matched to a panel product by its codes, keeps its row and loses only the link (30 Oct 2026

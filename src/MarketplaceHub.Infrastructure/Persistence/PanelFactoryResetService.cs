@@ -158,6 +158,11 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
                     var used = $"""SELECT "{reference.Column}" AS "Value" FROM {Quote(reference.Table)} WHERE "TenantId" = @tenant AND "{reference.Column}" IS NOT NULL""";
                     files.UnionWith(await db.Database.SqlQueryRaw<Guid>(used, new NpgsqlParameter("tenant", tenantId)).ToListAsync(cancellationToken));
                 }
+                // Siparişler without Stok ve Fiyatlar: the stock the order lines took stays taken under their carry keys, so the
+                // order read again takes it over instead of taking it a second time (scan 25 Nov 2026 A-5). Before any line goes;
+                // a rerun carries the lines still left.
+                if (group == PanelFactoryResetInventory.Orders && !chosenKeys.Contains(PanelFactoryResetInventory.Stock.Key))
+                    await OrderLineStockCarry.CarryAsync(db, tenantId, null, cancellationToken);
                 foreach (var detach in plan.Detaches.Where(x => x.Group == group)) await ExecuteAsync(detach.Sql, tenantId, jobId, cancellationToken);
                 foreach (var table in plan.Order.Where(x => x.Group == group))
                     removed += await DeleteTableAsync(table, tenantId, jobId, plan.SelfReferencing.Contains(table.Name), cancellationToken);
