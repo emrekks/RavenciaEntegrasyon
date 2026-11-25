@@ -18,10 +18,59 @@ public sealed class ReportPlatformCostsTests
         Assert.Equal(2.9167m, barem.Stoppage);
         Assert.Equal(0m, barem.PaymentFee);
 
-        Assert.Equal(43.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 150m, 0m, false, null, null).Cargo);
+        Assert.Equal(43.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 150m, 0m, false, null, "hepsiJET").Cargo);
         // Aras has no barem; a 3 desi parcel above 400 TL takes hepsiJET's 3 desi price.
         Assert.Equal(89.92m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 350m, 0m, false, null, "Aras Kargo").Cargo);
         Assert.Equal(99.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 900m, 0m, false, 3m, "hepsiJET").Cargo);
+    }
+
+    // C-10 (25 Nov 2026): Yurtiçi, DHL and Kolay Gelsin take their own tables, an unknown carrier no barem, and a parcel
+    // over 30 desi at least the 31 desi price (docs/KARGO-TARIFELERI-2026.md, Hepsiburada's 5 Oct 2026 PDF).
+    [Fact]
+    public void Hepsiburada_prices_every_listed_carrier_gives_an_unknown_one_no_barem_and_charges_past_30_desi()
+    {
+        Assert.Equal(138.51m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 150m, 0m, false, 2m, "Yurtiçi Kargo").Cargo);
+        Assert.Equal(110.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 150m, 0m, false, 3m, "DHL eCommerce").Cargo);
+        Assert.Equal(420.08m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 900m, 0m, false, 30m, "Kolay Gelsin").Cargo);
+        Assert.Equal(81.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 150m, 0m, false, null, null).Cargo);
+        Assert.Equal(81.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 150m, 0m, false, null, "MNG Kargo").Cargo);
+        Assert.Equal(390.99m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 900m, 0m, false, 35m, "hepsiJET").Cargo);
+        Assert.Equal(589.18m * 1.2m, ReportPlatformCosts.For("HEPSIBURADA", 900m, 0m, false, 31m, "Yurtiçi Kargo").Cargo);
+    }
+
+    // C-10 (25 Nov 2026): a Trendyol store whose statement is not read still counts its sales VAT, and the notes say what
+    // of its VAT is missing; before, the Trendyol orders' sales VAT was left out whenever no store was read.
+    [Fact]
+    public void An_unread_trendyol_store_counts_its_sales_vat_and_names_the_vat_gap()
+    {
+        var (tr, hb) = (Guid.NewGuid(), Guid.NewGuid());
+        var day = new DateOnly(2026, 10, 23);
+        var start = new DateTimeOffset(2026, 10, 22, 21, 0, 0, TimeSpan.Zero);
+        var at = start.AddHours(12);
+        var (a, b) = (Guid.NewGuid(), Guid.NewGuid());
+        var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView>
+            {
+                [tr] = new(tr, "TRENDYOL", "Trendyol", false),
+                [hb] = new(hb, "HEPSIBURADA", "Hepsiburada", false)
+            },
+            [
+                new() { Id = a, ConnectionId = tr, OrderNumber = "T", DerivedStatus = "DELIVERED", Amount = 1200m, LineValue = 1200m, RealAt = at, OrderedAt = at },
+                new() { Id = b, ConnectionId = hb, OrderNumber = "H", DerivedStatus = "DELIVERED", Amount = 600m, LineValue = 600m, RealAt = at, OrderedAt = at }
+            ],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [
+                new() { Id = Guid.NewGuid(), OrderId = a, Title = "Ceket", Sku = "A", UnitPrice = 1200m, OrderedQuantity = 1m, VatRate = 20m },
+                new() { Id = Guid.NewGuid(), OrderId = b, Title = "Bluz", Sku = "B", UnitPrice = 600m, OrderedQuantity = 1m, VatRate = 20m }
+            ],
+            new Dictionary<Guid, ReportLineExtra>(), [], [new() { Id = Guid.NewGuid(), OrderId = b, CargoProvider = "hepsiJET" }],
+            new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false,
+            Finance: new ReportFinance([], [], new HashSet<(Guid, string)>(), new Dictionary<Guid, MarketplaceFinanceSyncState?> { [tr] = null }));
+
+        var costs = ReportCosts.Build(input, ReportBuilder.Facts(input).Orders);
+
+        Assert.Equal(200m + 100m, costs.NetVat!.SalesVat);
+        Assert.Contains(ReportCosts.Notes(costs, input), note => note.StartsWith("Eksik: KDV.", StringComparison.Ordinal));
     }
 
     [Fact]
