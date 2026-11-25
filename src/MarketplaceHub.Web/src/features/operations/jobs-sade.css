@@ -230,8 +230,7 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td:first-child { padding-left: 44px; }
 @media (prefers-reduced-motion: reduce) { .app-shell.stitch-shell main .jobs-reference-page .jobs-model-group-toggle svg { transition: none; } }
 @media (max-width: 760px) {
-  /* phone-spacing.css sets every job card's margin with !important; a colour card keeps its indent under its model row. */
-  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table > tbody > tr.jobs-model-card-row { margin-left: 16px !important; background: var(--rv-color-surface-raised); }
+  /* phone-spacing.css holds every job card's margin; a colour card moves in by its offset and width instead (its cells' padding is the cards' own 0). */
+  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row { position: relative; left: 16px; width: calc(100% - 16px); background: var(--rv-color-surface-raised); }
   .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td { background: none; }
-  .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table tbody .jobs-model-card-row > td:first-child { padding-left: 0 !important; }
 }
