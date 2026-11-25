@@ -207,6 +207,26 @@ public sealed class TrendyolFinanceSyncPostgreSqlTests(PostgreSqlTenantIsolation
             outcome = await RunAsync(tenantId, connectionId, port, Now.AddDays(1).AddHours(1));
             Assert.True(outcome.Result.Succeeded, outcome.Result.ErrorSummary);
             Assert.Equal(failedReads + 1, port.FailedRecordReads);
+
+            // Review of 25 Nov 2026: once the payout has left the 90-day read window it is not asked again, and its issue
+            // stays open but no longer promises a retry: it sends the owner to Trendyol's panel.
+            var beforeWindowEnd = port.FailedRecordReads;
+            slices = 0;
+            do
+            {
+                outcome = await RunAsync(tenantId, connectionId, port, Now.AddDays(95));
+                slices++;
+            }
+            while (outcome.Result.Continues && slices < 60);
+            Assert.True(outcome.Result.Succeeded, outcome.Result.ErrorSummary);
+            Assert.Equal(beforeWindowEnd, port.FailedRecordReads);
+            await using (var db = fixture.CreateContext())
+            {
+                var issue = await db.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.DedupeKey == TrendyolFinanceSyncJobHandler.PayoutLinesKey(connectionId, "PO-1"));
+                Assert.Equal(IssueStatus.Open, issue.Status);
+                Assert.Equal(TrendyolFinanceSyncJobHandler.PayoutOutOfWindowSummary("PO-1"), issue.Summary);
+                Assert.DoesNotContain("yeniden denenecek", issue.Summary, StringComparison.Ordinal);
+            }
         }
         finally
         {

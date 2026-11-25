@@ -177,6 +177,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         // refused) is held back for PayoutRetryHours behind its open issue, so the payouts after it are still read; before,
         // the newest payout failed first on every run and the older ones were never reached.
         var lineIssues = await new IssueRecorder(db).ByPrefixAsync(request.TenantId, PayoutLinesFailureCode, PayoutLinesKeyPrefix(request.ConnectionId), cancellationToken);
+        await MarkPayoutsOutOfWindowAsync(request, lineIssues, since, cancellationToken);
         var retryAfter = now.AddHours(-Setting("PayoutRetryHours", 24, 1, 168));
         var pending = (await db.MarketplacePayoutOrders
             .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && x.LinesReadAt == null
@@ -271,6 +272,35 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
     private Task HoldBackPayoutAsync(JobRequest request, string payoutId, AdapterError error, DateTimeOffset now, CancellationToken cancellationToken) =>
         UpsertIssueAsync(request.TenantId, PayoutLinesKey(request.ConnectionId, payoutId), PayoutLinesFailureCode,
             $"Trendyol {payoutId} numaralı ödemenin kayıtları okunamadı ({error.Code}: {error.SafeMessage}); diğer ödemeler okunmaya devam ediyor, bu ödeme bir gün sonra yeniden denenecek.", now, cancellationToken);
+
+    internal static string PayoutOutOfWindowSummary(string payoutId) =>
+        $"Trendyol {payoutId} numaralı ödemenin kayıtları okunamadı ve ödeme okuma aralığının dışına çıktı; artık yeniden denenmiyor. Bu ödemenin kayıtlarını Trendyol panelinden kontrol edin.";
+
+    // Review of 25 Nov 2026: a held-back payout that has left the read window (older than the backfill days) is never
+    // tried again, so its issue stops promising a retry: it stays open (the owner must see it) and says to check the
+    // payout in Trendyol's panel. Only the text changes; the issue is resolved only if the payout is ever read.
+    private async Task MarkPayoutsOutOfWindowAsync(JobRequest request, IReadOnlyDictionary<string, OperationalIssue> lineIssues, DateTimeOffset since, CancellationToken cancellationToken)
+    {
+        var prefix = PayoutLinesKeyPrefix(request.ConnectionId);
+        var open = lineIssues.Values.Where(issue => issue.Status == IssueStatus.Open && issue.DedupeKey.StartsWith(prefix, StringComparison.Ordinal))
+            .ToDictionary(issue => issue.DedupeKey[prefix.Length..], StringComparer.Ordinal);
+        if (open.Count == 0) return;
+        var ids = open.Keys.ToList();
+        var gone = await db.MarketplacePayoutOrders.AsNoTracking()
+            .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && ids.Contains(x.ExternalId)
+                && x.LinesReadAt == null && x.PayoutDate != null && x.PayoutDate < since)
+            .Select(x => x.ExternalId)
+            .ToListAsync(cancellationToken);
+        var changed = false;
+        foreach (var payoutId in gone)
+        {
+            var summary = PayoutOutOfWindowSummary(payoutId);
+            if (open[payoutId].Summary == summary) continue;
+            open[payoutId].Summary = summary;
+            changed = true;
+        }
+        if (changed) await db.SaveChangesAsync(cancellationToken);
+    }
 
     private sealed record WindowRead(List<RemoteStatementRecord> Records, Dictionary<string, List<RemoteCargoInvoiceItem>> CargoItems, AdapterError? Error)
     {
