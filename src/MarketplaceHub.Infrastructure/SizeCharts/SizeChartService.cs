@@ -436,10 +436,12 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         var id = Guid.CreateVersion7();
         var mime = png ? "image/png" : "image/jpeg";
         using var content = new MemoryStream(bytes);
-        var stored = await storage.SaveAsync(tenantId, $"{id:N}.{(png ? "png" : "jpg")}", mime, content, MaxImageBytes, cancellationToken);
-        var asset = new FileAsset { Id = id, TenantId = tenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = GeneratedFileName(productId, png), MimeType = mime, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+        // The file gets its final name only after its row is saved (disposing it uncommitted removes it).
+        await using var staged = await storage.StageAsync(tenantId, $"{id:N}.{(png ? "png" : "jpg")}", mime, content, MaxImageBytes, cancellationToken);
+        var asset = new FileAsset { Id = id, TenantId = tenantId, Classification = "PRODUCT_MEDIA", RelativePath = staged.RelativePath, OriginalNameSafe = GeneratedFileName(productId, png), MimeType = mime, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
         db.FileAssets.Add(asset);
         await db.SaveChangesAsync(cancellationToken);
+        staged.Commit();
         return asset;
     }
 

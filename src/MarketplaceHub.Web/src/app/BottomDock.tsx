@@ -47,11 +47,9 @@ const pillPages: DockTarget[] = [
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
 // One floating opaque capsule in dock mode (our own icons and colours): five equal slots with a lighter inner pill under the open page that glides to the next
 // slot (stretching over both on the way). In task mode it gives way to one wide panel (the page's buttons), with the warning strip as a small pill above it.
-// `compact` is the top bar's hidden state (App.tsx: a scroll down), so the two ease away and come back together.
 const menuIndex = pillPages.length
-export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
+export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
   menuOpen: boolean
-  compact?: boolean
   menuCount: number
   // The pending count drawn on a page's own target ("/orders": 9).
   slotCounts: Record<string, number>
@@ -117,11 +115,11 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
     // wide): its edges stay between the two slots, so it never reaches past the capsule's inner edge.
     const step = (dock.clientWidth - 8) / 5
     const now = glide.getBoundingClientRect()
-    const start = (now.left - dock.getBoundingClientRect().left - 6) / step
-    const span = (now.width + 4) / step
+    const start = (now.left - dock.getBoundingClientRect().left - 4.5) / step
+    const span = (now.width + 1) / step
     if (Math.abs(start - found) < 0.01 && Math.abs(span - 1) < 0.01) return
-    const left = (slots: number) => 'calc(6px + ' + slots + ' * ((100% - 8px) / 5))'
-    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 5) - 4px)'
+    const left = (slots: number) => 'calc(4.5px + ' + slots + ' * ((100% - 8px) / 5))'
+    const width = (slots: number) => 'calc(' + slots + ' * ((100% - 8px) / 5) - 1px)'
     const reach = Math.abs(found - start)
     const extra = Math.min(reach, 0.6)
     const easing = getComputedStyle(document.documentElement).getPropertyValue('--rv-ease-sheet').trim() || 'ease'
@@ -129,7 +127,7 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
     glide.animate([{ left: left(start), width: width(span) }, { left: left((start + found) / 2 - extra / 2), width: width(1 + extra), offset: 0.5 }, { left: left(found), width: width(1) }], { duration: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rv-dock-glide-motion')) || 420, easing })
   }, [found])
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
-  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-compact={compact && !menuOpen ? '' : undefined} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
+  return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
     <nav className="rv-dock" aria-label="Alt menü" data-none={found < 0 ? '' : undefined} style={{ '--rv-dock-i': index } as CSSProperties} inert={task || undefined}>
       <span ref={glideRef} className="rv-dock-glide" aria-hidden="true" />
       {pillPages.map(page => slot(page))}

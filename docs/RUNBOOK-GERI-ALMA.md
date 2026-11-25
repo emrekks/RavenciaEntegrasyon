@@ -214,16 +214,59 @@ Elle çalıştırmak: `sudo systemctl start ravencia-restore-drill.service`.
 çalışması 6 Aralık 2026); sessiz bir saatte bir kez elle başlatın (`sudo systemctl start ravencia-restore-drill.service`)
 ve `journalctl -u ravencia-restore-drill -n 50`'de sonucun başarılı olduğunu görün.
 
+**Drive kopyası (zamanlı kısım, anahtarsız):** aynı tatbikat sonunda `deploy/backup/offsite-drill.sh record` çalışır.
+Sunucuda ne Google yetkisi (yenileme belirteci veritabanında şifreli, yalnız uygulama kullanır) ne de age **özel** anahtarı
+vardır; bu yüzden zamanlı kısım Drive'dan **indirmez ve çözmez**. Yaptığı: worker'ın yükleme kaydını (Sistem Ayarları ›
+Google Drive Yedeği durumu, salt okunur) okur; kopya kapalıysa, son başarılı yükleme 36 saatten eskiyse, uygulamanın alarm eşiği kadar (3) art arda hata ya
+da geçersiz yetki varsa, kaydın boyutu/MD5'i yoksa ya da kopyadaki set burada yoksa veya sağlama toplamları tutmuyorsa
+tatbikat başarısız olur (alarm gelir). Başarılı satır `Off-site record check passed: set=... NOT tested: download from
+Drive and decryption ...` der: indirme ve çözme bu satırla kanıtlanmış **değildir**.
+
+**Drive kopyası tatbikatı (sahibin aylık elle adımı, özel anahtarla):** zamanlı tatbikatın ardından, ayda bir:
+1. Kendi bilgisayarınızda Google Drive'daki yedek klasöründen en yeni `<set>.tar.age` dosyasını indirin (adını
+   değiştirmeyin) ve sunucuya kopyalayın: `scp 20261125T213011Z.tar.age ubuntu@187.126.24.163:/dev/shm/`.
+2. Özel anahtarı yalnız tatbikat süresince RAM'deki bir dosyaya koyun (diske yazılmaz, hiçbir yere kopyalanmaz):
+   `scp ravencia-yedek-anahtari.txt ubuntu@187.126.24.163:/dev/shm/anahtar.txt`.
+3. Sunucuda repo kökünde:
+   ```bash
+   sudo bash deploy/backup/offsite-drill.sh restore /dev/shm/20261125T213011Z.tar.age /dev/shm/anahtar.txt
+   ```
+   Betik age başlığını, boyut ve MD5'i worker'ın kaydıyla (set son gönderilen setse), çözmeyi (uygulama imajındaki
+   `age`, ağsız konteyner, anahtar salt okunur bağlanır), arşivdeki yolları, `SHA256SUMS`'u, sunucudaki aynı setle
+   aynılığı denetler ve seti geçici bir volume'den `restore-drill.sh` ile atılacak konteynerlere geri yükler (şemalar,
+   migration'lar, API ve Worker sağlığı). Arşivde normal dosya ve dizin dışında bir üye (sembolik/sert bağlantı, aygıt)
+   varsa açmadan durur; dosyalar `--no-same-owner` ile açılır. **Çözülmüş set diske yazılır:** `mktemp -d` ile
+   `$TMPDIR`'ın (verilmezse `/tmp`, sunucuda kök diskte) altında yalnız root'un okuyabildiği (0700) bir dizine; en yüksek
+   anda kopyanın yaklaşık iki katı (bugün ~140 MB'lık kopya için ~300 MB), ayrıca geçici Docker volume'ünde bir kat
+   daha (`/var/lib/docker`). Başka bir diske almak için: `sudo TMPDIR=/mnt/bos-disk bash deploy/backup/offsite-drill.sh
+   restore …`; `df -h /tmp /var/lib/docker` ile yeri önce görün. Çözülmüş dosyalar, geçici volume ve konteynerler her
+   durumda silinir.
+   Beklenen son satır: `Off-site restore drill passed: set=... decrypted=yes checksums=ok restore=ok`.
+4. Ne çıkarsa çıksın anahtarı ve kopyayı silin: `shred -u /dev/shm/anahtar.txt && rm -f /dev/shm/*.tar.age`.
+Başarısızlık "wrong key or a damaged copy", "does not match the worker's upload record" ya da bir sağlama hatası
+diyorsa Drive kopyasına güvenilemez: Sistem Ayarları › Google Drive Yedeği'nde **Şimdi Gönder** ile yeni kopya alın ve
+adımı yeni kopyayla tekrarlayın; yine başarısızsa age açık anahtarının sizdeki özel anahtarla eşleştiğini kontrol edin.
+
 ## 7. Uygulama veritabanı rolleri (sahibin adımı, VERITABANI-DAGITIM-1)
 
 **Durum (15 Kasım 2026):** API, Worker ve migrate `marketplacehub` ile bağlanıyor ve bu rol **SUPERUSER**
 (`rolsuper = t`, canlıda doğrulandı). Bir SQL enjeksiyonu `COPY ... TO PROGRAM` ile konteynerde komut çalıştırabilir.
 Hedef: migrate `marketplacehub_owner`, API/Worker `marketplacehub_app` (ikisi de süper değil); `marketplacehub` yalnız
 yedek, healthwatch ve salt-okunur rol betiği için kalır. Deploy bunu **yapmaz**; adımlar sessiz bir saatte, deploy
-kilidi tutulurken, sırayla:
+kilidi tutulurken, sırayla. Komutlar sunucuda `ubuntu` olarak deploy checkout'unun kökünde (`git pull` ile `main`'de)
+çalışır.
 
+0. Ön koşullar (hepsi sağlanmadan adım 3'e geçmeyin):
+   - Süren deploy yok: kendi bilgisayarınızda `gh run list --workflow deploy.yml --limit 3` → hiçbiri `in_progress`
+     değil; adımlar bitene kadar `main`'e gönderim yapılmasın (oturumlara söyleyin).
+   - Canlı sürüm, izole tatbikatta iki rolü `NOLOGIN` önceden yaratan `restore-drill.sh`'ı taşıyor (repo'da var;
+     sunucudaki kök kopyada kontrol: `grep -c marketplacehub_app /usr/local/lib/ravencia/deploy/backup/restore-drill.sh`
+     → 1'den büyük). Değilse önce bir deploy.
+   - Disk ve sağlık: `df -h /` (%80'in altı), `sudo docker ps` (dört konteyner `healthy`), `sudo systemctl --failed`
+     (ravencia-* yok).
 1. Durumu gör (salt okur): `bash deploy/scripts/install-app-db-roles.sh --check`; çalışacak SQL:
-   `bash deploy/scripts/install-app-db-roles.sh --print-sql`.
+   `bash deploy/scripts/install-app-db-roles.sh --print-sql`. Beklenen: `marketplacehub` `rolsuper = t`, nesnelerin
+   sahibi `marketplacehub`, oturumlar `marketplacehub` (ve `ravencia_ro`).
 2. Yedek: `sudo systemctl start ravencia-backup.service` ve `journalctl -u ravencia-backup -n 5` ("verified").
 3. Rolleri kur: `bash deploy/scripts/install-app-db-roles.sh --apply`. Tek işlem: iki rol, veritabanı/şema/tablo/
    dizi/fonksiyon sahipliği `marketplacehub_owner`'a, satır yetkileri `marketplacehub_app`'e, sonraki migration'lar
@@ -259,14 +302,30 @@ kilidi tutulurken, sırayla:
    `sudo cp deploy/secrets/app_db_connection.txt deploy/secrets/app_db_connection.superuser.txt` (geri dönüş için),
    `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.app-role.txt deploy/secrets/app_db_connection.txt`,
    sonra `gh workflow run deploy.yml --ref main` (API/Worker yeni bağlantıyla yeniden yaratılır).
-6. Doğrula: `/prod-sql "select usename, count(*) from pg_stat_activity where datname='marketplacehub' group by 1"` →
-   API/Worker oturumları `marketplacehub_app`; `/prod-sql "select rolname, rolsuper from pg_roles where rolname like
-   'marketplacehub%'"` → `_app` ve `_owner` için `f`; `/prod-logs errors --since 30m` boş (özellikle `42501
-   permission denied`). Bir sonraki migration'lı deploy'da migrate `marketplacehub_owner` ile çalışır.
+   Deploy bitince API ve Worker'ın yeni bağlantıyla açıldığını görün: `sudo docker ps` (ikisi `healthy`) ve
+   `curl -fsS https://panel.ravencia.com/health/live` (hazırlık `/health/ready` yalnız sunucudan: `sudo docker exec marketplacehub-api-1 dotnet api/MarketplaceHub.Api.dll healthcheck && echo ready`).
+6. Doğrula (salt okur). Sunucuda: `bash deploy/scripts/install-app-db-roles.sh --check` → `marketplacehub_app` ve
+   `marketplacehub_owner` için `rolsuper = f`, nesnelerin sahibi `marketplacehub_owner` (pg_trgm'in birkaç nesnesi
+   `marketplacehub`'ta kalır), oturumlar `marketplacehub_app`. Ya da kendi bilgisayarınızda `/prod-sql` ile şu dosya:
+   ```sql
+   SELECT rolname, rolsuper FROM pg_roles WHERE rolname LIKE 'marketplacehub%' ORDER BY 1;
+   SELECT usename, application_name, count(*) FROM pg_stat_activity WHERE datname = 'marketplacehub' GROUP BY 1, 2 ORDER BY 1, 2;
+   SELECT has_table_privilege('marketplacehub_app', 'ops.audit_logs', 'UPDATE') AS audit_update,
+          has_table_privilege('marketplacehub_app', 'public."__EFMigrationsHistory"', 'DELETE') AS history_delete;
+   ```
+   → `_app` ve `_owner` `f`; API/Worker oturumları `marketplacehub_app`; iki yetki `f`. Sonra
+   `/prod-logs errors --since 30m` boş olmalı (özellikle `42501 permission denied`). Bir sonraki migration'lı deploy'da
+   migrate `marketplacehub_owner` ile çalışır: o deploy'un logunda migrate'in başarılı olduğunu ve `--check`'te yeni
+   tabloların sahibinin `marketplacehub_owner` olduğunu görün.
 
-**Geri dönüş:** `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.superuser.txt
-deploy/secrets/app_db_connection.txt` ve yeniden deploy (süper kullanıcı her nesneye erişir; sahipliği geri almak
-gerekmez). Migrate değişikliği geri alınırsa `migrate_db_connection.txt` dosyası durabilir.
+**Geri dönüş** (adım 5'ten sonra herhangi bir anda; `42501` hataları ya da sağlıksız API/Worker):
+1. `sudo install -o root -g 1654 -m 0640 deploy/secrets/app_db_connection.superuser.txt deploy/secrets/app_db_connection.txt`
+2. `gh workflow run deploy.yml --ref main` (API/Worker süper kullanıcıyla yeniden yaratılır; süper kullanıcı her nesneye
+   erişir, sahipliği geri almak gerekmez).
+3. Doğrula: `--check`'te oturumlar yeniden `marketplacehub`, `/prod-logs errors --since 30m` boş.
+Migrate de geri alınacaksa yamanın geri alınışı (`git revert <yama commit'i>`) gönderilir; `migrate_db_connection.txt`
+dosyası durabilir. Adım 3'ten sonra ama 5'ten önce geri dönmek gerekmez: o sırada her şey `marketplacehub` ile çalışır.
+Rolleri tamamen kaldırmak gerekmez ve önerilmez (yedekler onlara `GRANT` taşır).
 **Riskler:** (a) kodda bugün görülmeyen süper kullanıcı gerektiren bir yol (ör. `ALTER`, `TRUNCATE` gerçek tabloda)
 `42501` ile düşer, hata loglarında görünür — geri dönüşle kapanır; (b) yeni şema/tablo açan migration'lar
 varsayılan yetkilerle kapsanır (`marketplacehub_owner`'ın ve `marketplacehub`'ın yarattıkları), ama `marketplacehub`

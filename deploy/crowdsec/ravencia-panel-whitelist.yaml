@@ -10,40 +10,51 @@
 # API (login attempts included). The Caddy access log replaces every query string with "?redacted" before CrowdSec
 # reads it, so a query can never carry a payload past these rules.
 #
-# The rules apply only to a browser-like client: a request with no User-Agent, or one from a known scanner or a bare
-# HTTP library (sqlmap, nikto, nmap, masscan, zgrab, nuclei, python-requests, curl, Go's client...), is never dropped,
-# whatever its path, so a tool cannot hide its probing behind the panel's own request shapes (audit 13 Nov 2026).
+# Who it applies to (scan report A-11, 26 Nov 2026): a request that carries a cookie AND got an answer the server only
+# gives a working request. The Caddy access log records that a Cookie header was sent ("Cookie": ["REDACTED"]: never a
+# name or value), which a client can fake, so the deciding part is the status the server chose: 2xx or 304 only. A 401
+# (no or expired session), 403, 400 or a routing 404 is never dropped. The one 404 kept is the API's own "record not
+# found" (Content-Type application/problem+json, written by an endpoint, i.e. after the session was accepted; an unknown
+# route answers an empty 404): the 12 Nov case above, seen again live on 25 Nov (7 distinct 404s in 3 s from the owner's
+# phone). A request with no User-Agent or a scanner's or bare HTTP library's one is never dropped either (13 Nov audit).
 #
 # The regular expressions are RE2 and also valid POSIX ERE: tests/ops/test-crowdsec-whitelist.sh checks them with
 # grep -E against the panel's paths and a list of scanner paths (the User-Agent one with grep -iE, its "(?i)" taken
-# off). Keep each regex inside one 'matches' literal.
+# off), and the status rule against the statuses it must and must not pass. Keep each regex inside one 'matches'
+# literal. Check on the host with `cscli explain` (docs/CI-CD-DEPLOY.md, "CrowdSec").
 name: ravencia/panel-whitelist
 description: "Ravencia panel: its own API, SPA, asset and icon requests are not scanning"
-filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log'] && !(evt.Parsed.http_user_agent in ['', '-']) && !(evt.Parsed.http_user_agent matches '(?i)(sqlmap|nikto|nmap|masscan|zgrab|zmap|nuclei|httpx|wpscan|whatweb|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|acunetix|nessus|openvas|netsparker|burp|hydra|jaeles|censys|python-requests|python-urllib|aiohttp|httpie|go-http-client|libwww-perl|lwp-|curl/|wget/|java/|okhttp|scrapy)')"
+filter: "evt.Meta.service == 'http' && evt.Meta.log_type in ['http_access-log', 'http_error-log'] && JsonExtract(evt.Line.Raw, 'request.headers.Cookie[0]') != '' && !(evt.Parsed.http_user_agent in ['', '-']) && !(evt.Parsed.http_user_agent matches '(?i)(sqlmap|nikto|nmap|masscan|zgrab|zmap|nuclei|httpx|wpscan|whatweb|dirbuster|gobuster|feroxbuster|ffuf|wfuzz|acunetix|nessus|openvas|netsparker|burp|hydra|jaeles|censys|python-requests|python-urllib|aiohttp|httpie|go-http-client|libwww-perl|lwp-|curl/|wget/|java/|okhttp|scrapy)')"
 whitelist:
   reason: "ravencia panel request"
   expression:
-    # API reads under the panel's own resource prefixes (GET/HEAD, any status): a 404 for a record deleted meanwhile,
-    # a 401 when the session expired, the list pages' bursts. Segments are letters, digits, '-' and '_' only.
+    # API reads under the panel's own resource prefixes (GET/HEAD) that worked, or the API's own 404 for a record
+    # deleted meanwhile; the list pages' bursts. Segments are letters, digits, '-' and '_' only.
     # /api/ without v1 covers an old tab still calling the earlier paths.
     # RE2 (Go) rejects nested counted repeats whose product passes 1000, so a segment is at most 120 here (120 x 8).
     - >-
       evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      (evt.Meta.http_status matches '^(2[0-9][0-9]|304)$' || (evt.Meta.http_status == '404' && JsonExtract(evt.Line.Raw, 'resp_headers.Content-Type[0]') startsWith 'application/problem+json')) &&
       evt.Meta.http_path matches '^/api/(v1/)?(auth|catalog|catalog-structure-runs|channel-offers|connections|dashboard|files|imports|inventory|invoice-workspace|invoices|jobs|mappings|orders|price-stock-monitor|price-stock-send-log|product-activity|products|question-templates|questions|reference-data|reports|returns|settings|shipments|variants|api-health-signals)(/[A-Za-z0-9_-]{1,120}){0,8}/?(\\?redacted)?$'
-    # SignalR (operations hub): negotiate, WebSocket and long-polling reconnects answer 404 for a connection id the
-    # API forgot after a deploy.
+    # SignalR (operations hub): negotiate and its reconnects. A 404 for a connection id the API forgot after a deploy
+    # repeats one path, which http-probing (distinct paths) does not count.
     - >-
       evt.Meta.http_verb in ['GET', 'POST'] &&
+      evt.Meta.http_status matches '^(2[0-9][0-9]|304)$' &&
       evt.Meta.http_path matches '^/hubs/operations(/negotiate)?(\\?redacted)?$'
-    # Built assets: an open tab asks for the previous release's hashed chunks after a deploy (404).
+    # Built assets that exist. A previous release's chunk asked for after a deploy (404) is a static file, which the
+    # http-probing and crawl scenarios leave out anyway.
     - >-
       evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_status matches '^(2[0-9][0-9]|304)$' &&
       evt.Meta.http_path matches '^/(assets|fonts|platforms|pack)(/[A-Za-z0-9_-]{1,128})*/[A-Za-z0-9_-]{1,128}(\\.[A-Za-z0-9_-]{1,32}){0,3}\\.(js|mjs|css|map|woff2|woff|webp|png|svg|jpg|jpeg|ico|br|zst|txt)(\\?redacted)?$'
     # Icons, manifest and robots.txt.
     - >-
       evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_status matches '^(2[0-9][0-9]|304)$' &&
       evt.Meta.http_path matches '^/(favicon\\.ico|favicon-(16|32)\\.png|apple-touch-icon(-precomposed)?\\.png|icon-(192|512|maskable-512)\\.png|site\\.webmanifest|manifest\\.webmanifest|robots\\.txt)(\\?redacted)?$'
     # SPA pages opened or reloaded directly (Caddy answers them with index.html).
     - >-
       evt.Meta.http_verb in ['GET', 'HEAD'] &&
+      evt.Meta.http_status matches '^(2[0-9][0-9]|304)$' &&
       evt.Meta.http_path matches '^/((login|dashboard|catalog|imports|integrations|invoices|jobs|mappings|orders|products|promotions|questions|reports|returns|settings|shipments)(/[A-Za-z0-9_-]{1,128}){0,4}/?)?(\\?redacted)?$'

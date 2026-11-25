@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh CrowdSec allowlists (GitHub Actions ranges, private ranges)
+Description=Refresh CrowdSec exemptions (GitHub Actions ranges for SSH only, private ranges)
 Requires=crowdsec.service
 After=crowdsec.service network-online.target
 Wants=network-online.target
@@ -13,6 +13,8 @@ ExecStart=/usr/local/lib/ravencia/deploy/scripts/crowdsec-allowlist-refresh.sh
 TimeoutStartSec=30min
 NoNewPrivileges=yes
 ProtectSystem=full
+# The one place it writes under /etc: its postoverflow whitelist (deploy/scripts/crowdsec-allowlist-refresh.sh).
+ReadWritePaths=-/etc/crowdsec/postoverflows/s01-whitelist
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes

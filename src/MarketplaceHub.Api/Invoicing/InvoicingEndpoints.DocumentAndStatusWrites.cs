@@ -59,7 +59,9 @@ public static partial class InvoicingEndpoints
         var assetId = Guid.CreateVersion7();
         var extension = mimeType switch { "application/pdf" => ".pdf", "image/jpeg" => ".jpg", _ => ".png" };
         buffer.Position = 0;
-        var stored = await storage.SaveAsync(tenant.TenantId, $"{assetId:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
+        // The file gets its final name only after its row is saved (disposing it uncommitted removes it).
+        await using var staged = await storage.StageAsync(tenant.TenantId, $"{assetId:N}{extension}", mimeType, buffer, maximumBytes, http.RequestAborted);
+        var stored = staged.RelativePath;
         var now = timeProvider.GetUtcNow();
         var document = new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, InvoiceId = id, DocumentType = "MANUAL_UPLOAD", FileAssetId = assetId, Sha256 = hash, CreatedAt = now };
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenant.TenantId, Classification = "INVOICE_DOCUMENT_MANUAL", RelativePath = stored, OriginalNameSafe = Path.GetFileName(file.FileName), MimeType = mimeType, SizeBytes = bytes.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = now });
@@ -73,6 +75,7 @@ public static partial class InvoicingEndpoints
         }
         db.AuditLogs.Add(new AuditLog { TenantId = tenant.TenantId, ActorUserId = tenant.UserId, Action = "INVOICE_DOCUMENT_MANUAL_UPLOAD", TargetType = "Invoice", TargetId = id.ToString("D"), Reason = $"{mimeType}:{bytes.LongLength}", CorrelationId = http.TraceIdentifier, CreatedAt = now });
         await db.SaveChangesAsync(http.RequestAborted);
+        staged.Commit();
         return Results.Created($"/api/v1/invoices/{id:D}/documents/{document.Id:D}/content", new { document.Id, document.DocumentType, document.Sha256, document.CreatedAt, duplicate = false });
     }
 
