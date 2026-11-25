@@ -444,9 +444,13 @@ her gün yeniler): GitHub Actions aralıkları (api.github.com/meta `actions`) *
 `/etc/crowdsec/postoverflows/s01-whitelist/ravencia-github-actions-ssh.yaml` (tarama raporu A-11, 26 Kasım 2026;
 önceden `github-actions` izin listesiydi ve her senaryodan muaftı, HTTP taraması da görünmüyordu). Deploy anahtarı
 zorunlu komutla sınırlı olsa da muafiyet kaldırılmadı: zorunlu komut anahtarın ne yapabileceğini sınırlar, banı
-engellemez; paylaşımlı bir GitHub runner IP'si başkası yüzünden `ssh-bf` banı alırsa deploy durur. Dosya yalnız
-`crowdsec -t` kabul edip CrowdSec yeniden yüklendikten sonra yerinde kalır (yoksa önceki geri konur, birim hata verir,
-alarm gelir); eski `github-actions` izin listesi ancak bundan sonra silinir. `ravencia-private` (loopback, özel ve
+engellemez; paylaşımlı bir GitHub runner IP'si başkası yüzünden `ssh-bf` banı alırsa deploy durur. **Geçiş sahibin
+elinde:** deploy yeni betiği ve birimi kursa da zamanlayıcı yalnız `/etc/ravencia/crowdsec-ssh-only-allowlist` işareti
+varken (onu yalnız sahibin çalıştırdığı `install-crowdsec.sh` yazar) postoverflow dosyasını yazar ve eski izin listesini
+siler; işaret yokken eski düzen aynen sürer (`github-actions` izin listesi her gün güncellenir, postoverflow dizinine
+dokunulmaz). İşaretle: dosya yalnız `crowdsec -t` kabul edip CrowdSec yeniden yüklendikten sonra yerinde kalır (yoksa
+önceki geri konur, izin listesi silinmez, birim hata verir, alarm gelir); eski `github-actions` izin listesi ancak
+bundan sonra silinir. `ravencia-private` (loopback, özel ve
 link-local aralıklar) izin listesi olarak kalır. Bilinen artık risk: postoverflow beyaz listesi topluluk blok listesi
 kararlarını kapsamaz; `--enforce` sonrası bir GitHub runner IP'si blok listesindeyse o deploy SSH'ta zaman aşımına düşer
 (yeniden çalıştırmak başka bir runner'a gider; `sudo cscli decisions list --ip <IP>`). Kontrol:
@@ -510,19 +514,26 @@ sudo cscli alerts list                             # birkaç gün içinde kendi 
 `git pull` sonrası sırayla:
 
 ```bash
-bash deploy/scripts/install-crowdsec.sh               # beyaz listeyi ve yeni birimi kurar, simülasyon işareti korunur
+bash deploy/scripts/install-crowdsec.sh               # panel beyaz listesi, yeni birim ve işaret dosyası; simülasyon korunur
 sudo systemctl start ravencia-crowdsec-allowlist.service
 journalctl -u ravencia-crowdsec-allowlist -n 10       # "SSH scenarios only (reloaded)" ve "Allowlist github-actions removed"
 sudo cscli simulation status                          # "global simulation: enabled" kalmalı
 ```
 Ardından yukarıdaki beş `cscli explain` ile doğrulayın ve 2–3 gün `sudo cscli alerts list`'te kendi IP'nizle `http-*`
-uyarısı olmadığını, bir deploy'un sorunsuz geçtiğini görün; `--enforce` ancak bundan sonra.
-**Geri almak:** `git checkout <önceki sha> -- deploy/crowdsec/ravencia-panel-whitelist.yaml && sudo install -m 0644
-deploy/crowdsec/ravencia-panel-whitelist.yaml /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml && sudo
-rm -f /etc/crowdsec/postoverflows/s01-whitelist/ravencia-github-actions-ssh.yaml && sudo systemctl reload crowdsec`, sonra
-GitHub aralıklarını eski izin listesine geri almak için önceki sürümün `crowdsec-allowlist-refresh.sh`'ını bir kez
-çalıştırın (`git show <önceki sha>:deploy/scripts/crowdsec-allowlist-refresh.sh | sudo bash`). Kalıcı geri dönüş için bu
-commit'in geri alınması da yayınlanmalı; yoksa günlük zamanlayıcı ertesi gün yeni düzeni yeniden kurar.
+uyarısı olmadığını, bir deploy'un sorunsuz geçtiğini görün; `--enforce` ancak bundan sonra. Bu günlerde özellikle iki
+durumu izleyin: rolü kısıtlı bir kullanıcının yetkisi olmayan sayfalarda aldığı **403**'ler ve süresi dolmuş oturumda
+`/api/v1/auth/me`'nin **401**'leri; ikisi de artık beyaz listeden düşmez. 401 `http-probing`'e girmez ve tek yol olduğundan
+tarama kovasını doldurmaz (canlıda 7 günde 18 tane, hepsi `/auth/me`); 403 `http-probing`'e girer: kısıtlı bir kullanıcı
+10 sn içinde 10'dan fazla farklı yolda 403 alırsa "(simul)ban" görünür. Görürseniz `sudo cscli alerts inspect <ID> -d`
+ile yolları bulun ve haber verin (beyaz listeye 403 problem+json istisnası eklenebilir).
+**Geri almak:** GitHub aralıkları için `sudo rm /etc/ravencia/crowdsec-ssh-only-allowlist && sudo rm -f
+/etc/crowdsec/postoverflows/s01-whitelist/ravencia-github-actions-ssh.yaml && sudo systemctl reload crowdsec && sudo
+systemctl start ravencia-crowdsec-allowlist.service` (işaret yokken betik eski `github-actions` izin listesini yeniden
+kurar ve günceller; `sudo cscli allowlists list` ile görün). Panel beyaz listesi için `git show <önceki
+sha>:deploy/crowdsec/ravencia-panel-whitelist.yaml | sudo tee
+/etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml >/dev/null && sudo systemctl reload crowdsec`. Not:
+`install-crowdsec.sh` her çalıştığında (`--enforce` dahil) işareti yeniden yazar; geri alınmış hâli korumak için
+sonrasında işareti yeniden silin.
 
 **Banı açmak (sahibin adımı)**: beyaz liste kurulduktan sonra en az 2–3 gün normal kullanımda
 `sudo cscli alerts list` içinde sahibin IP'siyle (TurkNet/mobil) yeni `http-*` uyarısı çıkmadığını görün; çıkarsa

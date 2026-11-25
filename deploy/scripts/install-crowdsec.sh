@@ -72,9 +72,13 @@ sudo -n install -m 0600 "$config_dir/crowdsec-firewall-bouncer.yaml.local" /etc/
 # request shape, not by IP. Simulation and --enforce runs alike; the reloads below pick it up.
 sudo -n install -d -m 0755 /etc/crowdsec/parsers/s02-enrich
 sudo -n install -m 0644 "$config_dir/ravencia-panel-whitelist.yaml" /etc/crowdsec/parsers/s02-enrich/ravencia-panel-whitelist.yaml
-# GitHub Actions ranges are exempt from the SSH scenarios only: ravencia-crowdsec-allowlist writes its postoverflow
-# whitelist here (the unit may write nothing else under /etc).
+# GitHub Actions ranges are exempt from the SSH scenarios only (scan report A-11): ravencia-crowdsec-allowlist writes its
+# postoverflow whitelist here (the unit may write nothing else under /etc) and drops the every-scenario allowlist, but
+# only while the marker below exists. Running this script is the owner's switch; no deploy writes the marker. Back to
+# the old allowlist: sudo rm /etc/ravencia/crowdsec-ssh-only-allowlist (docs/CI-CD-DEPLOY.md, "CrowdSec").
 sudo -n install -d -m 0755 /etc/crowdsec/postoverflows/s01-whitelist
+sudo -n install -d -m 0755 /etc/ravencia
+sudo -n touch /etc/ravencia/crowdsec-ssh-only-allowlist
 
 sudo -n cscli hub update >/dev/null
 sudo -n cscli collections install crowdsecurity/linux crowdsecurity/sshd crowdsecurity/caddy \

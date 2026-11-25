@@ -66,14 +66,28 @@ for i in $(seq 1 1200); do printf '10.%d.%d.0/24\n' "$((i / 256))" "$((i % 256))
 printf '2001:db8::/48\n' >> "$FAKE_RANGES"
 whitelist="$postoverflows/ravencia-github-actions-ssh.yaml"
 
+marker="$work/crowdsec-ssh-only-allowlist"
+
 run_refresh() {
   local status=0
   : > "$FAKE_LOG"
-  output="$(RAVENCIA_CROWDSEC_SKIP_ROOT_CHECK=1 RAVENCIA_CROWDSEC_POSTOVERFLOW_DIR="$postoverflows" bash "$script" 2>&1)" || status=$?
+  output="$(RAVENCIA_CROWDSEC_SKIP_ROOT_CHECK=1 RAVENCIA_CROWDSEC_POSTOVERFLOW_DIR="$postoverflows" RAVENCIA_CROWDSEC_SSH_ONLY_MARKER="$marker" bash "$script" 2>&1)" || status=$?
   refresh_status="$status"
 }
 
-# Before: the old allowlist exempted the ranges from every scenario.
+# No owner marker (a deploy installed the new script and unit): the old arrangement stays exactly as it was.
+printf '10.0.1.0/24\n' > "$lists/github-actions"
+run_refresh
+assert_eq 0 "$refresh_status" "without the marker the run passes"
+assert_contains "$output" "the old arrangement stays" "says the old arrangement stays"
+assert_no_dir "$whitelist" "without the marker no postoverflow file is written"
+assert_eq 1201 "$(wc -l < "$lists/github-actions" | tr -d ' ')" "without the marker the old allowlist is kept current"
+assert_not_contains "$(cat "$FAKE_LOG")" "allowlists delete" "without the marker nothing is deleted"
+assert_not_contains "$(cat "$FAKE_LOG")" "systemctl reload" "without the marker CrowdSec is not reloaded"
+assert_eq 0 "$(find "$postoverflows" -mindepth 1 | wc -l | tr -d ' ')" "without the marker the postoverflow directory is untouched"
+
+# The owner's switch (install-crowdsec.sh writes the marker).
+: > "$marker"
 printf '10.0.1.0/24\n' > "$lists/github-actions"
 run_refresh
 assert_eq 0 "$refresh_status" "first run passes"
@@ -119,7 +133,7 @@ cp "$work/full" "$FAKE_RANGES"
 assert_eq 1 "$refresh_status" "a short GitHub answer fails"
 if cmp -s "$whitelist" "$work/accepted.yaml"; then pass "a short answer leaves the whitelist as it was"; else fail "a short answer changed the whitelist"; fi
 
-# Under the unit from before 26 Nov the directory is read-only: the old allowlist is kept current instead.
+# The marker with a read-only directory (an older unit): the old allowlist is kept current and the run fails.
 rm -f -- "$whitelist"
 chmod 0555 "$postoverflows"
 if touch "$postoverflows/probe" 2>/dev/null; then
@@ -129,9 +143,15 @@ if touch "$postoverflows/probe" 2>/dev/null; then
 else
   run_refresh
   chmod 0755 "$postoverflows"
-  assert_eq 0 "$refresh_status" "an old unit still passes"
+  assert_eq 1 "$refresh_status" "a marker without a writable directory fails"
   assert_contains "$output" "keeping the github-actions allowlist" "says the owner step is pending"
   assert_eq 1202 "$(wc -l < "$lists/github-actions" | tr -d ' ')" "the old allowlist is kept current"
 fi
+
+# Rollback: deleting the marker goes back to the old allowlist on the next run.
+rm -f -- "$marker" "$lists/github-actions"
+run_refresh
+assert_eq 0 "$refresh_status" "after the marker is deleted the run passes"
+assert_eq 1202 "$(wc -l < "$lists/github-actions" | tr -d ' ')" "after the marker is deleted the old allowlist is back"
 
 finish "crowdsec allowlist refresh"
