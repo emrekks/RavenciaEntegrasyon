@@ -1738,8 +1738,8 @@ Sekmeler: Genel Bakış, Kârlılık (yanında kâr marjı %), Hakediş, Sipari�
 | **Sipariş** | İptal edilmemiş sipariş sayısı (tutarsızlar dahil); alt satır iptal sayısı · sepet |
 | **Satılan Adet** | Sipariş − iptal adedi (iade düşülmez); alt satır "Net" = müşteride kalan; iade adedi |
 
-Oranlar: **iptal oranı** = iptal adedi ÷ (satılan + iptal adedi); **iade oranı** = iade adedi ÷ aynı payda (Trendyol'un satış
-raporu gibi). İptal uyarı eşiği %2 (`ReportBuilder.cs:337,495-499`).
+Oranlar: **iptal oranı** = iptal adedi ÷ (satılan + iptal adedi) (Trendyol'un satış raporu gibi); **iade oranı** = iade adedi ÷
+satılan adet (iptaller hariç), özette, her platform, mağaza, il, marka, kategori ve üründe aynı formül (`ReportBuilder.ReturnRate`). İptal uyarı eşiği %2.
 
 **5.3.2 Kârlılık sekmesi.** Üstte **beş kart**: Net Ciro, Maliyeti Olan Ciro, Net Kâr, Net Kâr / Satış Fiyatı Oranı, Net
 Kâr / Ürün Maliyeti Oranı. Altında Kâr Hesabı, Komisyon ve Trendyol Kargo, Platformlara Göre Net Ciro, Reklam ve Diğer

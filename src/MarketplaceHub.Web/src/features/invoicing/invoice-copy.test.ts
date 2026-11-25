@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, taxpayerStatusLabel, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { handSetInvoiceStatusPlatforms, localValidationNotice, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, taxpayerStatusLabel, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { invoiceGlyphKind } from '../../shared/ui/invoice-state-glyph'
 
 import { invoiceStatusLabel, invoiceStatusTone } from '../../shared/status-labels'
@@ -10,6 +10,13 @@ describe('invoice copy', () => {
     expect(taxpayerStatusLabel('NOT_REGISTERED')).toBe('e-Fatura Mükellefi Değil')
     expect(taxpayerStatusLabel('UNKNOWN')).toBe('Sorgulanamadı')
     expect(taxpayerStatusLabel(null)).toBeNull()
+  })
+
+  // Scan C-7: "Yerel Doğrula" said "tamamlandı" in green although the check failed.
+  it('reads the local validation result from the returned invoice', () => {
+    expect(localValidationNotice({ status: 'VALIDATIONFAILED', lastErrorCode: 'SOME_TEST_CODE' })).toEqual([expect.stringMatching(/^Yerel doğrulama başarısız: /u), 'error'])
+    expect(localValidationNotice({ status: 'VALIDATION_FAILED', lastErrorCode: null })).toEqual(['Yerel doğrulama başarısız.', 'error'])
+    expect(localValidationNotice({ status: 'READY', lastErrorCode: null })).toEqual(['Yerel doğrulama tamamlandı.', 'success'])
   })
 
   it('names the delivery action after the marketplace, not Trendyol', () => {

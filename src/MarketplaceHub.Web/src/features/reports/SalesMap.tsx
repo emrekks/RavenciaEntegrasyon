@@ -142,8 +142,11 @@ export function SalesMap({ data }: { data: ReportSales }) {
     return () => { live = false }
   }, [scope, maps])
 
-  const groups = scope === 'turkey' ? data.cities.filter(group => group.known) : data.geography.countries.filter(group => group.key !== 'TR' && group.known)
-  const previousGroups = scope === 'turkey' ? data.geography.previousCities : data.geography.previousCountries
+  // Both periods pass the same filter (scan C-8): a known province or country, Turkey left out of the world view and
+  // "Bilinmiyor" left out of both, so the change compares like with like.
+  const onMap = (group: ReportGroup) => group.known && (scope === 'turkey' || group.key !== 'TR')
+  const groups = (scope === 'turkey' ? data.cities : data.geography.countries).filter(onMap)
+  const previousGroups = (scope === 'turkey' ? data.geography.previousCities : data.geography.previousCountries).filter(onMap)
   const viewOf = (group: ReportGroup) => platform ? group.split.find(part => part.key === platform) : group
   const before = new Map(previousGroups.flatMap(group => { const view = viewOf(group); return view ? [[group.key, view] as const] : [] }))
   const areas: Area[] = groups.flatMap(group => {
