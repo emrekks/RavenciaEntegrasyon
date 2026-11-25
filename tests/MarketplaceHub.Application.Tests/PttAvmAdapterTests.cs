@@ -1362,6 +1362,42 @@ public sealed class PttAvmAdapterTests
         Assert.DoesNotContain(handler.Requests, request => request.Headers.TryGetValue("SOAPAction", out var action) && action.Contains("UpdateProductsV3", StringComparison.Ordinal));
     }
 
+    // Scan A-1: the variant list behind the guard is read fresh, never from the scan's 15-minute cache. The cache holds a
+    // list without this model; PTT AVM now lists FK453001 as a variant of FK4530, so a send without variants is refused.
+    [Fact]
+    public async Task AProductWithoutVariantsIsCheckedAgainstAFreshVariantListNotTheScansCache()
+    {
+        var variantReads = 0;
+        var handler = new CapturingHandler(request => Operation(request) switch
+        {
+            "StokKontrolListesi" => Respond(HttpStatusCode.OK, ModelProductAnswer),
+            "GetProductsWithVariants" => Respond(HttpStatusCode.OK, variantReads++ == 0 ? EmptyVariantsAnswer : VariantsAnswer),
+            _ => throw new InvalidOperationException("No write may leave the panel.")
+        });
+        var client = Client(handler, globalWrites: true);
+        var account = Account(status: "ACTIVE", connectionWrites: true);
+        // A scan's first page fills the cache with a list that has no variants of FK4530.
+        Assert.True((await client.ReadProductPageAsync(account, null, null, CancellationToken.None)).IsSuccess);
+
+        var result = await client.CreateSingleProductAsync(account, ProductDraft() with { Barcode = "FK453001", ProductCode = "FK453001" }, CancellationToken.None);
+
+        Assert.Equal(AdapterErrorClass.BusinessConflict, result.Error!.Class);
+        Assert.Equal("PTTAVM_VARIANT_DELETION_RISK", result.Error.Code);
+        Assert.Equal(2, variantReads);
+        Assert.DoesNotContain(handler.Requests, request => request.Headers["SOAPAction"].Contains(PttAvmHttpClient.ProductUpsert, StringComparison.Ordinal));
+    }
+
+    // The one check the three variant-safe writes share (A-1): a failed list for the page or an unreadable entry of this
+    // barcode (case-insensitive) is incomplete; another barcode's unreadable entry is not.
+    [Fact]
+    public void AProductPageIsIncompleteWhileTheVariantListOrOneOfItsOwnEntriesWasNotRead()
+    {
+        Assert.False(PttAvmProductPayloadRules.VariantReadIncomplete("FK4530", null));
+        Assert.True(PttAvmProductPayloadRules.VariantReadIncomplete("FK4530", [new("PTTAVM_VARIANT_LIST_UNAVAILABLE", "0", "okunamadı")]));
+        Assert.True(PttAvmProductPayloadRules.VariantReadIncomplete("FK4530", [new("PRODUCT_VARIANT_INVALID", "fk4530:Variant[Tanim]", "okunamadı")]));
+        Assert.False(PttAvmProductPayloadRules.VariantReadIncomplete("FK4530", [new("PRODUCT_VARIANT_INVALID", "RVNC015:Variant[Tanim]", "okunamadı")]));
+    }
+
     [Fact]
     public void NoProductIsSentWhileExternalWritesAreOff() =>
         Assert.Equal("PTTAVM_EXTERNAL_WRITES_DISABLED", Client(new CapturingHandler(_ => throw new InvalidOperationException())).WriteBlocked<RemoteOperationRef>(Account(status: "ACTIVE", connectionWrites: false), "ürün")!.Error!.Code);
