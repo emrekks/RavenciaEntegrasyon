@@ -99,6 +99,10 @@ internal static class ReportPlatformCosts
 
     private const string Unknown = "UNKNOWN";
 
+    // A Hepsiburada order whose carrier is not known (or not named): its cargo is the hepsiJET table without a barem, an
+    // assumption the report and the order profit say as such (unknown stays unknown, never shown as the carrier's price).
+    internal static bool UnknownCarrier(string platformCode, string? carrier) => platformCode == "HEPSIBURADA" && HepsiburadaCarrier(carrier) == Unknown;
+
     internal static string HepsiburadaCarrier(string? carrier) => Fold(carrier) switch
     {
         var name when name.Contains("ARAS") => "ARAS",

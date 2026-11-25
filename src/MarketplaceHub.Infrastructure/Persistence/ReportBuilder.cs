@@ -385,7 +385,7 @@ internal static class ReportBuilder
         var stockView = StockView(products, stock, input.Period.Days);
         var costs = ReportCosts.Build(input, orders);
         var notes = Notes(summary, commission, cost, orders, cancelled, input);
-        notes.AddRange(ReportCosts.Notes(costs, input));
+        notes.AddRange(ReportCosts.Notes(costs, input, orders));
         var view = new ReportSalesView(
             input.Period.From, input.Period.To, previous.Period.From, previous.Period.To, input.Granularity, input.IncludesTest, default,
             summary, previousSummary, commission, cost, platforms, cities,

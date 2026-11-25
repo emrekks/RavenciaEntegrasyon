@@ -295,8 +295,7 @@ internal static class ReportCosts
         decimal? cargoEstimate = unbilledCount == 0 ? 0m : estimatedCargo.Count > 0 ? estimatedCargo.Values.Sum() : null;
 
         // The orders of the platforms whose statement is not read, costed from their tariffs (ReportPlatformCosts).
-        var carriers = input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
-            .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
+        var carriers = Carriers(input);
         decimal platformCargo = 0m, platformFees = 0m, platformVatFees = 0m;
         var desiInput = input.Desi ?? ReportDesiInput.None;
         var desiSources = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -426,7 +425,29 @@ internal static class ReportCosts
         && row.Category == MarketplaceFinanceCategories.Commission;
 
     // The notes the costs add to the report's DataNotes.
-    public static IEnumerable<string> Notes(ReportCostsView costs, ReportInput input)
+    public static IEnumerable<string> Notes(ReportCostsView costs, ReportInput input, IReadOnlyList<ReportBuilder.OrderFact>? orders = null)
+    {
+        foreach (var note in NotesOfCosts(costs, input)) yield return note;
+        if (orders is not null && UnknownCarrierNote(input, orders) is { } unknownCarrier) yield return unknownCarrier;
+    }
+
+    // Each package's carrier by order (the first named).
+    internal static Dictionary<Guid, string?> Carriers(ReportInput input) =>
+        input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
+            .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
+
+    // Review of 25 Nov 2026: the Hepsiburada orders costed above (ReportPlatformCosts) whose carrier is not known take the
+    // hepsiJET table without a barem; that cargo is an assumption, so the note says so instead of passing it as known.
+    private static string? UnknownCarrierNote(ReportInput input, IReadOnlyList<ReportBuilder.OrderFact> orders)
+    {
+        var carriers = Carriers(input);
+        var unknown = orders.Count(order => order.Currency == "TRY" && order.Amount > 0 && ReportPlatformCosts.UnknownCarrier(order.PlatformCode, carriers.GetValueOrDefault(order.Order.Id)));
+        return unknown > 0
+            ? $"Eksik: kargo firması. {unknown.ToString("N0", CultureInfo.GetCultureInfo("tr-TR"))} Hepsiburada siparişinin kargo firması bilinmiyor; kargosu hepsiJET desi tablosundan (barem uygulanmadan) varsayıldı, gerçek tutar farklı olabilir."
+            : null;
+    }
+
+    private static IEnumerable<string> NotesOfCosts(ReportCostsView costs, ReportInput input)
     {
         var tr = CultureInfo.GetCultureInfo("tr-TR");
         string Money(decimal value) => $"{value.ToString("N2", tr)} ₺";

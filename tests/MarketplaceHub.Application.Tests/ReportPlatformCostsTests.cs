@@ -73,6 +73,41 @@ public sealed class ReportPlatformCostsTests
         Assert.Contains(ReportCosts.Notes(costs, input), note => note.StartsWith("Eksik: komisyon, kargo, hizmet bedeli, stopaj, KDV.", StringComparison.Ordinal));
     }
 
+    // Review of 25 Nov 2026: a Hepsiburada order whose carrier is not known is costed at the hepsiJET table without a
+    // barem, an assumption: the notes name it as missing (unknown stays unknown), the order of a named carrier is not counted.
+    [Fact]
+    public void A_hepsiburada_order_of_an_unknown_carrier_is_named_in_the_notes()
+    {
+        var hb = Guid.NewGuid();
+        var day = new DateOnly(2026, 10, 23);
+        var start = new DateTimeOffset(2026, 10, 22, 21, 0, 0, TimeSpan.Zero);
+        var at = start.AddHours(12);
+        var (a, b) = (Guid.NewGuid(), Guid.NewGuid());
+        var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView> { [hb] = new(hb, "HEPSIBURADA", "Hepsiburada", false) },
+            [
+                new() { Id = a, ConnectionId = hb, OrderNumber = "U", DerivedStatus = "DELIVERED", Amount = 150m, LineValue = 150m, RealAt = at, OrderedAt = at },
+                new() { Id = b, ConnectionId = hb, OrderNumber = "J", DerivedStatus = "DELIVERED", Amount = 150m, LineValue = 150m, RealAt = at, OrderedAt = at }
+            ],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [
+                new() { Id = Guid.NewGuid(), OrderId = a, Title = "Ceket", Sku = "A", UnitPrice = 150m, OrderedQuantity = 1m, VatRate = 20m },
+                new() { Id = Guid.NewGuid(), OrderId = b, Title = "Bluz", Sku = "B", UnitPrice = 150m, OrderedQuantity = 1m, VatRate = 20m }
+            ],
+            new Dictionary<Guid, ReportLineExtra>(), [], [new() { Id = Guid.NewGuid(), OrderId = b, CargoProvider = "hepsiJET" }],
+            new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false);
+        var orders = ReportBuilder.Facts(input).Orders;
+
+        var costs = ReportCosts.Build(input, orders);
+
+        Assert.Equal(MoneyRounding.Round(81.99m * 1.2m + 43.99m * 1.2m), costs.Cargo!.PlatformEstimated);
+        var note = Assert.Single(ReportCosts.Notes(costs, input, orders), note => note.StartsWith("Eksik: kargo firması.", StringComparison.Ordinal));
+        Assert.StartsWith("Eksik: kargo firması. 1 Hepsiburada siparişinin", note, StringComparison.Ordinal);
+        Assert.True(ReportPlatformCosts.UnknownCarrier("HEPSIBURADA", null));
+        Assert.False(ReportPlatformCosts.UnknownCarrier("HEPSIBURADA", "hepsiJET"));
+        Assert.False(ReportPlatformCosts.UnknownCarrier("N11", null));
+    }
+
     // Review of 25 Nov 2026: with one Trendyol store read and another not, the unread store's fees stay out of the cost
     // lines (no estimate is invented for them) and the note names every cost missing, not only its VAT, so the cost
     // total and the net profit are not read as complete.
