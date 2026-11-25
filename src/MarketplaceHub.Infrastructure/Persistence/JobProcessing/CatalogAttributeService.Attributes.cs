@@ -203,7 +203,7 @@ internal sealed partial class CatalogAttributeService
         }
     }
 
-    private async Task<Category> EnsureMappedCategory(Guid tenantId, Guid connectionId, ReferenceSnapshot categorySnapshot, ReferenceItem remoteCategory, CancellationToken cancellationToken)
+    internal async Task<Category> EnsureMappedCategory(Guid tenantId, Guid connectionId, ReferenceSnapshot categorySnapshot, ReferenceItem remoteCategory, CancellationToken cancellationToken)
     {
         var mapping = await db.CategoryMappings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categorySnapshot.ScopeExternalId && x.ExternalId == remoteCategory.ExternalId, cancellationToken);
         Category? category = mapping is null ? null : await db.Categories.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == mapping.LocalId, cancellationToken);
@@ -214,13 +214,32 @@ internal sealed partial class CatalogAttributeService
         var categoryKeys = CatalogLookupKeys(remoteCategory.Path).Concat(CatalogLookupKeys(remoteCategory.Name)).Concat(CatalogLookupKeys(leafName)).Distinct(StringComparer.Ordinal).ToArray();
         category ??= db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && (CatalogKeyNormalizer.SameKey(x.NormalizedName, normalized) || CatalogKeyNormalizer.SameKey(x.NormalizedName, legacyNormalized)))
             ?? await db.Categories.Where(x => x.TenantId == tenantId && x.ParentId == null && categoryKeys.Contains(x.NormalizedName)).OrderBy(x => x.NormalizedName == normalized ? 0 : x.NormalizedName == legacyNormalized ? 1 : 2).ThenBy(x => x.Id).FirstOrDefaultAsync(cancellationToken);
-        if (category is null)
+        // B-5: a panel category matched by its leaf name may already be mapped to another marketplace category of this scope
+        // ("Kadın > Elbise" and "Çocuk > Elbise" both match "Elbise"). A second mapping to it breaks the unique index
+        // (tenant, connection, local category, scope) and failed the model's import on every run; this one gets the panel
+        // category of its own full path instead (found or opened), keyed by the path, and by the path and id if two
+        // marketplace categories share the same path.
+        if (mapping is null && category is not null && await CategoryMappedToAnother(tenantId, connectionId, categorySnapshot.ScopeExternalId, remoteCategory.ExternalId, category.Id, cancellationToken))
+        {
+            category = null;
+            foreach (var key in new[] { normalized, NormalizeCatalogKey($"{remoteCategory.Path} {remoteCategory.ExternalId}", 160) }.Distinct(StringComparer.Ordinal))
+            {
+                var own = db.Categories.Local.FirstOrDefault(x => x.TenantId == tenantId && x.ParentId is null && x.NormalizedName == key)
+                    ?? await db.Categories.Where(x => x.TenantId == tenantId && x.ParentId == null && x.NormalizedName == key).FirstOrDefaultAsync(cancellationToken);
+                if (own is not null && await CategoryMappedToAnother(tenantId, connectionId, categorySnapshot.ScopeExternalId, remoteCategory.ExternalId, own.Id, cancellationToken)) continue;
+                category = own ?? NewCategory(key);
+                break;
+            }
+        }
+        category ??= NewCategory(normalized);
+        Category NewCategory(string key)
         {
             var now = timeProvider.GetUtcNow();
-            category = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = leafName, NormalizedName = normalized, Path = leafName, Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
-            db.Categories.Add(category);
+            var created = new Category { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = leafName, NormalizedName = key, Path = leafName, Depth = 0, IsLeaf = true, IsActive = true, CreatedAt = now, UpdatedAt = now, Version = 1 };
+            db.Categories.Add(created);
+            return created;
         }
-        else if (db.Entry(category).State != EntityState.Added)
+        if (db.Entry(category).State != EntityState.Added)
         {
             // K13: an existing panel category keeps its name, path and active state; only its leaf flag
             // follows its children (a category the user split is no longer a leaf).
@@ -247,6 +266,12 @@ internal sealed partial class CatalogAttributeService
         }
         return category;
     }
+
+    // Whether another marketplace category of this connection and scope is already mapped to the panel category (saved or
+    // added in this unit of work).
+    private async Task<bool> CategoryMappedToAnother(Guid tenantId, Guid connectionId, string? scopeExternalId, string externalId, Guid categoryId, CancellationToken cancellationToken) =>
+        db.CategoryMappings.Local.Any(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scopeExternalId && x.LocalId == categoryId && x.ExternalId != externalId && db.Entry(x).State != EntityState.Deleted)
+        || await db.CategoryMappings.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == scopeExternalId && x.LocalId == categoryId && x.ExternalId != externalId, cancellationToken);
 
     internal async Task<LocalCategoryAttribute> EnsureMappedAttribute(
         Guid tenantId,
