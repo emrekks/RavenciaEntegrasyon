@@ -342,6 +342,8 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "PUT    /api/v1/settings/resend-reminder Elevated",
         "GET    /api/v1/settings/shipping-label SignedIn",
         "PUT    /api/v1/settings/shipping-label Elevated",
+        "GET    /api/v1/settings/shipping-label-templates SignedIn",
+        "PUT    /api/v1/settings/shipping-label-templates Elevated",
         "GET    /api/v1/settings/users/ Elevated",
         "POST   /api/v1/settings/users/ Elevated",
         "POST   /api/v1/settings/users/{id:guid}/mfa-reset Elevated",

@@ -318,6 +318,8 @@ GET    /api/v1/settings/resend-reminder | gate=SignedIn | sameOrigin=no | anon=4
 PUT    /api/v1/settings/resend-reminder | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=400 RESEND_REMINDER_INVALID | ownerIfMatch=400 RESEND_REMINDER_INVALID
 GET    /api/v1/settings/shipping-label | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 PUT    /api/v1/settings/shipping-label | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR
+GET    /api/v1/settings/shipping-label-templates | gate=SignedIn | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
+PUT    /api/v1/settings/shipping-label-templates | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=400 SHIPPING_LABEL_TEMPLATES_INVALID | ownerIfMatch=400 SHIPPING_LABEL_TEMPLATES_INVALID
 GET    /api/v1/settings/users/ | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | cross=500 INTERNAL_ERROR
 POST   /api/v1/settings/users/ | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=400 IDEMPOTENCY_KEY_REQUIRED | ownerIfMatch=400 IDEMPOTENCY_KEY_REQUIRED
 DELETE /api/v1/settings/users/invitations/{invitationId:guid} | gate=Elevated | sameOrigin=no | anon=401 AUTHENTICATION_REQUIRED | owner=500 INTERNAL_ERROR | ownerIfMatch=500 INTERNAL_ERROR

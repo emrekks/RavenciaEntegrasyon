@@ -11,6 +11,7 @@ namespace MarketplaceHub.Api.Settings;
 public static class SettingsEndpoints
 {
     private const string ShippingLabelKey = "shipping-label";
+    private const string ShippingLabelTemplatesKey = "shipping-label-templates";
     private const string AppearanceKey = "appearance";
     private const string ResendReminderKey = "orders-resend-reminder";
     private const string PlatformUpdateChoiceKey = "platform-update-choice";
@@ -90,6 +91,8 @@ public static class SettingsEndpoints
             .WithWriteIdempotency(WriteRepeat.Repeatable, "replaces the stored settings document; If-Match refuses a stale repeat");
         api.MapGet("/shipping-label", GetShippingLabelSettingsAsync).Produces<VersionedSettingsView>();
         api.MapPut("/shipping-label", SaveShippingLabelSettingsAsync).Produces<VersionedSettingsView>().IfMatch(required: false);
+        api.MapGet("/shipping-label-templates", GetShippingLabelTemplatesAsync).Produces<VersionedSettingsView>();
+        api.MapPut("/shipping-label-templates", SaveShippingLabelTemplatesAsync).Produces<VersionedSettingsView>().IfMatch(required: false);
         api.MapGet("/appearance", GetAppearanceSettingsAsync).Produces<VersionedSettingsView>();
         api.MapPut("/appearance", SaveAppearanceSettingsAsync).Produces<VersionedSettingsView>().IfMatch(required: false);
         api.MapGet("/resend-reminder", GetResendReminderAsync).Produces<ResendReminderView>();
@@ -166,6 +169,42 @@ public static class SettingsEndpoints
 
         if (await SaveAsync(http, db) is { } conflict) return conflict;
         return Versioned(http, setting.Version, new { settings = ParseObject(valueJson), version = setting.Version });
+    }
+
+    // Kargo etiketi şablonları: one list per tenant, so every device of the account shows the same templates (owner,
+    // 26 Nov 2026). Read like the label settings; a stored list is written only over the version read (If-Match).
+    private static async Task<IResult> GetShippingLabelTemplatesAsync(HttpContext http, AppDbContext db)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        var setting = await db.TenantSettings.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelTemplatesKey, http.RequestAborted);
+        // A stored value that no longer passes the checks reads as none saved; the next save replaces it.
+        var settings = ParseObject(setting?.ValueJson) is { } stored && ShippingLabelTemplatesSchema.TryNormalize(stored, out var normalized, out _) ? normalized : null;
+        return Versioned(http, setting?.Version ?? 0, new { settings, version = setting?.Version ?? 0 });
+    }
+
+    private static async Task<IResult> SaveShippingLabelTemplatesAsync(JsonElement settings, HttpContext http, AppDbContext db, TimeProvider timeProvider)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (settings.GetRawText().Length > ShippingLabelTemplatesSchema.MaximumJsonCharacters) return Problem(http, new("SHIPPING_LABEL_TEMPLATES_TOO_LARGE", "Etiket şablonları çok büyük.", 413));
+        if (!ShippingLabelTemplatesSchema.TryNormalize(settings, out var normalized, out var error)) return Problem(http, new("SHIPPING_LABEL_TEMPLATES_INVALID", error, 400));
+
+        var valueJson = normalized.ToJsonString();
+        var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Key == ShippingLabelTemplatesKey, http.RequestAborted);
+        if (Precondition(http, setting) is { } precondition) return precondition;
+        if (setting is null)
+        {
+            setting = new TenantSetting { TenantId = tenant.TenantId, Key = ShippingLabelTemplatesKey, ValueJson = valueJson, UpdatedAt = timeProvider.GetUtcNow(), Version = 1 };
+            db.TenantSettings.Add(setting);
+        }
+        else
+        {
+            setting.ValueJson = valueJson;
+            setting.UpdatedAt = timeProvider.GetUtcNow();
+            setting.Version++;
+        }
+
+        if (await SaveAsync(http, db) is { } conflict) return conflict;
+        return Versioned(http, setting.Version, new { settings = normalized, version = setting.Version });
     }
 
     private static async Task<IResult> GetAppearanceSettingsAsync(HttpContext http, AppDbContext db)

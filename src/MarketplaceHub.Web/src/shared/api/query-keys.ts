@@ -134,6 +134,7 @@ export const queryKeys = {
   settings: queryRoot('settings', []),
   shipmentCarriers: queryRoot('shipment-carriers', []),
   shippingLabelSettings: queryRoot('shipping-label-settings', []),
+  shippingLabelTemplates: queryRoot('shipping-label-templates', []),
   sizeChart: queryRoot('size-chart', []),
   syncPolicies: queryRoot('sync-policies', []),
   variantCodesTaken: queryRoot('variant-codes-taken', []),
