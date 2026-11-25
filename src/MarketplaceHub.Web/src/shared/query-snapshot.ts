@@ -69,6 +69,12 @@ export function confirmQuerySnapshotScope(client: QueryClient, tenantId: string 
   removeSnapshot()
 }
 
+/** The same person signed in again under the Oturum Doldu window (D-7): the snapshot is written again, nothing dropped. */
+export function resumeQuerySnapshot(client: QueryClient, tenantId: string | null | undefined, userId: string | null | undefined) {
+  stopped = false
+  confirmQuerySnapshotScope(client, tenantId, userId)
+}
+
 /** A new sign-in starts from nothing: what was kept for the previous session (maybe another person) is dropped. */
 export function forgetPreviousSession(client: QueryClient) {
   stopped = false
@@ -116,4 +122,11 @@ export function clearQuerySnapshot() {
   restoredScope = null
   confirmedScope = null
   removeSnapshot()
+}
+
+/** Another account answered under a held workspace (D-7): nothing of this one is kept or drawn again; the page loads afresh. */
+export function leaveForAnotherAccount(client: QueryClient) {
+  clearQuerySnapshot()
+  client.clear()
+  window.location.reload()
 }

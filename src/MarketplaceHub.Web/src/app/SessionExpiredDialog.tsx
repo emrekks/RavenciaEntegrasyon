@@ -5,7 +5,7 @@ import { queryKeys } from '../shared/api/query-keys'
 import { focusOnMount } from '../shared/focus'
 import { readStoredItem } from '../shared/local-storage'
 import { clearPersonalStorage } from '../shared/storage-scope'
-import { clearQuerySnapshot } from '../shared/query-snapshot'
+import { clearQuerySnapshot, leaveForAnotherAccount, resumeQuerySnapshot } from '../shared/query-snapshot'
 import { RrModal } from '../shared/ui/rr-components'
 import './session-expired.css'
 
@@ -40,11 +40,12 @@ export function SessionExpiredDialog({ me, onResumed }: { me: Me; onResumed: () 
     if (current.state === 'MFA_CHALLENGE') { setStep('code'); return }
     if (current.state !== 'ACTIVE' || sessionResumeResult(me, current) === 'other-account') {
       // Another account or a further sign-in step: a fresh page, so nothing of this workspace is shown to it.
-      clearQuerySnapshot()
-      window.location.reload()
+      leaveForAnotherAccount(client)
       return
     }
     client.setQueryData(queryKeys.me(), current)
+    // The reload snapshot is written again for this session (it stopped when the session ended).
+    resumeQuerySnapshot(client, current.tenantId, current.id)
     onResumed()
     // The screens read what the server holds again; a write that failed is not sent again by itself.
     void client.invalidateQueries({ predicate: query => query.queryKey[0] !== 'me', refetchType: 'active' })

@@ -13,6 +13,13 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
   unauthorizedHandler = handler
   return () => { if (unauthorizedHandler === handler) unauthorizedHandler = null }
 }
+// While the Oturum Doldu window is open (D-7) the panel sends nothing to the API: no poll, no read and no write may reach
+// it, since another tab may have signed this browser into another account meanwhile. Only the window's own sign-in
+// requests (under /auth, through api()) go out; the hold is lifted once the same person is signed in again.
+let sessionHold = false
+export function setSessionHold(held: boolean) { sessionHold = held }
+const sessionHeldError = () => new ApiRequestError('Oturum doldu; yeniden giriş yapın.', 401, 'AUTHENTICATION_REQUIRED')
+
 export function onUnauthorized() {
   csrfToken = null
   unauthorizedHandler?.()
@@ -210,6 +217,7 @@ export async function hubApi<T>(path: string, init?: HubRequestInit): Promise<T>
   let requestInit: RequestInit | undefined = init
   if (init && 'timeoutMs' in init) { const { timeoutMs: _timeoutMs, ...rest } = init; requestInit = rest }
   if (deadline) requestInit = { ...requestInit, signal: deadline.signal }
+  if (sessionHold) { deadline?.dispose(); throw sessionHeldError() }
   try {
     const response = await fetchThroughRestart(`/api/v1${path}`, automaticReadInit(requestInit))
     if (!response.ok) {
@@ -236,6 +244,7 @@ export async function hubApi<T>(path: string, init?: HubRequestInit): Promise<T>
 
 // A file the server writes (an Excel export), refused the way hubApi refuses: its bytes and the name it gives.
 export async function hubFile(path: string, init?: RequestInit): Promise<{ blob: Blob; fileName: string | null; headers: Headers }> {
+  if (sessionHold) throw sessionHeldError()
   const response = await fetchWithCsrf(`/api/v1${path}`, automaticReadInit(init))
   if (!response.ok) {
     const problem = await response.json().catch(() => ({})) as ApiProblem
