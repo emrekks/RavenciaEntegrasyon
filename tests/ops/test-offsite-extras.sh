@@ -95,4 +95,37 @@ shipped="$(tail -c +23 "$work/backup/offsite-extra/wal/wal-archive.tar.age" | ta
 assert_eq "base/20261116T030000Z/base.tar.gz wal/000000010000000000000005.00000028.backup.gz wal/000000010000000000000005.gz wal/000000010000000000000006.gz wal/000000010000000000000007.gz wal/00000002.history.gz " "$shipped" "base backup and the WAL from its start on"
 if [[ -f "$escrow_part/.verified" ]]; then pass "the escrow part is untouched by the WAL part"; else fail "the escrow part is untouched by the WAL part"; fi
 
+# The age key read from the panel setting (no RAVENCIA_EXTRA_RECIPIENT, no backup_age_recipient.txt): only the host
+# tenant's one key counts; no row, two rows, a malformed key or a failed query give no key, and the callers stop.
+mkdir -p "$work/lookup-bin" "$work/no-secrets"
+cat > "$work/lookup-bin/docker" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  ps) echo postgres-container ;;
+  exec) printf '%s\n' "$*" > "$LOOKUP_SQL_FILE"; [[ "$LOOKUP_STATUS" == 0 ]] || exit "$LOOKUP_STATUS"; printf '%b' "$LOOKUP_ROWS" ;;
+esac
+EOF
+chmod +x "$work/lookup-bin/docker"
+other="age1$(printf 'x%.0s' {1..58})"
+lookup() {
+  (
+    export PATH="$work/lookup-bin:$work/bin:$PATH" LOOKUP_ROWS="$1" LOOKUP_STATUS="${2:-0}" LOOKUP_SQL_FILE="$work/lookup.sql"
+    unset RAVENCIA_EXTRA_RECIPIENT
+    sudo_cmd=()
+    # shellcheck source=deploy/backup/offsite-extra-lib.sh
+    source "$repository_root/deploy/backup/offsite-extra-lib.sh"
+    extra_recipient "$work/no-secrets"
+  )
+}
+assert_eq "$recipient" "$(lookup "$recipient\n")" "the host tenant's key is read from the panel setting"
+assert_contains "$(cat "$work/lookup.sql")" "b.\"Key\" = 'initial-owner' and t.\"Status\" = 'ACTIVE'" "only the host tenant's setting is asked for"
+assert_eq "" "$(lookup "")" "no setting row gives no key"
+assert_eq "" "$(lookup "$recipient\n$other\n")" "two rows give no key"
+assert_eq "" "$(lookup "age1short\n")" "a malformed key gives no key"
+assert_eq "" "$(lookup "$recipient\n" 1)" "a failed query gives no key"
+status=0; output="$(PATH="$work/lookup-bin:$PATH" LOOKUP_ROWS="" LOOKUP_STATUS=0 LOOKUP_SQL_FILE="$work/lookup.sql" RECIPIENT="" run secrets-escrow.sh)" || status=$?
+assert_eq "1" "$status" "with no key the escrow stops with an error ($output)"
+status=0; output="$(PATH="$work/lookup-bin:$PATH" LOOKUP_ROWS="" LOOKUP_STATUS=0 LOOKUP_SQL_FILE="$work/lookup.sql" RECIPIENT="" run wal-archive.sh ship)" || status=$?
+assert_eq "1" "$status" "with no key the WAL archive is not shipped ($output)"
+
 finish "off-site extras"
