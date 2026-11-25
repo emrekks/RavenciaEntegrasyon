@@ -62,12 +62,11 @@ internal sealed partial class ReturnQueryService
 
         // The claims that may split (their CardSplit, or found by the raw statuses the tenant's lines carry); only their
         // lines are read, and only those that do split keep their cards.
-        var (accepted, waiting) = (columns.Accepted, columns.Waiting);
         var splitQuery = columns.Fresh
             ? query.Where(x => x.CardSplit == true)
-            : query.Where(x => db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && accepted.Contains(line.RawStatus))
-                && db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && (line.RawStatus == null || waiting.Contains(line.RawStatus))));
-        List<ReturnClaimRow> splitRows = accepted.Length == 0
+            : query.Where(ReturnCardColumns.MaySplitInDatabase(db, tenantId, columns.Accepted, columns.Waiting, columns.Blank));
+        // A split needs an accepted or a waiting raw status (a blank line takes its claim's status, which is one or the other).
+        List<ReturnClaimRow> splitRows = columns.Accepted.Length == 0 && columns.Waiting.Length == 0
             ? []
             : await splitQuery
                 .OrderBy(x => x.Id)

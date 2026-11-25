@@ -15,10 +15,14 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 /// </summary>
 internal static class AcceptedReturnPolicy
 {
-    // Canonicalize's words: a line read as approved or completed counts on any claim; a line read as rejected, cancelled or
-    // waiting for the seller never does; any other line (in transit, disputed, unknown, no status) follows its claim.
+    // Canonicalize's words: a line read as approved or completed counts on any claim; a line with any other status of its
+    // own (rejected, waiting, in transit, disputed, unknown) never does; only a line without a status follows its claim
+    // (scan 25 Nov 2026 C-1).
     internal static readonly string AcceptedLinePattern = WordPattern(MarketplaceReturnStatus.WordsOf(ReturnClaimStatus.Approved, ReturnClaimStatus.Completed));
-    internal static readonly string RefusedLinePattern = WordPattern(MarketplaceReturnStatus.WordsOf(ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled, ReturnClaimStatus.ActionRequired));
+
+    // No status of its own: string.IsNullOrWhiteSpace, every white-space character of the Basic Multilingual Plane listed
+    // (char.IsWhiteSpace), as PostgreSQL's \s follows its own locale.
+    internal static readonly string BlankLinePattern = $"^{CharacterClass(0, char.IsWhiteSpace)}*$";
 
     // The long s, the one letter outside ASCII the invariant upper case turns into an ASCII letter (S): Canonicalize reads
     // "CLOſED" as CLOSED, so the word patterns take it for S.
@@ -26,17 +30,17 @@ internal static class AcceptedReturnPolicy
 
     // FATURA-FINANS-2: Canonicalize keeps every letter and digit (char.IsLetterOrDigit), not only the ASCII ones, so a
     // status with any other letter or digit in it ("ACCEPTEDé", "ACCEPTEDı") is no known word: it reads as unknown and
-    // follows its claim. Every such character of the Basic Multilingual Plane is listed here (\uXXXX ranges, which .NET
+    // counts nothing. Every such character of the Basic Multilingual Plane is listed here (\uXXXX ranges, which .NET
     // and PostgreSQL both read; the long s aside). Characters beyond it are surrogate pairs to Canonicalize, never letters.
-    internal static readonly string ForeignLetterPattern = ForeignLetters();
+    internal static readonly string ForeignLetterPattern = CharacterClass(0x80, character => character != LongS && char.IsLetterOrDigit(character));
 
-    private static string ForeignLetters()
+    private static string CharacterClass(int from, Func<char, bool> listedCharacter)
     {
         var ranges = new System.Text.StringBuilder("[");
         int? start = null;
-        for (var code = 0x80; code <= 0x10000; code++)
+        for (var code = from; code <= 0x10000; code++)
         {
-            var listed = code <= 0xFFFF && code != LongS && char.IsLetterOrDigit((char)code);
+            var listed = code <= 0xFFFF && listedCharacter((char)code);
             if (listed && start is null) start = code;
             if (listed || start is not { } first) continue;
             ranges.Append(first == code - 1 ? $"\\u{first:X4}" : $"\\u{first:X4}-\\u{code - 1:X4}");
@@ -59,31 +63,38 @@ internal static class AcceptedReturnPolicy
     /// <summary>The lines of the tenant's return claims that can take units back, with their claim's status.</summary>
     public static IQueryable<ClaimLine> ClaimLines(AppDbContext db, Guid tenantId) =>
         from line in db.ReturnLines.AsNoTracking()
-        join claim in db.ReturnClaims.AsNoTracking() on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
+        join claim in db.ReturnClaims.AsNoTracking().Where(CountsAsReturnInDatabase(db)) on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
         where claim.TenantId == tenantId && claim.Status != ReturnClaimStatus.Cancelled
-            // An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov 2026). Only the
-            // stored request says so; a claim that does not say is a return as before. An exchange claim the marketplace
-            // closed with a refund (raw status Refunded) is a return.
-            // ReturnCustomerRequestPolicy.CountsAsReturn: only Hepsiburada's exchanges (ExchangeNoReturnPlatform); a
-            // Trendyol exchange request counts as before (review, 18 Nov 2026).
-            && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
-                || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
-                    && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform))
         select new ClaimLine { OrderId = claim.OrderId, OrderLineId = line.OrderLineId, Quantity = line.Quantity, RawStatus = line.RawStatus, ClaimStatus = claim.Status };
+
+    // The claim's raw status Refunded, trimmed of what string.Trim strips and in any case, as CountsAsReturn compares it.
+    internal static readonly string RefundedClaimPattern = ReturnSearchText.TrimmedIgnoreCasePattern(ReturnCustomerRequestPolicy.RefundedRawStatus);
+
+    /// <summary>
+    /// ReturnCustomerRequestPolicy.CountsAsReturn as a database condition, the one copy the invoice (InvoiceSaleReturns,
+    /// through ClaimLines), the overview (DashboardReadService.AcceptedReturnQuantities) and the reports (ReportsService
+    /// claim rows) read. An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov 2026).
+    /// How the claim closed decides first: refunded (raw status Refunded) or ResolvedWith REFUND is a return, ResolvedWith
+    /// CHANGE is none (scan 25 Nov 2026 C-2). A claim that does not say how it closed counts unless it is a Hepsiburada
+    /// exchange request (ExchangeNoReturnPlatform; a Trendyol exchange request counts as before, review 18 Nov 2026).
+    /// </summary>
+    public static Expression<Func<ReturnClaim, bool>> CountsAsReturnInDatabase(AppDbContext db) => claim =>
+        Regex.IsMatch(claim.RawStatus, RefundedClaimPattern)
+        || claim.ResolvedWith != ReturnCustomerRequestPolicy.Change
+            && (claim.ResolvedWith == ReturnCustomerRequestPolicy.Refund || claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
+                    && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform));
 
     /// <summary>Whether a claim line takes its units back: the invoice's rule.</summary>
     public static bool LineCounts(ReturnClaimStatus claimStatus, string? lineRawStatus) =>
         ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineRawStatus);
 
     /// <summary>LineCounts as a database condition.</summary>
-    // A status with a letter outside ASCII is unknown: the line follows its claim. The long list is written once (a
-    // conditional), as the reports repeat this condition in their statements.
+    // A line without a status follows its claim; a status with a letter outside ASCII is unknown and counts nothing.
     public static readonly Expression<Func<ClaimLine, bool>> LineCountsInDatabase = row =>
-        Regex.IsMatch(row.RawStatus ?? "", ForeignLetterPattern)
+        Regex.IsMatch(row.RawStatus ?? "", BlankLinePattern)
             ? row.ClaimStatus == ReturnClaimStatus.Approved || row.ClaimStatus == ReturnClaimStatus.Completed
-            : Regex.IsMatch(row.RawStatus ?? "", AcceptedLinePattern, RegexOptions.IgnoreCase)
-                || (row.ClaimStatus == ReturnClaimStatus.Approved || row.ClaimStatus == ReturnClaimStatus.Completed)
-                    && !Regex.IsMatch(row.RawStatus ?? "", RefusedLinePattern, RegexOptions.IgnoreCase);
+            : !Regex.IsMatch(row.RawStatus ?? "", ForeignLetterPattern) && Regex.IsMatch(row.RawStatus ?? "", AcceptedLinePattern, RegexOptions.IgnoreCase);
 
     internal sealed class ClaimLine
     {

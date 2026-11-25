@@ -22,7 +22,9 @@ public sealed class AcceptedReturnRuleParityTests
         // FATURA-FINANS-2: a letter or digit outside ASCII is kept by Canonicalize (unknown), anything else outside ASCII
         // is skipped like a separator; the long s reads as S, the other letters do not fold to ASCII.
         "ACCEPTEDé", "Acceptéd", "ACCEPTEDı", "Rejectedé", "WaıtıngInActıon", "ACCEPTED١", "WaitingFraudChecK", "Accepted ",
-        "Waiting–In–Action", "Accepted\U0001F600", "CLOſED", "ACCEPTEDſ", "İnTransit"
+        "Waiting–In–Action", "Accepted\U0001F600", "CLOſED", "ACCEPTEDſ", "İnTransit",
+        // C-1: only a line without a status (white space of any kind) follows its claim.
+        "\t", "\u00A0\u3000", "\u2028"
     ];
 
     // The patterns as PostgreSQL reads them (Npgsql writes Regex.IsMatch as ~ and ~* with the pattern unchanged) give the
@@ -43,17 +45,17 @@ public sealed class AcceptedReturnRuleParityTests
         var target = new Npgsql.NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")) { Database = "postgres" };
         await using var connection = new Npgsql.NpgsqlConnection(target.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new Npgsql.NpgsqlCommand("SELECT @line ~ @foreign, @line ~* @accepted, @line ~* @refused", connection);
+        await using var command = new Npgsql.NpgsqlCommand("SELECT @line ~ @foreign, @line ~* @accepted, @line ~ @blank", connection);
         command.Parameters.AddWithValue("line", line);
         command.Parameters.AddWithValue("foreign", AcceptedReturnPolicy.ForeignLetterPattern);
         command.Parameters.AddWithValue("accepted", AcceptedReturnPolicy.AcceptedLinePattern);
-        command.Parameters.AddWithValue("refused", AcceptedReturnPolicy.RefusedLinePattern);
+        command.Parameters.AddWithValue("blank", AcceptedReturnPolicy.BlankLinePattern);
         await using var reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
-        var (foreign, accepted, refused) = (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
+        var (foreign, accepted, blank) = (reader.GetBoolean(0), reader.GetBoolean(1), reader.GetBoolean(2));
         var status = MarketplaceReturnStatus.Canonicalize(line);
         Assert.Equal(status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed, !foreign && accepted);
-        Assert.Equal(status is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled or ReturnClaimStatus.ActionRequired, !foreign && refused);
+        Assert.Equal(string.IsNullOrWhiteSpace(line), blank);
     }
 
     public static TheoryData<ReturnClaimStatus, string?> Combinations()
@@ -146,12 +148,7 @@ public sealed class AcceptedReturnRuleParityTests
     [InlineData(ReturnClaimStatus.Approved, "Open", false, true)]
     [InlineData(ReturnClaimStatus.Requested, "Open", false, true)]
     [InlineData(ReturnClaimStatus.Unknown, "CLOSED", false, true)]
-    // A line still on its way, disputed or with a word the panel does not know follows its approved claim.
-    [InlineData(ReturnClaimStatus.Approved, "WaitingInCargo", false, true)]
-    [InlineData(ReturnClaimStatus.Completed, "InTransit", false, true)]
-    [InlineData(ReturnClaimStatus.Approved, "Unresolved", false, true)]
-    [InlineData(ReturnClaimStatus.Completed, "SomethingNew", false, true)]
-    [InlineData(ReturnClaimStatus.Approved, "Created", false, true)]
+    // A line whose status is white space has none: it follows its approved claim.
     [InlineData(ReturnClaimStatus.Approved, " ", false, true)]
     // An accepted word written with separators or spaces is still that word.
     [InlineData(ReturnClaimStatus.Requested, "Accepted ", false, true)]
