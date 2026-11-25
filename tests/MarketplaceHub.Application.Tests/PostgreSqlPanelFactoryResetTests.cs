@@ -41,9 +41,10 @@ public sealed partial class PostgreSqlConnectionFullResetTests
                 Assert.True(view.Succeeded, view.Error?.Message);
                 Assert.Equal("PENDING", view.Value!.Job!.Status);
                 Assert.True(view.Value.Total > 0);
+                // A second request while it is open is refused, never answered as if it had started (D-5).
                 var again = await service.RequestAsync(a.Tenant.Id, Guid.CreateVersion7(), null, new PanelFactoryResetCommand("PANELİ SIFIRLA"), "corr", CancellationToken.None);
-                jobId = again.Value!.Job!.JobId;
-                Assert.Equal(view.Value.Job.JobId, jobId);
+                Assert.Equal(("PANEL_RESET_ALREADY_RUNNING", 409), (again.Error!.Code, again.Error.Status));
+                jobId = view.Value.Job.JobId;
             }
             // The request cancelled the tenant's waiting jobs; the worker leases the reset.
             await using (var db = fixture.CreateContext())

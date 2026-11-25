@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { brandPlatformConnectionId } from './brand-mapping-state'
+import { brandMappingReadState, brandPlatformConnectionId } from './brand-mapping-state'
 
 describe('brandPlatformConnectionId', () => {
   const pazarama = [{ id: 'pz-1' }, { id: 'pz-2' }]
@@ -18,5 +18,17 @@ describe('brandPlatformConnectionId', () => {
 
   it('has none when the platform has no connection', () => {
     expect(brandPlatformConnectionId([], 'ty-1')).toBe('')
+  })
+})
+
+describe('brandMappingReadState', () => {
+  it('reads a failed read as failed, never as no mapping', () => {
+    expect(brandMappingReadState({ isSuccess: false, isError: true }, true)).toBe('failed')
+  })
+
+  it('knows the mapping only once the read answered, also when it answered none', () => {
+    expect(brandMappingReadState({ isSuccess: false, isError: false }, true)).toBe('loading')
+    expect(brandMappingReadState({ isSuccess: true, isError: false }, true)).toBe('known')
+    expect(brandMappingReadState({ isSuccess: false, isError: false }, false)).toBe('idle')
   })
 })

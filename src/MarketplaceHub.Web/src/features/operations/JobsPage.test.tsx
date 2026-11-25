@@ -169,7 +169,26 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+const confirmButton = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('.rv-confirm-dialog button')].find(item => item.textContent === label)
+
 describe('JobsPage detail actions', () => {
+  // Scan 25 Nov 2026 (D-5): Manuel Yeniden Dene changed the job at once; it asks first, and Vazgeç sends nothing.
+  it('asks before it retries a job and sends nothing on Vazgeç', async () => {
+    await renderPage()
+    await act(async () => { container.querySelectorAll<HTMLElement>('.jobs-reference-row')[0].click() })
+    await settle()
+    await act(async () => { button('Manuel Yeniden Dene')!.click() })
+    await settle()
+    expect(document.querySelector('.rv-confirm-dialog h2')?.textContent).toBe('İşlem Yeniden Denensin mi?')
+    expect(apiState.calls).not.toContain('/jobs/job-1/retry')
+    await act(async () => { confirmButton('Vazgeç')!.click() })
+    await settle()
+    expect(document.querySelector('.rv-confirm-dialog')).toBeNull()
+    expect(apiState.calls).not.toContain('/jobs/job-1/retry')
+    // the drawer stays open
+    expect(container.querySelector('.job-detail-facts')?.textContent).toContain('corr-job-1')
+  })
+
   it('keeps another opened job in the drawer when a retry answers, and locks only the job it was for', async () => {
     let release = () => undefined as void
     apiState.retryGate = new Promise<void>(resolve => { release = resolve })
@@ -181,6 +200,8 @@ describe('JobsPage detail actions', () => {
     await settle()
     expect(correlation()).toContain('corr-job-1')
     await act(async () => { button('Manuel Yeniden Dene')!.click() })
+    await settle()
+    await act(async () => { confirmButton('Yeniden Dene')!.click() })
     await settle()
     expect(button('Manuel Yeniden Dene')!.disabled).toBe(true)
 

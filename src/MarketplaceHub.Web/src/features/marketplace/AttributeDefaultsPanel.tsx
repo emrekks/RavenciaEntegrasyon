@@ -97,12 +97,17 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   return <details className="attribute-defaults-panel" open={expanded || undefined}>
     <summary>
       <span className="panel-summary-title">Platform Varsayılanları<TitleHint label="Platform Varsayılanları">Ürünlerde boş kalan alanlar için {dative(platformLabel)} gönderilecek sabit değerler. Örn. Menşei için TR seçerseniz, menşei boş ürünlerde TR gider.</TitleHint></span>
-      <b className="panel-summary-count" aria-label={`${existing.length} varsayılan`}>{existing.length}</b>
+      <b className="panel-summary-count" aria-label={defaults.isSuccess ? `${existing.length} varsayılan` : 'Varsayılan sayısı bilinmiyor'}>{defaults.isSuccess ? existing.length : '—'}</b>
     </summary>
     <div className="attribute-defaults-body">
       <section className="attribute-defaults-section">
         <h4>Kayıtlı Varsayılanlar</h4>
-        {existing.length > 0
+        {/* Unknown is not "none": a failed read neither says "Henüz varsayılan yok" nor offers to add (scan 25 Nov 2026, D-4). */}
+        {!defaults.isSuccess
+          ? defaults.isError
+            ? <p className="attribute-defaults-state" role="alert">Kayıtlı varsayılanlar yüklenemedi. <button type="button" className="secondary" onClick={() => void defaults.refetch()}>Yeniden Dene</button></p>
+            : <p className="attribute-defaults-state">Kayıtlı varsayılanlar yükleniyor…</p>
+          : existing.length > 0
           ? <ul className="attribute-defaults-list">
             {existing.map(item => <li key={item.externalAttributeId}>
               <span>{item.attributeName}</span>
@@ -112,7 +117,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
           </ul>
           : <p className="attribute-defaults-state">Henüz varsayılan yok.</p>}
       </section>
-      <section className="attribute-defaults-section attribute-defaults-add">
+      {defaults.isSuccess && <section className="attribute-defaults-section attribute-defaults-add">
         <h4>Yeni Varsayılan<TitleHint label="Yeni Varsayılan">Ürüne girilen değer her zaman önce gelir; varsayılan yalnızca alan boşsa kullanılır.</TitleHint></h4>
         <div className="attribute-defaults-form">
           <label>
@@ -138,7 +143,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
           <button type="button" className="secondary" disabled={busy} onClick={reset}>Vazgeç</button>
           <button type="button" disabled={busy || !canSave} onClick={() => void save()}>{busy ? 'Kaydediliyor…' : 'Varsayılanı Kaydet'}</button>
         </div>}
-      </section>
+      </section>}
     </div>
   </details>
 }

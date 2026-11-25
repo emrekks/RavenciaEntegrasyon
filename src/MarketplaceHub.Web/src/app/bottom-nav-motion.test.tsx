@@ -21,7 +21,8 @@ describe('the phone layers move with the shared motion tokens (kit "A · iOS Yay
   })
 
   it('rises the menu and drops the notification sheet on the sheet time and curve, as every phone window does', () => {
-    expect(dock).toMatch(/\.rv-fullmenu \{[^}]*animation: rv-rise var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
+    expect(dock).toMatch(/\.rv-fullmenu-drawer \{[^}]*animation: rv-slide-in-left var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
+    expect(dock).toContain('html[data-rv-menu="open"] .app-shell.stitch-shell > main { animation: rv-menu-push var(--rv-motion-sheet) var(--rv-ease-sheet) both; }')
     expect(dock).toMatch(/rv-notification-history \{[^}]*animation: rv-sheet-down var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
     expect(read('../styles/responsive.css')).toContain('@keyframes rv-rise { from { translate: 0 100%; } to { translate: 0 0; } }')
     expect(tokens).toContain('--rv-motion-bar: var(--rv-motion-base);')
@@ -85,7 +86,8 @@ describe('layers over the top bar and the menu leaving', () => {
   })
 
   it('keeps the full-screen menu mounted for the shared exit (rv-sink on the exit tokens) with no touch while it goes', () => {
-    expect(dock).toContain('.rv-fullmenu.is-closing { pointer-events: none; animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards; }')
+    expect(dock).toContain('.rv-fullmenu.is-closing .rv-fullmenu-drawer { animation: rv-drawer-out-left var(--rv-motion-exit) var(--rv-ease-exit) forwards; }')
+    expect(dock).toContain('html[data-rv-menu="closing"] .app-shell.stitch-shell > main { animation: rv-menu-push var(--rv-motion-exit) var(--rv-ease-exit) reverse both; }')
     expect(read('../styles/responsive.css')).toContain('animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards')
     expect(tokens).toContain('--rv-motion-exit: 180ms;')
   })
