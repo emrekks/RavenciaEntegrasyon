@@ -5,6 +5,7 @@ import { OptionValueAddButton } from './OptionValueAddButton'
 import { OptionValueChips, sortOptionValues } from './OptionValueChips'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { VariantGroupsSection } from './VariantGroupsSection'
+import { AttributeTextValueInput } from './AttributeTextValueInput'
 import type { EditorContext } from './editor-context'
 
 export function EditorOptionsSection({ editor }: { editor: EditorContext }) {
@@ -62,7 +63,7 @@ export function EditorOptionsSection({ editor }: { editor: EditorContext }) {
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
                   <label>Değer<PanelSelect ariaLabel="Değer" value={attributeTextValues[item.attributeId] ?? ''} onChange={next => setAttributeTextValues(current => ({ ...current, [item.attributeId]: next }))} options={[{ value: '', label: 'Seçin' }, { value: 'evet', label: 'Evet' }, { value: 'hayır', label: 'Hayır' }]} /></label>
                 ) : (
-                  <label>Değer<input value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder="Değer girin" /></label>
+                  <label>Değer<AttributeTextValueInput numeric={item.attribute.dataType === 'NUMBER'} value={attributeTextValues[item.attributeId] ?? ''} onChange={value => setAttributeTextValues(current => ({ ...current, [item.attributeId]: value }))} placeholder="Değer girin" /></label>
                 )}
                 </div>}
               </article>

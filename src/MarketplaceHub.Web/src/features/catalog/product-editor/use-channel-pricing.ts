@@ -128,7 +128,8 @@ export function useChannelPricing(c: EditorProps & EditorStateResult & EditorMed
           vatInclusion: target.platform.vatInclusion ?? form.vatIncluded,
           roundingMode: target.platform.roundingMode ?? 'HALF_EVEN',
           safetyStock: target.platform.safetyStock ?? readCountField('safetyStock', form.safetyStock || 0),
-          status: 'ACTIVE',
+          // A closed offer stays closed: only its price is written here (D-2).
+          status: target.platform.offerStatus || 'ACTIVE',
           reason: `${platformDisplayName(target.platform)} toplu varyant fiyatı`,
           // A price typed apart from the variant's panel price is this marketplace's own ("Özel Fiyat"), so a panel save
           // never overwrites it; one equal to the panel price keeps the stored choice.

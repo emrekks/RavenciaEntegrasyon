@@ -58,7 +58,7 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
                     foreach (var item in result.Value!.Items) records[item.Id] = item;
                     skipped.AddRange(result.Value.Skipped);
                     // A skipped record still fills its place on the page.
-                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) { pagesEnded = true; break; }
+                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || result.Value.Count is { } total && (page + 1) * PageSize >= total) { pagesEnded = true; break; }
                 }
                 // ISLEYICI-7: a window cut at the cap is not taken as read; nothing of the run is written.
                 if (!pagesEnded) return await FailAsync(request, PageCap, now, new(requests, records.Count, 0, 0, 0, 1), cancellationToken);

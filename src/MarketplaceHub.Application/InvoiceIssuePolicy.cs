@@ -101,10 +101,12 @@ public static class InvoiceIssuePolicy
     /// <summary>
     /// The VAT rate an invoice line takes: the marketplace's own rate when it reported one, else the product card's
     /// (KDV Oranı on the line's product); null when neither is known, and the invoice is then stopped. Never 0 by default.
+    /// A card rate outside the rates the panel takes (BulkProductFields.VatRates: 0, 1, 8, 10, 20), such as 0.1 from a
+    /// percent cell or 18, is not known either: the invoice stops instead of going out with it (scan 25 Nov 2026, A-10).
     /// </summary>
     public static decimal? ResolveLineVatRate(string? platformCode, string? lineSourceSnapshotJson, decimal storedLineVatRate, decimal? productCardVatRate) =>
         !IsLineVatRateUnknown(platformCode, lineSourceSnapshotJson) ? storedLineVatRate
-            : productCardVatRate is >= 0 and <= 100 ? productCardVatRate
+            : productCardVatRate is { } cardRate && BulkProductFields.VatRates.Contains(cardRate) ? cardRate
             : null;
 
     private static string PlatformName(string? platformCode) => platformCode switch

@@ -71,7 +71,9 @@ least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
   variants the product lacks (`PttAvmVariants`), so a new colour is a new variant of that product.
 - No return service: returns come from "iade" lines, already completed; return actions are refused. RETURN_SYNC reads
   the last 2 days, the whole 3 months every 6 h (PttAvmReturnReadPolicy). A read answered with an unexplained fault
-  ("Bilinmeyen bir hata oluştu") is retried (PTTAVM_REMOTE_FAULT); a write keeps PTTAVM_REQUEST_REJECTED.
+  ("Bilinmeyen bir hata oluştu") is retried (PTTAVM_REMOTE_FAULT); on a write (SaveInvoince, UpdateProductsStockPrice,
+  UpdateProductsV3) the same fault is an uncertain result (Remote5xx PTTAVM_REMOTE_FAULT, "sonuç belirsiz"; an invoice is
+  settled by reading IsInvoice back), never a definite refusal (scan B-3, 25 Nov 2026; source PttAvmSoap.FaultError).
 - `IsInvoice=true` only for invoices sent through the API; panel uploads leave it false, so false = unverified.
 - `SaveInvoince` answers Success=false with "işlem gerçekleştirilmiştir" on success — the result is read back.
 - An upsert without the variant list deletes all variants.

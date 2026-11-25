@@ -39,7 +39,7 @@ public static class ImportFileReader
                 if (NumberFields.Contains(target) && ProductTransferFileParser.IsAmbiguousThousands(string.Concat(value.Where(character => !char.IsWhiteSpace(character)))))
                     errors.Add($"{source}: \"{value}\" belirsiz: {ProductTransferFileParser.AmbiguousThousandsAdvice}");
             }
-            ValidateRequired(values, errors); ValidateCardTerms(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
+            ValidateRequired(values, errors); ValidateCardTerms(values, errors, fromCsv: true); yield return new ParsedImportRow(rowNumber, values, errors);
         }
     }
 
@@ -59,7 +59,7 @@ public static class ImportFileReader
                 if (cell.IsFormula) { errors.Add($"{headers.ElementAtOrDefault(index) ?? index.ToString(CultureInfo.InvariantCulture)}: formül reddedildi."); continue; }
                 if (index < headers.Count && mappings.TryGetValue(headers[index], out var target)) values[target] = cell.Value.Trim();
             }
-            ValidateRequired(values, errors); ValidateCardTerms(values, errors); yield return new ParsedImportRow(rowNumber, values, errors);
+            ValidateRequired(values, errors); ValidateCardTerms(values, errors, fromCsv: false); yield return new ParsedImportRow(rowNumber, values, errors);
         }
     }
 
@@ -278,7 +278,7 @@ public static class ImportFileReader
     }
     // Garanti Süresi (Ay) and Teslimat Süresi (Gün), when the file gives them: whole numbers within the editor's limits
     // (0-240 months, 0 = no warranty; 1-30 days). An empty cell, or a file without the column, gives none.
-    private static void ValidateCardTerms(IReadOnlyDictionary<string, string> values, ICollection<string> errors)
+    private static void ValidateCardTerms(IReadOnlyDictionary<string, string> values, ICollection<string> errors, bool fromCsv)
     {
         if (!TryWarrantyMonths(values, out _)) errors.Add($"warrantyMonths: {WarrantyMonthsInvalid}");
         if (!TryDeliveryDays(values, out _)) errors.Add($"deliveryDays: {ProductDeliveryDays.InvalidMessage}");
@@ -288,7 +288,23 @@ public static class ImportFileReader
         // A "1.250" is refused as ambiguous already (one error per cell).
         if (!Ambiguous(values, "stock") && !TryWholeNumber(values, "stock", 0, MaximumStock, out _)) errors.Add($"stock: {StockInvalid}");
         if (!Ambiguous(values, "desi") && !TryDesi(values, out _)) errors.Add($"desi: {DesiInvalid}");
+        // KDV: the product transfer's rule (ProductTransferFileParser.ParseVat), one of BulkProductFields.VatRates; a
+        // cell that is not such a rate (18, 7.5, "-") is a row error instead of a card with a wrong or no VAT (A-10).
+        if (!Ambiguous(values, "vatRate") && VatRate(values, fromCsv) is { Kind: ProductTransferValueKind.Invalid } vat) errors.Add($"vatRate: {vat.Error}");
     }
+
+    // The row's KDV cell as the product transfer reads it; Empty when the cell is empty or the file has no KDV column.
+    // A removal ("-", "SİL") is refused with the import's own wording: the transfer's "empty leaves it unchanged" does
+    // not hold for a new card, whose VAT stays empty.
+    internal static ProductTransferValue VatRate(IReadOnlyDictionary<string, string> values, bool fromCsv)
+    {
+        if (!values.TryGetValue("vatRate", out var text) || string.IsNullOrWhiteSpace(text)) return ProductTransferValue.Empty;
+        var trimmed = text.Trim();
+        if (trimmed is "-" or "–" or "—" || CatalogKeyNormalizer.Key(trimmed) == "SIL") return ProductTransferValue.Invalid(VatRemovalInvalid);
+        return ProductTransferFileParser.ParseVat(text, fromCsv);
+    }
+
+    public const string VatRemovalInvalid = "KDV oranı silinemez. Hücre boşsa mevcut üründe KDV değişmez, yeni üründe boş kalır.";
 
     private static bool Ambiguous(IReadOnlyDictionary<string, string> values, string field) =>
         values.TryGetValue(field, out var text) && ProductTransferFileParser.IsAmbiguousThousands(string.Concat(text.Where(character => !char.IsWhiteSpace(character))));

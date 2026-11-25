@@ -180,11 +180,17 @@ public sealed partial class PttAvmHttpClient
         if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(reason)) return PttAvmProductPayloadRules.RepeatRequestError(status);
         var message = Clip(reason);
         // A read PTT AVM answers with a fault that names no cause ("Bilinmeyen bir hata oluştu.", 31 Oct 2026: five order
-        // and return reads ended blocked on their first attempt) is the service's own trouble: it is tried again. A write
-        // keeps the rejection, since whether it took effect is not known.
+        // and return reads ended blocked on their first attempt) is the service's own trouble: it is tried again.
         if (operation is not null && IsReadOperation(operation) && IsUnexplainedFault(reason))
             return new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_FAULT",
                 message is null ? "PttAVM okuma isteğine nedeni belirtilmeyen bir hata döndü; yeniden denenecek." : $"PttAVM okuma isteğine nedeni belirtilmeyen bir hata döndü ({message}); yeniden denenecek.",
+                status, TimeSpan.FromSeconds(60), null);
+        // B-3: the same fault on a write (SaveInvoince, UpdateProductsStockPrice, UpdateProductsV3) names no refusal, and
+        // whether the write took effect is not known: it is an uncertain result, never a definite rejection. An invoice
+        // is then settled by reading the order's IsInvoice back (InvoiceDeliveryFailurePolicy: Remote5xx is Unknown).
+        if (operation is not null && IsUnexplainedFault(reason))
+            return new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_FAULT",
+                message is null ? "PttAVM yazma isteğine nedeni belirtilmeyen bir hata döndü; sonuç belirsiz." : $"PttAVM yazma isteğine nedeni belirtilmeyen bir hata döndü ({message}); sonuç belirsiz.",
                 status, TimeSpan.FromSeconds(60), null);
         return new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED",
             message is null ? "PttAVM isteği reddetti (SOAP hatası)." : $"PttAVM isteği reddetti: {PttAvmErrorAdvice.WithAdvice(message)}", status, null, null);

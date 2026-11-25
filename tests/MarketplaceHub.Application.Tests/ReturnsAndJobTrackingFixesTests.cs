@@ -136,7 +136,7 @@ public sealed class ReturnsAndJobTrackingFixesTests
     }
 
     [Fact]
-    public void AnUnexplainedPttAvmFaultIsRetriedOnReadsAndStaysARejectionOnWrites()
+    public void AnUnexplainedPttAvmFaultIsRetriedOnReadsAndUncertainOnWrites()
     {
         const string unknown = """<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>Bilinmeyen bir hata oluştu.</faultstring></s:Fault></s:Body></s:Envelope>""";
 
@@ -145,11 +145,21 @@ public sealed class ReturnsAndJobTrackingFixesTests
         Assert.Equal("PTTAVM_REMOTE_FAULT", read.Code);
 
         var (_, write) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError, unknown, "UpdateProductsStockPrice");
-        Assert.Equal(AdapterErrorClass.Validation, write!.Class);
-        Assert.Equal("PTTAVM_REQUEST_REJECTED", write.Code);
+        // B-3: a write the fault names no cause for may have taken effect: uncertain (Remote5xx), never a definite refusal.
+        Assert.Equal(AdapterErrorClass.Remote5xx, write!.Class);
+        Assert.Equal("PTTAVM_REMOTE_FAULT", write.Code);
 
         var (_, invoice) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError, unknown, "SaveInvoince");
-        Assert.Equal("PTTAVM_REQUEST_REJECTED", invoice!.Code);
+        Assert.Equal(AdapterErrorClass.Remote5xx, invoice!.Class);
+        Assert.Equal(InvoiceDeliveryFailureDisposition.Unknown, InvoiceDeliveryFailurePolicy.Classify(invoice.Class));
+
+        var (_, productWrite) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError, unknown.Replace("Bilinmeyen bir hata oluştu.", ""), "UpdateProductsV3");
+        Assert.Equal(AdapterErrorClass.Remote5xx, productWrite!.Class);
+
+        var (_, explainedWrite) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError,
+            """<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>Barkod hatalı.</faultstring></s:Fault></s:Body></s:Envelope>""",
+            "UpdateProductsV3");
+        Assert.Equal("PTTAVM_REQUEST_REJECTED", explainedWrite!.Code);
 
         // A fault that names its cause stays a rejection, read or not.
         var (_, explained) = PttAvmHttpClient.SoapResponse(HttpStatusCode.InternalServerError,

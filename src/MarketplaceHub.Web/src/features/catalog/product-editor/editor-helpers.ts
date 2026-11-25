@@ -6,7 +6,7 @@ import { colourFirstOptions, displayVariantOptionEntriesFromSignature, joinVaria
 import { rowOptionValue, type CategoryRequirement } from './publication-readiness'
 import { MarketplaceConnection, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, normalizeVariantOptionName, productPublicationMode, variantColorKey } from '../shared'
 import { VariantMediaGroup, VariantDraft, SavedListingProfile, ProductAttributePayload } from './editor-types'
-import { parseEditorNumber } from './editor-number'
+import { attributeNumberHelp, parseEditorNumber } from './editor-number'
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
 export const productSaveToastKey = 'product-editor-save'
@@ -114,8 +114,9 @@ export function productAttributePayload(requirement: CategoryRequirement, select
   const typed = typedValue.trim()
   if (!typed) return []
   if (requirement.attribute.dataType === 'NUMBER') {
+    // D-1: a Turkish text box read by the measure rule ("12,5" is 12.5, "1.250" is 1250, "12.5" could mean two things).
     const value = parseEditorNumber(typed)
-    if (!Number.isFinite(value)) throw new Error(`${requirement.attribute.name} sayısal olmalıdır.`)
+    if (!Number.isFinite(value)) throw new Error(`${requirement.attribute.name} sayısal olmalıdır; ${attributeNumberHelp}`)
     return [{ attributeId: requirement.attributeId, valueId: null, textValue: null, numberValue: value, booleanValue: null, sortOrder }]
   }
   if (requirement.attribute.dataType === 'BOOLEAN') {

@@ -10,7 +10,7 @@ import { type AttributeDefault } from '../../AttributeDefaultsPanel'
 import { offersProductFields, showsProductFields, parseProductFieldOption, productFieldLabel, productFieldOptionValue, productFieldSources } from '../../product-field-sources'
 import { planDirectReferenceValues } from '../../attribute-value-mapping'
 import { type MappingPlatformCode } from '../../mapping-platforms'
-import { MappingStateGlyph } from '../../shared'
+import { MappingStateGlyph, type NoticeSetter } from '../../shared'
 import { valueStillNeedsMapping } from '../../../catalog/value-mapping-rule'
 import { PanelSelect } from '../../../../shared/PanelSelect'
 import { EmptyState } from '../../../../shared/components/EmptyState'
@@ -52,7 +52,7 @@ export function FieldFooter({ hint, dirty = false, saving = false, onSave, onNex
   </div>
 }
 // One marketplace field: which panel attribute feeds it, then a table of the attribute's values.
-export function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope, snapshotId, localAttributes, categoryOptionIds, remote, mapping, fieldDefault, role: fixedRole, required, footerHint, onNext, onNotice, highlightValueIds }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; snapshotId: string; localAttributes: LocalAttribute[]; categoryOptionIds: Set<string>; remote: ReferenceItem; mapping: CatalogMapping | null; fieldDefault?: AttributeDefault; role?: 'ATTRIBUTE' | 'OPTION'; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void; highlightValueIds?: readonly string[] }) {
+export function FieldDetail({ platformCode, platformLabel, connectionId, categoryScope, snapshotId, localAttributes, categoryOptionIds, remote, mapping, fieldDefault, role: fixedRole, required, footerHint, onNext, onNotice, highlightValueIds }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; snapshotId: string; localAttributes: LocalAttribute[]; categoryOptionIds: Set<string>; remote: ReferenceItem; mapping: CatalogMapping | null; fieldDefault?: AttributeDefault; role?: 'ATTRIBUTE' | 'OPTION'; required: boolean; footerHint: string; onNext?: () => void; onNotice: NoticeSetter; highlightValueIds?: readonly string[] }) {
   const client = useQueryClient()
   const [busy, setBusy] = useState(false)
   const selectable = localAttributes.filter(item => item.isActive !== false)
@@ -74,7 +74,7 @@ export function FieldDetail({ platformCode, platformLabel, connectionId, categor
       if (source) {
         if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
         await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'PUT', body: JSON.stringify({ attributeName: remote.name, sourceField: source }) })
-        onNotice(`${remote.name} artık her ürünün ${productFieldLabel(source)} bilgisiyle gönderilecek.`)
+        onNotice(`${remote.name} artık her ürünün ${productFieldLabel(source)} bilgisiyle gönderilecek.`, 'success')
         return
       }
       if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
@@ -83,9 +83,9 @@ export function FieldDetail({ platformCode, platformLabel, connectionId, categor
         const role = fixedRole ?? (categoryOptionIds.has(localId) || (chosen && isOptionAttribute(chosen)) ? 'OPTION' : 'ATTRIBUTE')
         await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remote.externalId, status: 'VERIFIED', role }) })
       }
-      onNotice(localId ? `${remote.name} eşlemesi kaydedildi.` : `${remote.name} eşlemesi kaldırıldı.`)
+      onNotice(localId ? `${remote.name} eşlemesi kaydedildi.` : `${remote.name} eşlemesi kaldırıldı.`, 'success')
     } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.')
+      onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.', 'error')
     } finally {
       await client.invalidateQueries({ queryKey: queryKeys.attributeMappings(connectionId, categoryScope) })
       await client.invalidateQueries({ queryKey: queryKeys.attributeDefaults(connectionId) })
@@ -153,7 +153,7 @@ function ValueTableSkeleton({ platformLabel, footerHint, onNext }: { platformLab
 // Panel values down the side, the marketplace value each one is sent as on the right.
 // `highlightValueIds`: the panel values a product's publish check found without a value mapping. They are marked, come
 // first, and the table opens on "Yalnızca Eksikler" (which keeps them in view even once chosen).
-function FieldValueTable({ platformCode, platformLabel, connectionId, categoryScope, attribute, remote, required, footerHint, onNext, onNotice, highlightValueIds = [] }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; attribute: LocalAttribute; remote: ReferenceItem; required: boolean; footerHint: string; onNext?: () => void; onNotice: (value: string) => void; highlightValueIds?: readonly string[] }) {
+function FieldValueTable({ platformCode, platformLabel, connectionId, categoryScope, attribute, remote, required, footerHint, onNext, onNotice, highlightValueIds = [] }: { platformCode: MappingPlatformCode; platformLabel: string; connectionId: string; categoryScope: string; attribute: LocalAttribute; remote: ReferenceItem; required: boolean; footerHint: string; onNext?: () => void; onNotice: NoticeSetter; highlightValueIds?: readonly string[] }) {
   const store = useContext(ValueDraftContext)
   const valueScope = `${categoryScope}/${remote.externalId}`
   const references = useQuery(valueListQuery<ReferenceData>(connectionId, categoryScope, remote.externalId))
@@ -259,7 +259,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     const plan = planDirectReferenceValues(localValues, references.data!.items.filter(item => item.isActive))
     const open = plan.mappings.filter(item => !targets.has(item.localId))
     if (open.length) setSelections(current => open.reduce((next, item) => ({ ...next, [item.externalId]: [...(next[item.externalId] ?? []).filter(id => id !== item.localId), item.localId] }), current ?? {}))
-    onNotice(open.length ? `${open.length} değer aynı adlı ${platformLabel} değeriyle eşlendi; kalıcı olması için Kaydet’e basın.` : 'Yeni birebir eşleşen değer bulunamadı.')
+    onNotice(open.length ? `${open.length} değer aynı adlı ${platformLabel} değeriyle eşlendi; kalıcı olması için Kaydet’e basın.` : 'Yeni birebir eşleşen değer bulunamadı.', open.length ? 'success' : 'info')
   }
   return <>
     <div className="cm-vtools">

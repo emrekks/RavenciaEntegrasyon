@@ -9,11 +9,15 @@ namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 
 public static partial class TrendyolJsonMapper
 {
-    public static AdapterPageResult<RemoteReturnClaim> Returns(string json)
+    // pageSize and requestedPage are the request's own: a page without totalPages (or page) is not taken as the last one
+    // (B-2), it is followed while it comes back full.
+    public static AdapterPageResult<RemoteReturnClaim> Returns(string json, int? pageSize = null, int? requestedPage = null)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteReturnClaim>();
+        var received = 0;
         foreach (var claim in ClaimContent(root))
         {
+            received++;
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = ReturnLines(claim);
             var status = ClaimStatus(claim);
@@ -32,7 +36,10 @@ public static partial class TrendyolJsonMapper
                 CustomerRequest: ReturnCustomerRequestPolicy.FromTrendyol(ClaimReasonCode(claim)),
                 ReplacementPackage: ReplacementPackage(claim), ReplacementInfoPresent: ReplacementInfo(claim) is not null));
         }
-        var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
+        var page = NullableLong(root, "page") ?? requestedPage ?? 0;
+        var hasMore = NullableLong(root, "totalPages") is { } totalPages
+            ? totalPages > 0 && page + 1 < totalPages
+            : received > 0 && pageSize is > 0 && received >= pageSize;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
     }
 

@@ -6,6 +6,7 @@ import { classifyPublicationAttributeIssues, type PublicationAttributeIssue, typ
 import { publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { matchingVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
 import { queryKeys } from '../../../shared/api/query-keys'
+import { savedAttributeText } from './editor-number'
 
 // The publish step's readiness check, in one place: the editor's cards run it on the form, the product list's bulk
 // publish runs it on each selected record (publicationReadinessDraftFromProduct fills the same input the editor's form
@@ -240,7 +241,7 @@ export function publicationReadinessDraftFromProduct(product: Product, allRequir
   const primary = product.variants[0]
   const { webColorRequirement, optionRequirements } = publicationRequirementSets(allRequirements)
   const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
-  for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
+  for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else { const text = savedAttributeText(attribute); if (text != null) typed[attribute.attributeId] = text } }
   let variantRows: ReadinessRow[] = product.variants.map(variant => {
     const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
     const attributeValueIds = Object.fromEntries((variant.attributes ?? []).flatMap(attribute => attribute.valueId ? [[attribute.attributeId, attribute.valueId] as const] : []))

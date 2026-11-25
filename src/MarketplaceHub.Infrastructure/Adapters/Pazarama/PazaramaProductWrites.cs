@@ -164,7 +164,7 @@ public sealed partial class PazaramaHttpClient
             if (!result.IsSuccess)
             {
                 if (lines.Count == 0) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
-                lines.Add(new(code, false, null, "PAZARAMA_SALE_STATUS_REJECTED", false, result.Error!.SafeMessage));
+                lines.Add(PazaramaProductWriteMapper.SaleFailure(code, result.Error!));
                 continue;
             }
             using var document = result.Value!;
@@ -418,6 +418,14 @@ public static class PazaramaProductWriteMapper
     }
 
     // data.result[]: {success, message, code, productStatus}.
+    // B-4: a barcode after the first keeps its own error class. Only a Validation answer is Pazarama's refusal; a
+    // timeout, a 5xx, an open circuit or a quota wait says nothing about the barcode, so it is uncertain and retryable
+    // (the archive job then reads the product back instead of recording a refusal).
+    public static RemoteOperationLine SaleFailure(string code, AdapterError error) =>
+        error.Class == AdapterErrorClass.Validation
+            ? new(code, false, null, "PAZARAMA_SALE_STATUS_REJECTED", false, error.SafeMessage)
+            : new(code, false, null, "PAZARAMA_SALE_STATUS_UNCERTAIN", true, error.SafeMessage);
+
     public static RemoteOperationLine SaleResult(JsonElement root, string code)
     {
         if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object && data.TryGetProperty("result", out var results) && results.ValueKind == JsonValueKind.Array)
@@ -426,10 +434,15 @@ public static class PazaramaProductWriteMapper
                 if (item.ValueKind != JsonValueKind.Object) continue;
                 var itemCode = item.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString()?.Trim() : null;
                 if (itemCode is not null && !string.Equals(itemCode, code, StringComparison.OrdinalIgnoreCase)) continue;
-                var ok = item.TryGetProperty("success", out var s) && s.ValueKind == JsonValueKind.True;
                 var message = item.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString()?.Trim() : null;
-                return new(code, ok, null, ok ? null : "PAZARAMA_SALE_STATUS_REJECTED", false, message);
+                // Only an explicit success:false is a refusal; a row without a readable success says nothing (B-4).
+                var success = item.TryGetProperty("success", out var s) ? s.ValueKind : JsonValueKind.Undefined;
+                if (success == JsonValueKind.True) return new(code, true, null, null, false, message);
+                if (success == JsonValueKind.False) return new(code, false, null, "PAZARAMA_SALE_STATUS_REJECTED", false, message);
+                break;
             }
-        return new(code, false, null, "PAZARAMA_SALE_STATUS_UNCONFIRMED", false, "Pazarama yanıtı bu barkod için sonuç içermiyor.");
+        // No result for the barcode: unknown, never a refusal. Retryable marks it uncertain; the sale-status job reports it
+        // for review and sends nothing again (ProductJobService.ChangePazaramaSaleStatus).
+        return new(code, false, null, "PAZARAMA_SALE_STATUS_UNCONFIRMED", true, "Pazarama yanıtı bu barkod için sonuç içermiyor.");
     }
 }

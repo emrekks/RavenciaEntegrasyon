@@ -22,7 +22,8 @@ public sealed partial class PazaramaHttpClient : IReturnPort
         var pageNumber = int.TryParse(page.Cursor, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed > 0 ? parsed : 1;
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<AdapterPageResult<RemoteReturnClaim>>();
-        var result = await SendAsync(account, HttpMethod.Post, Refunds, cancellationToken, Json(RefundBody(start, end, pageNumber, Math.Clamp(page.Limit, 1, RefundPageSize))));
+        var size = Math.Clamp(page.Limit, 1, RefundPageSize);
+        var result = await SendAsync(account, HttpMethod.Post, Refunds, cancellationToken, Json(RefundBody(start, end, pageNumber, size)));
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
         // What a refund row carries beyond the documented fields, read by read: on 6 Nov 2026 the only refund
@@ -31,7 +32,7 @@ public sealed partial class PazaramaHttpClient : IReturnPort
         // tells "requested", "on its way" and "arrived" apart (no customer data: names, phones, addresses left out).
         if (PazaramaReturnMapper.RowShapes(document.RootElement) is { Length: > 0 } shapes)
             logger.LogInformation("Pazarama refund rows. ConnectionId: {ConnectionId}, Rows: {Rows}", account.Connection.Id, shapes);
-        try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(PazaramaReturnMapper.Page(document.RootElement, pageNumber, timeProvider.GetUtcNow()), result.RateLimit); }
+        try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(PazaramaReturnMapper.Page(document.RootElement, pageNumber, timeProvider.GetUtcNow(), size), result.RateLimit); }
         catch (JsonException)
         {
             return Failure<AdapterPageResult<RemoteReturnClaim>>(AdapterErrorClass.ContractViolation, "PAZARAMA_RETURN_CONTRACT_INVALID", "Pazarama iade yanıtı beklenen yapıda değil.", HttpStatusCode.BadGateway);
@@ -131,7 +132,9 @@ public static class PazaramaReturnMapper
     }
 
     // data.refundList is the page, data.responsePage {pageIndex,totalPages,totalCount} the position.
-    public static AdapterPageResult<RemoteReturnClaim> Page(JsonElement root, int pageNumber, DateTimeOffset now)
+    // pageSize is the request's own: a page without totalPages is unknown, not the last one (B-2); it is followed while
+    // it comes back full.
+    public static AdapterPageResult<RemoteReturnClaim> Page(JsonElement root, int pageNumber, DateTimeOffset now, int? pageSize = null)
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data))
             throw new JsonException("Pazarama refund response has no data.");
@@ -151,8 +154,10 @@ public static class PazaramaReturnMapper
             }
         var paging = data.ValueKind == JsonValueKind.Object && data.TryGetProperty("responsePage", out var responsePage) && responsePage.ValueKind == JsonValueKind.Object ? responsePage : default;
         var pageIndex = Number(paging, "pageIndex") ?? pageNumber;
-        var totalPages = Number(paging, "totalPages") ?? 0;
-        var hasMore = claims.Count + issues.Count > 0 && pageIndex < totalPages;
+        var received = claims.Count + issues.Count;
+        var hasMore = received > 0 && (Number(paging, "totalPages") is { } totalPages
+            ? pageIndex < totalPages
+            : pageSize is > 0 && received >= pageSize);
         return new(claims, hasMore ? (pageIndex + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, Number(paging, "totalCount") is { } total ? (int)Math.Min(total, int.MaxValue) : null, issues);
     }
 

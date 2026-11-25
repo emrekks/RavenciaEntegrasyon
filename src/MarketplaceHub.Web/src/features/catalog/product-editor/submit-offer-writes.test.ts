@@ -1,23 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const api = vi.hoisted(() => ({ calls: [] as Array<{ method: string; path: string; ifMatch: string | null; body: Record<string, unknown> | null }>, refuse: null as null | number }))
+const api = vi.hoisted(() => ({ calls: [] as Array<{ method: string; path: string; ifMatch: string | null; body: Record<string, unknown> | null }>, refuse: null as null | number, refusePath: null as null | string }))
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   return {
     ...original,
     hubApi: vi.fn(async (path: string, init?: RequestInit) => {
       api.calls.push({ method: init?.method ?? 'GET', path, ifMatch: new Headers(init?.headers).get('If-Match'), body: init?.body ? JSON.parse(String(init.body)) : null })
-      if (api.refuse) throw new original.ApiRequestError('Sürüm değişti.', api.refuse)
+      if (api.refuse && (!api.refusePath || api.refusePath === path)) throw new original.ApiRequestError('Sürüm değişti.', api.refuse)
       return {}
     })
   }
 })
 
 import { EMPTY_EDITOR_FORM } from './editor-form'
-import { offerConnectionIdsFor, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
+import { keptChannelPricingDrafts } from './marketplace-channel-pricing'
+import { connectionsKeepingTypedPrice, connectionsWithWrittenOffers, offerConnectionIdsFor, offerWriteFailureWarnings, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
 import type { Product, VariantPlatformStatus } from '../shared'
 import type { VariantDraft } from './editor-types'
-import { resetSeededFields, seedChannelFields } from './seeded-fields'
+import { resetSeededFields, seedChannelFields, seedField } from './seeded-fields'
 
 const status = (connectionId: string, extra: Partial<VariantPlatformStatus> = {}) => ({ connectionId, platformCode: 'TRENDYOL', offerId: `o-${connectionId}`, offerVersion: 3, listPrice: 100, salePrice: 90, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, followsPanelPrice: true, offerStatus: 'ACTIVE', ...extra }) as VariantPlatformStatus
 const row = (key: string, extra: Partial<VariantDraft> = {}): VariantDraft => ({ key, optionSignature: key, options: {}, attributeValueIds: {}, sku: `SKU-${key}`, barcode: '', stock: 0, salePrice: 90, listPrice: 100, costPrice: null, mediaRefs: [], ...extra })
@@ -28,7 +29,7 @@ const input = (extra: Partial<OfferWritesInput>): OfferWritesInput => ({
   channelPricing: {}, variantChannelPricing: {}, channelPriceDraft: () => ({ listPrice: '', salePrice: '' }), channelPriceEdited: () => false, connectionPlatformName: () => 'Trendyol', showProgress: () => undefined, ...extra
 })
 
-beforeEach(() => { api.calls.length = 0; api.refuse = null })
+beforeEach(() => { api.calls.length = 0; api.refuse = null; api.refusePath = null })
 
 describe('runOfferWrites', () => {
   it('skips an offer the write would leave as it is', async () => {
@@ -105,18 +106,69 @@ describe('runOfferWrites', () => {
     expect(api.calls.map(call => [call.method, call.body?.salePrice])).toEqual([['PATCH', 85]])
   })
 
+  // D-2 (scan 25 Nov 2026): every offer was written ACTIVE with the first variant's safety stock.
+  it('keeps a closed offer closed and each offer’s own safety stock while Güvenlik Stoğu is untouched', async () => {
+    resetSeededFields()
+    seedField('safetyStock', '2')
+    await runOfferWrites(input({ form: { ...EMPTY_EDITOR_FORM, vatRate: '20', safetyStock: '2' }, rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { offerStatus: 'PASSIVE', safetyStock: 5 })] })] }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ status: 'PASSIVE', safetyStock: 5, salePrice: 80 }) }])
+    resetSeededFields()
+  })
+  it('writes nothing for an untouched closed offer whose price is unchanged', async () => {
+    resetSeededFields()
+    seedField('safetyStock', '0')
+    await runOfferWrites(input({ rows: [row('v1', { platformStatuses: [status('ty', { offerStatus: 'PASSIVE', safetyStock: 4 })] })] }))
+    expect(api.calls).toEqual([])
+    resetSeededFields()
+  })
+  it('writes the typed safety stock to every offer once Güvenlik Stoğu was changed', async () => {
+    resetSeededFields()
+    seedField('safetyStock', '2')
+    await runOfferWrites(input({ form: { ...EMPTY_EDITOR_FORM, vatRate: '20', safetyStock: '7' }, rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { safetyStock: 5 })] })] }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ status: 'ACTIVE', safetyStock: 7 }) }])
+    resetSeededFields()
+  })
+
   it('says which variants had no price to write', async () => {
     const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 0, listPrice: 0 })] }))
     expect(api.calls).toEqual([])
     expect(result.unpricedWarning).toContain('SKU-v1')
   })
-  it('refuses with the marketplace’s name when the price changed meanwhile', async () => {
+  it('returns a refused write with the marketplace’s name instead of throwing', async () => {
     api.refuse = 412
-    await expect(runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty')] })] })))
-      .rejects.toThrow('SKU-v1: Trendyol fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.')
+    const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty')] })] }))
+    expect(result.failures).toEqual([{ sku: 'SKU-v1', connectionId: 'ty', message: 'SKU-v1: Trendyol fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.', conflict: true }])
   })
-  it('stops on an offer without its version', async () => {
-    await expect(runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { offerVersion: null })] })] }))).rejects.toThrow('SKU-v1: platform fiyat sürümü eksik; fiyat güncellenmedi.')
+  it('returns an offer without its version as that marketplace’s failure', async () => {
+    const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { offerVersion: null })] })] }))
+    expect(api.calls).toEqual([])
+    expect(result.failures).toEqual([{ sku: 'SKU-v1', connectionId: 'ty', message: 'SKU-v1: platform fiyat sürümü eksik; fiyat güncellenmedi.', conflict: false }])
+  })
+  // Review of A-6: a typed card survives the refill only after a refusal that is no conflict (500, network); after a
+  // 409/412 the server's new price shows, so the next Kaydet does not pass the version check unnoticed.
+  it('keeps the typed card after a 500 but not after a 412', async () => {
+    const typed = { ty: { listPrice: '130', salePrice: '111' } }
+    const typedInput = { rows: [row('v1', { platformStatuses: [status('ty')] })], channelPricing: typed, channelPriceDraft: () => typed.ty, channelPriceEdited: () => true }
+    api.refuse = 412
+    const conflicted = await runOfferWrites(input(typedInput))
+    expect(conflicted.failures.map(failure => failure.conflict)).toEqual([true])
+    expect(keptChannelPricingDrafts(typed, connectionsKeepingTypedPrice(conflicted.failures))).toBeNull()
+    api.refuse = 500
+    const failed = await runOfferWrites(input(typedInput))
+    expect(failed.failures.map(failure => failure.conflict)).toEqual([false])
+    expect(keptChannelPricingDrafts(typed, connectionsKeepingTypedPrice(failed.failures))).toEqual(typed)
+  })
+  // A-6 (scan 25 Nov 2026): one refused offer (412) stopped every later write and every send.
+  it('writes the other marketplaces when one refuses its offer (412) and names only that one', async () => {
+    const three = [{ id: 'ty', platformCode: 'TRENDYOL' }, { id: 'n11', platformCode: 'N11' }, { id: 'pz', platformCode: 'PAZARAMA' }]
+    const names: Record<string, string> = { ty: 'Trendyol', n11: 'N11', pz: 'Pazarama' }
+    api.refuse = 412
+    api.refusePath = '/channel-offers/o-n11'
+    const result = await runOfferWrites(input({ connections: three, connectionIds: ['ty', 'n11', 'pz'], connectionPlatformName: id => names[id], rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty'), status('n11', { platformCode: 'N11' }), status('pz', { platformCode: 'PAZARAMA' })] })] }))
+    expect(api.calls.map(call => [call.method, call.path, call.ifMatch, call.body?.salePrice])).toEqual([['PATCH', '/channel-offers/o-ty', '"v3"', 80], ['PATCH', '/channel-offers/o-n11', '"v3"', 80], ['PATCH', '/channel-offers/o-pz', '"v3"', 80]])
+    expect(result.failures.map(failure => failure.connectionId)).toEqual(['n11'])
+    expect(connectionsWithWrittenOffers(['ty', 'n11', 'pz'], result.failures)).toEqual(['ty', 'pz'])
+    expect(offerWriteFailureWarnings(result.failures, id => names[id])).toEqual(['N11: fiyat yazılamadığı için bu platforma gönderilmedi. SKU-v1: N11 fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.'])
   })
 })
 

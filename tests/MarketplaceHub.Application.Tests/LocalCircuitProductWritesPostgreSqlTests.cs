@@ -75,6 +75,32 @@ public sealed class LocalCircuitProductWritesPostgreSqlTests(PostgreSqlTenantIso
         Assert.Equal(2, port.Archives);
     }
 
+    // B-4: a barcode whose sale-status write ended in a timeout, 5xx, open circuit or quota wait comes back as a failed
+    // but retryable line. Its result is unknown: it goes to the read-back, never recorded as a refusal.
+    [PostgreSqlTheory]
+    [InlineData(true, "ARCHIVE_RECONCILING", "PRODUCT_ARCHIVE_RECONCILE_PENDING")]
+    [InlineData(false, "ARCHIVE_REJECTED", "PRODUCT_ARCHIVE_RECONCILE_PENDING")]
+    public async Task AnArchiveLineWithAnUncertainResult_IsReadBackNotRejected(bool retryable, string expectedListing, string expectedCode)
+    {
+        var seed = await SeedCardAsync($"lc-uncertain-{retryable}", profileStatus: "ARCHIVE_BATCH_SUBMITTED", listingStatus: "LIVE");
+        var jobId = Guid.CreateVersion7();
+        var now = DateTimeOffset.UtcNow;
+        var barcode = $"lc-uncertain-{retryable}-0";
+        var payload = JsonSerializer.Serialize(new ProductArchiveJobPayload(jobId, seed.ProductId, seed.ProfileId, true, "POLL", "H-LC", $$"""{"items":[{"barcode":"{{barcode}}","archived":true}]}""", "c:op", now.AddMinutes(-1), now.AddHours(4)));
+        await AddJobAsync(seed, jobId, MarketplaceJobTypes.ProductArchive, payload);
+        var port = new Port
+        {
+            Operation = new RemoteOperationStatus("c:op", "COMPLETED", [new(barcode, false, null, retryable ? "PAZARAMA_SALE_STATUS_UNCERTAIN" : "PAZARAMA_SALE_STATUS_REJECTED", retryable, "Pazarama isteği zaman aşımına uğradı.")])
+        };
+
+        var result = await RunAsync(seed, port, MarketplaceJobTypes.ProductArchive, payload, jobId);
+
+        Assert.Equal(expectedCode, result.ErrorCode);
+        await using var db = fixture.CreateContext();
+        var listing = await db.ChannelListingVariants.AsNoTracking().SingleAsync(x => x.ProfileId == seed.ProfileId);
+        Assert.Equal(expectedListing, listing.ActualStatus);
+    }
+
     private static void AssertDeferred(JobExecutionResult result)
     {
         Assert.Equal(JobCompletionKind.Retry, result.Kind);
@@ -145,8 +171,10 @@ public sealed class LocalCircuitProductWritesPostgreSqlTests(PostgreSqlTenantIso
         public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) { Updates++; return Task.FromResult(Answer("PRODUCT_UPDATE_VARIANTS_V2")); }
         public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) { Archives++; return Task.FromResult(Answer("ARCHIVE")); }
 
+        public RemoteOperationStatus? Operation { get; init; }
+
         public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) =>
-            Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(new RemoteOperationStatus(externalOperationId, "IN_PROGRESS", [])));
+            Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(Operation ?? new RemoteOperationStatus(externalOperationId, "IN_PROGRESS", [])));
         public Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();

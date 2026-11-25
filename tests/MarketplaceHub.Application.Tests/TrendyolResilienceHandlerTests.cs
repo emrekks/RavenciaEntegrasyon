@@ -77,6 +77,35 @@ public sealed class TrendyolResilienceHandlerTests
         Assert.True(DateTimeOffset.UtcNow - started >= TimeSpan.FromMilliseconds(55));
     }
 
+    // B-1: the first page of a stream query used only the short start spacing and the second page the page-spacing
+    // bucket, which the first page never touched, so page 2 could follow page 1 at once.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OrderStream_SecondPageWaitsThePageSpacingAfterTheFirstPage(bool shared)
+    {
+        var options = Options.Create(new TrendyolOptions
+        {
+            MaxConcurrency = 2,
+            RequestsPerInterval = 100,
+            RequestInterval = TimeSpan.FromMilliseconds(1),
+            OrderRequestsPerInterval = 100,
+            OrderRequestInterval = TimeSpan.FromMinutes(1),
+            OrderStreamStartMinimumInterval = TimeSpan.FromMilliseconds(1),
+            OrderRequestMinimumInterval = TimeSpan.FromMilliseconds(150)
+        });
+        using var downstream = new SequenceHandler(HttpStatusCode.OK, HttpStatusCode.OK);
+        using var resilience = new TrendyolResilienceHandler(options, TimeProvider.System, new TrendyolResilienceState(options), shared ? new RecordingSharedLimiter() : null) { InnerHandler = downstream };
+        using var client = new HttpClient(resilience);
+
+        using var first = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream?size=200");
+        var started = DateTimeOffset.UtcNow;
+        using var second = await client.GetAsync("https://unit.test/integration/order/sellers/seller-42/orders/stream?size=200&nextCursor=b");
+
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.True(DateTimeOffset.UtcNow - started >= TimeSpan.FromMilliseconds(110));
+    }
+
     [Fact]
     public async Task QuotaAcquiredCallback_RunsAfterTheQuotaWaitAndBeforeSending()
     {

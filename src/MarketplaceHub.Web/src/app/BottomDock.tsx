@@ -34,16 +34,20 @@ export function useDockHostState(phone: boolean) {
 
 export { DockContext }
 
-const dockPages: Array<{ to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }> = [
-  { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true },
+type DockTarget = { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }
+// The pill: four icon-only slots (Siparişler, İadeler, Ürünler, Sorular); Ana Sayfa (left) and Menü (right) are the round buttons beside it.
+const homePage: DockTarget = { to: '/dashboard', icon: 'dashboard', label: 'Ana Sayfa', end: true }
+const pillPages: DockTarget[] = [
   { to: '/orders', icon: 'orders', label: 'Siparişler' },
+  { to: '/returns', icon: 'returns', label: 'İadeler', noun: 'bekleyen iade' },
   { to: '/products', icon: 'products', label: 'Ürünler' },
   { to: '/questions', icon: 'questions', label: 'Sorular', aria: 'Ürün Soruları', noun: 'cevaplanmamış' },
 ]
 
 // The keyboard is open while a text box has focus: the dock steps aside (bottom-nav.css does it with :has()).
-// The panel: the bottom row holds the four targets - or, in task mode, a Menü button and the page's buttons; in task mode
-// the status strip is a top row above it.
+// Three free-floating opaque parts in dock mode (Shopify-style structure, our own icons and colours): a round Ana Sayfa button, the pill with
+// Siparişler, Ürünler and Sorular, a round Menü button. In task mode the three give way to one wide panel (the page's buttons), with the warning
+// strip as a small pill above it.
 export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInfo, setActionsEl, setStripEl, menuSlotRef, onToggleMenu, onNavigate }: {
   menuOpen: boolean
   menuCount: number
@@ -62,7 +66,7 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   // A window, sheet or panel is open over the page: the bar steps away (and takes no touch) until it closes. The full-screen menu is no layer.
   const layerOpen = useLayerOpen()
   const task = taskActive && !menuOpen
-  // The strip above the bar exists only while the page has a warning to show; hidden (scrolled down) it takes no height.
+  // The warning pill above the task panel exists only while the page has a warning to show; hidden (scrolled down) it is gone.
   const strip = task && hasInfo
   const [infoHidden, setInfoHidden] = useState(false)
   const rows = strip && !infoHidden ? 2 : 1
@@ -85,35 +89,35 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
     event.preventDefault()
     onNavigate(to)
   }
-  const slot = (page: { to: string; icon: UiIconName; label: string; end?: boolean; aria?: string; noun?: string }) => {
+  const badge = (count: number) => count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null
+  const ariaFor = (page: DockTarget, count: number) => count > 0 ? (page.aria ?? page.label) + ', ' + count + ' ' + (page.noun ?? 'bekleyen') : (page.aria ?? page.label)
+  const slot = (page: DockTarget, round = false) => {
     const active = isActive(page.to, page.end)
     const count = slotCounts[page.to] ?? 0
-    return <Link key={page.to} to={page.to} className={'rv-dock-slot' + (active ? ' is-active' : '')} aria-label={count > 0 ? (page.aria ?? page.label) + ', ' + count + ' ' + (page.noun ?? 'bekleyen') : (page.aria ?? page.label)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
-      <span className="rv-dock-icon"><UiIcon name={page.icon} size={22} />{count > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(count)}</span> : null}</span><span className="rv-dock-label">{page.label}</span>
+    return <Link key={page.to} to={page.to} className={(round ? 'rv-dock-round' : 'rv-dock-slot') + (active ? ' is-active' : '')} aria-label={ariaFor(page, count)} aria-current={active ? 'page' : undefined} onClick={follow(page.to)}>
+      <span className="rv-dock-icon"><UiIcon name={page.icon} size={22} />{badge(count)}</span>
     </Link>
   }
-  // The open column: the page's own, or Menü while the menu is open (the one line under the bar's edge slides to it).
-  const activeIndex = menuOpen ? dockPages.length : dockPages.findIndex(page => isActive(page.to, page.end))
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} inert={layerOpen || undefined}>
-    <div className="rv-dock-panel">
-    <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
-      <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
-        <div className="rv-dock-info-slot" ref={setStripEl} />
+    <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
+      {slot(homePage, true)}
+      <div className="rv-dock-pill">
+        {pillPages.map(page => slot(page))}
       </div>
-    </div>
-    <div className="rv-dock-bottom">
-      <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
-        <span className="rv-dock-indicator" aria-hidden="true" style={{ transform: 'translateX(' + Math.max(activeIndex, 0) * 100 + '%)', opacity: activeIndex < 0 ? 0 : 1 }} />
-        {dockPages.map(slot)}
-        <button type="button" ref={menuSlotRef} className={'rv-dock-slot' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
-          <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen && menuCount > 0 ? <span className="rv-dock-badge" aria-hidden="true">{badgeText(menuCount)}</span> : null}</span><span className="rv-dock-label">{menuOpen ? 'Kapat' : 'Menü'}</span>
-        </button>
-      </nav>
-      <div className="rv-taskbar" inert={!task || undefined}>
+      <button type="button" ref={menuSlotRef} className={'rv-dock-round' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
+        <span className="rv-dock-icon"><UiIcon name={menuOpen ? 'close' : 'menu'} size={22} />{!menuOpen ? badge(menuCount) : null}</span>
+      </button>
+    </nav>
+    <div className="rv-dock-panel" inert={!task || undefined}>
+      <div className="rv-dock-top" data-top={rows === 2 ? 'info' : 'none'} inert={rows === 1 || undefined}>
+        <div className="rv-dock-info" data-visible={strip && !infoHidden ? 'true' : 'false'}>
+          <div className="rv-dock-info-slot" ref={setStripEl} />
+        </div>
+      </div>
+      <div className="rv-taskbar">
         <div className="rv-taskbar-actions" ref={setActionsEl} />
       </div>
-    </div>
     </div>
   </div>
 }

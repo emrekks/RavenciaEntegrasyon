@@ -220,6 +220,9 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
                     RecordQuotaPressure(request, quotaWaitStarted);
                     if (quota.Spacing > TimeSpan.Zero)
                         await SharedRateLimits.WaitAsync(sharedLimiter, $"trendyol:{quota.SpacingBucket}", SharedRateLimits.ForSpacing(quota.Spacing), timeProvider, cancellationToken);
+                    // B-1: the pages of one query run in this process, so the page spacing is also kept here: the
+                    // shared spacing bucket does not know when this query's first page went out.
+                    await KeepPageSpacingAsync(quota, cancellationToken);
                 }
                 return;
             }
@@ -238,6 +241,34 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
             RecordQuotaPressure(request, quotaWaitStarted);
             if (localQuota.Spacing > TimeSpan.Zero)
                 await WaitForRateWindowAsync(localQuota.SpacingBucket, int.MaxValue, options.OrderRequestInterval, cancellationToken, localQuota.Spacing);
+            MarkPageSpacingStarted(localQuota);
+        }
+    }
+
+    // The next page of a stream query waits for the page spacing since this process's last stream page; a first page
+    // starts that clock (B-1), so page 2 never follows page 1 sooner than OrderRequestMinimumInterval.
+    private async Task KeepPageSpacingAsync(OrderQuota quota, CancellationToken cancellationToken)
+    {
+        if (quota.PageSpacingBucket is not null) MarkPageSpacingStarted(quota);
+        else if (quota.Spacing > TimeSpan.Zero)
+            await WaitForRateWindowAsync(quota.SpacingBucket, int.MaxValue, options.OrderRequestInterval, cancellationToken, quota.Spacing);
+    }
+
+    private void MarkPageSpacingStarted(OrderQuota quota)
+    {
+        if (quota.PageSpacingBucket is not { } bucket) return;
+        lock (state.SyncRoot)
+        {
+            var now = timeProvider.GetUtcNow();
+            state.TrimIdleState(now, options.OrderRequestInterval <= TimeSpan.Zero ? TimeSpan.FromSeconds(1) : options.OrderRequestInterval);
+            if (!state.RequestStarts.TryGetValue(bucket, out var starts))
+            {
+                starts = new Queue<DateTimeOffset>();
+                state.RequestStarts[bucket] = starts;
+            }
+            starts.Enqueue(now);
+            state.RateBucketLastStarted[bucket] = now;
+            state.RateBucketLastTouched[bucket] = now;
         }
     }
 
@@ -259,7 +290,8 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         if (limit is { } changed) logger?.LogInformation("Trendyol order quota for {SellerBucket} is now taken as {Limit} requests a minute", sellerBucket, changed);
     }
 
-    internal sealed record OrderQuota(string Bucket, int Limit, string SpacingBucket, TimeSpan Spacing);
+    // PageSpacingBucket is set on the first page of a stream query: it starts the page-spacing clock the next page waits on.
+    internal sealed record OrderQuota(string Bucket, int Limit, string SpacingBucket, TimeSpan Spacing, string? PageSpacingBucket = null);
 
     // The seller's order quota covers the stream and Order V2. It is split so background reads
     // can never use up what a new-order read or a user action needs. Trendyol recommends five
@@ -275,7 +307,7 @@ public sealed class TrendyolResilienceHandler : DelegatingHandler
         var nextPage = request.RequestUri?.Query.Contains("nextCursor=", StringComparison.OrdinalIgnoreCase) == true;
         return nextPage
             ? new(bucket, limit, $"{orderBucket}:spacing", options.OrderRequestMinimumInterval)
-            : new(bucket, limit, $"{orderBucket}:spacing:start", options.OrderStreamStartMinimumInterval);
+            : new(bucket, limit, $"{orderBucket}:spacing:start", options.OrderStreamStartMinimumInterval, $"{orderBucket}:spacing");
     }
 
     // Requests per order interval for new-order reads and user actions, and for everything else.
