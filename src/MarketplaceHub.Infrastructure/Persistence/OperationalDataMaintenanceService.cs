@@ -22,6 +22,52 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         // deleted: a live marketplace's orders invoiced through a STAGE provider are tests, a STAGE marketplace's orders
         // invoiced through the live provider are not.
         if (await IssuedInvoicesAsync(tenantId, connectionId, cancellationToken, fiscalOnly: true) is > 0 and var issued) return IssuedInvoicesKept(issued);
+        // B-7 (scan 25 Nov 2026): like the full reset, the delete holds every sync lock of the connection, so no job of it
+        // writes while its rows go. A sync that holds a lock, or a job a worker holds right now, answers that the delete
+        // waits for it; nothing is removed or written to the marketplace then.
+        var locks = new List<IAsyncDisposable>();
+        try
+        {
+            if (!await HoldConnectionForDeleteAsync(tenantId, connectionId, locks, cancellationToken)) return ConnectionDeleteDeferred();
+            return await DeleteHeldConnectionAsync(tenantId, actorUserId, connection, correlationId, cancellationToken);
+        }
+        finally
+        {
+            // The first lock opened the database connection the others share; it closes it, so it goes last.
+            for (var index = locks.Count - 1; index >= 0; index--) await locks[index].DisposeAsync();
+        }
+    }
+
+    internal static readonly TimeSpan ConnectionDeleteLockWait = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ConnectionDeletePoll = TimeSpan.FromMilliseconds(200);
+    internal const string ConnectionDeleteDeferredCode = "CONNECTION_DELETE_DEFERRED";
+
+    private static ServiceResult<OperationalDataResetView> ConnectionDeleteDeferred() =>
+        ServiceResult<OperationalDataResetView>.Fail(ConnectionDeleteDeferredCode, "Bağlantıda süren bir işlem var; hiçbir şey silinmedi. Süren işlem bitince silinecek: birkaç saniye sonra yeniden deneyin.", 409);
+
+    // Every sync lane of the connection, then no job of it leased by a worker (a stale lease that has run out does not
+    // count; its job stays for the hourly leftover sweep). Both within ConnectionDeleteLockWait.
+    private async Task<bool> HoldConnectionForDeleteAsync(Guid tenantId, Guid connectionId, List<IAsyncDisposable> locks, CancellationToken cancellationToken)
+    {
+        var deadline = timeProvider.GetUtcNow() + ConnectionDeleteLockWait;
+        foreach (var group in SyncLockGroups)
+        {
+            var remaining = deadline - timeProvider.GetUtcNow();
+            var acquired = await MarketplaceSyncExecutionLock.AcquireGroupAsync(db, connectionId, group, remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero, timeProvider, cancellationToken);
+            if (acquired is null) return false;
+            locks.Add(acquired);
+        }
+        while (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == JobStatus.Leased && x.LeaseExpiresAt > timeProvider.GetUtcNow(), cancellationToken))
+        {
+            if (timeProvider.GetUtcNow() >= deadline) return false;
+            await Task.Delay(ConnectionDeletePoll, timeProvider, cancellationToken);
+        }
+        return true;
+    }
+
+    private async Task<ServiceResult<OperationalDataResetView>> DeleteHeldConnectionAsync(Guid tenantId, Guid actorUserId, PlatformConnection connection, string correlationId, CancellationToken cancellationToken)
+    {
+        var connectionId = connection.Id;
         // The order notification registered at the marketplace goes first, as Webhook'u Kapat does: once the
         // connection's keys are gone nothing could remove it any more.
         var webhookNotice = await CloseMarketplaceWebhookAsync(connection, correlationId, cancellationToken);
@@ -208,8 +254,9 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         """, cancellationToken);
 
     private Task DeleteConnectionArtifactsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => db.Database.ExecuteSqlInterpolatedAsync($$"""
-        DELETE FROM integration.job_attempts a USING integration.jobs j WHERE a."TenantId"={{tenantId}} AND a."JobId"=j."Id" AND j."ConnectionId"={{connectionId}};
-        DELETE FROM integration.jobs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+        -- A job a worker holds stays (its lease ran out, or it was leased after the check); the hourly sweep removes it later.
+        DELETE FROM integration.job_attempts a USING integration.jobs j WHERE a."TenantId"={{tenantId}} AND a."JobId"=j."Id" AND j."TenantId"={{tenantId}} AND j."ConnectionId"={{connectionId}} AND j."Status"<>'LEASED';
+        DELETE FROM integration.jobs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}} AND "Status"<>'LEASED';
         DELETE FROM integration.reconciliation_differences d USING integration.reconciliation_runs r WHERE d."TenantId"={{tenantId}} AND d."RunId"=r."Id" AND r."ConnectionId"={{connectionId}};
         DELETE FROM integration.reconciliation_runs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
         DELETE FROM catalog.category_mappings WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};

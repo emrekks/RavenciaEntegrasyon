@@ -511,6 +511,86 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         }
     }
 
+    // B-7 (scan 25 Nov 2026): Bağlantıyı Sil holds the connection's sync locks like the full reset. A job a worker holds now
+    // makes it answer that the delete waits for it, with nothing removed.
+    [PostgreSqlFact]
+    public async Task ConnectionDelete_WaitsForAJobAWorkerHolds()
+    {
+        var seed = NewSeed("dm-dlease");
+        var leased = DeleteTestJob(seed, JobStatus.Leased, fixture.Now.AddMinutes(5));
+        try
+        {
+            await SeedAsync(seed, db => db.IntegrationJobs.Add(leased));
+
+            await using var db = fixture.CreateContext();
+            var result = await NewService(db)
+                .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+
+            Assert.False(result.Succeeded);
+            Assert.Equal((OperationalDataMaintenanceService.ConnectionDeleteDeferredCode, 409), (result.Error!.Code, result.Error.Status));
+            Assert.Contains("Süren işlem bitince silinecek", result.Error.Message);
+            await using var verification = fixture.CreateContext();
+            Assert.Equal("ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+            Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
+            Assert.Equal(JobStatus.Leased, (await verification.IntegrationJobs.SingleAsync(x => x.Id == leased.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A sync running on the connection holds one of its locks: the delete waits for it, then goes once the lock is free.
+    // A job whose lease ran out long ago does not hold the delete up and stays for the hourly sweep; the others go.
+    [PostgreSqlFact]
+    public async Task ConnectionDelete_WaitsForARunningSync_ThenKeepsOnlyTheLeasedJob()
+    {
+        var seed = NewSeed("dm-dlock");
+        var stale = DeleteTestJob(seed, JobStatus.Leased, fixture.Now.AddHours(-1));
+        var waiting = DeleteTestJob(seed, JobStatus.Pending, null);
+        try
+        {
+            await SeedAsync(seed, db => db.IntegrationJobs.AddRange(stale, waiting));
+
+            await using (var syncDb = fixture.CreateContext())
+            {
+                var running = await MarketplaceSyncExecutionLock.AcquireGroupAsync(syncDb, seed.Marketplace.Id, MarketplaceSyncExecutionLock.OrdersGroup, TimeSpan.Zero, fixture.TimeProvider, CancellationToken.None);
+                Assert.NotNull(running);
+                await using (running)
+                {
+                    await using var db = fixture.CreateContext();
+                    var busy = await NewService(db)
+                        .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                    Assert.Equal(OperationalDataMaintenanceService.ConnectionDeleteDeferredCode, busy.Error?.Code);
+                }
+            }
+            await using (var verification = fixture.CreateContext())
+                Assert.Equal("ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewService(db)
+                    .DeleteConnectionAsync(seed.Tenant.Id, Guid.CreateVersion7(), seed.Marketplace.Id, seed.Marketplace.Version, new DeleteConnectionCommand(seed.Marketplace.DisplayName), "corr", CancellationToken.None);
+                Assert.True(result.Succeeded, result.Error?.Message);
+            }
+            await using var after = fixture.CreateContext();
+            Assert.Equal("DELETED", (await after.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
+            Assert.Equal([stale.Id], await after.IntegrationJobs.Where(x => x.TenantId == seed.Tenant.Id).Select(x => x.Id).ToListAsync());
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private IntegrationJob DeleteTestJob(Seed seed, JobStatus status, DateTimeOffset? leaseExpiresAt)
+    {
+        var job = ConnectionReferencePlan.NewJob(seed.Tenant.Id, seed.Marketplace.Id, MarketplaceJobTypes.OrderSync, $"dm-delete:{Guid.NewGuid():N}", "{}", "corr", JobPriorityPolicy.Default, "schedule", fixture.Now);
+        job.Status = status;
+        job.LeaseExpiresAt = leaseExpiresAt;
+        return job;
+    }
+
     private sealed class RecordingNotifications(bool succeeds) : IInstantNotificationService
     {
         public int Disabled { get; private set; }
