@@ -245,7 +245,9 @@ public sealed class PostgreSqlInvoiceDeliveryIdentityTests(PostgreSqlTenantIsola
 
             Assert.Empty(marketplace.Deliveries);
             await using var verification = fixture.CreateContext();
-            Assert.Equal("QUEUED", (await verification.ManualOrderInvoiceDeliveryStates.SingleAsync(item => item.Id == state.Id)).Status);
+            // The owner no longer sees the delivery waiting: it is FAILED with the reason.
+            var stored = await verification.ManualOrderInvoiceDeliveryStates.SingleAsync(item => item.Id == state.Id);
+            Assert.Equal(("FAILED", InvoiceDeliveryGuardPolicy.OrderCancelledCode), (stored.Status, stored.ErrorCode));
         }
         finally
         {

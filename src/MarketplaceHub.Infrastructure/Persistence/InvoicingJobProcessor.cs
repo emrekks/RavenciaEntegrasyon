@@ -874,10 +874,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             cancellationToken);
         inspectionOnly |= ManualInvoiceDeliveryPolicy.RequiresReadOnlyInspection(state?.Status);
         // A fully cancelled order's document is not sent (scan A-2, as the delivery endpoint): a job queued before the
-        // cancellation stops here, and only the read-back of a delivery whose earlier result is uncertain still runs.
+        // cancellation stops here, and only the read-back of a delivery whose earlier result is uncertain still runs. Its
+        // state leaves "sırada" for FAILED with the reason, so the owner does not see a delivery waiting for ever.
         if (!inspectionOnly && !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus))
-            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.OrderCancelledCode,
-                "Sipariş iptal edildi; manuel fatura belgesi pazaryerine gönderilmedi."));
+            return await StopManualOrderInvoiceDelivery(state, "FAILED", InvoiceDeliveryGuardPolicy.OrderCancelledCode, null,
+                "Sipariş iptal edildi; manuel fatura belgesi pazaryerine gönderilmedi.", cancellationToken);
         var documentHash = Hash($"{document.DocumentUrl}\n{document.InvoiceNumber}\n{document.IssuedAt:O}");
         if (state is not null && !string.Equals(state.RequestHash, documentHash, StringComparison.Ordinal))
         {
