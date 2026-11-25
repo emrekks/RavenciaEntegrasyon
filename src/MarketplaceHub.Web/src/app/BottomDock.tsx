@@ -101,14 +101,14 @@ export function BottomDock({ menuOpen, menuCount, slotCounts, taskActive, hasInf
   const menuAria = menuOpen ? 'Menüyü Kapat' : menuCount > 0 ? 'Menü, ' + menuCount + ' bekleyen işlem' : 'Menü'
   return <div className="rv-dock-layer" data-mode={task ? 'task' : 'dock'} data-rows={rows} data-layer={layerOpen ? 'open' : undefined} data-menu={menuOpen ? 'open' : undefined} inert={layerOpen || undefined}>
     <nav className="rv-dock" aria-label="Alt menü" inert={task || undefined}>
-      {/* While the menu is open the same round button is the gear (Sistem Ayarları): the icons cross-fade in place. */}
-      <Link to={menuOpen ? settingsPath : homePage.to} className={'rv-dock-round' + (isActive(homePage.to, homePage.end) ? ' is-active' : '')} aria-label={menuOpen ? 'Sistem Ayarları' : 'Ana Sayfa'} aria-current={isActive(homePage.to, homePage.end) ? 'page' : undefined} onClick={follow(menuOpen ? settingsPath : homePage.to)}>
-        <span className="rv-dock-icon rv-dock-swap"><UiIcon className="rv-swap-a" name="dashboard" size={22} /><UiIcon className="rv-swap-b" name="settings" size={22} /></span>
+      {/* While the menu is open the pill and this button fade out (inert); only the cross on the right stays. */}
+      <Link to={homePage.to} className={'rv-dock-round rv-dock-home' + (isActive(homePage.to, homePage.end) ? ' is-active' : '')} aria-label="Ana Sayfa" aria-current={isActive(homePage.to, homePage.end) ? 'page' : undefined} onClick={follow(homePage.to)} tabIndex={menuOpen ? -1 : undefined} inert={menuOpen || undefined}>
+        <span className="rv-dock-icon"><UiIcon name="dashboard" size={22} /></span>
       </Link>
       <div className="rv-dock-pill" inert={menuOpen || undefined}>
         {pillPages.map(page => slot(page))}
       </div>
-      <button type="button" ref={menuSlotRef} className={'rv-dock-round' + (menuOpen ? ' is-active' : '')} aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
+      <button type="button" ref={menuSlotRef} className="rv-dock-round" aria-label={menuAria} aria-haspopup="dialog" aria-expanded={menuOpen} onClick={onToggleMenu}>
         <span className="rv-dock-icon rv-dock-swap"><UiIcon className="rv-swap-a" name="menu" size={22} /><UiIcon className="rv-swap-b" name="close" size={22} />{!menuOpen ? badge(menuCount) : null}</span>
       </button>
     </nav>
@@ -147,8 +147,9 @@ export function useExitPresence(open: boolean) {
 }
 
 const settingsPath = '/settings'
+const settingsEntry: MenuEntry = { to: settingsPath, icon: 'settings', label: 'Sistem Ayarları', end: true }
 
-export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname, closing = false, theme = 'light', onToggleTheme }: {
+export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate, pathname, closing = false }: {
   closing?: boolean
   groups: MenuGroup[]
   profile: MenuProfile
@@ -156,8 +157,6 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   onClose: () => void
   onNavigate: (to: string) => void
   pathname: string
-  theme?: 'light' | 'dark'
-  onToggleTheme?: () => void
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   useScrollLock(true, false, { layer: false })
@@ -173,7 +172,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
     if (document.querySelector('.rv-notification-history')) return
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
     if (event.key !== 'Tab') return
-    // The menu and the dock's two round buttons (the gear and the cross) form the cycle.
+    // The menu and the dock's cross (the one part left in the dock) form the cycle.
     const scopes = [rootRef.current, document.querySelector('.rv-dock')]
     const items = scopes.flatMap(scope => scope ? [...scope.querySelectorAll<HTMLElement>(scope === rootRef.current ? focusableSelector : '.rv-dock-round')] : []).filter(element => element.offsetParent !== null || element === document.activeElement)
     if (!items.length) return
@@ -212,7 +211,7 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
         {heading('Hesap')}
         <div className="rv-fullmenu-list">
           <div className="rv-fullmenu-profile"><UserAvatar className="rv-fullmenu-avatar" name={profile.name} imageUrl={profile.imageUrl} /><span className="rv-fullmenu-name">{profile.name}</span></div>
-          {onToggleTheme ? <button type="button" className="rv-fullmenu-row" onClick={onToggleTheme}><UiIcon name={theme === 'light' ? 'moon' : 'sun'} size={22} /><span className="rv-fullmenu-name">{theme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button> : null}
+          {row(settingsEntry)}
           <button type="button" className="rv-fullmenu-row is-danger" onClick={onLogout}><UiIcon name="logout" size={22} /><span className="rv-fullmenu-name">Çıkış Yap</span></button>
         </div>
       </section>
