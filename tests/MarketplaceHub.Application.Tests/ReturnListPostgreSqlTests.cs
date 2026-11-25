@@ -190,6 +190,28 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Scan 25 Nov 2026 C-4: a partly cancelled order's returned unit showed "0 adet" (the page takes the cancelled units off
+    // the quantity). A return card's line carries its returned units and no cancelled ones.
+    [PostgreSqlFact]
+    public async Task A_return_line_of_a_partly_cancelled_order_shows_its_returned_units()
+    {
+        var seed = await SeedAsync();
+        try
+        {
+            await using (var setup = fixture.CreateContext())
+                await setup.OrderLines.Where(line => line.Id == seed.SecondLineId).ExecuteUpdateAsync(set => set.SetProperty(line => line.CancelledQuantity, 1m));
+            await using var db = fixture.CreateContext();
+            var page = await NewService(db).ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Status: "ACTION_REQUIRED"), false, CancellationToken.None);
+            var line = Assert.Single(Assert.Single(page.Items).Lines!);
+            Assert.Equal(seed.SecondLineId, line.Id);
+            Assert.Equal((1m, 0m), (line.OrderedQuantity, line.CancelledQuantity));
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     private static MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), new ConfigurationBuilder().Build(), null!, null!, null!, null!, TimeProvider.System);
 

@@ -172,7 +172,9 @@ internal sealed partial class ReturnQueryService
                 // screens use gives the photo, so a return line shows what its order line shows.
                 var images = ReturnDetailLineImageUrls(source.ImageUrl, variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id),
                     string.IsNullOrWhiteSpace(line.Barcode) ? string.IsNullOrWhiteSpace(line.Sku) ? variant?.Barcode : line.Sku : line.Barcode, claim.ConnectionId);
-                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl,
+                // The card shows the returned units: they are the line's ordered quantity here, and the order's cancelled units
+                // are not taken off them (the page shows ordered minus cancelled; a partly cancelled order showed "0 adet", C-4).
+                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, 0m, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl,
                     FallbackImageUrl: images.FallbackImageUrl,
                     ReturnAmounts: ReturnMarketplaceAmounts.Line(platformCode, line.SourceSnapshotJson, returnLine.Quantity, claim.ExternalClaimId));
             }).Where(line => line is not null).Select(line => line!).ToList();
