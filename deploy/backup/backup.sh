@@ -179,25 +179,28 @@ guard_disk_space() {
   if test -n "$newest"; then estimate_kib="$(du -sk "$newest" | cut -f1)"; fi
   projected="$(projected_disk_percent "$estimate_kib")"
 
-  if test "$projected" -gt "$limit"; then
-    # Oldest first: only weekly sets (older than the daily window and the last
-    # 72 hours) are given up for space; daily and recent sets stay.
+  # Only sets older than the daily window and the last 72 hours are given up for
+  # space; daily and recent sets stay. Weekly sets go first (oldest first), the
+  # monthly ones (older than the weekly window) only when that was not enough:
+  # they are the only copies of their months.
+  for guard_pass in weekly monthly; do
+    test "$projected" -gt "$limit" || break
     for path in $(list_backup_sets); do
       test -d "$path" || continue
       test "$path" != "$newest" || continue
       backup_time="$(backup_set_epoch "${path##*/}")"
       test -n "$backup_time" || continue
-      if test "$backup_time" -lt "$daily_cutoff" && test "$backup_time" -lt "$recent_cutoff"; then
-        rm -rf -- "$path"
-        projected="$(projected_disk_percent "$estimate_kib")"
-        echo "Disk guard removed weekly backup set ${path##*/}; projected disk use now ${projected}%."
-        test "$projected" -gt "$limit" || break
-      fi
+      test "$backup_time" -lt "$daily_cutoff" && test "$backup_time" -lt "$recent_cutoff" || continue
+      if test "$guard_pass" = weekly && test "$backup_time" -lt "$weekly_cutoff"; then continue; fi
+      rm -rf -- "$path"
+      projected="$(projected_disk_percent "$estimate_kib")"
+      echo "Disk guard removed $guard_pass backup set ${path##*/}; projected disk use now ${projected}%."
+      test "$projected" -gt "$limit" || break
     done
-  fi
+  done
 
   if test "$projected" -gt "$limit"; then
-    echo "DISK_GUARD_WARNING: backup disk would reach ${projected}% (limit ${limit}%) with a ~$((estimate_kib / 1024)) MiB set after removing every weekly set; free space or lower retention."
+    echo "DISK_GUARD_WARNING: backup disk would reach ${projected}% (limit ${limit}%) with a ~$((estimate_kib / 1024)) MiB set after removing every weekly and monthly set; free space or lower retention."
   fi
   if test "$projected" -gt "$hard_limit"; then
     echo "Backup refused: the disk would reach ${projected}% (hard limit ${hard_limit}%)." >&2
