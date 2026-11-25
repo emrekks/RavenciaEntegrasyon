@@ -55,6 +55,14 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-scope { flex: 1 1 auto; min-width: 0; margin-left: auto; padding-bottom: 8px; color: var(--rr-muted); font-size: 13px; text-align: right; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-scope b { color: var(--rr-ink); font-weight: 600; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-apply { flex: none; min-height: 0; height: 36px; }
+/* From 761 px the row stays ONE line: fields, Uygula, then the scope note pushed to the right edge. A wrapping row let the long
+   note take its whole text width and drop Uygula to a second line; now the note is the one that shrinks (ellipsis, full text in its title). */
+@media (min-width: 761px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow { flex-wrap: nowrap; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-qe-apply { order: 1; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-qe-scope { order: 2; flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-qe-f200 { flex: 0 1 200px; min-width: 170px; }
+}
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-m-foot .rv-draftbar-text small { display: block; color: var(--rr-subtle); font-size: 12px; }
 @media (max-width: 760px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-applyrow .rr-fld { flex: 1 1 100%; width: auto; }

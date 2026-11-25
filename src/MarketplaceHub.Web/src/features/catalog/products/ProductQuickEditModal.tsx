@@ -596,7 +596,7 @@ export function ProductQuickEditModal({ products: savedProducts = [], connection
         
         {/* One value at a time, the one named above the sizes: its field (a stock change takes an action and an amount). */}
         {draft ? <div className="rr-dgrid rr-qe-row" style={{ '--qe-cols': valueKind === 'stock' ? 2 : 1 } as CSSProperties}>{valueKind === 'stock' ? stockFields : valueFields}</div>
-          : <div className="rr-qe-applyrow">{valueKind === 'stock' ? stockFields : valueFields}<span className="rr-note rr-qe-scope">{activeSelection.length ? <><b>{activeSelection.length} seçili</b> varyanta</> : <>Seçim yok: <b>{targetIds.length} varyantın</b> tümüne</>}</span><button type="submit" className="rr-btn rr-qe-apply" disabled={saving || !targetIds.length || !canApply} title="Değeri tablodaki hücrelere taslak olarak yazar; kaydetmez.">Uygula</button></div>}
+          : <div className="rr-qe-applyrow">{valueKind === 'stock' ? stockFields : valueFields}<span className="rr-note rr-qe-scope" title={activeSelection.length ? `${activeSelection.length} seçili varyanta` : `Seçim yok: ${targetIds.length} varyantın tümüne`}>{activeSelection.length ? <><b>{activeSelection.length} seçili</b> varyanta</> : <>Seçim yok: <b>{targetIds.length} varyantın</b> tümüne</>}</span><button type="submit" className="rr-btn rr-qe-apply" disabled={saving || !targetIds.length || !canApply} title="Değeri tablodaki hücrelere taslak olarak yazar; kaydetmez.">Uygula</button></div>}
       </section>
       {notice && <div className={`rr-callout${notice.startsWith('Başarısız:') ? ' rr-danger' : ''}`} role={notice.startsWith('Başarısız:') ? 'alert' : 'status'}><RrIcon name={notice.startsWith('Başarısız:') ? 'alert' : 'info'} /><span>{notice}</span></div>}
     </form>
