@@ -4,10 +4,10 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { byText, cleanup, render, waitFor } from '../../test/render'
 
-const api = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; headers: Record<string, string>; body?: string }>, release: null as null | (() => void), platformCode: 'TRENDYOL', allowedActions: [] as string[] }))
+const api = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; headers: Record<string, string>; body?: string }>, release: null as null | (() => void), platformCode: 'TRENDYOL', allowedActions: [] as string[], refuse: null as null | { status: number; message: string } }))
 
-vi.mock('../../shared/api', async importOriginal => ({
-  ...(await importOriginal<typeof import('../../shared/api')>()),
+vi.mock('../../shared/api', async importOriginal => { const original = await importOriginal<typeof import('../../shared/api')>(); return {
+  ...original,
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     api.calls.push({ path, method, headers: Object.fromEntries(new Headers(init?.headers).entries()), body: typeof init?.body === 'string' ? init.body : undefined })
@@ -15,14 +15,15 @@ vi.mock('../../shared/api', async importOriginal => ({
       platformCode: api.platformCode, allowedActions: api.allowedActions, supportedLabelFormats: ['A4'], isStageConnection: false, documents: [],
       package: { id: 'p1', orderId: 'o1', orderNumber: '1001', externalPackageId: 'PK-1', status: 'PROCESSING', rawStatus: 'Picking', cargoTrackingNumber: 'TR123', cargoProviderName: 'Yurtiçi', statusOccurredAt: '2026-10-19T06:00:00Z', version: 7, isResend: false },
     }
+    if (method === 'POST' && api.refuse) throw new original.ApiRequestError(api.refuse.message, api.refuse.status)
     if (method === 'POST') { await new Promise<void>(resolve => { api.release = resolve }); return { jobId: 'j1' } }
     return []
   }),
-}))
+} })
 
 import { ShipmentDetailPage } from './orders/ShipmentPages'
 
-beforeEach(() => { api.calls = []; api.release = null; api.platformCode = 'TRENDYOL'; api.allowedActions = [] })
+beforeEach(() => { api.calls = []; api.release = null; api.platformCode = 'TRENDYOL'; api.allowedActions = []; api.refuse = null })
 afterEach(cleanup)
 
 function mount(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
@@ -92,5 +93,18 @@ describe('shipment package requests', () => {
     act(() => { byText<HTMLButtonElement>(dialog, 'button', 'Vazgeç').click() })
     await waitFor(() => !document.querySelector('[role="dialog"]'))
     expect(posts()).toHaveLength(0)
+  })
+
+  // A-7 (scan 25 Nov 2026): the toast's colour was guessed from the wording; a 403 worded without a failure word was green.
+  it('shows a refused package request (403) as a red notice', async () => {
+    api.refuse = { status: 403, message: 'Bu bağlantının dış yazma izni kapalı.' }
+    const { host } = mount()
+    const button = await waitFor(() => byText<HTMLButtonElement>(host, 'button', 'Etiket Oluştur'))
+    submit(button.closest('form')!)
+    const toast = await waitFor(() => document.querySelector<HTMLElement>('.app-toast'))
+    expect(toast.className).toContain('app-toast-error')
+    expect(toast.getAttribute('role')).toBe('alert')
+    expect(toast.textContent).toContain('Bu bağlantının dış yazma izni kapalı.')
+    expect(document.documentElement.dataset.rvShipmentFeedback).toBe('error')
   })
 })
