@@ -41,8 +41,8 @@
       "ResourceType": "ORDER_CANCELLATIONS_WIDE",
       "Watermark": null,
       "LastSuccess": null,
-      "OpaqueCursor": null,
-      "Version": 1
+      "OpaqueCursor": "WIDE_STOPPED",
+      "Version": 2
     },
     {
       "ResourceType": "ORDER_LIFECYCLE",
