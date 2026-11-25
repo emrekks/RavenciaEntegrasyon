@@ -26,6 +26,17 @@ public sealed class JobModelGroupPolicyTests
     }
 
     [Fact]
+    public void Clusters_CutAKeysJobsFromTheirFirstOneAndPutEveryJobInExactlyOneGroup()
+    {
+        var start = new DateTimeOffset(2026, 11, 25, 10, 0, 0, TimeSpan.Zero);
+        var jobs = new[] { 0, 5, 59, 60, 61, 180 }.Select(minutes => (Id: Guid.NewGuid(), At: start.AddMinutes(minutes))).Reverse().ToList();
+        var groups = JobModelGroupPolicy.Clusters(jobs, job => job.At, job => job.Id);
+        Assert.Equal([[0, 5, 59], [60, 61], [180]], groups.Select(group => group.Select(job => (int)(job.At - start).TotalMinutes).ToArray()).ToArray());
+        Assert.False(JobModelGroupPolicy.NamesASend("publication-status:0a1b"));
+        Assert.True(JobModelGroupPolicy.NamesASend("5c2a9e17"));
+    }
+
+    [Fact]
     public void CardVariantCount_CountsOnlyTheCardsOwnVariantsAndKeepsUnknownUnknown()
     {
         // A family request (PTT AVM, Shopify) carries every colour: the card counts its own variants only.

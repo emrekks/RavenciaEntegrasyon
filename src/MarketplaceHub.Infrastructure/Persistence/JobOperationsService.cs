@@ -423,11 +423,12 @@ public sealed partial class JobOperationsService(AppDbContext db, TimeProvider t
             attempts.Count(x => x.Outcome == "WAITING"));
         var currentOrder = await OrderContext(job, cancellationToken);
         var invoice = await InvoiceContext(job, cancellationToken);
-        var relatedJobs = await db.IntegrationJobs.AsNoTracking()
-            .Where(x => x.TenantId == job.TenantId && x.CorrelationId == job.CorrelationId)
-            .OrderByDescending(x => x.CreatedAt)
-            .ThenByDescending(x => x.Id)
-            .ToListAsync(cancellationToken);
+        var related = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == job.TenantId && x.CorrelationId == job.CorrelationId);
+        // A product job shares its correlation id with every card of its send (a bulk publish: up to a thousand) and has
+        // no order: only their number is read, not the jobs and their payloads.
+        var productJob = JobModelGroupPolicy.IsGrouped(job.JobType);
+        var relatedJobs = productJob ? [] : await related.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync(cancellationToken);
+        var relatedCount = productJob ? await related.CountAsync(cancellationToken) : relatedJobs.Count;
         var relatedOrders = new List<JobOrderContextView>();
         foreach (var relatedJob in relatedJobs)
         {
@@ -436,7 +437,7 @@ public sealed partial class JobOperationsService(AppDbContext db, TimeProvider t
         }
         var scan = await ScanAsync(job, cancellationToken);
         var failureReasons = await ProductImportFailureReasonsAsync(job, cancellationToken);
-        var summary = Summary(job, failureTimes, relatedJobs.Count, attempts.FirstOrDefault()?.StartedAt, (job.ConnectionId is Guid relatedConnectionId ? (await ConnectionPlatformsAsync([job], cancellationToken)).GetValueOrDefault(relatedConnectionId) : null));
+        var summary = Summary(job, failureTimes, relatedCount, attempts.FirstOrDefault()?.StartedAt, (job.ConnectionId is Guid relatedConnectionId ? (await ConnectionPlatformsAsync([job], cancellationToken)).GetValueOrDefault(relatedConnectionId) : null));
         if (job.JobType == InvoicingJobTypes.InvoiceSubmit && job.LastErrorCode == "EFATURAM_REQUEST_REJECTED")
         {
             var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");

@@ -16,12 +16,39 @@ public static class JobModelGroupPolicy
         MarketplaceJobTypes.ProductCreate, MarketplaceJobTypes.ProductUpdate, MarketplaceJobTypes.ProductArchive, MarketplaceJobTypes.ProductApprovalReconcile
     };
 
-    // How far apart the jobs of one send may be created and still be looked up together. A send queues its cards one
-    // request after another within seconds (a 1,000-card bulk publish within minutes); the bound keeps the sibling read on
-    // the (TenantId, CreatedAt, Id) index. A job farther away shows as a group of its own; groups are never merged.
-    public static readonly TimeSpan SiblingWindow = TimeSpan.FromHours(1);
+    // One send queues its cards within seconds (a 1,000-card bulk publish within minutes). The jobs of one key are cut
+    // into groups oldest first: a group takes every job created less than this after its first one, the next job starts
+    // the next group (Clusters). A key reused hours later (an approval check that carries its send's id) is so never
+    // folded into the earlier group, and every job falls in exactly one group.
+    public static readonly TimeSpan GroupSpan = TimeSpan.FromHours(1);
+
+    // The approval check "Durumu Yenile" queues carries a fixed id per card (publication-status:<product>), one for every
+    // click: it names no send, so such a job is never grouped.
+    public const string StatusRefreshCorrelationPrefix = "publication-status:";
 
     public static bool IsGrouped(string jobType) => GroupedJobTypes.Contains(jobType);
+
+    public static bool NamesASend(string correlationId) => !correlationId.StartsWith(StatusRefreshCorrelationPrefix, StringComparison.Ordinal);
+
+    // The groups of one key's jobs (all of them, whatever their age), each oldest first: the same jobs always give the
+    // same groups, whichever page or job they are read from.
+    public static IReadOnlyList<IReadOnlyList<T>> Clusters<T>(IEnumerable<T> jobs, Func<T, DateTimeOffset> createdAt, Func<T, Guid> id)
+    {
+        var groups = new List<IReadOnlyList<T>>();
+        List<T>? current = null;
+        var start = DateTimeOffset.MinValue;
+        foreach (var job in jobs.OrderBy(createdAt).ThenBy(job => id(job).ToString("N"), StringComparer.Ordinal))
+        {
+            if (current is null || createdAt(job) - start >= GroupSpan)
+            {
+                current = [];
+                groups.Add(current);
+                start = createdAt(job);
+            }
+            current.Add(job);
+        }
+        return groups;
+    }
 
     // The card the job is about (ProductId of ProductPublicationJobPayload, ProductUpdateJobPayload, ProductArchiveJobPayload
     // and ProductApprovalReconciliationJobPayload); null when the payload names none.
