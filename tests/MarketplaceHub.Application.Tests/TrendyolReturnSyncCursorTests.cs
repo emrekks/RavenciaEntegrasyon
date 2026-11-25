@@ -39,6 +39,27 @@ public sealed class TrendyolReturnSyncCursorTests
         Assert.Equal(2, afterSecond.Page);
     }
 
+    // B-8: "İadeleri Çek" (forceFull) continues in slices with the same payload; a slice resumes the baseline the slice
+    // before saved instead of starting it again from page 0. An old or non-baseline state starts a new baseline.
+    [Fact]
+    public void ForcedFullRead_ResumesItsOwnBaselineAcrossSlices()
+    {
+        var baseline = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS" }, Now, TimeSpan.FromMinutes(15), forceFull: true);
+        Assert.Equal((0, Now.AddMonths(-3), Now), (baseline.Page, baseline.StartAt, baseline.EndAt));
+        var afterSlice = ReturnReadService.NextReturnPage(baseline with { Page = 4 }, "5");
+        var saved = new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = ReturnReadService.SerializeReturnSyncState(afterSlice), LastModifiedWatermark = Now.AddDays(-2) };
+
+        var resumed = ReturnReadService.ReadReturnSyncState(saved, Now.AddMinutes(1), TimeSpan.FromMinutes(15), forceFull: true);
+        Assert.Equal(5, resumed.Page);
+        Assert.Equal((Now.AddMonths(-3), Now), (resumed.StartAt, resumed.EndAt));
+
+        // A baseline saved more than a day ago, or an incremental read's state, is not resumed by a forced read.
+        Assert.Equal(0, ReturnReadService.ReadReturnSyncState(saved, Now.AddDays(2), TimeSpan.FromMinutes(15), forceFull: true).Page);
+        var incremental = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", LastModifiedWatermark = Now.AddHours(-1) }, Now, TimeSpan.FromMinutes(15)) with { Page = 3 };
+        var forcedOverIncremental = ReturnReadService.ReadReturnSyncState(new SyncCursor { ResourceType = "RETURNS", OpaqueCursor = ReturnReadService.SerializeReturnSyncState(incremental) }, Now, TimeSpan.FromMinutes(15), forceFull: true);
+        Assert.Equal((0, Now.AddMonths(-3)), (forcedOverIncremental.Page, forcedOverIncremental.StartAt));
+    }
+
     [Fact]
     public void NumericCursors_StillWork()
     {
