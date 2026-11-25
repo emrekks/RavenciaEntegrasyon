@@ -186,7 +186,7 @@ describe('Ravencia Dock', () => {
     const dialog = document.querySelector('.rv-fullmenu')!
     expect(dialog.getAttribute('role')).toBe('dialog')
     expect(dialog.getAttribute('aria-modal')).toBe('true')
-    expect(document.body.style.overflow).toBe('hidden')
+    expect(document.body.style.overflow).not.toBe('hidden') // no body lock: it moved the dock in a Home Screen app (useScrollLock hold: false)
     const slot = host.querySelector('.rv-dock button[aria-expanded="true"]')!
     expect(slot.getAttribute('aria-label')).toBe('Menüyü Kapat')
     expect(host.querySelector('.rv-dock [aria-current="page"]')).toBeNull()

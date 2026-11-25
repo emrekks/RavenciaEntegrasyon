@@ -153,7 +153,8 @@ export function FullScreenMenu({ groups, profile, onLogout, onClose, onNavigate,
   pathname: string
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  useScrollLock(true, false, { layer: false })
+  // The menu is an opaque full-screen layer (position fixed, inset 0): it needs no body overflow lock, and that lock moved the dock in a Home Screen app (hold: false, useScrollLock.ts).
+  useScrollLock(true, false, { layer: false, hold: false })
   useEffect(() => {
     rootRef.current?.focus({ preventScroll: true })
     // Everything behind the layer (the page and its top bar) is out of reach for the keyboard and for screen readers.
