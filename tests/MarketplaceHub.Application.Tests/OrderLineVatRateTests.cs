@@ -112,6 +112,12 @@ public sealed class OrderLineVatRateTests
     [InlineData(null, 1.0, 1.0)]
     [InlineData("""{"id":"1"}""", null, null)]
     [InlineData(null, null, null)]
+    // Scan 25 Nov 2026 (A-10): a card rate the panel does not take (an imported 0.1, an old 18) is unknown too: the
+    // invoice stops ("KDV Oranı Bilinmiyor") instead of going out with it.
+    [InlineData("""{"id":"1"}""", 18.0, null)]
+    [InlineData(null, 0.1, null)]
+    [InlineData(null, 8.0, 8.0)]
+    [InlineData(null, 0.0, 0.0)]
     public void AnUnreportedLineRateComesFromTheProductCardAndIsNeverZeroByDefault(string? snapshot, double? cardRate, double? expected)
     {
         var resolved = InvoiceIssuePolicy.ResolveLineVatRate("HEPSIBURADA", snapshot, storedLineVatRate: snapshot is null ? 0m : 10m, productCardVatRate: (decimal?)cardRate);

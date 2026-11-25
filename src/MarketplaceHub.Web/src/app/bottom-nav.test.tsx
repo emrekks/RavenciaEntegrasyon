@@ -111,14 +111,14 @@ describe('phone bottom navigation (CSS)', () => {
 })
 
 describe('Ravencia Dock', () => {
-  it('is three parts: a round Ana Sayfa button, a pill of three icon-only slots (Siparişler, Ürünler, Sorular) and a round Menü button; no Ara here; the open page is the active one', () => {
+  it('is three parts: a round Ana Sayfa button, a pill of four icon-only slots (Siparişler, İadeler, Ürünler, Sorular) and a round Menü button; no Ara here; the open page is the active one', () => {
     const { host } = mount('/orders')
     const dock = host.querySelector('.rv-dock')!
     expect(dock.getAttribute('aria-label')).toBe('Alt menü')
     expect([...dock.children].map(part => part.className.split(' ')[0])).toEqual(['rv-dock-round', 'rv-dock-pill', 'rv-dock-round'])
     expect(dock.children[0].getAttribute('aria-label')).toBe('Ana Sayfa')
     expect(dock.children[0].getAttribute('href')).toBe('/dashboard')
-    expect([...dock.querySelectorAll('.rv-dock-pill .rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Siparişler', 'Ürünler', 'Ürün Soruları'])
+    expect([...dock.querySelectorAll('.rv-dock-pill .rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Siparişler', 'İadeler', 'Ürünler', 'Ürün Soruları'])
     expect(dock.children[2].getAttribute('aria-label')).toBe('Menü')
     expect(dock.querySelector('[aria-label="Ara"], .rv-dock-search')).toBeNull()
     // Icons only: every part has its icon and no text; the names are aria-labels.
@@ -165,10 +165,13 @@ describe('Ravencia Dock', () => {
     expect(menuPendingTotal(groups, ['/orders'])).toBe(10)
     // Pages with a target of their own in the dock are not counted twice in the Menü badge.
     expect(menuPendingTotal(groups, ['/orders', '/questions'])).toBe(3)
+    expect(menuPendingTotal(groups, ['/orders', '/returns', '/questions'])).toBeLessThanOrEqual(3)
     cleanup()
-    const counted = mount('/dashboard', { slotCounts: { '/orders': 9, '/questions': 120 } }).host
+    const counted = mount('/dashboard', { slotCounts: { '/orders': 9, '/returns': 4, '/questions': 120 } }).host
     expect(counted.querySelector('a[href="/orders"] .rv-dock-badge')?.textContent).toBe('9')
     expect(counted.querySelector('a[href="/questions"] .rv-dock-badge')?.textContent).toBe('99+')
+    expect(counted.querySelector('a[href="/returns"] .rv-dock-badge')?.textContent).toBe('4')
+    expect(counted.querySelector('a[href="/returns"]')?.getAttribute('aria-label')).toBe('İadeler, 4 bekleyen iade')
     expect(counted.querySelector('a[href="/questions"]')?.getAttribute('aria-label')).toBe('Ürün Soruları, 120 cevaplanmamış')
     cleanup()
     expect(mount('/dashboard').host.querySelector('a[href="/questions"] .rv-dock-badge')).toBeNull()
