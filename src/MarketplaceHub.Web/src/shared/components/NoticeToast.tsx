@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { appendNotification, normalizeNotificationKind, notificationError, type NotificationContext } from '../notifications'
+import { appendNotification, notificationError, type NotificationContext } from '../notifications'
 import { composeNotice } from '../notice-copy'
 import { isStillRunning, stillRunningTitle } from '../idempotency'
 import { isAbortedRequest } from '../api/abort'
@@ -52,11 +52,9 @@ export function NoticeToast({ kind, message, lines, title, onClose, durationMs, 
   return viewport ? createPortal(toast, viewport) : toast
 }
 
-// A plain message: the tone is the one the caller names, or else comes from its wording the way the notification
-// history reads it. A caller that knows it is reporting a failure says so: a marketplace's own error text rarely
-// contains the words the wording check looks for and would otherwise show as a green success.
-export function MessageToast({ message, onClose, kind: explicitKind }: { message: string; onClose: () => void; kind?: 'success' | 'error' | 'info' | 'warning' }) {
-  const kind = explicitKind ?? (normalizeNotificationKind(message, 'success') as 'success' | 'error' | 'info')
+// A plain message in the tone its caller names (A-7, scan 25 Nov 2026): the tone used to be guessed from the wording,
+// and a marketplace's own error text rarely holds the words the check looks for, so a refusal showed green. The caller names the kind.
+export function MessageToast({ message, onClose, kind }: { message: string; onClose: () => void; kind: 'success' | 'error' | 'info' | 'warning' }) {
   const durationMs = kind === 'info' ? 7000 : 5500
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose })

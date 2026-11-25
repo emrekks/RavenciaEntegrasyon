@@ -10,6 +10,7 @@ import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { useMenuFlip } from '../../../shared/hooks/useMenuFlip'
 import { PanelSelect } from '../../../shared/PanelSelect'
 import { touchScreen } from './editor-helpers'
+import { AttributeTextValueInput } from './AttributeTextValueInput'
 
 export function CategoryAttributeValueDropdown({
   attributeName,
@@ -154,7 +155,7 @@ export function CategoryAttributeMappingPanel({
             ) : item.attribute.dataType === 'BOOLEAN' ? (
               <PanelSelect ariaLabel={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={next => onTextChange(item.attributeId, next)} options={[{ value: '', label: 'Değer Seçin' }, { value: 'evet', label: 'Evet' }, { value: 'hayır', label: 'Hayır' }]} />
             ) : (
-              <input aria-label={`${displayName} değeri`} value={attributeTextValues[item.attributeId] ?? ''} onChange={event => onTextChange(item.attributeId, event.target.value)} type={item.attribute.dataType === 'NUMBER' ? 'number' : 'text'} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
+              <AttributeTextValueInput numeric={item.attribute.dataType === 'NUMBER'} ariaLabel={`${displayName} değeri`} value={typedValue} onChange={next => onTextChange(item.attributeId, next)} placeholder={item.allowsCustomValue ? 'Değer girin' : 'Özellik değerini girin'} />
             )}
           </article>
         })}

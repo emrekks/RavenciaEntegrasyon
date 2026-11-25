@@ -7,7 +7,7 @@ import { editorOfferPriceReason, platformUpdateWritesOffers } from './platform-u
 import { channelTakesListPrice, editorChannelOfferPrices, editorOfferUnchanged, offerHasSalePrice, panelFollowChoiceVariantIds, unpricedOfferWarning } from '../quick-price-edit'
 import { channelOfferWriteConcurrency } from './editor-helpers'
 import { parseEditorNumber } from './editor-number'
-import { channelFieldKey, readCountField, readMoneyField } from './seeded-fields'
+import { channelFieldKey, fieldUntouched, readCountField, readMoneyField } from './seeded-fields'
 import { rowsBySku, skuKey } from './submit-media-step'
 import type { ChannelPricingDraft, StagedOfferPrices } from './marketplace-channel-pricing'
 import type { Product } from '../shared'
@@ -54,11 +54,48 @@ export type OfferWritesInput = {
   showProgress: (message: string) => void
 }
 
+// D-2 (scan 25 Nov 2026): an offer keeps its own safety stock unless the card's Güvenlik Stoğu box was changed; the box
+// opens with the first variant's value, which used to be written to every offer of the card. A new offer takes the box.
+export function offerSafetyStock(formSafetyStock: string, offerSafetyStock: number | null | undefined): number {
+  if (offerSafetyStock != null && fieldUntouched('safetyStock', formSafetyStock)) return offerSafetyStock
+  return readCountField('safetyStock', formSafetyStock || 0)
+}
+
 export const offerChangedMeanwhileMessage = (sku: string, platformName: string) => `${sku}: ${platformName} fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.`
 
-// Every (variant, store) price is its own row, so they are written a few at a time instead of one by one. Returns the
-// warning for the variants left without a price, if any.
-export async function runOfferWrites(input: OfferWritesInput): Promise<{ unpricedWarning: string | null }> {
+// One offer write the server refused (or that could not be made): the save goes on with the other marketplaces.
+// conflict: the offer changed meanwhile (409/412); the refill then shows the server's new price instead of the typed one,
+// so the next Kaydet cannot pass the version check unnoticed.
+export type OfferWriteFailure = { sku: string; connectionId: string; message: string; conflict: boolean }
+
+// The marketplaces whose typed card survives the refill: only those refused for another reason (500, network). One with
+// a changed-meanwhile offer anywhere refills from the server.
+export function connectionsKeepingTypedPrice(failures: readonly OfferWriteFailure[]): string[] {
+  const conflicted = new Set(failures.filter(failure => failure.conflict).map(failure => failure.connectionId))
+  return [...new Set(failures.filter(failure => !conflicted.has(failure.connectionId)).map(failure => failure.connectionId))]
+}
+
+// The marketplaces whose price could not be written are not sent: each is named with what stopped it (A-6, scan 25 Nov
+// 2026). The others are written and sent as usual.
+export function offerWriteFailureWarnings(failures: readonly OfferWriteFailure[], platformName: (connectionId: string) => string): string[] {
+  const byConnection = new Map<string, string[]>()
+  for (const failure of failures) byConnection.set(failure.connectionId, [...(byConnection.get(failure.connectionId) ?? []), failure.message])
+  return [...byConnection].map(([connectionId, messages]) => {
+    const name = platformName(connectionId)
+    return `${name}: fiyat yazılamadığı için bu platforma gönderilmedi. ${[...new Set(messages)].join(' ')}`
+  })
+}
+
+// The send targets left once the marketplaces whose price write failed are taken out.
+export function connectionsWithWrittenOffers(connectionIds: readonly string[], failures: readonly OfferWriteFailure[]): string[] {
+  const failed = new Set(failures.map(failure => failure.connectionId))
+  return connectionIds.filter(connectionId => !failed.has(connectionId))
+}
+
+// Every (variant, store) price is its own row, so they are written a few at a time instead of one by one. A refused
+// write does not stop the others: each failure is returned with its marketplace (A-6). Returns the warning for the
+// variants left without a price, if any.
+export async function runOfferWrites(input: OfferWritesInput): Promise<{ unpricedWarning: string | null; failures: OfferWriteFailure[] }> {
   const { product, connections, form, platformUpdate, channelPricing } = input
   const bySku = rowsBySku(input.rows)
   const offerWrites = product.variants.flatMap(variant => {
@@ -66,6 +103,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     return row ? input.connectionIds.map(connectionId => ({ variant, row, connectionId })) : []
   })
   let offersWritten = 0
+  const failures: OfferWriteFailure[] = []
   const unpricedOfferSkus = new Set<string>()
   await mapWithConcurrency(offerWrites, channelOfferWriteConcurrency, async ({ variant, row, connectionId }) => {
     const pricing = input.channelPriceDraft(connectionId)
@@ -88,7 +126,7 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
     // no price to write: the server refuses a sale price of zero, and one such row used to stop the whole save
     // after the card was written (owner 7.11.2026, MZ052BOD: "Satış fiyatı sıfırdan büyük olmalıdır").
     if (!offerHasSalePrice(offerPrices)) { unpricedOfferSkus.add(row.sku); return }
-    const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: parseEditorNumber(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: readCountField('safetyStock', form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
+    const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: parseEditorNumber(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: offerSafetyStock(form.safetyStock, platform?.safetyStock), status: platform?.offerStatus || 'ACTIVE', reason: editorOfferPriceReason(platformUpdate) }
     // An offer the variant already has is written at the version this form loaded (PATCH + If-Match), so a price
     // changed meanwhile elsewhere is refused instead of overwritten; one the write would leave as it is is skipped.
     // POST only creates: the server refuses it over an offer this form did not know of.
@@ -100,11 +138,16 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
         await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
       }
     } catch (reason) {
-      if (reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)) throw new Error(offerChangedMeanwhileMessage(row.sku, input.connectionPlatformName(connectionId)))
-      throw reason
+      const said = reason instanceof Error ? reason.message : 'Fiyat yazılamadı.'
+      const conflict = reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)
+      const message = conflict
+        ? offerChangedMeanwhileMessage(row.sku, input.connectionPlatformName(connectionId))
+        : said.startsWith(`${row.sku}:`) ? said : `${row.sku}: ${said}`
+      failures.push({ sku: row.sku, connectionId, message, conflict })
+      return
     }
     offersWritten++
     if (offerWrites.length > channelOfferWriteConcurrency) input.showProgress(mediaSaveProgressMessage('prices', offersWritten, offerWrites.length))
   })
-  return { unpricedWarning: unpricedOfferWarning(unpricedOfferSkus) }
+  return { unpricedWarning: unpricedOfferWarning(unpricedOfferSkus), failures }
 }

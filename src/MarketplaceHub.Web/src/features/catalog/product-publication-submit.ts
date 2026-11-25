@@ -85,6 +85,8 @@ export type ProductSaveOutcome = {
    * user did not choose is left out: a Trendyol-only publish speaks of Trendyol only (owner, 6 Nov 2026). */
   gapSkipped?: readonly { platformName: string; requiredGaps: number }[]
   updates?: readonly MarketplaceUpdateOutcome[]
+  /** Marketplaces chosen for this press whose price could not be written, so nothing was sent there (A-6). */
+  priceRefused?: readonly string[]
 }
 
 export type ProductSaveFeedback = {
@@ -256,7 +258,8 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
     const started = outcome.updates.filter(update => update.queued.productInformation || update.queued.priceInventory)
     lines.push(...outcome.updates.flatMap(marketplaceUpdateLines))
     refused ||= failed.length > 0
-    title = !failed.length ? 'Aktarım Başladı' : started.length ? 'Aktarım Kısmen Başladı' : 'Aktarım Başlatılamadı'
+    const priceRefused = outcome.priceRefused ?? []
+    title = !started.length && (failed.length || priceRefused.length) ? (failed.length ? 'Aktarım Başlatılamadı' : 'Hiçbir Platforma Gönderilmedi') : failed.length || priceRefused.length ? 'Aktarım Kısmen Başladı' : 'Aktarım Başladı'
   } else if (outcome.publishRequested) {
     for (const publication of outcome.publications) lines.push(...marketplacePublishLines(publication))
     for (const error of outcome.publicationErrors) lines.push(`${error.platformName}: gönderilmedi — ${error.message}`)
@@ -265,12 +268,14 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
     const anyQueued = outcome.publications.some(publication => publication.enqueuedCards > 0)
     const anyRefused = outcome.publicationErrors.length > 0 || outcome.publications.some(publication => publication.failures.size > 0)
     refused ||= anyRefused
+    const priceRefused = outcome.priceRefused ?? []
     if (!outcome.publications.length && !outcome.publicationErrors.length) {
-      if (!gapSkipped.length) lines.push('Yayın için pazaryeri seçilmedi; ürün pazaryerlerine gönderilmedi.')
-      title = gapSkipped.length ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
+      // Every chosen marketplace refused its price: they were chosen, so "none chosen" would be wrong.
+      if (!gapSkipped.length && !priceRefused.length) lines.push('Yayın için pazaryeri seçilmedi; ürün pazaryerlerine gönderilmedi.')
+      title = priceRefused.length ? 'Hiçbir Platforma Gönderilmedi' : gapSkipped.length ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
     } else {
-      // A marketplace left out for a gap keeps the title from saying the whole publication started.
-      title = anyQueued ? (anyRefused || gapSkipped.length ? 'Yayın Kısmen Başlatıldı' : 'Aktarım Başladı') : anyRefused ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
+      // A marketplace left out for a gap or a refused price keeps the title from saying the whole publication started.
+      title = anyQueued ? (anyRefused || gapSkipped.length || priceRefused.length ? 'Yayın Kısmen Başlatıldı' : 'Aktarım Başladı') : anyRefused ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
     }
     // Not sent for a gap is not a refusal, but it is not a success either: the toast stays until it is read.
     if (gapSkipped.length && !refused) {

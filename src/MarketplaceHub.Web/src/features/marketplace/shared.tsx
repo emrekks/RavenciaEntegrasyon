@@ -3,7 +3,7 @@
 import './cm-glyph.css'
 import { handSetInvoiceStatusNote } from '../invoicing/manual-invoice-status'
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useCallback, useState, type ReactNode } from 'react'
 import { knownPlatformName } from '../../shared/platform-names'
 import { PLATFORM_NONE, PlatformFilterPop } from '../../shared/PlatformFilter'
 import { EmptyState } from '../../shared/components'
@@ -98,12 +98,16 @@ export function returnPlatformName(platformCode: string | null | undefined) {
   return knownPlatformName(platformCode) ?? 'Pazar yeri'
 }
 export type ReturnNoticeKind = 'success' | 'error' | 'info'
-export function notificationKindFromMessage(message: string): ReturnNoticeKind {
-  // A count of none ("3 başarılı, 0 başarısız") reports no failure.
-  const normalized = message.toLocaleLowerCase('tr-TR').replace(/(?<![\d.,])0\s+(?:başarısız|hatalı|hata)/gu, '')
-  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|zorunlu|seçin|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|aktarılamadı|gönderilemedi|iletilemedi)/u.test(normalized)) return 'error'
-  if (/(kuyruğa|sıraya alındı|sırada|sürüyor|gönderiliyor|işleniyor|bekleniyor|salt-okunur|değişiklik yok|henüz)/u.test(normalized)) return 'info'
-  return 'success'
+// A notice of a marketplace screen with the kind its producer gave (A-7, scan 25 Nov 2026): the kind used to be guessed
+// from the wording, so a refusal worded otherwise (403, 412, "dış yazma kapalı", a half-done import) showed green.
+export type NoticeKind = 'success' | 'error' | 'info' | 'warning'
+export type KindedNotice = { message: string; kind: NoticeKind }
+export type NoticeSetter = (message: string, kind: NoticeKind) => void
+// The notice and its setter; an empty message clears it.
+export function useKindedNotice() {
+  const [notice, setNoticeState] = useState<KindedNotice | null>(null)
+  const setNotice = useCallback<NoticeSetter>((message, kind) => setNoticeState(message ? { message, kind } : null), [])
+  return [notice, setNotice] as const
 }
 // Column filter popover: one radio list, "Temizle" (purple, top right like the platform filter) once a value is picked. counts: rows per option value
 // under the other filters (optional; null while they load), shown next to every option but the first ("Tümü").
