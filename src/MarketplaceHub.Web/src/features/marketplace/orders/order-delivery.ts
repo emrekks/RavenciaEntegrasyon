@@ -37,14 +37,16 @@ export function deliveryText(item: Order): DeliveryInfo {
   const overdueDays = overdueShipmentDays(item.derivedStatus, dueAt)
   if (overdueDays > 0) return { kind: 'late', label: '', value: `Siparişiniz ${overdueDays} gün gecikmiştir!`, note: 'Siparişinizi en kısa sürede kargoya teslim etmelisiniz.', overdue: true, lateDays: overdueDays }
   const overdueHours = overdueShipmentHours(item.derivedStatus, dueAt)
-  if (overdueHours > 0) return { kind: 'late', label: '', value: `Siparişiniz ${overdueHours} saat gecikmiştir!`, note: 'Siparişinizi en kısa sürede kargoya teslim etmelisiniz.', overdue: true, lateDays: 0, lateHours: overdueHours }
+  // Whole hours (1 saat 50 dk is "1 saat"); under an hour reads "1 saatten az" (lateHours 0).
+  const lateHours = Math.floor(overdueHours)
+  if (overdueHours > 0) return { kind: 'late', label: '', value: `Siparişiniz ${lateHours ? `${lateHours} saat` : '1 saatten az'} gecikmiştir!`, note: 'Siparişinizi en kısa sürede kargoya teslim etmelisiniz.', overdue: true, lateDays: 0, lateHours }
   const urgent = Boolean(dueAt && new Date(dueAt).getTime() - Date.now() <= 86_400_000)
   return { kind: 'remaining', label: 'Kalan Süre', value: dueAt ? remainingText(dueAt) : item.isMicroExport ? 'Trendyol termin bilgisi göndermedi' : 'Termin zamanı bekleniyor', note: null, overdue: urgent }
 }
 
 // The line under the ring: time left, days late, or when the order was shipped, delivered or cancelled.
 export function orderRingDetail(delivery: DeliveryInfo): { text: string; cls?: string } {
-  if (delivery.kind === 'late') return { text: delivery.lateDays ? `${delivery.lateDays} gün gecikti` : `${delivery.lateHours ?? 1} saat gecikti`, cls: 'bad' }
+  if (delivery.kind === 'late') return { text: delivery.lateDays ? `${delivery.lateDays} gün gecikti` : delivery.lateHours ? `${delivery.lateHours} saat gecikti` : '1 saatten az gecikti', cls: 'bad' }
   if (delivery.kind === 'remaining') return { text: /kaldı|doldu|bekleniyor|göndermedi/u.test(delivery.value) ? delivery.value : `${delivery.value} kaldı`, cls: delivery.overdue ? 'crit' : undefined }
   if (delivery.kind === 'shipping') return { text: delivery.note ?? delivery.value }
   return { text: delivery.value }

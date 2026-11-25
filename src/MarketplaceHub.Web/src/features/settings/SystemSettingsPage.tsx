@@ -176,7 +176,8 @@ export function SystemSettingsPage() {
           onProgress: (id, state) => { if (state.state === 'done') resetIds.push(id); setMarketplaceProgress(current => ({ ...current, [id]: state })) },
           isCancelled: () => resetCancelled.current
         })
-        if (!ok) { if (!resetCancelled.current) stopped(refused ?? new Error('Pazaryeri sıfırlaması tamamlanamadı; ayrıntı ilgili satırda.'), resetScopes.length > 0); return }
+        // A cancelled run (the page left) takes the reset marketplaces off the choice too, so nothing resets them twice.
+        if (!ok) { if (resetCancelled.current) setMarketplacePicked(current => current.filter(id => !resetIds.includes(id))); else stopped(refused ?? new Error('Pazaryeri sıfırlaması tamamlanamadı; ayrıntı ilgili satırda.'), resetScopes.length > 0); return }
         setMarketplacePicked([])
         if (!resetScopes.length) succeed(`${chosen.length} pazaryeri bağlantısı tam sıfırlandı. Otomatik eşitleme açıksa kayıtlar yeniden çekilir.`)
       }

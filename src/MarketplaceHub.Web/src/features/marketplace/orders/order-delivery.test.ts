@@ -32,7 +32,10 @@ describe('order delivery line', () => {
     expect(delivery.kind).toBe('late')
     expect(orderRingDetail(delivery)).toEqual({ text: '5 saat gecikti', cls: 'bad' })
     expect(dueLineTitle(delivery)).toBe('Geciken: kargoya verme süresi geçti.')
-    expect(orderRingDetail(deliveryText(order({ shipmentDueAt: '2026-11-01T08:50:00Z' }))).text).toBe('1 saat gecikti')
+    expect(orderRingDetail(deliveryText(order({ shipmentDueAt: '2026-11-01T08:50:00Z' }))).text).toBe('1 saatten az gecikti')
+    expect(deliveryText(order({ shipmentDueAt: '2026-11-01T08:50:00Z' })).value).toBe('Siparişiniz 1 saatten az gecikmiştir!')
+    // 1 saat 50 dakika is whole hours: 1 saat.
+    expect(orderRingDetail(deliveryText(order({ shipmentDueAt: '2026-11-01T07:10:00Z' }))).text).toBe('1 saat gecikti')
   })
 
   it('says the shipped order was handed to the carrier', () => {
