@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Call = { method: string; path: string; ifMatch: string | null; body: unknown }
-const api = vi.hoisted(() => ({ calls: [] as Call[], refusePut: new Set<string>() }))
+const api = vi.hoisted(() => ({ calls: [] as Call[], refusePut: new Set<string>(), valueMappings: [] as unknown[] }))
 
 const mapping = (localId: string, externalId: string, extra: Record<string, unknown> = {}) => ({ id: `m-${localId}`, connectionId: 'c1', snapshotId: 's1', localId, scopeExternalId: '', externalId, status: 'VERIFIED', verifiedAt: null, version: 2, ...extra })
 
@@ -16,7 +16,7 @@ vi.mock('../../../shared/api', async importOriginal => {
       if (method === 'PUT') return {}
       if (path.startsWith('/mappings/categories?')) return [mapping('k-same', 'ext-same'), mapping('k-other', 'ext-held'), mapping('k-old', 'ext-old', { snapshotId: 's0', version: 5 })]
       if (path.startsWith('/mappings/attributes?')) return []
-      if (path.startsWith('/mappings/attribute-values?')) return []
+      if (path.startsWith('/mappings/attribute-values?')) return api.valueMappings
       if (path === '/catalog/attributes/a-renk/values') return { id: 'a-renk', code: 'option-renk', name: 'Renk', dataType: 'SINGLE_SELECT', roles: ['OPTION'], values: [{ id: 'v-siyah', value: 'Siyah' }, { id: 'v-mavi-new', value: 'Mavi' }] }
       if (path.includes('/attributes/remote-renk/values?')) return { snapshotId: 'sv1', items: [{ externalId: 'r-mavi' }, { externalId: 'r-siyah' }] }
       if (path.includes('/attributes?')) return { snapshotId: 'sa1', items: [{ externalId: 'remote-renk' }] }
@@ -41,7 +41,7 @@ const bundle: MappingTransferBundle = {
 }
 const selection = { categories: true, options: true, attributes: true, mappings: true }
 
-beforeEach(() => { api.calls.length = 0; api.refusePut.clear() })
+beforeEach(() => { api.calls.length = 0; api.refusePut.clear(); api.valueMappings = [] })
 
 describe('mapping backup import (A-7)', () => {
   it('reads each mapping first: skips an identical one, lists a different one, writes a stale one at its version and goes on past a refusal', async () => {
@@ -56,10 +56,10 @@ describe('mapping backup import (A-7)', () => {
       ['/mappings/attribute-values/v-mavi-new', null, 'r-mavi']
     ])
     expect(api.calls.find(call => call.path === '/catalog/attributes/a-renk/values')?.body).toEqual([{ value: 'Mavi', sortOrder: 1 }])
-    expect(result).toEqual({ written: 3, skipped: 1, conflicts: ['Kategori k-other'], failures: ['Kategori k-refused: Eşleme bu sırada değişti.'] })
+    expect(result).toEqual({ written: 3, unchanged: 1, unplaced: 0, conflicts: ['Kategori k-other'], failures: ['Kategori k-refused: Eşleme bu sırada değişti.'] })
     expect(mappingImportSummary(result)).toEqual({
       kind: 'warning',
-      message: '3 eşleme yazıldı, 1 atlandı, 1 çakışma. Panelde farklı eşlemesi olduğu için değiştirilmedi: Kategori k-other. 1 kayıt yazılamadı: Kategori k-refused: Eşleme bu sırada değişti.'
+      message: '3 eşleme yazıldı, 1 aynı olduğu için atlandı, 0 yerleştirilemedi (hedef yok), 1 çakışma. Panelde farklı eşlemesi olduğu için değiştirilmedi: Kategori k-other. 1 kayıt yazılamadı: Kategori k-refused: Eşleme bu sırada değişti.'
     })
   })
 
@@ -71,7 +71,27 @@ describe('mapping backup import (A-7)', () => {
   })
 
   it('is red only when nothing was written and something failed, green when all went', () => {
-    expect(mappingImportSummary({ written: 0, skipped: 0, conflicts: [], failures: ['A: x'] }).kind).toBe('error')
-    expect(mappingImportSummary({ written: 2, skipped: 1, conflicts: [], failures: [] })).toEqual({ kind: 'success', message: '2 eşleme yazıldı, 1 atlandı, 0 çakışma.' })
+    expect(mappingImportSummary({ written: 0, unchanged: 0, unplaced: 0, conflicts: [], failures: ['A: x'] }).kind).toBe('error')
+    expect(mappingImportSummary({ written: 2, unchanged: 1, unplaced: 3, conflicts: [], failures: [] })).toEqual({ kind: 'success', message: '2 eşleme yazıldı, 1 aynı olduğu için atlandı, 3 yerleştirilemedi (hedef yok), 0 çakışma.' })
+  })
+
+  // Review of A-7: the server keys a value mapping by its marketplace value too, so a panel value already mapped to
+  // another marketplace value gets this one beside it (no If-Match), never a conflict; the same pair is still skipped.
+  it('adds a value mapping beside one held for another marketplace value, and skips the same pair', async () => {
+    const valueOnly = { ...bundle, categoryMappings: [] }
+    api.valueMappings = [mapping('v-mavi-new', 'r-baska', { scopeExternalId: 'cat-1/remote-renk', snapshotId: 'sv1' })]
+    const added = await importMappingBundle({ bundle: valueOnly, selection, connectionId: 'c1', referenceSnapshotId: 's1', categories, attributes: [renk] })
+    expect(api.calls.filter(call => call.method === 'PUT').map(call => [call.path, call.ifMatch, (call.body as { externalId: string }).externalId])).toEqual([['/mappings/attribute-values/v-mavi-new', null, 'r-mavi']])
+    expect(added).toMatchObject({ written: 1, unchanged: 0, conflicts: [] })
+    api.calls.length = 0
+    api.valueMappings = [mapping('v-mavi-new', 'r-mavi', { scopeExternalId: 'cat-1/remote-renk', snapshotId: 'sv1' })]
+    const same = await importMappingBundle({ bundle: valueOnly, selection, connectionId: 'c1', referenceSnapshotId: 's1', categories, attributes: [renk] })
+    expect(api.calls.filter(call => call.method === 'PUT')).toEqual([])
+    expect(same).toMatchObject({ written: 0, unchanged: 1, conflicts: [] })
+  })
+
+  it('counts a mapping with no panel item or marketplace record to put it on apart from an unchanged one', async () => {
+    const result = await importMappingBundle({ bundle: { ...bundle, categoryMappings: [mapping('k-missing', 'ext-x')] as never, attributeValueMappings: [mapping('src-mavi', 'r-yok', { scopeExternalId: 'cat-1/remote-renk' })] as never }, selection, connectionId: 'c1', referenceSnapshotId: 's1', categories, attributes: [renk] })
+    expect(result).toMatchObject({ written: 0, unchanged: 0, unplaced: 2 })
   })
 })

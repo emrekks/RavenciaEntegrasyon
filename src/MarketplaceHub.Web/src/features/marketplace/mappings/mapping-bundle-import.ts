@@ -11,7 +11,8 @@ import { isOptionAttribute, type CatalogMapping, type LocalAttribute, type Local
 
 export type MappingTransferBundle = { format: 'RAVENCIA_MAPPING_BUNDLE'; version: 1; exportedAt: string; categories: LocalCategory[]; attributes: LocalAttribute[]; categoryMappings: CatalogMapping[]; attributeMappings: CatalogMapping[]; attributeValueMappings: CatalogMapping[] }
 export type MappingTransferScope = 'categories' | 'options' | 'attributes' | 'mappings'
-export type MappingImportResult = { written: number; skipped: number; conflicts: string[]; failures: string[] }
+// unchanged: already held exactly so; unplaced: no panel item or no marketplace record in the current list to put it on.
+export type MappingImportResult = { written: number; unchanged: number; unplaced: number; conflicts: string[]; failures: string[] }
 
 type Existing = Pick<CatalogMapping, 'localId' | 'externalId' | 'snapshotId' | 'status' | 'version'>
 // What the import does with one mapping, given the one the panel already holds for that panel item there.
@@ -27,7 +28,7 @@ const lower = (value: string) => value.toLocaleLowerCase('tr-TR')
 
 export async function importMappingBundle(input: { bundle: MappingTransferBundle; selection: Record<MappingTransferScope, boolean>; connectionId: string; referenceSnapshotId: string | null; categories: readonly LocalCategory[]; attributes: readonly LocalAttribute[] }): Promise<MappingImportResult> {
   const { bundle, selection, connectionId } = input
-  const result: MappingImportResult = { written: 0, skipped: 0, conflicts: [], failures: [] }
+  const result: MappingImportResult = { written: 0, unchanged: 0, unplaced: 0, conflicts: [], failures: [] }
   const categoryIdMap = new Map<string, string>()
   const attributeIdMap = new Map<string, string>()
   const valueIdMap = new Map<string, string>()
@@ -62,7 +63,7 @@ export async function importMappingBundle(input: { bundle: MappingTransferBundle
   // Each mapping: read what the panel holds there (once per list), then skip, write at its version, or name the conflict.
   async function writeMapping(name: string, current: Existing | undefined, externalId: string, snapshotId: string, put: (ifMatch: string | null) => Promise<unknown>) {
     const step = mappingImportStep(current, externalId, snapshotId)
-    if (!step.write) { if (step.reason === 'same') result.skipped++; else result.conflicts.push(name); return }
+    if (!step.write) { if (step.reason === 'same') result.unchanged++; else result.conflicts.push(name); return }
     try { await put(step.ifMatch); result.written++ } catch (reason) { result.failures.push(`${name}: ${failureText(reason, 'Eşleme kaydedilemedi.')}`) }
   }
   const lists = new Map<string, Promise<CatalogMapping[]>>()
@@ -82,7 +83,7 @@ export async function importMappingBundle(input: { bundle: MappingTransferBundle
         const existing = await listOf(`/mappings/categories?connectionId=${encodeURIComponent(connectionId)}`)
         for (const item of bundle.categoryMappings) {
           const targetLocalId = categoryIdMap.get(item.localId) ?? targetCategories.find(category => category.id === item.localId)?.id
-          if (!targetLocalId) { result.skipped++; continue }
+          if (!targetLocalId) { result.unplaced++; continue }
           await writeMapping(categoryName(item.localId), existing.find(mapping => mapping.localId === targetLocalId), item.externalId, snapshotId, ifMatch =>
             hubApi(`/mappings/categories/${targetLocalId}`, { method: 'PUT', headers: headers(ifMatch), body: JSON.stringify({ connectionId, snapshotId, externalId: item.externalId, status: 'VERIFIED' }) }))
         }
@@ -95,7 +96,7 @@ export async function importMappingBundle(input: { bundle: MappingTransferBundle
     try {
       const snapshot = await snapshotOf(`/reference-data/categories/${encodeURIComponent(scope)}/attributes?connectionId=${encodeURIComponent(connectionId)}`)
       const targetLocalId = attributeIdMap.get(item.localId) ?? targetAttributes.find(attribute => attribute.id === item.localId)?.id
-      if (!targetLocalId || !snapshot.items.some(reference => reference.externalId === item.externalId)) { result.skipped++; continue }
+      if (!targetLocalId || !snapshot.items.some(reference => reference.externalId === item.externalId)) { result.unplaced++; continue }
       const existing = await listOf(`/mappings/attributes?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(scope)}`)
       const role = isOptionAttribute(bundle.attributes.find(attribute => attribute.id === item.localId) ?? { code: '', name: '', roles: [] }) ? 'OPTION' : 'ATTRIBUTE'
       await writeMapping(name, existing.find(mapping => mapping.localId === targetLocalId), item.externalId, snapshot.snapshotId, ifMatch =>
@@ -107,11 +108,14 @@ export async function importMappingBundle(input: { bundle: MappingTransferBundle
     const name = valueName(item.localId)
     try {
       const targetLocalId = valueIdMap.get(item.localId)
-      if (!targetLocalId) { result.skipped++; continue }
+      if (!targetLocalId) { result.unplaced++; continue }
       const snapshot = await snapshotOf(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(remoteAttributeId)}/values?connectionId=${encodeURIComponent(connectionId)}`)
-      if (!snapshot.items.some(reference => reference.externalId === item.externalId)) { result.skipped++; continue }
+      if (!snapshot.items.some(reference => reference.externalId === item.externalId)) { result.unplaced++; continue }
       const existing = (await listOf(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(item.scopeExternalId)}`)).filter(mapping => mapping.localId === targetLocalId)
-      await writeMapping(name, existing.find(mapping => mapping.externalId === item.externalId) ?? existing[0], item.externalId, snapshot.snapshotId, ifMatch =>
+      // The server keys a value mapping by its marketplace value too (UX_attribute_value_mappings_local_remote_scope):
+      // a panel value may map to several marketplace values, so one held for another value is no conflict and this
+      // one is added beside it. Categories and attributes keep one mapping per panel item and scope here.
+      await writeMapping(name, existing.find(mapping => mapping.externalId === item.externalId), item.externalId, snapshot.snapshotId, ifMatch =>
         hubApi(`/mappings/attribute-values/${targetLocalId}`, { method: 'PUT', headers: headers(ifMatch), body: JSON.stringify({ connectionId, snapshotId: snapshot.snapshotId, scopeExternalId: item.scopeExternalId, externalId: item.externalId, status: 'VERIFIED' }) }))
     } catch (reason) { result.failures.push(`${name}: ${failureText(reason, 'Eşleme kaydedilemedi.')}`) }
   }
@@ -124,7 +128,7 @@ const listed = (names: readonly string[]) => names.slice(0, 3).map(name => name.
 // failed, amber when only part went, green otherwise.
 export function mappingImportSummary(result: MappingImportResult): { message: string; kind: 'success' | 'warning' | 'error' } {
   const message = [
-    `${result.written} eşleme yazıldı, ${result.skipped} atlandı, ${result.conflicts.length} çakışma.`,
+    `${result.written} eşleme yazıldı, ${result.unchanged} aynı olduğu için atlandı, ${result.unplaced} yerleştirilemedi (hedef yok), ${result.conflicts.length} çakışma.`,
     result.conflicts.length ? `Panelde farklı eşlemesi olduğu için değiştirilmedi: ${listed(result.conflicts)}.` : '',
     result.failures.length ? `${result.failures.length} kayıt yazılamadı: ${listed(result.failures)}.` : ''
   ].filter(Boolean).join(' ')
