@@ -9,11 +9,8 @@
 .rv-notification-history { position: fixed; top: calc(var(--rv-topbar-height) + 10px); right: 16px; z-index: var(--rv-z-toast); display: flex; flex-direction: column; width: min(400px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: var(--rv-shadow-md); }
 /* Opens like a menu of kit "A · iOS Yay": grows from the bell's corner on a light spring as it fades in (styles/motion.css);
    still for people who ask for less motion. */
-/* Phones: a card that drops from under the top bar, 12 px in from both edges, over a dimmed page (the panel script leaves its place to
-   this rule); at most --rv-sheet-max-height high and always inside the screen, the list scrolling in it; tapping the dimmed page closes it. */
-@media (max-width: 760px) {
-  .rv-notification-history { top: calc(var(--rv-topbar-height) + 8px); right: 12px; bottom: auto; left: 12px; width: auto; max-height: min(var(--rv-sheet-max-height, 85dvh), calc(100dvh - var(--rv-topbar-height) - 32px)); border-width: 1px; border-radius: 14px; transform-origin: top center; }
-}
+/* Phones: the card that drops from under the top bar is placed by app/bottom-nav.css (its "html body .rv-notification-history" rule); the
+   dimmed page behind it is below, and tapping it closes the card. */
 @keyframes rv-drop-down { from { transform: translateY(-12px); } to { transform: none; } }
 .rv-notification-dim { display: none; }
 @media (max-width: 760px) { .rv-notification-dim { position: fixed; inset: 0; z-index: calc(var(--rv-z-toast) - 1); display: block; background: var(--rv-color-backdrop, rgb(0 0 0 / 50%)); } }
