@@ -15,7 +15,7 @@
         "Continues": false
       },
       "Calls": [
-        "products.UpdateUnapproved key=product-update:connection-HEPSIBURADA:card-0:<sha256>:<sha256>:SUBMIT_UNAPPROVED {\"ProductId\":\"card-0\",\"Mode\":\"UNAPPROVED\",\"PayloadHash\":\"<sha256>\",\"UnapprovedPayloadJson\":\"{\\\"merchantId\\\":\\\"store-id1\\\",\\\"items\\\":[{\\\"hbSku\\\":\\\"HB869000000011\\\",\\\"merchantSku\\\":\\\"MZ300-0M\\\",\\\"productName\\\":\\\"Ravencia Kad\\\\u0131n Siyah Triko Bluz\\\",\\\"productDescription\\\":\\\"Yumu\\\\u015Fak triko bluz, uzun kollu.\\\",\\\"barcode\\\":\\\"869000000011\\\",\\\"attributes\\\":{},\\\"kdv\\\":\\\"10\\\",\\\"warrantyPeriod\\\":null,\\\"desi\\\":\\\"1\\\",\\\"image1\\\":\\\"https://cdn.example.com/MZ300/0.jpg\\\"},{\\\"hbSku\\\":\\\"HB869000000111\\\",\\\"merchantSku\\\":\\\"MZ300-0L\\\",\\\"productName\\\":\\\"Ravencia Kad\\\\u0131n Siyah Triko Bluz\\\",\\\"productDescription\\\":\\\"Yumu\\\\u015Fak triko bluz, uzun kollu.\\\",\\\"barcode\\\":\\\"869000000111\\\",\\\"attributes\\\":{},\\\"kdv\\\":\\\"10\\\",\\\"warrantyPeriod\\\":null,\\\"desi\\\":\\\"1\\\",\\\"image1\\\":\\\"https://cdn.example.com/MZ300/0.jpg\\\"}]}\",\"ApprovedContentPayloadJson\":\"{\\\"items\\\":[]}\",\"ApprovedVariantPayloadJson\":\"{\\\"items\\\":[]}\",\"ApprovedDeliveryPayloadJson\":\"{\\\"merchantId\\\":\\\"store-id1\\\",\\\"items\\\":[{\\\"hepsiburadaSku\\\":\\\"HB869000000011\\\",\\\"merchantSku\\\":\\\"MZ300-0M\\\",\\\"dispatchTime\\\":2},{\\\"hepsiburadaSku\\\":\\\"HB869000000111\\\",\\\"merchantSku\\\":\\\"MZ300-0L\\\",\\\"dispatchTime\\\":2}]}\"}"
+        "products.UpdateUnapproved key=product-update:connection-HEPSIBURADA:card-0:<sha256>:<sha256>:SUBMIT_UNAPPROVED {\"ProductId\":\"card-0\",\"Mode\":\"UNAPPROVED\",\"PayloadHash\":\"<sha256>\",\"UnapprovedPayloadJson\":\"{\\\"merchantId\\\":\\\"store-id1\\\",\\\"items\\\":[{\\\"hbSku\\\":\\\"HB869000000011\\\",\\\"merchantSku\\\":\\\"MZ300-0M\\\",\\\"productName\\\":\\\"Ravencia Kad\\\\u0131n Siyah Triko Bluz\\\",\\\"productDescription\\\":\\\"Yumu\\\\u015Fak triko bluz, uzun kollu.\\\",\\\"barcode\\\":\\\"869000000011\\\",\\\"attributes\\\":{},\\\"kdv\\\":\\\"10\\\",\\\"warrantyPeriod\\\":\\\"24\\\",\\\"desi\\\":\\\"1\\\",\\\"image1\\\":\\\"https://cdn.example.com/MZ300/0.jpg\\\"},{\\\"hbSku\\\":\\\"HB869000000111\\\",\\\"merchantSku\\\":\\\"MZ300-0L\\\",\\\"productName\\\":\\\"Ravencia Kad\\\\u0131n Siyah Triko Bluz\\\",\\\"productDescription\\\":\\\"Yumu\\\\u015Fak triko bluz, uzun kollu.\\\",\\\"barcode\\\":\\\"869000000111\\\",\\\"attributes\\\":{},\\\"kdv\\\":\\\"10\\\",\\\"warrantyPeriod\\\":\\\"24\\\",\\\"desi\\\":\\\"1\\\",\\\"image1\\\":\\\"https://cdn.example.com/MZ300/0.jpg\\\"}]}\",\"ApprovedContentPayloadJson\":\"{\\\"items\\\":[]}\",\"ApprovedVariantPayloadJson\":\"{\\\"items\\\":[]}\",\"ApprovedDeliveryPayloadJson\":\"{\\\"merchantId\\\":\\\"store-id1\\\",\\\"items\\\":[{\\\"hepsiburadaSku\\\":\\\"HB869000000011\\\",\\\"merchantSku\\\":\\\"MZ300-0M\\\",\\\"dispatchTime\\\":2},{\\\"hepsiburadaSku\\\":\\\"HB869000000111\\\",\\\"merchantSku\\\":\\\"MZ300-0L\\\",\\\"dispatchTime\\\":2}]}\"}"
       ]
     },
     {
@@ -2193,7 +2193,7 @@
                   "barcode": "869000000011",
                   "attributes": {},
                   "kdv": "10",
-                  "warrantyPeriod": null,
+                  "warrantyPeriod": "24",
                   "desi": "1",
                   "image1": "https://cdn.example.com/MZ300/0.jpg"
                 },
@@ -2205,7 +2205,7 @@
                   "barcode": "869000000111",
                   "attributes": {},
                   "kdv": "10",
-                  "warrantyPeriod": null,
+                  "warrantyPeriod": "24",
                   "desi": "1",
                   "image1": "https://cdn.example.com/MZ300/0.jpg"
                 }
