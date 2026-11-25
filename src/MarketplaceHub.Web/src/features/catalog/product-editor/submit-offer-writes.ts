@@ -64,7 +64,16 @@ export function offerSafetyStock(formSafetyStock: string, offerSafetyStock: numb
 export const offerChangedMeanwhileMessage = (sku: string, platformName: string) => `${sku}: ${platformName} fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.`
 
 // One offer write the server refused (or that could not be made): the save goes on with the other marketplaces.
-export type OfferWriteFailure = { sku: string; connectionId: string; message: string }
+// conflict: the offer changed meanwhile (409/412); the refill then shows the server's new price instead of the typed one,
+// so the next Kaydet cannot pass the version check unnoticed.
+export type OfferWriteFailure = { sku: string; connectionId: string; message: string; conflict: boolean }
+
+// The marketplaces whose typed card survives the refill: only those refused for another reason (500, network). One with
+// a changed-meanwhile offer anywhere refills from the server.
+export function connectionsKeepingTypedPrice(failures: readonly OfferWriteFailure[]): string[] {
+  const conflicted = new Set(failures.filter(failure => failure.conflict).map(failure => failure.connectionId))
+  return [...new Set(failures.filter(failure => !conflicted.has(failure.connectionId)).map(failure => failure.connectionId))]
+}
 
 // The marketplaces whose price could not be written are not sent: each is named with what stopped it (A-6, scan 25 Nov
 // 2026). The others are written and sent as usual.
@@ -130,10 +139,11 @@ export async function runOfferWrites(input: OfferWritesInput): Promise<{ unprice
       }
     } catch (reason) {
       const said = reason instanceof Error ? reason.message : 'Fiyat yazılamadı.'
-      const message = reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)
+      const conflict = reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)
+      const message = conflict
         ? offerChangedMeanwhileMessage(row.sku, input.connectionPlatformName(connectionId))
         : said.startsWith(`${row.sku}:`) ? said : `${row.sku}: ${said}`
-      failures.push({ sku: row.sku, connectionId, message })
+      failures.push({ sku: row.sku, connectionId, message, conflict })
       return
     }
     offersWritten++

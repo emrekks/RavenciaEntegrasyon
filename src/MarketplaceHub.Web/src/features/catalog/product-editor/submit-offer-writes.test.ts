@@ -14,7 +14,8 @@ vi.mock('../../../shared/api', async importOriginal => {
 })
 
 import { EMPTY_EDITOR_FORM } from './editor-form'
-import { connectionsWithWrittenOffers, offerConnectionIdsFor, offerWriteFailureWarnings, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
+import { keptChannelPricingDrafts } from './marketplace-channel-pricing'
+import { connectionsKeepingTypedPrice, connectionsWithWrittenOffers, offerConnectionIdsFor, offerWriteFailureWarnings, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
 import type { Product, VariantPlatformStatus } from '../shared'
 import type { VariantDraft } from './editor-types'
 import { resetSeededFields, seedChannelFields, seedField } from './seeded-fields'
@@ -136,12 +137,26 @@ describe('runOfferWrites', () => {
   it('returns a refused write with the marketplace’s name instead of throwing', async () => {
     api.refuse = 412
     const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty')] })] }))
-    expect(result.failures).toEqual([{ sku: 'SKU-v1', connectionId: 'ty', message: 'SKU-v1: Trendyol fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.' }])
+    expect(result.failures).toEqual([{ sku: 'SKU-v1', connectionId: 'ty', message: 'SKU-v1: Trendyol fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.', conflict: true }])
   })
   it('returns an offer without its version as that marketplace’s failure', async () => {
     const result = await runOfferWrites(input({ rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { offerVersion: null })] })] }))
     expect(api.calls).toEqual([])
-    expect(result.failures).toEqual([{ sku: 'SKU-v1', connectionId: 'ty', message: 'SKU-v1: platform fiyat sürümü eksik; fiyat güncellenmedi.' }])
+    expect(result.failures).toEqual([{ sku: 'SKU-v1', connectionId: 'ty', message: 'SKU-v1: platform fiyat sürümü eksik; fiyat güncellenmedi.', conflict: false }])
+  })
+  // Review of A-6: a typed card survives the refill only after a refusal that is no conflict (500, network); after a
+  // 409/412 the server's new price shows, so the next Kaydet does not pass the version check unnoticed.
+  it('keeps the typed card after a 500 but not after a 412', async () => {
+    const typed = { ty: { listPrice: '130', salePrice: '111' } }
+    const typedInput = { rows: [row('v1', { platformStatuses: [status('ty')] })], channelPricing: typed, channelPriceDraft: () => typed.ty, channelPriceEdited: () => true }
+    api.refuse = 412
+    const conflicted = await runOfferWrites(input(typedInput))
+    expect(conflicted.failures.map(failure => failure.conflict)).toEqual([true])
+    expect(keptChannelPricingDrafts(typed, connectionsKeepingTypedPrice(conflicted.failures))).toBeNull()
+    api.refuse = 500
+    const failed = await runOfferWrites(input(typedInput))
+    expect(failed.failures.map(failure => failure.conflict)).toEqual([false])
+    expect(keptChannelPricingDrafts(typed, connectionsKeepingTypedPrice(failed.failures))).toEqual(typed)
   })
   // A-6 (scan 25 Nov 2026): one refused offer (412) stopped every later write and every send.
   it('writes the other marketplaces when one refuses its offer (412) and names only that one', async () => {

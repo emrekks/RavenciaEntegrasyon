@@ -26,7 +26,7 @@ import { requiredFieldsOutcome } from './validate-editor'
 import { buildCreatePayload, buildGlobalAttributes, buildUpdatePayload, optionRequirementsForSubmit, placeholderIdsToDelete, saveProductCreate, saveProductUpdate, savedProductFields, type ProductPayloadInput } from './submit-product-payload'
 import { mediaStepParts, newMediaStepProgress, rowsBySku, runMediaStep, skuKey } from './submit-media-step'
 import { runStockStep } from './submit-stock-step'
-import { connectionsWithWrittenOffers, offerConnectionIdsFor, offerWriteFailureWarnings, runOfferWrites, runPanelFollowChoiceWrites } from './submit-offer-writes'
+import { connectionsKeepingTypedPrice, connectionsWithWrittenOffers, offerConnectionIdsFor, offerWriteFailureWarnings, runOfferWrites, runPanelFollowChoiceWrites } from './submit-offer-writes'
 import { keptChannelPricingDrafts } from './marketplace-channel-pricing'
 import type { EditorProps } from './editor-types'
 import type { EditorStateResult } from './use-editor-state'
@@ -246,10 +246,11 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
       if (unpricedWarning) warnings.push(unpricedWarning)
       // A marketplace whose price was refused is not sent and is named; its Özel Fiyat card keeps what was typed (A-6).
       warnings.push(...offerWriteFailureWarnings(offerFailures, connectionPlatformName))
-      channelPricingKeptOnReseed.current = editProductId ? keptChannelPricingDrafts(channelPricing, offerFailures.map(failure => failure.connectionId)) : null
+      channelPricingKeptOnReseed.current = editProductId ? keptChannelPricingDrafts(channelPricing, connectionsKeepingTypedPrice(offerFailures)) : null
       // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
       if (stockResult.saved.length > 0 || rows.some(row => !existingVariantIds.has(row.key) && editorOpeningStock(row.stock) > 0)) completed.push('stok')
-      if (!editProductId && targetConnectionIds.length) completed.push('kanal fiyatları')
+      // A new product's channel prices are named as saved only when every one was written (A-6).
+      if (!editProductId && targetConnectionIds.length && !offerFailures.length) completed.push('kanal fiyatları')
       const publicationConnectionIds = connectionsWithWrittenOffers(productPublicationTargets(saveAndStay, targetConnectionIds), offerFailures)
       // A card already matched there is not sent again: its links are read from the latest product (a status check or a
       // store lookup since the form was filled), then from the saved product when it carries them.
@@ -278,7 +279,8 @@ export function useEditorSubmit(c: EditorProps & EditorStateResult & EditorMedia
             publications,
             publicationErrors,
             gapSkipped: chosenGapSkipped(connections.data?.items ?? [], selectedChannelIds, gapCards, connection => connectionPlatformName(connection.id)),
-            updates: platformUpdate ? updates : undefined
+            updates: platformUpdate ? updates : undefined,
+            priceRefused: [...new Set(offerFailures.map(failure => connectionPlatformName(failure.connectionId)))]
           })
       const message = result.lines.join(' ')
       setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
