@@ -17,7 +17,7 @@ import { EMPTY_EDITOR_FORM } from './editor-form'
 import { connectionsWithWrittenOffers, offerConnectionIdsFor, offerWriteFailureWarnings, runOfferWrites, runPanelFollowChoiceWrites, type OfferWritesInput } from './submit-offer-writes'
 import type { Product, VariantPlatformStatus } from '../shared'
 import type { VariantDraft } from './editor-types'
-import { resetSeededFields, seedChannelFields } from './seeded-fields'
+import { resetSeededFields, seedChannelFields, seedField } from './seeded-fields'
 
 const status = (connectionId: string, extra: Partial<VariantPlatformStatus> = {}) => ({ connectionId, platformCode: 'TRENDYOL', offerId: `o-${connectionId}`, offerVersion: 3, listPrice: 100, salePrice: 90, currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0, followsPanelPrice: true, offerStatus: 'ACTIVE', ...extra }) as VariantPlatformStatus
 const row = (key: string, extra: Partial<VariantDraft> = {}): VariantDraft => ({ key, optionSignature: key, options: {}, attributeValueIds: {}, sku: `SKU-${key}`, barcode: '', stock: 0, salePrice: 90, listPrice: 100, costPrice: null, mediaRefs: [], ...extra })
@@ -103,6 +103,29 @@ describe('runOfferWrites', () => {
     // A sale price change still goes.
     await runOfferWrites(input({ connections: hb, connectionIds: ['hb'], rows: [row('v1', { salePrice: 85, platformStatuses: [status('hb', { platformCode: 'HEPSIBURADA', listPrice: 90, salePrice: 90 })] })] }))
     expect(api.calls.map(call => [call.method, call.body?.salePrice])).toEqual([['PATCH', 85]])
+  })
+
+  // D-2 (scan 25 Nov 2026): every offer was written ACTIVE with the first variant's safety stock.
+  it('keeps a closed offer closed and each offer’s own safety stock while Güvenlik Stoğu is untouched', async () => {
+    resetSeededFields()
+    seedField('safetyStock', '2')
+    await runOfferWrites(input({ form: { ...EMPTY_EDITOR_FORM, vatRate: '20', safetyStock: '2' }, rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { offerStatus: 'PASSIVE', safetyStock: 5 })] })] }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ status: 'PASSIVE', safetyStock: 5, salePrice: 80 }) }])
+    resetSeededFields()
+  })
+  it('writes nothing for an untouched closed offer whose price is unchanged', async () => {
+    resetSeededFields()
+    seedField('safetyStock', '0')
+    await runOfferWrites(input({ rows: [row('v1', { platformStatuses: [status('ty', { offerStatus: 'PASSIVE', safetyStock: 4 })] })] }))
+    expect(api.calls).toEqual([])
+    resetSeededFields()
+  })
+  it('writes the typed safety stock to every offer once Güvenlik Stoğu was changed', async () => {
+    resetSeededFields()
+    seedField('safetyStock', '2')
+    await runOfferWrites(input({ form: { ...EMPTY_EDITOR_FORM, vatRate: '20', safetyStock: '7' }, rows: [row('v1', { salePrice: 80, platformStatuses: [status('ty', { safetyStock: 5 })] })] }))
+    expect(api.calls).toEqual([{ method: 'PATCH', path: '/channel-offers/o-ty', ifMatch: '"v3"', body: expect.objectContaining({ status: 'ACTIVE', safetyStock: 7 }) }])
+    resetSeededFields()
   })
 
   it('says which variants had no price to write', async () => {
