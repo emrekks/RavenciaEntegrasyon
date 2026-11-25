@@ -1832,12 +1832,16 @@ public sealed partial class InvoicingBillingService(
     // Scan A-2: an issued e-Archive in review whose order was cancelled, or whose adjustment notice the invoice scan opened.
     private async Task<bool> CancellationFromReviewAllowedAsync(Invoice invoice, CancellationToken cancellationToken)
     {
-        if (!InvoiceCancellationOutcomePolicy.CanRequestFromReview(invoice.Status, invoice.InvoiceType, invoice.ExternalReference, orderCancelled: true, adjustmentNoticeOpen: true)) return false;
-        if (await OrderCancelledAsync(invoice.TenantId, invoice.OrderId, cancellationToken)) return true;
+        if (!InvoiceCancellationOutcomePolicy.CanRequestFromReview(invoice.Status, invoice.InvoiceType, invoice.ExternalReference, issuedAtProvider: true, orderCancelled: true, adjustmentNoticeOpen: true)) return false;
+        // Issued for certain: the provider answered a submission with success, or its document was fetched.
+        var issued = await db.InvoiceSubmissionAttempts.AsNoTracking().AnyAsync(attempt => attempt.TenantId == invoice.TenantId && attempt.InvoiceId == invoice.Id && attempt.Outcome == "SUCCEEDED", cancellationToken)
+            || await db.InvoiceDocuments.AsNoTracking().AnyAsync(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id, cancellationToken);
+        if (!issued) return false;
+        var orderCancelled = await OrderCancelledAsync(invoice.TenantId, invoice.OrderId, cancellationToken);
         var noticeKey = InvoiceAdjustmentTracking.AdjustmentIssueKey(invoice.Id);
-        var noticeOpen = await db.OperationalIssues.AsNoTracking().AnyAsync(issue => issue.TenantId == invoice.TenantId && issue.DedupeKey == noticeKey
+        var noticeOpen = !orderCancelled && await db.OperationalIssues.AsNoTracking().AnyAsync(issue => issue.TenantId == invoice.TenantId && issue.DedupeKey == noticeKey
             && issue.Code == InvoiceAdjustmentTracking.AdjustmentRequiredCode && issue.Status == IssueStatus.Open, cancellationToken);
-        return InvoiceCancellationOutcomePolicy.CanRequestFromReview(invoice.Status, invoice.InvoiceType, invoice.ExternalReference, orderCancelled: false, noticeOpen);
+        return InvoiceCancellationOutcomePolicy.CanRequestFromReview(invoice.Status, invoice.InvoiceType, invoice.ExternalReference, issued, orderCancelled, noticeOpen);
     }
 
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)

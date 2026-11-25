@@ -925,18 +925,21 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
 
     // Scan A-2: an issued e-Archive in the owner's review is offered Fatura İptal Et only when its order was cancelled or
     // its adjustment notice is open; the owner's request moves it to CancellationPending and queues the cancellation job.
-    // A review invoice of an order that stands, without the notice, is offered nothing and refused.
+    // A review invoice of an order that stands, without the notice, is offered nothing and refused, and so is one whose
+    // reference came from an unclear submission (no success answer, no provider document).
     [PostgreSqlTheory]
-    [InlineData("CANCELLED", false, true)]
-    [InlineData("DELIVERED", true, true)]
-    [InlineData("DELIVERED", false, false)]
-    public async Task A2_AnIssuedInvoiceInReviewIsCancelledOnlyByTheOwnerForACancelledOrder(string orderStatus, bool noticeOpen, bool offered)
+    [InlineData("CANCELLED", false, true, true)]
+    [InlineData("CANCELLED", true, false, false)]
+    [InlineData("DELIVERED", true, true, true)]
+    [InlineData("DELIVERED", false, true, false)]
+    public async Task A2_AnIssuedInvoiceInReviewIsCancelledOnlyByTheOwnerForACancelledOrder(string orderStatus, bool noticeOpen, bool issued, bool offered)
     {
-        var seed = NewSeed($"a2-review-{orderStatus}-{noticeOpen}", InvoiceStatus.ManualReview);
+        var seed = NewSeed($"a2-review-{orderStatus}-{noticeOpen}-{issued}", InvoiceStatus.ManualReview);
         seed.Order.DerivedStatus = orderStatus;
         seed.Provider.SettingsJson = JsonSerializer.Serialize(new { ExternalWritesEnabled = true });
         await SeedAsync(seed, db =>
         {
+            db.InvoiceSubmissionAttempts.Add(new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, InvoiceId = seed.Invoice.Id, AttemptNumber = 1, RequestHash = "a2-review", Outcome = issued ? "SUCCEEDED" : "UNKNOWN", ExternalReference = seed.Invoice.ExternalReference, StartedAt = fixture.Now.AddDays(-1) });
             if (noticeOpen)
                 db.OperationalIssues.Add(new OperationalIssue
                 {

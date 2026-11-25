@@ -33,10 +33,13 @@ public static class InvoiceCancellationOutcomePolicy
     // was cancelled or which the invoice scan flagged for adjustment (its INVOICE_ADJUSTMENT_REQUIRED notice is open), is
     // offered the e-Archive cancellation. Only the owner's click on Fatura İptal Et moves it out of review; nothing does
     // it automatically, and the cancellation job reads the provider first, so an invoice already cancelled there is
-    // closed without a second request.
-    public static bool CanRequestFromReview(InvoiceStatus status, string invoiceType, string? externalReference, bool orderCancelled, bool adjustmentNoticeOpen) =>
+    // closed without a second request. The reference alone is no proof of issuing (an unclear submission keeps the UUID
+    // its answer named): issuedAtProvider is a submission attempt the provider answered with success, or a document
+    // fetched from the provider. IssuedAt is not proof either: it is set when the submission is queued.
+    public static bool CanRequestFromReview(InvoiceStatus status, string invoiceType, string? externalReference, bool issuedAtProvider, bool orderCancelled, bool adjustmentNoticeOpen) =>
         status == InvoiceStatus.ManualReview
         && string.Equals(invoiceType, "EARSIVFATURA", StringComparison.Ordinal)
         && !string.IsNullOrWhiteSpace(externalReference)
+        && issuedAtProvider
         && (orderCancelled || adjustmentNoticeOpen);
 }

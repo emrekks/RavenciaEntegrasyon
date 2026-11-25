@@ -21,12 +21,14 @@ public sealed class InvoiceLifecycleAuditTests
     {
         Assert.True(InvoiceStateMachine.CanTransition(InvoiceStatus.ManualReview, InvoiceStatus.CancellationPending));
         Assert.False(InvoiceDeliveryGuardPolicy.BackgroundMayMove(InvoiceStatus.ManualReview, InvoiceStatus.CancellationPending));
-        Assert.True(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", orderCancelled: true, adjustmentNoticeOpen: false));
-        Assert.True(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", orderCancelled: false, adjustmentNoticeOpen: true));
-        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", orderCancelled: false, adjustmentNoticeOpen: false));
-        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", null, orderCancelled: true, adjustmentNoticeOpen: true));
-        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "TEMELFATURA", "remote-1", orderCancelled: true, adjustmentNoticeOpen: true));
-        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.MarketplaceFailed, "EARSIVFATURA", "remote-1", orderCancelled: true, adjustmentNoticeOpen: true));
+        Assert.True(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", issuedAtProvider: true, orderCancelled: true, adjustmentNoticeOpen: false));
+        Assert.True(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", issuedAtProvider: true, orderCancelled: false, adjustmentNoticeOpen: true));
+        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", issuedAtProvider: true, orderCancelled: false, adjustmentNoticeOpen: false));
+        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", null, issuedAtProvider: true, orderCancelled: true, adjustmentNoticeOpen: true));
+        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "TEMELFATURA", "remote-1", issuedAtProvider: true, orderCancelled: true, adjustmentNoticeOpen: true));
+        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.MarketplaceFailed, "EARSIVFATURA", "remote-1", issuedAtProvider: true, orderCancelled: true, adjustmentNoticeOpen: true));
+        // A reference from an unclear submission, with no success answer and no provider document, is not issued.
+        Assert.False(InvoiceCancellationOutcomePolicy.CanRequestFromReview(InvoiceStatus.ManualReview, "EARSIVFATURA", "remote-1", issuedAtProvider: false, orderCancelled: true, adjustmentNoticeOpen: true));
     }
 
     [Fact]
