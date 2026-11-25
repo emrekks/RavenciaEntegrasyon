@@ -43,7 +43,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
     internal const string ConnectionDeleteDeferredCode = "CONNECTION_DELETE_DEFERRED";
 
     private static ServiceResult<OperationalDataResetView> ConnectionDeleteDeferred() =>
-        ServiceResult<OperationalDataResetView>.Fail(ConnectionDeleteDeferredCode, "Bağlantıda süren bir işlem var; hiçbir şey silinmedi. Süren işlem bitince silinecek: birkaç saniye sonra yeniden deneyin.", 409);
+        ServiceResult<OperationalDataResetView>.Fail(ConnectionDeleteDeferredCode, "Bağlantıda süren bir işlem var; hiçbir şey silinmedi. Süren işlem (ör. ürün aktarımı) bitince yeniden deneyin.", 409);
 
     // Every sync lane of the connection, then no job of it leased by a worker (a stale lease that has run out does not
     // count; its job stays for the hourly leftover sweep). Both within ConnectionDeleteLockWait.

@@ -528,7 +528,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
 
             Assert.False(result.Succeeded);
             Assert.Equal((OperationalDataMaintenanceService.ConnectionDeleteDeferredCode, 409), (result.Error!.Code, result.Error.Status));
-            Assert.Contains("Süren işlem bitince silinecek", result.Error.Message);
+            Assert.Contains("bitince yeniden deneyin", result.Error.Message);
             await using var verification = fixture.CreateContext();
             Assert.Equal("ACTIVE", (await verification.PlatformConnections.SingleAsync(x => x.Id == seed.Marketplace.Id)).Status);
             Assert.Equal(1, await verification.Orders.CountAsync(x => x.TenantId == seed.Tenant.Id));
