@@ -5,7 +5,7 @@
 \pset pager off
 begin transaction read only;
 
-\echo '== 1. Sipariş okuma politikaları (beklenen: 180 sn; elle kaydedilenler değişmez) =='
+\echo '== 1. Sipariş okuma politikaları (beklenen: 120 sn; elle kaydedilenler değişmez) =='
 select c."PlatformCode" as platform, c."DisplayName" as baglanti, p."IntervalSeconds" as aralik_sn,
        p."UserDefined" as elle, p."Enabled" as acik, p."LastScheduledAt" at time zone 'Europe/Istanbul' as son_kuyruk
 from integration.connection_sync_policies p
@@ -19,7 +19,7 @@ with order_jobs as (
          j."CreatedAt" - lag(j."CreatedAt") over (partition by j."ConnectionId", j."JobType" order by j."CreatedAt") as gap
   from integration.jobs j
   where j."CreatedAt" > now() - interval '24 hours'
-    and j."JobType" in ('TRENDYOL_ORDER_SYNC', 'HEPSIBURADA_ORDER_SYNC', 'N11_ORDER_SYNC', 'PAZARAMA_ORDER_SYNC', 'SHOPIFY_ORDER_SYNC')
+    and j."JobType" in ('TRENDYOL_ORDER_SYNC', 'HEPSIBURADA_ORDER_SYNC', 'N11_ORDER_SYNC', 'PAZARAMA_ORDER_SYNC', 'PTTAVM_ORDER_SYNC', 'SHOPIFY_ORDER_SYNC')
 ), first_attempts as (
   select a."JobId", min(a."StartedAt") as started, max(a."CompletedAt" - a."StartedAt") as run
   from integration.job_attempts a join order_jobs o on o."Id" = a."JobId"
@@ -57,8 +57,8 @@ select c."PlatformCode" as platform, count(*) as siparis,
        round(extract(epoch from max(d.lag)) / 60, 1) as gecikme_max_dk
 from (
   select o."ConnectionId",
-         -- Trendyol sipariş zamanları Türkiye saatiyle (UTC+3) saklanır.
-         o."CreatedAt" - (o."OrderedAt" - case when pc."PlatformCode" = 'TRENDYOL' then interval '3 hours' else interval '0' end) as lag
+         -- OrderedAt her platformda UTC saklanır (Trendyol dahil; canlıda 25 Kasım 2026 doğrulandı).
+         o."CreatedAt" - o."OrderedAt" as lag
   from sales.orders o
   join integration.platform_connections pc on pc."Id" = o."ConnectionId"
   where o."CreatedAt" > now() - interval '24 hours'
