@@ -70,8 +70,38 @@ async function layerStep(name, path, open, close) {
   } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
   await context.close()
 }
+// The dock's counts stay inside their pill or round button (4 px from the edge at least) with one, two and three characters.
+async function badgeStep() {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
+  await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+  const page = await context.newPage()
+  await page.clock.setFixedTime(frozenNow)
+  await installApiMock(page, { unhandled: new Set() })
+  try {
+    await page.goto(server.origin + '/dashboard')
+    await page.locator('.rv-dock').waitFor({ timeout: 15000 })
+    for (const text of ['5', '12', '99+']) {
+      const bad = await page.evaluate(label => {
+        const parts = [...document.querySelectorAll('.rv-dock-slot, .rv-dock-round')]
+        const problems = []
+        for (const part of parts) {
+          let badge = part.querySelector('.rv-dock-badge')
+          if (!badge) { badge = document.createElement('span'); badge.className = 'rv-dock-badge'; part.querySelector('.rv-dock-icon').append(badge) }
+          badge.textContent = label
+          const box = (part.classList.contains('rv-dock-round') ? part : part.closest('.rv-dock-pill')).getBoundingClientRect()
+          const rect = badge.getBoundingClientRect()
+          if (rect.top < box.top + 4 || rect.right > box.right - 4 || rect.left < box.left + 4 || rect.bottom > box.bottom - 4) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
+        }
+        return problems
+      }, text)
+      for (const item of bad) failures.push('dock count out of its part: ' + item)
+    }
+  } catch (error) { failures.push('dock count step: ' + String(error.message).split(/\r?\n/)[0]) }
+  await context.close()
+}
 try {
   await Promise.all(Array.from({ length: 4 }, worker))
+  if (!only) await badgeStep()
   if (!only) {
     await layerStep('filter sheet', '/orders', page => page.getByRole('button', { name: /^Filtre/ }).first().click(), page => page.getByRole('button', { name: /^Filtrele$/ }).first().click())
     await layerStep('window', '/orders', page => page.getByRole('button', { name: /Detayları Aç/ }).first().click(), page => page.keyboard.press('Escape'))

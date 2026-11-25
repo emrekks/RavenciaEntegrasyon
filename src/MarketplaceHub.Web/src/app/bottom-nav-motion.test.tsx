@@ -20,9 +20,9 @@ describe('the phone layers move with the shared motion tokens (kit "A · iOS Yay
     }
   })
 
-  it('rises the menu and drops the notification sheet on the sheet time and curve, as every phone window does', () => {
-    expect(dock).toMatch(/\.rv-fullmenu-drawer \{[^}]*animation: rv-slide-in-left var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
-    expect(dock).toContain('html[data-rv-menu="open"] .app-shell.stitch-shell > main { animation: rv-menu-push var(--rv-motion-sheet) var(--rv-ease-sheet) both; }')
+  it('cross-fades the menu with the page in place (no movement, no scale) on the base time and the sheet curve, and drops the notification sheet on the sheet time and curve', () => {
+    expect(dock).toMatch(/\.rv-fullmenu \{[^}]*animation: rv-fade-in var\(--rv-motion-base\) var\(--rv-ease-sheet\)/)
+    expect(dock).not.toMatch(/rv-fullmenu[^\n]*(translate|scale)/)
     expect(dock).toMatch(/rv-notification-history \{[^}]*animation: rv-sheet-down var\(--rv-motion-sheet\) var\(--rv-ease-sheet\)/)
     expect(read('../styles/responsive.css')).toContain('@keyframes rv-rise { from { translate: 0 100%; } to { translate: 0 0; } }')
     expect(tokens).toContain('--rv-motion-bar: var(--rv-motion-base);')
@@ -80,14 +80,33 @@ describe('useStuckHead', () => {
   })
 })
 
+describe('the dock counts', () => {
+  it('hang off the icon, 9 px up and 3 px past its right edge, 16 px high with a ring in the part colour (10/700 text, 99+ at most)', () => {
+    expect(dock).toMatch(/\.rv-dock-badge \{ position: absolute; top: -9px; right: -3px;[^}]*min-width: 16px; height: 16px; padding: 0 4px;[^}]*0 0 0 1\.5px var\(--rv-dock-ring, var\(--rv-color-surface\)\);[^}]*font-size: 10px; font-weight: 700;/)
+  })
+})
+
+describe('the status bar area stays unpainted', () => {
+  it('starts the top bar under the safe area (margin and sticky top), which it also clears when it slides away, with no padding of its own', () => {
+    expect(dock).toContain('.rv-topbar { top: env(safe-area-inset-top, 0px); margin-top: env(safe-area-inset-top, 0px); }')
+    expect(dock).toContain('.rv-topbar.is-hidden { transform: translateY(calc(-100% - env(safe-area-inset-top, 0px) - 1px)); }')
+    expect(read('../styles/phone-spacing.css')).toContain('.rv-topbar { padding-top: 0 !important; min-height: 62px !important; }')
+  })
+
+  it('lets the menu list slide behind the status bar: the safe area is the list\'s own padding, the page behind is not painted there', () => {
+    expect(dock).toMatch(/\.rv-fullmenu-body \{[^}]*padding: calc\(env\(safe-area-inset-top, 0px\) \+ 36px\)/)
+    expect(dock).not.toMatch(/\.rv-fullmenu \{[^}]*padding:/)
+  })
+})
+
 describe('layers over the top bar and the menu leaving', () => {
   it('lifts the filter block above the top bar while a layer is open, so its scrim covers the bar', () => {
     expect(dock).toContain('html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }')
   })
 
   it('keeps the full-screen menu mounted for the shared exit (rv-sink on the exit tokens) with no touch while it goes', () => {
-    expect(dock).toContain('.rv-fullmenu.is-closing .rv-fullmenu-drawer { animation: rv-drawer-out-left var(--rv-motion-exit) var(--rv-ease-exit) forwards; }')
-    expect(dock).toContain('html[data-rv-menu="closing"] .app-shell.stitch-shell > main { animation: rv-menu-push var(--rv-motion-exit) var(--rv-ease-exit) reverse both; }')
+    expect(dock).toContain('.rv-fullmenu.is-closing { pointer-events: none; animation: rv-menu-out var(--rv-motion-exit) var(--rv-ease-sheet) forwards; }')
+    expect(dock).not.toMatch(/data-rv-menu|rv-fullmenu-peek|rv-menu-push|\.rv-fullmenu-drawer/)
     expect(read('../styles/responsive.css')).toContain('animation: rv-sink var(--rv-motion-exit) var(--rv-ease-exit) forwards')
     expect(tokens).toContain('--rv-motion-exit: 180ms;')
   })
