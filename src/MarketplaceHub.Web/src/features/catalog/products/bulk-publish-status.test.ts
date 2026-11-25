@@ -97,6 +97,15 @@ describe('bulk publish status per model code', () => {
     expect(rows.map(row => row.modelCode)).toEqual(['Etek', 'V9'])
   })
 
+  // A model is brand + model code: the same code under two brands is two models (FamilyKey, scan 25 Nov 2026 D-3).
+  it('counts the same model code under two brands as two models', () => {
+    const rows = summarizeBulkPublishModels([{ ...record('MZ01', 'LIVE'), brandId: 'b1', familyKey: 'model:b1:MZ01' }, { ...record('MZ01', 'UNLINKED'), brandId: 'b2', familyKey: 'model:b2:MZ01' }, { ...record('MZ01', 'LIVE'), brandId: 'b1', familyKey: 'model:b1:MZ01' }], trendyol)
+    expect(rows).toEqual([
+      { modelCode: 'MZ01', live: 0, total: 1, missing: 1, unknown: 0 },
+      { modelCode: 'MZ01', live: 2, total: 2, missing: 0, unknown: 0 }
+    ])
+  })
+
   it('shows at most eight models and counts the rest', () => {
     const rows = summarizeBulkPublishModels(Array.from({ length: 11 }, (_, index) => record(`M${String(index).padStart(2, '0')}`, 'LIVE')), trendyol)
     const tooltip = bulkPublishModelTooltip(rows)

@@ -115,7 +115,7 @@ export function summarizeBulkPublishStatus(products: ReadonlyArray<{ platformSta
 export type BulkPublishModelRow = { modelCode: string; live: number; total: number; missing: number; unknown: number }
 export type BulkPublishModelTooltip = { rows: Array<BulkPublishModelRow & { text: string; complete: boolean }>; moreCount: number }
 
-type ModelRecord = Pick<Product, 'modelCode' | 'title'> & { platformStatuses?: readonly ProductPlatformStatus[] | null; variants?: ReadonlyArray<{ modelCode?: string | null }> }
+type ModelRecord = Pick<Product, 'modelCode' | 'title'> & { brandId?: string | null; familyKey?: string | null } & { platformStatuses?: readonly ProductPlatformStatus[] | null; variants?: ReadonlyArray<{ modelCode?: string | null }> }
 
 function recordModelCode(product: ModelRecord | null) {
   if (!product) return 'Yüklenmemiş kayıt'
@@ -126,7 +126,8 @@ export function summarizeBulkPublishModels(products: ReadonlyArray<ModelRecord |
   const rows = new Map<string, BulkPublishModelRow>()
   for (const product of products) {
     const modelCode = recordModelCode(product)
-    const key = modelCode.toLocaleUpperCase('tr-TR')
+    // A model is brand + model code: the server's family key when the list sent one, else the brand with the code.
+    const key = product?.familyKey ?? `${product?.brandId ?? '-'}:${modelCode.toLocaleUpperCase('tr-TR')}`
     const row = rows.get(key) ?? { modelCode, live: 0, total: 0, missing: 0, unknown: 0 }
     const bucket = bulkPublishStatusBucket(product ? productConnectionStatus(product, connection) : null)
     row.total += 1
