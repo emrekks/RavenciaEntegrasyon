@@ -76,16 +76,19 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
     // Room under the content: 56 + 12 + 16 and the safe area (the warning pill adds 40); the parts sit 12 px and the safe area above the edge.
-    expect(phone).toContain('--rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 78px)')
+    expect(phone).toContain('--rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 74px)')
     expect(phone).toContain('--rv-dock-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 4px), 12px)')
     const layer = phone.match(/\.rv-dock-layer \{ position: fixed[^}]*\}/)![0]
     expect(layer).toContain('pointer-events: none')
     expect(layer).toContain('bottom: var(--rv-dock-bottom)')
     expect(layer).toContain('padding: 0 8px')
-    // One opaque floating capsule: a shadow, no border, no blur, no frosted band, no indicator line, no labels.
+    // One floating glass capsule (light frost, 10 px blur at most): a thin line and a light shadow, no frosted band, no indicator line.
     expect(phone).toContain('--rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%)')
     expect(phone).toContain('--rv-dock-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%), 0 0 24px rgb(0 0 0 / 40%), 0 4px 12px rgb(0 0 0 / 30%)')
-    expect(phone).toContain('.rv-dock, .rv-dock-panel { background: var(--rv-color-surface); box-shadow: var(--rv-dock-shadow); }')
+    expect(phone).toContain('.rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(10px) saturate(1.3); backdrop-filter: blur(10px) saturate(1.3); }')
+    expect(phone).toContain('--rv-dock-glass-alpha: 88%')
+    expect(phone).toContain('prefers-reduced-transparency: reduce')
+    expect(phone).toContain(':root:has(.rv-fullmenu) .rv-dock { background: var(--rv-color-surface);')
     expect(phone).toContain(':root { --rv-dock-w: min(calc(100vw - 20px), 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
     expect(phone).not.toContain('data-compact')
     expect(phone).toContain('width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2);')
@@ -97,7 +100,7 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('.rv-dock-slot.is-active { color: var(--rv-color-primary-text); }')
     expect(phone).toContain('--rv-dock-active-tint: 14%')
     expect(phone).toContain('--rv-dock-active-tint: 24%')
-    expect(css).not.toMatch(/backdrop-filter|rv-dock-blur|rv-dock-tint|rv-dock-panel-alpha|rv-dock-panel-blur|\.rv-dock-layer::before/)
+    expect(css).not.toMatch(/rv-dock-blur|rv-dock-tint|rv-dock-panel-alpha|rv-dock-panel-blur|\.rv-dock-layer::before/)
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
     // The warning is a 32 px pill floating above the task panel.

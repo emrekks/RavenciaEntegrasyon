@@ -7,8 +7,8 @@
 @media (max-width: 760px) {
   :root { --m-gutter: 12px; --m-gap: 10px; --m-pad: 12px; --m-safe-top: env(safe-area-inset-top, 0px); --m-safe-bottom: env(safe-area-inset-bottom, 0px); }
 
-  /* Page frame */
-  :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) calc(16px + var(--m-safe-bottom)) !important; row-gap: var(--m-gap) !important; }
+  /* Page frame: no bottom padding of its own - the room under the content is main's padding-bottom (--rv-bottom-nav-space: the bar, its gap to the edge, the safe area once, and 12 px). */
+  :root .app-shell.stitch-shell main section.content { padding: 12px var(--m-gutter) 0 !important; row-gap: var(--m-gap) !important; }
   :root .app-shell.stitch-shell .rv-topbar { padding-inline: var(--m-gutter) !important; }
 
   /* Groups of blocks */

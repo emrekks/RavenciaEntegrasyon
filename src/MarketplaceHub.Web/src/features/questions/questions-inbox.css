@@ -346,3 +346,9 @@
 
 /* The list footer and the conversation's closed bar sit side by side: one height, so their top borders form one line. */
 .qi-page :is(.qi-foot, .qi-closed) { box-sizing: border-box; min-height: 49px; padding-block: 6px; }
+
+/* Phone: the page fills the screen (the list card grows into what is left, 12 px above the bar), never a fixed height with a gap under it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-page { box-sizing: border-box; grid-template-rows: auto auto auto minmax(0, 1fr); min-height: calc(100svh - var(--rv-page-top) - var(--rv-bottom-nav-space)); }
+  .app-shell.stitch-shell main .qi-page .qi-inbox { height: auto; min-height: 560px; }
+}

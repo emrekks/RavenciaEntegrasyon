@@ -14,7 +14,7 @@
 /* The page fills the work area under the top bar: page head, group tabs stuck under the top bar, the group's section
    segment (only when it has more than one section), then the section with its sticky apply bar. */
 /* Same side gaps as the other pages (.content padding); lists and the designer sit in a bordered box inside them. */
-.app-shell.stitch-shell main .ss-page.content { display: flex; flex-direction: column; min-height: calc(100svh - var(--rv-topbar-height, 70px) - var(--rv-bottom-nav-space, 0px)); }
+.app-shell.stitch-shell main .ss-page.content { display: flex; flex-direction: column; min-height: calc(100svh - var(--rv-page-top, var(--rv-topbar-height, 70px)) - var(--rv-bottom-nav-space, 0px)); }
 .ss-page .ss-page-head { display: grid; gap: 2px; padding: 0; }
 .ss-page .ss-crumb { display: block; color: var(--rv-color-subtle); font-weight: 500; }
 .ss-page .ss-page-head h1 { font-weight: 600; }

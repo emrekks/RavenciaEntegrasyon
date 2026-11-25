@@ -129,14 +129,17 @@ async function glideStep() {
     })
       const bad = await page.evaluate(() => {
         const dockEl = document.querySelector('.rv-dock'); const slotsEl = [...dockEl.querySelectorAll('.rv-dock-slot')]; const early = []
-        for (const label of ['5', '26', '99+']) {
+        for (const label of ['5', '14', '99+']) {
+          const offsets = []
           slotsEl.forEach((slotEl, i) => {
             let badge = slotEl.querySelector('.rv-dock-badge'); if (!badge) { badge = document.createElement('span'); badge.className = 'rv-dock-badge'; slotEl.querySelector('.rv-dock-icon').append(badge) } badge.textContent = label
             const box = dockEl.getBoundingClientRect(); const slotBox = slotEl.getBoundingClientRect(); const icon = slotEl.querySelector('.ui-icon').getBoundingClientRect(); const b = badge.getBoundingClientRect()
             const mode = i + ' ' + label
+            offsets.push([b.left - icon.right, b.top - icon.top])
             if (Math.abs(icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)) > 0.5) early.push(mode + ' icon not centred in x ' + (icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)).toFixed(2))
             if (b.top - box.top - 1.5 < 4.5 || box.right - b.right - 1.5 < 4.5) early.push(mode + ' count too near the capsule edge ' + (b.top - box.top - 1.5).toFixed(1) + '/' + (box.right - b.right - 1.5).toFixed(1))
           })
+          for (const axis of [0, 1]) { const values = offsets.map(o => o[axis]); if (Math.max(...values) - Math.min(...values) > 0.5) early.push(label + ' count offset differs between the slots (' + (axis ? 'y' : 'x') + ') ' + values.map(v => v.toFixed(1)).join('/')) }
         }
         const dock = document.querySelector('.rv-dock'); const glide = dock.querySelector('.rv-dock-glide'); const problems = [...early]
         for (let index = 0; index < 5; index += 1) {
