@@ -70,7 +70,7 @@ async function layerStep(name, path, open, close) {
   } catch (error) { failures.push(`layer step ${name}: ${String(error.message).split(/\r?\n/)[0]}`) }
   await context.close()
 }
-// The dock's counts stay inside their pill or round button (4 px from the edge at least) with one, two and three characters.
+// The dock's counts stay inside the capsule (3 px from the edge at least: the 12 px badge sits outside the icon's corner) with one, two and three characters.
 async function badgeStep() {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
   await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
@@ -82,15 +82,15 @@ async function badgeStep() {
     await page.locator('.rv-dock').waitFor({ timeout: 15000 })
     for (const text of ['5', '12', '99+']) {
       const bad = await page.evaluate(label => {
-        const parts = [...document.querySelectorAll('.rv-dock-slot, .rv-dock-round')]
+        const parts = [...document.querySelectorAll('.rv-dock-slot')]
         const problems = []
         for (const part of parts) {
           let badge = part.querySelector('.rv-dock-badge')
           if (!badge) { badge = document.createElement('span'); badge.className = 'rv-dock-badge'; part.querySelector('.rv-dock-icon').append(badge) }
           badge.textContent = label
-          const box = (part.classList.contains('rv-dock-round') ? part : part.closest('.rv-dock-pill')).getBoundingClientRect()
+          const box = part.closest('.rv-dock').getBoundingClientRect()
           const rect = badge.getBoundingClientRect()
-          if (rect.top < box.top + 4 || rect.right > box.right - 4 || rect.left < box.left + 4 || rect.bottom > box.bottom - 4) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
+          if (rect.top < box.top + 3 || rect.right > box.right - 3 || rect.left < box.left + 3 || rect.bottom > box.bottom - 3) problems.push((part.getAttribute('aria-label') ?? '?') + ' ' + label)
         }
         return problems
       }, text)
@@ -99,9 +99,40 @@ async function badgeStep() {
   } catch (error) { failures.push('dock count step: ' + String(error.message).split(/\r?\n/)[0]) }
   await context.close()
 }
+// The dock's inner pill (the glide) in every slot, at ease and compact: it keeps 4 px at least from the capsule's inner edge on every side (6 px by design),
+// is never wider than its slot, and is concentric with the capsule's round ends in the first and the last slot.
+async function glideStep() {
+  const context = await browser.newContext({ viewport: { width: 360, height: 780 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
+  await context.route(url => !url.href.startsWith(server.origin), route => route.abort())
+  const page = await context.newPage()
+  await page.clock.setFixedTime(frozenNow)
+  await installApiMock(page, { unhandled: new Set() })
+  try {
+    await page.goto(server.origin + '/dashboard')
+    await page.locator('.rv-dock').waitFor({ timeout: 15000 })
+    for (const compact of [false, true]) {
+      const bad = await page.evaluate(compactNow => {
+        const layer = document.querySelector('.rv-dock-layer'); if (compactNow) layer.setAttribute('data-compact', ''); else layer.removeAttribute('data-compact')
+        const dock = document.querySelector('.rv-dock'); const glide = dock.querySelector('.rv-dock-glide'); const problems = []
+        for (let index = 0; index < 6; index += 1) {
+          dock.style.setProperty('--rv-dock-i', String(index))
+          const box = dock.getBoundingClientRect(); const pill = glide.getBoundingClientRect(); const slot = dock.querySelectorAll('.rv-dock-slot')[index].getBoundingClientRect()
+          const gaps = [pill.left - box.left, box.right - pill.right, pill.top - box.top, box.bottom - pill.bottom]
+          if (Math.min(...gaps) < 4) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
+          if (pill.width > slot.width - 3.5 || pill.left < slot.left + 1.5 || pill.right > slot.right - 1.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
+          if ((index === 0 || index === 5) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' not concentric')
+        }
+        return problems
+      }, compact)
+      for (const item of bad) failures.push('dock pill: ' + item)
+    }
+  } catch (error) { failures.push('dock pill step: ' + String(error.message).split(String.fromCharCode(10))[0]) }
+  await context.close()
+}
 try {
   await Promise.all(Array.from({ length: 4 }, worker))
   if (!only) await badgeStep()
+  if (!only) await glideStep()
   if (!only) {
     await layerStep('filter sheet', '/orders', page => page.getByRole('button', { name: /^Filtre/ }).first().click(), page => page.getByRole('button', { name: /^Filtrele$/ }).first().click())
     await layerStep('window', '/orders', page => page.getByRole('button', { name: /Detayları Aç/ }).first().click(), page => page.keyboard.press('Escape'))
