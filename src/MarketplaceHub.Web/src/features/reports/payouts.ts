@@ -88,6 +88,13 @@ export function nextPayout(data: Pick<Payouts, 'next' | 'regions'> | undefined, 
   return { day: picked?.nextDay ?? null, amount: picked?.nextDay ? picked.nextAmount : null }
 }
 
+// Son Ödeme: the newest payout that paid something, as the server picks it for all regions (PayoutsService: a payout
+// that nets to nothing or less is passed over); the picked region's from its own past groups (C-11, 25 Nov 2026).
+export function lastPayout(data: Pick<Payouts, 'lastPaid'> | undefined, past: PayoutGroup[], region: PayoutRegion | 'ALL'): PayoutGroup | null {
+  if (region === 'ALL') return data?.lastPaid ?? null
+  return past.find(group => group.amount > 0) ?? past[0] ?? null
+}
+
 export const regionLabels: Record<PayoutRegion, string> = { TR_GULF: 'Türkiye, Körfez', EUROPE: 'Avrupa', AZ: 'Azerbaycan', UNKNOWN: 'Bilinmeyen Bölge', NONE: '' }
 export const statusLabels: Record<PayoutStatus, string> = { PAID: 'Ödendi', EXPECTED: 'Tahmini', UNKNOWN: 'Vadesi Geçti' }
 

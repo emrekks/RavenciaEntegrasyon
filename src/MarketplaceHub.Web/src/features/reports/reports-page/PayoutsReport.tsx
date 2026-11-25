@@ -10,7 +10,7 @@ import { formatIstanbul } from '../../../shared/format-date'
 import { TabSlidePanel } from '../../../shared/tab-slide'
 import { formatCount, formatTl, formatTlWhole, platformName } from '../report-format'
 import { transactionLabel } from '../transaction-labels'
-import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, lineMoney, nextPayout, otherCurrenciesText, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, readPayoutLines, readPayouts, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutRegion, type PayoutSort, type PayoutState } from '../payouts'
+import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, lastPayout, lineMoney, nextPayout, otherCurrenciesText, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, readPayoutLines, readPayouts, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutRegion, type PayoutSort, type PayoutState } from '../payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../../../shared/ui/rr-components'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../../marketplace/shared'
@@ -112,7 +112,7 @@ export function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[
   const picked = region === 'ALL' ? null : regions.find(item => item.region === region) ?? null
   // The server's next payout, overall or the picked region's: a first day that nets to nothing or less is skipped there.
   const { day: nextDay, amount: nextAmount } = none ? { day: null, amount: null } : nextPayout(data, region)
-  const lastPaid = region === 'ALL' ? data?.lastPaid ?? null : past[0] ?? null
+  const lastPaid = lastPayout(data, past, region)
   const balance = none ? 0 : picked ? picked.expected : data?.expected ?? 0
   const overdue = none ? 0 : picked ? picked.unknown : data?.unknown ?? 0
   const pendingDelivery = none ? 0 : picked ? picked.pendingDelivery : data?.pendingDelivery ?? 0
