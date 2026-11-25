@@ -14,6 +14,12 @@ public sealed class VerifiedBackupSet(string name, IReadOnlyList<(string Name, F
     public IReadOnlyList<(string Name, FileStream Stream)> Files { get; } = files;
     public long PlainBytes => Files.Sum(file => file.Stream.Length);
 
+    // Which host-made extras (extra/<part>/<file>) ride along, as published: name, size and write time. A copy of this set
+    // already on Drive is sent again when it differs, so a new escrow or WAL part need not wait for the next set.
+    public string ExtrasFingerprint => Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(string.Join('\n',
+        Files.Where(file => file.Name.StartsWith("extra/", StringComparison.Ordinal)).OrderBy(file => file.Name, StringComparer.Ordinal)
+            .Select(file => $"{file.Name}:{file.Stream.Length}:{File.GetLastWriteTimeUtc(file.Stream.Name):O}")))));
+
     // The same layout as `tar -C <backup root> -cf - <set>` (offsite-copy.sh): <set>/ and its files.
     public async Task WriteTarAsync(Stream output, CancellationToken cancellationToken)
     {
