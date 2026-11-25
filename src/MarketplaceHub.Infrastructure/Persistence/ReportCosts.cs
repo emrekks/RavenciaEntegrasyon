@@ -443,7 +443,7 @@ internal static class ReportCosts
             if (PlatformNote(costs, tr) is { } unread) yield return unread;
             if (RealCommissionNote(costs, tr) is { } read) yield return read;
             if (CommissionGapNote(costs, tr) is { } unknownCommission) yield return unknownCommission;
-            if (UnreadVatNote(costs, input, tr) is { } unreadVat) yield return unreadVat;
+            if (UnreadStoreNote(costs, input, tr) is { } unreadStore) yield return unreadStore;
             yield break;
         }
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
@@ -487,7 +487,7 @@ internal static class ReportCosts
                     : $"{billed} Faturası henüz gelmeyen {unbilled} tahmin edilemedi (son 60 günde faturalanmış kargo yok); kargo eksiktir.";
         }
         if (CommissionGapNote(costs, tr) is { } gap) yield return gap;
-        if (UnreadVatNote(costs, input, tr) is { } vatGap) yield return vatGap;
+        if (UnreadStoreNote(costs, input, tr) is { } unreadStores) yield return unreadStores;
         yield return "Kargo ve hizmet bedelleri ürünlere paylaştırılmaz.";
     }
 
@@ -535,14 +535,16 @@ internal static class ReportCosts
         && ((finance.States.TryGetValue(connectionId, out var state) && state?.CoveredThrough is not null)
             || finance.Rows.Any(row => row.ConnectionId == connectionId) || finance.CargoItems.Any(item => item.ConnectionId == connectionId));
 
-    // The live Trendyol stores with orders in the period whose statement is not read (their VAT is partly missing).
+    // The live Trendyol stores with orders in the period whose statement is not read (their costs are missing).
     private static int UnreadStoresWithOrders(ReportInput input) =>
         input.Orders.Select(order => order.ConnectionId).Distinct()
             .Count(connectionId => IsFinanceStore(input, connectionId) && !StoreRead(input.Finance, connectionId));
 
-    private static string? UnreadVatNote(ReportCostsView costs, ReportInput input, CultureInfo tr) =>
+    // Review of 25 Nov 2026: the note names every cost of an unread store that is left out, not only its VAT, so the
+    // cost total and the net profit are not read as complete.
+    private static string? UnreadStoreNote(ReportCostsView costs, ReportInput input, CultureInfo tr) =>
         costs.NetVat is not null && UnreadStoresWithOrders(input) is > 0 and var unread
-            ? $"Eksik: KDV. {unread.ToString("N0", tr)} Trendyol mağazasının finans kayıtları henüz okunmadı; bu mağazanın siparişlerinin satış ve maliyet KDV'si ile tahmini komisyonunun KDV'si Net KDV'ye girdi, kargo ve hizmet bedeli KDV'si girmedi (Net KDV bu kadar yüksek olabilir)."
+            ? $"Eksik: komisyon, kargo, hizmet bedeli, stopaj, KDV. {unread.ToString("N0", tr)} Trendyol mağazasının finans kayıtları henüz okunmadı; bu mağazanın siparişlerinin komisyonu, kargosu, hizmet bedeli ve stopajı masraf satırlarına girmedi ve tahmin de edilmedi, masraf toplamı eksik, Net Kâr gerçekte olduğundan yüksek görünebilir. Net KDV'ye bu siparişlerin satış ve maliyet KDV'si ile tahmini komisyonunun KDV'si girdi, kargo ve hizmet bedeli KDV'si girmedi (Net KDV bu kadar yüksek olabilir)."
             : null;
 
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>

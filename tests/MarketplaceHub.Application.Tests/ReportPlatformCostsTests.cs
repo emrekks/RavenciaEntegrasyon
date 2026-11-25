@@ -70,7 +70,49 @@ public sealed class ReportPlatformCostsTests
         var costs = ReportCosts.Build(input, ReportBuilder.Facts(input).Orders);
 
         Assert.Equal(200m + 100m, costs.NetVat!.SalesVat);
-        Assert.Contains(ReportCosts.Notes(costs, input), note => note.StartsWith("Eksik: KDV.", StringComparison.Ordinal));
+        Assert.Contains(ReportCosts.Notes(costs, input), note => note.StartsWith("Eksik: komisyon, kargo, hizmet bedeli, stopaj, KDV.", StringComparison.Ordinal));
+    }
+
+    // Review of 25 Nov 2026: with one Trendyol store read and another not, the unread store's fees stay out of the cost
+    // lines (no estimate is invented for them) and the note names every cost missing, not only its VAT, so the cost
+    // total and the net profit are not read as complete.
+    [Fact]
+    public void An_unread_trendyol_store_beside_a_read_one_names_every_missing_cost()
+    {
+        var (read, unread) = (Guid.NewGuid(), Guid.NewGuid());
+        var day = new DateOnly(2026, 10, 23);
+        var start = new DateTimeOffset(2026, 10, 22, 21, 0, 0, TimeSpan.Zero);
+        var at = start.AddHours(12);
+        var (a, b) = (Guid.NewGuid(), Guid.NewGuid());
+        var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView>
+            {
+                [read] = new(read, "TRENDYOL", "Trendyol A", false),
+                [unread] = new(unread, "TRENDYOL", "Trendyol B", false)
+            },
+            [
+                new() { Id = a, ConnectionId = read, OrderNumber = "A", DerivedStatus = "DELIVERED", Amount = 1200m, LineValue = 1200m, RealAt = at, OrderedAt = at },
+                new() { Id = b, ConnectionId = unread, OrderNumber = "B", DerivedStatus = "DELIVERED", Amount = 600m, LineValue = 600m, RealAt = at, OrderedAt = at }
+            ],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [
+                new() { Id = Guid.NewGuid(), OrderId = a, Title = "Ceket", Sku = "A", UnitPrice = 1200m, OrderedQuantity = 1m, VatRate = 20m },
+                new() { Id = Guid.NewGuid(), OrderId = b, Title = "Bluz", Sku = "B", UnitPrice = 600m, OrderedQuantity = 1m, VatRate = 20m }
+            ],
+            new Dictionary<Guid, ReportLineExtra>(), [], [],
+            new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false,
+            Finance: new ReportFinance([], [], new HashSet<(Guid, string)>(), new Dictionary<Guid, MarketplaceFinanceSyncState?>
+            {
+                [read] = new() { ConnectionId = read, CoveredFrom = start.AddDays(-30), CoveredThrough = start.AddDays(1), LastSyncedAt = start.AddDays(1) },
+                [unread] = null
+            }));
+
+        var costs = ReportCosts.Build(input, ReportBuilder.Facts(input).Orders);
+
+        Assert.Equal(ReportCosts.PlatformServiceFeePerOrder, costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee).Amount);
+        var note = Assert.Single(ReportCosts.Notes(costs, input), note => note.StartsWith("Eksik:", StringComparison.Ordinal));
+        Assert.StartsWith("Eksik: komisyon, kargo, hizmet bedeli, stopaj, KDV. 1 Trendyol mağazasının", note, StringComparison.Ordinal);
+        Assert.Contains("Net Kâr", note, StringComparison.Ordinal);
     }
 
     [Fact]
