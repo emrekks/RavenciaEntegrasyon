@@ -112,8 +112,8 @@ export function BottomDock({ menuOpen, compact = false, menuCount, slotCounts, t
     lastIndex.current = found
     const glide = glideRef.current
     if (!glide || from === found || typeof glide.animate !== 'function' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    // One slot is the pill's width less its 6 px of extra; on the way it stretches over both slots (the near edge stays, then the far edge arrives).
-    const slotWidth = glide.offsetWidth - 6
+    // The pill is one slot wide; on the way it stretches over both slots (the near edge stays, then the far edge arrives).
+    const slotWidth = glide.offsetWidth
     const width = glide.offsetWidth
     const reach = Math.abs(found - from) * slotWidth
     const at = (slots: number) => 'translateX(' + slots * slotWidth + 'px)'

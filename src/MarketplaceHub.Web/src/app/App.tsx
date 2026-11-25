@@ -177,9 +177,10 @@ function Shell({ me }: { me: Me }) {
   }, [location.pathname, pageLocked, navigationType])
   const notificationOpener = useRef<HTMLElement | null>(null)
   const menuWasOpen = useRef(false)
-  // Closing the menu (Esc, back button, Kapat) hands the focus back to the Menü slot that opened it.
+  // Closing the menu (Esc, back button, Kapat) hands the focus back to the Menü slot that opened it, without the keyboard focus ring
+  // (a touch close left the slot ringed in purple on iOS).
   useEffect(() => {
-    if (menuWasOpen.current && !fullMenu.open && phone) menuSlotRef.current?.focus({ preventScroll: true })
+    if (menuWasOpen.current && !fullMenu.open && phone) menuSlotRef.current?.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     menuWasOpen.current = fullMenu.open
   }, [fullMenu.open, phone])
   const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)

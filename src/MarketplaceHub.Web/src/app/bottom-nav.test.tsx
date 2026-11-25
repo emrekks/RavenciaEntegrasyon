@@ -89,7 +89,7 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain(':root { --rv-dock-w: min(88vw, 420px); --rv-dock-h: 58px; --rv-dock-icon: 24px; }')
     expect(phone).toContain('.rv-dock-layer[data-compact] { --rv-dock-w: min(max(73vw, 276px), 336px); --rv-dock-h: 48px; --rv-dock-icon: 22px; }')
     expect(phone).toContain('width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2);')
-    expect(phone).toContain('.rv-dock-glide { position: absolute; top: 4px; bottom: 4px; left: 1px;')
+    expect(phone).toContain('.rv-dock-glide { position: absolute; top: 4px; bottom: 4px; left: 4px;')
     expect(phone).toMatch(/\.rv-dock-panel \{[^}]*height: 56px; border-radius: 28px/)
     expect(phone).toContain('.rv-dock-slot:active { transform: scale(.96); }')
     // The six icons are 24 px with a 2 px stroke (the global .ui-icon rule held them at 16 px).
