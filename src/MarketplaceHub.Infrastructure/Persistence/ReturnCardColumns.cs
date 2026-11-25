@@ -29,14 +29,14 @@ public static class ReturnCardColumns
     public static string TabGroup(ReturnClaimStatus status, IReadOnlyCollection<string?> lineRawStatuses, bool exchangeMade = false) =>
         ReturnQueryService.ReturnTabGroup(ReturnQueryService.ReturnStatusWire(status, lineRawStatuses, exchangeMade));
 
-    public static bool CardSplit(IEnumerable<string?> lineRawStatuses) => ReturnQueryService.MaySplitReturnClaim(lineRawStatuses);
+    public static bool CardSplit(ReturnClaimStatus status, IEnumerable<string?> lineRawStatuses) => ReturnQueryService.MaySplitReturnClaim(lineRawStatuses, status);
 
     // As the page sorts by approval: an approved or completed claim's last successful approval, else its last change.
     public static DateTimeOffset? ApprovedAt(ReturnClaimStatus status, DateTimeOffset? lastApproval, DateTimeOffset? lastRemoteModifiedAt) =>
         status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed ? (lastApproval ?? lastRemoteModifiedAt)?.ToUniversalTime() : null;
 
     public static (string TabGroup, bool CardSplit, DateTimeOffset? ApprovedAt) Values(ReturnClaimStatus status, DateTimeOffset? lastRemoteModifiedAt, IReadOnlyCollection<string?> lineRawStatuses, DateTimeOffset? lastApproval, bool exchangeMade = false) =>
-        (TabGroup(status, lineRawStatuses, exchangeMade), CardSplit(lineRawStatuses), ApprovedAt(status, lastApproval, lastRemoteModifiedAt));
+        (TabGroup(status, lineRawStatuses, exchangeMade), CardSplit(status, lineRawStatuses), ApprovedAt(status, lastApproval, lastRemoteModifiedAt));
 
     // Before the save (after the context detected its changes): the claims the save itself adds or changes take their
     // columns through the tracker, from the database rows overlaid with the lines and decisions this save adds, changes or
@@ -189,29 +189,43 @@ public static class ReturnCardColumns
         foreach (var tenantId in await db.ReturnClaims.AsNoTracking().Select(x => x.TenantId).Distinct().ToListAsync(cancellationToken))
         {
             var rawStatuses = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync(cancellationToken);
-            var accepted = rawStatuses.Where(ReturnQueryService.IsAcceptedSplitLineStatus).ToArray();
-            var waiting = rawStatuses.Where(raw => raw is not null && ReturnQueryService.IsWaitingSplitLineStatus(raw)).ToArray();
-            if (await Stale(db, tenantId, accepted, waiting).AnyAsync(cancellationToken)) stale.Add(tenantId);
+            var (accepted, waiting, blank) = ReturnQueryService.SplitLineStatusSets(rawStatuses);
+            if (await Stale(db, tenantId, accepted, waiting, blank).AnyAsync(cancellationToken)) stale.Add(tenantId);
         }
         return stale;
     }
 
+    // MaySplitReturnClaim as a database condition: a line accepted (an accepted raw status, or a blank one on an approved or
+    // completed claim) beside one waiting (a waiting raw status, or a blank one on a claim waiting for the seller). The raw
+    // statuses are the tenant's, sorted by the C# rule (ReturnQueryService.SplitLineStatusSets); null is blank.
+    public static Expression<Func<ReturnClaim, bool>> MaySplitInDatabase(AppDbContext db, Guid tenantId, string?[] acceptedRawStatuses, string?[] waitingRawStatuses, string?[] blankRawStatuses) => x =>
+        db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && (acceptedRawStatuses.Contains(line.RawStatus)
+            || (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed) && (line.RawStatus == null || blankRawStatuses.Contains(line.RawStatus))))
+        && db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && (waitingRawStatuses.Contains(line.RawStatus)
+            || x.Status == ReturnClaimStatus.ActionRequired && (line.RawStatus == null || blankRawStatuses.Contains(line.RawStatus))));
+
     // The claims of the tenant whose columns are missing or differ from the rule, as the database computes the rule:
     // TabGroup follows the claim's status, and a rejected exchange made goes to the approved tab (ReturnStatusWire only turns an approved or completed claim into
-    // PARTIALLY_APPROVED, the same tab), CardSplit is "a line with an accepted raw status beside one waiting or without
-    // a status" (the tenant's raw statuses sorted into accepted and waiting by the C# rule), ApprovedAt as above.
-    public static IQueryable<ReturnClaim> Stale(AppDbContext db, Guid tenantId, string?[] acceptedRawStatuses, string?[] waitingRawStatuses)
+    // PARTIALLY_APPROVED, the same tab), CardSplit is MaySplitInDatabase (the tenant's raw statuses sorted into accepted,
+    // waiting and blank by the C# rule), ApprovedAt as above.
+    public static IQueryable<ReturnClaim> Stale(AppDbContext db, Guid tenantId, string?[] acceptedRawStatuses, string?[] waitingRawStatuses, string?[]? blankRawStatuses = null)
     {
-        Expression<Func<ReturnClaim, bool>> others = x => x.CardSplit == null
-            || x.CardSplit != (db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && acceptedRawStatuses.Contains(line.RawStatus))
-                && db.ReturnLines.Any(line => line.TenantId == tenantId && line.ClaimId == x.Id && (line.RawStatus == null || waitingRawStatuses.Contains(line.RawStatus))))
-            || x.ApprovedAt != (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
-                ? db.ReturnDecisions.Where(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Action == ApproveAction && decision.Status == Succeeded)
-                    .Max(decision => decision.CompletedAt) ?? x.LastRemoteModifiedAt
-                : null);
-        var claim = others.Parameters[0];
-        var stale = Expression.OrElse(TabGroupDiffers(claim), others.Body);
+        var maySplit = MaySplitInDatabase(db, tenantId, acceptedRawStatuses, waitingRawStatuses, blankRawStatuses ?? []);
+        var claim = maySplit.Parameters[0];
+        Expression<Func<ReturnClaim, bool>> approvedAtDiffers = x => x.ApprovedAt != (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Completed
+            ? db.ReturnDecisions.Where(decision => decision.TenantId == tenantId && decision.ClaimId == x.Id && decision.Action == ApproveAction && decision.Status == Succeeded)
+                .Max(decision => decision.CompletedAt) ?? x.LastRemoteModifiedAt
+            : null);
+        var cardSplit = Expression.Property(claim, nameof(ReturnClaim.CardSplit));
+        var cardSplitDiffers = Expression.OrElse(Expression.Equal(cardSplit, Expression.Constant(null, typeof(bool?))),
+            Expression.NotEqual(cardSplit, Expression.Convert(maySplit.Body, typeof(bool?))));
+        var stale = Expression.OrElse(TabGroupDiffers(claim), Expression.OrElse(cardSplitDiffers, new ParameterSwap(approvedAtDiffers.Parameters[0], claim).Visit(approvedAtDiffers.Body)));
         return db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId).Where(Expression.Lambda<Func<ReturnClaim, bool>>(stale, claim));
+    }
+
+    private sealed class ParameterSwap(ParameterExpression from, ParameterExpression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : base.VisitParameter(node);
     }
 
     // x.TabGroup IS NULL OR x.TabGroup <> CASE x.Status WHEN … THEN ReturnTabGroup(status) … END, built from the enum so a new

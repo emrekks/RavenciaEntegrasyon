@@ -191,6 +191,51 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
     }
 
     // Scan 25 Nov 2026 C-4: a partly cancelled order's returned unit showed "0 adet" (the page takes the cancelled units off
+    // Scan 25 Nov 2026 C-3: the Analiz tab counted the claims with an unknown status word and listed none; a split claim's
+    // rejected line was on neither card, and a line without a status counted as waiting even on an approved claim.
+    [PostgreSqlFact]
+    public async Task The_analysis_tab_lists_what_it_counts_and_a_split_claim_loses_no_line()
+    {
+        var seed = await SeedAsync();
+        try
+        {
+            await using (var setup = fixture.CreateContext())
+            {
+                var transit = await setup.ReturnClaims.SingleAsync(x => x.Id == seed.TransitClaimId);
+                transit.Status = ReturnClaimStatus.Unknown;
+                transit.RawStatus = "SomethingNew";
+                var split = await setup.ReturnClaims.SingleAsync(x => x.Id == seed.SplitClaimId);
+                var line = await setup.OrderLines.SingleAsync(x => x.Id == seed.FirstLineId);
+                var third = new OrderLine { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, OrderId = line.OrderId, ExternalLineId = "RET-SKU-5", Sku = "RET-SKU-5", TitleSnapshot = "Ürün RET-SKU-5", OrderedQuantity = 1m, DeliveredQuantity = 1m, ShippedQuantity = 1m, UnitPrice = 10m, VatRate = 20m, RawStatus = "Delivered" };
+                setup.OrderLines.Add(third);
+                setup.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, ClaimId = split.Id, OrderLineId = third.Id, ExternalLineId = "r-RET-SKU-5", Quantity = 1m, RawStatus = "Rejected" });
+                await setup.SaveChangesAsync();
+            }
+            foreach (var stale in new[] { false, true })
+            {
+                // Both ways the page is built: from the card columns, and computed from the lines when a column is stale.
+                if (stale)
+                    await using (var breaker = fixture.CreateContext())
+                        await breaker.ReturnClaims.Where(x => x.TenantId == seed.TenantId).ExecuteUpdateAsync(set => set.SetProperty(x => x.CardSplit, (bool?)null));
+                await using var db = fixture.CreateContext();
+                var service = NewService(db);
+                var review = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Status: "REVIEW"), false, CancellationToken.None);
+                Assert.Equal([seed.TransitClaimId], review.Items.Select(x => x.Id));
+                Assert.Equal(1, (await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(), CancellationToken.None)).TabCounts["REVIEW"]);
+
+                var waiting = await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Status: "ACTION_REQUIRED"), false, CancellationToken.None);
+                var card = Assert.Single(waiting.Items);
+                Assert.Equal(2, card.Lines!.Count);
+                Assert.Contains(seed.SecondLineId, card.Lines.Select(x => x.Id));
+                Assert.Equal([seed.SplitClaimId], (await service.ReturnsAsync(seed.TenantId, 20, null, new ReturnListQuery(Search: "RET-SKU-5"), false, CancellationToken.None)).Items.Select(x => x.Id).Distinct());
+            }
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     // the quantity). A return card's line carries its returned units and no cancelled ones.
     [PostgreSqlFact]
     public async Task A_return_line_of_a_partly_cancelled_order_shows_its_returned_units()

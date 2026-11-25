@@ -248,10 +248,10 @@ internal sealed partial class ReturnQueryService
                 "REJECTED" => query.Where(x => (x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled)
                     && !(x.Status == ReturnClaimStatus.Rejected && x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
                 "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
-                // The UI's Analysis tab is reserved for explicitly submitted
-                // analysis cases. ActionRequired claims belong only to their
-                // own operational tab and must not leak into Analysis.
-                "REVIEW" => query.Where(_ => false),
+                // The Analysis tab ("Analiz") lists the claims whose status word the panel does not know: the cards
+                // ReturnTabGroup counts under it (scan 25 Nov 2026 C-3: it counted them and listed none). ActionRequired
+                // claims belong only to their own operational tab.
+                "REVIEW" => query.Where(x => x.Status == ReturnClaimStatus.Unknown),
                 "SUSPENDED" => query.Where(_ => false),
                 _ => query.Where(_ => false)
             };

@@ -46,7 +46,7 @@ internal static class LegacyReturnListQueries
             var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
                 .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
             var status = ReturnQueryService.ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
-            foreach (var (kind, cardLines) in ReturnQueryService.SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
+            foreach (var (kind, cardLines) in ReturnQueryService.SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses, row.Status))
                 cards.Add(new(row.Id, kind, kind == ReturnQueryService.ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }
 

@@ -22,21 +22,28 @@ internal sealed partial class ReturnQueryService
 
     internal sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, DateTimeOffset? RequestedAt = null, bool? CardSplit = null, bool ExchangeMade = false);
 
-    // SIPARIS-STOK-9: the tenant's line raw statuses sorted by the split rule (accepted; waiting, a missing status aside),
-    // and whether every claim of the tenant has its card columns (ReturnCardColumns) filled and equal to the rule right
-    // now. Only then are the columns read; otherwise the page is computed from the claims and lines as before.
-    internal sealed record ReturnColumnState(bool Fresh, string?[] Accepted, string?[] Waiting);
+    // SIPARIS-STOK-9: the tenant's line raw statuses sorted by the split rule (accepted; waiting; blank, which takes its
+    // claim's status, a missing status aside), and whether every claim of the tenant has its card columns
+    // (ReturnCardColumns) filled and equal to the rule right now. Only then are the columns read; otherwise the page is
+    // computed from the claims and lines as before.
+    internal sealed record ReturnColumnState(bool Fresh, string?[] Accepted, string?[] Waiting, string?[] Blank);
 
     internal async Task<ReturnColumnState> ReturnColumnStateAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var rawStatuses = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync(cancellationToken);
-        var accepted = rawStatuses.Where(IsAcceptedSplitLineStatus).ToArray();
-        var waiting = rawStatuses.Where(raw => raw is not null && IsWaitingSplitLineStatus(raw)).ToArray();
-        var fresh = !await ReturnCardColumns.Stale(db, tenantId, accepted, waiting).AnyAsync(cancellationToken);
-        return new(fresh, accepted, waiting);
+        var (accepted, waiting, blank) = SplitLineStatusSets(rawStatuses);
+        var fresh = !await ReturnCardColumns.Stale(db, tenantId, accepted, waiting, blank).AnyAsync(cancellationToken);
+        return new(fresh, accepted, waiting, blank);
     }
 
-    private static readonly ReturnColumnState UnfilledColumns = new(false, [], []);
+    // The raw statuses the database compares (null itself aside): accepted, waiting and blank ones.
+    internal static (string?[] Accepted, string?[] Waiting, string?[] Blank) SplitLineStatusSets(IEnumerable<string?> rawStatuses)
+    {
+        var raws = rawStatuses.Where(raw => raw is not null).Distinct().ToList();
+        return ([.. raws.Where(IsAcceptedSplitLineStatus)], [.. raws.Where(IsWaitingSplitLineStatus)], [.. raws.Where(IsBlankSplitLineStatus)]);
+    }
+
+    private static readonly ReturnColumnState UnfilledColumns = new(false, [], [], []);
 
     private sealed record ReturnCardLine(Guid ClaimId, Guid OrderLineId, string? RawStatus);
 
@@ -70,31 +77,39 @@ internal sealed partial class ReturnQueryService
     };
 
     // A claim whose lines are partly accepted and partly still waiting for the seller is two cards:
-    // the waiting lines (under "Aksiyon Bekleyen"), then the accepted ones (under "Onaylanan").
-    internal static IReadOnlyList<(int Kind, IReadOnlyList<Guid> LineIds)> SplitReturnClaim(IReadOnlyList<Guid> lineIds, IReadOnlyDictionary<Guid, string>? lineStatuses)
+    // the waiting lines (under "Aksiyon Bekleyen"), then the accepted ones (under "Onaylanan"). A line without a status of
+    // its own takes the claim's; a line that is neither accepted nor waiting (rejected, on its way, unknown) stays on the
+    // first card, so no line of a split claim is lost from the page or its search (scan 25 Nov 2026 C-3).
+    internal static IReadOnlyList<(int Kind, IReadOnlyList<Guid> LineIds)> SplitReturnClaim(IReadOnlyList<Guid> lineIds, IReadOnlyDictionary<Guid, string>? lineStatuses, ReturnClaimStatus claimStatus)
     {
         if (lineStatuses is null || lineIds.Count < 2) return [(WholeCard, lineIds)];
-        string? Status(Guid id) => lineStatuses.TryGetValue(id, out var value) ? value.ToUpperInvariant() : null;
+        var claimWire = Wire(claimStatus);
+        string Status(Guid id) => (lineStatuses.TryGetValue(id, out var value) && !string.IsNullOrWhiteSpace(value) ? value : claimWire).ToUpperInvariant();
         var accepted = lineIds.Where(id => Status(id) is "APPROVED" or "COMPLETED").ToList();
-        var waiting = lineIds.Where(id => string.IsNullOrEmpty(Status(id)) || Status(id) == "ACTION_REQUIRED").ToList();
-        return accepted.Count == 0 || waiting.Count == 0 ? [(WholeCard, lineIds)] : [(WaitingCard, waiting), (ApprovedCard, accepted)];
+        var waiting = lineIds.Where(id => Status(id) == "ACTION_REQUIRED").ToList();
+        return accepted.Count == 0 || waiting.Count == 0 ? [(WholeCard, lineIds)] : [(WaitingCard, lineIds.Except(accepted).ToList()), (ApprovedCard, accepted)];
     }
 
     // The status SplitReturnClaim reads for a line (ScanReturnCardsAsync): the canonical status of a raw status that is not
-    // blank, else none.
+    // blank, else none (the line then takes its claim's).
     private static string? SplitLineStatus(string? rawStatus) =>
         string.IsNullOrWhiteSpace(rawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(rawStatus)).ToUpperInvariant();
 
     // SIPARIS-STOK-9: a claim splits only when one of its lines reads as accepted and another as still waiting, so a claim
-    // without both kinds of raw status is one whole card and its lines need not be read for the list.
+    // without both kinds of status is one whole card and its lines need not be read for the list. These read a raw status
+    // that is not blank; a blank one takes its claim's status (MaySplitReturnClaim).
     internal static bool IsAcceptedSplitLineStatus(string? rawStatus) => SplitLineStatus(rawStatus) is "APPROVED" or "COMPLETED";
 
-    internal static bool IsWaitingSplitLineStatus(string? rawStatus) => SplitLineStatus(rawStatus) is null or "ACTION_REQUIRED";
+    internal static bool IsWaitingSplitLineStatus(string? rawStatus) => SplitLineStatus(rawStatus) is "ACTION_REQUIRED";
 
-    internal static bool MaySplitReturnClaim(IEnumerable<string?> rawStatuses)
+    internal static bool IsBlankSplitLineStatus(string? rawStatus) => string.IsNullOrWhiteSpace(rawStatus);
+
+    internal static bool MaySplitReturnClaim(IEnumerable<string?> rawStatuses, ReturnClaimStatus claimStatus)
     {
         var statuses = rawStatuses.ToList();
-        return statuses.Any(IsAcceptedSplitLineStatus) && statuses.Any(IsWaitingSplitLineStatus);
+        var blank = statuses.Any(IsBlankSplitLineStatus);
+        return (statuses.Any(IsAcceptedSplitLineStatus) || blank && claimStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed)
+            && (statuses.Any(IsWaitingSplitLineStatus) || blank && claimStatus == ReturnClaimStatus.ActionRequired);
     }
 
     internal static string ReturnReasonKey(string? reasonCode, string? reasonText) =>
@@ -216,7 +231,7 @@ internal sealed partial class ReturnQueryService
                 .ToLookup(x => x.ClaimId, x => x.RawStatus);
         var lineClaimIds = withLineIds ? claimIds
             : columnsFresh ? rows.Where(x => x.CardSplit == true).Select(x => x.Id).ToArray()
-            : claimIds.Where(id => MaySplitReturnClaim(rawStatuses[id])).ToArray();
+            : rows.Where(row => MaySplitReturnClaim(rawStatuses[row.Id], row.Status)).Select(row => row.Id).ToArray();
         List<ReturnCardLine> lines = lineClaimIds.Length == 0
             ? []
             : await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && lineClaimIds.Contains(x.ClaimId))
@@ -247,7 +262,7 @@ internal sealed partial class ReturnQueryService
             var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
                 .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
             var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList(), row.ExchangeMade);
-            foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
+            foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses, row.Status))
                 cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }
         return cards;

@@ -17,22 +17,46 @@ public sealed class ReturnListCardTests
     public void A_claim_with_accepted_and_waiting_lines_is_a_waiting_card_then_an_approved_card()
     {
         var cards = ReturnQueryService.SplitReturnClaim([First, Second, Third],
-            new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "ACTION_REQUIRED" });
+            new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "ACTION_REQUIRED" }, ReturnClaimStatus.ActionRequired);
 
         Assert.Equal([ReturnQueryService.WaitingCard, ReturnQueryService.ApprovedCard], cards.Select(card => card.Kind));
-        // A line without a status still waits for the seller.
+        // A line without a status takes its claim's: this claim waits for the seller.
         Assert.Equal([Second, Third], cards[0].LineIds);
         Assert.Equal([First], cards[1].LineIds);
+    }
+
+    // Scan 25 Nov 2026 C-3: a split claim's rejected or still travelling line was on neither card (lost from the page and
+    // its search), and a line without a status counted as waiting even on an approved claim.
+    [Fact]
+    public void A_split_claim_keeps_its_other_lines_on_the_first_card_and_a_blank_line_takes_the_claim_status()
+    {
+        var cards = ReturnQueryService.SplitReturnClaim([First, Second, Third],
+            new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "ACTION_REQUIRED", [Third] = "REJECTED" }, ReturnClaimStatus.ActionRequired);
+        Assert.Equal([Second, Third], cards[0].LineIds);
+        Assert.Equal([First], cards[1].LineIds);
+
+        // On an approved claim a blank line is accepted with it.
+        var approved = ReturnQueryService.SplitReturnClaim([First, Second, Third],
+            new Dictionary<Guid, string> { [Second] = "ACTION_REQUIRED", [Third] = "IN_TRANSIT" }, ReturnClaimStatus.Approved);
+        Assert.Equal([Second, Third], approved[0].LineIds);
+        Assert.Equal([First], approved[1].LineIds);
+        // On an in-transit claim a blank line neither waits nor is accepted: no split.
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED" }, ReturnClaimStatus.InTransit));
+
+        // The split check the list and the card columns read agrees.
+        Assert.True(ReturnQueryService.MaySplitReturnClaim([null, "WaitingInAction"], ReturnClaimStatus.Approved));
+        Assert.False(ReturnQueryService.MaySplitReturnClaim(["Accepted", null], ReturnClaimStatus.InTransit));
+        Assert.True(ReturnQueryService.MaySplitReturnClaim(["Accepted", " "], ReturnClaimStatus.ActionRequired));
     }
 
     [Fact]
     public void A_claim_stays_one_card_unless_it_mixes_accepted_and_waiting_lines()
     {
-        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "COMPLETED" }));
-        Assert.Single(ReturnQueryService.SplitReturnClaim([First], new Dictionary<Guid, string> { [First] = "APPROVED" }));
-        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "REJECTED" }));
-        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], null));
-        Assert.Equal(ReturnQueryService.WholeCard, ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string>())[0].Kind);
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "COMPLETED" }, ReturnClaimStatus.ActionRequired));
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First], new Dictionary<Guid, string> { [First] = "APPROVED" }, ReturnClaimStatus.ActionRequired));
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string> { [First] = "APPROVED", [Second] = "REJECTED" }, ReturnClaimStatus.ActionRequired));
+        Assert.Single(ReturnQueryService.SplitReturnClaim([First, Second], null, ReturnClaimStatus.ActionRequired));
+        Assert.Equal(ReturnQueryService.WholeCard, ReturnQueryService.SplitReturnClaim([First, Second], new Dictionary<Guid, string>(), ReturnClaimStatus.ActionRequired)[0].Kind);
     }
 
     [Theory]
