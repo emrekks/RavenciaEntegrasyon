@@ -99,7 +99,7 @@ async function badgeStep() {
   } catch (error) { failures.push('dock count step: ' + String(error.message).split(/\r?\n/)[0]) }
   await context.close()
 }
-// The dock's inner pill (the glide) in every slot, at ease and compact: it keeps 4 px at least from the capsule's inner edge on every side (6 px by design),
+// The dock's inner pill (the glide) in every slot: it keeps 4 px at least from the capsule's inner edge on every side (6 px by design),
 // is never wider than its slot, and is concentric with the capsule's round ends in the first and the last slot.
 async function glideStep() {
   const context = await browser.newContext({ viewport: { width: 360, height: 780 }, locale: 'tr-TR', timezoneId: 'Europe/Istanbul', reducedMotion: 'reduce', hasTouch: true, isMobile: true })
@@ -110,17 +110,29 @@ async function glideStep() {
   try {
     await page.goto(server.origin + '/dashboard')
     await page.locator('.rv-dock').waitFor({ timeout: 15000 })
-    for (const compact of [false, true]) {
-      const bad = await page.evaluate(compactNow => {
-        const layer = document.querySelector('.rv-dock-layer'); if (compactNow) layer.setAttribute('data-compact', ''); else layer.removeAttribute('data-compact')
+    const measure = () => page.evaluate(() => {
+      const dockEl = document.querySelector('.rv-dock'); const slotsEl = [...dockEl.querySelectorAll('.rv-dock-slot')]; const early = []
+      const box = dockEl.getBoundingClientRect()
+      if (Math.abs(box.height - 62) > 0.5) early.push('capsule height ' + box.height.toFixed(1))
+      const iconY = slotsEl.map(slotEl => { const r = slotEl.querySelector('.ui-icon').getBoundingClientRect(); return r.top + r.height / 2 })
+      const labelY = slotsEl.map(slotEl => slotEl.querySelector('.rv-dock-label').getBoundingClientRect().bottom)
+      if (Math.max(...iconY) - Math.min(...iconY) > 0.5) early.push('icons not on one line ' + iconY.map(v => v.toFixed(1)).join('/'))
+      if (Math.max(...labelY) - Math.min(...labelY) > 0.5) early.push('labels not on one baseline ' + labelY.map(v => v.toFixed(1)).join('/'))
+      slotsEl.forEach((slotEl, i) => {
+        const icon = slotEl.querySelector('.ui-icon').getBoundingClientRect(); const text = slotEl.querySelector('.rv-dock-label').getBoundingClientRect(); const slotBox = slotEl.getBoundingClientRect()
+        if (Math.abs(icon.width - 22) > 0.5 || Math.abs(icon.height - 22) > 0.5) early.push(i + ' icon size ' + icon.width.toFixed(1))
+        if (text.height < 11 || text.width > slotBox.width - 4) early.push(i + ' label cut ' + text.width.toFixed(1) + '/' + slotBox.width.toFixed(1) + '/' + text.height.toFixed(1))
+      })
+      return early
+    })
+      const bad = await page.evaluate(() => {
         const dockEl = document.querySelector('.rv-dock'); const slotsEl = [...dockEl.querySelectorAll('.rv-dock-slot')]; const early = []
         for (const label of ['5', '26', '99+']) {
           slotsEl.forEach((slotEl, i) => {
             let badge = slotEl.querySelector('.rv-dock-badge'); if (!badge) { badge = document.createElement('span'); badge.className = 'rv-dock-badge'; slotEl.querySelector('.rv-dock-icon').append(badge) } badge.textContent = label
-            const box = dockEl.getBoundingClientRect(); const slotBox = slotEl.getBoundingClientRect(); const icon = slotEl.querySelector('.ui-icon').getBoundingClientRect(); const b = badge.getBoundingClientRect(); const text = slotEl.querySelector('.rv-dock-label').getBoundingClientRect()
-            const mode = (compactNow ? 'compact ' : 'ease ') + i + ' ' + label
+            const box = dockEl.getBoundingClientRect(); const slotBox = slotEl.getBoundingClientRect(); const icon = slotEl.querySelector('.ui-icon').getBoundingClientRect(); const b = badge.getBoundingClientRect()
+            const mode = i + ' ' + label
             if (Math.abs(icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)) > 0.5) early.push(mode + ' icon not centred in x ' + (icon.left + icon.width / 2 - (slotBox.left + slotBox.width / 2)).toFixed(2))
-            if (compactNow ? Math.abs(icon.top + icon.height / 2 - (slotBox.top + slotBox.height / 2)) > 0.5 : Math.abs((icon.top - slotBox.top) - (slotBox.bottom - text.bottom)) > 0.5) early.push(mode + ' icon not centred in y')
             if (b.top - box.top - 1.5 < 5 || box.right - b.right - 1.5 < 5) early.push(mode + ' count too near the capsule edge ' + (b.top - box.top - 1.5).toFixed(1) + '/' + (box.right - b.right - 1.5).toFixed(1))
           })
         }
@@ -129,17 +141,18 @@ async function glideStep() {
           dock.style.setProperty('--rv-dock-i', String(index))
           const box = dock.getBoundingClientRect(); const pill = glide.getBoundingClientRect(); const slot = dock.querySelectorAll('.rv-dock-slot')[index].getBoundingClientRect()
           const gaps = [pill.left - box.left, box.right - pill.right, pill.top - box.top, box.bottom - pill.bottom]
-          if (Math.min(...gaps) < 4) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
-          if (pill.width > slot.width - 3.5 || pill.left < slot.left + 1.5 || pill.right > slot.right - 1.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
-          const label = dock.querySelectorAll('.rv-dock-slot')[index].querySelector('.rv-dock-label').getBoundingClientRect()
-          if (!compactNow && (label.width > slot.width - 4 || label.height < 11)) problems.push('ease ' + index + ' label cut ' + label.width.toFixed(1) + '/' + slot.width.toFixed(1) + '/' + label.height.toFixed(1))
-          if (compactNow && label.height > 0.5) problems.push('compact ' + index + ' label still shown')
-          if ((index === 0 || index === 4) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push((compactNow ? 'compact ' : 'ease ') + index + ' not concentric')
+          if (Math.min(...gaps) < 4) problems.push(index + ' gap ' + gaps.map(g => g.toFixed(1)).join('/'))
+          if (pill.width > slot.width - 3.5 || pill.left < slot.left + 1.5 || pill.right > slot.right - 1.5) problems.push(index + ' pill outside its slot ' + [pill.left - slot.left, slot.right - pill.right, pill.width, slot.width].map(v => v.toFixed(2)).join('/'))
+          if ((index === 0 || index === 4) && Math.abs((index === 0 ? gaps[0] : gaps[1]) - gaps[2]) > 0.5) problems.push(index + ' not concentric')
         }
         return problems
-      }, compact)
+      })
       for (const item of bad) failures.push('dock pill: ' + item)
-    }
+      for (const item of await measure()) failures.push('dock still: ' + item)
+      // Scrolled down: the capsule, its icons and its labels are exactly the same (the dock has one size).
+      for (let step = 0; step < 14; step += 1) { await page.mouse.wheel(0, 120); await page.waitForTimeout(40) }
+      await page.waitForTimeout(500)
+      for (const item of await measure()) failures.push('dock scrolled: ' + item)
   } catch (error) { failures.push('dock pill step: ' + String(error.message).split(String.fromCharCode(10))[0]) }
   await context.close()
 }
