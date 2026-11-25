@@ -27,10 +27,35 @@ public sealed class RoleAuthorizationMiddlewareTests
         Assert.NotEqual((int)HttpStatusCode.Forbidden, context.Response.StatusCode);
     }
 
+    // Scan 25 Nov 2026 (D-7): without a signed-in session the gate answers 401 AUTHENTICATION_REQUIRED (the panel asks
+    // to sign in again), never 403 "no permission"; the request still goes no further.
     [Fact]
-    public async Task UnauthenticatedMutationOutsideWebhook_RemainsForbidden()
+    public async Task UnauthenticatedMutationOutsideWebhook_IsRefusedAsSignedOut()
     {
         var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Path = "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process";
+        var called = false;
+        var middleware = new RoleAuthorizationMiddleware(_ =>
+        {
+            called = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.False(called);
+        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        Assert.Contains("\"AUTHENTICATION_REQUIRED\"", await new StreamReader(context.Response.Body).ReadToEndAsync());
+    }
+
+    // A signed-in caller whose session carries no role that passes (no membership) is still refused as forbidden.
+    [Fact]
+    public async Task SignedInCallerWithoutAPassingRole_RemainsForbidden()
+    {
+        var context = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "u1")], "ServerSession")) };
         context.Request.Method = HttpMethods.Post;
         context.Request.Path = "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process";
         var called = false;

@@ -1,0 +1,5 @@
+/* Oturum Doldu (SessionExpiredDialog): closed only by signing in again or "Çıkış Yap" (RrModal closeButton={false}). */
+.rr-layer.rr-layer .rv-session-expired .rv-session-expired-form { display: grid; gap: 12px; }
+.rr-layer.rr-layer .rv-session-expired .rv-session-expired-form p { margin: 0; color: var(--rr-muted); line-height: 1.5; }
+.rr-layer.rr-layer .rv-session-expired input.rr-in { height: 36px; min-height: 0; }
+.rr-layer.rr-layer .rv-session-expired input.rr-in[readonly] { color: var(--rr-muted); background: var(--rr-soft); }

@@ -13,6 +13,43 @@ namespace MarketplaceHub.Application.Tests;
 [Collection("postgres-integration")]
 public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsolationFixture fixture) : IClassFixture<PostgreSqlTenantIsolationFixture>
 {
+    // Scan 25 Nov 2026 C-6: one package that cannot be invoiced no longer fails a preview of several with 422; it is a
+    // blocked row with its reason and the confirmation never sends it.
+    [PostgreSqlFact]
+    public async Task APreviewOfSeveralPackagesShowsTheOneThatCannotBeInvoicedAsABlockedRow()
+    {
+        var seed = NewSeed("c6-preview", gross: 300m, discount: 0m);
+        var line = NewLine(seed, "Tam iade ürünü", 3m, 100m);
+        var claim = NewClaim(seed, ReturnClaimStatus.Approved, "Accepted");
+        await SeedAsync(seed, db =>
+        {
+            db.OrderLines.Add(line);
+            db.ReturnClaims.Add(claim);
+            db.ReturnLines.Add(NewReturnLine(seed, claim, line, 3m, "Accepted"));
+        });
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var missing = Guid.CreateVersion7();
+            var preview = await NewBillingService(db).PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id), new(missing, Guid.CreateVersion7(), seed.Provider.Id)], true), CancellationToken.None);
+
+            Assert.True(preview.Succeeded, preview.Error?.Message);
+            Assert.Equal(2, preview.Value!.Count);
+            var returned = preview.Value[0];
+            Assert.False(returned.CanConfirm);
+            Assert.Equal("Tüm ürünler iade edildi, fatura kesilmez.", returned.BlockedReason);
+            Assert.Equal(seed.Order.OrderNumber, returned.OrderNumber);
+            Assert.Empty(returned.Lines);
+            Assert.False(preview.Value[1].CanConfirm);
+            Assert.False(string.IsNullOrWhiteSpace(preview.Value[1].BlockedReason));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task AnOrderEveryUnitOfWhichCameBackGetsNoSaleInvoiceAndLeavesTheListsOfWork()
     {

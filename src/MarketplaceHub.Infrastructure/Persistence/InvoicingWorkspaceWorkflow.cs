@@ -26,10 +26,32 @@ public sealed partial class InvoicingBillingService
         foreach (var target in request.Items)
         {
             var result = await BuildWorkspacePreviewAsync(tenantId, target, request.IncludeInternetSalesInfo, cancellationToken);
-            if (!result.Succeeded) return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Fail(result.Error!.Code, result.Error.Message, result.Error.Status, result.Error.FieldErrors);
-            items.Add(result.Value!);
+            // One package asked for: its refusal is the answer. Several: a package that cannot be previewed is a blocked row
+            // with its reason, and the others stay previewable (scan 25 Nov 2026 C-6: one bad package failed the whole
+            // preview with 422).
+            if (!result.Succeeded && request.Items.Count == 1)
+                return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Fail(result.Error!.Code, result.Error.Message, result.Error.Status, result.Error.FieldErrors);
+            items.Add(result.Succeeded ? result.Value! : await BlockedWorkspacePreviewAsync(tenantId, target, result.Error!, cancellationToken));
         }
         return ServiceResult<IReadOnlyList<InvoiceWorkspacePreviewItem>>.Ok(items);
+    }
+
+    // A preview row for a package that cannot be invoiced now: no lines, no totals, CanConfirm false and the refusal as its
+    // reason, so the confirmation never sends it. Only the order's number and marketplace are read, for the row's heading.
+    private async Task<InvoiceWorkspacePreviewItem> BlockedWorkspacePreviewAsync(Guid tenantId, InvoiceWorkspacePreviewTarget target, ServiceError error, CancellationToken cancellationToken)
+    {
+        var order = await db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId && order.Id == target.OrderId)
+            .Select(order => new
+            {
+                order.OrderNumber,
+                order.Currency,
+                Platform = db.PlatformConnections.Where(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId)
+                    .Select(connection => new { connection.PlatformCode, connection.DisplayName }).FirstOrDefault()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        return new InvoiceWorkspacePreviewItem(target.OrderId, target.PackageId, target.ProviderConnectionId, order?.OrderNumber ?? "—",
+            order?.Platform?.PlatformCode ?? "", order?.Platform?.DisplayName ?? "", "", "", "", "", "{}", "", string.IsNullOrWhiteSpace(order?.Currency) ? "TRY" : order.Currency,
+            0m, 0m, 0m, 0m, [], false, error.Message, "", null, null, null);
     }
 
     public async Task<ServiceResult<InvoiceWorkspaceConfirmResult>> ConfirmWorkspaceInvoicesAsync(
@@ -757,53 +779,10 @@ public sealed partial class InvoicingBillingService
         return ServiceResult<bool>.Ok(true);
     }
 
-    private static string ReadTaxIdentity(string customerJson, string addressJson)
-    {
-        foreach (var json in new[] { addressJson, customerJson })
-        {
-            try
-            {
-                using var document = JsonDocument.Parse(json);
-                var value = Find(document.RootElement, 0);
-                if (!string.IsNullOrWhiteSpace(value)) return new string(value.Where(char.IsAsciiDigit).ToArray());
-            }
-            catch (JsonException) { }
-        }
-        return "—";
-
-        static string? Find(JsonElement node, int depth)
-        {
-            if (depth > 6) return null;
-            if (node.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var property in node.EnumerateObject())
-                {
-                    if (property.Name.Equals("taxNumber", StringComparison.OrdinalIgnoreCase)
-                        || property.Name.Equals("taxId", StringComparison.OrdinalIgnoreCase)
-                        || property.Name.Equals("taxIdentityNumber", StringComparison.OrdinalIgnoreCase)
-                        || property.Name.Equals("identityNumber", StringComparison.OrdinalIgnoreCase)
-                        || property.Name.Equals("nationalId", StringComparison.OrdinalIgnoreCase)
-                        || property.Name.Equals("vkn", StringComparison.OrdinalIgnoreCase)
-                        || property.Name.Equals("tckn", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var candidate = property.Value.ValueKind == JsonValueKind.String ? property.Value.GetString() : property.Value.ToString();
-                        if (!string.IsNullOrWhiteSpace(candidate)) return candidate;
-                    }
-                    var nested = Find(property.Value, depth + 1);
-                    if (nested is not null) return nested;
-                }
-            }
-            else if (node.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in node.EnumerateArray())
-                {
-                    var nested = Find(item, depth + 1);
-                    if (nested is not null) return nested;
-                }
-            }
-            return null;
-        }
-    }
+    // The number the invoice itself carries (TrendyolEFaturamCanonicalPayload.RecipientTaxId, one key list; scan 25 Nov
+    // 2026 C-6: the preview read its own list and could show another field than the invoice used).
+    internal static string ReadTaxIdentity(string customerJson, string addressJson) =>
+        TrendyolEFaturamCanonicalPayload.RecipientTaxId(customerJson, addressJson) is { Length: > 0 } taxId ? taxId : "—";
 
     private static bool FixedDigestEquals(string first, string second)
     {

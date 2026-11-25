@@ -3,17 +3,15 @@
 import type { NotificationDetail } from '../../../shared/notifications'
 import type { MarketplaceConnection, Product } from '../shared'
 import { bulkPublishPlatformName } from './bulk-publish-status'
+import { productFamilyKey } from './product-family-key'
 
 export type BulkPublicationFailure = { productId: string; productTitle: string; connectionId: string; code: string; message: string }
 /** jobs: what was queued (the server names each job), so the result can be followed. */
 export type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[]; jobs?: Array<{ productId: string; connectionId: string; jobId: string }> | null }
 
-type FamilyRecord = Pick<Product, 'id' | 'modelCode' | 'variants'>
+type FamilyRecord = Pick<Product, 'id' | 'modelCode' | 'variants'> & Partial<Pick<Product, 'brandId' | 'familyKey'>>
 
-function familyKey(record: FamilyRecord | undefined, id: string) {
-  const modelCode = record?.modelCode?.trim() || record?.variants.map(variant => variant.modelCode?.trim()).find(Boolean)
-  return modelCode ? `model:${modelCode.toLocaleUpperCase('tr-TR')}` : `product:${id}`
-}
+const familyKey = (record: FamilyRecord | undefined, id: string) => productFamilyKey(record, id)
 
 // The selection in slices of about `size` records. The colour cards of one model family stay in one slice: PttAVM and
 // Shopify send a family as one product, and the server counts a sibling it adds as selected only when it is in the

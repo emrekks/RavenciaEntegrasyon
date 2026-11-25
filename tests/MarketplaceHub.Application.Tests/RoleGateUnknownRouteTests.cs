@@ -26,7 +26,8 @@ public sealed class RoleGateUnknownRouteTests
 [Collection("postgres-integration")]
 public sealed class RoleGateUnknownRouteEndToEndTests(ApiEndToEndFixture fixture) : IClassFixture<ApiEndToEndFixture>
 {
-    // A caller without a session gets the same 403 for an unknown write as for a known one: the answer tells it nothing.
+    // A caller without a session gets the same answer for an unknown write as for a known one, which tells it nothing:
+    // 401 AUTHENTICATION_REQUIRED (scan 25 Nov 2026, D-7; it was 403).
     [PostgreSqlFact]
     public async Task AWriteToAnUnknownRouteAnswersLikeAKnownOneWithoutASession()
     {
@@ -35,8 +36,8 @@ public sealed class RoleGateUnknownRouteEndToEndTests(ApiEndToEndFixture fixture
         foreach (var path in new[] { "/api/v1/no-such-area/items", "/api/v1/billing/invoices", "/api/v1/settings/appearance" })
         {
             using var response = await anonymous.SendAsync(ApiTestHost.Json(HttpMethod.Post, path, token, new { }));
-            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-            Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(response)).GetProperty("code").GetString());
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            Assert.Equal("AUTHENTICATION_REQUIRED", (await ApiTestHost.ProblemAsync(response)).GetProperty("code").GetString());
         }
 
         var (client, csrf, signIn) = await fixture.SignInAsync(MembershipRole.Accounting, ownNetwork: true);

@@ -73,3 +73,10 @@ export function panelResetStepLabel(step: string, state: PanelResetStepState) {
   for (const [present, done, failed] of stepEndings) if (step.endsWith(present)) return step.slice(0, -present.length) + (state === 'done' ? done : failed)
   return step
 }
+
+// The server refuses a reset while another one is queued or running (409 PANEL_RESET_ALREADY_RUNNING, scan 25 Nov
+// 2026, D-5): the page says so, keeps the choice and reads the running one's progress again.
+export const panelResetAlreadyRunningMessage = 'Zaten süren bir sıfırlama var; yenisini o bittikten sonra başlatın. Seçiminiz korunuyor; ilerlemesi Sıfırlama İlerlemesi bölümünde.'
+export function panelResetAlreadyRunning(error: unknown) {
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'PANEL_RESET_ALREADY_RUNNING'
+}

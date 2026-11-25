@@ -40,11 +40,20 @@ public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases
             catch (Exception exception) when (exception is System.Text.Json.JsonException or ArgumentException or InvalidOperationException)
             { result = JobExecutionResult.Blocked("INVALID_JOB_STATE", $"İşlem verisi veya mevcut durum doğrulaması başarısız oldu. ({exception.GetType().Name}: {exception.Message.ReplaceLineEndings(" ")})"); }
             catch (Exception) { result = JobExecutionResult.Retry("INLINE_EXECUTION_FAILED", "Geçici bir hata oluştu; işlem otomatik olarak yeniden denenecek."); }
+            // The provider usually accepts an e-archive invoice within seconds; poll the read-only status check here instead
+            // of leaving it for the worker's slow retry. The poll runs while this call still holds the job's lease (scan
+            // 25 Nov 2026 C-6: it used to run after the job was handed back, beside a worker that could lease it too).
+            if (result.Kind == JobCompletionKind.Retry && result.ErrorCode == "INVOICE_REMOTE_PENDING" && leased.JobType == InvoicingJobTypes.InvoiceReconcile)
+            {
+                try { result = await PollPendingAsync(leased, result, deadline, cancellationToken); }
+                catch (OperationCanceledException)
+                {
+                    await leases.CompleteAsync(leased.Id, leased.LeaseToken, result, CancellationToken.None);
+                    throw;
+                }
+            }
             // The step ran (an invoice may have been cut): its outcome is recorded whatever happens to the request.
             await leases.CompleteAsync(leased.Id, leased.LeaseToken, result, CancellationToken.None);
-            // The provider usually accepts an e-archive invoice within seconds; poll the read-only status check here instead of leaving it for the worker's slow retry.
-            if (result.Kind == JobCompletionKind.Retry && result.ErrorCode == "INVOICE_REMOTE_PENDING" && leased.JobType == InvoicingJobTypes.InvoiceReconcile)
-                result = await PollPendingAsync(leased, result, deadline, cancellationToken);
             if (!result.Succeeded) return await DescribeAsync(tenantId, invoiceId, result, cancellationToken);
             if (timeProvider.GetUtcNow() >= deadline) break;
 
@@ -103,14 +112,25 @@ public sealed class InvoiceInlineRunner(AppDbContext db, IJobLeaseService leases
             return new(retrying ? "IN_PROGRESS" : "FAILED", retrying ? $"{message} Otomatik olarak yeniden denenecek." : message, code);
         }
         if (invoice is null) return new("IN_PROGRESS", "Fatura işlemi sürüyor.");
-        var number = string.IsNullOrWhiteSpace(invoice.InvoiceNumber) ? "" : $" ({invoice.InvoiceNumber})";
-        return invoice.Status switch
+        return Describe(invoice.Status, invoice.LastErrorCode, invoice.InvoiceNumber);
+    }
+
+    // Scan 25 Nov 2026 C-6: a lost provider answer (UnknownResult) is not a failure, the invoice may exist at the provider,
+    // so it reads SONUÇ BELİRSİZ and is followed like one still going; a Submitted invoice was sent, not yet accepted.
+    internal const string UnknownResultStatus = "UNKNOWN_RESULT";
+
+    internal static InlineInvoiceOutcome Describe(InvoiceStatus status, string? lastErrorCode, string? invoiceNumber)
+    {
+        var number = string.IsNullOrWhiteSpace(invoiceNumber) ? "" : $" ({invoiceNumber})";
+        return status switch
         {
             InvoiceStatus.Completed => new("COMPLETED", $"Fatura kesildi ve pazaryerine iletildi{number}."),
-            InvoiceStatus.Accepted or InvoiceStatus.Submitted => new("COMPLETED", $"Fatura E-Faturam tarafından kabul edildi{number}; pazaryeri iletimi sürüyor."),
+            InvoiceStatus.Accepted => new("COMPLETED", $"Fatura E-Faturam tarafından kabul edildi{number}; pazaryeri iletimi sürüyor."),
+            InvoiceStatus.Submitted => new("IN_PROGRESS", $"Fatura E-Faturam'a gönderildi{number}; sonucu bekleniyor."),
             InvoiceStatus.MarketplacePending => new("COMPLETED", $"Fatura kesildi{number}; pazaryerine iletim sürüyor."),
-            InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.MarketplaceFailed or InvoiceStatus.ManualReview or InvoiceStatus.UnknownResult =>
-                new("FAILED", invoice.LastErrorCode is { Length: > 0 } code ? code : "Fatura işlemi tamamlanamadı; ayrıntı için fatura kaydına bakın.", invoice.LastErrorCode),
+            InvoiceStatus.UnknownResult => new(UnknownResultStatus, "Sonuç belirsiz: E-Faturam'ın cevabı alınamadı; fatura sağlayıcıda oluşmuş olabilir, kontrol edilmeden yeniden kesilmez.", lastErrorCode),
+            InvoiceStatus.Rejected or InvoiceStatus.ValidationFailed or InvoiceStatus.MarketplaceFailed or InvoiceStatus.ManualReview =>
+                new("FAILED", lastErrorCode is { Length: > 0 } code ? code : "Fatura işlemi tamamlanamadı; ayrıntı için fatura kaydına bakın.", lastErrorCode),
             _ => new("IN_PROGRESS", "Fatura işlemi sürüyor; sonuç birazdan güncellenecek.")
         };
     }

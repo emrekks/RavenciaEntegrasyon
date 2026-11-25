@@ -199,8 +199,15 @@ export function UserManagementSection({ mfa }: { mfa: boolean }) {
       </form>}
     </RrModal>}
 
-    <Modal open={!!oneTime} title={oneTime?.title ?? ''} description={oneTime?.email ?? undefined} className="ss-modal is-sm" onClose={() => setOneTime(null)} footer={<><button type="button" className="ss-btn is-quiet" onClick={() => void copyOneTime()}><SettingsIcon name="copy" />Kopyala</button><span className="ss-modal-note" /><button type="button" className="ss-btn is-primary" onClick={() => setOneTime(null)}>Parolayı Not Aldım</button></>}>
-      {oneTime && <><div className="ss-codes ss-users-otp"><code>{oneTime.password}</code></div><div className="ss-callout is-warn"><SettingsIcon name="alert" /><span><b>Bu parola yalnız şimdi gösterilir.</b> Kullanıcıya güvenli bir yoldan iletin; ilk girişte kendi parolasını belirlemesi istenir.</span></div></>}
-    </Modal>
+    <OneTimePasswordModal oneTime={oneTime} onCopy={() => void copyOneTime()} onClose={() => setOneTime(null)} />
   </>
+}
+
+// The one-time password is shown once: Escape, the backdrop and X do not close it, only “Parolayı Not Aldım” does
+// (scan 25 Nov 2026, D-5; as the MFA recovery codes' “Kodları Sakladım”).
+export function OneTimePasswordModal({ oneTime, onCopy, onClose }: { oneTime: OneTimePassword | null; onCopy: () => void; onClose: () => void }) {
+  const [note, setNote] = useState('')
+  return <Modal open={!!oneTime} title={oneTime?.title ?? ''} description={oneTime?.email ?? undefined} className="ss-modal is-sm" onClose={() => setNote('Parolayı not aldıktan sonra “Parolayı Not Aldım” ile kapatın; bu parola yeniden gösterilmez.')} footer={<><button type="button" className="ss-btn is-quiet" onClick={onCopy}><SettingsIcon name="copy" />Kopyala</button><span className="ss-modal-note" /><button type="button" className="ss-btn is-primary" onClick={() => { setNote(''); onClose() }}>Parolayı Not Aldım</button></>}>
+    {oneTime && <><div className="ss-codes ss-users-otp"><code>{oneTime.password}</code></div><div className="ss-callout is-warn"><SettingsIcon name="alert" /><span><b>Bu parola yalnız şimdi gösterilir.</b> Kullanıcıya güvenli bir yoldan iletin; ilk girişte kendi parolasını belirlemesi istenir.</span></div>{note && <span className="ss-ferr" role="alert"><SettingsGlyph state="bad" />{note}</span>}</>}
+  </Modal>
 }

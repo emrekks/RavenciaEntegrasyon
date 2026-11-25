@@ -14,6 +14,12 @@ vi.mock('@microsoft/signalr', () => {
   }
   return { HttpError, HubConnectionBuilder, LogLevel: { Warning: 3 } }
 })
+// The page is never really reloaded in jsdom: leaving for another account is counted, its clean-up still runs.
+const leaving = vi.hoisted(() => ({ count: 0 }))
+vi.mock('../shared/query-snapshot', async importOriginal => {
+  const actual = await importOriginal<typeof import('../shared/query-snapshot')>()
+  return { ...actual, leaveForAnotherAccount: vi.fn((client: import('@tanstack/react-query').QueryClient) => { actual.clearQuerySnapshot(); client.clear(); leaving.count++ }) }
+})
 vi.mock('../features/dashboard/DashboardPage', () => ({ DashboardPage: () => <h1>Genel bakış ekranı</h1> }))
 
 import { App } from './App'
@@ -42,7 +48,7 @@ beforeEach(() => {
     return reply(server.hub(url))
   }))
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear() })
+afterEach(async () => { cleanup(); vi.unstubAllGlobals(); sessionStorage.clear(); (await import('../shared/api')).setSessionHold(false) })
 
 function mount(path = '/dashboard', prepare?: (client: QueryClient) => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -331,16 +337,100 @@ describe('the Bekleyen count on the Siparişler page (W2)', () => {
 })
 
 describe('a session that ends while the panel is open', () => {
-  it('swaps the workspace for the sign-in screen with a note instead of retrying forever', async () => {
+  // Scan 25 Nov 2026 (D-7): the workspace used to give way to the sign-in screen, and every unsaved edit went with it.
+  // It now stays where it is (not mounted afresh) behind a window that signs in again and continues the work.
+  it('keeps the workspace behind an Oturum Doldu window and continues it after signing in again', async () => {
     server.me = [{ status: 200, body: active }]
     const { host } = mount()
-    await waitFor(() => shell(host))
-    server.hub = () => ({ status: 401, body: { title: 'Oturum gerekli.' } })
+    const workspace = await waitFor(() => shell(host))
+    // Something typed into the open page, not saved: it is only in the page's memory.
+    const draft = document.createElement('input')
+    workspace.append(draft)
+    draft.value = 'kaydedilmemiş not'
+    server.hub = () => ({ status: 401, body: { code: 'AUTHENTICATION_REQUIRED', title: 'Oturumunuz sona erdi; yeniden giriş yapın.' } })
     const { hubApi } = await import('../shared/api')
     await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
-    await waitFor(() => host.querySelector('#login-email'))
-    expect(shell(host)).toBeNull()
-    expect(host.textContent).toContain('Oturumunuzun süresi doldu')
+    const dialog = await waitFor(() => document.querySelector<HTMLElement>('.rv-session-expired'))
+    expect(dialog.textContent).toContain('Oturum doldu, yeniden giriş yapın')
+    expect(host.querySelector('#login-email')).toBeNull()
+    expect(shell(host)).toBe(workspace)
+
+    server.hub = () => ({ status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } })
+    dialog.querySelector<HTMLInputElement>('input[name="password"]')!.value = 'test-only-value'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    await waitFor(() => document.querySelector('.rv-session-expired') === null)
+    const login = server.calls.find(call => call.url === '/api/v1/auth/login' && call.method === 'POST')
+    expect(JSON.parse(login!.body!)).toMatchObject({ email: active.email, tenantId: active.tenantId })
+    // the same workspace, with what was typed into it
+    expect(shell(host)).toBe(workspace)
+    expect(draft.value).toBe('kaydedilmemiş not')
+  })
+
+  // Independent review (25 Nov 2026): with the window open the workspace's polls kept asking the API, and an account
+  // another tab signed in meanwhile could have filled it. Nothing goes out until the same person is back.
+  it('sends nothing to the API while the window is open and asks again after signing in', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host, client } = mount('/dashboard', forgetPreviousSession)
+    await waitFor(() => shell(host))
+    server.hub = () => ({ status: 401, body: { code: 'AUTHENTICATION_REQUIRED' } })
+    const { hubApi } = await import('../shared/api')
+    await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
+    const dialog = await waitFor(() => document.querySelector<HTMLElement>('.rv-session-expired'))
+    server.hub = () => ({ status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } })
+    const apiCalls = () => server.calls.filter(call => !call.url.startsWith('/api/v1/auth/')).length
+    const before = apiCalls()
+    await act(async () => { await expect(hubApi('/orders/summary')).rejects.toMatchObject({ status: 401, code: 'AUTHENTICATION_REQUIRED' }) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
+    expect(apiCalls()).toBe(before)
+
+    dialog.querySelector<HTMLInputElement>('input[name="password"]')!.value = 'test-only-value'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    await waitFor(() => document.querySelector('.rv-session-expired') === null)
+    await act(async () => { await hubApi('/orders/summary') })
+    expect(apiCalls()).toBeGreaterThan(before)
+    // the reload snapshot is written again for the resumed session
+    client.setQueryData(['orders', 'summary'], { new: 6 })
+    saveQuerySnapshot(client)
+    expect(sessionStorage.getItem(querySnapshotKey)).not.toBeNull()
+  })
+
+  it('drops everything and loads afresh when another account answers under the held workspace', async () => {
+    leaving.count = 0
+    server.me = [{ status: 200, body: active }]
+    const { host, client } = mount()
+    await waitFor(() => shell(host))
+    client.setQueryData(['orders', 'summary'], { new: 4 })
+    server.hub = () => ({ status: 401, body: { code: 'AUTHENTICATION_REQUIRED' } })
+    const { hubApi } = await import('../shared/api')
+    await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
+    await waitFor(() => document.querySelector('.rv-session-expired'))
+    // another tab signed this browser into another workspace
+    server.me = [{ status: 200, body: { ...active, tenantId: 't2', displayName: 'Başka Mağaza' } }]
+    await act(async () => { await client.refetchQueries({ queryKey: ['me'] }).catch(() => undefined) })
+    await waitFor(() => leaving.count === 1)
+    expect(client.getQueryData(['orders', 'summary'])).toBeUndefined()
+    expect(host.textContent).not.toContain('Başka Mağaza')
+  })
+
+  it('asks for the authenticator code in the same window when the account has one', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount()
+    const workspace = await waitFor(() => shell(host))
+    server.hub = () => ({ status: 401, body: { code: 'AUTHENTICATION_REQUIRED' } })
+    const { hubApi } = await import('../shared/api')
+    await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
+    const dialog = await waitFor(() => document.querySelector<HTMLElement>('.rv-session-expired'))
+    server.hub = () => ({ status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } })
+    server.me = [{ status: 200, body: { ...active, state: 'MFA_CHALLENGE' } }, { status: 200, body: active }]
+    dialog.querySelector<HTMLInputElement>('input[name="password"]')!.value = 'test-only-value'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    const code = await waitFor(() => document.querySelector<HTMLInputElement>('.rv-session-expired input[name="code"]'))
+    expect(shell(host)).toBe(workspace)
+    code.value = '123456'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    await waitFor(() => document.querySelector('.rv-session-expired') === null)
+    expect(server.calls.some(call => call.url === '/api/v1/auth/mfa/challenge')).toBe(true)
+    expect(shell(host)).toBe(workspace)
   })
 
   it('removes the reload snapshot and writes it no more until the next sign-in', async () => {
@@ -354,7 +444,7 @@ describe('a session that ends while the panel is open', () => {
     server.hub = () => ({ status: 401, body: { title: 'Oturum gerekli.' } })
     const { hubApi } = await import('../shared/api')
     await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
-    await waitFor(() => host.querySelector('#login-email'))
+    await waitFor(() => document.querySelector('.rv-session-expired'))
     expect(sessionStorage.getItem(querySnapshotKey)).toBeNull()
     client.setQueryData(['orders', 'summary'], { new: 5 })
     saveQuerySnapshot(client)

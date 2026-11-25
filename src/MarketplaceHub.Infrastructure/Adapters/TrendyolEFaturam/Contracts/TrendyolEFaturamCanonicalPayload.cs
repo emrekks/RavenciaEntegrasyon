@@ -12,7 +12,9 @@ public static class TrendyolEFaturamCanonicalPayload
         try
         {
             using var customer = JsonDocument.Parse(customerSnapshotJson);
-            using var address = JsonDocument.Parse(invoiceAddressSnapshotJson);
+            using var addressSnapshot = JsonDocument.Parse(invoiceAddressSnapshotJson);
+            // The address as the invoice reads it (RecipientTaxIdentity): a snapshot written as a JSON string is unwrapped.
+            using var address = NormalizeAddressSnapshot(addressSnapshot.RootElement);
             return IsCorporateRecipient(customer.RootElement, address.RootElement, taxId);
         }
         catch (JsonException) { return taxId.Length == 10 && taxId.All(char.IsAsciiDigit); }
@@ -94,6 +96,38 @@ public static class TrendyolEFaturamCanonicalPayload
         if (!isCorporate && recipientSurname is null && recipientFirstName is null)
             (recipientName, recipientSurname) = SplitFullName(recipientName);
         return (recipientName, recipientSurname);
+    }
+
+    /// <summary>
+    /// The buyer's tax or identity number as the invoice reads it (the normalized invoice address first, then the customer;
+    /// FindTaxId's keys, as RecipientTaxIdentity), "" when neither holds a valid one. The invoice preview shows this one
+    /// (scan 25 Nov 2026 C-6), so the number on screen is the number the invoice carries.
+    /// </summary>
+    public static string RecipientTaxId(string? customerJson, string? addressJson)
+    {
+        // The address as the invoice reads it: a snapshot written as a JSON string is unwrapped (NormalizeAddressSnapshot).
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(addressJson))
+            {
+                using var addressSnapshot = JsonDocument.Parse(addressJson);
+                using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+                var taxId = FindTaxId(normalizedAddress.RootElement);
+                if (ValidTaxId(taxId)) return taxId;
+            }
+        }
+        catch (JsonException) { }
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(customerJson))
+            {
+                using var customer = JsonDocument.Parse(customerJson);
+                var taxId = FindTaxId(customer.RootElement);
+                if (ValidTaxId(taxId)) return taxId;
+            }
+        }
+        catch (JsonException) { }
+        return "";
     }
 
     private static (string TaxId, bool IsCorporate) RecipientTaxIdentity(JsonElement customer, JsonElement addressRoot, string invoiceType)

@@ -61,4 +61,23 @@ public sealed class ReturnLineDecisionPolicyTests
     {
         Assert.Equal(allowed, ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineStatus));
     }
+
+    // Scan 25 Nov 2026 C-1: Trendyol reports a claim as its first item, so an approved claim does not speak for a line that
+    // reports its own status. A line still on its way, disputed or with a word the panel does not know is no return: it takes
+    // no stock and does not leave the invoice (AcceptedReturnPolicy reads the same rule) until it is approved itself.
+    [Theory]
+    [InlineData(ReturnClaimStatus.Approved, "Created")]
+    [InlineData(ReturnClaimStatus.Approved, "WaitingInCargo")]
+    [InlineData(ReturnClaimStatus.Completed, "InTransit")]
+    [InlineData(ReturnClaimStatus.Approved, "WaitingForShipment")]
+    [InlineData(ReturnClaimStatus.Approved, "Unresolved")]
+    [InlineData(ReturnClaimStatus.Completed, "SomethingNew")]
+    public void A_line_with_its_own_status_that_is_not_approved_takes_nothing_on_an_approved_claim(ReturnClaimStatus claimStatus, string lineStatus)
+    {
+        Assert.False(ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineStatus));
+        Assert.False(AcceptedReturnPolicy.LineCounts(claimStatus, lineStatus));
+        Assert.False(AcceptedReturnPolicy.LineCountsInDatabase.Compile()(new AcceptedReturnPolicy.ClaimLine { ClaimStatus = claimStatus, RawStatus = lineStatus, Quantity = 1m }));
+        // The pending "Stoğa Ekle" waits for the line's own approval instead of applying.
+        Assert.Equal(ReturnPendingStockVerdict.Wait, ReturnPendingStockPolicy.Settle("SUCCEEDED", null, claimStatus, lineStatus));
+    }
 }

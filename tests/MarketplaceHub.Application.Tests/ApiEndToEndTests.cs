@@ -181,8 +181,9 @@ public sealed class ApiPipelineTests(ApiPipelineHost fixture) : IClassFixture<Ap
 
         using var response = await client.SendAsync(request);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(response)).GetProperty("code").GetString());
+        // Signed out, not forbidden (scan 25 Nov 2026, D-7): the panel asks to sign in again.
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("AUTHENTICATION_REQUIRED", (await ApiTestHost.ProblemAsync(response)).GetProperty("code").GetString());
     }
 
     // Without a session an auth read is "signed out" (the panel shows the sign-in screen), not "forbidden".
