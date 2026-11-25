@@ -36,6 +36,7 @@ public sealed class WorkerLaneStartupTests(ITestOutputHelper output)
         var queued = new System.Collections.Concurrent.ConcurrentDictionary<string, int> { ["returns-read"] = 1, ["hepsiburada-status"] = 1 };
         TimeSpan? returnLeasedAt = null;
         var polls = 0;
+        var borrowPolls = 0;
         var wakes = 0;
         using var stopping = new CancellationTokenSource();
         Task Slot(string lane, bool own) => WorkerService.RunSlotAsync(own ? router.SignalFor(lane) : router.BorrowSignalFor(lane),
@@ -45,6 +46,7 @@ public sealed class WorkerLaneStartupTests(ITestOutputHelper output)
                 return WorkerService.LeaseThroughPoolAsync(pool, lane, own, async () =>
                 {
                     Interlocked.Increment(ref polls);
+                    if (!own) Interlocked.Increment(ref borrowPolls);
                     await Task.Yield();
                     var found = queued.TryGetValue(lane, out var count) && count > 0 && queued.TryUpdate(lane, count - 1, count);
                     return found ? new LeasedJob(Guid.NewGuid(), Guid.NewGuid(), null, "TEST", "{}", "test", "lease-token") : null;
@@ -87,13 +89,16 @@ public sealed class WorkerLaneStartupTests(ITestOutputHelper output)
 
             // Idle: one simulated minute after the first one. Only the own slots poll the queue, each at most every 15 s once
             // its idle wait has grown (20 slots: 80 polls a minute); a borrowing slot of a lane whose poll found nothing wakes
-            // on its idle timer and asks the pool, not the database.
+            // on its idle timer and asks the pool, not the database. Its timer ends at the moment the lane's quiet ends and the
+            // own slot polls again (25 Nov: which of them ran first decided whether it read the queue too, 81 to 105 polls a
+            // minute by thread timing), so no borrowing poll at all is the rule, whatever the order.
             while (sim.Elapsed < TimeSpan.FromMinutes(1))
             {
                 sim.AdvanceToNext();
                 await SettleAsync();
             }
             var pollMark = Volatile.Read(ref polls);
+            var borrowPollMark = Volatile.Read(ref borrowPolls);
             var wakeMark = Volatile.Read(ref wakes);
             while (sim.Elapsed < TimeSpan.FromMinutes(2))
             {
@@ -101,9 +106,11 @@ public sealed class WorkerLaneStartupTests(ITestOutputHelper output)
                 await SettleAsync();
             }
             var idlePolls = Volatile.Read(ref polls) - pollMark;
+            var idleBorrowPolls = Volatile.Read(ref borrowPolls) - borrowPollMark;
             var idleWakes = Volatile.Read(ref wakes) - wakeMark;
-            output.WriteLine($"return read leased at {returnLeasedAt}; idle minute: {idlePolls} queue polls, {idleWakes} slot wakes ({loops.Count} loops)");
-            Assert.True(idlePolls <= total * 4 + total, $"{idlePolls} queue polls in an idle minute");
+            output.WriteLine($"return read leased at {returnLeasedAt}; idle minute: {idlePolls} queue polls ({idleBorrowPolls} by borrowing slots), {idleWakes} slot wakes ({loops.Count} loops)");
+            Assert.True(idleBorrowPolls == 0, $"{idleBorrowPolls} queue polls of borrowing slots in an idle minute");
+            Assert.True(idlePolls <= total * 4, $"{idlePolls} queue polls in an idle minute");
             Assert.True(idleWakes <= loops.Count * 4 + loops.Count, $"{idleWakes} wakes in an idle minute ({loops.Count} loops)");
         }
         finally

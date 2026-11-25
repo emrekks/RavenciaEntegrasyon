@@ -652,6 +652,44 @@ public sealed class WorkerLanePoolTests
     }
 
     [Fact]
+    public async Task ABorrowingSlotDoesNotReadTheQueueWhileTheLanesOwnSlotPollsItWithNoKnownWork()
+    {
+        // 25 Nov: the quiet ends when the own slot's 15 s idle wait ends, so a borrowing slot whose idle wait ended at the same
+        // moment found the lane not quiet and its own slot busy with that poll, and read the same empty queue.
+        var clock = new ManualClock();
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["background"] = 2 }, [], clock: clock);
+        Assert.Null(await WorkerService.LeaseThroughPoolAsync(pool, "hot", true, () => Task.FromResult<LeasedJob?>(null), _ => Task.CompletedTask));
+        clock.Advance(LaneSlotPool.QuietFor);
+        Assert.False(pool.IsQuiet("hot"));
+        bool? borrowed = null;
+        Assert.Null(await WorkerService.LeaseThroughPoolAsync(pool, "hot", true, () =>
+        {
+            borrowed = pool.TryClaim("hot", false);
+            return Task.FromResult<LeasedJob?>(null);
+        }, _ => Task.CompletedTask));
+        Assert.False(borrowed);
+        Assert.True(pool.IsQuiet("hot"));
+        Assert.Null(pool.Violation());
+
+        // Known work: a notification during the own slot's poll lets the lane borrow at once, as before.
+        clock.Advance(LaneSlotPool.QuietFor);
+        var run = await WorkerService.LeaseThroughPoolAsync(pool, "hot", true, () =>
+        {
+            pool.NoteWork("hot");
+            borrowed = pool.TryClaim("hot", false);
+            return Task.FromResult<LeasedJob?>(new LeasedJob(Guid.NewGuid(), Guid.NewGuid(), null, "TEST", "{}", "test", "lease-token"));
+        }, _ => Task.CompletedTask);
+        Assert.True(borrowed);
+        pool.Release("hot", false, ranJob: false);
+        // The own slot's poll found a job: its borrowing slots may lease while it runs.
+        Assert.True(pool.TryClaim("hot", false));
+        pool.Release("hot", false, ranJob: false);
+        await run!();
+        Assert.Equal(0, pool.Running);
+        Assert.Null(pool.Violation());
+    }
+
+    [Fact]
     public async Task AHoldOrAJobEndingDuringAnEmptyPollLeavesTheLaneNotQuiet()
     {
         // The poll's snapshot may predate what the end made leasable: its "nothing" is stale (the lane epoch moved on).

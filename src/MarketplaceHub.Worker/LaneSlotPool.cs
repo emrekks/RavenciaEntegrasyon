@@ -42,6 +42,8 @@ public sealed class LaneSlotPool
     private readonly Dictionary<string, long> epochs = [];
     // Lanes with known work whose borrowing slot found no room: the next release wakes them, an empty poll's too.
     private readonly HashSet<string> starved = [];
+    // The lane's own slots polling the queue now (claimed with polls: true, until PollEnded).
+    private readonly Dictionary<string, int> ownPolling = [];
     private readonly DateTimeOffset createdAt;
     private int running;
 
@@ -133,7 +135,8 @@ public sealed class LaneSlotPool
     private bool IsQuietNow(string lane) => quietUntil.TryGetValue(lane, out var until) && clock.GetUtcNow() < until;
 
     // A slot of the lane asks for room before it polls the queue. own: one of the lane's own slots; otherwise a borrowing slot.
-    public bool TryClaim(string lane, bool ownSlot)
+    // polls: an own slot that polls the queue now (the lease loops); it counts as polling until PollEnded.
+    public bool TryClaim(string lane, bool ownSlot, bool polls = false)
     {
         lock (gate)
         {
@@ -157,6 +160,7 @@ public sealed class LaneSlotPool
                 }
                 wanting.Remove(lane);
                 own[lane] = own.GetValueOrDefault(lane) + 1;
+                if (polls) ownPolling[lane] = ownPolling.GetValueOrDefault(lane) + 1;
                 running++;
                 return true;
             }
@@ -169,12 +173,17 @@ public sealed class LaneSlotPool
             // Quiet for QuietFor at most, and not after a job's end or a hold's end (24 Nov review: a lane quiet until a
             // notification named its job kept a webhook waiting whose lock group another lane's job had held).
             if (IsQuietNow(lane)) return false;
+            // Nor while one of the lane's own slots polls the queue and no work is known (25 Nov): the quiet ends after
+            // QuietFor, the moment the own slot's idle wait ends too, so a borrowing slot whose idle wait ended with it found
+            // the lane no longer quiet and its own slot "busy" with that poll, and read the same empty queue (on an idle
+            // worker up to 25 extra polls a minute). The own slot's poll answers for it: a job it finds is noted (NoteWork).
+            if (ownPolling.GetValueOrDefault(lane) > 0 && !HasWorkNoticed(lane)) return false;
             if (own.GetValueOrDefault(lane) < floor) return false;
             if (borrowLimits.TryGetValue(lane, out var limit) && borrowed.GetValueOrDefault(lane) >= limit) return false;
             if (running + Kept(lane, includeWanting: true) >= Total)
             {
                 // No room for a lane with known work: the next release wakes it, an empty poll's included.
-                if (workNoticed.TryGetValue(lane, out var noticed) && clock.GetUtcNow() - noticed <= WorkNoticeTtl) starved.Add(lane);
+                if (HasWorkNoticed(lane)) starved.Add(lane);
                 return false;
             }
             starved.Remove(lane);
@@ -183,6 +192,16 @@ public sealed class LaneSlotPool
             return true;
         }
     }
+
+    // The poll of an own slot claimed with polls: true ended (a job found, nothing, or a failure).
+    public void PollEnded(string lane)
+    {
+        lock (gate)
+            if (ownPolling.GetValueOrDefault(lane) > 0) ownPolling[lane]--;
+    }
+
+    // Called under the lock.
+    private bool HasWorkNoticed(string lane) => workNoticed.TryGetValue(lane, out var noticed) && clock.GetUtcNow() - noticed <= WorkNoticeTtl;
 
     // The idle own slots a claim of the lane must leave free: the other protected lanes', and with includeWanting those of the
     // lanes that want theirs back. Called under the lock.

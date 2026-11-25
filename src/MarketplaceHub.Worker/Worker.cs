@@ -384,7 +384,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // stale answer). Only the release of a job that ran wakes other lanes' slots.
     internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run)
     {
-        if (pool is not null && !pool.TryClaim(lane, ownSlot)) return null;
+        if (pool is not null && !pool.TryClaim(lane, ownSlot, polls: ownSlot)) return null;
         var epoch = pool?.Epoch(lane) ?? 0;
         LeasedJob? job;
         try
@@ -393,16 +393,20 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         }
         catch
         {
+            if (ownSlot) pool?.PollEnded(lane);
             pool?.Release(lane, ownSlot, ranJob: false);
             throw;
         }
+        // While an own slot polls, the lane's borrowing slots wait for its answer (LaneSlotPool.TryClaim): it is noted before
+        // the poll ends, so no borrowing slot reads the queue in between.
+        if (job is null) pool?.NoteNoWork(lane, epoch);
+        else pool?.NoteWork(lane);
+        if (ownSlot) pool?.PollEnded(lane);
         if (job is null)
         {
-            pool?.NoteNoWork(lane, epoch);
             pool?.Release(lane, ownSlot, ranJob: false);
             return null;
         }
-        pool?.NoteWork(lane);
         return async () =>
         {
             try
