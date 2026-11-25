@@ -173,14 +173,23 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
 
         var readyBefore = now.AddDays(-1);
         var since = now.AddDays(-Setting("BackfillDays", 90, 1, 365));
-        var pending = await db.MarketplacePayoutOrders
+        // B-9 (25 Nov 2026): a payout whose records failed for a reason of its own (the payout was not found or its query
+        // refused) is held back for PayoutRetryHours behind its open issue, so the payouts after it are still read; before,
+        // the newest payout failed first on every run and the older ones were never reached.
+        var lineIssues = await new IssueRecorder(db).ByPrefixAsync(request.TenantId, PayoutLinesFailureCode, PayoutLinesKeyPrefix(request.ConnectionId), cancellationToken);
+        var retryAfter = now.AddHours(-Setting("PayoutRetryHours", 24, 1, 168));
+        var pending = (await db.MarketplacePayoutOrders
             .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && x.LinesReadAt == null
                 && x.PayoutDate != null && x.PayoutDate <= readyBefore && x.PayoutDate >= since)
             .OrderByDescending(x => x.PayoutDate)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken))
+            .Where(x => !(lineIssues.TryGetValue(PayoutLinesKey(request.ConnectionId, x.ExternalId), out var issue)
+                && issue.Status == IssueStatus.Open && issue.LastSeenAt > retryAfter))
+            .ToList();
         var perSlice = Setting("PayoutsPerSlice", 2, 1, 10);
         foreach (var payout in pending.Take(perSlice))
         {
+            var heldBack = false;
             var records = new List<RemoteStatementRecord>();
             var skipped = new List<RemoteSkippedFinanceRecord>();
             // Not the service-fee filter: asked by payout id, Trendyol ignores transactionSubType and answers every deduction
@@ -195,6 +204,12 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     if (!result.IsSuccess)
                     {
                         if (page == 0 && result.Error!.Class == AdapterErrorClass.Validation && result.Error.HttpStatus == 400) { pagesEnded = true; break; }
+                        if (OfThePayout(result.Error!))
+                        {
+                            await HoldBackPayoutAsync(request, payout.ExternalId, result.Error!, now, cancellationToken);
+                            heldBack = true;
+                            break;
+                        }
                         db.ChangeTracker.Clear();
                         return await PayoutFailureAsync(request, result.Error!, now, cancellationToken);
                     }
@@ -204,6 +219,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     telemetry.Received += value.Items.Count + value.Skipped.Count;
                     if (LastPage(page, value.Items.Count + value.Skipped.Count, value.TotalPages, TrendyolFinanceRequestContract.PageSize)) { pagesEnded = true; break; }
                 }
+                if (heldBack) break;
                 // The payout is not marked read with records left unread.
                 if (!pagesEnded)
                 {
@@ -211,6 +227,13 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     return await PayoutFailureAsync(request, PageCap("ödeme kayıtları"), now, cancellationToken);
                 }
             }
+            // Nothing of a held-back payout is stored; its issue is saved and the next payout is read.
+            if (heldBack)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+            await ResolveIssueAsync(request.TenantId, PayoutLinesKey(request.ConnectionId, payout.ExternalId), now, cancellationToken);
             var collected = TrendyolFinanceSyncPlan.Collect(records);
             await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Trendyol", skipped, records.Select(x => x.ExternalId), now, cancellationToken);
             var keys = collected.Keys.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).ToList();
@@ -240,6 +263,14 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         var lasting = error.Class is AdapterErrorClass.Validation or AdapterErrorClass.NotFound or AdapterErrorClass.NotSupported or AdapterErrorClass.Authentication;
         return new(false, lasting ? null : error);
     }
+
+    // A failure of one payout's own query: the payout is unknown to Trendyol or its query is refused. A sign-in, service or
+    // network failure is the connection's and stops the payout reads as before.
+    internal static bool OfThePayout(AdapterError error) => error.Class is AdapterErrorClass.NotFound or AdapterErrorClass.Validation;
+
+    private Task HoldBackPayoutAsync(JobRequest request, string payoutId, AdapterError error, DateTimeOffset now, CancellationToken cancellationToken) =>
+        UpsertIssueAsync(request.TenantId, PayoutLinesKey(request.ConnectionId, payoutId), PayoutLinesFailureCode,
+            $"Trendyol {payoutId} numaralı ödemenin kayıtları okunamadı ({error.Code}: {error.SafeMessage}); diğer ödemeler okunmaya devam ediyor, bu ödeme bir gün sonra yeniden denenecek.", now, cancellationToken);
 
     private sealed record WindowRead(List<RemoteStatementRecord> Records, Dictionary<string, List<RemoteCargoInvoiceItem>> CargoItems, AdapterError? Error)
     {
@@ -401,6 +432,9 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
     internal static string FailureKey(Guid connectionId) => $"trendyol-finance:{connectionId:N}";
     internal static string RejectedKey(Guid connectionId) => $"trendyol-finance-types:{connectionId:N}";
     internal static string PayoutFailureKey(Guid connectionId) => $"trendyol-payouts:{connectionId:N}";
+    internal const string PayoutLinesFailureCode = "TRENDYOL_PAYOUT_LINES_FAILED";
+    internal static string PayoutLinesKeyPrefix(Guid connectionId) => $"trendyol-payout-lines:{connectionId:N}:";
+    internal static string PayoutLinesKey(Guid connectionId, string payoutId) => PayoutLinesKeyPrefix(connectionId) + payoutId;
 
     // ISLEYICI-12 point 5: issues go through the shared IssueRecorder; this handler's summaries are cut to 1,000
     // characters and a resolve stamps ResolvedAt and LastSeenAt, as before.
