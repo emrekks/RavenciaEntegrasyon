@@ -164,6 +164,34 @@ public sealed partial class PostgreSqlTenantIsolationTests
         finally { await DeleteReadGuardTenantAsync(tenant.Id); }
     }
 
+    // B-10 (25 Nov 2026): a month's cancelled list cut at its cap is tried again only after one last-day read, so the new
+    // cancellations are read meanwhile; before, every run asked the month again and stopped at the cap.
+    [PostgreSqlFact]
+    public async Task B10_AfterAWideCancelledListStopsAtItsCapTheNextRunReadsTheLastDay()
+    {
+        var (tenant, connection, _) = await SeedReadGuardConnectionAsync("b10-hb-cancel-wide", "HEPSIBURADA", "ORDER_LIFECYCLE");
+        var port = new PagingCancellationPort(int.MaxValue);
+        async Task RunAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, port, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            Assert.Equal(JobCompletionKind.Succeeded, (await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.HepsiburadaOrderStatusSync, "{}", "b10-hb-cancel", CancellationToken.None)).Kind);
+        }
+        try
+        {
+            await RunAsync();
+            double DaysBack(int call) => (fixture.TimeProvider.GetUtcNow() - port.Since[call]).TotalDays;
+            Assert.InRange(DaysBack(0), 29.9, 30.1);
+            var second = port.Calls;
+            await RunAsync();
+            Assert.InRange(DaysBack(second), 0.9, 1.1);
+            var third = port.Calls;
+            await RunAsync();
+            Assert.InRange(DaysBack(third), 29.9, 30.1);
+        }
+        finally { await DeleteReadGuardTenantAsync(tenant.Id); }
+    }
+
     // Pazarama's open-order scan reads whole order-date windows when more orders are open than one run reads by number. A
     // window cut at its page cap used to be reported while the scan still finished and moved its watermark; now the scan
     // stops there with the same code and the watermark stays.
@@ -283,10 +311,13 @@ public sealed partial class PostgreSqlTenantIsolationTests
     private sealed class PagingCancellationPort(int lastPage) : IHepsiburadaInvoiceStatusPort
     {
         public int Calls { get; private set; }
+        // The start of the window each list read asked for.
+        public List<DateTimeOffset> Since { get; } = [];
 
         public Task<AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>> ListCancelledOrderLinesAsync(AdapterContext context, DateTimeOffset since, DateTimeOffset until, AdapterPageRequest page, CancellationToken cancellationToken)
         {
             Calls++;
+            Since.Add(since);
             var number = page.Cursor is null ? 1 : int.Parse(page.Cursor, System.Globalization.CultureInfo.InvariantCulture);
             var more = number < lastPage;
             return Task.FromResult(AdapterResult<AdapterPageResult<RemoteCancelledOrderLine>>.Success(new([], more ? (number + 1).ToString(System.Globalization.CultureInfo.InvariantCulture) : null, more)));

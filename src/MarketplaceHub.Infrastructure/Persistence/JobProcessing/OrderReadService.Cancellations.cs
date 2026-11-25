@@ -19,7 +19,10 @@ internal sealed partial class OrderReadService
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, HepsiburadaCancellationPolicy.CursorResource, cancellationToken);
         var wideCursor = await Cursor(tenantId, connectionId, HepsiburadaCancellationPolicy.WideCursorResource, cancellationToken);
-        if (HepsiburadaCancellationPolicy.Window(cursor.LastSuccessAt, wideCursor.LastSuccessAt, now) is not { } window) return [];
+        var wideStopped = wideCursor.OpaqueCursor == HepsiburadaCancellationPolicy.WideStoppedMark;
+        if (HepsiburadaCancellationPolicy.Window(cursor.LastSuccessAt, wideCursor.LastSuccessAt, now, wideStopped) is not { } window) return [];
+        // The last-day read that follows a stopped month clears the mark, so the next run tries the month again.
+        if (wideStopped && !window.Wide) SetWideMark(wideCursor, null);
 
         var cancelledLines = new List<RemoteCancelledOrderLine>();
         var failed = false;
@@ -48,11 +51,14 @@ internal sealed partial class OrderReadService
         if (failed) return [];
         var incompleteKey = $"hepsiburada-cancelled-incomplete:{connectionId}";
         if (walk.Stop is PagedReadStop.PageCap or PagedReadStop.RepeatedCursor)
+        {
             await RecordIssue(tenantId, incompleteKey, "HEPSIBURADA_CANCELLED_LIST_INCOMPLETE",
                 walk.Stop == PagedReadStop.PageCap
                     ? $"Hepsiburada iptal edilen sipariş listesi {HepsiburadaCancellationPolicy.MaxPages} sayfayı aştı; okunan kısım işlendi, liste okunmuş sayılmadı ve sonraki taramada yeniden okunacak."
                     : "Hepsiburada iptal edilen sipariş listesi aynı sayfayı yeniden sonraki sayfa olarak verdi; okunan kısım işlendi, liste okunmuş sayılmadı ve sonraki taramada yeniden okunacak.",
                 cancellationToken);
+            if (window.Wide) SetWideMark(wideCursor, HepsiburadaCancellationPolicy.WideStoppedMark);
+        }
         else
         {
             await ResolveIssue(tenantId, $"hepsiburada-cancelled:{connectionId}", cancellationToken);
@@ -63,6 +69,7 @@ internal sealed partial class OrderReadService
             {
                 wideCursor.LastSuccessAt = now;
                 wideCursor.Version++;
+                SetWideMark(wideCursor, null);
             }
         }
         if (cancelledLines.Count == 0) return [];
@@ -82,6 +89,13 @@ internal sealed partial class OrderReadService
             cancelledLines,
             open.ToDictionary(x => x.ExternalOrderId, x => (IReadOnlyCollection<string>)x.CancelledLines, StringComparer.Ordinal),
             HepsiburadaCancellationPolicy.MaxReadsPerRun);
+    }
+
+    private static void SetWideMark(MarketplaceHub.Domain.SyncCursor wideCursor, string? mark)
+    {
+        if (wideCursor.OpaqueCursor == mark) return;
+        wideCursor.OpaqueCursor = mark;
+        wideCursor.Version++;
     }
 
     // The listed orders still to read: open in the panel (a key of locallyCancelledLines, with the ids of its lines

@@ -277,6 +277,20 @@ public sealed partial class HepsiburadaHttpClient
     private static bool IsListedOpen(RemotePackage package) =>
         !package.IsStatusObservation && string.Equals(package.RawStatus, "Open", StringComparison.OrdinalIgnoreCase);
 
+    // The package status after a tracking read: the cargo's Delivered, Undelivered or InTransit moves the listed status on,
+    // never back (Delivered stays). B-10 (25 Nov 2026): a cancelled or returned package is closed, so the cargo's Delivered
+    // (the parcel of an earlier state) does not make it delivered again; only a package still open takes it.
+    internal static string TrackingStatus(string? tracking, string listed)
+    {
+        bool Is(string? value, string status) => string.Equals(value, status, StringComparison.OrdinalIgnoreCase);
+        var closed = HepsiburadaShipmentPackageStatusPolicy.FromRemote(listed) is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned;
+        return Is(tracking, "Delivered") && !closed
+            || Is(tracking, "Undelivered") && !Is(listed, "Delivered") && !closed
+            || Is(tracking, "InTransit") && !Is(listed, "Undelivered") && !Is(listed, "Delivered") && !closed
+            ? tracking!
+            : listed;
+    }
+
     internal static bool HasTerminalListStatus(RemoteOrderPackage package) =>
         HepsiburadaShipmentPackageStatusPolicy.FromRemote(package.Package.RawStatus) is ShipmentPackageStatus.Delivered
             or ShipmentPackageStatus.Undelivered
@@ -323,14 +337,7 @@ public sealed partial class HepsiburadaHttpClient
         try
         {
             var tracking = HepsiburadaJsonMapper.PackageTrackingInfo(trackingDocument.RootElement, remotePackage.Package.ExternalPackageId);
-            var trackingStatus = string.Equals(tracking.Status, "Delivered", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(tracking.Status, "Undelivered", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(remotePackage.Package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(tracking.Status, "InTransit", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(remotePackage.Package.RawStatus, "Undelivered", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(remotePackage.Package.RawStatus, "Delivered", StringComparison.OrdinalIgnoreCase)
-                ? tracking.Status!
-                : remotePackage.Package.RawStatus;
+            var trackingStatus = TrackingStatus(tracking.Status, remotePackage.Package.RawStatus);
             // The tracking read has no event date. When it moves the package on (an Open package that is now in
             // transit), the listed date belongs to the earlier state, so the change counts as observed now;
             // otherwise a stored status time later than that date would make the newer state look stale.

@@ -374,9 +374,10 @@ internal sealed partial class CatalogImportService
         }
         else
         {
+            // B-10: an existing link keeps its sync state (pending panel edits, synced), as on the other marketplaces;
+            // mapping only (re)names the product it points at.
             link.ExternalCode = productCode;
             link.LastImportedAt = now;
-            link.SyncStatus = "MAPPED";
             link.Version++;
         }
         return true;

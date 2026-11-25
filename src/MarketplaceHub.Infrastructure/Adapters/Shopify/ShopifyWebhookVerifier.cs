@@ -12,7 +12,8 @@ namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 
 public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvider dataProtection, TimeProvider? timeProvider = null) : IWebhookVerifier
 {
-    // A delivery whose X-Shopify-Triggered-At is further than this from now is acknowledged and dropped (G4).
+    // A delivery whose X-Shopify-Triggered-At is further than this from now is acknowledged and dropped (G4), except an
+    // order or refund delivery (DropsWhenStale).
     internal static readonly TimeSpan FreshnessWindow = TimeSpan.FromMinutes(5);
     // MarketplaceWebhookService answers this code with 200 and enqueues no ingest: Shopify does not retry it, and the
     // order still arrives through the scheduled order check. A stale product delete still starts the link check.
@@ -58,7 +59,7 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         // body and is still recognised. A delivery that names its trigger time is accepted only within five minutes of
         // it; one without the header is kept (older deliveries and the route-only mode do not always send it).
         var topic = Header(headers, "X-Shopify-Topic") ?? "orders/updated";
-        if (!IsFresh(Header(headers, "X-Shopify-Triggered-At"), time.GetUtcNow()))
+        if (!IsFresh(Header(headers, "X-Shopify-Triggered-At"), time.GetUtcNow()) && DropsWhenStale(topic))
             return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Validation, StaleCode, "Shopify bildirimi beş dakikadan eski ya da ileri tarihli; işlenmedi.", 200, null, null));
         var externalMessageId = MessageId(topic, rawBody.Span);
 
@@ -99,6 +100,12 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         var key = Array.IndexOf(KnownTopics, normalized) >= 0 ? normalized : "other";
         return $"{key}:{Convert.ToHexString(SHA256.HashData(rawBody))}";
     }
+
+    // B-10 (25 Nov 2026): an order or refund delivery is processed whatever its age. Its ingest reads the order from
+    // Shopify by its id (the body only names it) and the order upsert is idempotent, so an old or replayed body can only
+    // cause one more read; dropping it left a change Shopify delivered late (a deploy, a Shopify delay) to the scheduled
+    // order check. Any other topic past the window is still dropped.
+    internal static bool DropsWhenStale(string? topic) => ResourceType(topic ?? "") is not ("ORDERS" or "REFUNDS");
 
     // Missing or unreadable: fresh (the header is optional). Otherwise within the window on either side of now.
     internal static bool IsFresh(string? triggeredAt, DateTimeOffset now)
