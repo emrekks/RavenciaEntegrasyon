@@ -382,8 +382,9 @@ const noCostTip = 'Ürün maliyeti girilince hesaplanır. Maliyeti ürün kartı
 
 // Net Ciro: the same sales less what went back (Satış Tutarı − İade Edilen Tutar in Kâr Hesabı); one figure on every tab.
 export const netSalesTip = 'Satıcı indirimi düşülmüş satış tutarından iadeler düşülünce kalan; iptaller sayılmaz. Kâr Hesabı\'ndaki Satış Tutarı − İade Edilen Tutar.'
-// İade Oranı: the units returned over every unit ordered, the cancelled ones included (ReportBuilder, as Trendyol has it).
-export const returnRateTip = 'Sipariş edilen ürün adedinin (iptaller dahil) yüzde kaçının iade edildiği, Trendyol gibi.'
+// İade Oranı: the units returned over the units sold, cancelled ones left out; one formula, computed by the server
+// (ReportBuilder.ReturnRate) for the summary and every row, never worked out here.
+export const returnRateTip = 'Satılan ürün adedinin (iptaller hariç) yüzde kaçının iade edildiği.'
 
 // The deductions of the period's dates tied to no order of the period (only from Trendyol's statement), largest first.
 export function unlinkedDeductions(costs: ReportCosts | null | undefined) {
@@ -601,17 +602,17 @@ export function NoAmountNote({ platforms }: { platforms: ReportGroup[] }) {
 }
 
 // The platforms added up into one row under the table: counts and amounts summed, the rates worked out again from the
-// sums (İade Oranı = returned ÷ sold, as on each row), never summed.
-function groupTotal(rows: ReportGroup[]): ReportGroup {
+// sums, never summed; İade Oranı is the server's rate for the same orders (the summary's, scan C-9).
+function groupTotal(rows: ReportGroup[], returnRate: number | null): ReportGroup {
   const sum = (pick: (row: ReportGroup) => number) => rows.reduce((total, row) => total + pick(row), 0)
   const sold = sum(row => row.soldQuantity), returned = sum(row => row.returnedQuantity)
   return { key: 'total', label: 'Toplam', known: true, isTest: false, orders: sum(row => row.orders), soldQuantity: sold, returnedQuantity: returned, returnClaims: sum(row => row.returnClaims),
-    returnRate: sold > 0 ? returned / sold : null, ordersWithAmount: sum(row => row.ordersWithAmount), grossSales: sum(row => row.grossSales), netRevenue: sum(row => row.netRevenue),
+    returnRate, ordersWithAmount: sum(row => row.ordersWithAmount), grossSales: sum(row => row.grossSales), netRevenue: sum(row => row.netRevenue),
     estimatedCommission: sum(row => row.estimatedCommission), commissionCoveredRevenue: sum(row => row.commissionCoveredRevenue), children: [], split: [] }
 }
 
-export function TotalRow({ rows, columns, expand }: { rows: ReportGroup[]; columns: Column<ReportGroup>[]; expand?: boolean }) {
-  const total = groupTotal(rows)
+export function TotalRow({ rows, returnRate, columns, expand }: { rows: ReportGroup[]; returnRate: number | null; columns: Column<ReportGroup>[]; expand?: boolean }) {
+  const total = groupTotal(rows, returnRate)
   return <tr className="reports-total-row">{expand && <td className="reports-expand-col" />}{columns.map(item => <td key={item.key} className={item.numeric ? 'is-num' : undefined}>{item.key === 'label' ? <strong>Toplam</strong> : item.render ? item.render(total) : item.value(total) ?? '—'}</td>)}</tr>
 }
 

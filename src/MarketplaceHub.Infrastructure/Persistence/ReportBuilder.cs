@@ -482,7 +482,8 @@ internal static class ReportBuilder
             }
             // The real commission of a Hepsiburada, n11 or Pazarama order whose own finance records were read
             // (ReportMarketplaceCommissions), net of what was given back, replaces the estimate on its lines, shared over
-            // them by their price. Pazarama sends no commission on the order at all (live: 625 − 75 commission − 5.68
+            // them by what each line kept (paid unit price × kept units: the net is what was left after the returns, so a
+            // returned unit carries none of it, scan C-9). Pazarama sends no commission on the order at all (live: 625 − 75 commission − 5.68
             // withholding − 112.33 cargo − 8.28 fee = 423.71, its allowance). The estimate is kept beside it.
             decimal? estimate = null;
             var real = false;
@@ -490,10 +491,10 @@ internal static class ReportBuilder
             {
                 estimate = lines.Any(fact => fact.Commission is not null) ? lines.Sum(fact => fact.Commission ?? 0m) : null;
                 real = true;
-                var basis = lines.Sum(fact => fact.PaidUnitPrice * fact.Active);
+                var basis = lines.Sum(fact => fact.KeptAmount);
                 lines = lines.Select(fact => fact with
                 {
-                    Commission = MoneyRounding.Round(net * (basis > 0 ? fact.PaidUnitPrice * fact.Active / basis : 1m / lines.Count))
+                    Commission = MoneyRounding.Round(net * (basis > 0 ? fact.KeptAmount / basis : 1m / lines.Count))
                 }).ToList();
             }
             var extras = input.OrderExtras.GetValueOrDefault(order.Id);
@@ -515,11 +516,11 @@ internal static class ReportBuilder
         var gross = orders.Sum(x => x.Amount);
         // The list price of the same orders (Amount is zero for another currency); never below what was paid.
         var list = orders.Where(x => x.Amount > 0).Sum(x => Math.Max(x.Order.ListAmount, x.Amount));
-        // Rates over every unit ordered, cancelled ones included, as Trendyol's sales report has them (7-13 Sep 2026: 6 returned
-        // and 8 cancelled of 113 units, 5.31 % and 7.08 %).
+        // İptal Oranı over every unit ordered, cancelled ones included, as Trendyol's sales report has it (7-13 Sep 2026: 8
+        // cancelled of 113 units, 7.08 %). İade Oranı is ReturnRate, the same formula as on every group and product.
         var cancelledUnits = cancelled.Sum(x => x.Quantity) + orders.SelectMany(x => x.Lines).Sum(x => Math.Max(0m, x.Row.CancelledQuantity));
         var ordered = sold + cancelledUnits;
-        return new(orders.Count, cancelled.Count, Rate(cancelledUnits, ordered), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, ordered),
+        return new(orders.Count, cancelled.Count, Rate(cancelledUnits, ordered), sold, back, sold - back, orders.Sum(x => x.Claims), ReturnRate(back, sold),
             priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? MoneyRounding.Round(gross / priced) : null,
             orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try),
             list, list - gross, orders.Sum(x => x.BackList),
@@ -577,7 +578,7 @@ internal static class ReportBuilder
                 var rows = group.ToList();
                 var name = label(rows[0]);
                 var lines = rows.SelectMany(x => x.Lines).ToList();
-                return new ReportGroupView(group.Key, name, name != Unknown, isTest(rows[0]), rows.Count, Sold(rows), Back(rows), rows.Sum(x => x.Claims), Rate(Back(rows), Sold(rows)),
+                return new ReportGroupView(group.Key, name, name != Unknown, isTest(rows[0]), rows.Count, Sold(rows), Back(rows), rows.Sum(x => x.Claims), ReturnRate(Back(rows), Sold(rows)),
                     rows.Count(x => x.Amount > 0), rows.Sum(x => x.Amount), rows.Sum(x => x.Kept),
                     MoneyRounding.Round(lines.Sum(x => x.Commission ?? 0m)), MoneyRounding.Round(lines.Where(x => x.Commission is not null).Sum(x => x.KeptAmount)),
                     children?.Invoke(rows) ?? [], split?.Invoke(rows) ?? []);
@@ -594,7 +595,7 @@ internal static class ReportBuilder
                 var sold = rows.Sum(x => x.Line.Active);
                 var back = rows.Sum(x => x.Line.Back);
                 return new ReportGroupView(group.Key, group.Key, group.Key != Unknown, false, rows.Select(x => x.Order.Order.Id).Distinct().Count(), sold, back,
-                    rows.Select(x => x.Order).Distinct().Sum(x => x.Claims), Rate(back, sold),
+                    rows.Select(x => x.Order).Distinct().Sum(x => x.Claims), ReturnRate(back, sold),
                     rows.Select(x => x.Order).Distinct().Count(x => x.Amount > 0),
                     MoneyRounding.Round(rows.Sum(x => x.Line.PaidUnitPrice * x.Line.Active)), MoneyRounding.Round(rows.Sum(x => x.Line.KeptAmount)),
                     MoneyRounding.Round(rows.Sum(x => x.Line.Commission ?? 0m)), MoneyRounding.Round(rows.Where(x => x.Line.Commission is not null).Sum(x => x.Line.KeptAmount)), [], []);
@@ -614,7 +615,7 @@ internal static class ReportBuilder
                 return new ReportProductView(first.VariantId, first.ProductId, title, first.Sku,
                     first.BrandId is { } brandId && names.Brands.TryGetValue(brandId, out var brand) ? brand : Unknown,
                     first.CategoryId is { } categoryId && names.Categories.TryGetValue(categoryId, out var category) ? category : Unknown,
-                    sold, back, Rate(back, sold), MoneyRounding.Round(group.Sum(x => x.PaidUnitPrice * x.Active)),
+                    sold, back, ReturnRate(back, sold), MoneyRounding.Round(group.Sum(x => x.PaidUnitPrice * x.Active)),
                     MoneyRounding.Round(group.Sum(x => x.Commission ?? 0m)), MoneyRounding.Round(group.Where(x => x.Commission is not null).Sum(x => x.KeptAmount)),
                     NetAmount: MoneyRounding.Round(group.Sum(x => x.KeptAmount)));
             })
@@ -894,6 +895,11 @@ internal static class ReportBuilder
     private static decimal Sold(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Active));
     private static decimal Back(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Back));
     private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? PercentRounding.Rate(part / whole) : null;
+
+    // İade Oranı, the one formula of the report (summary, platform, store, city, brand, category, product; scan C-9):
+    // units returned ÷ units sold, the cancelled units left out (a cancelled unit never reached the buyer and cannot come
+    // back). It is the only basis every row can be computed on: a wholly cancelled order has no city or brand lines.
+    internal static decimal? ReturnRate(decimal returnedUnits, decimal soldUnits) => Rate(returnedUnits, soldUnits);
 
     internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, decimal ListUnitPrice = 0m)
     {

@@ -52,7 +52,7 @@ export function Platforms({ data }: { data: ReportSales }) {
   return <div className="reports-grid">
     <div className="is-wide"><StatementLines data={data} /></div>
     <div className="is-wide"><DataTable title="Platform Özeti" csvName="rapor-platformlar" rows={data.platforms} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold"
-      columns={columns} footer={data.platforms.length > 1 && <TotalRow rows={data.platforms} columns={columns} expand />}
+      columns={columns} footer={data.platforms.length > 1 && <TotalRow rows={data.platforms} returnRate={data.summary.returnRate} columns={columns} expand />}
       expand={row => <DataTable title={`${platformName(row.label)} Mağazaları`} csvName={`rapor-${row.key.toLowerCase()}-magazalar`} rows={row.children} rowKey={child => child.key} initialSort="sold"
         columns={groupColumns(labelColumn('Mağaza'), { commission: true })} />} /></div>
   </div>
