@@ -14,3 +14,18 @@ describe('İadeler desktop table width', () => {
     for (const width of widths) expect(width).toBeLessThanOrEqual(1638)
   })
 })
+
+// The order cell's longest fixed line ("Sipariş Tarihi: 19.11.2026 21:27", 187 px) must fit inside the 18 px cell padding, next to the 26 px
+// selection checkbox when it is present; the product column gives the width back so the table total stays the same.
+describe('İadeler order column width', () => {
+  const block = css.slice(css.lastIndexOf('25 Nov: the order column'))
+  const width = (selector: string) => Number(new RegExp(String.raw`rr-returns ${selector.replaceAll('.', String.raw`\.`)} \{ width: (\d+)px; \}`).exec(block)?.[1])
+  it('holds the date line with and without the selection checkbox', () => {
+    expect(width('.rr-tbl.rr-tbl col.rr-c-order')).toBeGreaterThanOrEqual(187 + 36)
+    expect(width('.rr-tbl.rr-tbl.rr-has-select col.rr-c-order')).toBeGreaterThanOrEqual(187 + 26 + 36)
+  })
+  it('keeps the table total: order + product stay at 530 px (plain) and 544 px (selection)', () => {
+    expect(width('.rr-tbl.rr-tbl col.rr-c-order') + width('.rr-tbl.rr-tbl col.rr-c-prod')).toBe(530)
+    expect(width('.rr-tbl.rr-tbl.rr-has-select col.rr-c-order') + width('.rr-tbl.rr-tbl.rr-has-select col.rr-c-prod')).toBe(544)
+  })
+})
