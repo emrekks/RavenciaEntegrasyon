@@ -159,6 +159,9 @@ internal sealed partial class ReturnIngestionService
             // The request date does not change with the claim's state, so any read that brings it fills or corrects it
             // (also an older snapshot); a read without it leaves the stored date.
             if (remote.RequestedAt?.ToUniversalTime() is { } requestedAt && claim.RequestedAt != requestedAt) { claim.RequestedAt = requestedAt; claimChanged = true; }
+            // The refunded amount the marketplace reports (Hepsiburada refundAmount): any read that brings it sets it; a
+            // read without it leaves the stored amount (unknown is never "nothing refunded").
+            if (remote.RefundAmount is { } refundAmount && claim.RefundAmount != refundAmount) { claim.RefundAmount = refundAmount; claimChanged = true; }
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
             // The exchange package Trendyol names (getClaims replacementOutboundpackageinfo) is kept once read; a read without
@@ -360,6 +363,7 @@ internal sealed partial class ReturnIngestionService
         ReplacementCargoTrackingLink = SafeReturnTrackingLink(remote.ReplacementPackage?.CargoTrackingLink),
         ResolvedWith = remote.ResolvedWith,
         RequestedAt = remote.RequestedAt?.ToUniversalTime(),
+        RefundAmount = remote.RefundAmount,
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1

@@ -6445,6 +6445,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
 
+                    b.Property<decimal?>("RefundAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<string>("RejectedPackageState")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");

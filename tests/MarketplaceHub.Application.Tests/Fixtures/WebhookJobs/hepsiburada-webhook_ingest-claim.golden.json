@@ -158,6 +158,7 @@
           "RawStatus": "AwaitingAction",
           "ReasonCode": "",
           "ReasonText": "",
+          "RefundAmount": null,
           "RejectedPackageState": null,
           "ReplacementCargoProviderName": null,
           "ReplacementCargoTrackingLink": null,

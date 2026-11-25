@@ -54,6 +54,22 @@ public sealed class ReturnMarketplaceAmountsTests
         Assert.Null(ReturnMarketplaceAmounts.Line("HEPSIBURADA", """{"lineItemId":"1","totalPrice":{"amount":865.72}}""", 1, "714000001"));
     }
 
+    // Owner, 25 Nov 2026: a Hepsiburada return read "İade Tutarı —" although the claim list carries refundAmount. The
+    // claim's own amount is kept with the claim and shown on its line, whatever the line's snapshot is (an order line).
+    [Fact]
+    public void Hepsiburada_order_line_shows_the_refund_amount_kept_with_its_claim()
+    {
+        const string orderLine = """{"lineItemId":"1","unitPrice":{"amount":865.72},"totalPrice":{"amount":865.72}}""";
+
+        Assert.Equal(new ReturnAmountsView(null, null, null, 865.72m), ReturnMarketplaceAmounts.Line("HEPSIBURADA", orderLine, 1, "714000001", 865.72m));
+        Assert.Null(ReturnMarketplaceAmounts.Line("HEPSIBURADA", orderLine, 1, "714000001", null));
+        // A snapshot of the claim itself keeps its own figure.
+        const string claim = """{"number":"714000001","refundAmount":500.00}""";
+        Assert.Equal(500.00m, ReturnMarketplaceAmounts.Line("HEPSIBURADA", claim, 1, "714000001", 865.72m)?.RefundAmount);
+        // Next to the Trendyol figures the claim's refund is added, never in place of them.
+        Assert.Equal(new ReturnAmountsView(799.00m, 40.49m, 758.51m, 758.51m), ReturnMarketplaceAmounts.Line("TRENDYOL", TrendyolFirstLine, 1, "c", 758.51m));
+    }
+
     [Fact]
     public void N11_reads_the_line_figures_of_a_single_unit_and_only_the_sale_price_otherwise()
     {

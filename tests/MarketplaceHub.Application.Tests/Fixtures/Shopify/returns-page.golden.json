@@ -35,7 +35,8 @@
       "ResolvedWith": null,
       "RequestedAt": "2026-11-09T12:00:00+00:00",
       "ReplacementPackage": null,
-      "ReplacementInfoPresent": null
+      "ReplacementInfoPresent": null,
+      "RefundAmount": null
     },
     {
       "ExternalClaimId": "7002",
@@ -85,7 +86,8 @@
       "ResolvedWith": null,
       "RequestedAt": "2026-11-07T10:15:00+00:00",
       "ReplacementPackage": null,
-      "ReplacementInfoPresent": null
+      "ReplacementInfoPresent": null,
+      "RefundAmount": null
     }
   ],
   "NextCursor": "cursor-page-2",

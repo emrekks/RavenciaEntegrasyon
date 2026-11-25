@@ -383,7 +383,8 @@
         "ResolvedWith": null,
         "RequestedAt": null,
         "ReplacementPackage": null,
-        "ReplacementInfoPresent": null
+        "ReplacementInfoPresent": null,
+        "RefundAmount": null
       }
     },
     {

@@ -140,7 +140,20 @@ internal static partial class HepsiburadaJsonMapper
             // How an approved claim was closed (finalizedWith: Refund or Change); null when the claim does not say.
             ResolvedWith: ReturnCustomerRequestPolicy.ResolvedWithFromHepsiburada(Text(item, "finalizedWith", "FinalizedWith")),
             // claimDate itself (Istanbul local, read by Date); the createdAt the identity check above also accepts is not it.
-            RequestedAt: Date(item, "claimDate", "ClaimDate"));
+            RequestedAt: Date(item, "claimDate", "ClaimDate"),
+            RefundAmount: ClaimRefundAmount(item));
+    }
+
+    // The claim's refundAmount ("İade edilen tutarın bilgisidir", claim list fields): a number, or {amount, currency}.
+    // Hepsiburada writes 0 until it pays (a rejected claim carries 0), so only a positive lira amount is a refund; any
+    // other currency or a missing field stays unknown.
+    private static decimal? ClaimRefundAmount(JsonElement item)
+    {
+        if (!TryFind(item, out var refund, "refundAmount", "RefundAmount")) return null;
+        var amount = refund.ValueKind == JsonValueKind.Object ? Decimal(refund, "amount", "Amount") : Decimal(item, "refundAmount", "RefundAmount");
+        var currency = refund.ValueKind == JsonValueKind.Object ? Text(refund, "currency", "Currency") : Text(item, "refundCurrency", "RefundCurrency");
+        if (!string.IsNullOrWhiteSpace(currency) && !string.Equals(currency.Trim(), "TRY", StringComparison.OrdinalIgnoreCase)) return null;
+        return amount is > 0 ? amount : null;
     }
 
     // Hepsiburada names the product a customer wants instead (requestedProduct) on an exchange claim; null otherwise.
