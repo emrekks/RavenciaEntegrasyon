@@ -5,7 +5,7 @@ import { ApiRequestError, hubApi, hubPoll } from '../../shared/api'
 import { formatIstanbul } from '../../shared/format-date'
 import { clearNotificationHistory } from '../../shared/notifications'
 import { ReauthInputs, reauthBody, reauthReady, useSecondFactorEnabled } from '../../shared/reauth'
-import { normalizePanelResetConfirmation, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepLabel, panelResetStepStates, type PanelResetStepState } from './panel-factory-reset'
+import { normalizePanelResetConfirmation, panelResetAlreadyRunning, panelResetAlreadyRunningMessage, panelResetConfirmationWord, panelResetConfirmed, panelResetFailed, panelResetRunning, panelResetStepLabel, panelResetStepStates, type PanelResetStepState } from './panel-factory-reset'
 import { queryKeys } from '../../shared/api/query-keys'
 
 const resetNumber = (value: number) => value.toLocaleString('tr-TR')
@@ -80,6 +80,7 @@ export function PanelFactoryResetSection() {
       setSeenRunning(true)
       setConfirmation(''); setPassword(''); setFactor('')
     } catch (failure) {
+      if (panelResetAlreadyRunning(failure)) { setError(panelResetAlreadyRunningMessage); await queryClient.invalidateQueries({ queryKey }); return }
       setError(failure instanceof Error ? failure.message : 'Sıfırlama başlatılamadı.')
     } finally {
       setSending(false)
