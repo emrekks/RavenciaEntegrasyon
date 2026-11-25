@@ -170,7 +170,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
         return rows.Count;
     }
 
-    private static readonly string[] AllLabels = ["FATURA_BEKLIYOR", "FATURA_BELIRSIZ", "FATURA_REDDEDILDI", "FATURA_PLATFORMA_AKTARILMADI", "FATURA_IPTAL", "FATURA_ISLENIYOR", "FATURA_KONTROLDE", "FATURA_BILINMIYOR"];
+    private static readonly string[] AllLabels = ["FATURA_BEKLIYOR", "FATURA_BELIRSIZ", "FATURA_REDDEDILDI", "FATURA_PLATFORMA_AKTARILMADI", "FATURA_IPTAL", "FATURA_ISLENIYOR", "FATURA_KONTROLDE", "FATURA_BILINMIYOR", "FATURA_INCELENECEK", "FATURA_INCELEME_GEREKLI", "FATURA_DUZELTME_GEREKLI"];
 
     private static readonly CursorCodec Cursors = new(new EphemeralDataProtectionProvider(), TimeProvider.System);
 
@@ -244,6 +244,10 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
         var marketplace = Connection("TRENDYOL", "ACTIVE");
         var provider = Connection("TRENDYOL_EFATURAM", "ACTIVE");
         var disabled = Connection("TRENDYOL_EFATURAM", "DISABLED");
+        // Scan 25 Nov 2026 C-5: the marketplaces whose label the Orders page adjusts (InvoiceLabelForPlatform).
+        var shopify = Connection("SHOPIFY", "ACTIVE");
+        var n11 = Connection("N11", "ACTIVE");
+        var ptt = Connection("PTTAVM", "ACTIVE");
         var profile = new LegalEntityProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "profile", ProtectedTaxId = "protected", MaskedTaxId = "E-Faturam", AddressSnapshotJson = "{}", ContactSnapshotJson = "{}", Status = "ACTIVE", CreatedAt = now, UpdatedAt = now };
         var policy = new InvoicePolicy { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProviderConnectionId = provider.Id, TriggerState = "MANUAL_CONFIRMED", PackageScope = "SHIPMENT_PACKAGE", DueRule = "IMMEDIATE", RoundingRule = "LINE_HALF_AWAY_FROM_ZERO", AdjustmentRule = "REJECT_OVER_ONE_KURUS", CreatedAt = now, UpdatedAt = now };
         var orders = new List<Order>();
@@ -254,14 +258,14 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
         var invoices = new List<Invoice>();
         var number = 0;
 
-        Order NewCase(string snapshot)
+        Order NewCase(string snapshot, PlatformConnection? on = null)
         {
             var index = orders.Count;
             var order = new Order
             {
                 Id = Guid.CreateVersion7(),
                 TenantId = tenant.Id,
-                ConnectionId = marketplace.Id,
+                ConnectionId = (on ?? marketplace).Id,
                 ExternalOrderId = $"LB-{index}",
                 OrderNumber = $"LB-{1000 + index}",
                 Currency = "TRY",
@@ -280,7 +284,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
             orders.Add(order);
             var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, ExternalLineId = $"LB-L-{index}", Sku = $"LB-SKU-{index}", Barcode = $"LB{index:D6}", TitleSnapshot = $"Ürün {index}", OrderedQuantity = 1, DeliveredQuantity = 1, ShippedQuantity = 1, UnitPrice = 50m, VatRate = 20m, RawStatus = "Delivered" };
             lines.Add(line);
-            var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = marketplace.Id, OrderId = order.Id, ExternalClaimId = $"lb-claim-{index}", Status = ReturnClaimStatus.Requested, RawStatus = "Created", CreatedAt = now, UpdatedAt = now, Version = 1 };
+            var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = (on ?? marketplace).Id, OrderId = order.Id, ExternalClaimId = $"lb-claim-{index}", Status = ReturnClaimStatus.Requested, RawStatus = "Created", CreatedAt = now, UpdatedAt = now, Version = 1 };
             claims.Add(claim);
             returnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ClaimId = claim.Id, OrderLineId = line.Id, ExternalLineId = $"lb-r-{index}", Quantity = 1m, RawStatus = "Created" });
             return order;
@@ -347,6 +351,37 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
         var original = NewInvoice(NewCase("{}"), InvoiceStatus.Completed, "LB", at.AddDays(-1));
         invoices.Add(original);
         invoices.Add(NewInvoice(ignored, InvoiceStatus.Rejected, null, at.AddHours(1), originalId: original.Id));
+        // Scan 25 Nov 2026 C-5: the Orders page's rule (PackageInvoiceLabel). Per marketplace without an invoice (no evidence,
+        // an invoice word, n11's invoice link, NotInvoiced) and with a draft or completed one.
+        foreach (var on in new[] { shopify, n11, ptt })
+        {
+            foreach (var snapshot in new[] { "{}", """{"invoiceLink":"https://n11.example/invoice.pdf"}""", """{"invoiceLink":"  "}""", """{"invoiceStatus":"NotInvoiced"}""", """{"invoiceStatus":"Invoiced"}""" })
+                NewCase(snapshot, on);
+            var notInvoiced = NewCase("{}", on);
+            packages.Add(Package(tenant.Id, on.Id, notInvoiced.Id, $"{orders.Count}", at, MarketplaceInvoiceStatus.NotInvoiced, "Delivered"));
+            invoices.Add(NewInvoice(NewCase("{}", on), InvoiceStatus.Draft, null, at));
+            invoices.Add(NewInvoice(NewCase("{}", on), InvoiceStatus.Completed, "LB", at));
+        }
+        // A status set by hand on the package decides before the invoice and the package's own status.
+        foreach (var (manual, marketplaceStatus) in new[] { (" uploaded ", MarketplaceInvoiceStatus.Rejected), ("PENDING", MarketplaceInvoiceStatus.Invoiced), ("other", MarketplaceInvoiceStatus.Invoiced) })
+        {
+            var order = NewCase("{}");
+            var package = Package(tenant.Id, marketplace.Id, order.Id, $"{orders.Count}", at, marketplaceStatus, "Delivered");
+            package.ManualInvoiceStatus = manual;
+            packages.Add(package);
+            invoices.Add(NewInvoice(order, InvoiceStatus.Rejected, null, at));
+        }
+        // An issued invoice that needs review or did not reach the marketplace; a submission refused before the provider.
+        var review = NewInvoice(NewCase("{}"), InvoiceStatus.ManualReview, "LB", at);
+        review.ExternalReference = "remote-review";
+        var notOnPlatform = NewInvoice(NewCase("{}"), InvoiceStatus.Accepted, "LB", at);
+        notOnPlatform.LastErrorCode = "MARKETPLACE_DELIVERY_FAILED";
+        var refused = NewInvoice(NewCase("{}"), InvoiceStatus.Submitting, null, at);
+        refused.LastErrorCode = "EFATURAM_RATE_LIMITED";
+        var submitted = NewInvoice(NewCase("{}"), InvoiceStatus.Submitting, null, at);
+        submitted.LastErrorCode = "EFATURAM_RATE_LIMITED";
+        submitted.ExternalReference = "remote-submitted";
+        invoices.AddRange([review, notOnPlatform, refused, submitted]);
         // A newer invoice of the same order decides.
         var twice = NewCase("{}");
         invoices.Add(NewInvoice(twice, InvoiceStatus.Rejected, null, at));
@@ -354,7 +389,7 @@ public sealed class ReturnInvoiceLabelPostgreSqlTests(PostgreSqlTenantIsolationF
 
         await using var db = fixture.CreateContext();
         db.Tenants.Add(tenant);
-        db.PlatformConnections.AddRange(marketplace, provider, disabled);
+        db.PlatformConnections.AddRange(marketplace, provider, disabled, shopify, n11, ptt);
         db.LegalEntityProfiles.Add(profile);
         db.InvoicePolicies.Add(policy);
         db.Orders.AddRange(orders);

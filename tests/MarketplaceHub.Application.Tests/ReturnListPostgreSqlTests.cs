@@ -31,7 +31,8 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["TRENDYOL", "N11"], all.Platforms.Select(x => x.PlatformCode));
             Assert.Equal(["Aras Kargo", "Yurtiçi"], all.CargoProviders);
             Assert.Equal(["SIZE", "Beğenmedim"], all.Reasons.Select(x => x.Value));
-            Assert.Equal(["FATURA_BILINMIYOR", "FATURA_KONTROLDE"], all.InvoiceStatuses);
+            // The n11 claim without an invoice waits for one, as on the Orders page (n11 shows no invoice; scan 25 Nov 2026 C-5).
+            Assert.Equal(["FATURA_BILINMIYOR", "FATURA_KONTROLDE", "FATURA_BEKLIYOR"], all.InvoiceStatuses);
             Assert.Equal(4, all.UnfilteredCount);
             // Each choice's count is the cards that choice lists under the other filters.
             Assert.Equal(4, all.PlatformCounts!.Values.Sum());
@@ -190,7 +191,6 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
-    // Scan 25 Nov 2026 C-4: a partly cancelled order's returned unit showed "0 adet" (the page takes the cancelled units off
     // Scan 25 Nov 2026 C-3: the Analiz tab counted the claims with an unknown status word and listed none; a split claim's
     // rejected line was on neither card, and a line without a status counted as waiting even on an approved claim.
     [PostgreSqlFact]
@@ -236,6 +236,7 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Scan 25 Nov 2026 C-4: a partly cancelled order's returned unit showed "0 adet" (the page takes the cancelled units off
     // the quantity). A return card's line carries its returned units and no cancelled ones.
     [PostgreSqlFact]
     public async Task A_return_line_of_a_partly_cancelled_order_shows_its_returned_units()
