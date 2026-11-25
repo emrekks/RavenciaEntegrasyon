@@ -117,7 +117,7 @@ internal sealed class ReportLineExtra
 
 internal sealed class ReportClaimRow
 {
-    // A Hepsiburada exchange not closed with a refund (ReturnCustomerRequestPolicy.CountsAsReturn): no return claim.
+    // A claim that is no return (ReturnCustomerRequestPolicy.CountsAsReturn): an exchange not closed with a refund.
     public bool Exchange { get; init; }
     // The customer asked for an exchange (CustomerRequest CHANGE), counted apart for information.
     public bool ExchangeRequest { get; init; }

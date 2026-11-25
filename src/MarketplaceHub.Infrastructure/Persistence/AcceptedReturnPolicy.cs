@@ -63,17 +63,24 @@ internal static class AcceptedReturnPolicy
     /// <summary>The lines of the tenant's return claims that can take units back, with their claim's status.</summary>
     public static IQueryable<ClaimLine> ClaimLines(AppDbContext db, Guid tenantId) =>
         from line in db.ReturnLines.AsNoTracking()
-        join claim in db.ReturnClaims.AsNoTracking() on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
+        join claim in db.ReturnClaims.AsNoTracking().Where(CountsAsReturnInDatabase(db)) on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
         where claim.TenantId == tenantId && claim.Status != ReturnClaimStatus.Cancelled
-            // An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov 2026). Only the
-            // stored request says so; a claim that does not say is a return as before. An exchange claim the marketplace
-            // closed with a refund (raw status Refunded) is a return.
-            // ReturnCustomerRequestPolicy.CountsAsReturn: only Hepsiburada's exchanges (ExchangeNoReturnPlatform); a
-            // Trendyol exchange request counts as before (review, 18 Nov 2026).
-            && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
-                || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
-                    && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform))
         select new ClaimLine { OrderId = claim.OrderId, OrderLineId = line.OrderLineId, Quantity = line.Quantity, RawStatus = line.RawStatus, ClaimStatus = claim.Status };
+
+    /// <summary>
+    /// ReturnCustomerRequestPolicy.CountsAsReturn as a database condition, the one copy the invoice (InvoiceSaleReturns,
+    /// through ClaimLines), the overview (DashboardReadService.AcceptedReturnQuantities) and the reports (ReportsService
+    /// claim rows) read. An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov 2026).
+    /// How the claim closed decides first: refunded (raw status Refunded) or ResolvedWith REFUND is a return, ResolvedWith
+    /// CHANGE is none (scan 25 Nov 2026 C-2). A claim that does not say how it closed counts unless it is a Hepsiburada
+    /// exchange request (ExchangeNoReturnPlatform; a Trendyol exchange request counts as before, review 18 Nov 2026).
+    /// </summary>
+    public static Expression<Func<ReturnClaim, bool>> CountsAsReturnInDatabase(AppDbContext db) => claim =>
+        claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
+        || claim.ResolvedWith != ReturnCustomerRequestPolicy.Change
+            && (claim.ResolvedWith == ReturnCustomerRequestPolicy.Refund || claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
+                    && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform));
 
     /// <summary>Whether a claim line takes its units back: the invoice's rule.</summary>
     public static bool LineCounts(ReturnClaimStatus claimStatus, string? lineRawStatus) =>
