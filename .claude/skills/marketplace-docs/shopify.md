@@ -86,8 +86,9 @@ UTC, ISO with Z.
 - Webhooks: stale `X-Shopify-Triggered-At` deliveries (over 5 min either way) are answered 200 and dropped; 8
   consecutive failures delete the subscription. Since 13 Nov 2026 a stale `products/delete` of this store still queues
   the link check (LISTING_VERIFY, one per connection per 10 min) at once, so a product deleted during a deploy is not
-  shown live until the nightly scan (`MarketplaceWebhookService.StaleStartsListingVerify`). Stale order topics need
-  nothing: the scheduled order check reads them.
+  shown live until the nightly scan (`MarketplaceWebhookService.StaleStartsListingVerify`). Since 25 Nov 2026 (scan
+  B-10) stale order and refund topics are processed, not dropped: the ingest reads the order by id and the upsert is
+  idempotent (`ShopifyWebhookVerifier.DropsWhenStale`).
 - Webhook opening makes one subscription per topic. A topic whose `webhookSubscriptionCreate` times out or answers a
   server fault is looked up in `webhookSubscriptions` (topic + uri) and kept when Shopify made it; otherwise the topics
   made so far are removed (`ShopifyHttpClient.CreateWebhookAsync`, 13 Nov 2026). The panel settles an address left

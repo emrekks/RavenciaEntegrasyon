@@ -509,6 +509,86 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         }
     }
 
+    // 25 Nov 2026: a fully cancelled order (its status CANCELLED, its package still live) refuses the hand-set invoice
+    // status, the Shopify invoice status and the delivery of a hand-uploaded document with 409; a partly cancelled order
+    // keeps them, and the read-back of an uncertain earlier delivery still runs.
+    [PostgreSqlFact]
+    public async Task CancelledOrderRefusesHandSetStatusAndManualDeliveryButPartlyCancelledKeepsThem()
+    {
+        var shopify = NewSeed("cancel-shopify", "SHOPIFY", null);
+        shopify.Order.DerivedStatus = "CANCELLED";
+        var invoice = NewInvoice(shopify, InvoiceStatus.Accepted);
+        invoice.ProviderConnectionId = shopify.Marketplace.Id;
+        await SeedAsync(shopify, db => db.Invoices.Add(invoice));
+        var partly = NewSeed("cancel-partly", "SHOPIFY", null);
+        partly.Order.DerivedStatus = "PARTIALLY_CANCELLED";
+        await SeedAsync(partly);
+        var trendyol = NewSeed("cancel-deliver", "TRENDYOL", null);
+        trendyol.Order.DerivedStatus = "CANCELLED";
+        var document = new ManualOrderInvoiceDocument
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = trendyol.Tenant.Id,
+            OrderId = trendyol.Order.Id,
+            ConnectionId = trendyol.Marketplace.Id,
+            InvoiceNumber = "CNL2026000000001",
+            IssuedAt = fixture.Now.AddDays(-1),
+            IdempotencyKey = $"cancel:{Guid.NewGuid():N}",
+            DocumentType = "URL",
+            DocumentUrl = "https://example.com/cancel/invoice.pdf",
+            Status = "ACTIVE",
+            CreatedAt = fixture.Now,
+            UpdatedAt = fixture.Now
+        };
+        await SeedAsync(trendyol, db => db.ManualOrderInvoiceDocuments.Add(document));
+        try
+        {
+            Assert.Equal(StatusCodes.Status409Conflict, await CallAsync(shopify, (http, db) =>
+                InvoicingEndpoints.UpdateInvoiceWorkspaceManualStatusAsync(new([shopify.Package.Id], "UPLOADED"), http, db, fixture.TimeProvider)));
+            Assert.Equal(StatusCodes.Status409Conflict, await CallAsync(shopify, (http, db) =>
+                InvoicingEndpoints.UpdateShopifyInvoiceStatusAsync(invoice.Id, new("UPLOADED"), http, db, fixture.TimeProvider)));
+            Assert.Equal(StatusCodes.Status200OK, await CallAsync(partly, (http, db) =>
+                InvoicingEndpoints.UpdateInvoiceWorkspaceManualStatusAsync(new([partly.Package.Id], "UPLOADED"), http, db, fixture.TimeProvider)));
+            Assert.Equal(StatusCodes.Status409Conflict, await CallAsync(trendyol, (http, db) =>
+                InvoicingEndpoints.QueueManualOrderInvoiceDeliveryAsync(document.Id, http, db, fixture.TimeProvider)));
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Null((await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == shopify.Package.Id)).ManualInvoiceStatus);
+                Assert.Equal("UPLOADED", (await db.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == partly.Package.Id)).ManualInvoiceStatus);
+                Assert.Equal(0, await CountDeliveryJobsAsync(trendyol.Tenant.Id));
+                // An earlier delivery whose result is uncertain: its read-back is still queued, read only. Its hash is the
+                // stored document's (the database keeps microseconds).
+                var stored = await db.ManualOrderInvoiceDocuments.AsNoTracking().SingleAsync(x => x.Id == document.Id);
+                db.ManualOrderInvoiceDeliveryStates.Add(new ManualOrderInvoiceDeliveryState { Id = Guid.CreateVersion7(), TenantId = trendyol.Tenant.Id, DocumentId = document.Id, ConnectionId = trendyol.Marketplace.Id, PackageId = trendyol.Package.Id, IdempotencyKey = $"manual-invoice-delivery:{document.Id:N}:{trendyol.Package.Id:N}", RequestHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{stored.DocumentUrl}\n{stored.InvoiceNumber}\n{stored.IssuedAt:O}"))), Status = "UNKNOWN", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+                await db.SaveChangesAsync();
+            }
+            Assert.Equal(StatusCodes.Status202Accepted, await CallAsync(trendyol, (http, db) =>
+                InvoicingEndpoints.QueueManualOrderInvoiceDeliveryAsync(document.Id, http, db, fixture.TimeProvider)));
+            await using var verification = fixture.CreateContext();
+            var job = await verification.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == trendyol.Tenant.Id && x.JobType == InvoicingJobTypes.ManualOrderInvoiceDelivery);
+            Assert.True(JsonDocument.Parse(job.PayloadJson).RootElement.GetProperty("inspectionOnly").GetBoolean());
+        }
+        finally
+        {
+            await DeleteTenantAsync(shopify.Tenant.Id);
+            await DeleteTenantAsync(partly.Tenant.Id);
+            await DeleteTenantAsync(trendyol.Tenant.Id);
+        }
+    }
+
+    private async Task<int> CallAsync(Seed seed, Func<HttpContext, AppDbContext, Task<IResult>> endpoint)
+    {
+        await using var db = fixture.CreateContext();
+        var http = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection()
+                .AddSingleton<ITenantContextAccessor>(new TenantAccessor(new(Guid.NewGuid(), seed.Tenant.Id, "OWNER")))
+                .BuildServiceProvider()
+        };
+        http.Request.Headers["Idempotency-Key"] = $"cancel:{Guid.NewGuid():N}";
+        return Assert.IsAssignableFrom<IStatusCodeHttpResult>(await endpoint(http, db)).StatusCode ?? 0;
+    }
+
     private async Task<int> QueueManualDeliveryAsync(Seed seed, Guid documentId, string key)
     {
         await using var db = fixture.CreateContext();

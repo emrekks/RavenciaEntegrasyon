@@ -1642,6 +1642,46 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(2, Assert.Single(PttAvmPriceInventoryRules.Items(single.Value!.PayloadJson)!).Variants!.Count);
     }
 
+    // B-10 (25 Nov 2026): mapping a PTT AVM product again keeps its existing link's sync state (here: panel edits waiting
+    // to be sent); it was set back to MAPPED, so the panel lost that the product had changes to send.
+    [PostgreSqlFact]
+    public async Task PttAvmMappingAgain_KeepsTheExistingLinksSyncStatus()
+    {
+        var tenant = NewTenant("pttavm-map-again");
+        var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
+        var (navy, navyXl) = NewVariant(tenant, "MZDT003ECD05", "MZDT003ECD05");
+        navyXl.ModelCode = "MZDT003ECD";
+        navyXl.OptionSignature = "Renk: Lacivert | Beden: XL";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pttAvm);
+            seed.Products.Add(navy);
+            seed.ProductVariants.Add(navyXl);
+            await seed.SaveChangesAsync();
+        }
+        RemoteCatalogVariant Option(string id, string value) => new($"MZDT003ECD/{id}", $"MZDT003ECD-{value}", null, "MZDT003ECD", new Dictionary<string, string> { ["Varyant"] = value }, false, 120m, null, 20m, 0m, "TRY", "{}");
+        var snapshot = new RemoteCatalogProduct("1533250135", "MZDT003ECD", "Tunik", "", null, null, null, null, [], [Option("1", "Lacivert"), Option("3", "XL")], "{}");
+        async Task MapAsync()
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var map = typeof(CatalogImportService).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Assert.True(await (Task<bool>)map.Invoke(processor.CatalogImport, [tenant.Id, pttAvm.Id, snapshot, false, CancellationToken.None, true, true, false, null, "PTTAVM", true])!);
+            await db.SaveChangesAsync();
+        }
+
+        await MapAsync();
+        await using (var edit = fixture.CreateContext())
+            await edit.MarketplaceProductLinks.Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id)
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.SyncStatus, "LOCAL_CHANGES_PENDING"));
+        await MapAsync();
+
+        await using var check = fixture.CreateContext();
+        var link = await check.MarketplaceProductLinks.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id);
+        Assert.Equal("LOCAL_CHANGES_PENDING", link.SyncStatus);
+    }
+
     // Y5: a Trendyol listing found only by its model code binds to the panel variant of its own colour and size; a model
     // kept as one card per colour never gives the listing an arbitrary card, and a colour the panel lacks stays unbound.
     [PostgreSqlFact]

@@ -15,10 +15,10 @@
 .rv-dock-layer { display: none; }
 @media (max-width: 760px) {
   /* The page keeps room under its content: 56 (parts) + 12 (above the edge) + 16 and the safe area; the warning pill adds 32 + 8. */
-  .app-shell.stitch-shell { --rv-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px)); }
-  .app-shell.stitch-shell:has(.rv-dock-layer[data-rows="2"]) { --rv-bottom-nav-space: calc(124px + env(safe-area-inset-bottom, 0px)); }
+  .app-shell.stitch-shell { --rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 72px); }
+  .app-shell.stitch-shell:has(.rv-dock-layer[data-rows="2"]) { --rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 112px); }
   /* What sits above the screen edge: the safe area and 12 px; --rv-dock-extra is the warning pill (toasts sit above all of it). */
-  :root { --rv-dock-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); --rv-dock-extra: 0px; }
+  :root { --rv-dock-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 4px), 12px); --rv-dock-extra: 0px; }
   :root:has(.rv-dock-layer[data-rows="2"]) { --rv-dock-extra: 40px; }
   /* The shadow every part shares (no border, no blur): light, and the dark theme's inner line with a darker shadow. */
   :root { --rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%); --rv-dock-active-tint: 14%; }
@@ -26,15 +26,16 @@
   /* The smallest viewport (100svh), which does not change while a browser toolbar shows or hides during a scroll (the dynamic viewport unit did, and a page that
      re-lays-out in every frame makes sticky heads jump on iOS); the page colour fills the rest, so no band shows under the bar. */
   html body, html body .app-shell.stitch-shell, html body .app-shell.stitch-shell > main { min-height: 100svh; }
+  /* The Home Screen app has no browser bars to hide, and there 100svh is the screen minus the safe areas (WebKit bug 281071 class): the full 100vh instead. */
+  @media (display-mode: standalone) { html body, html body .app-shell.stitch-shell, html body .app-shell.stitch-shell > main { min-height: 100vh; } }
   /* The phone keeps the page's top bar as it was (breadcrumb, bell, theme, search); only its hamburger is gone: Menü is in the dock. */
   html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
-  /* The status bar (clock) area is never painted, in every browser and in the Home Screen app (index.html: black-translucent, no theme-color): no
-     fixed or sticky surface sits within 10 px of the top edge, because Safari tints its bar from such a surface (an opaque top bar or menu there makes a
-     solid band). The top bar starts under the clock (a margin and a sticky top of --rv-top-gap, no padding of its own) so the page scrolls on behind it;
-     the gap is the safe area, and at least 10 px where the browser reports none (Safari with its own bars); sliding away the bar clears it. */
-  :root { --rv-top-gap: max(env(safe-area-inset-top, 0px), 10px); }
-  html body .app-shell.stitch-shell .rv-topbar { top: var(--rv-top-gap); margin-top: var(--rv-top-gap); }
-  html body .app-shell.stitch-shell .rv-topbar.is-hidden { transform: translateY(calc(-100% - var(--rv-top-gap) - 1px)); }
+  /* The top bar and the status bar (clock): while the bar shows, one piece in the bar's surface colour - it starts at the very top edge (sticky top 0, no gap
+     in a browser tab where the safe area is 0) and its padding is the safe area, so the buttons sit under the clock (phone-spacing.css: min-height 62 px + the
+     safe area). Sliding away (scrolled down) it takes the safe area with it, so no fixed or sticky surface is left at the top edge and the page shows
+     through behind the clock (index.html: black-translucent, no theme-color). The sticky page heads clear it (top: 61 px + --m-safe-top). */
+  html body .app-shell.stitch-shell .rv-topbar { top: 0; margin-top: 0; }
+  html body .app-shell.stitch-shell .rv-topbar.is-hidden { transform: translateY(calc(-100% - 1px)); }
   html body .app-shell.stitch-shell > main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom var(--rv-motion-bar) var(--rv-ease-bar); }
   /* A field that takes focus is never left behind the bar. */
   .app-shell.stitch-shell :is(input, textarea, select, button, [tabindex]) { scroll-margin-bottom: calc(var(--rv-bottom-nav-space) + 8px); }
@@ -157,7 +158,7 @@
   body:has(:is(input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"], [type="range"], [type="file"], [type="color"]), textarea, select, [contenteditable=""], [contenteditable="true"]):focus) .rv-dock-layer { display: none; }
 
   /* Full-screen menu: the page's colour over the top bar (z 85 on a phone); the dock (87) stays above it, sheets and dialogs (900+) above both. */
-  .rv-fullmenu { position: fixed; inset: var(--rv-top-gap) 0 0; z-index: 86; display: flex; flex-direction: column; box-sizing: border-box; padding: 14px 0 calc(var(--rv-dock-bottom) + 56px + 14px); color: var(--rv-color-ink); background: var(--rv-color-bg); outline: 0; animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet) both; }
+  .rv-fullmenu { position: fixed; inset: 0; z-index: 86; display: flex; flex-direction: column; box-sizing: border-box; padding: calc(env(safe-area-inset-top, 0px) + 8px) 0 0; color: var(--rv-color-ink); background: var(--rv-color-bg); outline: 0; animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet) both; }
   .rv-fullmenu-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 0 16px 12px; }
   .rv-fullmenu-head h2 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
   /* The profile card: the first item of the list, scrolling with it. */
@@ -171,7 +172,7 @@
   .rv-fullmenu-role { flex: none; }
   .rv-fullmenu-email { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
   .rv-fullmenu-group:first-child h3 { margin-top: 0; }
-  .rv-fullmenu-body { flex: 1; min-height: 0; padding: 0 16px 12px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .rv-fullmenu-body { flex: 1; min-height: 0; padding: 0 16px calc(var(--rv-dock-bottom) + 56px + 16px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
   .rv-fullmenu-body::-webkit-scrollbar { display: none; }
   .rv-fullmenu-row.is-danger { width: 100%; color: var(--rv-color-danger); background: none; border: 0; font: inherit; font-size: 14px; font-weight: 500; text-align: left; cursor: pointer; }
   .rv-fullmenu-row.is-danger > .ui-icon { color: inherit; }

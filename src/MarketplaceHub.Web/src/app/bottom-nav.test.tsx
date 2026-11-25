@@ -76,8 +76,8 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
     // Room under the content: 56 + 12 + 16 and the safe area (the warning pill adds 40); the parts sit 12 px and the safe area above the edge.
-    expect(phone).toContain('--rv-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px))')
-    expect(phone).toContain('--rv-dock-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px)')
+    expect(phone).toContain('--rv-bottom-nav-space: calc(var(--rv-dock-bottom) + 72px)')
+    expect(phone).toContain('--rv-dock-bottom: max(calc(env(safe-area-inset-bottom, 0px) + 4px), 12px)')
     const layer = phone.match(/\.rv-dock-layer \{ position: fixed[^}]*\}/)![0]
     expect(layer).toContain('pointer-events: none')
     expect(layer).toContain('bottom: var(--rv-dock-bottom)')

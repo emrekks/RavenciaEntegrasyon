@@ -27,6 +27,18 @@ public static partial class InvoicingEndpoints
             .Where(x => x.TenantId == tenant.TenantId && x.OrderId == document.OrderId && x.Status != ShipmentPackageStatus.Cancelled)
             .OrderBy(x => x.Id).ToListAsync(http.RequestAborted);
         if (packages.Count == 0) return Problem(http, new("INVOICE_PACKAGE_REQUIRED", "Siparişte etkin bir paket bulunamadı.", 422));
+        // A cancelled order's invoice link is not sent to the marketplace (as EnqueueDeliveryAsync, scan A-2). Only the
+        // read-back of a delivery whose earlier result is uncertain still runs: it reads, it never sends.
+        if (await OrderCancelledAsync(db, tenant.TenantId, document.OrderId, http.RequestAborted))
+        {
+            var packageIds = packages.Select(package => package.Id).ToList();
+            var uncertain = (await db.ManualOrderInvoiceDeliveryStates.AsNoTracking()
+                    .Where(x => x.TenantId == tenant.TenantId && x.DocumentId == document.Id && packageIds.Contains(x.PackageId))
+                    .Select(x => new { x.PackageId, x.Status }).ToListAsync(http.RequestAborted))
+                .Where(x => ManualInvoiceDeliveryPolicy.RequiresReadOnlyInspection(x.Status)).Select(x => x.PackageId).ToHashSet();
+            packages = packages.Where(package => uncertain.Contains(package.Id)).ToList();
+            if (packages.Count == 0) return Problem(http, OrderCancelledError);
+        }
         if (document.IssuedAt is null) return Problem(http, new("INVOICE_DATE_REQUIRED", "Platforma iletim için faturanın tarihi gereklidir.", 422));
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == document.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
         if (platformCode is "SHOPIFY" or "N11" && string.IsNullOrWhiteSpace(document.InvoiceNumber))

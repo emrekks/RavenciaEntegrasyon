@@ -1469,9 +1469,14 @@ public static class HepsiburadaCancellationPolicy
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan WideInterval = TimeSpan.FromDays(1);
 
-    public static CancellationReadWindow? Window(DateTimeOffset? lastReadAt, DateTimeOffset? lastWideReadAt, DateTimeOffset now)
+    // The mark the wide cursor carries after a wide read stopped at its page cap (B-10, 25 Nov 2026): the next run reads
+    // the last day instead, so a month too long for one read never keeps the new cancellations unread; the run after
+    // that tries the month again.
+    public const string WideStoppedMark = "WIDE_STOPPED";
+
+    public static CancellationReadWindow? Window(DateTimeOffset? lastReadAt, DateTimeOffset? lastWideReadAt, DateTimeOffset now, bool wideStopped = false)
     {
-        if (lastWideReadAt is not { } wide || now - wide >= WideInterval) return new(now.AddDays(-30), true);
+        if (!wideStopped && (lastWideReadAt is not { } wide || now - wide >= WideInterval)) return new(now.AddDays(-30), true);
         if (lastReadAt is { } last && now - last < Interval) return null;
         return new(now.AddDays(-1), false);
     }

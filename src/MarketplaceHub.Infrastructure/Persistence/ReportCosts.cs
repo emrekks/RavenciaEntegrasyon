@@ -143,8 +143,12 @@ internal static class ReportCosts
         if (!read && platformOrders.Count == 0)
             return new(EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, 0, null, null, null, null, [], [], [], Unlinked: []);
         finance ??= new ReportFinance([], [], new HashSet<(Guid, string)>(), new Dictionary<Guid, MarketplaceFinanceSyncState?>());
-        // A Trendyol store whose statement is not read is not costed from it (its fees stay unknown).
-        if (!read) financeOrders = [];
+        // A Trendyol store whose statement is not read is not costed from it (its fees stay unknown), store by store (C-10,
+        // 25 Nov 2026: one flag for all stores costed an unread store as read while another one was, and left every
+        // Trendyol order's sales VAT out while none was). An unread store's orders still count in the net VAT: their sales
+        // and product cost VAT and their estimated commission's VAT; their cargo and service fee VAT is missing (a note).
+        var unreadOrders = financeOrders.Where(order => !StoreRead(finance, order.Order.ConnectionId)).ToList();
+        financeOrders = financeOrders.Where(order => StoreRead(finance, order.Order.ConnectionId)).ToList();
 
         // The period's orders (any status) by store and order number; a record of another period's order is not here.
         var periodOrders = input.Orders.GroupBy(order => (order.ConnectionId, order.OrderNumber)).ToDictionary(group => group.Key, group => group.First().Id);
@@ -291,8 +295,7 @@ internal static class ReportCosts
         decimal? cargoEstimate = unbilledCount == 0 ? 0m : estimatedCargo.Count > 0 ? estimatedCargo.Values.Sum() : null;
 
         // The orders of the platforms whose statement is not read, costed from their tariffs (ReportPlatformCosts).
-        var carriers = input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
-            .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
+        var carriers = Carriers(input);
         decimal platformCargo = 0m, platformFees = 0m, platformVatFees = 0m;
         var desiInput = input.Desi ?? ReportDesiInput.None;
         var desiSources = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -405,8 +408,8 @@ internal static class ReportCosts
         var trendyolCommission = trendyolReal + MoneyRounding.Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
         var trendyolFees = linkedDomesticFees + financeOrders.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))).Sum(TrendyolVatFee);
         var advertising = lines.TryGetValue(MarketplaceFinanceCategories.Advertising, out var adLine) ? adLine.Amount : 0m;
-        var vatOrders = financeOrders.Concat(platformOrders).ToList();
-        var platformCommission = MoneyRounding.Round(platformOrders.Sum(Estimated));
+        var vatOrders = financeOrders.Concat(unreadOrders).Concat(platformOrders).ToList();
+        var platformCommission = MoneyRounding.Round(platformOrders.Concat(unreadOrders).Sum(Estimated));
         var salesVat = vatOrders.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(line => Vat(line.KeptAmount, line.Row.VatRate));
         var costVat = vatOrders.SelectMany(order => order.Lines).Where(line => line.Row.CostPrice is > 0).Sum(line => Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
         var expenseVat = Vat(trendyolCommission + platformCommission + cargoView.Combined + trendyolFees + platformVatFees + advertising, ExpenseVatRate);
@@ -422,7 +425,29 @@ internal static class ReportCosts
         && row.Category == MarketplaceFinanceCategories.Commission;
 
     // The notes the costs add to the report's DataNotes.
-    public static IEnumerable<string> Notes(ReportCostsView costs, ReportInput input)
+    public static IEnumerable<string> Notes(ReportCostsView costs, ReportInput input, IReadOnlyList<ReportBuilder.OrderFact>? orders = null)
+    {
+        foreach (var note in NotesOfCosts(costs, input)) yield return note;
+        if (orders is not null && UnknownCarrierNote(input, orders) is { } unknownCarrier) yield return unknownCarrier;
+    }
+
+    // Each package's carrier by order (the first named).
+    internal static Dictionary<Guid, string?> Carriers(ReportInput input) =>
+        input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
+            .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
+
+    // Review of 25 Nov 2026: the Hepsiburada orders costed above (ReportPlatformCosts) whose carrier is not known take the
+    // hepsiJET table without a barem; that cargo is an assumption, so the note says so instead of passing it as known.
+    private static string? UnknownCarrierNote(ReportInput input, IReadOnlyList<ReportBuilder.OrderFact> orders)
+    {
+        var carriers = Carriers(input);
+        var unknown = orders.Count(order => order.Currency == "TRY" && order.Amount > 0 && ReportPlatformCosts.UnknownCarrier(order.PlatformCode, carriers.GetValueOrDefault(order.Order.Id)));
+        return unknown > 0
+            ? $"Eksik: kargo firması. {unknown.ToString("N0", CultureInfo.GetCultureInfo("tr-TR"))} Hepsiburada siparişinin kargo firması bilinmiyor; kargosu hepsiJET desi tablosundan (barem uygulanmadan) varsayıldı, gerçek tutar farklı olabilir."
+            : null;
+    }
+
+    private static IEnumerable<string> NotesOfCosts(ReportCostsView costs, ReportInput input)
     {
         var tr = CultureInfo.GetCultureInfo("tr-TR");
         string Money(decimal value) => $"{value.ToString("N2", tr)} ₺";
@@ -439,6 +464,7 @@ internal static class ReportCosts
             if (PlatformNote(costs, tr) is { } unread) yield return unread;
             if (RealCommissionNote(costs, tr) is { } read) yield return read;
             if (CommissionGapNote(costs, tr) is { } unknownCommission) yield return unknownCommission;
+            if (UnreadStoreNote(costs, input, tr) is { } unreadStore) yield return unreadStore;
             yield break;
         }
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
@@ -482,6 +508,7 @@ internal static class ReportCosts
                     : $"{billed} Faturası henüz gelmeyen {unbilled} tahmin edilemedi (son 60 günde faturalanmış kargo yok); kargo eksiktir.";
         }
         if (CommissionGapNote(costs, tr) is { } gap) yield return gap;
+        if (UnreadStoreNote(costs, input, tr) is { } unreadStores) yield return unreadStores;
         yield return "Kargo ve hizmet bedelleri ürünlere paylaştırılmaz.";
     }
 
@@ -521,6 +548,24 @@ internal static class ReportCosts
     private static string? CommissionGapNote(ReportCostsView costs, CultureInfo tr) =>
         costs.Commission is { MissingOrders: > 0 } commission
             ? $"{commission.MissingOrders.ToString("N0", tr)} siparişin komisyonu bilinmiyor: siparişte komisyon oranı yok ve mağazanın bu dönemde oranı bilinen satışı yok. Tahmini komisyon bu siparişler olmadan, eksiktir."
+            : null;
+
+    // A Trendyol store whose statement has been read: a window of it covered, or a record or cargo line of it here.
+    internal static bool StoreRead(ReportFinance? finance, Guid connectionId) =>
+        finance is not null
+        && ((finance.States.TryGetValue(connectionId, out var state) && state?.CoveredThrough is not null)
+            || finance.Rows.Any(row => row.ConnectionId == connectionId) || finance.CargoItems.Any(item => item.ConnectionId == connectionId));
+
+    // The live Trendyol stores with orders in the period whose statement is not read (their costs are missing).
+    private static int UnreadStoresWithOrders(ReportInput input) =>
+        input.Orders.Select(order => order.ConnectionId).Distinct()
+            .Count(connectionId => IsFinanceStore(input, connectionId) && !StoreRead(input.Finance, connectionId));
+
+    // Review of 25 Nov 2026: the note names every cost of an unread store that is left out, not only its VAT, so the
+    // cost total and the net profit are not read as complete.
+    private static string? UnreadStoreNote(ReportCostsView costs, ReportInput input, CultureInfo tr) =>
+        costs.NetVat is not null && UnreadStoresWithOrders(input) is > 0 and var unread
+            ? $"Eksik: komisyon, kargo, hizmet bedeli, stopaj, KDV. {unread.ToString("N0", tr)} Trendyol mağazasının finans kayıtları henüz okunmadı; bu mağazanın siparişlerinin komisyonu, kargosu, hizmet bedeli ve stopajı masraf satırlarına girmedi ve tahmin de edilmedi, masraf toplamı eksik, Net Kâr gerçekte olduğundan yüksek görünebilir. Net KDV'ye bu siparişlerin satış ve maliyet KDV'si ile tahmini komisyonunun KDV'si girdi, kargo ve hizmet bedeli KDV'si girmedi (Net KDV bu kadar yüksek olabilir)."
             : null;
 
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>

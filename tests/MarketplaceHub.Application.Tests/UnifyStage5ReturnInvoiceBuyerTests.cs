@@ -159,6 +159,10 @@ public sealed class UnifyStage5ReturnInvoiceBuyerTests
         Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Wait, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(0, since, Now.AddDays(-1), Now));
         Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Now, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(0, Now.AddMinutes(-16), Now.AddDays(-1), Now));
         Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Wait, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(2, Now.AddMinutes(-30), Now.AddDays(-1), Now));
+        // C-11 (25 Nov 2026): after one resend the next waits an hour, not 15 minutes again; the last one waits a day.
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Wait, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(1, Now.AddMinutes(-20), Now.AddDays(-1), Now));
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Now, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(1, Now.AddMinutes(-61), Now.AddDays(-1), Now));
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Wait, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(4, Now.AddHours(-23), Now.AddDays(-2), Now));
         Assert.Equal(InvoiceDeliveryAutoRetryPolicy.UncertainResend.Exhausted, InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(InvoiceDeliveryAutoRetryPolicy.MaxAttempts, Now.AddDays(-2), Now.AddDays(-3), Now));
     }
 
