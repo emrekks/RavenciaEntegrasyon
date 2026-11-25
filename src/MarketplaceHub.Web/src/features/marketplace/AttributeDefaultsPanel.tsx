@@ -1,3 +1,4 @@
+import { type NoticeSetter } from './shared'
 import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -28,7 +29,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   categoryScope: string
   platformLabel: string
   remoteAttributes: RemoteAttribute[]
-  onNotice: (value: string) => void
+  onNotice: NoticeSetter
 }) {
   const client = useQueryClient()
   const defaultsKey = queryKeys.attributeDefaults(connectionId)
@@ -70,10 +71,10 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
       await client.invalidateQueries({ queryKey: defaultsKey })
       await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
       await client.invalidateQueries({ queryKey: queryKeys.categoryMappings(connectionId) })
-      onNotice(`“${selected.name}” için varsayılan kaydedildi. Değeri boş kalan ürünlerde ${dative(platformLabel)} bu değer gönderilecek.`)
+      onNotice(`“${selected.name}” için varsayılan kaydedildi. Değeri boş kalan ürünlerde ${dative(platformLabel)} bu değer gönderilecek.`, 'success')
       reset()
     } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Varsayılan kaydedilemedi.')
+      onNotice(reason instanceof Error ? reason.message : 'Varsayılan kaydedilemedi.', 'error')
     } finally { setBusy(false) }
   }
 
@@ -84,9 +85,9 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
       await client.invalidateQueries({ queryKey: defaultsKey })
       await client.invalidateQueries({ queryKey: queryKeys.publicationAttributeReadiness() })
       await client.invalidateQueries({ queryKey: queryKeys.categoryMappings(connectionId) })
-      onNotice(`“${item.attributeName}” varsayılanı kaldırıldı.`)
+      onNotice(`“${item.attributeName}” varsayılanı kaldırıldı.`, 'success')
     } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Varsayılan kaldırılamadı.')
+      onNotice(reason instanceof Error ? reason.message : 'Varsayılan kaldırılamadı.', 'error')
     } finally { setBusy(false) }
   }
 

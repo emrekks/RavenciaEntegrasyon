@@ -187,6 +187,19 @@ describe('product save feedback', () => {
     expect(productSaveFeedback(save({})).lines).toEqual(['Ürün bilgileri kaydedildi.', 'Yayın için pazaryeri seçilmedi; ürün pazaryerlerine gönderilmedi.'])
   })
 
+  // Review of A-6: every chosen marketplace refused its price, so nothing went out: neither "Aktarım Başladı" nor "no
+  // marketplace selected".
+  it('says nothing was sent when every chosen marketplace refused its price', () => {
+    const warning = 'N11: fiyat yazılamadığı için bu platforma gönderilmedi. SKU-1: fiyat yazılmadı.'
+    const update = productSaveFeedback(save({ updates: [], saveWarnings: [warning], priceRefused: ['N11'] }))
+    expect(update.title).toBe('Hiçbir Platforma Gönderilmedi')
+    expect(update.kind).toBe('error')
+    const publish = productSaveFeedback(save({ saveWarnings: [warning], priceRefused: ['N11'] }))
+    expect(publish.title).toBe('Hiçbir Platforma Gönderilmedi')
+    expect(publish.lines).toEqual(['Ürün bilgileri kaydedildi.', warning])
+    expect(productSaveFeedback(save({ updates: [{ platformName: 'Shopify', queued: { productInformation: false, priceInventory: true } }], saveWarnings: [warning], priceRefused: ['N11'] })).title).toBe('Aktarım Kısmen Başladı')
+  })
+
   it('names what a new product saved', () => {
     const feedback = productSaveFeedback(save({ created: true, savedParts: ['görseller', 'stok', 'kanal fiyatları'], publications: [publish({ enqueuedCards: 1, enqueuedVariants: 2 })] }))
     expect(feedback.lines[0]).toBe('Ürün oluşturuldu; görseller, stok, kanal fiyatları kaydedildi.')

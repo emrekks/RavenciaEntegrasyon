@@ -31,6 +31,16 @@ export function copiedChannelPricing(platforms: VariantPlatformStatus[], listPri
   }))
 }
 
+// A save whose price write failed on some marketplaces (A-6): their Özel Fiyat cards keep what was typed through the
+// refill after the save, so the next Kaydet writes it again; the rest refill from the saved product.
+export function keptChannelPricingDrafts(channelPricing: Readonly<Record<string, ChannelPricingDraft>>, failedConnectionIds: readonly string[]): Record<string, ChannelPricingDraft> | null {
+  const kept = Object.fromEntries(failedConnectionIds.filter(connectionId => connectionId in channelPricing).map(connectionId => [connectionId, channelPricing[connectionId]]))
+  return Object.keys(kept).length ? kept : null
+}
+export function channelPricingAfterRefill(saved: Readonly<Record<string, ChannelPricingDraft>>, kept: Readonly<Record<string, ChannelPricingDraft>> | null): Record<string, ChannelPricingDraft> {
+  return kept ? { ...saved, ...kept } : { ...saved }
+}
+
 export type SavedChannelOffer = ApiAnswer<'postChannelOffers'>
 // One saved (variant, marketplace) offer written into the form's rows at once: when a later write of the same save
 // fails, the offers already written keep their new versions, so the next try does not send a stale version (412).

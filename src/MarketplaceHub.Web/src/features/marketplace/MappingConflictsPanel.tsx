@@ -1,3 +1,4 @@
+import { type NoticeSetter } from './shared'
 import type { ApiAnswer } from '../../shared/api/api-answer'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -11,7 +12,7 @@ import { queryKeys } from '../../shared/api/query-keys'
 // Value mappings worth a look: a panel value mapped to several marketplace values in one category
 // (only one can be sent, so the user keeps one) and a panel value mapped differently across
 // categories (the user can pick one and use it in every category, which also makes it the template).
-export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: (value: string) => void; expanded?: boolean }) {
+export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, expanded = false }: { connectionId: string; platformLabel: string; onNotice: NoticeSetter; expanded?: boolean }) {
   const client = useQueryClient()
   const conflictsKey = queryKeys.mappingConflicts(connectionId)
   const loadConflicts = () => hubApi<ApiAnswer<'getMappingsConflicts'>>(`/mappings/conflicts?connectionId=${encodeURIComponent(connectionId)}`)
@@ -48,15 +49,15 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
       const fresh = await client.fetchQuery({ queryKey: conflictsKey, queryFn: loadConflicts, staleTime: 0 })
       const current = fresh.sameCategory.find(item => item.scopeExternalId === conflict.scopeExternalId && item.localValueId === conflict.localValueId)
       if (!current || !current.options.some(option => option.externalId === kept.externalId)) {
-        onNotice('Bu eşleme bu sırada değişti; liste yenilendi. Güncel duruma göre yeniden seçin.')
+        onNotice('Bu eşleme bu sırada değişti; liste yenilendi. Güncel duruma göre yeniden seçin.', 'error')
         return
       }
       for (const option of current.options.filter(item => item.externalId !== kept.externalId)) {
         await hubApi(`/mappings/attribute-values/${current.localValueId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(current.scopeExternalId)}&externalId=${encodeURIComponent(option.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${option.version}"` } })
       }
-      onNotice(`“${conflict.localValueName}” için ${conflict.categoryName} kategorisinde yalnızca “${kept.name}” bırakıldı.`)
+      onNotice(`“${conflict.localValueName}” için ${conflict.categoryName} kategorisinde yalnızca “${kept.name}” bırakıldı.`, 'success')
     } catch (reason) {
-      onNotice(mappingSaveErrorMessage(reason, 'Çakışan eşleme kaldırılamadı.'))
+      onNotice(mappingSaveErrorMessage(reason, 'Çakışan eşleme kaldırılamadı.'), 'error')
     } finally {
       setBusyKey('')
       await refreshAfterSave([conflict.scopeExternalId])
@@ -78,14 +79,14 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
     const rowKey = crossConflictKey(conflict)
     const attributeId = crossConflictAttribute(conflict)
     const chosenName = conflict.options.find(option => option.externalId === chosenExternalId)?.name ?? chosenExternalId
-    if (!attributeId) { onNotice('Bu satırın kategorileri okunamadı; sayfayı yenileyip yeniden deneyin.'); return }
+    if (!attributeId) { onNotice('Bu satırın kategorileri okunamadı; sayfayı yenileyip yeniden deneyin.', 'error'); return }
     setBusyKey(rowKey)
     const touched = new Set<string>()
     try {
       const fresh = await client.fetchQuery({ queryKey: conflictsKey, queryFn: loadConflicts, staleTime: 0 })
       const current = fresh.crossCategory.find(item => item.localValueId === conflict.localValueId && crossConflictAttribute(item) === attributeId)
       if (!current || !current.options.some(option => option.externalId === chosenExternalId)) {
-        onNotice('Bu eşleme bu sırada değişti; liste yenilendi. Güncel duruma göre yeniden seçin.')
+        onNotice('Bu eşleme bu sırada değişti; liste yenilendi. Güncel duruma göre yeniden seçin.', 'error')
         return
       }
       const lists = new Map<string, ValueList | Error>()
@@ -96,7 +97,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
       const templateChanges = current.templateExternalId !== chosenExternalId
       const skippedText = plan.skipped.map(item => `${item.categoryName} (${item.reason})`).join('; ')
       if (!plan.targets.length && (!templateChanges || !plan.anchor)) {
-        onNotice(plan.skipped.length ? `“${chosenName}” hiçbir kategoriye yazılmadı. Atlandı: ${skippedText}.` : `“${conflict.localValueName}” için değişecek kategori yok.`)
+        onNotice(plan.skipped.length ? `“${chosenName}” hiçbir kategoriye yazılmadı. Atlandı: ${skippedText}.` : `“${conflict.localValueName}” için değişecek kategori yok.`, plan.skipped.length ? 'warning' : 'info')
         return
       }
       const confirmed = await confirm({
@@ -151,10 +152,10 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
       if (failed.length) parts.push(`Kaydedilemedi: ${failed.map(item => `${item.target.categoryName} — ${item.message}`).join('; ')}.`)
       if (plan.skipped.length) parts.push(`Atlandı: ${skippedText}.`)
       parts.push(templateProblem || (done.length || !failed.length ? `Yeni kategoriler “${chosenName}” alır.` : ''))
-      onNotice(parts.filter(Boolean).join(' '))
+      onNotice(parts.filter(Boolean).join(' '), failed.length ? (done.length ? 'warning' : 'error') : plan.skipped.length || templateProblem ? 'warning' : 'success')
       setPicked(value => { const next = { ...value }; delete next[rowKey]; return next })
     } catch (reason) {
-      onNotice(mappingSaveErrorMessage(reason, 'Değer eşitlenemedi.'))
+      onNotice(mappingSaveErrorMessage(reason, 'Değer eşitlenemedi.'), 'error')
     } finally {
       setBusyKey('')
       await refreshAfterSave(touched)
