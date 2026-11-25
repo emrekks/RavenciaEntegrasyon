@@ -192,6 +192,12 @@ public sealed class ImportFileReaderTests
     [InlineData("0", "0")]
     [InlineData("120", null)]
     [InlineData("-1", null)]
+    // Scan 25 Nov 2026 (A-10): the product transfer's rule. A percent cell (0.1) is 10; only 0, 1, 8, 10 and 20 are rates.
+    [InlineData("0.1", "10")]
+    [InlineData("%10", "10")]
+    [InlineData("8", "8")]
+    [InlineData("18", null)]
+    [InlineData("7,5", null)]
     [InlineData("", null)]
     [InlineData(null, null)]
     public void ImportedCardVat_IsTheFilesKdvColumnOrUnknown(string? cell, string? expected)
@@ -256,5 +262,44 @@ public sealed class ImportFileReaderTests
         var row = Assert.Single(ImportFileReader.ReadCsv(new MemoryStream(Encoding.UTF8.GetBytes($"Ürün;SKU;Stok;Desi\r\nBluz;B-1;{stock};{desi}\r\n")), mappings));
         if (field is null) Assert.Empty(row.Errors);
         else Assert.Equal([field == "stock" ? $"stock: {ImportFileReader.StockInvalid}" : $"desi: {ImportFileReader.DesiInvalid}"], row.Errors);
+    }
+
+    // Scan 25 Nov 2026 (A-10): the KDV column of a catalog import takes what the product transfer takes. An Excel percent
+    // cell (0.1) is 10 and "%10" is 10; a rate the panel does not take (18) is a row error, not a card that goes in as a
+    // draft or with that rate.
+    [Theory]
+    [InlineData("<v>0.1</v>", null, "10")]
+    [InlineData("<v>20</v>", null, "20")]
+    [InlineData("<is><t>%10</t></is>", "inlineStr", "10")]
+    [InlineData("<v>18</v>", null, null)]
+    [InlineData("<v>7.5</v>", null, null)]
+    [InlineData("<is><t>-</t></is>", "inlineStr", null)]
+    public void XlsxKdvColumn_TakesTheProductTransferRule(string cellContent, string? cellType, string? expected)
+    {
+        static string Text(string reference, string text) => $"<c r=\"{reference}\" t=\"inlineStr\"><is><t>{text}</t></is></c>";
+        var vatCell = cellType is null ? $"<c r=\"C2\">{cellContent}</c>" : $"<c r=\"C2\" t=\"{cellType}\">{cellContent}</c>";
+        var buffer = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("xl/worksheets/sheet1.xml").Open(), new UTF8Encoding(false));
+            writer.Write("<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>"
+                + $"<row r=\"1\">{Text("A1", "Ürün")}{Text("B1", "SKU")}{Text("C1", "KDV")}</row>"
+                + $"<row r=\"2\">{Text("A2", "Bluz")}{Text("B2", "B-1")}{vatCell}</row></sheetData></worksheet>");
+        }
+        buffer.Position = 0;
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["Ürün"] = "title", ["SKU"] = "sku", ["KDV"] = "vatRate" };
+
+        var row = Assert.Single(ImportFileReader.ReadXlsx(buffer, mappings, 64 * 1024 * 1024));
+
+        if (expected is null)
+        {
+            Assert.StartsWith("vatRate: ", Assert.Single(row.Errors), StringComparison.Ordinal);
+            Assert.Null(ImportJobProcessor.FileVatRate(row.Values));
+        }
+        else
+        {
+            Assert.Empty(row.Errors);
+            Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ImportJobProcessor.FileVatRate(row.Values));
+        }
     }
 }
