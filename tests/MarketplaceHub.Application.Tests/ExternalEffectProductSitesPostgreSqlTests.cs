@@ -108,6 +108,39 @@ public sealed class ExternalEffectProductSitesPostgreSqlTests(PostgreSqlTenantIs
         await AssertSecondRunAsync(outcome, () => RunAsync(seed, port, MarketplaceJobTypes.ProductArchive, payload, jobId), () => port.Archives);
     }
 
+    // B-4: the second barcode of a sale-status change met a 5xx (or Pazarama's answer named no result for it). Its result is
+    // unknown: no "reddetti" issue, the job goes to review, and nothing is sent again (not on a second run either).
+    [PostgreSqlTheory]
+    [InlineData("5xx")]
+    [InlineData("no-result")]
+    public async Task PazaramaSaleStatus_ALaterBarcodeWithAnUnknownResult_GoesToReviewNotRefusal(string answer)
+    {
+        var seed = await SeedCardAsync($"ef-pzr-unk-{answer}", "PAZARAMA", "LIVE", "LIVE");
+        var jobId = Guid.CreateVersion7();
+        var (first, second) = ($"ef-pzr-unk-{answer}-0", $"ef-pzr-unk-{answer}-1");
+        var payload = JsonSerializer.Serialize(new PazaramaSaleStatusJobPayload(jobId, [first, second], true, DateTimeOffset.UtcNow));
+        await AddJobAsync(seed, jobId, MarketplaceJobTypes.ProductArchive, payload);
+        var unknown = answer == "5xx"
+            ? MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaProductWriteMapper.SaleFailure(second, new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_5XX", "Pazarama geçici hata verdi.", 502, null, null))
+            : MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaProductWriteMapper.SaleResult(JsonDocument.Parse("""{"data":{"result":[]}}""").RootElement, second);
+        var port = new Port(null) { SaleLines = [new(first, true, null, null, false), unknown] };
+
+        var result = await RunAsync(seed, port, MarketplaceJobTypes.ProductArchive, payload, jobId);
+
+        Assert.Equal(JobCompletionKind.ManualReview, result.Kind);
+        Assert.Equal("PAZARAMA_SALE_STATUS_RESULT_UNKNOWN", result.ErrorCode);
+        await using (var db = fixture.CreateContext())
+        {
+            var issue = Assert.Single(await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seed.TenantId && x.DedupeKey.StartsWith("pazarama-sale-status:")).ToListAsync());
+            Assert.Contains(second, issue.Summary);
+            Assert.DoesNotContain("reddetti", issue.Summary);
+            Assert.Contains("belirsiz", issue.Summary);
+        }
+        var again = await RunAsync(seed, port, MarketplaceJobTypes.ProductArchive, payload, jobId);
+        Assert.Equal(JobCompletionKind.ManualReview, again.Kind);
+        Assert.Equal(1, port.Archives);
+    }
+
     // After an unclear answer the record blocks a resend; after a quota answer the request goes again.
     private static async Task AssertSecondRunAsync(string outcome, Func<Task<JobExecutionResult>> run, Func<int> calls)
     {
@@ -196,10 +229,13 @@ public sealed class ExternalEffectProductSitesPostgreSqlTests(PostgreSqlTenantIs
 
         public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) { Creates++; return Task.FromResult(Answer("CREATE")); }
         public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) { Updates++; return Task.FromResult(Answer("PRODUCT_UPDATE_VARIANTS_V2")); }
-        public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) { Archives++; return Task.FromResult(Answer("ARCHIVE")); }
+        // Pazarama answers each barcode at once: the lines travel in a completed operation id (as PazaramaHttpClient does).
+        public IReadOnlyList<RemoteOperationLine>? SaleLines { get; init; }
+
+        public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) { Archives++; return Task.FromResult(SaleLines is { } lines ? AdapterResult<RemoteOperationRef>.Success(new RemoteOperationRef(MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaOperationId.Completed(lines), "SALE_STATUS", DateTimeOffset.UtcNow)) : Answer("ARCHIVE")); }
 
         public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) =>
-            Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(new RemoteOperationStatus(externalOperationId, "COMPLETED", [])));
+            Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(new RemoteOperationStatus(externalOperationId, "COMPLETED", SaleLines ?? [])));
         public Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();

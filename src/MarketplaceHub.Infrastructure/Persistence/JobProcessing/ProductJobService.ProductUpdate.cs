@@ -286,7 +286,10 @@ internal sealed partial class ProductJobService
         var outcome = await products.GetOperationAsync(Context(tenantId, connectionId, correlationId, $"{effectKey}:result"), submit.Value!.ExternalOperationId, cancellationToken);
         if (!outcome.IsSuccess) { TrackResultFailure(outcome.Error); return JobExecutionResult.ManualReview("PAZARAMA_SALE_STATUS_RESULT_UNKNOWN", "Satışa açma/kapatma istendi ama sonucu okunamadı; ürünleri Pazarama panelinden kontrol edin.", submit.Value.ExternalOperationId); }
         var succeededCodes = outcome.Value!.Lines.Where(x => x.Succeeded).Select(x => x.ExternalKey).ToList();
-        var failed = outcome.Value.Lines.Where(x => !x.Succeeded).ToList();
+        // B-4: a failed line Pazarama did not refuse (a timeout, 5xx, open circuit or quota wait on its barcode, or an answer
+        // without its result) is uncertain: it is reported for review, never as a refusal, and nothing is sent again.
+        var failed = outcome.Value.Lines.Where(x => !x.Succeeded && !x.Retryable).ToList();
+        var uncertain = outcome.Value.Lines.Where(x => !x.Succeeded && x.Retryable).ToList();
         if (succeededCodes.Count > 0)
         {
             // A product closed for sale takes no price or stock updates; opening it brings its offer back.
@@ -297,6 +300,12 @@ internal sealed partial class ProductJobService
         }
         foreach (var line in failed)
             await RecordIssue(tenantId, $"pazarama-sale-status:{connectionId:N}:{line.ExternalKey}", SafeCode(line.ErrorCode) ?? "PAZARAMA_SALE_STATUS_REJECTED", $"Pazarama satışa {(payload.Close ? "kapatma" : "açma")} işlemini reddetti: {line.ExternalKey}{(string.IsNullOrWhiteSpace(line.Status) ? "" : " · " + line.Status)}", cancellationToken);
+        foreach (var line in uncertain)
+            await RecordIssue(tenantId, $"pazarama-sale-status:{connectionId:N}:{line.ExternalKey}", SafeCode(line.ErrorCode) ?? "PAZARAMA_SALE_STATUS_UNCERTAIN", $"Pazarama satışa {(payload.Close ? "kapatma" : "açma")} sonucu belirsiz: {line.ExternalKey}{(string.IsNullOrWhiteSpace(line.Status) ? "" : " · " + line.Status)}. Pazarama panelinden kontrol edin; yeniden gönderilmedi.", cancellationToken);
+        // The issues are saved here: the job's own result does not save the unit of work.
+        if (failed.Count + uncertain.Count > 0) await db.SaveChangesAsync(cancellationToken);
+        if (uncertain.Count > 0)
+            return JobExecutionResult.ManualReview("PAZARAMA_SALE_STATUS_RESULT_UNKNOWN", $"Pazarama satışa açma/kapatma isteğinde {uncertain.Count} barkodun sonucu belirsiz{(failed.Count > 0 ? $", {failed.Count} barkod reddedildi" : "")}; Pazarama panelinden kontrol edin.", submit.Value.ExternalOperationId);
         if (failed.Count == 0) return JobExecutionResult.Success();
         return succeededCodes.Count == 0
             ? JobExecutionResult.Blocked("PAZARAMA_SALE_STATUS_REJECTED", "Pazarama satışa açma/kapatma isteğindeki tüm barkodları reddetti.", submit.Value.ExternalOperationId)

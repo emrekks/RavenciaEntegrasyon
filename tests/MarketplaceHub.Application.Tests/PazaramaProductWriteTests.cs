@@ -350,6 +350,13 @@ public sealed class PazaramaProductWriteTests
         Assert.Equal("PAZARAMA_SALE_STATUS_REJECTED", failed.ErrorCode);
         Assert.False(missing.Succeeded);
         Assert.Equal("PAZARAMA_SALE_STATUS_UNCONFIRMED", missing.ErrorCode);
+        // B-4: no result, or a row without its success field, is unknown (retryable), never a refusal.
+        Assert.False(failed.Retryable);
+        Assert.True(missing.Retryable);
+        var noSuccess = PazaramaProductWriteMapper.SaleResult(Parse("""{"data":{"result":[{"message":null,"code":"B4"}]}}"""), "B4");
+        Assert.False(noSuccess.Succeeded);
+        Assert.True(noSuccess.Retryable);
+        Assert.NotEqual("PAZARAMA_SALE_STATUS_REJECTED", noSuccess.ErrorCode);
     }
 
     [Fact]
