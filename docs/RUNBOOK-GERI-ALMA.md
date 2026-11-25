@@ -214,6 +214,33 @@ Elle çalıştırmak: `sudo systemctl start ravencia-restore-drill.service`.
 çalışması 6 Aralık 2026); sessiz bir saatte bir kez elle başlatın (`sudo systemctl start ravencia-restore-drill.service`)
 ve `journalctl -u ravencia-restore-drill -n 50`'de sonucun başarılı olduğunu görün.
 
+**Drive kopyası (zamanlı kısım, anahtarsız):** aynı tatbikat sonunda `deploy/backup/offsite-drill.sh record` çalışır.
+Sunucuda ne Google yetkisi (yenileme belirteci veritabanında şifreli, yalnız uygulama kullanır) ne de age **özel** anahtarı
+vardır; bu yüzden zamanlı kısım Drive'dan **indirmez ve çözmez**. Yaptığı: worker'ın yükleme kaydını (Sistem Ayarları ›
+Google Drive Yedeği durumu, salt okunur) okur; kopya kapalıysa, son başarılı yükleme 36 saatten eskiyse, art arda hata ya
+da geçersiz yetki varsa, kaydın boyutu/MD5'i yoksa ya da kopyadaki set burada yoksa veya sağlama toplamları tutmuyorsa
+tatbikat başarısız olur (alarm gelir). Başarılı satır `Off-site record check passed: set=... NOT tested: download from
+Drive and decryption ...` der: indirme ve çözme bu satırla kanıtlanmış **değildir**.
+
+**Drive kopyası tatbikatı (sahibin aylık elle adımı, özel anahtarla):** zamanlı tatbikatın ardından, ayda bir:
+1. Kendi bilgisayarınızda Google Drive'daki yedek klasöründen en yeni `<set>.tar.age` dosyasını indirin (adını
+   değiştirmeyin) ve sunucuya kopyalayın: `scp 20261125T213011Z.tar.age ubuntu@187.126.24.163:/dev/shm/`.
+2. Özel anahtarı yalnız tatbikat süresince RAM'deki bir dosyaya koyun (diske yazılmaz, hiçbir yere kopyalanmaz):
+   `scp ravencia-yedek-anahtari.txt ubuntu@187.126.24.163:/dev/shm/anahtar.txt`.
+3. Sunucuda repo kökünde:
+   ```bash
+   sudo bash deploy/backup/offsite-drill.sh restore /dev/shm/20261125T213011Z.tar.age /dev/shm/anahtar.txt
+   ```
+   Betik age başlığını, boyut ve MD5'i worker'ın kaydıyla (set son gönderilen setse), çözmeyi (uygulama imajındaki
+   `age`, ağsız konteyner, anahtar salt okunur bağlanır), arşivdeki yolları, `SHA256SUMS`'u, sunucudaki aynı setle
+   aynılığı denetler ve seti geçici bir volume'den `restore-drill.sh` ile atılacak konteynerlere geri yükler (şemalar,
+   migration'lar, API ve Worker sağlığı). Çözülmüş dosyalar, geçici volume ve konteynerler her durumda silinir.
+   Beklenen son satır: `Off-site restore drill passed: set=... decrypted=yes checksums=ok restore=ok`.
+4. Ne çıkarsa çıksın anahtarı ve kopyayı silin: `shred -u /dev/shm/anahtar.txt && rm -f /dev/shm/*.tar.age`.
+Başarısızlık "wrong key or a damaged copy", "does not match the worker's upload record" ya da bir sağlama hatası
+diyorsa Drive kopyasına güvenilemez: Sistem Ayarları › Google Drive Yedeği'nde **Şimdi Gönder** ile yeni kopya alın ve
+adımı yeni kopyayla tekrarlayın; yine başarısızsa age açık anahtarının sizdeki özel anahtarla eşleştiğini kontrol edin.
+
 ## 7. Uygulama veritabanı rolleri (sahibin adımı, VERITABANI-DAGITIM-1)
 
 **Durum (15 Kasım 2026):** API, Worker ve migrate `marketplacehub` ile bağlanıyor ve bu rol **SUPERUSER**

@@ -34,5 +34,20 @@ backup_set="$("${sudo_cmd[@]}" docker run --rm --network none -v "$backup_volume
 
 echo "Restore drill: backup set $backup_set, application image $app_image_id."
 # The drill copies the root-owned secrets and drives Docker, so it runs under sudo.
+drill_status=0
 "${sudo_cmd[@]}" bash "$repository_root/deploy/backup/restore-drill.sh" \
-  "$backup_set" "$app_image_id" "$repository_root/deploy/secrets" "$backup_volume"
+  "$backup_set" "$app_image_id" "$repository_root/deploy/secrets" "$backup_volume" || drill_status=$?
+
+# The Google Drive copy (scan report E-1): the upload record and the set it holds, without a key. Its report line says
+# what it could not test here (download and decryption: the owner's manual "offsite-drill.sh restore").
+offsite_status=0
+"${sudo_cmd[@]}" bash "$repository_root/deploy/backup/offsite-drill.sh" record || offsite_status=$?
+
+if (( drill_status != 0 )); then
+  echo "Restore drill failed (exit $drill_status)." >&2
+  exit "$drill_status"
+fi
+if (( offsite_status != 0 )); then
+  echo "Off-site copy check failed (exit $offsite_status)." >&2
+  exit "$offsite_status"
+fi
