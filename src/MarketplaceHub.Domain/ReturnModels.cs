@@ -141,16 +141,14 @@ public static class ReturnDecisionLinePolicy
     }
 
     // Stock comes back only on an approved line: a line approved on its own takes stock while the claim's other lines
-    // still wait, and a rejected or still-waiting line takes none even on an approved claim. A line without its own
-    // status follows the claim.
-    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus)
-    {
-        var claimApproved = claimStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
-        if (string.IsNullOrWhiteSpace(lineRawStatus)) return claimApproved;
-        var line = MarketplaceReturnStatus.Canonicalize(lineRawStatus);
-        return line is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-            || claimApproved && line is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled or ReturnClaimStatus.ActionRequired);
-    }
+    // still wait. A line with its own status counts only when that status is approved or completed: a rejected, waiting,
+    // still in transit, disputed or unknown line takes none even on an approved claim (Trendyol reports the claim as its
+    // first item, so the claim's status does not speak for its other lines; scan 25 Nov 2026 C-1). Only a line without
+    // its own status follows the claim.
+    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus) =>
+        string.IsNullOrWhiteSpace(lineRawStatus)
+            ? claimStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            : MarketplaceReturnStatus.Canonicalize(lineRawStatus) is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
 }
 
 public static class ReturnClaimStateMachine

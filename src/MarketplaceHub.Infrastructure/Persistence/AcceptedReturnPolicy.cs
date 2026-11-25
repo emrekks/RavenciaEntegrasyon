@@ -15,10 +15,14 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 /// </summary>
 internal static class AcceptedReturnPolicy
 {
-    // Canonicalize's words: a line read as approved or completed counts on any claim; a line read as rejected, cancelled or
-    // waiting for the seller never does; any other line (in transit, disputed, unknown, no status) follows its claim.
+    // Canonicalize's words: a line read as approved or completed counts on any claim; a line with any other status of its
+    // own (rejected, waiting, in transit, disputed, unknown) never does; only a line without a status follows its claim
+    // (scan 25 Nov 2026 C-1).
     internal static readonly string AcceptedLinePattern = WordPattern(MarketplaceReturnStatus.WordsOf(ReturnClaimStatus.Approved, ReturnClaimStatus.Completed));
-    internal static readonly string RefusedLinePattern = WordPattern(MarketplaceReturnStatus.WordsOf(ReturnClaimStatus.Rejected, ReturnClaimStatus.Cancelled, ReturnClaimStatus.ActionRequired));
+
+    // No status of its own: string.IsNullOrWhiteSpace, every white-space character of the Basic Multilingual Plane listed
+    // (char.IsWhiteSpace), as PostgreSQL's \s follows its own locale.
+    internal static readonly string BlankLinePattern = $"^{CharacterClass(0, char.IsWhiteSpace)}*$";
 
     // The long s, the one letter outside ASCII the invariant upper case turns into an ASCII letter (S): Canonicalize reads
     // "CLOſED" as CLOSED, so the word patterns take it for S.
@@ -26,17 +30,17 @@ internal static class AcceptedReturnPolicy
 
     // FATURA-FINANS-2: Canonicalize keeps every letter and digit (char.IsLetterOrDigit), not only the ASCII ones, so a
     // status with any other letter or digit in it ("ACCEPTEDé", "ACCEPTEDı") is no known word: it reads as unknown and
-    // follows its claim. Every such character of the Basic Multilingual Plane is listed here (\uXXXX ranges, which .NET
+    // counts nothing. Every such character of the Basic Multilingual Plane is listed here (\uXXXX ranges, which .NET
     // and PostgreSQL both read; the long s aside). Characters beyond it are surrogate pairs to Canonicalize, never letters.
-    internal static readonly string ForeignLetterPattern = ForeignLetters();
+    internal static readonly string ForeignLetterPattern = CharacterClass(0x80, character => character != LongS && char.IsLetterOrDigit(character));
 
-    private static string ForeignLetters()
+    private static string CharacterClass(int from, Func<char, bool> listedCharacter)
     {
         var ranges = new System.Text.StringBuilder("[");
         int? start = null;
-        for (var code = 0x80; code <= 0x10000; code++)
+        for (var code = from; code <= 0x10000; code++)
         {
-            var listed = code <= 0xFFFF && code != LongS && char.IsLetterOrDigit((char)code);
+            var listed = code <= 0xFFFF && listedCharacter((char)code);
             if (listed && start is null) start = code;
             if (listed || start is not { } first) continue;
             ranges.Append(first == code - 1 ? $"\\u{first:X4}" : $"\\u{first:X4}-\\u{code - 1:X4}");
@@ -76,14 +80,11 @@ internal static class AcceptedReturnPolicy
         ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineRawStatus);
 
     /// <summary>LineCounts as a database condition.</summary>
-    // A status with a letter outside ASCII is unknown: the line follows its claim. The long list is written once (a
-    // conditional), as the reports repeat this condition in their statements.
+    // A line without a status follows its claim; a status with a letter outside ASCII is unknown and counts nothing.
     public static readonly Expression<Func<ClaimLine, bool>> LineCountsInDatabase = row =>
-        Regex.IsMatch(row.RawStatus ?? "", ForeignLetterPattern)
+        Regex.IsMatch(row.RawStatus ?? "", BlankLinePattern)
             ? row.ClaimStatus == ReturnClaimStatus.Approved || row.ClaimStatus == ReturnClaimStatus.Completed
-            : Regex.IsMatch(row.RawStatus ?? "", AcceptedLinePattern, RegexOptions.IgnoreCase)
-                || (row.ClaimStatus == ReturnClaimStatus.Approved || row.ClaimStatus == ReturnClaimStatus.Completed)
-                    && !Regex.IsMatch(row.RawStatus ?? "", RefusedLinePattern, RegexOptions.IgnoreCase);
+            : !Regex.IsMatch(row.RawStatus ?? "", ForeignLetterPattern) && Regex.IsMatch(row.RawStatus ?? "", AcceptedLinePattern, RegexOptions.IgnoreCase);
 
     internal sealed class ClaimLine
     {
