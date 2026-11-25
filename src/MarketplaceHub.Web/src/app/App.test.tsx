@@ -331,16 +331,54 @@ describe('the Bekleyen count on the Siparişler page (W2)', () => {
 })
 
 describe('a session that ends while the panel is open', () => {
-  it('swaps the workspace for the sign-in screen with a note instead of retrying forever', async () => {
+  // Scan 25 Nov 2026 (D-7): the workspace used to give way to the sign-in screen, and every unsaved edit went with it.
+  // It now stays where it is (not mounted afresh) behind a window that signs in again and continues the work.
+  it('keeps the workspace behind an Oturum Doldu window and continues it after signing in again', async () => {
     server.me = [{ status: 200, body: active }]
     const { host } = mount()
-    await waitFor(() => shell(host))
-    server.hub = () => ({ status: 401, body: { title: 'Oturum gerekli.' } })
+    const workspace = await waitFor(() => shell(host))
+    // Something typed into the open page, not saved: it is only in the page's memory.
+    const draft = document.createElement('input')
+    workspace.append(draft)
+    draft.value = 'kaydedilmemiş not'
+    server.hub = () => ({ status: 401, body: { code: 'AUTHENTICATION_REQUIRED', title: 'Oturumunuz sona erdi; yeniden giriş yapın.' } })
     const { hubApi } = await import('../shared/api')
     await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
-    await waitFor(() => host.querySelector('#login-email'))
-    expect(shell(host)).toBeNull()
-    expect(host.textContent).toContain('Oturumunuzun süresi doldu')
+    const dialog = await waitFor(() => document.querySelector<HTMLElement>('.rv-session-expired'))
+    expect(dialog.textContent).toContain('Oturum doldu, yeniden giriş yapın')
+    expect(host.querySelector('#login-email')).toBeNull()
+    expect(shell(host)).toBe(workspace)
+
+    server.hub = () => ({ status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } })
+    dialog.querySelector<HTMLInputElement>('input[name="password"]')!.value = 'test-only-value'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    await waitFor(() => document.querySelector('.rv-session-expired') === null)
+    const login = server.calls.find(call => call.url === '/api/v1/auth/login' && call.method === 'POST')
+    expect(JSON.parse(login!.body!)).toMatchObject({ email: active.email, tenantId: active.tenantId })
+    // the same workspace, with what was typed into it
+    expect(shell(host)).toBe(workspace)
+    expect(draft.value).toBe('kaydedilmemiş not')
+  })
+
+  it('asks for the authenticator code in the same window when the account has one', async () => {
+    server.me = [{ status: 200, body: active }]
+    const { host } = mount()
+    const workspace = await waitFor(() => shell(host))
+    server.hub = () => ({ status: 401, body: { code: 'AUTHENTICATION_REQUIRED' } })
+    const { hubApi } = await import('../shared/api')
+    await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
+    const dialog = await waitFor(() => document.querySelector<HTMLElement>('.rv-session-expired'))
+    server.hub = () => ({ status: 200, body: { metrics: {}, items: [], totalCount: 0, dueSoonCount: 0 } })
+    server.me = [{ status: 200, body: { ...active, state: 'MFA_CHALLENGE' } }, { status: 200, body: active }]
+    dialog.querySelector<HTMLInputElement>('input[name="password"]')!.value = 'test-only-value'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    const code = await waitFor(() => document.querySelector<HTMLInputElement>('.rv-session-expired input[name="code"]'))
+    expect(shell(host)).toBe(workspace)
+    code.value = '123456'
+    submit(document.querySelector<HTMLFormElement>('#session-expired-form')!)
+    await waitFor(() => document.querySelector('.rv-session-expired') === null)
+    expect(server.calls.some(call => call.url === '/api/v1/auth/mfa/challenge')).toBe(true)
+    expect(shell(host)).toBe(workspace)
   })
 
   it('removes the reload snapshot and writes it no more until the next sign-in', async () => {
@@ -354,7 +392,7 @@ describe('a session that ends while the panel is open', () => {
     server.hub = () => ({ status: 401, body: { title: 'Oturum gerekli.' } })
     const { hubApi } = await import('../shared/api')
     await act(async () => { await hubApi('/orders/summary').catch(() => undefined) })
-    await waitFor(() => host.querySelector('#login-email'))
+    await waitFor(() => document.querySelector('.rv-session-expired'))
     expect(sessionStorage.getItem(querySnapshotKey)).toBeNull()
     client.setQueryData(['orders', 'summary'], { new: 5 })
     saveQuerySnapshot(client)

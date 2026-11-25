@@ -34,6 +34,13 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             return;
         }
 
+        // No signed-in session (none, or it expired): 401, so the panel asks to sign in again instead of saying "no
+        // permission" (scan 25 Nov 2026, D-7). A signed-in caller whose role does not pass still gets 403.
+        if (context.User.Identity?.IsAuthenticated != true)
+        {
+            await ApiProblems.WriteAsync(context, "AUTHENTICATION_REQUIRED", "Oturumunuz sona erdi; yeniden giriş yapın.", StatusCodes.Status401Unauthorized);
+            return;
+        }
         await ApiProblems.WriteAsync(context, "PERMISSION_DENIED", "Bu işlem için yeterli yetkiniz yok.", StatusCodes.Status403Forbidden);
     }
 

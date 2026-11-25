@@ -12,6 +12,7 @@ import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, setWrite
 import { Drawer, ErrorBoundary, ErrorBox, UiIcon, UserAvatar, type UiIconName } from '../shared/components'
 import { userRoleLabels, type UserRole } from '../features/settings/user-management'
 import { RrModal } from '../shared/ui/rr-components'
+import { SessionExpiredDialog } from './SessionExpiredDialog'
 import { ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, PromotionsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, InvoiceDetailPage, InvoicesPage, JobsPage, ReportsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { usePageEntryReveal } from './hooks/usePageEntryReveal'
@@ -350,15 +351,20 @@ export function App() {
     confirmQuerySnapshotScope(client, current.tenantId, current.id)
     return current
   }, retry: false })
-  // A request heard 401: the session ended while the panel was open. The workspace gives way to the sign-in screen at
-  // once (no reload, no screens retrying forever); signing in again brings the person back to the same page.
+  // A request heard 401: the session ended while the panel was open. The workspace stays, behind a 'Oturum Doldu' window
+  // (scan 25 Nov 2026, D-7): open forms keep what they hold in memory and signing in again there continues the work;
+  // it used to give way to the sign-in screen, and every unsaved edit was lost.
+  const [expiredMe, setExpiredMe] = useState<Me | null>(null)
+  // The session read itself heard 401 (a refetch on focus): the same window, held until the person signs in again.
+  const sessionReadSignedOut = me.isError && isSignedOut(me.error) && me.data?.state === 'ACTIVE'
+  useEffect(() => { if (sessionReadSignedOut && me.data) setExpiredMe(previous => previous ?? me.data) }, [sessionReadSignedOut, me.data])
   useEffect(() => setUnauthorizedHandler(() => {
     const current = client.getQueryData<Me>(queryKeys.me())
-    if (!current || current.state === 'REVOKED') return
+    if (!current || current.state !== 'ACTIVE') return
     // Nothing of the ended session stays in, or is written again to, this tab's reload snapshot until the next sign-in.
     clearQuerySnapshot()
     void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
-    client.setQueryData<Me>(queryKeys.me(), { ...current, state: 'REVOKED' })
+    setExpiredMe(previous => previous ?? current)
   }), [client])
   // A write that got no answer in 90 s may still have gone through (WEB-ALTYAPI-11): the screens read what the server
   // holds again; the write itself is never sent again by the panel.
@@ -375,6 +381,11 @@ export function App() {
   if (authPreview === 'password') return <ChangePassword />
   if (authPreview === 'mfa') return <MfaChallenge />
   if (me.isLoading) return <DelayedStatus title="Çalışma Alanı Hazırlanıyor" />
+  // The session ended under an open workspace (a request, or the session read itself, heard 401): it stays, with the window.
+  const resumeMe = expiredMe ?? (sessionReadSignedOut ? me.data ?? null : null)
+  // One tree shape with and without the window, so the workspace (and every form in it) is never mounted afresh.
+  const workspace = (current: Me, expired: boolean) => <><Shell me={current} />{expired && <SessionExpiredDialog me={current} onResumed={() => setExpiredMe(null)} />}</>
+  if (resumeMe) return workspace(resumeMe, true)
   // Only "not signed in" asks for the password; a server that is restarting or unreachable shows the error and tries again.
   // A session that is gone leaves nothing of itself for the next reload to show.
   if (me.isError && isSignedOut(me.error)) clearQuerySnapshot()
@@ -386,7 +397,7 @@ export function App() {
   if (me.data.state === 'PASSWORD_CHANGE_REQUIRED') return <ChangePassword />
   if (me.data.state === 'MFA_CHALLENGE') return <MfaChallenge />
   if (me.data.state !== 'ACTIVE') return <LockedSession />
-  return <Shell me={me.data} />
+  return workspace(me.data, false)
 }
 
 const authPlatforms = [
