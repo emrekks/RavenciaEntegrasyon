@@ -63,6 +63,38 @@ rename_rev="$(commit rename)"
 scope_is full "$nested_md_rev" "$rename_rev" "a rename out of the API is not web-only"
 scope_is full "$web_rev" "$web_rev" "an empty range is not web-only"
 : "$md_rev" "$docs_rev"
+
+# Scan A-8: one input list. A change under skills/ alone (embedded in the build, read by the tests) changes the backend
+# hash Validate keys its backend jobs on and is not a web-only release; a web change leaves the backend hash alone.
+# Every backend input, whatever its name, is never web-only.
+skills_base="$(git -C "$repo" rev-parse HEAD)"
+mkdir -p -- "$repo/skills/demo"
+skills_rev="$(change skills/demo/SKILL.md 'a skill')"
+assert_eq true "$([[ "$(backend_inputs_hash "$skills_base")" != "$(backend_inputs_hash "$skills_rev")" ]] && echo true || echo false)" \
+  "a skills/-only change changes the backend hash"
+scope_is full "$skills_base" "$skills_rev" "a skills/-only change is not web-only"
+web_only_rev="$(change src/MarketplaceHub.Web/src/app.ts 2)"
+assert_eq "$(backend_inputs_hash "$skills_rev")" "$(backend_inputs_hash "$web_only_rev")" "a web change leaves the backend hash alone"
+assert_eq true "$([[ "$(frontend_inputs_hash "$skills_rev")" != "$(frontend_inputs_hash "$web_only_rev")" ]] && echo true || echo false)" \
+  "a web change changes the frontend hash"
+# The two lists agree: no backend input lies under a path the web-only release skips, and the web app is not one.
+for input in "${backend_input_paths[@]}"; do
+  assert_eq true "$(backend_input_file "$input" && echo true || echo false)" "$input is a backend input"
+  case "$input" in
+    src/MarketplaceHub.Web|src/MarketplaceHub.Web/*|deploy/caddy|deploy/caddy/*|.claude|.claude/*|docs|docs/*) fail "$input is also a web-only path" ;;
+    */*) ;;
+    *.md) fail "$input is also a web-only path" ;;
+  esac
+done
+assert_eq false "$(backend_input_file src/MarketplaceHub.Web/src/app.ts && echo true || echo false)" "the web app is not a backend input"
+# Validate's hash step reads the same functions instead of a list of its own.
+ci_hash_step="$(cat "$repository_root/.github/workflows/ci.yml")"
+assert_contains "$ci_hash_step" 'source deploy/scripts/release-scope.sh' "ci.yml sources release-scope.sh"
+# shellcheck disable=SC2016 # the literal lines of ci.yml
+assert_contains "$ci_hash_step" 'backend="$(backend_inputs_hash HEAD)"' "ci.yml hashes the backend inputs of release-scope.sh"
+# shellcheck disable=SC2016 # the literal lines of ci.yml
+assert_contains "$ci_hash_step" 'frontend="$(frontend_inputs_hash HEAD)"' "ci.yml hashes the frontend inputs of release-scope.sh"
+assert_not_contains "$ci_hash_step" 'git ls-tree -r HEAD --' "ci.yml keeps no input list of its own"
 cd - >/dev/null
 git -C "$repo" checkout --quiet main
 
