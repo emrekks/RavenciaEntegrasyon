@@ -22,8 +22,10 @@ public sealed partial class PostgreSqlConnectionFullResetTests
             var views = await Task.WhenAll(
                 NewPanelService(first).RequestAsync(a.Tenant.Id, Guid.CreateVersion7(), null, new PanelFactoryResetCommand("PANELİ SIFIRLA"), "corr-1", CancellationToken.None),
                 NewPanelService(second).RequestAsync(a.Tenant.Id, Guid.CreateVersion7(), null, new PanelFactoryResetCommand("PANELİ SIFIRLA"), "corr-2", CancellationToken.None));
-            Assert.All(views, view => Assert.True(view.Succeeded, view.Error?.Message));
-            Assert.Equal(views[0].Value!.Job!.JobId, views[1].Value!.Job!.JobId);
+            // One of them queues the reset; the other is told one is already running (scan 25 Nov 2026, D-5).
+            Assert.Single(views, view => view.Succeeded);
+            var refused = Assert.Single(views, view => !view.Succeeded);
+            Assert.Equal(("PANEL_RESET_ALREADY_RUNNING", 409), (refused.Error!.Code, refused.Error.Status));
             await using var verification = fixture.CreateContext();
             Assert.Equal(1, await verification.IntegrationJobs.CountAsync(x => x.TenantId == a.Tenant.Id && x.JobType == PanelJobTypes.FactoryReset));
         }

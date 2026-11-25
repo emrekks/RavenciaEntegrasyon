@@ -39,9 +39,8 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
             {
                 await using var read = fixture.CreateContext();
                 var raws = await read.ReturnLines.Where(x => x.TenantId == tenantId).Select(x => x.RawStatus).Distinct().ToListAsync();
-                var accepted = raws.Where(ReturnQueryService.IsAcceptedSplitLineStatus).ToArray();
-                var waiting = raws.Where(raw => raw is not null && ReturnQueryService.IsWaitingSplitLineStatus(raw)).ToArray();
-                Assert.False(await ReturnCardColumns.Stale(read, tenantId, accepted, waiting).AnyAsync());
+                var (accepted, waiting, blank) = ReturnQueryService.SplitLineStatusSets(raws);
+                Assert.False(await ReturnCardColumns.Stale(read, tenantId, accepted, waiting, blank).AnyAsync());
             }
 
             // Created with an accepted and a waiting line: two cards, waiting for the seller.
@@ -74,11 +73,12 @@ public sealed class ReturnCardColumnsPostgreSqlTests(PostgreSqlTenantIsolationFi
             Assert.Equal(approvedAt, (await ReadAsync()).ApprovedAt);
             await AssertFreshAsync();
 
-            // A new waiting line saved alone splits the claim again; removing it joins it back.
+            // A new waiting line saved alone splits the claim again; removing it joins it back. (A line without a status
+            // would take the approved claim's status and not split it, scan 25 Nov 2026 C-3.)
             var lineId = Guid.CreateVersion7();
             await using (var db = fixture.CreateContext())
             {
-                db.ReturnLines.Add(new ReturnLine { Id = lineId, TenantId = tenantId, ClaimId = claimId, OrderLineId = orderLineIds[1], ExternalLineId = "cols-extra", Quantity = 1m, RawStatus = null });
+                db.ReturnLines.Add(new ReturnLine { Id = lineId, TenantId = tenantId, ClaimId = claimId, OrderLineId = orderLineIds[1], ExternalLineId = "cols-extra", Quantity = 1m, RawStatus = "WaitingInAction" });
                 await db.SaveChangesAsync();
             }
             Assert.True((await ReadAsync()).CardSplit);

@@ -169,6 +169,9 @@ public sealed record ProductView(
     // The products list only: the model's front picture, the first picture of the family gallery as the editor shows it
     // (never a size chart), the same on every card of the family. Null when the family has no such picture.
     public string? FamilyImageUrl { get; init; }
+    // The products list only: the card's model family (ProductFamilyKeyPolicy.FamilyKey: brand + model code), so the
+    // list groups cards and its bulk actions reach a family as the server does; another brand's cards stay apart.
+    public string? FamilyKey { get; init; }
 }
 public sealed record ProductFamilyGalleryView(Guid ProductId, IReadOnlyList<string> MediaUrls, IReadOnlyList<string> VariantMediaUrls, string? SizeChartUrl);
 public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);

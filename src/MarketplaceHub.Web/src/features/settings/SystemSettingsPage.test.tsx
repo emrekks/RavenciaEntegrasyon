@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, resetForbidden: false, aiVersion: 1, uploadedFile: null as string | null }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, resetForbidden: false, resetRunning: false, aiVersion: 1, uploadedFile: null as string | null }))
 
 const offsiteView = vi.hoisted(() => ({
   enabled: true, ageRecipient: 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p', folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12,
@@ -58,6 +58,7 @@ vi.mock('../../shared/api', async importOriginal => {
     }
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if ((path === '/settings/factory-reset' || /^\/connections\/[^/]+\/full-reset$/.test(path)) && apiState.resetForbidden) throw new actual.ApiRequestError('Bu işlem için yeterli yetkiniz yok.', 403, 'PERMISSION_DENIED')
+    if (path === '/settings/factory-reset' && method === 'POST' && apiState.resetRunning) throw new actual.ApiRequestError('server text', 409, 'PANEL_RESET_ALREADY_RUNNING')
     if (path === '/settings/factory-reset') return {
       groups: [
         { key: 'INVOICES', label: 'Faturalar ve Belgeleri', description: 'Faturalar.', section: 'Satış ve Faturalar', requires: [], count: 4 },
@@ -135,6 +136,7 @@ describe('SystemSettingsPage', () => {
     apiState.alertVersion = 2
     apiState.aiForbidden = false
     apiState.resetForbidden = false
+    apiState.resetRunning = false
     apiState.aiVersion = 1
     localStorage.clear()
     container = document.createElement('div')
@@ -249,6 +251,27 @@ describe('SystemSettingsPage', () => {
     await settle()
     const request = apiState.calls.find(call => call.path === '/settings/factory-reset' && call.method === 'POST')
     expect(JSON.parse(request?.body ?? '{}')).toEqual({ categories: ['STOCK', 'PRODUCTS'], confirmation: 'Verileri sil', password: 'Owner-Password#1' })
+  })
+
+  // Scan 25 Nov 2026 (D-5): a reset asked for while another one runs is refused (409); the page says so, keeps the
+  // choice and reads the running reset's progress again instead of saying the new one started.
+  it('says a reset is already running, keeps the choice and reads the progress again', async () => {
+    apiState.resetRunning = true
+    await renderPage('/settings?tab=database')
+    await settle()
+    const products = Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.querySelector('b')?.textContent === 'Ürünler')!
+    click(products.querySelector('input')!)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
+    input(container.querySelector<HTMLInputElement>('#settings-reset-password')!, 'Owner-Password#1')
+    const reads = () => apiState.calls.filter(call => call.path === '/settings/factory-reset' && call.method === 'GET').length
+    const before = reads()
+    click(container.querySelector<HTMLButtonElement>('.ss-dr-go')!)
+    await settle()
+    expect(container.textContent).toContain('Zaten süren bir sıfırlama var')
+    expect(container.textContent).not.toContain('silinmeye başladı')
+    expect(products.querySelector('input')!.checked).toBe(true)
+    expect(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!.value).toBe('Verileri sil')
+    expect(reads()).toBeGreaterThan(before)
   })
 
   it('lists the active marketplace connections as a group with counts and totals', async () => {
@@ -558,7 +581,9 @@ describe('SystemSettingsPage', () => {
     } finally { Object.assign(offsiteView, saved) }
   })
 
-  it('makes the key, downloads it, asks for the stored-file tick and the password once, saves with the defaults, then goes to Google', async () => {
+  // Scan 25 Nov 2026 (D-6): the save and the consent address go in one request, verified once, so an owner with MFA
+  // needs one authenticator code (it works once; a second request with it was refused).
+  it('makes the key, downloads it, asks for the stored-file tick and the password once, saves with the defaults in the request that goes to Google', async () => {
     const saved = { ...offsiteView }
     Object.assign(offsiteView, { connected: false, ageRecipient: null as string | null, enabled: false })
     vi.mocked(generateBackupKeyPair).mockClear()
@@ -578,10 +603,13 @@ describe('SystemSettingsPage', () => {
       act(() => { form.requestSubmit() })
       await settle()
       const sequence = apiState.calls.filter(call => call.path === '/settings/offsite-backup' && call.method === 'PUT' || call.path === '/settings/offsite-backup/google/authorize')
-      expect(sequence.map(call => call.path)).toEqual(['/settings/offsite-backup', '/settings/offsite-backup/google/authorize'])
-      expect(JSON.parse(sequence[0].body!)).toMatchObject({ enabled: true, folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12, password: 'my-password' })
-      expect(JSON.parse(sequence[0].body!).ageRecipient).toMatch(/^age1newkey/u)
-      expect(JSON.parse(sequence[1].body!).password).toBe('my-password')
+      expect(sequence.map(call => call.path)).toEqual(['/settings/offsite-backup/google/authorize'])
+      const sent = JSON.parse(sequence[0].body!)
+      expect(sent.password).toBe('my-password')
+      expect(sent.settings).toMatchObject({ enabled: true, folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12 })
+      expect(sent.settings.ageRecipient).toMatch(/^age1newkey/u)
+      expect(sent.settings.password).toBeUndefined()
+      expect(sequence[0].headers?.['if-match']).toBe(`"v${offsiteView.version}"`)
     } finally { Object.assign(offsiteView, saved) }
   })
 

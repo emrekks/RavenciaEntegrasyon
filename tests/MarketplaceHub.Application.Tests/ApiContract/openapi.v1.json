@@ -22139,13 +22139,21 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "The version read (\"v{version}\"); without it the write does not check the version, unless the service requires one once a value is stored.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReauthRequest"
+                "$ref": "#/components/schemas/AuthorizeRequest"
               }
             }
           },
@@ -22174,8 +22182,14 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          },
           "422": {
             "$ref": "#/components/responses/UnprocessableContent"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -25563,6 +25577,39 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "AuthorizeRequest": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "recoveryCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "settings": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SetupSettings"
+              }
+            ]
           }
         }
       },
@@ -39883,6 +39930,12 @@
               "null",
               "string"
             ]
+          },
+          "familyKey": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -44719,6 +44772,65 @@
           },
           "followsPanelPrice": {
             "type": "boolean"
+          }
+        }
+      },
+      "SetupSettings": {
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "ageRecipient": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folderMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "folderValue": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "keepDays": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "keepMonths": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "clientId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clientSecret": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

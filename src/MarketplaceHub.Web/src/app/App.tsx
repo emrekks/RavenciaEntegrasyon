@@ -1,6 +1,6 @@
 import { blurNumberInputOnWheel } from '../shared/number-wheel'
 import type { ApiAnswer } from '../shared/api/api-answer'
-import { memo, Suspense, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { memo, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { BrandSymbol } from '../shared/components/BrandSymbol'
 import { BrandWordmark } from '../shared/components/BrandWordmark'
 import { createPortal } from 'react-dom'
@@ -8,10 +8,11 @@ import { closeAllDismissables, useDismissable } from '../shared/hooks/useDismiss
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lazyPage } from '../shared/lazy-page'
-import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, setWriteTimeoutHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
+import { api, ApiRequestError, hubApi, hubPoll, setSessionHold, setUnauthorizedHandler, setWriteTimeoutHandler, trackUserActivity, type Me, type TenantOption } from '../shared/api'
 import { Drawer, ErrorBoundary, ErrorBox, UiIcon, UserAvatar, type UiIconName } from '../shared/components'
 import { userRoleLabels, type UserRole } from '../features/settings/user-management'
 import { RrModal } from '../shared/ui/rr-components'
+import { SessionExpiredDialog } from './SessionExpiredDialog'
 import { ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, PromotionsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, InvoiceDetailPage, InvoicesPage, JobsPage, ReportsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
 import { usePageEntryReveal } from './hooks/usePageEntryReveal'
@@ -24,7 +25,7 @@ import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { startNotificationCenterSink } from '../shared/notification-center'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
 import { clearPersonalStorage, scopedStorageKey, setStorageScope } from '../shared/storage-scope'
-import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
+import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession, leaveForAnotherAccount } from '../shared/query-snapshot'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
 import { readSessionItem, readStoredItem, removeStoredItem, writeSessionItem, writeStoredItem } from '../shared/local-storage'
@@ -333,7 +334,7 @@ function Shell({ me }: { me: Me }) {
       <ShellPages me={me} />
     </main>
     {/* Phone: the dock, its task bar and the full-screen menu (BottomDock.tsx, bottom-nav.css); the sidebar belongs to wider screens. */}
-    {phone && fullMenuShown.present && <FullScreenMenu closing={fullMenuShown.closing} groups={phoneMenuGroups} profile={{ name: displayName, role: userRoleLabels[(me.role ?? '').toUpperCase() as UserRole] ?? me.role ?? undefined, email: me.displayName ? me.email : undefined }} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
+    {phone && fullMenuShown.present && <FullScreenMenu closing={fullMenuShown.closing} theme={visualTheme} onToggleTheme={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')} groups={phoneMenuGroups} profile={{ name: displayName, role: userRoleLabels[(me.role ?? '').toUpperCase() as UserRole] ?? me.role ?? undefined, email: me.displayName ? me.email : undefined }} onLogout={() => void logout()} onClose={fullMenu.closeMenu} onNavigate={fullMenu.leaveTo} pathname={location.pathname} />}
     <BottomDock menuOpen={phone && fullMenu.open} menuCount={menuPendingTotal(phoneMenuGroups, ['/orders', '/returns', '/questions'])} slotCounts={{ '/orders': Math.max(0, orderNavigationCount(orderSummary.data) ?? 0), '/returns': Math.max(0, navigationCounts?.pendingReturns ?? 0), '/questions': Math.max(0, questionWaitingSummary.data?.totalCount ?? 0) }} taskActive={dock.taskActive} hasInfo={dock.hasInfo} setActionsEl={dock.setActionsEl} setStripEl={dock.setStripEl} menuSlotRef={menuSlotRef} onToggleMenu={fullMenu.open ? fullMenu.closeMenu : fullMenu.openMenu} onNavigate={fullMenu.leaveTo} />
     </div></DockContext.Provider></BackTargetContext.Provider>
 }
@@ -345,25 +346,38 @@ export function App() {
   const client = useQueryClient()
   // The session is never restored from the reload snapshot (another tab may have signed into another tenant since), so
   // the workspace waits for this answer; restored answers of another tenant or user are dropped before it lands.
+  // The person whose workspace is held behind the Oturum Doldu window (D-7); null while the session is fine.
+  const heldMe = useRef<Me | null>(null)
   const me = useQuery({ queryKey: queryKeys.me(), queryFn: async ({ signal }) => {
     const current = await api<Me>('/me', { signal })
+    // Another tab signed this browser into another account or workspace: nothing is drawn, the page loads afresh.
+    const held = heldMe.current
+    if (held && (current.id !== held.id || current.tenantId !== held.tenantId)) { leaveForAnotherAccount(client); return new Promise<Me>(() => undefined) }
     confirmQuerySnapshotScope(client, current.tenantId, current.id)
     return current
   }, retry: false })
-  // A request heard 401: the session ended while the panel was open. The workspace gives way to the sign-in screen at
-  // once (no reload, no screens retrying forever); signing in again brings the person back to the same page.
+  // A request heard 401: the session ended while the panel was open. The workspace stays, behind a 'Oturum Doldu' window
+  // (scan 25 Nov 2026, D-7): open forms keep what they hold in memory and signing in again there continues the work;
+  // it used to give way to the sign-in screen, and every unsaved edit was lost.
+  const [expiredMe, setExpiredMe] = useState<Me | null>(null)
+  // Held: no request leaves for the API (setSessionHold) until the same person has signed in again.
+  const holdWorkspace = useCallback((current: Me) => { heldMe.current ??= current; setSessionHold(true); setExpiredMe(previous => previous ?? current) }, [])
+  const resumeWorkspace = useCallback(() => { heldMe.current = null; setSessionHold(false); setExpiredMe(null) }, [])
+  // The session read itself heard 401 (a refetch on focus): the same window, held until the person signs in again.
+  const sessionReadSignedOut = me.isError && isSignedOut(me.error) && me.data?.state === 'ACTIVE'
+  useEffect(() => { if (sessionReadSignedOut && me.data) holdWorkspace(me.data) }, [sessionReadSignedOut, me.data, holdWorkspace])
   useEffect(() => setUnauthorizedHandler(() => {
     const current = client.getQueryData<Me>(queryKeys.me())
-    if (!current || current.state === 'REVOKED') return
+    if (!current || current.state !== 'ACTIVE') return
     // Nothing of the ended session stays in, or is written again to, this tab's reload snapshot until the next sign-in.
     clearQuerySnapshot()
     void client.cancelQueries({ predicate: query => query.queryKey[0] !== 'me' })
-    client.setQueryData<Me>(queryKeys.me(), { ...current, state: 'REVOKED' })
-  }), [client])
+    holdWorkspace(current)
+  }), [client, holdWorkspace])
   // A write that got no answer in 90 s may still have gone through (WEB-ALTYAPI-11): the screens read what the server
   // holds again; the write itself is never sent again by the panel.
   useEffect(() => setWriteTimeoutHandler(() => { void client.invalidateQueries({ refetchType: 'active' }) }), [client])
-  useOperationsRealtime(me.data?.state === 'ACTIVE')
+  useOperationsRealtime(me.data?.state === 'ACTIVE' && !expiredMe)
   // Key presses, clicks and scrolling mark the person as present; polls made while nobody is (see hubPoll) leave the
   // session's idle clock alone.
   useEffect(() => trackUserActivity(), [])
@@ -375,6 +389,11 @@ export function App() {
   if (authPreview === 'password') return <ChangePassword />
   if (authPreview === 'mfa') return <MfaChallenge />
   if (me.isLoading) return <DelayedStatus title="Çalışma Alanı Hazırlanıyor" />
+  // The session ended under an open workspace (a request, or the session read itself, heard 401): it stays, with the window.
+  const resumeMe = expiredMe ?? (sessionReadSignedOut ? me.data ?? null : null)
+  // One tree shape with and without the window, so the workspace (and every form in it) is never mounted afresh.
+  const workspace = (current: Me, expired: boolean) => <><Shell me={current} />{expired && <SessionExpiredDialog me={current} onResumed={resumeWorkspace} />}</>
+  if (resumeMe) return workspace(resumeMe, true)
   // Only "not signed in" asks for the password; a server that is restarting or unreachable shows the error and tries again.
   // A session that is gone leaves nothing of itself for the next reload to show.
   if (me.isError && isSignedOut(me.error)) clearQuerySnapshot()
@@ -386,7 +405,7 @@ export function App() {
   if (me.data.state === 'PASSWORD_CHANGE_REQUIRED') return <ChangePassword />
   if (me.data.state === 'MFA_CHALLENGE') return <MfaChallenge />
   if (me.data.state !== 'ACTIVE') return <LockedSession />
-  return <Shell me={me.data} />
+  return workspace(me.data, false)
 }
 
 const authPlatforms = [

@@ -141,16 +141,14 @@ public static class ReturnDecisionLinePolicy
     }
 
     // Stock comes back only on an approved line: a line approved on its own takes stock while the claim's other lines
-    // still wait, and a rejected or still-waiting line takes none even on an approved claim. A line without its own
-    // status follows the claim.
-    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus)
-    {
-        var claimApproved = claimStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
-        if (string.IsNullOrWhiteSpace(lineRawStatus)) return claimApproved;
-        var line = MarketplaceReturnStatus.Canonicalize(lineRawStatus);
-        return line is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
-            || claimApproved && line is not (ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled or ReturnClaimStatus.ActionRequired);
-    }
+    // still wait. A line with its own status counts only when that status is approved or completed: a rejected, waiting,
+    // still in transit, disputed or unknown line takes none even on an approved claim (Trendyol reports the claim as its
+    // first item, so the claim's status does not speak for its other lines; scan 25 Nov 2026 C-1). Only a line without
+    // its own status follows the claim.
+    public static bool StockDispositionAllowed(ReturnClaimStatus claimStatus, string? lineRawStatus) =>
+        string.IsNullOrWhiteSpace(lineRawStatus)
+            ? claimStatus is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed
+            : MarketplaceReturnStatus.Canonicalize(lineRawStatus) is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
 }
 
 public static class ReturnClaimStateMachine
@@ -290,10 +288,14 @@ public static class ReturnCustomerRequestPolicy
     // exchange, or still open, changes nothing. Only Hepsiburada (ExchangeNoReturnPlatform) says how an exchange closed:
     // a Trendyol exchange request accepted may be a refund (48-hour auto-acceptance, an approval in Trendyol's panel), so
     // it counts as before; one Trendyol made comes back Rejected and a rejected claim never counts (review, 18 Nov 2026).
-    // The queries repeat this rule inline (they must translate to SQL).
-    public static bool CountsAsReturn(string? customerRequest, string? claimRawStatus, string? platformCode = ExchangeNoReturnPlatform) =>
-        customerRequest != Change || string.Equals(claimRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase)
-        || !string.Equals(platformCode, ExchangeNoReturnPlatform, StringComparison.OrdinalIgnoreCase);
+    // How the claim was closed decides first (scan 25 Nov 2026 C-2, as ExchangeInvoiceResendPolicy.ClosedAsExchange reads it):
+    // a refunded claim is a return, a claim closed as an exchange (ResolvedWith CHANGE) is none and one closed with a
+    // refund (ResolvedWith REFUND) is one; only a claim that does not say how it closed falls back to the request rule.
+    // The database reads this rule from one expression (AcceptedReturnPolicy.CountsAsReturnInDatabase).
+    public static bool CountsAsReturn(string? customerRequest, string? claimRawStatus, string? platformCode = ExchangeNoReturnPlatform, string? resolvedWith = null) =>
+        string.Equals(claimRawStatus?.Trim(), RefundedRawStatus, StringComparison.OrdinalIgnoreCase)
+        || resolvedWith != Change
+            && (resolvedWith == Refund || customerRequest != Change || !string.Equals(platformCode, ExchangeNoReturnPlatform, StringComparison.OrdinalIgnoreCase));
 
     // The marketplace whose exchange claims take no units back (AcceptedReturnPolicy, the reports).
     public const string ExchangeNoReturnPlatform = "HEPSIBURADA";

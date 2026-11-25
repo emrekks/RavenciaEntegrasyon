@@ -109,11 +109,17 @@ export function OffsiteBackupSection({ mfa }: { mfa: boolean }) {
       } else if (confirm === 'setup') {
         if (setupKey && !keyStored) return
         const plan = offsiteSetupPlan(saved, draft, saved.clientSecretSaved && !changingSecret)
-        if (plan.needsSave) {
-          const next = await hubApi<OffsiteBackupView>('/settings/offsite-backup', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ ...offsiteBackupSaveBody({ ...draft, enabled: true, ageRecipient: setupKey?.recipient ?? draft.ageRecipient }, changingSecret), ...reauth }) })
-          client.setQueryData(queryKeys.offsiteBackup(), next)
+        // The settings go with the authorization in one request, verified once (scan 25 Nov 2026, D-6): a save and an
+        // authorize one after the other each used the authenticator code, which works once, so the owner with MFA
+        // always failed the first try.
+        const settings = plan.needsSave ? offsiteBackupSaveBody({ ...draft, enabled: true, ageRecipient: setupKey?.recipient ?? draft.ageRecipient }, changingSecret) : null
+        let url: string
+        try {
+          ({ url } = await hubApi<ApiAnswer<'postSettingsOffsiteBackupGoogleAuthorize'>>('/settings/offsite-backup/google/authorize', { method: 'POST', headers: settings ? settingsIfMatch(saved.version) : {}, body: JSON.stringify(settings ? { ...reauth, settings } : reauth) }))
+        } finally {
+          // The settings may have been saved even when the consent address could not be made.
+          if (settings) void client.invalidateQueries({ queryKey: queryKeys.offsiteBackup() })
         }
-        const { url } = await hubApi<ApiAnswer<'postSettingsOffsiteBackupGoogleAuthorize'>>('/settings/offsite-backup/google/authorize', { method: 'POST', body: JSON.stringify(reauth) })
         markFirstRun()
         window.location.assign(url)
         return

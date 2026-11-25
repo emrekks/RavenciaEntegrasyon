@@ -73,6 +73,40 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
         Assert.True(BoundSecret.IsBound(await db.UserSecurities.Where(security => security.UserId == userId).Select(security => security.ProtectedTotpSecret).SingleAsync()));
     }
 
+    // Scan 25 Nov 2026 (D-6): "Google Drive'a Bağlan" saved the settings and then asked for Google's consent address in
+    // two requests; each checked the authenticator code, which works once, so the owner with MFA always failed. One
+    // request now saves and authorizes, checked once; the code still works once, nothing is remembered between requests.
+    [PostgreSqlFact]
+    public async Task DriveSetup_SavesTheSettingsAndAuthorizes_InOneRequest_WithOneAuthenticatorCode()
+    {
+        var email = $"drive-owner-{fixture.Run}@example.invalid";
+        await CreateUserAsync(email, MembershipRole.Owner);
+        var (client, csrf) = await SignInAsync(email, "ACTIVE");
+        using (client)
+        {
+            var secret = await StartSetupAsync(client, csrf, new { password = ApiEndToEndFixture.Password });
+            await ConfirmAsync(client, csrf, secret);
+            // The confirmation used this time step's code; the next step's code is the one the owner types now.
+            var code = TotpService.Generate(secret, DateTimeOffset.UtcNow.ToUnixTimeSeconds() / TotpService.StepSeconds + 1);
+            var clientId = $"123456789-{fixture.Run}.apps.googleusercontent.com";
+            var settings = new { enabled = false, ageRecipient = (string?)null, folderMode = (string?)null, folderValue = (string?)null, keepDays = (int?)null, keepMonths = (int?)null, clientId, clientSecret = $"d6-{fixture.Run}" };
+            using (var setup = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/settings/offsite-backup/google/authorize", csrf, new { password = ApiEndToEndFixture.Password, code, settings })))
+            {
+                Assert.True(setup.StatusCode == HttpStatusCode.OK, await setup.Content.ReadAsStringAsync());
+                Assert.Contains($"client_id={clientId}", (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("url").GetString());
+            }
+            using (var read = await client.GetAsync("/api/v1/settings/offsite-backup"))
+            {
+                var saved = await read.Content.ReadFromJsonAsync<JsonElement>();
+                Assert.Equal(clientId, saved.GetProperty("clientId").GetString());
+                Assert.True(saved.GetProperty("clientSecretSaved").GetBoolean());
+            }
+            // The same code is not taken twice: the re-authentication is not relaxed.
+            using var again = await client.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/settings/offsite-backup/google/authorize", csrf, new { password = ApiEndToEndFixture.Password, code }));
+            Assert.Equal(HttpStatusCode.Unauthorized, again.StatusCode);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task Resets_TakeThePasswordAgain_OnePassedCheckCoversTheSessionsNextResetsForAFewMinutes()
     {

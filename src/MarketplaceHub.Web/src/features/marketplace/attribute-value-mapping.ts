@@ -139,6 +139,15 @@ export function updatePanelValueReferenceSelection(
   return next
 }
 
+// Birebir Eşle's pairs a panel value may take: only one that has no marketplace value yet, or already this one (a pair
+// whose save is stale). A panel value mapped to another marketplace value keeps it: the same-name match never adds a
+// second target beside the one the user chose (scan 25 Nov 2026, D-4; the value table's guard in FieldDetail).
+export function directMappingsKeepingTargets<T extends { localId: string; externalId: string }>(planned: readonly T[], selections: ReferencePanelSelections): T[] {
+  const targets = new Map<string, Set<string>>()
+  for (const [externalId, localIds] of Object.entries(selections)) for (const localId of localIds) targets.set(localId, (targets.get(localId) ?? new Set()).add(externalId))
+  return planned.filter(item => { const current = targets.get(item.localId); return !current || current.has(item.externalId) })
+}
+
 export function togglePanelValueReferenceSelection(
   selections: ReferencePanelSelections,
   externalId: string,

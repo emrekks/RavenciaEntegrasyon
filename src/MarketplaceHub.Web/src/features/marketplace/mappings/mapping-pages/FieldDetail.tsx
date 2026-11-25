@@ -17,6 +17,7 @@ import { EmptyState } from '../../../../shared/components/EmptyState'
 import { queryKeys } from '../../../../shared/api/query-keys'
 import { type LocalAttribute, type ReferenceItem, type ReferenceData, type CatalogMapping, isOptionAttribute, ValueDraftContext, valueCollator } from './mapping-shared'
 import { AttributeValueMappingEditor } from './ValueMappingEditors'
+import { fieldChoiceFailureMessage, fieldChoiceSteps, type FieldChoiceStep } from './field-choice'
 
 export function ProductBrandField({ remote, required, platformLabel, footerHint, onNext }: { remote: ReferenceItem; required: boolean; platformLabel: string; footerHint: string; onNext?: () => void }) {
   return <>
@@ -68,24 +69,26 @@ export function FieldDetail({ platformCode, platformLabel, connectionId, categor
     if (busy || selectedValue === localId) return
     const source = parseProductFieldOption(localId)
     setBusy(true)
+    let currentStep: FieldChoiceStep | null = null
+    let newSourceSaved = false
     try {
-      // A product field and a panel attribute exclude each other: choosing one drops the other.
-      if (fieldSource && source === null) await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'DELETE' })
-      if (source) {
-        if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
-        await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'PUT', body: JSON.stringify({ attributeName: remote.name, sourceField: source }) })
-        onNotice(`${remote.name} artık her ürünün ${productFieldLabel(source)} bilgisiyle gönderilecek.`, 'success')
-        return
+      // The new source first; the old one goes only once it is saved (fieldChoiceSteps).
+      for (const step of fieldChoiceSteps({ hasMapping: Boolean(mapping), hasFieldSource: Boolean(fieldSource), chosenSource: source, chosenLocalId: localId })) {
+        currentStep = step
+        if (step === 'put-default') await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'PUT', body: JSON.stringify({ attributeName: remote.name, sourceField: source }) })
+        else if (step === 'delete-default') await hubApi(`/connections/${connectionId}/attribute-defaults/${encodeURIComponent(remote.externalId)}`, { method: 'DELETE' })
+        else if (step === 'delete-mapping' && mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
+        else if (step === 'put-mapping') {
+          const chosen = localAttributes.find(item => item.id === localId)
+          const role = fixedRole ?? (categoryOptionIds.has(localId) || (chosen && isOptionAttribute(chosen)) ? 'OPTION' : 'ATTRIBUTE')
+          await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remote.externalId, status: 'VERIFIED', role }) })
+        }
+        if (step === 'put-default' || step === 'put-mapping') newSourceSaved = true
       }
-      if (mapping) await hubApi<boolean>(`/mappings/attributes/${mapping.localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}&externalId=${encodeURIComponent(mapping.externalId)}`, { method: 'DELETE', headers: { 'If-Match': `"v${mapping.version}"` } })
-      if (localId) {
-        const chosen = localAttributes.find(item => item.id === localId)
-        const role = fixedRole ?? (categoryOptionIds.has(localId) || (chosen && isOptionAttribute(chosen)) ? 'OPTION' : 'ATTRIBUTE')
-        await hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', body: JSON.stringify({ connectionId, snapshotId, scopeExternalId: categoryScope, externalId: remote.externalId, status: 'VERIFIED', role }) })
-      }
+      if (source) { onNotice(`${remote.name} artık her ürünün ${productFieldLabel(source)} bilgisiyle gönderilecek.`, 'success'); return }
       onNotice(localId ? `${remote.name} eşlemesi kaydedildi.` : `${remote.name} eşlemesi kaldırıldı.`, 'success')
     } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.', 'error')
+      onNotice(fieldChoiceFailureMessage(currentStep, newSourceSaved, reason instanceof Error ? reason.message : 'Özellik eşlemesi kaydedilemedi.'), 'error')
     } finally {
       await client.invalidateQueries({ queryKey: queryKeys.attributeMappings(connectionId, categoryScope) })
       await client.invalidateQueries({ queryKey: queryKeys.attributeDefaults(connectionId) })

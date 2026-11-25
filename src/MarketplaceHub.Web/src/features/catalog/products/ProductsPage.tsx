@@ -53,6 +53,7 @@ import { useMetricSource } from '../../marketplace/use-metric-source'
 import { ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
 import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
+import { groupByFamily } from './product-family-key'
 
 const productSortValues = productCatalogSortOptions.map(option => option[0])
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
@@ -64,29 +65,14 @@ type ProductGroup = {
   products: Product[]
   variants: Array<{ product: Product; variant: Variant }>
 }
-function productFamilyKey(product: Product) {
-  const modelCode = product.modelCode?.trim() || product.variants.map(variant => variant.modelCode?.trim()).find(Boolean)
-  if (!modelCode) return `product:${product.id}`
-  return `model:${modelCode.toLocaleUpperCase('tr-TR')}`
-}
+// One card per model family: brand + model code, by the server's key (another brand's cards with the same code stay apart).
 function productRowsAsCards(products: Product[]): ProductGroup[] {
-  const groups = new Map<string, ProductGroup>()
-  for (const product of products) {
-    const id = productFamilyKey(product)
-    const existing = groups.get(id)
-    if (existing) {
-      existing.products.push(product)
-      existing.variants.push(...product.variants.map(variant => ({ product, variant })))
-      continue
-    }
-    groups.set(id, {
-      id,
-      primary: product,
-      products: [product],
-      variants: product.variants.map(variant => ({ product, variant }))
-    })
-  }
-  return [...groups.values()]
+  return groupByFamily(products).map(({ id, members }) => ({
+    id,
+    primary: members[0],
+    products: members,
+    variants: members.flatMap(product => product.variants.map(variant => ({ product, variant })))
+  }))
 }
 // Toplu Değer Ata: the selected records grouped by model (a record the list has not loaded is a model of its own; the
 // API adds each model's other colour cards itself) and the variants the selection holds.

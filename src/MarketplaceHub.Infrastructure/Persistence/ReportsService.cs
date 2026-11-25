@@ -483,19 +483,19 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider, R
     private async Task<List<ReportClaimRow>> ClaimRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
     {
         var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
+        // The claims that count as a return, by the one database rule the invoice and the overview read (C-2).
+        var returnClaims = db.ReturnClaims.AsNoTracking().Where(claim => claim.TenantId == tenantId).Where(AcceptedReturnPolicy.CountsAsReturnInDatabase(db));
         return await (from row in PeriodOrders(tenantId, allowedIds, period)
                       join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
                       // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
                       // An exchange is no return: the sale goes on (owner, 6 Nov 2026).
-                      // ReturnCustomerRequestPolicy.CountsAsReturn: a Hepsiburada exchange not closed with a refund is no return
+                      // ReturnCustomerRequestPolicy.CountsAsReturn (AcceptedReturnPolicy.CountsAsReturnInDatabase): a claim that is no return is
                       // claim (Exchange); every exchange request is also counted apart, for information
                       // (ReportSummaryView.ExchangeClaims, owner 18 Nov 2026), a Trendyol one among the returns as before.
                       where !unbookedReturns.Contains(row.Order.Id)
                       select new ReportClaimRow
                       {
-                          Exchange = !(claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus
-                              || !db.PlatformConnections.Any(connection => connection.TenantId == claim.TenantId && connection.Id == claim.ConnectionId
-                                  && connection.PlatformCode == ReturnCustomerRequestPolicy.ExchangeNoReturnPlatform)),
+                          Exchange = !returnClaims.Any(counted => counted.Id == claim.Id),
                           ExchangeRequest = claim.CustomerRequest == ReturnCustomerRequestPolicy.Change,
                           ExchangeMade = claim.CustomerRequest == ReturnCustomerRequestPolicy.Change && claim.ResolvedWith == ReturnCustomerRequestPolicy.Change,
                           OrderId = claim.OrderId,

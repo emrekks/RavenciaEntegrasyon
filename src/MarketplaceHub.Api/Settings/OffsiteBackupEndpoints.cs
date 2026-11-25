@@ -16,7 +16,9 @@ namespace MarketplaceHub.Api.Settings;
 // every change of where the copy goes, for the owner alone; a changed age key or Google account alerts the owner):
 //   GET  /api/v1/settings/offsite-backup                    settings and copy status; never the client secret or a token
 //   PUT  /api/v1/settings/offsite-backup                    save (If-Match + password, and the authenticator code when on)
-//   POST /api/v1/settings/offsite-backup/google/authorize   "Google ile Bağlan" (password): Google's consent address
+//   POST /api/v1/settings/offsite-backup/google/authorize   "Google ile Bağlan" (password): Google's consent address; with
+//                                                           `settings` (and If-Match) it saves them first, in the same
+//                                                           verified request (the one-button setup: one code, not two)
 //   POST /api/v1/settings/offsite-backup/google/complete    the panel's /settings/google-drive-callback page hands over
 //                                                           Google's code and state (same user, unexpired, once)
 //   POST /api/v1/settings/offsite-backup/google/disconnect  "Bağlantıyı Kes" (password): revoked at Google and deleted
@@ -31,13 +33,18 @@ public static class OffsiteBackupEndpoints
     public sealed record SaveRequest(bool Enabled, string? AgeRecipient, string? FolderMode, string? FolderValue, int? KeepDays, int? KeepMonths, string? ClientId, string? ClientSecret,
         string? Password, string? Code = null, string? RecoveryCode = null);
     public sealed record CompleteRequest(string? Code, string? State, string? Error);
+    // The settings the one-button setup saves before it asks Google (scan 25 Nov 2026, D-6): a save and an authorize sent
+    // one after the other each checked the authenticator code, which works once, so an owner with MFA always failed the
+    // first try. One request is verified once and does both; nothing about the check itself is relaxed.
+    public sealed record SetupSettings(bool Enabled, string? AgeRecipient, string? FolderMode, string? FolderValue, int? KeepDays, int? KeepMonths, string? ClientId, string? ClientSecret);
+    public sealed record AuthorizeRequest(string? Password, string? Code = null, string? RecoveryCode = null, SetupSettings? Settings = null);
 
     public static IEndpointRouteBuilder MapOffsiteBackupEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/settings/offsite-backup").WithGates(ApiGate.Elevated, ApiGate.Owner);
         group.MapGet("", GetAsync).Produces<OffsiteBackupSettingsView>();
         group.MapPut("", SaveAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("replaces the stored backup settings; If-Match refuses a stale repeat").IfMatch(required: false).Produces<OffsiteBackupSettingsView>();
-        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("each call issues a new one-time consent state").Produces<OffsiteBackupAuthorizationView>();
+        group.MapPost("/google/authorize", AuthorizeAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("each call issues a new one-time consent state").IfMatch(required: false).Produces<OffsiteBackupAuthorizationView>();
         group.MapPost("/google/complete", CompleteAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).NotIdempotent("redeems Google's one-time authorization code, which works once").Produces<OffsiteBackupSettingsView>();
         group.MapPost("/google/disconnect", DisconnectAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).Idempotent("forgets the Google connection; a repeat finds none").Produces<OffsiteBackupSettingsView>();
         group.MapPost("/test", TestAsync).RequireRateLimiting(AuthEndpoints.StepRateLimit).RequireGate(ApiGate.Elevated).Idempotent("reads a fresh token and the Drive folder; a repeat finds the same folder").Produces<OffsiteBackupTestView>();
@@ -59,25 +66,42 @@ public static class OffsiteBackupEndpoints
         var before = await service.GetAsync(tenant.TenantId, http.RequestAborted);
         if (expected is null && before.Version > 0) return SettingsEndpoints.PreconditionRequired(http);
         if (await Reauth(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        var (view, problem) = await SaveSettingsAsync(tenant.TenantId, tenant.UserId, new SetupSettings(request.Enabled, request.AgeRecipient, request.FolderMode, request.FolderValue, request.KeepDays, request.KeepMonths, request.ClientId, request.ClientSecret), expected, before, http, service, alert);
+        return view is not null ? Versioned(http, view, configuration) : problem!;
+    }
+
+    // Saves the settings after the caller has checked If-Match and re-authenticated; the owner is alerted of a change.
+    private static async Task<(OffsiteBackupView? View, IResult? Problem)> SaveSettingsAsync(Guid tenantId, Guid userId, SetupSettings settings, long? expected, OffsiteBackupView before, HttpContext http, OffsiteBackupSettingsService service, OffsiteBackupChangeAlert alert)
+    {
         try
         {
-            var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, http.TraceIdentifier,
-                new OffsiteBackupSaveInput(request.Enabled, request.AgeRecipient, request.FolderMode, request.FolderValue, request.KeepDays, request.KeepMonths, request.ClientId, request.ClientSecret),
+            var result = await service.SaveAsync(tenantId, userId, http.TraceIdentifier,
+                new OffsiteBackupSaveInput(settings.Enabled, settings.AgeRecipient, settings.FolderMode, settings.FolderValue, settings.KeepDays, settings.KeepMonths, settings.ClientId, settings.ClientSecret),
                 expected, http.RequestAborted);
-            if (result.View is { } saved && OffsiteBackupChangeAlert.Describe(before, saved, Actor(http)) is { } change) await alert.SendAsync(tenant.TenantId, change, CancellationToken.None);
-            return result.View is { } view ? Versioned(http, view, configuration) : Problem(http, result.Error!);
+            if (result.View is { } saved && OffsiteBackupChangeAlert.Describe(before, saved, Actor(http)) is { } change) await alert.SendAsync(tenantId, change, CancellationToken.None);
+            return result.View is { } view ? (view, null) : (null, Problem(http, result.Error!));
         }
         catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException || SettingsEndpoints.IsUniqueViolation(exception))
         {
-            return Problem(http, new("PRECONDITION_FAILED", "Ayarlar başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", 412));
+            return (null, Problem(http, new("PRECONDITION_FAILED", "Ayarlar başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", 412)));
         }
     }
 
-    private static async Task<IResult> AuthorizeAsync(UserManagementEndpoints.ReauthRequest request, HttpContext http, OffsiteBackupSettingsService service, IConfiguration configuration,
-        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time)
+    private static async Task<IResult> AuthorizeAsync(AuthorizeRequest request, HttpContext http, OffsiteBackupSettingsService service, IConfiguration configuration,
+        UserManager<ApplicationUser> users, AppDbContext db, IDataProtectionProvider protection, TotpService totp, TokenHasher hasher, TimeProvider time, OffsiteBackupChangeAlert alert)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        // With settings it is the save's request too: the same If-Match rules as PUT, checked before the re-authentication.
+        long? expected = null;
+        OffsiteBackupView? before = null;
+        if (request.Settings is not null)
+        {
+            if (IfMatchVersion(http, out expected) is { } invalidEtag) return invalidEtag;
+            before = await service.GetAsync(tenant.TenantId, http.RequestAborted);
+            if (expected is null && before.Version > 0) return SettingsEndpoints.PreconditionRequired(http);
+        }
         if (await Reauth(request.Password, request.Code, request.RecoveryCode, http, users, db, protection, totp, hasher, time) is { } refusal) return refusal;
+        if (request.Settings is { } settings && (await SaveSettingsAsync(tenant.TenantId, tenant.UserId, settings, expected, before!, http, service, alert)).Problem is { } saveProblem) return saveProblem;
         var (url, error) = await service.BeginAuthorizationAsync(tenant.TenantId, tenant.UserId, RedirectUri(http, configuration), http.TraceIdentifier, http.RequestAborted);
         return error is not null ? Problem(http, error) : Results.Ok(new { url });
     }

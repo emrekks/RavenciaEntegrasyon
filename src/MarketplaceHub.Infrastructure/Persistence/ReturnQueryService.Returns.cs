@@ -172,14 +172,16 @@ internal sealed partial class ReturnQueryService
                 // screens use gives the photo, so a return line shows what its order line shows.
                 var images = ReturnDetailLineImageUrls(source.ImageUrl, variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id),
                     string.IsNullOrWhiteSpace(line.Barcode) ? string.IsNullOrWhiteSpace(line.Sku) ? variant?.Barcode : line.Sku : line.Barcode, claim.ConnectionId);
-                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl,
+                // The card shows the returned units: they are the line's ordered quantity here, and the order's cancelled units
+                // are not taken off them (the page shows ordered minus cancelled; a partly cancelled order showed "0 adet", C-4).
+                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, 0m, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl,
                     FallbackImageUrl: images.FallbackImageUrl,
                     ReturnAmounts: ReturnMarketplaceAmounts.Line(platformCode, line.SourceSnapshotJson, returnLine.Quantity, claim.ExternalClaimId));
             }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", ReturnStatusWire(claim.Status, claimLines.Select(x => x.RawStatus).ToList(), ReturnCustomerRequestPolicy.ExchangeMade(claim.CustomerRequest, claim.ResolvedWith)), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, lineViews.FirstOrDefault()?.ImageUrl, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
-                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabelPolicy.ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
+                lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : InvoiceLabelPolicy.PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], platformCode, packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
                 order is not null && Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).IsMicroExport,
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
                 claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
@@ -246,10 +248,10 @@ internal sealed partial class ReturnQueryService
                 "REJECTED" => query.Where(x => (x.Status == ReturnClaimStatus.Rejected || x.Status == ReturnClaimStatus.Cancelled)
                     && !(x.Status == ReturnClaimStatus.Rejected && x.CustomerRequest == ReturnCustomerRequestPolicy.Change && x.ResolvedWith == ReturnCustomerRequestPolicy.Change)),
                 "DISPUTED" => query.Where(x => x.Status == ReturnClaimStatus.Disputed),
-                // The UI's Analysis tab is reserved for explicitly submitted
-                // analysis cases. ActionRequired claims belong only to their
-                // own operational tab and must not leak into Analysis.
-                "REVIEW" => query.Where(_ => false),
+                // The Analysis tab ("Analiz") lists the claims whose status word the panel does not know: the cards
+                // ReturnTabGroup counts under it (scan 25 Nov 2026 C-3: it counted them and listed none). ActionRequired
+                // claims belong only to their own operational tab.
+                "REVIEW" => query.Where(x => x.Status == ReturnClaimStatus.Unknown),
                 "SUSPENDED" => query.Where(_ => false),
                 _ => query.Where(_ => false)
             };

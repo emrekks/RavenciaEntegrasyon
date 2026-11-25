@@ -63,29 +63,29 @@ public sealed class PanelFactoryResetService(AppDbContext db, TimeProvider timeP
         if (!(typed == ConfirmationWord || !full && typed == PartialConfirmationWord))
             return Invalid("confirmation", full ? $"Bütün veri türleri seçili: bu Paneli Tamamen Sıfırla demektir. Onay alanına tam olarak {ConfirmationWord} yazın." : "Onay alanına tam olarak Verileri sil yazın.");
 
-        // A second request while one is queued or running answers with that one. The check and the insert run under the
-        // tenant's reset lock (audit 14 Nov 2026): two requests at once used to queue two resets, and each one kept the
-        // other (and every job of the tenant) from being leased.
+        // A second request while one is queued or running is refused with 409 PANEL_RESET_ALREADY_RUNNING (scan 25 Nov
+        // 2026, D-5: it answered 200 with the open job, and the page said the new choice had started). The check and the
+        // insert run under the tenant's reset lock (audit 14 Nov 2026): two requests at once used to queue two resets,
+        // and each one kept the other (and every job of the tenant) from being leased.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({RequestLockKey(tenantId)})", cancellationToken);
-        if (!await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == PanelJobTypes.FactoryReset && OpenJobStatuses.Contains(x.Status), cancellationToken))
+        if (await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenantId && x.JobType == PanelJobTypes.FactoryReset && OpenJobStatuses.Contains(x.Status), cancellationToken))
+            return ServiceResult<PanelFactoryResetView>.Fail("PANEL_RESET_ALREADY_RUNNING", "Zaten süren bir sıfırlama var; yenisini o bittikten sonra başlatın. İlerlemesi Sıfırlama İlerlemesi bölümünde.", 409);
+        var now = timeProvider.GetUtcNow();
+        await CancelWaitingJobsAsync(tenantId, null, now, cancellationToken);
+        var payload = JsonSerializer.Serialize(new Payload(currentSessionId, actorUserId, [.. chosen.Select(x => x.Key)]));
+        var dedup = $"panel-factory-reset:{tenantId:D}:{Guid.CreateVersion7():N}";
+        var job = Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, null, PanelJobTypes.FactoryReset, payload, dedup, correlationId, now)
         {
-            var now = timeProvider.GetUtcNow();
-            await CancelWaitingJobsAsync(tenantId, null, now, cancellationToken);
-            var payload = JsonSerializer.Serialize(new Payload(currentSessionId, actorUserId, [.. chosen.Select(x => x.Key)]));
-            var dedup = $"panel-factory-reset:{tenantId:D}:{Guid.CreateVersion7():N}";
-            var job = Jobs.JobEnqueuer.Add(db, new IntegrationJobRequest(tenantId, null, PanelJobTypes.FactoryReset, payload, dedup, correlationId, now)
-            {
-                Priority = JobPriorityPolicy.UserAction,
-                TriggerType = "user",
-                CreatedAt = now
-            });
-            job.ProgressCurrent = 0;
-            job.ProgressTotal = PanelFactoryResetInventory.StepsFor(chosen).Count - 1;
-            job.ProgressPercent = 0;
-            job.ProgressLabel = "Sıfırlama sırada bekliyor";
-            await db.SaveChangesAsync(cancellationToken);
-        }
+            Priority = JobPriorityPolicy.UserAction,
+            TriggerType = "user",
+            CreatedAt = now
+        });
+        job.ProgressCurrent = 0;
+        job.ProgressTotal = PanelFactoryResetInventory.StepsFor(chosen).Count - 1;
+        job.ProgressPercent = 0;
+        job.ProgressLabel = "Sıfırlama sırada bekliyor";
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ServiceResult<PanelFactoryResetView>.Ok(await ViewAsync(tenantId, cancellationToken));
     }

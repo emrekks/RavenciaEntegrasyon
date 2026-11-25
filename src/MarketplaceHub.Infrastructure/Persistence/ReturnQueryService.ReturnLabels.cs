@@ -33,29 +33,58 @@ internal sealed partial class ReturnQueryService
     private static readonly string SnapshotInvoiceWordsPattern = ReturnSearchText.JsonWordsPattern("INVOICED", "RECEIVED", "REJECTED");
 
     // The claims whose label JsonText decided, by label (an empty set before the snapshots were read).
-    internal sealed record ReturnSnapshotLabels(Guid[] Checking, Guid[] Rejected, Guid[] Waiting)
+    internal sealed record ReturnSnapshotLabels(Guid[] Checking, Guid[] Rejected, Guid[] Waiting, Guid[] Review)
     {
-        public static readonly ReturnSnapshotLabels None = new([], [], []);
+        public static readonly ReturnSnapshotLabels None = new([], [], [], []);
     }
+
+    // n11's invoice link (InvoiceLabelPolicy.InvoiceLabelForPlatform reads "invoiceLink" from the snapshot): a superset of
+    // the snapshots that may hold it, which JsonText then decides.
+    private static readonly string SnapshotInvoiceLinkPattern = ReturnSearchText.JsonWordsPattern("INVOICELINK");
+    private static readonly string[] PreProviderRefusalCodes = [.. InvoicingBillingService.PreProviderRefusalCodes];
+
+    // The hand-set status (InvoiceLabelPolicy.ManualInvoiceLabel: trimmed, any case).
+    private static readonly string ManualUploadedPattern = ReturnSearchText.TrimmedIgnoreCasePattern("UPLOADED");
+    private static readonly string ManualPendingPattern = ReturnSearchText.TrimmedIgnoreCasePattern("PENDING");
 
     // Ties have no order of their own: the latest invoice and package are taken by date, then by id, everywhere the return
     // screens read them (ReturnViewsAsync too), so the label filtered on is the label shown. Without snapshot labels the
     // claims the snapshot decides read SnapshotLabel; with them, their label (BILINMIYOR for a claim the read did not
     // cover: one whose snapshot changed in between).
+    // Scan 25 Nov 2026 C-5: the rule is the Orders page's (InvoiceLabelPolicy.PackageInvoiceLabel) in its own order: the
+    // label set by hand on the package, the fiscal states the invoice workspace shares (SharedFiscalLabel), an issued
+    // invoice that needs review or did not reach the marketplace (IssuedInvoiceLabel), then InvoiceLabel with the
+    // marketplace's own adjustments (InvoiceLabelForPlatform: Shopify, n11's invoice link, the platforms that cannot show an
+    // invoice). The claim's marketplace is its connection's.
     internal Expression<Func<ReturnClaim, string>> ReturnInvoiceLabel(Guid tenantId, ReturnSnapshotLabels? snapshotLabels)
     {
         var resolved = snapshotLabels is not null;
-        var (checking, rejected, waiting) = snapshotLabels ?? ReturnSnapshotLabels.None;
+        var (checking, rejected, waiting, review) = snapshotLabels ?? ReturnSnapshotLabels.None;
+        var refusals = PreProviderRefusalCodes;
         return claim => !db.Orders.Any(order => order.TenantId == tenantId && order.Id == claim.OrderId) ? "FATURA_BEKLIYOR"
-            : db.Invoices.Where(invoice => invoice.TenantId == tenantId && invoice.OrderId == claim.OrderId && invoice.OriginalInvoiceId == null
+            : db.ShipmentPackages.Where(package => package.TenantId == tenantId && package.OrderId == claim.OrderId)
+                .OrderByDescending(package => package.StatusOccurredAt).ThenByDescending(package => package.Id)
+                .Select(package => package.ManualInvoiceStatus == null ? null
+                    : Regex.IsMatch(package.ManualInvoiceStatus, ManualUploadedPattern) ? "FATURA_KONTROLDE"
+                    : Regex.IsMatch(package.ManualInvoiceStatus, ManualPendingPattern) ? "FATURA_BEKLIYOR"
+                    : null)
+                .FirstOrDefault()
+            ?? db.Invoices.Where(invoice => invoice.TenantId == tenantId && invoice.OrderId == claim.OrderId && invoice.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == invoice.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
                 .OrderByDescending(invoice => invoice.CreatedAt).ThenByDescending(invoice => invoice.Id)
-                .Select(invoice => invoice.Status == InvoiceStatus.UnknownResult ? "FATURA_BELIRSIZ"
+                .Select(invoice => invoice.Status == InvoiceStatus.Submitting
+                        ? (invoice.ExternalReference == null || Regex.IsMatch(invoice.ExternalReference, BlankTextPattern)) && invoice.LastErrorCode != null && refusals.Contains(invoice.LastErrorCode) ? "FATURA_REDDEDILDI" : "FATURA_ISLENIYOR"
+                    : invoice.Status == InvoiceStatus.UnknownResult ? "FATURA_BELIRSIZ"
+                    : invoice.Status == InvoiceStatus.AdjustmentRequired ? InvoicingBillingService.AdjustmentRequiredLabel
+                    : invoice.Status == InvoiceStatus.ManualReview && invoice.ExternalReference != null && invoice.ExternalReference != "" ? InvoiceNeedsReviewLabel
+                    : invoice.Status == InvoiceStatus.MarketplaceFailed
+                        || (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplacePending) && invoice.LastErrorCode != null ? "FATURA_PLATFORMA_AKTARILMADI"
                     : invoice.Status == InvoiceStatus.Rejected || invoice.Status == InvoiceStatus.ValidationFailed || invoice.Status == InvoiceStatus.ManualReview ? "FATURA_REDDEDILDI"
-                    : invoice.Status == InvoiceStatus.MarketplaceFailed ? "FATURA_PLATFORMA_AKTARILMADI"
                     : invoice.Status == InvoiceStatus.Cancelled || invoice.Status == InvoiceStatus.CancelledLocal ? "FATURA_IPTAL"
-                    : invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplacePending || invoice.Status == InvoiceStatus.Submitted || invoice.Status == InvoiceStatus.Submitting ? "FATURA_ISLENIYOR"
+                    : invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplacePending || invoice.Status == InvoiceStatus.Submitted ? "FATURA_ISLENIYOR"
                     : invoice.Status == InvoiceStatus.Completed ? "FATURA_KONTROLDE"
+                    // Shopify: a draft invoice is still to be issued (InvoiceLabelForPlatform).
+                    : invoice.Status == InvoiceStatus.Draft && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && connection.PlatformCode == "SHOPIFY") ? "FATURA_BEKLIYOR"
                     : db.ShipmentPackages.Where(package => package.TenantId == tenantId && package.OrderId == claim.OrderId)
                         .OrderByDescending(package => package.StatusOccurredAt).ThenByDescending(package => package.Id)
                         .Select(package => package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected ? "FATURA_REDDEDILDI"
@@ -69,21 +98,32 @@ internal sealed partial class ReturnQueryService
                 .OrderByDescending(package => package.StatusOccurredAt).ThenByDescending(package => package.Id)
                 .Select(package => package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received ? "FATURA_KONTROLDE"
                     : package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected ? "FATURA_REDDEDILDI"
-                    : package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced ? "FATURA_BEKLIYOR"
+                    // Shopify without a panel invoice: what would wait is to be reviewed (InvoiceLabelForPlatform).
+                    : package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced
+                        ? db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && connection.PlatformCode == "SHOPIFY") ? ShopifyUnconfirmedInvoiceLabel : "FATURA_BEKLIYOR"
                     : package.RawStatus != null && Regex.IsMatch(package.RawStatus, InvoicedStatusPattern) ? "FATURA_KONTROLDE"
                     : null)
                 .FirstOrDefault()
-            ?? (!db.Orders.Any(order => order.TenantId == tenantId && order.Id == claim.OrderId && order.CustomerSnapshotJson != null && Regex.IsMatch(order.CustomerSnapshotJson, SnapshotInvoiceWordsPattern)) ? "FATURA_BILINMIYOR"
-                : !resolved ? SnapshotLabel
-                : checking.Contains(claim.Id) ? "FATURA_KONTROLDE"
-                : rejected.Contains(claim.Id) ? "FATURA_REDDEDILDI"
-                : waiting.Contains(claim.Id) ? "FATURA_BEKLIYOR"
-                : "FATURA_BILINMIYOR");
+            ?? (db.Orders.Any(order => order.TenantId == tenantId && order.Id == claim.OrderId && order.CustomerSnapshotJson != null
+                    && (Regex.IsMatch(order.CustomerSnapshotJson, SnapshotInvoiceWordsPattern)
+                        || Regex.IsMatch(order.CustomerSnapshotJson, SnapshotInvoiceLinkPattern) && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId && connection.PlatformCode == "N11")))
+                ? !resolved ? SnapshotLabel
+                    : checking.Contains(claim.Id) ? "FATURA_KONTROLDE"
+                    : rejected.Contains(claim.Id) ? "FATURA_REDDEDILDI"
+                    : waiting.Contains(claim.Id) ? "FATURA_BEKLIYOR"
+                    : review.Contains(claim.Id) ? ShopifyUnconfirmedInvoiceLabel
+                    : "FATURA_BILINMIYOR"
+                // Nothing says: unknown, except where the marketplace cannot show an invoice (InvoiceLabelForPlatform).
+                : db.PlatformConnections.Where(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId)
+                    .Select(connection => connection.PlatformCode == "SHOPIFY" ? ShopifyUnconfirmedInvoiceLabel
+                        : connection.PlatformCode == "N11" || connection.PlatformCode == "PTTAVM" || connection.PlatformCode == "PAZARAMA" ? UnverifiedInvoiceLabel
+                        : "FATURA_BILINMIYOR")
+                    .FirstOrDefault() ?? "FATURA_BILINMIYOR");
     }
 
-    // The labels JsonText can give a snapshot when nothing else decides (InvoiceLabel without an invoice, a marketplace
-    // invoice status or an INVOICED package).
-    private static readonly string[] SnapshotLabels = ["FATURA_KONTROLDE", "FATURA_REDDEDILDI", "FATURA_BEKLIYOR", "FATURA_BILINMIYOR"];
+    // The labels JsonText can give a snapshot when nothing else decides (InvoiceLabelForPlatform without an invoice, a
+    // marketplace invoice status or an INVOICED package).
+    private static readonly string[] SnapshotLabels = ["FATURA_KONTROLDE", "FATURA_REDDEDILDI", "FATURA_BEKLIYOR", "FATURA_BILINMIYOR", ShopifyUnconfirmedInvoiceLabel];
 
     // The exact label of the claims of this query, as a database expression: the claims the snapshot decides are read once
     // here (their snapshot, by JsonText) and their labels folded back in.
@@ -91,14 +131,19 @@ internal sealed partial class ReturnQueryService
     {
         var marked = ReturnInvoiceLabel(tenantId, null);
         var snapshots = await claims.Where(Is(marked, SnapshotLabel))
-            .Select(claim => new { claim.Id, Snapshot = db.Orders.Where(order => order.TenantId == tenantId && order.Id == claim.OrderId).Select(order => order.CustomerSnapshotJson).FirstOrDefault() })
+            .Select(claim => new
+            {
+                claim.Id,
+                Snapshot = db.Orders.Where(order => order.TenantId == tenantId && order.Id == claim.OrderId).Select(order => order.CustomerSnapshotJson).FirstOrDefault(),
+                Platform = db.PlatformConnections.Where(connection => connection.TenantId == tenantId && connection.Id == claim.ConnectionId).Select(connection => connection.PlatformCode).FirstOrDefault()
+            })
             .ToListAsync(cancellationToken);
         if (snapshots.Count == 0) return ReturnInvoiceLabel(tenantId, ReturnSnapshotLabels.None);
-        var labels = snapshots.Select(row => (row.Id, Label: InvoiceLabel(null, null, MarketplaceInvoiceStatus.Unknown, row.Snapshot ?? "{}", []))).ToList();
+        var labels = snapshots.Select(row => (row.Id, Label: InvoiceLabelForPlatform(null, null, MarketplaceInvoiceStatus.Unknown, row.Snapshot ?? "{}", [], row.Platform))).ToList();
         if (labels.Select(row => row.Label).FirstOrDefault(label => !SnapshotLabels.Contains(label)) is { } unexpected)
             throw new InvalidOperationException($"A customer snapshot gave the unexpected invoice label {unexpected}.");
         Guid[] Ids(string label) => [.. labels.Where(row => row.Label == label).Select(row => row.Id)];
-        return ReturnInvoiceLabel(tenantId, new(Ids("FATURA_KONTROLDE"), Ids("FATURA_REDDEDILDI"), Ids("FATURA_BEKLIYOR")));
+        return ReturnInvoiceLabel(tenantId, new(Ids("FATURA_KONTROLDE"), Ids("FATURA_REDDEDILDI"), Ids("FATURA_BEKLIYOR"), Ids(ShopifyUnconfirmedInvoiceLabel)));
     }
 
     // The claims of the query whose invoice label is this one.

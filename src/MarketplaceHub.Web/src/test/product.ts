@@ -30,7 +30,7 @@ export function testProduct(overrides: Partial<Product> = {}): Product {
     attributes: null, options: null, mediaUrls: null, familyMediaUrls: null, platformStatuses: null, categoryPath: null, familyMediaItems: null,
     hasCustomMediaOrder: false, defaultListPrice: null, defaultSalePrice: null, warrantyMonths: null, trendyolWebColorValueId: null, vatRate: null,
     vatInclusion: null, deliveryDays: null, familyOrderedMediaUrls: null, familyProductIds: null, familyVersions: null, familyGalleries: null,
-    sizeChartUrl: null, familyImageUrl: null,
+    sizeChartUrl: null, familyImageUrl: null, familyKey: null,
     ...overrides
   }
 }

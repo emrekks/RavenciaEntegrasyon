@@ -9,7 +9,7 @@ import { SettingsNotice, type SettingsNoticeState } from './SettingsNotification
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { marketplaceResetCount, runMarketplaceResets, type BulkResetProgress } from './marketplace-bulk-reset'
 import { connectionFullResetSupported } from '../marketplace/connection-data-reset'
-import { dataResetConfirmWord, panelResetConfirmed, togglePanelResetCategories } from './panel-factory-reset'
+import { dataResetConfirmWord, panelResetAlreadyRunning, panelResetAlreadyRunningMessage, panelResetConfirmed, togglePanelResetCategories } from './panel-factory-reset'
 import type { Connection } from '../marketplace/shared'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
@@ -176,7 +176,10 @@ export function SystemSettingsPage() {
       }
       setResetScopes([]); setResetConfirmation(''); setResetPassword(''); setResetFactor('')
       await client.invalidateQueries()
-    } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }
+    } catch (reason) {
+      if (panelResetAlreadyRunning(reason)) { fail(panelResetAlreadyRunningMessage); await client.invalidateQueries({ queryKey: queryKeys.panelFactoryReset() }); return }
+      fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.')
+    } finally { setResetBusy(false) }
   }
 
   function openMfa() {

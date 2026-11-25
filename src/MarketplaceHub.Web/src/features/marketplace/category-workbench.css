@@ -42,6 +42,7 @@
 .cm-glyph { color: var(--rv-color-muted); }
 .cm-glyph.is-done { color: var(--rv-color-accent); }
 .cm-glyph.is-partial { color: var(--rv-color-warning); }
+.cm-glyph.is-unknown { color: var(--rv-color-warning); }
 .cm-glyph.is-required { color: var(--rv-color-danger); }
 
 .cm-card .cm-detail { display: flex; min-width: 0; flex-direction: column; padding: 22px 28px 0; }
