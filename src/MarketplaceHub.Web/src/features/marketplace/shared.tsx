@@ -134,11 +134,13 @@ export const RETURN_NO_PLATFORM = PLATFORM_NONE
 export function ReturnHeadCell({ label, active, extra, pop }: { label: string; active?: boolean; extra?: ReactNode; pop?: (close: () => void) => ReactNode }) {
   return <th className={active ? 'rr-has-filter' : undefined}><span className="rr-hf">{extra}{label}{pop && <RrAnchor trigger={(_open, toggle) => <button type="button" className="rr-fbtn" onClick={toggle} aria-label={`${label} filtresini aç`}><RrIcon name="filter" /></button>}>{pop}</RrAnchor>}</span></th>
 }
-export type FieldState = 'done' | 'partial' | 'none'
+// unknown: the state could not be read (never shown as done).
+export type FieldState = 'done' | 'partial' | 'none' | 'unknown'
 // Status is read from the shape: a filled check when ready, a clock when values are still missing,
 // an outlined plus when the field has no panel attribute yet.
 export function MappingStateGlyph({ state, required = false, ratio = 0.6 }: { state: FieldState; required?: boolean; ratio?: number }) {
   if (state === 'done') return <svg className="cm-glyph is-done" viewBox="0 0 16 16" aria-label="Tamam" role="img"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
   if (state === 'partial') return <svg className="cm-glyph is-partial" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Değerleri eksik" role="img"><circle cx="8" cy="8" r="6.2" opacity=".35" /><circle cx="8" cy="8" r="6.2" pathLength="100" strokeDasharray={`${Math.round(Math.min(0.95, Math.max(0.08, ratio)) * 100)} 100`} transform="rotate(-90 8 8)" /><path d="M8 5.6v2.6l1.8 1.1" /></svg>
+  if (state === 'unknown') return <svg className="cm-glyph is-unknown" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Bilinmiyor" role="img"><circle cx="8" cy="8" r="6.2" opacity=".35" /><path d="M6.4 6.3a1.7 1.7 0 1 1 2.3 1.6c-.5.2-.7.6-.7 1.1v.3" /><path d="M8 11.2h.01" /></svg>
   return <svg className={`cm-glyph${required ? ' is-required' : ''}`} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-label="Eşlenmedi" role="img"><circle cx="8" cy="8" r="6.2" strokeDasharray="2.6 2.2" /></svg>
 }

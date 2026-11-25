@@ -13,7 +13,7 @@ import { PanelValueMultiSelect } from '../../PanelValueMultiSelect'
 import { appendNotification } from '../../../../shared/notifications'
 import { formatPanelColorValue, usesCustomPanelColorValue } from '../../color-value-format'
 import { autoMatchScore, valueMatchScore } from '../../../../shared/value-matching'
-import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from '../../attribute-value-mapping'
+import { attributeValueMappingNeedsSave, directMappingsKeepingTargets, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from '../../attribute-value-mapping'
 import { isReferenceSyncJobTerminal, referenceSyncJobPollInterval, shouldAutoSyncHepsiburadaValues } from '../../reference-value-sync'
 import { focusOnMount } from '../../../../shared/focus'
 import { Page, type NoticeSetter, useKindedNotice } from '../../shared'
@@ -236,7 +236,7 @@ export function AttributeValueMappingEditor({ connectionId, categoryScope, attri
   const directPlan = planDirectReferenceValues(localValues, activeRemoteValues)
   const missingPanelValues = planMissingReferencePanelValues(localValues, activeRemoteValues, selections)
   const unsavedExternalIds = new Set(remoteValues.filter(item => !sameIds(selections[item.externalId] ?? [], (mappingsByExternal.get(item.externalId) ?? []).map(mapping => mapping.localId))).map(item => item.externalId))
-  const availableDirectMappings = directPlan.mappings.filter(item => !unsavedExternalIds.has(item.externalId))
+  const availableDirectMappings = directMappingsKeepingTargets(directPlan.mappings.filter(item => !unsavedExternalIds.has(item.externalId)), selections)
   const directMappingWorkCount = availableDirectMappings.filter(item => attributeValueMappingNeedsSave(mappingFor(item.externalId, item.localId), item.localId, item.externalId, references.data?.snapshotId ?? '')).length
   const templateFilledCount = new Set((mappings.data ?? []).filter(item => item.source === 'TEMPLATE').map(item => item.localId)).size
   function updateAttributeCache(updated: LocalAttribute) {
