@@ -609,8 +609,11 @@ public sealed class ImportJobProcessor(
     }
 
     private static decimal ParseNonNegative(string? value) => ParseDecimal(value) is decimal parsed ? Math.Max(0, decimal.Round(parsed, 4)) : 0;
-    // The row's KDV column: a rate 0-100, else unknown.
-    internal static decimal? FileVatRate(IReadOnlyDictionary<string, string> values) => ParsePrice(Value(values, "vatRate")) is decimal rate && rate <= 100 ? rate : null;
+    // The row's KDV column read by the product transfer's rule (ImportFileReader.VatRate): one of the panel's rates, a
+    // value between 0 and 1 without a % sign read as a percent cell (0.1 → 10); else unknown. A row whose cell is not
+    // such a rate never gets here: the reader refuses it (scan 25 Nov 2026, A-10; before: any 0-100 value, 0.1 kept).
+    internal static decimal? FileVatRate(IReadOnlyDictionary<string, string> values) =>
+        ImportFileReader.VatRate(values, fromCsv: false) is { Kind: ProductTransferValueKind.Set, Amount: decimal rate } ? rate : null;
     private static decimal? ParsePrice(string? value) => ParseDecimal(value) is decimal parsed && parsed >= 0 ? decimal.Round(parsed, 4) : null;
 
     // Accepts "1234.5", "1234,5", "1.234,50" and "1,234.50". A CSV "1.250" never gets here: ImportFileReader refuses
