@@ -91,6 +91,8 @@ public static class InvoiceDeliveryAutoRetryPolicy
     /// What the invoice needs. hadEndedDeliveryJob: the latest delivery job ended (any end) without an active one;
     /// latestDeliveryJobDead: it used up its retries on retryable errors. owner: the owner's own "Tekrar Gönder", which
     /// also follows a refused delivery and a delivery that was skipped on purpose (its own gates still apply).
+    /// orderCancelled: the order is CANCELLED; its issued invoice waits for an e-Arşiv cancellation and its link is not
+    /// sent again, by the scheduler or by the owner.
     /// </summary>
     public static InvoiceDeliveryRetryNeed Need(
         InvoiceStatus status,
@@ -101,9 +103,10 @@ public static class InvoiceDeliveryAutoRetryPolicy
         string? lastErrorCode,
         bool owner = false,
         bool latestDeliveryJobDead = true,
-        bool uncertainRetried = false)
+        bool uncertainRetried = false,
+        bool orderCancelled = false)
     {
-        if (!hasProviderReference) return InvoiceDeliveryRetryNeed.None;
+        if (!hasProviderReference || orderCancelled) return InvoiceDeliveryRetryNeed.None;
         // Issued, delivery started, but nothing at all was sent: no delivery state on any package.
         var pendingWithoutState = status == InvoiceStatus.MarketplacePending && deliveryStateStatuses.Count == 0;
         // n11, Pazarama, PTT AVM: a delivery whose answer was lost waits for its resend (UncertainResendDue), which the

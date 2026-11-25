@@ -1666,6 +1666,9 @@ public sealed partial class InvoicingBillingService(
         // At most one delivery job of an invoice waits or runs at a time, whatever key asked for it
         // (InvoiceDeliveryJobHygiene): a second request gets that job and changes nothing.
         if (await InvoiceDeliveryJobHygiene.OpenJobAsync(db, tenantId, invoice.Id, cancellationToken) is { } openJob) return ServiceResult<Guid>.Ok(openJob);
+        // A cancelled order's issued invoice is not sent to the marketplace (scan A-2): it needs its e-Arşiv cancellation.
+        if (await OrderCancelledAsync(tenantId, invoice.OrderId, cancellationToken))
+            return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Sipariş iptal edildi; fatura pazaryerine iletilmez. Faturanın e-Arşiv iptali gerekli.", 409);
         var ownStates = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending
             ? await db.MarketplaceDeliveryStates.AsNoTracking().Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id)
                 .Select(state => new { state.Status, state.ConnectionId }).ToListAsync(cancellationToken)
@@ -1813,6 +1816,11 @@ public sealed partial class InvoicingBillingService(
     internal static int InvoiceJobPriority(string jobType, bool bulk = false) =>
         jobType is InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.MarketplaceDelivery ? JobPriorityPolicy.ForUserLane(bulk) : 0;
 
+    // The order's own status says CANCELLED; any other status (or none) is not read as cancelled.
+    private Task<bool> OrderCancelledAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
+        db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.Id == orderId
+            && (order.DerivedStatus == "CANCELLED" || order.DerivedStatus == "CANCELED"), cancellationToken);
+
     private async Task<IReadOnlyList<string>> AllowedActions(Invoice invoice, PlatformConnection? connection, CancellationToken cancellationToken)
     {
         if (ShopifyManualInvoicePolicy.IsManualOnly(connection?.PlatformCode, invoice.SequencePurpose)
@@ -1822,7 +1830,9 @@ public sealed partial class InvoicingBillingService(
         if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
         if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && CanReconcileWithProvider(invoice.Status, invoice.ExternalReference) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
         // A delivery stopped for the owner's review (InvoiceMarketplaceRetryPolicy.IsDeliveryReview) is sent again only from here.
-        if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) || InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode))
+        // A cancelled order's invoice is offered no delivery (EnqueueDeliveryAsync refuses it, scan A-2).
+        if ((invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) || InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode))
+            && !await OrderCancelledAsync(invoice.TenantId, invoice.OrderId, cancellationToken))
         {
             var packageConnections = await db.ShipmentPackages.AsNoTracking()
                 .Where(item => item.TenantId == invoice.TenantId && (invoice.PackageId == null

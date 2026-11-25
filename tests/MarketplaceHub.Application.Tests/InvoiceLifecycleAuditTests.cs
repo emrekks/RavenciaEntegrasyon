@@ -10,6 +10,7 @@ public sealed class InvoiceLifecycleAuditTests
     [InlineData(InvoiceStatus.Accepted)]
     [InlineData(InvoiceStatus.MarketplacePending)]
     [InlineData(InvoiceStatus.Completed)]
+    [InlineData(InvoiceStatus.MarketplaceFailed)]
     public void Issued_sale_invoice_can_require_an_adjustment(InvoiceStatus status) =>
         Assert.True(InvoiceStateMachine.CanTransition(status, InvoiceStatus.AdjustmentRequired));
 

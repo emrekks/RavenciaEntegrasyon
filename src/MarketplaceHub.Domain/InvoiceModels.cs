@@ -36,7 +36,7 @@ public static class InvoiceStateMachine
             [InvoiceStatus.Submitted] = [InvoiceStatus.Accepted, InvoiceStatus.Rejected, InvoiceStatus.MarketplacePending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed],
             [InvoiceStatus.Accepted] = [InvoiceStatus.MarketplacePending, InvoiceStatus.CancellationPending, InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.AdjustmentRequired],
             [InvoiceStatus.MarketplacePending] = [InvoiceStatus.Completed, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview, InvoiceStatus.AdjustmentRequired],
-            [InvoiceStatus.MarketplaceFailed] = [InvoiceStatus.MarketplacePending, InvoiceStatus.ManualReview],
+            [InvoiceStatus.MarketplaceFailed] = [InvoiceStatus.MarketplacePending, InvoiceStatus.ManualReview, InvoiceStatus.AdjustmentRequired],
             [InvoiceStatus.Completed] = [InvoiceStatus.CancellationPending, InvoiceStatus.AdjustmentRequired, InvoiceStatus.MarketplaceFailed, InvoiceStatus.ManualReview],
             // The order was cancelled or a return was accepted after the sale invoice: the e-Archive is cancelled after
             // review; the panel never issues a return invoice (owner, 6 Nov 2026).

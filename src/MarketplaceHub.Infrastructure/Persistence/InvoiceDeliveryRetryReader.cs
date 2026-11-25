@@ -26,10 +26,17 @@ internal static class InvoiceDeliveryRetryReader
                 && invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId == null
                 && invoice.ExternalReference != null
                 && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.MarketplacePending))
-            .Select(invoice => new { invoice.Id, invoice.Status, invoice.LastErrorCode, invoice.IssuedAt, invoice.CreatedAt, invoice.UpdatedAt, invoice.DeliveryRetryAttempts, invoice.DeliveryRetryNextAt })
+            .Select(invoice => new { invoice.Id, invoice.OrderId, invoice.Status, invoice.LastErrorCode, invoice.IssuedAt, invoice.CreatedAt, invoice.UpdatedAt, invoice.DeliveryRetryAttempts, invoice.DeliveryRetryNextAt })
             .ToListAsync(cancellationToken);
         if (invoices.Count == 0) return new Dictionary<Guid, Entry>();
         var candidateIds = invoices.Select(invoice => invoice.Id).ToArray();
+        // A cancelled order's issued invoice is never sent again (scan A-2): it waits for its e-Arşiv cancellation
+        // (InvoiceAdjustmentTracking moves it to AdjustmentRequired at the next invoice scan).
+        var orderIds = invoices.Select(invoice => invoice.OrderId).Distinct().ToArray();
+        var cancelledOrders = (await db.Orders.AsNoTracking()
+                .Where(order => order.TenantId == tenantId && orderIds.Contains(order.Id) && (order.DerivedStatus == "CANCELLED" || order.DerivedStatus == "CANCELED"))
+                .Select(order => order.Id).ToListAsync(cancellationToken))
+            .ToHashSet();
         var documented = (await db.InvoiceDocuments.AsNoTracking()
                 .Where(document => document.TenantId == tenantId && candidateIds.Contains(document.InvoiceId) && document.PermanentUrl != null)
                 .Select(document => document.InvoiceId).Distinct().ToListAsync(cancellationToken))
@@ -70,14 +77,15 @@ internal static class InvoiceDeliveryRetryReader
             var latestEnded = latestDeliveryJob is { } latest && latest is not (JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled);
             var deliveryStates = states[invoice.Id].ToArray();
             var retriesUncertain = uncertainRetried.GetValueOrDefault(invoice.Id);
+            var orderCancelled = cancelledOrders.Contains(invoice.OrderId);
             var need = InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id),
-                deliveryStates, latestEnded, invoice.LastErrorCode, latestDeliveryJobDead: latestDeliveryJob == JobStatus.Dead, uncertainRetried: retriesUncertain);
+                deliveryStates, latestEnded, invoice.LastErrorCode, latestDeliveryJobDead: latestDeliveryJob == JobStatus.Dead, uncertainRetried: retriesUncertain, orderCancelled: orderCancelled);
             // The owner's "Tekrar Gönder" stands for an issued invoice that did not reach the marketplace: a failed one
             // (also one the marketplace refused), a pending one that sent nothing once its delivery job ended, and on n11,
             // Pazarama and PTT AVM a pending one whose delivery is uncertain. An Accepted one keeps the scheduler's path
             // (its first delivery may still be on its way).
             var ownerNeed = invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.MarketplacePending && latestEnded
-                ? InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id), deliveryStates, latestEnded, invoice.LastErrorCode, owner: true, uncertainRetried: retriesUncertain)
+                ? InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id), deliveryStates, latestEnded, invoice.LastErrorCode, owner: true, uncertainRetried: retriesUncertain, orderCancelled: orderCancelled)
                 : InvoiceDeliveryRetryNeed.None;
             if (need == InvoiceDeliveryRetryNeed.None && ownerNeed == InvoiceDeliveryRetryNeed.None) continue;
             var view = InvoiceDeliveryAutoRetryPolicy.Describe(invoice.DeliveryRetryAttempts, invoice.DeliveryRetryNextAt,

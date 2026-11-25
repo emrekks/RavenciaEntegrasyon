@@ -78,15 +78,23 @@ internal static class InvoiceAdjustmentTracking
                     flagged++;
                     continue;
                 }
-                // A failed delivery or an invoice in review cannot move to AdjustmentRequired; a full return still
-                // gets its note so the owner sees it.
+                // An invoice in review belongs to the owner (InvoiceDeliveryGuardPolicy.BackgroundMayMove): it keeps its
+                // status, and the issued invoice (it has its provider reference) gets the adjustment notice instead.
+                if (invoice.Status == InvoiceStatus.ManualReview)
+                {
+                    var reviewReason = cancelled ? "iptal edildi" : cancelledUnits > 0 ? "tüm ürünleri iptal ya da iade edildi" : "tüm ürünlerinin iadesi kabul edildi";
+                    if (await UpsertIssueIfChangedAsync(db, tenantId, AdjustmentIssueKey(invoice.Id), AdjustmentRequiredCode,
+                            $"{candidate.OrderNumber} siparişi fatura kesildikten sonra {reviewReason}. {invoice.InvoiceNumber ?? "Kesilen"} faturası incelemede; e-Arşiv iptali veya iade faturası gerekli.", now, cancellationToken))
+                        flagged++;
+                    continue;
+                }
                 if (cancelled) continue;
             }
             if (scope == InvoiceReturnScope.None) continue;
             var what = cancelledUnits > 0 ? $"{returnedTitles.Count} ürün iptal ya da iade edildi ({cancelledUnits.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("tr-TR"))} adet iptal)" : $"{returnedTitles.Count} ürünün iadesi kabul edildi";
             var summary = $"{candidate.OrderNumber} siparişinde fatura kesildikten sonra {what}"
                 + (returnedTitles.Count > 0 ? $" ({string.Join(", ", returnedTitles.Take(5))}{(returnedTitles.Count > 5 ? ", …" : string.Empty)})" : string.Empty)
-                + $". {invoice.InvoiceNumber ?? "Kesilen"} faturası iptal edilmedi ve pazaryerine iletilmeye devam ediyor; iade edilen ürünler için iade belgesi (gider pusulası veya iade faturası) gerekli.";
+                + $". {invoice.InvoiceNumber ?? "Kesilen"} faturası iptal edilmedi ve {(invoice.Status == InvoiceStatus.ManualReview ? "incelemede" : "pazaryerine iletilmeye devam ediyor")}; iade edilen ürünler için iade belgesi (gider pusulası veya iade faturası) gerekli.";
             if (await UpsertIssueIfChangedAsync(db, tenantId, ReturnDocumentIssueKey(invoice.Id), InvoiceReturnAdjustmentPolicy.ReturnDocumentRequiredCode, summary, now, cancellationToken))
                 flagged++;
         }

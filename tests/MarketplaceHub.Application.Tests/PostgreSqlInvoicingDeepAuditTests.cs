@@ -884,6 +884,45 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Scan A-2: a cancelled order's issued invoice whose delivery failed moves to AdjustmentRequired (delivery blocked);
+    // one in review keeps the owner's status and gets the adjustment notice.
+    [PostgreSqlTheory]
+    [InlineData(InvoiceStatus.MarketplaceFailed)]
+    [InlineData(InvoiceStatus.ManualReview)]
+    public async Task A2_ACancelledOrdersIssuedInvoiceIsFlaggedForAdjustment(InvoiceStatus status)
+    {
+        var seed = NewSeed($"a2-{status}", status);
+        seed.Order.DerivedStatus = "CANCELLED";
+        await SeedAsync(seed);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None));
+                await db.SaveChangesAsync();
+            }
+
+            await using var verification = fixture.CreateContext();
+            var invoice = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            var issue = await verification.OperationalIssues.SingleAsync(item => item.TenantId == seed.Tenant.Id && item.DedupeKey == InvoiceAdjustmentTracking.AdjustmentIssueKey(seed.Invoice.Id));
+            Assert.Equal(IssueStatus.Open, issue.Status);
+            if (status == InvoiceStatus.MarketplaceFailed)
+            {
+                Assert.Equal(InvoiceStatus.AdjustmentRequired, invoice.Status);
+                Assert.True(InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status));
+            }
+            else
+            {
+                Assert.Equal(InvoiceStatus.ManualReview, invoice.Status);
+                Assert.Contains("incelemede", issue.Summary, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // One rule for every marketplace (5 Nov 2026): a package holding a product line that could not be read is kept for
     // shipping, but the last check before issuing stops the invoice with Okunamayan Ürün Satırı until a read fills it in.
     [PostgreSqlTheory]

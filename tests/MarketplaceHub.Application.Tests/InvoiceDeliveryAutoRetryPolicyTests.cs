@@ -61,6 +61,16 @@ public sealed class InvoiceDeliveryAutoRetryPolicyTests
         Assert.Null(manual.NextAttemptAt);
     }
 
+    // Scan A-2: a cancelled order's issued invoice is never sent again, by the scheduler or by the owner.
+    [Fact]
+    public void ACancelledOrdersInvoiceIsNeverSentAgain()
+    {
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplaceFailed, true, true, ["FAILED"], true, "REMOTE_INVOICE_REJECTED", owner: true, orderCancelled: true));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplaceFailed, true, false, ["REVOKED"], true, null, orderCancelled: true));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.Accepted, true, true, [], true, null, orderCancelled: true));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplacePending, true, true, [], true, null, owner: true, orderCancelled: true));
+    }
+
     [Fact]
     public void AMissingDocumentIsFetchedAgainEvenAfterAReadMarkedTheInvoiceNotPresent()
     {
