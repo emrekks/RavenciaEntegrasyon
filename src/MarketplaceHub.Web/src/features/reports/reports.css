@@ -336,7 +336,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 .app-shell.stitch-shell main .reports-page .reports-list .reports-bars { gap: 10px; }
 .app-shell.stitch-shell main .reports-page .reports-table td { padding: 11px 10px; }
 @media (max-width: 700px) {
-  .app-shell.stitch-shell main .reports-page .reports-grid { gap: 14px; }
+  .app-shell.stitch-shell main .reports-page .reports-grid { gap: var(--reports-gap-m, 12px); }
   .app-shell.stitch-shell main .reports-page .reports-panel { padding: 18px 16px; border-radius: 12px; }
   .app-shell.stitch-shell main .reports-page .reports-panel-actions:has(> .reports-search) { flex: 1 1 100%; flex-wrap: wrap; }
   .app-shell.stitch-shell main .reports-page .reports-panel-actions > .reports-search { flex: 1 1 180px; width: auto; }
@@ -783,12 +783,12 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 }
 /* Genel Bakış's six figures as two rows of three (owner, 7 Nov 2026), three rows of two on a tablet and on a phone
    too (owner, 10 Nov: "2li sütun"); 20px between them, as between the cards, 10px on a phone, where the box and its note
-   are a little tighter so "Net ₺557.173 · iade ₺41.220" fits a 166px box. On a phone the gap is the page's 14px (one gap,
+   are a little tighter so "Net ₺557.173 · iade ₺41.220" fits a 166px box. On a phone the gap is the page's 12px (one gap,
    14 Nov 2026); the box's side padding gives the 4px back. */
 .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 3; gap: 20px; }
 @media (max-width: 1100px) { .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 2; } }
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 2; gap: 14px; }
+  .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 { --kpi-columns: 2; gap: var(--reports-gap-m, 12px); }
   .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 > div { padding-inline: 8px; }
   .app-shell.stitch-shell main .reports-page .reports-overview > .reports-kpis-wrap > .reports-kpis.is-6 .reports-kpi-note { font-size: 11px; }
 }
@@ -831,7 +831,7 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
   .app-shell.stitch-shell main .reports-page .reports-overview-row.is-two { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
-  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: 14px; }
+  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: var(--reports-gap-m, 12px); }
   .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .reports-page .reports-overview-row.is-three > :last-child:nth-child(odd) { grid-column: auto; }
   .app-shell.stitch-shell main .reports-page .reports-kpis { gap: 8px; }
@@ -1134,11 +1134,11 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-table-wrap { margin-inline: 0; padding-inline: 0; }
   .app-shell.stitch-shell main .reports-page .reports-segmented > button { flex: 0 0 auto; }
 }
-/* Phones: Raporlar keeps one gap (14px, the tabs' grid gap) everywhere: the empty scroll anchor before the tabs takes no
-   gap of its own, the overview's rows and the figures' cards are 14px apart like every other tab's cards (14 Nov 2026). */
+/* Phones: Raporlar keeps one gap (--reports-gap-m, 12px) everywhere: the empty scroll anchor before the tabs takes no
+   gap of its own, the overview's rows and the figures' cards are 12px apart like every other tab's cards (14 Nov 2026). */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: 14px; }
-  .app-shell.stitch-shell main .reports-page .reports-kpis { gap: 14px; }
+  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: var(--reports-gap-m, 12px); }
+  .app-shell.stitch-shell main .reports-page .reports-kpis { gap: var(--reports-gap-m, 12px); }
 }
 /* A figure's change chip is a button when it hides the previous period's figure: a tap shows it under the chip. */
 .app-shell.stitch-shell main .reports-page .reports-kpi-delta-toggle { display: inline-flex; min-height: 0; height: auto; margin: 0; padding: 0; background: none; border: 0; border-radius: 999px; box-shadow: none; cursor: pointer; }
@@ -1201,7 +1201,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 }
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page { --kpi-box: 112px; }
-  .app-shell.stitch-shell main .reports-page .reports-kpis:is(.is-long, .is-stack):nth-child(n):nth-child(n) { --kpi-columns: 1; gap: 20px; }
+  .app-shell.stitch-shell main .reports-page .reports-kpis:is(.is-long, .is-stack):nth-child(n):nth-child(n) { --kpi-columns: 1; gap: var(--reports-gap-m, 12px); }
   .app-shell.stitch-shell main .reports-page .reports-kpis.is-stack:nth-child(n) > :last-child:nth-child(n):nth-child(n) { grid-column: auto; }
   .app-shell.stitch-shell main .reports-page .reports-kpis.is-long:nth-child(n) > :last-child:nth-child(odd):nth-child(n) { grid-column: auto; }
 }
@@ -1247,7 +1247,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
    badges, and Detaylar at the right; the date and the order amount; the profit, ratio and margin side by side). The column heads give way
    to a Sıralama choice above the list; the table stays a table for screen readers. Desktop keeps the table. */
 .reports-order-sortbar { display: none; }
-@media (max-width: 767px) {
+@media (max-width: 760px) {
   .app-shell.stitch-shell main .reports-page .reports-order-sortbar { display: flex; align-items: center; gap: 8px; }
   .app-shell.stitch-shell main .reports-page .reports-order-sortbar label { display: flex; flex: 1 1 auto; align-items: center; gap: 8px; min-width: 0; color: var(--rv-color-muted); font-size: 13px; }
   .app-shell.stitch-shell main .reports-page .reports-order-sortbar select { flex: 1 1 auto; min-width: 0; height: 36px; min-height: 0; }

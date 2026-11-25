@@ -129,7 +129,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tip .rr-li b { display: block; font-size: 13px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tip .rr-li small { color: var(--rr-muted); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px 16px; overflow: auto; background: rgb(5 6 12 / 62%); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100vh - 48px); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 14px; box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal { display: flex; flex-direction: column; width: min(560px, 100%); max-height: calc(100dvh - 48px); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 14px; box-shadow: 0 30px 80px rgb(0 0 0 / 45%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-sm { width: min(460px, 100%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-md { width: min(640px, 100%); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-lg { width: min(880px, 100%); }
