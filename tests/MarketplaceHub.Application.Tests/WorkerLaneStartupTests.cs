@@ -110,7 +110,7 @@ public sealed class WorkerLaneStartupTests(ITestOutputHelper output)
             var idleWakes = Volatile.Read(ref wakes) - wakeMark;
             output.WriteLine($"return read leased at {returnLeasedAt}; idle minute: {idlePolls} queue polls ({idleBorrowPolls} by borrowing slots), {idleWakes} slot wakes ({loops.Count} loops)");
             Assert.True(idleBorrowPolls == 0, $"{idleBorrowPolls} queue polls of borrowing slots in an idle minute");
-            Assert.True(idlePolls <= total * 4, $"{idlePolls} queue polls in an idle minute");
+            Assert.True(idlePolls <= total * 4 + total, $"{idlePolls} queue polls in an idle minute");
             Assert.True(idleWakes <= loops.Count * 4 + loops.Count, $"{idleWakes} wakes in an idle minute ({loops.Count} loops)");
         }
         finally

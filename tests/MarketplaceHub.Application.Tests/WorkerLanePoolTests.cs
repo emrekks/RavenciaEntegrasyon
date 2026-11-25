@@ -690,6 +690,25 @@ public sealed class WorkerLanePoolTests
     }
 
     [Fact]
+    public async Task ABorrowingSlotWokenForAJobItsLanesOwnSlotFoundMayBorrowAtOnce()
+    {
+        // The own slot found a job no notification named, on a quiet lane: it wakes a borrowing slot (leased) only once the pool
+        // knows the work and its poll ended, else the woken slot was refused and the wake lost.
+        var pool = new LaneSlotPool(new Dictionary<string, int> { ["hot"] = 1, ["background"] = 2 }, []);
+        Assert.Null(await WorkerService.LeaseThroughPoolAsync(pool, "hot", true, () => Task.FromResult<LeasedJob?>(null), _ => Task.CompletedTask));
+        Assert.True(pool.IsQuiet("hot"));
+        bool? borrowed = null;
+        var run = await WorkerService.LeaseThroughPoolAsync(pool, "hot", true,
+            () => Task.FromResult<LeasedJob?>(new LeasedJob(Guid.NewGuid(), Guid.NewGuid(), null, "TEST", "{}", "test", "lease-token")),
+            _ => Task.CompletedTask, leased: () => borrowed = pool.TryClaim("hot", false));
+        Assert.True(borrowed);
+        pool.Release("hot", false, ranJob: false);
+        await run!();
+        Assert.Equal(0, pool.Running);
+        Assert.Null(pool.Violation());
+    }
+
+    [Fact]
     public async Task AHoldOrAJobEndingDuringAnEmptyPollLeavesTheLaneNotQuiet()
     {
         // The poll's snapshot may predate what the end made leasable: its "nothing" is stale (the lane epoch moved on).

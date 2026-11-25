@@ -369,20 +369,20 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             // Health is refreshed only after a successful lease database cycle.
             // A live process that cannot reach the database must not remain healthy.
             TouchHealthFile();
-            if (job is not null) leased?.Invoke();
             return job;
         }, async job =>
         {
             RecordQueueWait(job, lane);
             await ExecuteLeasedJobAsync(job, stoppingToken);
-        }), exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
+        }, leased), exception => logger.LogError(exception, "Worker {Lane} lease loop failed", lane), stoppingToken);
     }
 
     // A slot leases only with room in the pool (flexible lane model; no pool: always), and gives the room back when it found
     // nothing, failed, or its job ended. It tells the pool what its poll found: a job (NoteWork), or nothing (NoteNoWork, with
     // the lane's epoch read before the poll, so a notification, a job's end or a hold's end during the poll is not undone by its
-    // stale answer). Only the release of a job that ran wakes other lanes' slots.
-    internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run)
+    // stale answer). Only the release of a job that ran wakes other lanes' slots. leased: called when the poll found a job
+    // (the lane's borrowing slots are woken), after the pool knows it.
+    internal static async Task<Func<Task>?> LeaseThroughPoolAsync(LaneSlotPool? pool, string lane, bool ownSlot, Func<Task<LeasedJob?>> lease, Func<LeasedJob, Task> run, Action? leased = null)
     {
         if (pool is not null && !pool.TryClaim(lane, ownSlot, polls: ownSlot)) return null;
         var epoch = pool?.Epoch(lane) ?? 0;
@@ -407,6 +407,8 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             pool?.Release(lane, ownSlot, ranJob: false);
             return null;
         }
+        // Only now, with the job noted and the poll ended: a borrowing slot woken earlier was refused and its wake lost.
+        leased?.Invoke();
         return async () =>
         {
             try
