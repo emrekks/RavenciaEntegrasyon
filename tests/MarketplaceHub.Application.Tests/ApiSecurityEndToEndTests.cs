@@ -92,6 +92,50 @@ public sealed class ApiSecurityEndToEndTests(ApiEndToEndFixture fixture) : IClas
         Assert.True(BoundSecret.IsBound(await db.UserSecurities.Where(security => security.UserId == userId).Select(security => security.ProtectedTotpSecret).SingleAsync()));
     }
 
+    // Scan 25 Nov 2026 (E-5 review): the token changes only where a half-signed-in session passes its second factor. A
+    // signed-in session of the same person keeps its token and answers its reads while another device's token is renewed
+    // at the same moment (no 401, so no Oturum Doldu window); a session that was really ended still hears 401.
+    [PostgreSqlFact]
+    public async Task SecondFactorTokenRenewal_LeavesParallelReadsOfASignedInSession_AndRevokedTokensStillFail()
+    {
+        var email = $"mfa-rotation-{fixture.Run}@example.invalid";
+        await CreateUserAsync(email, MembershipRole.Administrator);
+        var (first, firstCsrf) = await SignInAsync(email, "ACTIVE");
+        using (first)
+        {
+            var secret = await StartSetupAsync(first, firstCsrf, new { password = ApiEndToEndFixture.Password });
+            var codes = await ConfirmAsync(first, firstCsrf, secret);
+            var (second, secondCsrf) = await SignInAsync(email, "MFA_CHALLENGE");
+            using (second)
+            {
+                var challenge = second.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/mfa/challenge", secondCsrf, new { code = (string?)null, recoveryCode = codes[0] }));
+                var reads = Enumerable.Range(0, 6).Select(index => first.GetAsync(index % 2 == 0 ? "/api/v1/auth/me" : "/api/v1/auth/security-status")).ToArray();
+                using (var renewed = await challenge)
+                {
+                    Assert.Equal(HttpStatusCode.OK, renewed.StatusCode);
+                    Assert.Contains(renewed.Headers.GetValues("Set-Cookie"), value => value.StartsWith(SessionAuthMiddleware.PilotLocalCookieName + "=", StringComparison.Ordinal));
+                }
+                foreach (var read in await Task.WhenAll(reads))
+                    using (read)
+                    {
+                        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+                        // The signed-in session's own token is never renewed by a read or by the other device's step.
+                        Assert.False(read.Headers.TryGetValues("Set-Cookie", out var cookies) && cookies.Any(value => value.StartsWith(SessionAuthMiddleware.PilotLocalCookieName + "=", StringComparison.Ordinal)));
+                    }
+                using (var afterwards = await first.GetAsync("/api/v1/auth/me"))
+                    Assert.Equal(HttpStatusCode.OK, afterwards.StatusCode);
+
+                // The second device ends the other sessions: the first one's token is now refused.
+                using (var revoke = await second.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/sessions/revoke-others", secondCsrf, new { })))
+                    Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+                using (var revoked = await first.GetAsync("/api/v1/auth/me"))
+                    Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+                using (var stillSignedIn = await second.GetAsync("/api/v1/auth/me"))
+                    Assert.Equal(HttpStatusCode.OK, stillSignedIn.StatusCode);
+            }
+        }
+    }
+
     // Scan 25 Nov 2026 (D-6): "Google Drive'a Bağlan" saved the settings and then asked for Google's consent address in
     // two requests; each checked the authenticator code, which works once, so the owner with MFA always failed. One
     // request now saves and authorizes, checked once; the code still works once, nothing is remembered between requests.
