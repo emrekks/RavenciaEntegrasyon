@@ -67,81 +67,92 @@ function fakeRowWidths() {
 const click = (element: Element | null) => act(() => { (element as HTMLElement).click() })
 
 describe('phone bottom navigation (CSS)', () => {
-  it('is drawn only up to the phone shell width (760 px, the same as the JS query), where the hamburger and the top bar search go away and the page keeps room under its content', () => {
+  it('is drawn only up to the phone shell width (760 px, the same as the JS query), where the hamburger goes away and the page keeps room under its content', () => {
     expect(css).toMatch(/^\.rv-dock-layer \{ display: none; \}/m)
     expect(css).toContain(`@media (max-width: ${phoneShellMaxWidth}px) {`)
     expect(phoneShellQuery).toBe('(max-width: 760px)')
     const phone = css.slice(css.indexOf(`@media (max-width: ${phoneShellMaxWidth}px)`))
     expect(phone).toContain('> main { padding-bottom: var(--rv-bottom-nav-space); transition: padding-bottom var(--rv-motion-bar) var(--rv-ease-bar); }')
-    // The page's own top bar stays on a phone; only its hamburger goes (Menü is in the dock).
     expect(phone).toContain('.rv-topbar .rv-mobile-menu-toggle { display: none; }')
     expect(phone).not.toContain('rv-phonebar')
-    // A gentle floating panel: centred, min(100% - 40px, 340px), radius 14, border and a faint shadow, no blur; the layer lets touches through.
-    const layer = phone.match(/\.rv-dock-layer \{[^}]*\}/)![0]
+    // Room under the content: 56 + 12 + 16 and the safe area (the warning pill adds 40); the parts sit 12 px and the safe area above the edge.
+    expect(phone).toContain('--rv-bottom-nav-space: calc(84px + env(safe-area-inset-bottom, 0px))')
+    expect(phone).toContain('--rv-dock-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px)')
+    const layer = phone.match(/\.rv-dock-layer \{ position: fixed[^}]*\}/)![0]
     expect(layer).toContain('pointer-events: none')
-    expect(layer).toContain('padding-bottom: var(--rv-dock-bottom)')
-    expect(phone).toContain('--rv-dock-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px)')
-    const panel = phone.match(/\.rv-dock-panel \{[^}]*\}/)![0]
-    expect(panel).toContain('width: min(100% - 40px, 340px)')
-    expect(panel).toContain('border-radius: 14px')
-    expect(panel).toContain('border: 1px solid var(--rv-color-border)')
-    expect(panel).toContain('box-shadow: 0 4px 16px rgb(0 0 0 / 12%)')
-    expect(panel).toContain('color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-panel-alpha), transparent)')
-    expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-panel { width: calc(100% - 24px); }')
-    // Frosted glass under and behind the panel (blurred and faded, its top edge masked), the panel itself 93% surface with its own blur (all in --rv-dock-* variables).
-    expect(phone).toContain('--rv-dock-blur: 1.5px; --rv-dock-tint: 18%; --rv-dock-panel-alpha: 93%; --rv-dock-panel-blur: 3px;')
-    expect(phone).toContain('backdrop-filter: blur(var(--rv-dock-blur))')
-    expect(phone).toContain('mask-image: linear-gradient(to bottom, transparent, #000 10px)')
-    expect(phone).toContain('backdrop-filter: blur(var(--rv-dock-panel-blur))')
-    expect(phone).toContain('@supports not')
-    expect(phone).toMatch(/\.rv-dock-bottom \{[^}]*height: 48px/)
-    expect(phone).toContain('.rv-dock-layer[data-mode="task"] .rv-dock-bottom { height: 54px; }')
-    expect(phone).toContain('.rv-dock-layer[data-rows="2"] .rv-dock-top { height: 29px; }')
-    // One sliding line (14 x 2 px, 200 ms) under the open label, the active column in the accent colour with no fill.
-    expect(phone).toMatch(/\.rv-dock-indicator \{[^}]*bottom: 4px;[^}]*width: 20%; height: 2px;[^}]*transform var\(--rv-motion-bar\) var\(--rv-ease-bar\)/)
-    expect(phone).toContain('width: 14px; height: 2px')
-    expect(phone).toMatch(/\.rv-dock-slot\.is-active \{ color: var\(--rv-color-primary-text\); font-weight: 600; \}/)
-    expect(phone).toContain('.rv-dock-slot:active .rv-dock-icon { transform: scale(.94); }')
+    expect(layer).toContain('bottom: var(--rv-dock-bottom)')
+    expect(layer).toContain('padding: 0 8px')
+    // Three opaque free-floating parts: a shadow, no border, no blur, no frosted band, no indicator line, no labels.
+    expect(phone).toContain('--rv-dock-shadow: 0 0 1.25px rgb(0 0 0 / 40%), 0 0 24px rgb(0 0 0 / 10%), 0 4px 12px rgb(0 0 0 / 6%)')
+    expect(phone).toContain('--rv-dock-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%), 0 0 24px rgb(0 0 0 / 40%), 0 4px 12px rgb(0 0 0 / 30%)')
+    expect(phone).toContain('.rv-dock-pill, .rv-dock-round, .rv-dock-panel { background: var(--rv-color-surface); box-shadow: var(--rv-dock-shadow); }')
+    expect(phone).toMatch(/\.rv-dock-pill \{[^}]*height: 56px; padding: 4px; border-radius: 28px/)
+    expect(phone).toMatch(/\.rv-dock-slot \{ width: 52px; height: 48px; border-radius: 24px; \}/)
+    expect(phone).toMatch(/\.rv-dock-round \{ width: 56px; height: 56px; border-radius: 50%/)
+    expect(phone).toMatch(/\.rv-dock-panel \{[^}]*height: 56px; border-radius: 28px/)
+    expect(phone).toContain('.rv-dock-slot:active, .rv-dock-round:active { transform: scale(.96); }')
+    expect(phone).toMatch(/\.rv-dock-slot\.is-active, \.rv-dock-round\.is-active \{ color: var\(--rv-color-primary-text\); background-color: color-mix\(in srgb, var\(--rv-color-primary\) var\(--rv-dock-active-tint\)/)
+    expect(phone).toContain('--rv-dock-active-tint: 14%')
+    expect(phone).toContain('--rv-dock-active-tint: 24%')
+    expect(css).not.toMatch(/backdrop-filter|rv-dock-blur|rv-dock-tint|rv-dock-panel-alpha|rv-dock-panel-blur|rv-dock-indicator|rv-dock-label|\.rv-dock-layer::before/)
     expect(css).not.toMatch(/touch-action/)
     expect(phone).toContain('@media (prefers-reduced-motion: reduce)')
+    // The warning is a 32 px pill floating above the task panel.
+    expect(phone).toMatch(/\.rv-dock-top \{ position: absolute; bottom: calc\(100% \+ 8px\)/)
+    expect(phone).toContain('height: 32px; padding: 0 14px')
     // The notification panel opens from the top edge, 75% of the screen at most, with no bottom anchor.
     expect(phone).toContain(".rv-notification-history { top: calc(62px + env(safe-area-inset-top, 0px) + 8px); right: 12px; bottom: auto; left: 12px;")
     expect(phone).toContain("max-height: min(75dvh")
     expect(phone).toContain('translate: 0 -28px')
-    // Page buttons that are not the primary, the step or the selection chip wait in the Diğer list.
     expect(phone).toContain('.rv-taskbar-group [data-dock-other] { display: none; }')
-    // The step names the screen it goes to; the task bar has no Menü button.
     expect(phone).toContain('[data-dock-step]::before { content: attr(data-dock-step); }')
     expect(phone).not.toContain('rv-taskbar-menu')
   })
 })
 
 describe('Ravencia Dock', () => {
-  it('has Ana Sayfa, Siparişler, Ara, Ürünler and Menü; the open page is the active slot and shows its label', () => {
+  it('is three parts: a round Ana Sayfa button, a pill of three icon-only slots (Siparişler, Ürünler, Sorular) and a round Menü button; no Ara here; the open page is the active one', () => {
     const { host } = mount('/orders')
     const dock = host.querySelector('.rv-dock')!
-    expect([...dock.querySelectorAll('.rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Ürün Soruları', 'Menü'])
-    expect(dock.querySelector('.rv-dock-search')).toBeNull()
+    expect(dock.getAttribute('aria-label')).toBe('Alt menü')
+    expect([...dock.children].map(part => part.className.split(' ')[0])).toEqual(['rv-dock-round', 'rv-dock-pill', 'rv-dock-round'])
+    expect(dock.children[0].getAttribute('aria-label')).toBe('Ana Sayfa')
+    expect(dock.children[0].getAttribute('href')).toBe('/dashboard')
+    expect([...dock.querySelectorAll('.rv-dock-pill .rv-dock-slot')].map(slot => slot.getAttribute('aria-label'))).toEqual(['Siparişler', 'Ürünler', 'Ürün Soruları'])
+    expect(dock.children[2].getAttribute('aria-label')).toBe('Menü')
+    expect(dock.querySelector('[aria-label="Ara"], .rv-dock-search')).toBeNull()
+    // Icons only: every part has its icon and no text; the names are aria-labels.
+    for (const part of dock.querySelectorAll('.rv-dock-slot, .rv-dock-round')) { expect(part.textContent).toBe(''); expect(part.querySelector('svg')).toBeTruthy() }
+    expect(dock.querySelector('.rv-dock-label, .rv-dock-indicator')).toBeNull()
     expect(host.querySelector('.rv-dock-layer')?.getAttribute('data-rows')).toBe('1')
     const current = dock.querySelectorAll('[aria-current="page"]')
     expect(current).toHaveLength(1)
     expect(current[0].getAttribute('aria-label')).toBe('Siparişler')
-    expect(current[0].textContent).toBe('Siparişler')
-    // Every target shows its label, active or not.
-    expect([...dock.querySelectorAll('.rv-dock-label')].map(label => label.textContent)).toEqual(['Ana Sayfa', 'Siparişler', 'Ürünler', 'Sorular', 'Menü'])
+    expect(dock.querySelectorAll('.is-active')).toHaveLength(1)
+    expect(dock.querySelector('.is-active')?.getAttribute('aria-label')).toBe('Siparişler')
   })
 
-  it('has one indicator line that sits on the open column and slides to Menü while the menu is open', () => {
-    const { host } = mount('/orders')
-    const indicator = host.querySelector<HTMLElement>('.rv-dock-indicator')!
-    expect(host.querySelectorAll('.rv-dock-indicator')).toHaveLength(1)
-    expect(indicator.style.transform).toBe('translateX(100%)')
-    expect(host.querySelector('.rv-dock-slot.is-active')?.getAttribute('aria-label')).toBe('Siparişler')
-    click(host.querySelector('button[aria-label^="Menü"]'))
-    expect(indicator.style.transform).toBe('translateX(400%)')
-    expect(host.querySelector('.rv-dock-slot.is-active')?.textContent).toBe('Kapat')
+  it('makes the round Ana Sayfa button the active part on the dashboard and the Sorular slot on its page', () => {
+    expect(mount('/dashboard').host.querySelector('.rv-dock-round.is-active')?.getAttribute('aria-label')).toBe('Ana Sayfa')
     cleanup()
-    expect(mount('/reports').host.querySelector<HTMLElement>('.rv-dock-indicator')?.style.opacity).toBe('0')
+    const { host } = mount('/questions')
+    expect(host.querySelector('a[href="/questions"]')?.classList.contains('is-active')).toBe(true)
+    expect(host.querySelectorAll('.rv-dock-round.is-active')).toHaveLength(0)
+  })
+
+  it('shows the round Menü button as the active one with the cross while the menu is open, and no page is current', () => {
+    const { host } = mount('/orders')
+    const menuButton = () => host.querySelector('.rv-dock > button')!
+    expect(menuButton().getAttribute('aria-label')).toBe('Menü')
+    const before = menuButton().innerHTML
+    click(menuButton())
+    expect(menuButton().classList.contains('is-active')).toBe(true)
+    expect(menuButton().getAttribute('aria-label')).toBe('Menüyü Kapat')
+    expect(menuButton().innerHTML).not.toBe(before)
+    expect(host.querySelectorAll('.rv-dock [aria-current="page"]')).toHaveLength(0)
+    expect(host.querySelectorAll('.rv-dock .is-active')).toHaveLength(1)
+    cleanup()
+    expect(mount('/reports').host.querySelectorAll('.rv-dock .is-active')).toHaveLength(0)
   })
 
   it('shows the Menü badge from 1 to 99 and as 99+ above, and none at 0', () => {
@@ -172,7 +183,7 @@ describe('Ravencia Dock', () => {
     expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(document.body.style.overflow).toBe('hidden')
     const slot = host.querySelector('.rv-dock button[aria-expanded="true"]')!
-    expect(slot.textContent).toBe('Kapat')
+    expect(slot.getAttribute('aria-label')).toBe('Menüyü Kapat')
     expect(host.querySelector('.rv-dock [aria-current="page"]')).toBeNull()
     click(slot)
     expect(document.querySelector('.rv-fullmenu')).toBeNull()
