@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, resetForbidden: false, resetRunning: false, aiVersion: 1, uploadedFile: null as string | null }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, resetForbidden: false, resetRunning: false, aiVersion: 1, uploadedFile: null as string | null, refuseCodeOnce: null as string | null }))
 
 const offsiteView = vi.hoisted(() => ({
   enabled: true, ageRecipient: 'age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p', folderMode: 'NAME', folderValue: 'Ravencia Yedek', keepDays: 14, keepMonths: 12,
@@ -58,6 +58,8 @@ vi.mock('../../shared/api', async importOriginal => {
     }
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if ((path === '/settings/factory-reset' || /^\/connections\/[^/]+\/full-reset$/.test(path)) && apiState.resetForbidden) throw new actual.ApiRequestError('Bu işlem için yeterli yetkiniz yok.', 403, 'PERMISSION_DENIED')
+    // A used authenticator code is refused once on this path (the server accepts a code a single time).
+    if (method === 'POST' && path === apiState.refuseCodeOnce) { apiState.refuseCodeOnce = null; throw new actual.ApiRequestError('İkinci doğrulama kodu kabul edilmedi.', 401, 'SECOND_FACTOR_FAILED') }
     if (path === '/settings/factory-reset' && method === 'POST' && apiState.resetRunning) throw new actual.ApiRequestError('server text', 409, 'PANEL_RESET_ALREADY_RUNNING')
     if (path === '/settings/factory-reset') return {
       groups: [
@@ -137,6 +139,7 @@ describe('SystemSettingsPage', () => {
     apiState.aiForbidden = false
     apiState.resetForbidden = false
     apiState.resetRunning = false
+    apiState.refuseCodeOnce = null
     apiState.aiVersion = 1
     localStorage.clear()
     container = document.createElement('div')
@@ -319,6 +322,32 @@ describe('SystemSettingsPage', () => {
     expect(JSON.parse(posts[0].body ?? '{}')).toEqual({ confirmation: 'Trendyol', password: 'Owner-Password#1' })
     expect(JSON.parse(posts[1].body ?? '{}').password).toBe('Owner-Password#1')
     expect(group.querySelector('.ss-dr-prog')?.textContent).toBe('Tamamlandı')
+  })
+
+  it('says what was and was not reset when a later step is refused for its code, and a second press runs only the rest', async () => {
+    apiState.refuseCodeOnce = '/connections/c-n11/full-reset'
+    await renderPage('/settings?tab=database')
+    await settle()
+    const group = container.querySelector('section[aria-label="Pazaryerleri"]')!
+    const pick = (name: string) => Array.from(group.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes(name))!.querySelector('input')!
+    click(pick('Trendyol'))
+    click(pick('N11'))
+    click(Array.from(container.querySelectorAll<HTMLLabelElement>('.ss-dr-opt')).find(item => item.textContent?.includes('Marka Listesi'))!.querySelector('input')!)
+    input(container.querySelector<HTMLInputElement>('#settings-reset-password')!, 'Owner-Password#1')
+    input(container.querySelector<HTMLInputElement>('#settings-reset-confirm')!, 'Verileri sil')
+    click(container.querySelector<HTMLButtonElement>('.ss-dr-go')!)
+    // The notice titles its first sentence ("Trendyol Sıfırlandı") and lists the rest below it.
+    await vi.waitFor(() => expect(container.textContent).toMatch(/Trendyol [Ss]ıfırlandı/u))
+    expect(container.textContent).toContain('N11 pazaryeri bağlantısı ve seçilen panel verileri sıfırlanmadı')
+    expect(container.textContent).toContain('yeni kodu girip')
+    const posts = () => apiState.calls.filter(call => call.method === 'POST' && (call.path.endsWith('/full-reset') || call.path === '/settings/factory-reset')).map(call => call.path)
+    expect(posts()).toEqual(['/connections/c-ty/full-reset', '/connections/c-n11/full-reset'])
+    // Trendyol left the choice; N11 and the catalog cleanup wait for the second press.
+    expect(pick('Trendyol').checked).toBe(false)
+    expect(pick('N11').checked).toBe(true)
+    click(container.querySelector<HTMLButtonElement>('.ss-dr-go')!)
+    await vi.waitFor(() => expect(posts()).toContain('/settings/factory-reset'))
+    expect(posts()).toEqual(['/connections/c-ty/full-reset', '/connections/c-n11/full-reset', '/connections/c-n11/full-reset', '/settings/factory-reset'])
   })
 
   it('keeps the confirmation word visible above the field and accepts it in any case', async () => {
