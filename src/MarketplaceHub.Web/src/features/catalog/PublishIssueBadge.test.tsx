@@ -22,6 +22,23 @@ afterEach(() => {
 const optional = [{ key: 'materyal', title: 'Materyal', detail: 'Hepsiburada özelliği eşlenmemiş.', href: '/mappings/categories' }, { key: 'boy', title: 'Boy', detail: '“Midi” için değer eşlemesi yok.' }]
 
 describe('PublishIssueBadge', () => {
+  it('marks <html> while its gap list is open (the other badges and status tips read html[data-rv-issue-open]) and clears it when it closes or goes', () => {
+    const badge = (id: string) => <PublishIssueBadge id={id} label="Yayın için zorunlu eksik" heading="Yayın için 1 eksik var" rows={[{ key: 'k', title: 'Kategori eşlemesi', detail: 'Eşleme yok.' }]} requiredCount={1} optionalRows={optional} optionalCount={2} />
+    act(() => root.render(<>{badge('a')}{badge('b')}</>))
+    const [first, second] = [...container.querySelectorAll<HTMLButtonElement>('.publish-issue-trigger')]
+    expect(document.documentElement.hasAttribute('data-rv-issue-open')).toBe(false)
+    act(() => first.click())
+    expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+    expect(document.documentElement.hasAttribute('data-rv-issue-open')).toBe(true)
+    act(() => first.click())
+    expect(container.querySelector('.publish-issue-tooltip.is-open')).toBeNull()
+    expect(document.documentElement.hasAttribute('data-rv-issue-open')).toBe(false)
+    act(() => second.click())
+    expect(document.documentElement.hasAttribute('data-rv-issue-open')).toBe(true)
+    act(() => root.render(<></>))
+    expect(document.documentElement.hasAttribute('data-rv-issue-open')).toBe(false)
+  })
+
   it('lists the required gaps first and the optional warnings below them, with a counter each', () => {
     const mapCategory = vi.fn()
     act(() => root.render(<PublishIssueBadge id="b" label="Yayın için zorunlu eksik" heading="Yayın için 1 eksik var" rows={[{ key: 'k', title: 'Kategori eşlemesi', detail: 'Kazak kategorisinin Hepsiburada karşılığı seçilmemiş.', onRun: mapCategory }]} requiredCount={1} optionalHeading="2 isteğe bağlı özellik uyarısı" optionalRows={optional} optionalCount={2} />))
