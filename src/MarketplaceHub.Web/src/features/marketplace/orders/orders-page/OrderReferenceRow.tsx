@@ -106,7 +106,8 @@ export function OrderReferenceRow({ item, selected, onSelect, onMenuChange, onIn
   useDismissable(detailActionsOpen, [detailActionsTriggerRef, detailMenuRef], () => setDetailActionsOpen(false), { triggerRef: detailActionsTriggerRef })
   // The order detail sheet covers the page on phones only; there the page behind it holds still.
   const phone = useMediaQuery('(max-width: 760px)')
-  useScrollLock(detailOpen && phone)
+  // hold: false: the full-screen detail covers the page, and a body overflow lock lifts fixed bottoms in a Home Screen app (useScrollLock.ts).
+  useScrollLock(detailOpen && phone, false, { hold: false })
   // Owner, 18 Nov 2026: an exchange resend shows the exchange package Trendyol named on the claim (package, carrier,
   // tracking), the first package beside it as "İlk Paket"; without that package only a note says so (nothing invented).
   const exchange = item.exchangeResend ?? null
