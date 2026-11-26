@@ -1,4 +1,4 @@
-import { Children, Fragment, isValidElement, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { Children, Fragment, isValidElement, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { BrandSymbol } from '../components/BrandSymbol'
 import { rememberPageSize } from '../sticky-sort'
 import { previewSrcSet, thumbnailSources, thumbnailSrcSet, thumbnailUrl } from '../product-thumbnail'
@@ -285,7 +285,19 @@ export function RrAnchor({ trigger, children, className }: { trigger: (open: boo
   // On phones the popover is a bottom sheet; the scrim (shown there only) takes the tap that closes it, so the tap
   // never reaches the button underneath (a label print, say). preventDefault: inside a <label> the tap would otherwise be
   // forwarded to the trigger button and reopen the list.
-  return <span ref={ref} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>
+  // An action menu closes once one of its items was chosen, whichever caller built the menu (the Siparişler menu ignored
+  // the close callback and stayed open). Runs after the item's own handler (bubbling). An item opts out with
+  // data-keep-open, a submenu trigger with aria-haspopup, a checkbox item with role menuitemcheckbox. A key press
+  // (click detail 0) gives focus back to the trigger.
+  const closeOnItem = (event: MouseEvent<HTMLSpanElement>) => {
+    if (!open || !(event.target instanceof Element)) return
+    const item = event.target.closest<HTMLElement>('[role="menuitem"]')
+    if (!item || !event.currentTarget.contains(item) || item.hasAttribute('data-keep-open') || item.hasAttribute('aria-haspopup') || item.matches(':disabled, [aria-disabled="true"]')) return
+    if (event.detail === 0 && event.currentTarget.firstElementChild instanceof HTMLElement) event.currentTarget.firstElementChild.focus()
+    setOpen(false)
+  }
+  // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- delegated: items are buttons, so Enter and Space arrive here as clicks
+  return <span ref={ref} onClick={closeOnItem} className={['rr-anchor', className].filter(Boolean).join(' ')}>{trigger(open, () => setOpen(value => !value))}{open && <span className="rr-anchor-scrim" aria-hidden="true" onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(false) }} />}{open && children(() => setOpen(false))}</span>
 }
 
 // "Sayfa Başına": a short list that opens right under its box (a native select opens its own list over the box on phones).
