@@ -1599,7 +1599,7 @@ button,
 .jobs-reference-status-summary > span.error,
 .jobs-reference-status-summary > span.cancelled { margin: 0; }
 
-.rv-splash-screen { display: grid; min-height: 100vh; place-items: center; padding: var(--rv-space-6); color: var(--rv-color-ink); background: radial-gradient(circle at 50% 0, color-mix(in srgb, var(--rv-color-primary) 14%, transparent), transparent 42%), var(--rv-color-bg); }
+.rv-splash-screen { display: grid; min-height: 100vh; min-height: 100dvh; place-items: center; padding: var(--rv-space-6); color: var(--rv-color-ink); background: radial-gradient(circle at 50% 0, color-mix(in srgb, var(--rv-color-primary) 14%, transparent), transparent 42%), var(--rv-color-bg); }
 .rv-loading-deferred { position: fixed; inset: 0; z-index: var(--rv-z-modal); visibility: hidden; opacity: 0; pointer-events: none; transition: opacity 180ms var(--rv-ease-standard), visibility 180ms var(--rv-ease-standard); }
 .rv-loading-deferred.is-visible { visibility: visible; opacity: 1; pointer-events: auto; }
 .rv-loading-deferred .rv-splash-screen { min-height: 100%; }
