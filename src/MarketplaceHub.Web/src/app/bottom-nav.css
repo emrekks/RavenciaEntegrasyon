@@ -3,7 +3,7 @@
  * (shared/phone-shell.ts) ONE glass capsule floats over the content at the bottom, centred, 12 px (and the safe area) above the edge (BottomDock.tsx):
  *  - five equal icon-only slots (Ana Sayfa, Siparişler, Ürünler, Sorular, Menü; aria-labels, no text). The open page has the accent icon and a
  *    lighter inner pill (the glide) that slides to the next slot, stretching over both on the way (320 ms); while the menu is open Menü is the open one, with the cross.
- *  - Glass: the surface colour at 30 % over a light frost (blur 3 px), a thin line, a light shadow; opaque with reduced transparency or the menu open. The page flows behind it.
+ *  - Glass: the surface colour at 30 % over a light frost (blur 4 px), a thin line, a light shadow; opaque with reduced transparency or the menu open. The page flows behind it.
  *  - Task mode ("Görev Kipi"): while a page has bottom actions (StickyActionBar, DraftSaveBar) the capsule gives way to one wide 56 px
  *    panel with fully round ends and the page's labelled buttons; a warning from the page floats above it as a small 32 px pill.
  * The page keeps room under its content (--rv-bottom-nav-space). Wider screens keep the sidebar and the top bar.
@@ -25,6 +25,10 @@
   /* The smallest viewport (100svh), which does not change while a browser toolbar shows or hides during a scroll (the dynamic viewport unit did, and a page that
      re-lays-out in every frame makes sticky heads jump on iOS); the page colour fills the rest, so no band shows under the bar. */
   html body, html body .app-shell.stitch-shell, html body .app-shell.stitch-shell > main { min-height: 100svh; }
+  /* Home Screen app (owner, 26 Nov 2026, iPhone 16 Pro: the bar sat lifted with a gap under it on pages other than Ana Sayfa): there are no browser bars
+     to hide, and there 100svh is the screen less the safe areas, so a short page ended above the screen bottom. The full 100vh instead. A trial: the
+     cause is not measured on a device yet (dockDiagnostic). */
+  @media (display-mode: standalone) { html body, html body .app-shell.stitch-shell, html body .app-shell.stitch-shell > main { min-height: 100vh; } }
   /* The phone keeps the page's top bar as it was (breadcrumb, bell, theme, search); only its hamburger is gone: Menü is in the dock. */
   html body .app-shell.stitch-shell .rv-topbar .rv-mobile-menu-toggle { display: none; }
   /* The top bar and the status bar (clock): while the bar shows, one piece in the bar's surface colour - it starts at the very top edge (sticky top 0, no gap
@@ -49,14 +53,14 @@
      the block that holds it is lifted above the bar, so the dimmed scrim covers the bar as it covers the page and takes its touches. */
   html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }
   /* Dock mode: ONE floating capsule (Ana Sayfa, Siparişler, Ürünler, Sorular, Menü: five equal slots) with a lighter inner pill under the open page that glides to the next
-     slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (the screen less 10 px at each side, 380 px at most, 62 px high, so a slot is 66 px or more;
+     slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (the screen less 14 px at each side, 344 px at most, 62 px high, so a slot is 66 px or more;
      22 px icons with a 10 px label under each, always shown; it never shrinks on a scroll). */
-  :root { --rv-dock-w: min(calc(100vw - 28px), 360px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
+  :root { --rv-dock-w: min(calc(100vw - 28px), 344px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
   .rv-dock { position: relative; display: flex; align-items: center; box-sizing: border-box; width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2); pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar), background-color var(--rv-motion-bar) var(--rv-ease-bar); }
-  /* The capsule and the task panel are glass: the theme's surface colour at --rv-dock-glass-alpha (22 %: clearly see-through) over a light frost (blur 3 px), so the page is felt behind it, with a thin line
+  /* The capsule and the task panel are glass: the theme's surface colour at --rv-dock-glass-alpha (22 %: clearly see-through) over a light frost (blur 4 px), so the page is felt behind it, with a thin line
      and a lighter shadow. Without backdrop-filter the alpha is higher (88 %); with "reduce transparency",
      the surface is opaque. The badges stay opaque. */
-  .rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(3px) saturate(1.3); backdrop-filter: blur(3px) saturate(1.3); }
+  .rv-dock, .rv-dock-panel { background: color-mix(in srgb, var(--rv-color-surface) var(--rv-dock-glass-alpha), transparent); box-shadow: var(--rv-dock-glass-shadow); -webkit-backdrop-filter: blur(4px) saturate(1.3); backdrop-filter: blur(4px) saturate(1.3); }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { :root { --rv-dock-glass-alpha: 88%; } }
   @media (prefers-reduced-transparency: reduce) { .rv-dock, .rv-dock-panel { background: var(--rv-color-surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
   .rv-dock-panel { position: relative; box-sizing: border-box; width: calc(100% - 8px); min-width: 0; height: 56px; border-radius: 28px; pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar); }
