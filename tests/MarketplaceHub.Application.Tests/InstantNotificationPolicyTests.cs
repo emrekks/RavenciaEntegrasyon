@@ -1,6 +1,8 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -22,6 +24,34 @@ public sealed class InstantNotificationPolicyTests
         var service = new InstantNotificationService(null!, null!, new TokenHasher(new byte[32]), new EphemeralDataProtectionProvider(), configuration, TimeProvider.System, NullLogger<InstantNotificationService>.Instance);
 
         Assert.Equal(expected, service.PublicBaseUrl());
+    }
+
+    [Fact]
+    public void WebhookStatusCacheKeepsAnAnswerPerTenantAndConnectionUntilAChange()
+    {
+        var cache = new WebhookStatusCache(new MemoryCache(new MemoryCacheOptions { SizeLimit = 100 }));
+        var connectionId = Guid.CreateVersion7();
+        var subscriptionId = Guid.CreateVersion7();
+        var key = new WebhookStatusCache.Key(Guid.CreateVersion7(), connectionId, 3, subscriptionId, "remote-1");
+        IReadOnlyList<RemoteWebhook> listed = [new RemoteWebhook("remote-1", "https://panel.ravencia.com/api/v1/hooks/x/y", "ACTIVE", "ravencia-1")];
+
+        cache.Set(key, cache.CurrentGeneration, listed);
+        Assert.True(cache.TryGet(key, out var kept));
+        Assert.Same(listed, kept);
+        // Another tenant, a new connection version (credentials changed) or another registration never sees it.
+        Assert.False(cache.TryGet(key with { TenantId = Guid.CreateVersion7() }, out _));
+        Assert.False(cache.TryGet(key with { ConnectionVersion = 4 }, out _));
+        Assert.False(cache.TryGet(key with { ExternalSubscriptionId = "remote-2" }, out _));
+
+        // A change at the marketplace clears it.
+        cache.InvalidateAll();
+        Assert.False(cache.TryGet(key, out _));
+
+        // An answer read while a change ran is not kept.
+        var generation = cache.CurrentGeneration;
+        cache.InvalidateAll();
+        cache.Set(key, generation, listed);
+        Assert.False(cache.TryGet(key, out _));
     }
 
     [Fact]
