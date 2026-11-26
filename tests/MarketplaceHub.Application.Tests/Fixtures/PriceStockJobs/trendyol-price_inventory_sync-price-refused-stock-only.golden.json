@@ -1,0 +1,793 @@
+{
+  "Runs": [
+    {
+      "Run": "first-0",
+      "JobType": "PRICE_INVENTORY_SYNC",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "PRICE_INVENTORY_BATCH_PENDING",
+        "ErrorSummary": "Fiyat-stok batch sonucu bekleniyor.",
+        "RetryAfter": "00:00:15",
+        "RemoteRequestId": "batch-1",
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "inventory.Push key=price-inventory:first op=Automatic \"{\\\"items\\\":[{\\\"barcode\\\":\\\"869200000001\\\",\\\"quantity\\\":5,\\\"salePrice\\\":120.00,\\\"listPrice\\\":150.00},{\\\"barcode\\\":\\\"869200000002\\\",\\\"quantity\\\":5,\\\"salePrice\\\":120.00,\\\"listPrice\\\":150.00}]}\""
+      ]
+    },
+    {
+      "Run": "first-1",
+      "JobType": "PRICE_INVENTORY_SYNC",
+      "Result": {
+        "Kind": "ManualReview",
+        "ErrorCode": "PRICE_INVENTORY_PARTIAL_FAILURE",
+        "ErrorSummary": "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.",
+        "RetryAfter": null,
+        "RemoteRequestId": "batch-1",
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "products.GetOperation key=price-inventory:first:poll \"batch-1\""
+      ]
+    },
+    {
+      "Run": "second-0",
+      "JobType": "PRICE_INVENTORY_SYNC",
+      "Result": {
+        "Kind": "Retry",
+        "ErrorCode": "PRICE_INVENTORY_BATCH_PENDING",
+        "ErrorSummary": "Fiyat-stok batch sonucu bekleniyor.",
+        "RetryAfter": "00:00:15",
+        "RemoteRequestId": "batch-2",
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": false,
+        "Continues": false
+      },
+      "Calls": [
+        "inventory.Push key=price-inventory:second op=Automatic \"{\\\"items\\\":[{\\\"barcode\\\":\\\"869200000001\\\",\\\"quantity\\\":4,\\\"salePrice\\\":120.00,\\\"listPrice\\\":150.00},{\\\"barcode\\\":\\\"869200000002\\\",\\\"quantity\\\":4}]}\""
+      ]
+    },
+    {
+      "Run": "second-1",
+      "JobType": "PRICE_INVENTORY_SYNC",
+      "Result": {
+        "Kind": "Succeeded",
+        "ErrorCode": null,
+        "ErrorSummary": null,
+        "RetryAfter": null,
+        "RemoteRequestId": null,
+        "RefundAttempt": false,
+        "BackOffConnection": false,
+        "Succeeded": true,
+        "Continues": false
+      },
+      "Calls": [
+        "products.GetOperation key=price-inventory:second:poll \"batch-2\""
+      ]
+    }
+  ],
+  "Tables": [
+    {
+      "Table": "ChannelOffer",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "Currency": "TRY",
+          "FollowsPanelPrice": null,
+          "Id": "offer-PR-1",
+          "LastPriceHash": "<hash>",
+          "LastSentAt": "T+00:01:00",
+          "LastSentCode": "869200000001",
+          "LastSentListPrice": 150.0000,
+          "LastSentQuantity": 4.0000,
+          "LastSentSalePrice": 120.0000,
+          "LastStockProjectionVersion": 2,
+          "ListPrice": 150.0000,
+          "PriceVersion": 1,
+          "RoundingMode": "HALF_EVEN",
+          "SafetyStock": 0.0000,
+          "SalePrice": 120.0000,
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "VariantId": "variant-PR-1",
+          "VatInclusion": "INCLUDED",
+          "VatRate": 20.0000,
+          "Version": 3
+        },
+        {
+          "ConnectionId": "connection",
+          "Currency": "TRY",
+          "FollowsPanelPrice": null,
+          "Id": "offer-PR-2",
+          "LastPriceHash": null,
+          "LastSentAt": "T+00:01:00",
+          "LastSentCode": "869200000002",
+          "LastSentListPrice": null,
+          "LastSentQuantity": 4.0000,
+          "LastSentSalePrice": null,
+          "LastStockProjectionVersion": 2,
+          "ListPrice": 150.0000,
+          "PriceVersion": 1,
+          "RoundingMode": "HALF_EVEN",
+          "SafetyStock": 0.0000,
+          "SalePrice": 120.0000,
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "VariantId": "variant-PR-2",
+          "VatInclusion": "INCLUDED",
+          "VatRate": 20.0000,
+          "Version": 2
+        }
+      ]
+    },
+    {
+      "Table": "ConnectionSyncPolicy",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "Enabled": true,
+          "Id": "policy-MANUAL_WRITE",
+          "IdleBackoffEnabled": true,
+          "IdleIntervalSeconds": null,
+          "IntervalSeconds": 0,
+          "JitterSeconds": 0,
+          "LastScheduledAt": null,
+          "OverlapSeconds": 0,
+          "ResourceType": "MANUAL_WRITE",
+          "TenantId": "tenant",
+          "UserDefined": true,
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "ExternalEffectRecord",
+      "Rows": [
+        {
+          "Action": null,
+          "CompletedAt": "T+00:00:34",
+          "ConnectionId": null,
+          "CreatedAt": "T+00:00:32",
+          "EffectType": "PRICE_INVENTORY_SYNC",
+          "ExpectedValue": null,
+          "Id": "id1",
+          "IdempotencyKey": "price-inventory:first",
+          "LastCheckedAt": null,
+          "Outcome": null,
+          "SentAt": "T+00:00:34",
+          "TargetId": null,
+          "TenantId": "tenant",
+          "UnclearChecks": 0,
+          "VerificationSeconds": 0
+        },
+        {
+          "Action": null,
+          "CompletedAt": "T+00:01:47",
+          "ConnectionId": null,
+          "CreatedAt": "T+00:01:45",
+          "EffectType": "PRICE_INVENTORY_SYNC",
+          "ExpectedValue": null,
+          "Id": "id2",
+          "IdempotencyKey": "price-inventory:second",
+          "LastCheckedAt": null,
+          "Outcome": null,
+          "SentAt": "T+00:01:47",
+          "TargetId": null,
+          "TenantId": "tenant",
+          "UnclearChecks": 0,
+          "VerificationSeconds": 0
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationJob",
+      "Rows": [
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:00",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "golden",
+          "CreatedAt": "T+00:00:00",
+          "EffectIdempotencyKey": "price-inventory:first",
+          "HeartbeatAt": null,
+          "Id": "job-first",
+          "JobDedupKey": "golden-pi:job-first",
+          "JobType": "PRICE_INVENTORY_SYNC",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "sync",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "JobId": "job-first",
+            "ConnectionId": "connection",
+            "Phase": "POLL",
+            "PayloadHash": "6522FE27C53BACDEA3A35109E406AA64DB1343835C33D7CD7EF95E72AF105D96",
+            "PayloadJson": {
+              "items": [
+                {
+                  "barcode": "869200000001",
+                  "quantity": 5,
+                  "salePrice": 120.00,
+                  "listPrice": 150.00
+                },
+                {
+                  "barcode": "869200000002",
+                  "quantity": 5,
+                  "salePrice": 120.00,
+                  "listPrice": 150.00
+                }
+              ]
+            },
+            "Lines": [
+              {
+                "VariantId": "variant-PR-1",
+                "OfferId": "offer-PR-1",
+                "Barcode": "869200000001",
+                "Quantity": 5,
+                "ListPrice": 150.00,
+                "SalePrice": 120.00,
+                "Currency": "TRY",
+                "ProjectionVersion": 1,
+                "PriceVersion": 1,
+                "PriceHash": "4B5E1BC1D699ACCC48D3DA7DF48BFA7E440B9D2C1BC98F8DBEDBB51B63B7E220",
+                "MerchantSku": "PR-1",
+                "HepsiburadaSku": "869200000001",
+                "ExternalVariantId": null,
+                "QuantityOmitted": false,
+                "PriceOmitted": false,
+                "SafetyStock": 0.0000,
+                "PriceHeld": false,
+                "StockHeld": false
+              },
+              {
+                "VariantId": "variant-PR-2",
+                "OfferId": "offer-PR-2",
+                "Barcode": "869200000002",
+                "Quantity": 5,
+                "ListPrice": 150.00,
+                "SalePrice": 120.00,
+                "Currency": "TRY",
+                "ProjectionVersion": 1,
+                "PriceVersion": 1,
+                "PriceHash": "4B5E1BC1D699ACCC48D3DA7DF48BFA7E440B9D2C1BC98F8DBEDBB51B63B7E220",
+                "MerchantSku": "PR-2",
+                "HepsiburadaSku": "869200000002",
+                "ExternalVariantId": null,
+                "QuantityOmitted": false,
+                "PriceOmitted": false,
+                "SafetyStock": 0.0000,
+                "PriceHeld": false,
+                "StockHeld": false
+              }
+            ],
+            "ExternalOperationId": "batch-1",
+            "SubmittedAt": "2030-01-01T09:01:00+00:00",
+            "VariantId": null,
+            "ProductId": "product",
+            "Manual": true,
+            "Automatic": false,
+            "Trigger": null,
+            "HoldPrice": false,
+            "HoldStock": false
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "inventory",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "ManualReview",
+          "TenantId": "tenant",
+          "TriggerType": "user",
+          "Version": 1,
+          "WaitingChecks": 0
+        },
+        {
+          "AttemptCount": 0,
+          "AvailableAt": "T+00:00:00",
+          "CompletedAt": null,
+          "ConflictCount": 0,
+          "ConnectionId": "connection",
+          "CorrelationId": "golden",
+          "CreatedAt": "T+00:00:00",
+          "EffectIdempotencyKey": "price-inventory:second",
+          "HeartbeatAt": null,
+          "Id": "job-second",
+          "JobDedupKey": "golden-pi:job-second",
+          "JobType": "PRICE_INVENTORY_SYNC",
+          "LastErrorCode": null,
+          "LastErrorSummary": null,
+          "LeaseExpiresAt": null,
+          "LeaseTokenHash": null,
+          "LockGroup": null,
+          "MaxAttempts": 6,
+          "OperationType": "sync",
+          "PayloadHash": "<hash>",
+          "PayloadJson": {
+            "JobId": "job-second",
+            "ConnectionId": "connection",
+            "Phase": "POLL",
+            "PayloadHash": "F8CEC5EDFD7DC3D60329EA858B5DF16D7B0416945E58BD6A6846C7BA0BFC1EDE",
+            "PayloadJson": {
+              "items": [
+                {
+                  "barcode": "869200000001",
+                  "quantity": 4,
+                  "salePrice": 120.00,
+                  "listPrice": 150.00
+                },
+                {
+                  "barcode": "869200000002",
+                  "quantity": 4
+                }
+              ]
+            },
+            "Lines": [
+              {
+                "VariantId": "variant-PR-1",
+                "OfferId": "offer-PR-1",
+                "Barcode": "869200000001",
+                "Quantity": 4,
+                "ListPrice": 150.00,
+                "SalePrice": 120.00,
+                "Currency": "TRY",
+                "ProjectionVersion": 2,
+                "PriceVersion": 1,
+                "PriceHash": "4B5E1BC1D699ACCC48D3DA7DF48BFA7E440B9D2C1BC98F8DBEDBB51B63B7E220",
+                "MerchantSku": "PR-1",
+                "HepsiburadaSku": "869200000001",
+                "ExternalVariantId": null,
+                "QuantityOmitted": false,
+                "PriceOmitted": false,
+                "SafetyStock": 0.0000,
+                "PriceHeld": false,
+                "StockHeld": false
+              },
+              {
+                "VariantId": "variant-PR-2",
+                "OfferId": "offer-PR-2",
+                "Barcode": "869200000002",
+                "Quantity": 4,
+                "ListPrice": 150.00,
+                "SalePrice": 120.00,
+                "Currency": "TRY",
+                "ProjectionVersion": 2,
+                "PriceVersion": 1,
+                "PriceHash": "4B5E1BC1D699ACCC48D3DA7DF48BFA7E440B9D2C1BC98F8DBEDBB51B63B7E220",
+                "MerchantSku": "PR-2",
+                "HepsiburadaSku": "869200000002",
+                "ExternalVariantId": null,
+                "QuantityOmitted": false,
+                "PriceOmitted": true,
+                "SafetyStock": 0.0000,
+                "PriceHeld": true,
+                "StockHeld": false,
+                "PriceNote": "Trendyol bu fiyatı daha önce reddetti; stok fiyatsız gönderildi. Fiyat, değişene kadar gönderilmeyecek."
+              }
+            ],
+            "ExternalOperationId": "batch-2",
+            "SubmittedAt": "2030-01-01T09:01:00+00:00",
+            "VariantId": null,
+            "ProductId": "product",
+            "Manual": true,
+            "Automatic": false,
+            "Trigger": null,
+            "HoldPrice": false,
+            "HoldStock": false
+          },
+          "PayloadVersion": 1,
+          "Priority": 0,
+          "ProgressCurrent": 0,
+          "ProgressFailed": 0,
+          "ProgressLabel": null,
+          "ProgressPercent": null,
+          "ProgressProcessed": 0,
+          "ProgressReceived": 0,
+          "ProgressSkipped": 0,
+          "ProgressTotal": null,
+          "ResourceType": "inventory",
+          "RetriedAt": null,
+          "StartedAt": null,
+          "Status": "Succeeded",
+          "TenantId": "tenant",
+          "TriggerType": "user",
+          "Version": 1,
+          "WaitingChecks": 0
+        }
+      ]
+    },
+    {
+      "Table": "InventoryItem",
+      "Rows": [
+        {
+          "Available": 4.0000,
+          "Id": "inventory-PR-1",
+          "LocationCode": "MAIN",
+          "ObservedRemoteAt": null,
+          "ObservedRemoteQuantity": null,
+          "OnHand": 4.0000,
+          "ProjectionVersion": 2,
+          "ReconciledAt": null,
+          "Reserved": 0.0000,
+          "TenantId": "tenant",
+          "VariantId": "variant-PR-1",
+          "Version": 1
+        },
+        {
+          "Available": 4.0000,
+          "Id": "inventory-PR-2",
+          "LocationCode": "MAIN",
+          "ObservedRemoteAt": null,
+          "ObservedRemoteQuantity": null,
+          "OnHand": 4.0000,
+          "ProjectionVersion": 2,
+          "ReconciledAt": null,
+          "Reserved": 0.0000,
+          "TenantId": "tenant",
+          "VariantId": "variant-PR-2",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "MarketplaceVariantLink",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ExternalBarcode": "869200000001",
+          "ExternalId": "869200000001",
+          "ExternalSku": "PR-1",
+          "FulfilledByMarketplace": null,
+          "HealthChangedAt": null,
+          "HealthReason": null,
+          "HealthStatus": null,
+          "Id": "link-PR-1",
+          "LastLookupAt": null,
+          "LastLookupOutcome": null,
+          "LastSeenAt": null,
+          "SaleState": null,
+          "SaleStateReadAt": null,
+          "SaleStateReason": null,
+          "TenantId": "tenant",
+          "VariantId": "variant-PR-1",
+          "Version": 1
+        },
+        {
+          "ConnectionId": "connection",
+          "ExternalBarcode": "869200000002",
+          "ExternalId": "869200000002",
+          "ExternalSku": "PR-2",
+          "FulfilledByMarketplace": null,
+          "HealthChangedAt": null,
+          "HealthReason": null,
+          "HealthStatus": null,
+          "Id": "link-PR-2",
+          "LastLookupAt": null,
+          "LastLookupOutcome": null,
+          "LastSeenAt": null,
+          "SaleState": null,
+          "SaleStateReadAt": null,
+          "SaleStateReason": null,
+          "TenantId": "tenant",
+          "VariantId": "variant-PR-2",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "OperationalIssue",
+      "Rows": [
+        {
+          "Code": "TRENDYOL_PRICE_REFUSED",
+          "DedupeKey": "trendyol-price-refused:connection:variant-PR-2",
+          "FirstSeenAt": "T+00:01:11",
+          "Id": "id3",
+          "LastSeenAt": "T+00:01:11",
+          "OccurrenceCount": 1,
+          "ResolvedAt": null,
+          "Status": "Open",
+          "Summary": "Trendyol 869200000002 için fiyatı reddetti (satış 120.00 TL, liste 150.00 TL): Girilen satış fiyatı geçersiz. Stok fiyatsız gönderilmeye devam ediyor; fiyat, panel fiyatı veya Özel Fiyat değişene kadar gönderilmeyecek. [reddedilen fiyat: 3B726E9D308FB312]",
+          "TenantId": "tenant"
+        }
+      ]
+    },
+    {
+      "Table": "PlatformConnection",
+      "Rows": [
+        {
+          "ApiVersion": "V1",
+          "DisabledAt": null,
+          "DisplayName": "TRENDYOL",
+          "Environment": "PRODUCTION",
+          "ExternalStoreId": "store-golden",
+          "Id": "connection",
+          "LastErrorClass": null,
+          "LastErrorCode": null,
+          "LastSuccessAt": null,
+          "LastTestedAt": null,
+          "PlatformCode": "TRENDYOL",
+          "PublicId": "connection-public",
+          "SettingsJson": {
+            "ExternalWritesEnabled": true
+          },
+          "Status": "ACTIVE",
+          "TenantId": "tenant",
+          "Version": 1
+        }
+      ]
+    },
+    {
+      "Table": "PriceStockSendLog",
+      "Rows": [
+        {
+          "Barcode": "869200000001",
+          "CompletedAt": "T+00:01:10",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:35",
+          "Currency": "TRY",
+          "ErrorCode": null,
+          "ErrorMessage": null,
+          "ExternalRequestId": "batch-1",
+          "Id": "id4",
+          "JobId": "job-first",
+          "NewListPrice": 150.0000,
+          "NewQuantity": 5.0000,
+          "NewSalePrice": 120.0000,
+          "OfferId": "offer-PR-1",
+          "PlatformCode": "TRENDYOL",
+          "PreviousListPrice": null,
+          "PreviousQuantity": null,
+          "PreviousSalePrice": null,
+          "Result": "APPLIED",
+          "StockCode": "PR-1",
+          "TenantId": "tenant",
+          "Trigger": "PANEL_SEND",
+          "VariantId": "variant-PR-1"
+        },
+        {
+          "Barcode": "869200000001",
+          "CompletedAt": "T+00:02:23",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:01:48",
+          "Currency": "TRY",
+          "ErrorCode": null,
+          "ErrorMessage": null,
+          "ExternalRequestId": "batch-2",
+          "Id": "id5",
+          "JobId": "job-second",
+          "NewListPrice": 150.0000,
+          "NewQuantity": 4.0000,
+          "NewSalePrice": 120.0000,
+          "OfferId": "offer-PR-1",
+          "PlatformCode": "TRENDYOL",
+          "PreviousListPrice": 150.0000,
+          "PreviousQuantity": 5.0000,
+          "PreviousSalePrice": 120.0000,
+          "Result": "APPLIED",
+          "StockCode": "PR-1",
+          "TenantId": "tenant",
+          "Trigger": "PANEL_SEND",
+          "VariantId": "variant-PR-1"
+        },
+        {
+          "Barcode": "869200000002",
+          "CompletedAt": "T+00:01:10",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:00:35",
+          "Currency": "TRY",
+          "ErrorCode": "TRENDYOL_PRICE_REFUSED",
+          "ErrorMessage": "Trendyol 869200000002 için fiyatı reddetti (satış 120.00 TL, liste 150.00 TL): Girilen satış fiyatı geçersiz. Stok fiyatsız gönderilmeye devam ediyor; fiyat, panel fiyatı veya Özel Fiyat değişene kadar gönderilmeyecek. [reddedilen fiyat: 3B726E9D308FB312]",
+          "ExternalRequestId": "batch-1",
+          "Id": "id6",
+          "JobId": "job-first",
+          "NewListPrice": 150.0000,
+          "NewQuantity": 5.0000,
+          "NewSalePrice": 120.0000,
+          "OfferId": "offer-PR-2",
+          "PlatformCode": "TRENDYOL",
+          "PreviousListPrice": null,
+          "PreviousQuantity": null,
+          "PreviousSalePrice": null,
+          "Result": "REJECTED",
+          "StockCode": "PR-2",
+          "TenantId": "tenant",
+          "Trigger": "PANEL_SEND",
+          "VariantId": "variant-PR-2"
+        },
+        {
+          "Barcode": "869200000002",
+          "CompletedAt": "T+00:02:23",
+          "ConnectionId": "connection",
+          "CreatedAt": "T+00:01:48",
+          "Currency": "TRY",
+          "ErrorCode": null,
+          "ErrorMessage": "Trendyol bu fiyatı daha önce reddetti; stok fiyatsız gönderildi. Fiyat, değişene kadar gönderilmeyecek.",
+          "ExternalRequestId": "batch-2",
+          "Id": "id7",
+          "JobId": "job-second",
+          "NewListPrice": null,
+          "NewQuantity": 4.0000,
+          "NewSalePrice": null,
+          "OfferId": "offer-PR-2",
+          "PlatformCode": "TRENDYOL",
+          "PreviousListPrice": null,
+          "PreviousQuantity": null,
+          "PreviousSalePrice": null,
+          "Result": "APPLIED",
+          "StockCode": "PR-2",
+          "TenantId": "tenant",
+          "Trigger": "PANEL_SEND",
+          "VariantId": "variant-PR-2"
+        }
+      ]
+    },
+    {
+      "Table": "Product",
+      "Rows": [
+        {
+          "ArchivedAt": null,
+          "BrandId": null,
+          "CategoryId": null,
+          "CreatedAt": "T+00:00:00",
+          "DefaultListPrice": null,
+          "DefaultSalePrice": null,
+          "DeliveryDays": 1,
+          "Description": "golden",
+          "DescriptionOverride": null,
+          "FamilyId": "id8",
+          "Id": "product",
+          "SourcePolicyVersion": 1,
+          "Status": "Active",
+          "TenantId": "tenant",
+          "Title": "Fiyat reddi ürünü",
+          "TitleOverride": null,
+          "TrendyolWebColorValueId": null,
+          "UpdatedAt": "T+00:00:00",
+          "VatInclusion": null,
+          "VatRate": null,
+          "Version": 1,
+          "WarrantyMonths": 0
+        }
+      ]
+    },
+    {
+      "Table": "ProductModel",
+      "Rows": [
+        {
+          "AttributesSavedAt": null,
+          "BrandId": null,
+          "CategoryId": null,
+          "CreatedAt": "T+00:00:00",
+          "DeliveryDays": 1,
+          "Description": "golden",
+          "Desi": null,
+          "FieldsSavedAt": null,
+          "Id": "id8",
+          "ModelCode": "PR-MODEL",
+          "ModelCodeKey": "PR-MODEL",
+          "TenantId": "tenant",
+          "Title": "Fiyat reddi ürünü",
+          "TitleColor": null,
+          "UpdatedAt": "T+00:00:00",
+          "VatInclusion": null,
+          "VatRate": null,
+          "Version": 1,
+          "WarrantyMonths": 0
+        }
+      ]
+    },
+    {
+      "Table": "ProductVariant",
+      "Rows": [
+        {
+          "Barcode": "869200000001",
+          "BarcodeNormalized": "869200000001",
+          "CostPrice": null,
+          "CreatedAt": "T+00:00:00",
+          "DefaultListPrice": null,
+          "DefaultSalePrice": null,
+          "Desi": null,
+          "Height": null,
+          "Id": "variant-PR-1",
+          "Length": null,
+          "ModelCode": "PR-MODEL",
+          "OptionSignature": "Renk=Siyah|Beden=S",
+          "ProductId": "product",
+          "Sku": "PR-1",
+          "SkuNormalized": "PR-1",
+          "SortOrder": 0,
+          "Status": "Active",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1,
+          "Weight": null,
+          "Width": null
+        },
+        {
+          "Barcode": "869200000002",
+          "BarcodeNormalized": "869200000002",
+          "CostPrice": null,
+          "CreatedAt": "T+00:00:00",
+          "DefaultListPrice": null,
+          "DefaultSalePrice": null,
+          "Desi": null,
+          "Height": null,
+          "Id": "variant-PR-2",
+          "Length": null,
+          "ModelCode": "PR-MODEL",
+          "OptionSignature": "Renk=Siyah|Beden=M",
+          "ProductId": "product",
+          "Sku": "PR-2",
+          "SkuNormalized": "PR-2",
+          "SortOrder": 0,
+          "Status": "Active",
+          "TenantId": "tenant",
+          "UpdatedAt": "T+00:00:00",
+          "Version": 1,
+          "Weight": null,
+          "Width": null
+        }
+      ]
+    },
+    {
+      "Table": "SyncCursor",
+      "Rows": [
+        {
+          "ConnectionId": "connection",
+          "ConsecutiveFailureCount": 0,
+          "CursorStagnantSince": null,
+          "Id": "id9",
+          "LastAttemptAt": "T+00:02:20",
+          "LastChangedCount": 1,
+          "LastCursorAdvancedAt": null,
+          "LastDurationMs": "<duration>",
+          "LastError": null,
+          "LastErrorAt": null,
+          "LastFailedCount": 0,
+          "LastInsertedCount": 0,
+          "LastModifiedWatermark": null,
+          "LastRateLimitCount": 0,
+          "LastReceivedCount": 1,
+          "LastRequestCount": 1,
+          "LastRetryCount": 0,
+          "LastSkippedCount": 0,
+          "LastSliceAt": "T+00:01:49",
+          "LastSuccessAt": "T+00:02:25",
+          "LastUpdatedCount": 0,
+          "OpaqueCursor": null,
+          "ResourceType": "PRICE_INVENTORY",
+          "TenantId": "tenant",
+          "Version": 9
+        }
+      ]
+    },
+    {
+      "Table": "IntegrationOutboxEvent (counted)",
+      "Rows": [
+        "connections PlatformConnection created x1",
+        "inventory InventoryItem created x2",
+        "products Product created x1"
+      ]
+    }
+  ]
+}

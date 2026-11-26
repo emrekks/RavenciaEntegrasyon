@@ -479,6 +479,17 @@ Bir yazma işinin gitmesi için **hepsi** açık olmalı:
   göstermekten kötü). Yazma açılırken onay penceresi, kapalıyken fiyatı değişmiş ve ilk stok hareketinde fiyatı gidecek
   teklif sayısını gösterir. Risk: pazaryerinde kampanya için elle değiştirilmiş fiyat, o bedenin ilk stok hareketinde
   panelin fiyatıyla ezilir (`PanelPriceOfferPolicy.InForce`, `PriceInventoryComposer`).
+- **Trendyol fiyatı reddederse stok yine gider** (sahip kararı, 27 Kas 2026; "fiyat stokla birlikte" kuralının tek
+  istisnası): Trendyol bir satırı yalnız fiyatı yüzünden reddederse o satırın stoğu da yazılmaz ve her gönderim aynı
+  satırı tekrar taşırdı (fazla satış riski). Artık satır, zaten olacak bir sonraki gönderimde (stok hareketi, uzlaştırma,
+  panelden gönderim) **yalnız stokla** gider; reddedilen fiyat bekler. İşlem Takibi'nde `TRENDYOL_PRICE_REFUSED` sorunu
+  açık kalır ("Stok fiyatsız gönderilmeye devam ediyor; fiyat … değişene kadar gönderilmeyecek"); sorun, reddedilen kodu,
+  fiyat işaretini ve iki fiyatı parmak izi olarak tutar (migration yok). Gönderilecek fiyat değişince (panel fiyatı, Özel
+  Fiyat, yeni kod) satır yine fiyat+stokla gider; Trendyol bir fiyatı kabul edince sorun kapanır. O varyant için panelden
+  tek varyant gönderimi fiyatı yine dener; sorunu elle kapatmak da fiyatı bir kez daha denetir. Varyant, teklif, kod ya da
+  bağlantı silinince günlük bakım sorunu kapatır. Yalnız açıkça fiyata ait ret sayılır: her ret nedeni fiyatı anar ve stok,
+  barkod/ürün, onay/arşiv/kilit, istek sınırı ya da yetki anmaz; başka her ret bugünkü gibi işler. Bu değişiklik kendiliğinden
+  gönderim başlatmaz, otomatik yazma anahtarına dokunmaz (`TrendyolPriceRefusal`, `PriceInventoryComposer`, `PriceStockService`).
 - **Panel fiyatı ilk pazaryerinden** (sahip kararı, 18 Kas 2026): bir varyant ilk kez bir pazaryerinden içe aktarılırken
   panel liste ve satış fiyatı o pazaryerinin fiyatıyla kaydedilir (fiyat boş ya da 0 ise yazılmaz); sonraki çekimler
   mevcut panel fiyatını değiştirmez (`PanelPriceOfferPolicy.ImportedPanelPrices`). Kayıtlı panel fiyatı olmayan mevcut

@@ -282,6 +282,20 @@ purpose (`TurkeyTime.cs`).
   without a three-letter `currencyCode` is skipped with an issue instead of failing the whole save (Order.Currency is
   char(3)); both join the re-read list (`TrendyolJsonMapper.Orders`, `RefusedOrders`).
 - Price-inventory batches report only per-item SUCCESS/FAILED.
+- A price-inventory item may carry the stock alone or the prices alone: "Sadece stok veya fiyat bilgilerinden biri
+  güncelleneceği zaman diğer alanın gönderilmesi zorunlu değildir" (offline `trendyol-api-son.md` ~2732 and ~9287,
+  "Stok ve Fiyat Güncelleme"); a field left out is not updated (the docs say nothing more about it). Per barcode at most
+  30 price requests a minute; more come back as an error for that barcode in the batch result (~511, error text not given).
+- The texts of a refused price are **not documented**: the price-inventory batch sample has an empty `failureReasons`
+  (~3012-3036), and live (17 Trendyol price/stock sends up to 18 Nov 2026, worker journal 30 days, `ops.operational_issues`,
+  `integration.price_stock_send_log`, read 27 Nov 2026) no item was ever FAILED. The documented price rule is only
+  listPrice ≥ salePrice (~8425, product create); the panel checks it before sending (CHANNEL_OFFER_INVALID).
+- Owner decision 27 Nov 2026 (`TrendyolPriceRefusal`): a FAILED item whose every failure reason names the price (fiyat,
+  salePrice, listPrice, price, PSF, TSF) and none names the stock, the barcode/product, approval/archive/lock/sale state,
+  the request (per-minute limit, 15-minute repeat) or authorisation counts as a price refusal; the row then goes stock-only
+  on the next send that happens anyway while the price to send is the refused one (issue `TRENDYOL_PRICE_REFUSED`, key
+  `trendyol-price-refused:{connection:N}:{variant:N}`). Any other refusal is handled as before. Check the first live
+  refusal's text in the worker log ("failure reasons") against this rule.
 - Webhooks: max 15 per seller; URL may not contain "Trendyol", "Dolap", "Localhost"; retried every 5 min then set
   PASSIVE; payload has `orderCountryCode`, no storefront. The stream stays the source of truth. The list
   (`GET webhook/sellers/{id}/webhooks`, offline docs `trendyol-api-son.md` getWebhook ~6280: `id`, `url`, `status`)

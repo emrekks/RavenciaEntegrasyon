@@ -374,6 +374,9 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var lines = new List<PriceInventoryPushLine>();
         var settled = new List<SettledOffer>();
         var cards = await CardPanelPricesAsync(tenantId, rows.Select(row => row.Variant.ProductId), cancellationToken);
+        // Owner decision of 27 Nov 2026 (TrendyolPriceRefusal): a Trendyol row whose price Trendyol refused goes with its
+        // stock alone while the price to send is the refused one; a send from the panel for that one variant still tries it.
+        var refusedPrices = isTrendyol && !variantScoped ? await TrendyolPriceRefusal.OpenMarksAsync(db, tenantId, connectionId, cancellationToken) : [];
         foreach (var row in rows)
         {
             if (row.Inventory is not { } inventory) continue;
@@ -404,6 +407,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var barcode = row.Barcode.Trim();
             var quantityOmitted = false;
             var priceOmitted = false;
+            var priceRefused = false;
             if (isTrendyol)
             {
                 // Owner rule of 18 Nov 2026: the price in force goes with every stock line, even when it equals the value
@@ -413,7 +417,17 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 var fields = PriceInventorySendPolicy.TrendyolFields(row.Offer, barcode, quantity, sendSale, sendList, priceHash, inventory.ProjectionVersion);
                 // A stock held back ("Platformlarda Güncelle" with the price only) carries no price along with it.
                 var price = priceKnown && (fields.Price || fields.Quantity && !holdStock);
-                if (!fields.Quantity && !price) { settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion)); continue; }
+                // The one exception (27 Nov 2026): the price Trendyol refused stays out while it is still the price to send;
+                // it is held, not settled, so its mark keeps saying the price was not taken.
+                priceRefused = price && refusedPrices.TryGetValue(row.Variant.Id, out var refused)
+                    && refused == TrendyolPriceRefusal.Fingerprint(barcode, priceHash, sendSale, sendList);
+                if (priceRefused) price = false;
+                if (!fields.Quantity && !price)
+                {
+                    // A refused price with no stock change has nothing to send; nothing is settled.
+                    if (!priceRefused) settled.Add(new(row.Offer.Id, row.Offer.Version, priceHash, inventory.ProjectionVersion));
+                    continue;
+                }
                 quantityOmitted = !fields.Quantity;
                 priceOmitted = !price;
             }
@@ -429,13 +443,14 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             // after the price leaving the line PRICE_ONLY_APPLIED to be sent again). No price in force: the stock alone.
             else priceOmitted = !priceKnown;
             // A part the user did not pick is held: left out of the request and not settled, so it still goes later.
-            var priceHeld = holdPrice && !priceOmitted;
+            // A refused price is held the same way: not recorded as sent when the stock-only line is accepted.
+            var priceHeld = holdPrice && !priceOmitted || priceRefused;
             var stockHeld = holdStock && !quantityOmitted;
             if (priceHeld) priceOmitted = true;
             if (stockHeld) quantityOmitted = true;
             if (priceOmitted && quantityOmitted) continue;
             lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, sendList, sendSale, "TRY", inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, row.MerchantSku?.Trim(), row.HepsiburadaSku?.Trim(), row.ExternalVariantId?.Trim(), quantityOmitted, priceOmitted, row.Offer.SafetyStock, priceHeld, stockHeld,
-                !priceKnown && !quantityOmitted ? PanelPriceOfferPolicy.PriceNotSentNote : null));
+                quantityOmitted ? null : priceRefused ? TrendyolPriceRefusal.StockOnlyNote : !priceKnown ? PanelPriceOfferPolicy.PriceNotSentNote : null));
         }
         await SettleAsync(tenantId, settled, cancellationToken);
         if (lines.Count == 0) return NoChanges(missingInventory);

@@ -334,12 +334,28 @@ internal sealed class PriceStockService(
                 if (stockCurrent && !line.StockHeld) offer.LastStockProjectionVersion = line.ProjectionVersion;
                 PriceInventorySendPolicy.RecordSent(offer, line, payload.SubmittedAt ?? timeProvider.GetUtcNow());
                 offer.Version++; success++;
+                // Trendyol took a price for the row: a refused price it held back before (TrendyolPriceRefusal) is no
+                // longer the case, so the row goes with its price again. A stock-only line says nothing of the price.
+                if (isTrendyol && !line.PriceOmitted)
+                    await issues.ResolveIfOpenAsync(tenantId, TrendyolPriceRefusal.Key(connectionId, line.VariantId), timeProvider, cancellationToken);
                 if (!stockCurrent || !priceCurrent)
                 {
                     superseded++;
                     sendLog.Settle(line, PriceStockSendResults.Superseded, null, "Pazar yeri satırı aldı; sonuç gelene kadar fiyat veya stok yeni bir değere geçti, yeni değer ayrıca gönderilecek.");
                 }
                 else sendLog.Settle(line, repeatOfConfirmed ? PriceStockSendResults.Unchanged : PriceStockSendResults.Applied, repeatOfConfirmed ? SafeCode(found.Remote!.ErrorCode) : null);
+            }
+            else if (isTrendyol && !line.PriceOmitted && TrendyolPriceRefusal.IsPriceRefusal(found.Remote!.Reasons ?? (found.Remote.ErrorCode is { } onlyReason ? [onlyReason] : null)))
+            {
+                // Owner decision of 27 Nov 2026: Trendyol refused the line for its price alone (its stock was not written
+                // either). The issue stays open with what was refused; the next send that happens anyway carries the row's
+                // stock without that price (PriceInventoryComposer), until the price to send changes or Trendyol takes one.
+                failed++;
+                var reason = string.Join(" · ", found.Remote.Reasons ?? [found.Remote.ErrorCode!]);
+                var fingerprint = TrendyolPriceRefusal.Fingerprint(line.Barcode, line.PriceHash, line.SalePrice, line.ListPrice);
+                var summary = TrendyolPriceRefusal.Summary(line.Barcode, line.SalePrice, line.ListPrice, reason, fingerprint);
+                await RecordIssue(tenantId, TrendyolPriceRefusal.Key(connectionId, line.VariantId), TrendyolPriceRefusal.Code, summary, cancellationToken);
+                sendLog.Settle(line, PriceStockSendResults.Rejected, TrendyolPriceRefusal.Code, Short(summary, 500));
             }
             else
             {

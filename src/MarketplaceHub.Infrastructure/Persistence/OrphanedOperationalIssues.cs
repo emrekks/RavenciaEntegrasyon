@@ -145,6 +145,23 @@ public static class OrphanedOperationalIssues
         .. PriceStockOfferIssueCodes.All.Select(code => ConnectionGoneRule(code, PriceInventoryOfferIssues.KeyPrefix)),
         ConnectionGoneRule(ModelCodeUniquenessPolicy.ChangeConflictCode, "product-sync-model-code-conflict:"),
         ConnectionGoneRule(PttAvmCodeNotModelCode, "pttavm-product-code:"),
+        // trendyol-price-refused:{connection:N}:{variant:N} (TrendyolPriceRefusal, 27 Nov 2026): the refused price of a row
+        // that goes stock-only. Its variant, its connection, its offer or every code the send could address it by is gone:
+        // no send carries the row any more, so the mark is not left behind.
+        VariantGoneRule("variant-gone", TrendyolPriceRefusal.Code, $"{KeyStarts(TrendyolPriceRefusal.KeyPrefix)} AND {Hex32AtThreeAlone}"),
+        ConnectionGoneRule(TrendyolPriceRefusal.Code, TrendyolPriceRefusal.KeyPrefix),
+        new("offer-gone", TrendyolPriceRefusal.Code, SubjectGone, "kaydın bu bağlantıdaki teklifi artık yok.", $"""
+            {KeyStarts(TrendyolPriceRefusal.KeyPrefix)} AND {Hex32AtThreeAlone} AND {Connection} IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM inventory.channel_offers o WHERE o."TenantId" = i."TenantId" AND o."ConnectionId" = {Connection} AND o."VariantId" = {VariantAtThree})
+            """),
+        // The send reads a Trendyol row's code from its variant link or from its listing row (PriceInventoryComposer); with
+        // neither left on the connection the row is never sent.
+        new("code-gone", TrendyolPriceRefusal.Code, SubjectGone, "kaydın bu bağlantıdaki pazaryeri kodu artık yok.", $"""
+            {KeyStarts(TrendyolPriceRefusal.KeyPrefix)} AND {Hex32AtThreeAlone} AND {Connection} IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM catalog.marketplace_variant_links l WHERE l."TenantId" = i."TenantId" AND l."ConnectionId" = {Connection} AND l."VariantId" = {VariantAtThree})
+            AND NOT EXISTS (SELECT 1 FROM catalog.channel_listing_profiles p JOIN catalog.channel_listing_variants lv ON lv."TenantId" = p."TenantId" AND lv."ProfileId" = p."Id"
+                WHERE p."TenantId" = i."TenantId" AND p."ConnectionId" = {Connection} AND lv."VariantId" = {VariantAtThree} AND lv."ExternalBarcode" IS NOT NULL)
+            """),
         // stock-projection-offer-invalid:{connection:N}:{variant:N} whose variant and connection exist but the connection holds
         // no offer of the variant any more: the send it was left out of has no offer to carry (24 Nov 2026).
         .. PriceStockOfferIssueCodes.All.Select(code => new Rule("offer-gone", code, SubjectGone, "kaydın bu bağlantıdaki teklifi artık yok.", $"""
