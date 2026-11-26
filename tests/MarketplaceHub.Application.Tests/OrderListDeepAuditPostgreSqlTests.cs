@@ -604,6 +604,47 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         return tenant.Id;
     }
 
+    // Scan C-11: the e-Archive's sent date is the package's first "shipped" status (handed to the carrier), not the time
+    // of its latest status; a package without a recorded shipped status keeps the latest status time.
+    [PostgreSqlFact]
+    public async Task TheEArchiveSentDateIsTheFirstShippedStatusOfThePackage()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ol-sent-{Guid.NewGuid():N}"[..20], DisplayName = "ol-sent", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "TRENDYOL", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalOrderId = "ol-sent-1", OrderNumber = "ol-sent-1", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddDays(-5), LastRemoteModifiedAt = now.AddHours(-1), CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "DELIVERED", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        ShipmentPackage Package(string id) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = order.Id, ExternalPackageId = id, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = now.AddHours(-1), MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var shipped = Package("ol-sent-shipped");
+        var unknown = Package("ol-sent-unknown");
+        OrderStatusHistory History(ShipmentPackage package, string status, DateTimeOffset at) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = status, RawStatus = status, SourceEventId = $"ol-sent:{Guid.NewGuid():N}", OccurredAt = at, RecordedAt = at };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.Orders.Add(order);
+            seed.ShipmentPackages.AddRange(shipped, unknown);
+            seed.OrderStatusHistory.AddRange(
+                History(shipped, "PROCESSING", now.AddDays(-4)),
+                History(shipped, "SHIPPED", now.AddDays(-3)),
+                History(shipped, "SHIPPED", now.AddDays(-2)),
+                History(shipped, "DELIVERED", now.AddHours(-1)),
+                History(unknown, "DELIVERED", now.AddHours(-1)));
+            await seed.SaveChangesAsync();
+        }
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var sentAt = await InvoicingBillingService.FiscalSentAtAsync(db, tenant.Id, shipped.Id, shipped.StatusOccurredAt, CancellationToken.None);
+            Assert.True(Math.Abs((sentAt - now.AddDays(-3)).TotalMilliseconds) < 1, $"sentAt {sentAt:O}");
+            var fallback = await InvoicingBillingService.FiscalSentAtAsync(db, tenant.Id, unknown.Id, unknown.StatusOccurredAt, CancellationToken.None);
+            Assert.Equal(unknown.StatusOccurredAt, fallback);
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private async Task CleanupAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();

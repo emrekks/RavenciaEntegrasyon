@@ -175,7 +175,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             var invoiceAddressSnapshotJson = SnapshotText(snapshotRoot, "InvoiceAddressSnapshotJson", order.InvoiceAddressSnapshotJson);
             var shipmentAddressSnapshotJson = SnapshotText(snapshotRoot, "ShipmentAddressSnapshotJson", order.ShipmentAddressSnapshotJson);
             var fiscalDeliveryPackage = InvoicingBillingService.ReadFiscalDeliveryPackage(snapshotRoot)
-                ?? (package is null ? null : new InvoiceFiscalDeliveryPackageSnapshot(package.ExternalPackageId, package.CargoProviderExternalId, package.StatusOccurredAt));
+                ?? (package is null ? null : new InvoiceFiscalDeliveryPackageSnapshot(package.ExternalPackageId, package.CargoProviderExternalId,
+                    await InvoicingBillingService.FiscalSentAtAsync(db, tenantId, package.Id, package.StatusOccurredAt, cancellationToken)));
             if (invoice.InvoiceType == "EARSIVFATURA"
                 && !InvoicingBillingService.IsValidFiscalDeliveryPackage(fiscalDeliveryPackage))
             {

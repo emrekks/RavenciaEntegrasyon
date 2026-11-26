@@ -697,7 +697,7 @@
   .rich-text-mode-switch button.active { color: #fff; background: var(--rv-color-primary-fill); }
   .rich-text-tool-group { display: flex; min-width: 0; align-items: center; gap: 2px; padding-right: var(--rv-space-1); border-right: 1px solid var(--rv-color-border); }
   .rich-text-tool-group:last-child { border-right: 0; }
-  .rich-text-tool-group select { width: auto; min-width: 112px; min-height: 34px; }
+  .rich-text-tool-group select { width: auto; min-width: 112px; min-height: var(--rv-control-height-md); }
   .rich-text-tool { display: inline-flex; min-height: 34px; align-items: center; gap: var(--rv-space-1); padding-inline: var(--rv-space-2); color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); }
   .rich-text-tool:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
   /* the description reads in normal weight (its field label is bold); <b>/<strong> in the HTML still show bold */
