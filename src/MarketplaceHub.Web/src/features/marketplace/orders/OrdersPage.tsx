@@ -38,7 +38,8 @@ import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 import { invoiceCreationDisabledHelp, type ProductImagePreview, isMicroExportLabelBlocked, isPendingAction, type IntegrationFeedbackHandler, orderNotificationContext, canChangeOrderCargo } from './orders-page/order-page-helpers'
 import { ProductImagePreviewModal, InvoiceInfoModal, InvoiceDraftModal, InvoiceViewerModal, InvoiceUploadModal } from './orders-page/OrderInvoiceModals'
 import { CourierChangeModal, ShippingLabelModal, ShippingLabelBatchModal, SingleOrderSyncModal } from './orders-page/OrderShippingModals'
-import { OrderReferenceRow } from './orders-page/OrderReferenceRow'
+import { OrderListRow, type OrderRowActions } from './orders-page/OrderReferenceRow'
+import { useStableHandlers } from '../../../shared/hooks/useStableHandlers'
 import { PendingRows, useProgressiveRows } from '../../../shared/progressive-rows'
 import { HepsiburadaPackageCreateModal, ShopifyOrderCsvImportModal, ShopifyOrderStatusModal, ShopifyBulkStatusModal } from './orders-page/OrderPlatformModals'
 
@@ -219,8 +220,10 @@ export function OrdersPage() {
   const noCardSource = useMetricSource() === false
   const cardSource = <T extends { value: number | undefined }>(metric: T): T => noCardSource ? { ...metric, value: undefined } : metric
   const shopifyConnections = connections.data?.items.filter(x => x.platformCode === 'SHOPIFY') ?? []
-  const allOrders = ordersQuery.data?.items ?? [];
-  const all = allOrders.filter(item => isMarketplacePlatformSelected(selectedPlatforms, item.platformCode));
+  // Kept while the answer is the same (TanStack Query shares unchanged data), so the memoised rows get the same orders.
+  const orderItems = ordersQuery.data?.items
+  const allOrders = useMemo(() => orderItems ?? [], [orderItems])
+  const all = useMemo(() => allOrders.filter(item => isMarketplacePlatformSelected(selectedPlatforms, item.platformCode)), [allOrders, selectedPlatforms])
   const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
   // Every cargo of the filtered orders (the facet counts), with the page's own and the picked one.
   const cargos = Array.from(new Set([...Object.keys(facets.data?.cargos ?? {}).sort((left, right) => left.localeCompare(right, 'tr-TR')), ...all.flatMap(item => [orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value)), ...(filters.cargo !== 'ALL' ? [filters.cargo] : [])]))
@@ -290,7 +293,9 @@ export function OrdersPage() {
   }
   const totalOrderCount = ordersQuery.data?.totalCount ?? items.length
   const totalPages = Math.max(1, Math.ceil(totalOrderCount / pageSize))
-  const pageItems = items.map(item => ({ ...item, invoiceCreationEnabled: connections.data?.items.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = selection.selectedRows(pageItems, item => item.id); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
+  const connectionItems = connections.data?.items
+  // Built once per answer (and connection list), not per render: each row keeps the same order object until its data changes.
+  const pageItems = useMemo(() => items.map(item => ({ ...item, invoiceCreationEnabled: connectionItems?.find(connection => connection.id === item.connectionId)?.invoiceCreationEnabled ?? false })), [items, connectionItems]); const selectablePageItems = pageItems.filter(item => item.derivedStatus.toUpperCase() !== 'CANCELLED'); const allPageSelected = selectablePageItems.length > 0 && selectablePageItems.every(item => selectedIds.includes(item.id)); const selectedOrders = selection.selectedRows(pageItems, item => item.id); const shopifySelectedOrders = selectedOrders.filter(item => item.platformCode === 'SHOPIFY'); const cargoEditableOrders = selectedOrders.filter(canChangeOrderCargo); const cargoChangeHelp = cargoEditableOrders.length < selectedOrders.length ? `Kargo firması yalnız kargoya verilmemiş Trendyol paketlerinde değiştirilebilir; seçili ${selectedOrders.length - cargoEditableOrders.length} sipariş atlanır.` : undefined; const shopifyInvoiceCreationBlocked = shopifySelectedOrders.some(item => !item.invoiceId && !item.invoiceCreationEnabled); const labelBatchItems = selectedOrders.filter(item => Boolean(orderDisplayShipment(item)?.cargoTrackingNumber ?? item.cargoTrackingNumber) && !isMicroExportLabelBlocked(item))
   const hasNextPage = Boolean(ordersQuery.data?.nextCursor)
   function goToPreviousPage() { setPage(current => Math.max(1, current - 1)) }
   function goToNextPage() { if (!hasNextPage) return; const next = ordersQuery.data?.nextCursor; if (next) rememberCursor(page + 1, next); setPage(current => current + 1) }
@@ -362,18 +367,28 @@ export function OrdersPage() {
   const firstPage = Math.max(1, Math.min(page - 1, totalPages - 3)); const pageList = Array.from({ length: Math.min(4, totalPages) }, (_, index) => firstPage + index)
   const tabLabel = orderStatusTabs.find(([value]) => value === filters.status)?.[1] ?? 'Tümü'
   const shopifyBulkButtons = shopifySelectedOrders.length > 0 && <><button type="button" className="rr-btn" onClick={() => setBulkShopifyStatus({ kind: 'order', items: shopifySelectedOrders })}><RrIcon name="edit" />Shopify Sipariş Durumu ({shopifySelectedOrders.length})</button><button type="button" className="rr-btn" disabled={shopifyInvoiceCreationBlocked} title={shopifyInvoiceCreationBlocked ? invoiceCreationDisabledHelp : undefined} onClick={() => setBulkShopifyStatus({ kind: 'invoice', items: shopifySelectedOrders })}><RrIcon name="edit" />Shopify Fatura Durumu ({shopifySelectedOrders.length})</button></>
-  // pageItems is rebuilt on every render, so the cards are keyed by what the orders hold rather than by the array.
-  const pageItemsKey = JSON.stringify(pageItems)
-  // The first rows are drawn in the frame that shows a tab or page, the rest right after it (shared/progressive-rows.tsx).
-  const progressiveOrders = useProgressiveRows(pageItems, item => item.id)
-  // The order cards are kept while their own inputs stay the same, so opening or closing a window (a label preview, an
-  // invoice) does not redraw every card on the page first.
-  // pageItems is rebuilt on every render, so the rows are memoised by its content (pageItemsKey); the handlers read only
-  // state that is listed here or that their setters keep current.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by pageItemsKey on purpose (see above)
-  const orderRows = useMemo(() => progressiveOrders.rows.map(item => <OrderReferenceRow item={item} key={item.id} noBuyer={noBuyer} selected={selectedIds.includes(item.id)} processing={processingOrderId === item.id} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); if (item.platformCode === 'SHOPIFY') setInvoiceUploadOrder(item); else setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder({ item, items: [item] }) }} onOrderStatusChange={() => { setMenu(null); setShopifyStatusOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onCreatePackage={() => { setMenu(null); setHepsiburadaPackageOrder(item) }} onPrintLabel={format => { if (isMicroExportLabelBlocked(item)) { showBulkNotice('Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.', 'error'); return } setMenu(null); setShippingLabel({ item, format }) }} onPreviewImage={setPreviewImage} labelSettings={labelSettings} printedLabels={printedLabels} tab={filters.status} showCancelled={filters.cancelPart === 'PARTIAL'} />), [pageItemsKey, progressiveOrders.rows.length, filters.status, filters.cancelPart, noBuyer, selectedIds, processingOrderId, menu, labelSettings, printedLabels])
   // A status tab slides the list in from its side and starts the page from its top (shared/tab-slide.tsx).
   const statusSlide = useTabSlide(filters.status, orderStatusTabOrder)
+  // The first rows are drawn in the frame that shows a tab or page, the rest right after it (shared/progressive-rows.tsx);
+  // a tab's slide mounts the rows again, so it counts as a new list too.
+  const progressiveOrders = useProgressiveRows(pageItems, item => item.id, statusSlide.key)
+  // Each row is memoised (OrderListRow) and gets only its own flags and one handler object that never changes: picking
+  // a row, opening a window or a poll that brought the same orders redraws no other row.
+  const rowActions = useStableHandlers<OrderRowActions>({
+    select: (id, checked) => updateSelection(id, checked),
+    menuChange: (id, kind) => setMenu(kind ? { orderId: id, kind } : null),
+    invoiceCreate: item => { setMenu(null); if (item.platformCode === 'SHOPIFY') setInvoiceUploadOrder(item); else setInvoiceDraftOrder(item) },
+    invoiceDetails: item => { setMenu(null); setInvoiceInfoOrder(item) },
+    invoiceUpload: item => { setMenu(null); setInvoiceUploadOrder(item) },
+    courierChange: item => { setMenu(null); setCourierOrder({ item, items: [item] }) },
+    orderStatusChange: item => { setMenu(null); setShopifyStatusOrder(item) },
+    processOrder: item => void processSingleOrder(item),
+    createPackage: item => { setMenu(null); setHepsiburadaPackageOrder(item) },
+    printLabel: (item, format) => { if (isMicroExportLabelBlocked(item)) { showBulkNotice('Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.', 'error'); return } setMenu(null); setShippingLabel({ item, format }) },
+    previewImage: preview => setPreviewImage(preview)
+  })
+  const picked = new Set(selectedIds)
+  const orderRows = progressiveOrders.rows.map(item => <OrderListRow item={item} key={item.id} actions={rowActions} noBuyer={noBuyer} selected={picked.has(item.id)} processing={processingOrderId === item.id} openMenu={menu?.orderId === item.id ? menu.kind : null} labelSettings={labelSettings} printedLabels={printedLabels} tab={filters.status} showCancelled={filters.cancelPart === 'PARTIAL'} />)
   return <section className="content f3 rr rr-orders">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>Siparişler</h1></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={!items.length || exporting} aria-busy={exporting} title={exporting ? 'Dışa Aktarılıyor…' : undefined} onClick={() => void exportOrders()}><RrIcon name="export" />Dışa Aktar</button><button type="button" className="rr-btn" onClick={() => setShopifyCsvImportOpen(true)}><RrIcon name="import" />İçe Aktar</button><button type="button" className="rr-btn rr-primary" onClick={() => setSingleSyncOpen(true)}><RrIcon name="refresh" /><span className="rr-long">Sipariş Senkronizasyonu</span><span className="rr-short">Senkronize Et</span></button></div></div>
     <OrderMetricCards newOrders={cardSource(summaryMetric(summary, value => value.new))} newUnits={newUnits?.units} newRows={newUnits?.rows} newCargo={summary.data?.newByCargo} processing={cardSource(summaryMetric(summary, value => value.processing))} processingUnits={processingUnits?.units} processingRows={processingUnits?.rows} processingCargo={summary.data?.processingByCargo} late={cardSource(summaryMetric(summary, value => value.late))} microExport={cardSource(summaryMetric(microPending, value => value.microExport))} microCountries={microPending.isError ? undefined : microPending.data?.microExportCountries ?? undefined} resent={cardSource(summaryMetric(resentNotShipped, value => value.resent))} resentRows={resentStores} resentReminder={resendReminder.count} onOpenResentRecords={() => setManualResendOpen(true)} lateRows={lateStores} cancelledRows={cancelStores} onOpenDay={openDayCard} activeCard={openCard} cancelled={cardSource(todayCancellationMetric(counts => counts.whole + counts.partial))} cancelledUnits={todayCancellations?.wholeUnits} partiallyCancelled={todayCancellationMetric(counts => counts.partial)} partialUnits={todayCancellations?.partialUnits} />

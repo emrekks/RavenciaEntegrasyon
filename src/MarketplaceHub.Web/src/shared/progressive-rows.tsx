@@ -17,13 +17,19 @@ function pageScrolled() {
   return Array.from(document.querySelectorAll<HTMLElement>('.app-shell > main > :is(.content, .rv-page)')).some(scroller => scroller.scrollTop > 120)
 }
 
-export function useProgressiveRows<T>(rows: readonly T[], idOf: (row: T) => string) {
+// remountKey: the key of the element that holds the rows (a status tab's slide, shared/tab-slide.tsx). When it changes the
+// rows are mounted again even if they are the same ones (the previous tab's rows kept while the new tab loads), so they
+// are drawn like a new list: the first ones in that frame, the rest right after. The tab change has already taken the page
+// to its top, so the first rows are the ones on screen whatever the scroll was (26 Nov 2026: the remount drew all 50 order
+// cards in the tap's frame, 1.5 s on a 4x slowed phone).
+export function useProgressiveRows<T>(rows: readonly T[], idOf: (row: T) => string, remountKey = '') {
   const signature = rows.map(idOf).join('\u0001')
-  const [state, setState] = useState({ signature, complete: true })
+  const [state, setState] = useState({ signature, remountKey, complete: true })
   let current = state
-  if (state.signature !== signature) {
+  if (state.signature !== signature || state.remountKey !== remountKey) {
     // A new set of rows: draw the first ones now unless the page is scrolled down (read before this render is committed).
-    current = { signature, complete: rows.length <= firstRows() || pageScrolled() }
+    const remounted = state.remountKey !== remountKey
+    current = { signature, remountKey, complete: rows.length <= firstRows() || (!remounted && pageScrolled()) }
     setState(current)
   }
   const rowHeight = useRef(0)
@@ -36,13 +42,13 @@ export function useProgressiveRows<T>(rows: readonly T[], idOf: (row: T) => stri
     // as an interruptible update. Once all rows are on screen, their height is read (the layout is clean by then).
     const frame = window.requestAnimationFrame(() => {
       timer = window.setTimeout(() => {
-        if (!complete) { startTransition(() => setState(value => value.signature === signature ? { signature, complete: true } : value)); return }
+        if (!complete) { startTransition(() => setState(value => value.signature === signature && value.remountKey === remountKey ? { signature, remountKey, complete: true } : value)); return }
         const element = container.current
         if (element && rows.length > 0) { const height = element.getBoundingClientRect().height / rows.length; if (height > 0) rowHeight.current = height }
       }, 0)
     })
     return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer) }
-  }, [complete, signature, rows.length])
+  }, [complete, signature, remountKey, rows.length])
   const shown = complete ? rows : rows.slice(0, firstRows())
   return { rows: shown, pendingHeight: complete ? 0 : Math.round((rows.length - shown.length) * rowHeight.current), containerRef }
 }

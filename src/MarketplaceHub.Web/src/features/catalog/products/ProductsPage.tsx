@@ -41,19 +41,18 @@ import { bulkPlatformUpdateMenuState } from './bulk-platform-update'
 import { isProductUpdateConnection } from '../platform-update-targets'
 import { closeVariantTip, variantTipBlur, variantTipFocus, variantTipPointerEnter, variantTipPointerLeave } from './variant-tip'
 import { scheduleDeferredPrefetch } from './deferred-prefetch'
-import { PanelSelect } from '../../../shared/PanelSelect'
-import { colourFirstOptions } from '../variant-option-matching'
-import { ProductQuickEditModal, variantAxisParts, type QuickEditMode } from './ProductQuickEditModal'
+import { ProductQuickEditModal, type QuickEditMode } from './ProductQuickEditModal'
 // Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
 const BulkPlatformUpdateDialog = lazy(() => import('./BulkPlatformUpdateDialog').then(module => ({ default: module.BulkPlatformUpdateDialog })))
 const BulkFieldDialog = lazy(() => import('./BulkFieldDialog').then(module => ({ default: module.BulkFieldDialog })))
 import { cardCountText, toneAbove } from '../../../shared/metric-value'
 import { useMetricSource } from '../../marketplace/use-metric-source'
-import { ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
-import { EmptyState, ListEmptyState } from '../../../shared/components/EmptyState'
+import { ImageLightboxModal, LightboxImage, MarketplaceConnection, Product, Variant, compareOptionValues, isProductPublicationConnection, optionValueSortRank, preferredColorOption, variantOptionEntries } from '../shared'
+import { ListEmptyState } from '../../../shared/components/EmptyState'
 import { connectionQueries, queryKeys } from '../../../shared/api/query-keys'
 import { groupByFamily } from './product-family-key'
+import { LowStockDetailsModal } from './LowStockDetailsModal'
 
 const productSortValues = productCatalogSortOptions.map(option => option[0])
 type ProductListFilters = { search: string; status: string; platform: string; stock: string; sort: string }
@@ -132,120 +131,6 @@ function productVariantDisplayGroups(variants: Variant[]) {
         || leftRank.text.localeCompare(rightRank.text, 'tr', { numeric: true, sensitivity: 'base' })
     })
   })).sort((left, right) => left.label.localeCompare(right.label, 'tr', { sensitivity: 'base' }))
-}
-function lowStockModelCode(group: ProductGroup) {
-  return group.products.map(product => product.modelCode).find(value => value?.trim())
-    ?? group.variants.map(item => item.variant.modelCode).find(value => value?.trim())
-    ?? 'Model kodu yok'
-}
-function lowStockProductColor(product: Product) {
-  for (const variant of product.variants) {
-    const color = preferredColorOption(variantOptionEntries(variant))
-    if (color?.value) return color.value
-  }
-  return 'Renk belirtilmemiş'
-}
-function productCategoryLabel(product: Product) {
-  return product.categoryPath?.trim() || 'Kategori belirtilmemiş'
-}
-function lowStockVariantLabel(variant: Variant) {
-  const options = colourFirstOptions(variantOptionEntries(variant)
-    .sort((left, right) => left.name.localeCompare(right.name, 'tr', { sensitivity: 'base' }) || left.value.localeCompare(right.value, 'tr', { numeric: true, sensitivity: 'base' })))
-  return options.map(option => `${option.name}: ${option.value}`).join(' · ') || variant.optionSignature || variant.sku
-}
-function lowStockProductImage(product: Product, fallback: Product | null = null) {
-  return product.primaryImageUrl
-    ?? product.variants.flatMap(variant => variant.mediaUrls ?? [])[0]
-    ?? fallback?.primaryImageUrl
-    ?? fallback?.variants.flatMap(variant => variant.mediaUrls ?? [])[0]
-    ?? null
-}
-// The variant's own options (size and the like) without the colour, which already heads the list; the long attribute
-// list is only a fallback for variants that carry no options.
-function lowStockSizeLabel(variant: Variant) {
-  const parts = variantAxisParts(variant.optionSignature).filter(part => !isColorOptionName(part.name))
-  if (parts.length) return parts.map(part => `${part.name}: ${part.value}`).join(' · ')
-  // Imported variants may carry every product attribute; only the variant-defining ones (size) name the variant.
-  const sizes = variantOptionEntries(variant).filter(option => isVariantOptionName(option.name) && !isColorOptionName(option.name))
-  return sizes.length ? sizes.map(option => `${formatCatalogOptionLabel(option.name)}: ${option.value}`).join(' · ') : variant.sku
-}
-function lowStockMissingVariantCount(group: ProductGroup) {
-  return group.variants.filter(item => item.variant.onHand <= 0).length
-}
-// Two lists: Düşük Stok Renkleri (a colour with at least half its variants sold out, a whole colour too, while the model
-// still has stock: the products page's low-stock count)
-// and Tükenen Varyantlar (any variant sold out, a whole colour too, while the model still has stock, read when its tab is opened).
-export function LowStockDetailsModal({ products: lowProducts, loading: lowLoading, error: lowError, onClose, onImageClick }: { products: Product[]; loading: boolean; error: unknown; onClose: () => void; onImageClick: (url: string, title: string, modelCode?: string) => void }) {
-  const [mode, setMode] = useState<'LOW' | 'GAP'>('LOW')
-  const gapQuery = useQuery({ queryKey: queryKeys.products('sold-out-variant-details'), queryFn: ({ signal }) => loadAllPages<ProductListItem>('/products?stock=GAP', { limit: 200, signal }).then(readProductListPage), enabled: mode === 'GAP', staleTime: 15_000 })
-  const products = useMemo(() => mode === 'LOW' ? lowProducts : gapQuery.data?.items ?? [], [mode, lowProducts, gapQuery.data])
-  const loading = mode === 'LOW' ? lowLoading : gapQuery.isLoading
-  const error = mode === 'LOW' ? lowError : gapQuery.error
-  const groups = useMemo(() => productRowsAsCards(products), [products])
-  const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
-  // The list comes newest first (like the products page), so a model's rank is its newest card's place in it.
-  const [sort, setSort] = useState<'NEWEST' | 'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('NEWEST')
-  const productRank = useMemo(() => new Map(products.map((product, index) => [product.id, index])), [products])
-  const newestRank = (group: { products: Product[] }) => Math.min(...group.products.map(product => productRank.get(product.id) ?? Number.MAX_SAFE_INTEGER))
-  const categoryOptions = useMemo(() => [...new Set(products.map(productCategoryLabel))].sort((left, right) => left.localeCompare(right, 'tr', { sensitivity: 'base' })), [products])
-  const filteredGroups = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase('tr-TR')
-    return groups.flatMap(group => {
-      const modelCode = lowStockModelCode(group)
-      const groupText = [modelCode, ...group.products.flatMap(product => [product.title, productCategoryLabel(product), lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)])]
-        .join(' ')
-        .toLocaleLowerCase('tr-TR')
-      if (query && !groupText.includes(query)) return []
-      if (categoryFilter && !group.products.some(product => productCategoryLabel(product) === categoryFilter)) return []
-      const matchingProducts = query
-        ? group.products.filter(product => [product.title, productCategoryLabel(product), lowStockProductColor(product), ...product.variants.map(lowStockVariantLabel)].join(' ').toLocaleLowerCase('tr-TR').includes(query))
-        : []
-      const categoryProducts = categoryFilter ? group.products.filter(product => productCategoryLabel(product) === categoryFilter) : group.products
-      const visibleProducts = matchingProducts.length > 0 ? matchingProducts.filter(product => categoryProducts.includes(product)) : categoryProducts
-      const visibleVariants = matchingProducts.length > 0
-        ? group.variants.filter(item => matchingProducts.includes(item.product) && categoryProducts.includes(item.product))
-        : group.variants.filter(item => categoryProducts.includes(item.product))
-      return [{ ...group, products: visibleProducts, variants: visibleVariants }]
-    }).filter(group => group.products.length > 0).sort((left, right) => {
-      if (sort === 'NEWEST') return newestRank(left) - newestRank(right)
-      if (sort === 'MODEL_DESC') return lowStockModelCode(right).localeCompare(lowStockModelCode(left), 'tr', { numeric: true, sensitivity: 'base' })
-      if (sort === 'MISSING_DESC') return lowStockMissingVariantCount(right) - lowStockMissingVariantCount(left) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
-      if (sort === 'MISSING_ASC') return lowStockMissingVariantCount(left) - lowStockMissingVariantCount(right) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
-      return lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- newestRank only reads productRank
-  }, [categoryFilter, groups, search, sort, productRank])
-  const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
-  const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
-  // Model cards start closed and sit two to a row.
-  // One model and one colour are open at a time (an accordion): opening another closes the one that was open; the open
-  // model takes a full row of the grid and scrolls into view.
-  const [openFamilies, setOpenFamilies] = useState<Set<string>>(new Set())
-  const [openColors, setOpenColors] = useState<Set<string>>(new Set())
-  function toggleFamily(id: string) {
-    setOpenFamilies(current => {
-      if (current.has(id)) return new Set()
-      window.requestAnimationFrame(() => document.querySelector(`[data-low-model="${id}"]`)?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }))
-      return new Set([id])
-    })
-  }
-  // A new search, category, sort or tab closes the open model.
-  useEffect(() => { setOpenFamilies(new Set()); setOpenColors(new Set()) }, [search, categoryFilter, sort, mode])
-
-  const low = mode === 'LOW'
-  return <RrModal crumb="Stok Takibi" label="Düşük Stok" title={<>Düşük Stok<TitleHint label="Düşük Stok">Model koduna göre gruplanmış, tükenen varyantı olan ürünler. <b>Düşük stok:</b> stoğu süren modelde bir rengin varyantlarının en az yarısı tükenmiş; tamamen biten renkler de dahil. <b>Tükenen varyant:</b> stoğu süren modelde en az bir beden, seçenek ya da renk bitmiş.</TitleHint></>} size="lg" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}>
-    <ViewTabsWithMore className="rr-low-tabs" more={[]} ariaLabel="Düşük stok" value={mode} onChange={value => setMode(value as typeof mode)} items={[{ value: 'LOW', label: 'Düşük Stok Renkleri' }, { value: 'GAP', label: 'Tükenen Varyantlar' }]} />
-    {loading ? <RrLoading text={low ? 'Düşük stok ürünleri yükleniyor…' : 'Tükenen varyantlar yükleniyor…'} /> : error ? <RrError error={error} /> : !groups.length ? <EmptyState icon="stock" title={low ? 'Düşük Stok Ürün Yok' : 'Tükenen Varyant Yok'}>Tüm ürünlerin stoğu yeterli.</EmptyState> : <>
-      <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Stok eksiklerinde ara" /></span><PanelSelect ariaLabel="Kategori" value={categoryFilter} onChange={setCategoryFilter} width={220} options={[{ value: '', label: 'Tüm Kategoriler' }, ...categoryOptions.map(category => ({ value: category, label: category }))]} /><PanelSelect ariaLabel="Sıralama" value={sort} onChange={setSort} width={260} options={[{ value: 'NEWEST', label: 'Eklenme Sırası (Yeniden Eskiye)' }, { value: 'MODEL_ASC', label: 'Model Kodu (A-Z)' }, { value: 'MODEL_DESC', label: 'Model Kodu (Z-A)' }, { value: 'MISSING_DESC', label: 'Eksik Varyant (Çoktan Aza)' }, { value: 'MISSING_ASC', label: 'Eksik Varyant (Azdan Çoğa)' }]} /></div>
-      <p className="rr-lead">{filteredGroups.length} model · {catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</p>
-      {!filteredGroups.length && <p className="rr-lead">Arama veya filtreye uyan ürün bulunamadı.</p>}
-      <div className="rr-lowgrid">{filteredGroups.map(group => { const image = productGroupImage(group) ?? lowStockProductImage(group.primary); const open = openFamilies.has(group.id); const missing = lowStockMissingVariantCount(group); return <article className={`rr-lowf${open ? ' rr-open rr-lowf-full' : ''}`} key={group.id} data-low-model={group.id}>
-        <div className="rr-lowf-h"><RrThumb src={image} alt={group.primary.title} onOpen={image ? () => onImageClick(image, group.primary.title, group.products.map(item => item.modelCode).find(value => value?.trim()) ?? undefined) : undefined} /><button type="button" className="rr-lowf-t" aria-expanded={open} onClick={() => toggleFamily(group.id)}><span><small>Model Kodu</small><b className="rr-num">{lowStockModelCode(group)}</b><em title={group.primary.title}>{group.primary.title}</em></span><span className="rr-lowf-c" title={`${missing} eksik · ${group.products.length} renk`}><b className="rr-num">{missing}</b></span><RrIcon name="chev" /></button></div>
-        {open && <section>{[...group.products].sort((left, right) => lowStockProductColor(left).localeCompare(lowStockProductColor(right), 'tr', { sensitivity: 'base' })).map(product => { const lowVariants = product.variants.filter(variant => variant.onHand <= 0).sort((left, right) => lowStockSizeLabel(left).localeCompare(lowStockSizeLabel(right), 'tr', { numeric: true, sensitivity: 'base' })); const colorOpen = openColors.has(product.id); return <div className={`rr-lowc${colorOpen ? ' rr-open' : ''}`} key={product.id}><button type="button" className="rr-lowc-h" aria-expanded={colorOpen} onClick={() => setOpenColors(current => current.has(product.id) ? new Set() : new Set([product.id]))}><b>{lowStockProductColor(product)}</b><span className="rr-lowc-n">{lowVariants.length} eksik varyant</span><RrIcon name="chev" /></button>{colorOpen && (lowVariants.length ? <div className="rr-lowvs">{lowVariants.map(variant => <div className="rr-lowv" key={variant.id}><span><b>{lowStockSizeLabel(variant)}</b><small>Stok Kodu: {variant.sku}{variant.barcode ? ` · Barkod: ${variant.barcode}` : ''}</small></span><span className={variant.onHand === 0 ? 'rr-zero' : 'rr-low'}>{variant.onHand === 0 ? 'Stoksuz' : <>Kalan <b className="rr-num">{variant.onHand}</b></>}</span></div>)}</div> : <p className="rr-lead">Bu renkte kritik stok varyantı bulunamadı.</p>)}</div> })}</section>}
-      </article> })}</div>
-    </>}
-  </RrModal>
 }
 // The editor's publish step, loaded only when a row's "Platformlarda Yayınla" opens it in a popup.
 const ProductPublishPopup = lazy(() => import('../product-editor/ProductEditorPages').then(module => ({ default: module.ProductPublishPopup })))

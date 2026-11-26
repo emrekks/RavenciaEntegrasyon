@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Product } from '../shared'
-import { LowStockDetailsModal } from './ProductsPage'
+import { LowStockDetailsModal } from './LowStockDetailsModal'
 
 const card = (id: string, model: string) => ({
   id, title: `Örnek Ürün ${model}`, description: '', brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T00:00:00Z', version: 1,
