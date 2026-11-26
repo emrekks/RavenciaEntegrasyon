@@ -198,7 +198,7 @@ public sealed class ShopifyAdapterRequestTests
         Assert.Equal("gid://shopify/Fulfillment/5", requests[1].GetProperty("variables").GetProperty("id").GetString());
         Assert.Equal("F1", requests[1].GetProperty("variables").GetProperty("after").GetString());
         var lineItems = result.Value.GetProperty("lineItems");
-        Assert.Equal(["gid://shopify/LineItem/11", "gid://shopify/LineItem/12"], lineItems.GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("id").GetString()).ToArray());
+        Assert.Equal(["gid://shopify/LineItem/11", "gid://shopify/LineItem/12"], lineItems.GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("id").GetString()!).ToArray());
         Assert.False(ShopifyHttpClient.HasNextPage(lineItems));
         var fulfilled = ShopifyHttpClient.FulfilledQuantities(result.Value.GetProperty("fulfillments").EnumerateArray().ToList());
         Assert.Equal(1m, fulfilled["11"]);
@@ -248,7 +248,7 @@ public sealed class ShopifyAdapterRequestTests
         Assert.Equal(ShopifyHttpClient.ProductVariantsContinuationQuery, request.RootElement.GetProperty("query").GetString());
         Assert.Equal("gid://shopify/Product/9", request.RootElement.GetProperty("variables").GetProperty("id").GetString());
         Assert.Equal("V1", request.RootElement.GetProperty("variables").GetProperty("after").GetString());
-        Assert.Equal(["A", "B"], result.Value.GetProperty("node").GetProperty("variants").GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("sku").GetString()).ToArray());
+        Assert.Equal(["A", "B"], result.Value.GetProperty("node").GetProperty("variants").GetProperty("nodes").EnumerateArray().Select(node => node.GetProperty("sku").GetString()!).ToArray());
     }
 
     [Fact]
