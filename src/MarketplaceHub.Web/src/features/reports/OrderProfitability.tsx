@@ -8,7 +8,7 @@ import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { platformName } from './report-format'
+import { platformName, trNumber } from './report-format'
 import { KpiStrip, type Kpi } from './ReportsPage'
 import { EmptyState } from '../../shared/components/EmptyState'
 import { queryKeys } from '../../shared/api/query-keys'
@@ -29,10 +29,10 @@ export type OrderProfitLine = OrderProfit['lines'][number]
 export type OrderProfitPage = Omit<OrderProfitAnswer, 'items'> & { items: OrderProfit[] }
 type Sort = 'date' | 'amount' | 'profit' | 'profitOnCost' | 'margin'
 
-const money = (value: number) => `${value < 0 ? '−' : ''}₺${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const percent = (value: number | null) => value === null ? '—' : `%${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (value: number) => `${value < 0 ? '−' : ''}₺${trNumber(Math.abs(value), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const percent = (value: number | null) => value === null ? '—' : `%${trNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const tone = (value: number | null) => value === null ? 'is-unknown' : value < 0 ? 'is-loss' : 'is-gain'
-const count = (value: number) => value.toLocaleString('tr-TR')
+const count = (value: number) => trNumber(value)
 const orders = (value: number) => `${count(value)} sipariş`
 
 // The summary over the list in the KPI boxes of the other tabs (owner, 7 Nov 2026), the values as before: the orders'
@@ -161,9 +161,9 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
           <span>
             <b>{line.title}</b>
             <small>{[optionText(line.options), line.barcode ?? line.sku].filter(Boolean).join(' · ')}</small>
-            <small>{line.quantity.toLocaleString('tr-TR')} adet{line.returnedQuantity > 0 ? ` · ${line.returnedQuantity.toLocaleString('tr-TR')} adet iade` : ''}
-              {line.commissionRate !== null ? ` · Komisyon %${line.commissionRate.toLocaleString('tr-TR')} (${money(line.commission ?? 0)})` : ''}</small>
-            <small>{line.costPrice ? `Maliyet ${money(line.costPrice)} · Maliyet KDV'si %${line.vatRate.toLocaleString('tr-TR')}` : 'Maliyet girilmemiş'}</small>
+            <small>{trNumber(line.quantity)} adet{line.returnedQuantity > 0 ? ` · ${trNumber(line.returnedQuantity)} adet iade` : ''}
+              {line.commissionRate !== null ? ` · Komisyon %${trNumber(line.commissionRate)} (${money(line.commission ?? 0)})` : ''}</small>
+            <small>{line.costPrice ? `Maliyet ${money(line.costPrice)} · Maliyet KDV'si %${trNumber(line.vatRate)}` : 'Maliyet girilmemiş'}</small>
           </span>
           <strong>{money(line.amount)}</strong>
         </li>)}</ul>

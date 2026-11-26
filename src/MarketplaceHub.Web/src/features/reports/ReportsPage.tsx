@@ -1,5 +1,5 @@
 import type { ApiAnswer } from '../../shared/api/api-answer'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
@@ -94,9 +94,12 @@ export function ReportsPage() {
   const query = reportQuery({ from: range.from, to: range.to, platforms, granularity: '', includeTest: false })
   const report = useQuery({ queryKey: queryKeys.reportsSales(query), queryFn: async ({ signal }) => readReportSales(await hubApi<ApiAnswer<'getReportsSales'>>(`/reports/sales?${query}`, { signal })), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
+  // The tabs draw the report a moment after it arrives (a background render React can interrupt), so the period and
+  // platform controls answer at once; the figures, tabs and counts all change together when it is drawn.
+  const shown = useDeferredValue(data)
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
   // A tab change slides the body in from the tab's side and starts the page from its top (shared/tab-slide.tsx).
-  const go = (nextView: ViewKey, nextSub: string | null = null) => {
+  const go = useCallback((nextView: ViewKey, nextSub: string | null = null) => {
     setSearchParams(current => {
       const next = new URLSearchParams(current)
       next.delete('detail')
@@ -104,11 +107,10 @@ export function ReportsPage() {
       if (nextSub) next.set('sub', nextSub); else next.delete('sub')
       return next
     }, { replace: true })
-  }
-  // "Tümünü Gör": the area's tab, opened like any tab: from the page's top.
-  const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null) }
+  }, [setSearchParams])
+  const tabs = useMemo(() => shown ? reportTabs(shown) : [], [shown])
 
-  return <MetricSourceContext.Provider value={metricSource}><NoPreviousDataContext.Provider value={data ? !previousHasData(data.previousFrom, data.dataStartsOn) : false}><section ref={page} className="content reports-page">
+  return <MetricSourceContext.Provider value={metricSource}><NoPreviousDataContext.Provider value={shown ? !previousHasData(shown.previousFrom, shown.dataStartsOn) : false}><section ref={page} className="content reports-page">
     <div className="page-heading reports-heading">
       <div><p className="eyebrow">Analiz</p><h1>Raporlar</h1><p className="reports-lead">Satış, iade, iptal, kargo ve kârlılık; platform, şehir ve ürün kırılımıyla, önceki dönemle karşılaştırmalı.</p></div>    </div>
     <div className="reports-filters" role="search" aria-label="Rapor filtreleri">
@@ -125,26 +127,35 @@ export function ReportsPage() {
     </div>
     {report.isLoading && <Busy text="Rapor hazırlanıyor…" />}
     {report.isError && !data && <ErrorBox error={report.error} onRetry={() => void report.refetch()} />}
-    {data && (() => {
-      const tabs = reportTabs(data)
-      return <>
-        <ViewTabsWithMore className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => go(value as ViewKey)}
-          items={tabs.map(tab => ({ value: tab.value, label: tabLabel(tab.icon, tab.label), count: tab.count, countTone: tab.warn ? 'warn' : undefined }))} />
-        <TabSlidePanel active={view} order={tabs.map(tab => tab.value)} className="reports-body" role="tabpanel" aria-label={tabs.find(tab => tab.value === view)?.label}>
-          {view === 'overview' ? <Overview data={data} onMore={openDetail} />
-            : view === 'geo' ? <Geography data={data} />
-            : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
-            : view === 'profit' ? <ProfitView data={data} />
-            : view === 'payouts' ? <PayoutsReport platforms={platforms} />
-            : view === 'orders' ? <OrderProfitability from={range.from} to={range.to} platforms={platforms} />
-            : view === 'stock' ? <StockReport from={range.from} to={range.to} platforms={platforms} sales={data} />
-            : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
-            : <CustomersView data={data} />}
-        </TabSlidePanel>
-      </>
-    })()}
+    {shown && <>
+      <ViewTabsWithMore className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => go(value as ViewKey)}
+        items={tabs.map(tab => ({ value: tab.value, label: tabLabel(tab.icon, tab.label), count: tab.count, countTone: tab.warn ? 'warn' : undefined }))} />
+      <ReportBody data={shown} tabs={tabs} view={view} sub={sub} from={range.from} to={range.to} platforms={platforms} go={go} />
+    </>}
   </section></NoPreviousDataContext.Provider></MetricSourceContext.Provider>
 }
+
+// The active tab's content. Memoised: a render of the page that changes none of these (the loading line, a picked but not
+// yet answered period, the date picker's first day) leaves the tab alone.
+const ReportBody = memo(function ReportBody({ data, tabs, view, sub, from, to, platforms, go }: {
+  data: ReportSales; tabs: ReportTab[]; view: ViewKey; sub: string | null; from: string; to: string; platforms: string[] | null; go: (view: ViewKey, sub?: string | null) => void
+}) {
+  // "Tümünü Gör": the area's tab, opened like any tab: from the page's top.
+  const openDetail = useCallback((key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null) }, [go])
+  const onProductsSub = useCallback((next: string) => go('products', next), [go])
+  const onOpsSub = useCallback((next: string) => go('ops', next), [go])
+  return <TabSlidePanel active={view} order={tabs.map(tab => tab.value)} className="reports-body" role="tabpanel" aria-label={tabs.find(tab => tab.value === view)?.label}>
+    {view === 'overview' ? <Overview data={data} onMore={openDetail} />
+      : view === 'geo' ? <Geography data={data} />
+      : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={onProductsSub} />
+      : view === 'profit' ? <ProfitView data={data} />
+      : view === 'payouts' ? <PayoutsReport platforms={platforms} />
+      : view === 'orders' ? <OrderProfitability from={from} to={to} platforms={platforms} />
+      : view === 'stock' ? <StockReport from={from} to={to} platforms={platforms} sales={data} />
+      : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={onOpsSub} />
+      : <CustomersView data={data} />}
+  </TabSlidePanel>
+})
 
 type ReportTab = { value: ViewKey; label: string; icon: UiIconName; count?: string; warn?: boolean }
 
