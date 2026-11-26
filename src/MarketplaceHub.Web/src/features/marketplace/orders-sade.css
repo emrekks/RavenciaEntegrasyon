@@ -346,3 +346,14 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-b.rr-sheet-b { padding-bottom: calc(var(--rv-dock-bottom, 12px) + 56px + 12px); }
 @media (prefers-reduced-transparency: reduce) { :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f { background: var(--rv-color-surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 }
+/* Its buttons are the task bar's (app/bottom-nav.css .rv-taskbar-group): 40 px high pills, soft surface with a strong line, 13 px semibold, no leading
+   icon; the purple one takes the room left and is the only one that may shorten. One look for the phone's bottom actions everywhere. */
+@media (max-width: 760px) {
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f { gap: 8px; padding: 0 8px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f > :is(.rr-btn, .rr-trigger) { flex: 0 0 auto; height: 40px; min-height: 0; padding: 0 12px; border-radius: 20px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f > .rr-btn.rr-primary { flex: 1 1 0; min-width: 0; color: #fff; background: var(--rv-color-primary-fill); border-color: transparent; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f > .rr-btn > .rr-ico:first-child { display: none; }
+}
+@media (max-width: 389px) {
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f.rr-sheet-f > :is(.rr-btn, .rr-trigger) { padding: 0 10px; font-size: 12.5px; }
+}

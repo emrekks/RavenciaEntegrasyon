@@ -403,7 +403,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel td { background: var(--rr-primary-soft); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-sel { box-shadow: inset 2px 0 0 var(--rr-primary); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-due { box-shadow: inset 2px 0 0 var(--rr-warn); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr.rr-due { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--rr-warn) 55%, transparent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl tr td:first-child { box-shadow: none !important; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td.rr-wide { grid-column: 1 / -1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl td[data-l]::before { content: attr(data-l); display: block; margin-bottom: 4px; color: var(--rr-subtle); font-size: 12px; font-weight: 500; }

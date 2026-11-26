@@ -67,7 +67,8 @@ export function useDialogSurface<T extends HTMLElement = HTMLElement>(open: bool
       }
     }
     // body and the app's own scroller (main) hold still behind the window
-    const unlockScroll = lockPageScroll(true)
+    // A full-screen phone sheet covers the page itself: no body overflow lock for it (it lifts fixed bottoms in a Home Screen app, useScrollLock.ts hold).
+    const unlockScroll = lockPageScroll(true, surfaceRef.current?.classList.contains('rr-sheet-full') ? { hold: false } : undefined)
     document.addEventListener('keydown', onKeyDown)
     window.requestAnimationFrame(() => {
       const surface = surfaceRef.current

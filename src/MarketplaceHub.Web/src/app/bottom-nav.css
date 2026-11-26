@@ -53,9 +53,9 @@
      the block that holds it is lifted above the bar, so the dimmed scrim covers the bar as it covers the page and takes its touches. */
   html[data-rv-layer] body .app-shell.stitch-shell main :is(.rr-fshell, .invoice-filter-scope, .ops-filters):has(.rr-fopen) { z-index: 901; }
   /* Dock mode: ONE floating capsule (Ana Sayfa, Siparişler, Ürünler, Sorular, Menü: five equal slots) with a lighter inner pill under the open page that glides to the next
-     slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (the screen less 14 px at each side, 344 px at most, 62 px high, so a slot is 66 px or more;
+     slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (the screen less 14 px at each side, 332 px at most, 62 px high, so a slot is 66 px or more;
      22 px icons with a 10 px label under each, always shown; it never shrinks on a scroll). */
-  :root { --rv-dock-w: min(calc(100vw - 28px), 344px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
+  :root { --rv-dock-w: min(calc(100vw - 28px), 332px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
   .rv-dock { position: relative; display: flex; align-items: center; box-sizing: border-box; width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2); pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar), background-color var(--rv-motion-bar) var(--rv-ease-bar); }
   /* The capsule and the task panel are glass: the theme's surface colour at --rv-dock-glass-alpha (22 %: clearly see-through) over a light frost (blur 5 px), so the page is felt behind it, with a thin line
      and a lighter shadow. Without backdrop-filter the alpha is higher (88 %); with "reduce transparency",
