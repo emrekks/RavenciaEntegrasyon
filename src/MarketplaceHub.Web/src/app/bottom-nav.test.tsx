@@ -95,7 +95,7 @@ describe('phone bottom navigation (CSS)', () => {
     expect(phone).toContain('prefers-reduced-transparency: reduce')
     // The capsule is the same glass with the menu open: no rule restyles it for the menu (colour, blur, size, position).
     expect(phone).not.toMatch(/:has\(\.rv-fullmenu\)[^{]*\.rv-dock\b/)
-    expect(phone).toContain(':root { --rv-dock-w: min(calc(100vw - 20px), 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
+    expect(phone).toContain(':root { --rv-dock-w: min(calc(100vw - 28px), 360px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms;')
     expect(phone).not.toContain('data-compact')
     expect(phone).toContain('width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2);')
     expect(phone).toContain('.rv-dock-glide { position: absolute; top: 4.5px; bottom: 4.5px; left: calc(4.5px + var(--rv-dock-i, 0) * ((100% - 8px) / 5));')

@@ -51,7 +51,7 @@
   /* Dock mode: ONE floating capsule (Ana Sayfa, Siparişler, Ürünler, Sorular, Menü: five equal slots) with a lighter inner pill under the open page that glides to the next
      slot (BottomDock.tsx). Task mode: the wide panel. One shows, the other waits (a short cross-fade). The capsule has ONE fixed size (the screen less 10 px at each side, 380 px at most, 62 px high, so a slot is 66 px or more;
      22 px icons with a 10 px label under each, always shown; it never shrinks on a scroll). */
-  :root { --rv-dock-w: min(calc(100vw - 20px), 380px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
+  :root { --rv-dock-w: min(calc(100vw - 28px), 360px); --rv-dock-h: 62px; --rv-dock-icon: 22px; --rv-dock-glide-motion: 420ms; --rv-dock-color-motion: 200ms; --rv-dock-ease: var(--rv-ease-sheet); }
   .rv-dock { position: relative; display: flex; align-items: center; box-sizing: border-box; width: var(--rv-dock-w); height: var(--rv-dock-h); padding: 4px; border-radius: calc(var(--rv-dock-h) / 2); pointer-events: auto; transition: opacity var(--rv-motion-bar) var(--rv-ease-bar), visibility var(--rv-motion-bar), background-color var(--rv-motion-bar) var(--rv-ease-bar); }
   /* The capsule and the task panel are glass: the theme's surface colour at --rv-dock-glass-alpha (22 %: clearly see-through) over a light frost (blur 3 px), so the page is felt behind it, with a thin line
      and a lighter shadow. Without backdrop-filter the alpha is higher (88 %); with "reduce transparency",
@@ -78,6 +78,8 @@
   @media (hover: hover) { .rv-dock-slot:not(.is-active):hover::before { background-color: color-mix(in srgb, var(--rv-color-primary) calc(var(--rv-dock-pill-alpha) / 2), transparent); } }
   .rv-dock-slot:active { transform: scale(.96); }
   .rv-dock-slot:focus-visible::before { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
+  /* A touch screen draws no focus ring on the slots (the open page is the pill): closing the menu by touch left a ring on Menü. */
+  @media (hover: none) and (pointer: coarse) { .rv-dock-slot:focus-visible::before { outline: none; } }
   .rv-dock-icon { position: relative; display: inline-grid; flex: none; }
   /* The label under each icon (10 px / 600, one line, never cut: 'Siparişler' is about 46 px, a slot at least 56 px); it takes the slot's colour, so the open page's is the accent.
      Every icon and every label sits on the same line (the content of a slot is centred, all five alike). */

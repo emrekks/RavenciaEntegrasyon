@@ -180,7 +180,7 @@ function Shell({ me }: { me: Me }) {
   const menuWasOpen = useRef(false)
   // Closing the menu (Esc, back button, Kapat) hands the focus back to the Menü slot that opened it.
   useEffect(() => {
-    if (menuWasOpen.current && !fullMenu.open && phone) menuSlotRef.current?.focus({ preventScroll: true })
+    if (menuWasOpen.current && !fullMenu.open && phone) menuSlotRef.current?.focus({ preventScroll: true, focusVisible: false } as FocusOptions)
     menuWasOpen.current = fullMenu.open
   }, [fullMenu.open, phone])
   const [visualTheme, setVisualTheme] = useState<VisualTheme>(readVisualThemePreference)
