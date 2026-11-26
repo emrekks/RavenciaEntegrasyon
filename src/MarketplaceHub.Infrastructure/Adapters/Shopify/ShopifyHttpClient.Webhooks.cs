@@ -34,9 +34,9 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     {
         var result = await QueryAsync(shop, "query{webhookSubscriptions(first:100){nodes{id topic uri}}}", null, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<IReadOnlyList<RemoteWebhook>>.Failure(result.Error!, result.RateLimit);
-        using var document = result.Value!;
+        var document = result.Value;
         var webhooks = new List<RemoteWebhook>();
-        foreach (var node in document.RootElement.GetProperty("webhookSubscriptions").GetProperty("nodes").EnumerateArray())
+        foreach (var node in document.GetProperty("webhookSubscriptions").GetProperty("nodes").EnumerateArray())
         {
             var id = CompactWebhookId(node.GetProperty("id").GetString());
             if (string.IsNullOrWhiteSpace(id)) continue;
@@ -97,8 +97,8 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
             "mutation($topic:WebhookSubscriptionTopic!,$webhookSubscription:WebhookSubscriptionInput!){webhookSubscriptionCreate(topic:$topic,webhookSubscription:$webhookSubscription){webhookSubscription{id}userErrors{field message}}}",
             new { topic, webhookSubscription = new { uri = url, format = "JSON" } }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<string>.Failure(result.Error!, result.RateLimit);
-        using var document = result.Value!;
-        var response = document.RootElement.GetProperty("webhookSubscriptionCreate");
+        var document = result.Value;
+        var response = document.GetProperty("webhookSubscriptionCreate");
         if (HasUserErrors(response, out var error))
             return Fail<string>(AdapterErrorClass.Validation, "SHOPIFY_WEBHOOK_REJECTED", error ?? $"Shopify {topic} bildirimini kabul etmedi.", HttpStatusCode.UnprocessableEntity);
         var id = response.TryGetProperty("webhookSubscription", out var subscription) && subscription.ValueKind == JsonValueKind.Object ? subscription.GetProperty("id").GetString() : null;
@@ -111,8 +111,8 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     {
         var result = await QueryAsync(shop, "mutation($id:ID!){webhookSubscriptionDelete(id:$id){deletedWebhookSubscriptionId userErrors{field message}}}", new { id = WebhookGid(id) }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<bool>.Failure(result.Error!, result.RateLimit);
-        using var document = result.Value!;
-        var response = document.RootElement.GetProperty("webhookSubscriptionDelete");
+        var document = result.Value;
+        var response = document.GetProperty("webhookSubscriptionDelete");
         // A subscription Shopify already removed counts as removed.
         if (HasUserErrors(response, out var error) && error?.Contains("not exist", StringComparison.OrdinalIgnoreCase) != true)
             return Fail<bool>(AdapterErrorClass.Validation, "SHOPIFY_WEBHOOK_DELETE_REJECTED", error ?? "Shopify bildirim aboneliğini silmedi.", HttpStatusCode.UnprocessableEntity);

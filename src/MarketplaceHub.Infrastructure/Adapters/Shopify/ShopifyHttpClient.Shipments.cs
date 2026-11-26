@@ -27,7 +27,7 @@ public sealed partial class ShopifyHttpClient
             var fulfillmentId = command.ExternalPackageId.StartsWith("gid://", StringComparison.Ordinal) ? command.ExternalPackageId : $"gid://shopify/Fulfillment/{command.ExternalPackageId}";
             var result = await QueryAsync(shop, "mutation($fulfillmentId:ID!,$trackingInfoInput:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate(fulfillmentId:$fulfillmentId,trackingInfoInput:$trackingInfoInput,notifyCustomer:false){fulfillment{id} userErrors{field message}}}", new { fulfillmentId, trackingInfoInput = new { number, url, company } }, cancellationToken);
             if (!result.IsSuccess) return AdapterResult<PackageActionResult>.Failure(result.Error!, result.RateLimit);
-            var response = result.Value!.RootElement.GetProperty("fulfillmentTrackingInfoUpdate");
+            var response = result.Value.GetProperty("fulfillmentTrackingInfoUpdate");
             if (HasUserErrors(response, out var error)) return Fail<PackageActionResult>(AdapterErrorClass.Validation, "SHOPIFY_TRACKING_UPDATE_REJECTED", error ?? "Shopify kargo takip bilgisini güncellemedi.", HttpStatusCode.UnprocessableEntity);
             return AdapterResult<PackageActionResult>.Success(new(command.ExternalPackageId, "TRACKING_UPDATED", null), result.RateLimit);
         }

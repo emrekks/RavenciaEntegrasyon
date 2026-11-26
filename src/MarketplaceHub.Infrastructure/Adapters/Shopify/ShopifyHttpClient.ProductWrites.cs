@@ -52,7 +52,7 @@ public sealed partial class ShopifyHttpClient
         if (!existingProductResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(existingProductResult.Error!, existingProductResult.RateLimit);
         try
         {
-            var existingProduct = existingProductResult.Value!.RootElement.GetProperty("productByIdentifier");
+            var existingProduct = existingProductResult.Value.GetProperty("productByIdentifier");
             if (updateOnly && existingProduct.ValueKind != JsonValueKind.Object)
                 return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, UpdateTargetMissingCode, $"Shopify'da panelin bu ürüne verdiği adresle ({handle}) bir ürün yok; güncelleme yeni ürün açmaz. Ürün Shopify'dan silindiyse veya hiç gönderilmediyse Yayınla ile gönderin.", HttpStatusCode.UnprocessableEntity);
             if (existingProduct.ValueKind == JsonValueKind.Object)
@@ -90,7 +90,7 @@ public sealed partial class ShopifyHttpClient
         JsonElement activeLocation;
         try
         {
-            var locationList = locationsResult.Value!.RootElement.GetProperty("locations");
+            var locationList = locationsResult.Value.GetProperty("locations");
             if (locationList.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
                 return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_LOCATION_LIST_INCOMPLETE", "Shopify depo listesi tek bir etkin depo doğrulanamayacak kadar büyük.", HttpStatusCode.UnprocessableEntity);
             var activeLocations = locationList.GetProperty("nodes").EnumerateArray()
@@ -128,7 +128,7 @@ public sealed partial class ShopifyHttpClient
 
         string productId;
         IReadOnlyList<RemoteOperationLine> lines;
-        AdapterResult<JsonDocument>? productSet = null;
+        AdapterResult<JsonElement>? productSet = null;
         string? mediaShortfall = null;
         if (unchangedLines is not null)
         {
@@ -141,7 +141,7 @@ public sealed partial class ShopifyHttpClient
             if (!productSet.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(productSet.Error!, productSet.RateLimit);
             try
             {
-                var productSetPayload = productSet.Value!.RootElement.GetProperty("productSet");
+                var productSetPayload = productSet.Value.GetProperty("productSet");
                 if (HasUserErrors(productSetPayload, out var productError))
                     return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_CREATE_REJECTED", productError ?? "Shopify ürünü oluşturmayı reddetti.", HttpStatusCode.UnprocessableEntity);
                 var product = productSetPayload.GetProperty("product");
@@ -233,7 +233,7 @@ public sealed partial class ShopifyHttpClient
         return input.ToJsonString();
     }
 
-    internal static AdapterError? PublishFailure(AdapterResult<JsonDocument> publish, string productId, string handle)
+    internal static AdapterError? PublishFailure(AdapterResult<JsonElement> publish, string productId, string handle)
     {
         var product = $"Shopify ürünü {productId} (handle {handle}) oluşturuldu/güncellendi";
         if (!publish.IsSuccess)
@@ -247,7 +247,7 @@ public sealed partial class ShopifyHttpClient
         }
         try
         {
-            var payload = publish.Value!.RootElement.GetProperty("publishablePublish");
+            var payload = publish.Value.GetProperty("publishablePublish");
             if (HasUserErrors(payload, out var publishError))
                 return new(AdapterErrorClass.Validation, PublishFailedCode,
                     $"{PublishFailedLabel}: {product} ancak Shopify Online Store yayınını reddetti: {publishError ?? "Shopify neden bildirmedi"}. Sorunu Shopify'da giderip işi Yeniden Dene ile tekrarlayın; ürün yeniden oluşturulmaz ve yazılmaz, yalnızca yayın adımı tekrarlanır.",
@@ -311,7 +311,7 @@ public sealed partial class ShopifyHttpClient
         string? unpublishedHandle;
         try
         {
-            var raw = result.Value!.RootElement.GetProperty("productVariants");
+            var raw = result.Value.GetProperty("productVariants");
             if (SkuProducts(sku, raw) is { Count: > 1 } holders)
                 return Fail<RemotePublicationStatus>(AdapterErrorClass.Validation, DuplicateSkuCode,
                     $"'{sku}' stok kodu Shopify'da birden çok üründe var: {string.Join(", ", holders.Select(holder => $"{holder.Id} (handle {holder.Handle ?? "?"})"))}. Ravencia model ailesinin ürünü ravencia-model- ile başlayan handle'dır; fazlalığı Shopify yönetim panelinden silip durumu yeniden sorgulayın.",
@@ -369,7 +369,7 @@ public sealed partial class ShopifyHttpClient
         if (!publicationsResult.IsSuccess) return AdapterResult<string>.Failure(publicationsResult.Error!, publicationsResult.RateLimit);
         try
         {
-            var publications = publicationsResult.Value!.RootElement.GetProperty("publications");
+            var publications = publicationsResult.Value.GetProperty("publications");
             if (publications.GetProperty("pageInfo").GetProperty("hasNextPage").GetBoolean())
                 return Fail<string>(AdapterErrorClass.Validation, "SHOPIFY_PUBLICATION_LIST_INCOMPLETE", "Shopify satış kanalı listesi tamamlanamadı; Online Store yayın kanalı bulunamadı.", HttpStatusCode.UnprocessableEntity);
             var onlineStorePublications = publications.GetProperty("nodes").EnumerateArray()

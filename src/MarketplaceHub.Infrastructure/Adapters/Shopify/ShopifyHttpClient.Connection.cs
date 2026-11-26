@@ -15,7 +15,7 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<ConnectionIdentity>.Failure(result.Error!, result.RateLimit);
         try
         {
-            var root = result.Value!.RootElement;
+            var root = result.Value;
             if (!root.TryGetProperty("shop", out var shopElement) || shopElement.ValueKind != JsonValueKind.Object)
                 return Fail<ConnectionIdentity>(AdapterErrorClass.ContractViolation, "SHOPIFY_CONNECTION_CONTRACT_INVALID", "Shopify mağaza doğrulama yanıtı mağaza bilgisini içermiyor.", HttpStatusCode.BadGateway);
             var host = shopElement.TryGetProperty("primaryDomain", out var primaryDomain)
@@ -52,7 +52,7 @@ public sealed partial class ShopifyHttpClient
         if (scopesContext is null) return CredentialFailure(AdapterResult<IReadOnlyList<CapabilityEvidence>>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", 401, null, null)));
         var scopesResult = await QueryAsync(scopesContext, "query { currentAppInstallation { accessScopes { handle } } }", cancellationToken: cancellationToken);
         var scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (scopesResult.IsSuccess && scopesResult.Value!.RootElement.TryGetProperty("currentAppInstallation", out var installation)
+        if (scopesResult.IsSuccess && scopesResult.Value.TryGetProperty("currentAppInstallation", out var installation)
             && installation.ValueKind == JsonValueKind.Object && installation.TryGetProperty("accessScopes", out var accessScopes)
             && accessScopes.ValueKind == JsonValueKind.Array)
             foreach (var scope in accessScopes.EnumerateArray())
@@ -77,7 +77,7 @@ public sealed partial class ShopifyHttpClient
         return AdapterResult<IReadOnlyList<CapabilityEvidence>>.Success(evidence, products.RateLimit ?? orders.RateLimit ?? categories.RateLimit);
     }
 
-    private static CapabilityEvidence ScopeEvidence(string code, ConnectionIdentity identity, string source, AdapterResult<JsonDocument> scopeResult, IReadOnlySet<string> scopes, string[] requiredScopes, DateTimeOffset verified)
+    private static CapabilityEvidence ScopeEvidence(string code, ConnectionIdentity identity, string source, AdapterResult<JsonElement> scopeResult, IReadOnlySet<string> scopes, string[] requiredScopes, DateTimeOffset verified)
     {
         if (!scopeResult.IsSuccess)
             return new(code, "UNKNOWN", identity.ApiVersion, identity.Environment, identity.ExternalStoreId, source, identity.ApiVersion, string.Join(",", requiredScopes), null, "Shopify uygulama scope listesi doğrulanamadı.", null, verified);

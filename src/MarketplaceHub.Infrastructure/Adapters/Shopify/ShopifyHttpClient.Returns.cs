@@ -43,7 +43,7 @@ public sealed partial class ShopifyHttpClient
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(result.Error!, result.RateLimit);
         try
         {
-            var orders = result.Value!.RootElement.GetProperty("orders");
+            var orders = result.Value.GetProperty("orders");
             var items = new List<RemoteReturnClaim>();
             var rateLimit = result.RateLimit;
             DateTimeOffset? lastModifiedSeen = null;
@@ -89,7 +89,7 @@ public sealed partial class ShopifyHttpClient
     // Follows a nested connection's pageInfo until it ends; nodes are cloned because each page owns its own document.
     // Returns null when the connection was read whole, otherwise the error that stopped it (incomplete when the cursor
     // is missing or the page limit is reached; a return's error when none is given).
-    private static async Task<AdapterError?> ContinueAsync(JsonElement connection, Func<string?, Task<AdapterResult<JsonDocument>>> next, Func<JsonElement, JsonElement> select, List<JsonElement> nodes, AdapterError? incomplete = null)
+    private static async Task<AdapterError?> ContinueAsync(JsonElement connection, Func<string?, Task<AdapterResult<JsonElement>>> next, Func<JsonElement, JsonElement> select, List<JsonElement> nodes, AdapterError? incomplete = null)
     {
         var info = connection.TryGetProperty("pageInfo", out var pageInfo) && pageInfo.ValueKind == JsonValueKind.Object ? pageInfo : default;
         var pages = 0;
@@ -100,7 +100,7 @@ public sealed partial class ShopifyHttpClient
                 return incomplete ?? new(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CONTINUATION_INCOMPLETE", "Shopify iadesinin devam sayfaları okunamadı; iade eksik kaydedilmedi.", (int)HttpStatusCode.BadGateway, null, null);
             var page = await next(after);
             if (!page.IsSuccess) return page.Error;
-            var nested = select(page.Value!.RootElement);
+            var nested = select(page.Value);
             nodes.AddRange(nested.GetProperty("nodes").EnumerateArray().Select(node => node.Clone()));
             info = nested.TryGetProperty("pageInfo", out var nextInfo) && nextInfo.ValueKind == JsonValueKind.Object ? nextInfo.Clone() : default;
         }
@@ -115,7 +115,7 @@ public sealed partial class ShopifyHttpClient
     // B-10: reads the parent's nested connection to its end (ContinueAsync) and returns the parent carrying every node, so
     // a list cut at its first page is never taken as whole. The parent comes back as it was when nothing follows; a
     // continuation that cannot be read whole fails with its own error, or with incomplete.
-    private static async Task<AdapterResult<JsonElement>> WithWholeConnectionAsync(JsonElement parent, string name, Func<string?, Task<AdapterResult<JsonDocument>>> next, Func<JsonElement, JsonElement> select, AdapterError incomplete)
+    private static async Task<AdapterResult<JsonElement>> WithWholeConnectionAsync(JsonElement parent, string name, Func<string?, Task<AdapterResult<JsonElement>>> next, Func<JsonElement, JsonElement> select, AdapterError incomplete)
     {
         if (parent.ValueKind != JsonValueKind.Object || !parent.TryGetProperty(name, out var connection) || !HasNextPage(connection))
             return AdapterResult<JsonElement>.Success(parent);
@@ -153,7 +153,7 @@ public sealed partial class ShopifyHttpClient
         var id = externalReturnId.StartsWith("gid://", StringComparison.Ordinal) ? externalReturnId : $"gid://shopify/Return/{externalReturnId}";
         var result = await QueryAsync(shop, SingleReturnQuery, new { id }, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(result.Error!, result.RateLimit);
-        var item = result.Value!.RootElement.GetProperty("return");
+        var item = result.Value.GetProperty("return");
         if (item.ValueKind == JsonValueKind.Null) return Fail<RemoteReturnClaim>(AdapterErrorClass.NotFound, "SHOPIFY_RETURN_NOT_FOUND", "Shopify iadesi bulunamadı.", HttpStatusCode.NotFound);
         var lines = await ReadAllReturnLinesAsync(shop, item, cancellationToken);
         if (!lines.IsSuccess) return AdapterResult<RemoteReturnClaim>.Failure(lines.Error!, lines.RateLimit ?? result.RateLimit);
@@ -189,7 +189,7 @@ public sealed partial class ShopifyHttpClient
         var result = await QueryAsync(shop, query, variables, cancellationToken);
         if (!result.IsSuccess) return AdapterResult<ReturnActionResult>.Failure(result.Error!, result.RateLimit);
         var field = action == "APPROVE" ? "returnApproveRequest" : "returnDeclineRequest";
-        var response = result.Value!.RootElement.GetProperty(field);
+        var response = result.Value.GetProperty(field);
         if (HasUserErrors(response, out var error)) return Fail<ReturnActionResult>(AdapterErrorClass.Validation, "SHOPIFY_RETURN_ACTION_REJECTED", error ?? "Shopify iade kararını reddetti.", HttpStatusCode.UnprocessableEntity);
         var returned = response.GetProperty("return");
         return AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, TextValue(returned, "status") ?? (action == "APPROVE" ? "OPEN" : "DECLINED"), null), result.RateLimit);

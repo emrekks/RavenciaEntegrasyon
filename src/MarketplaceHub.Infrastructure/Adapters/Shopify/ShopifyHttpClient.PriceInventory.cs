@@ -77,7 +77,7 @@ public sealed partial class ShopifyHttpClient
                 {
                     var byId = await QueryAsync(shop, "query($id:ID!){productVariant(id:$id){" + PriceInventoryVariantFields + "}}", new { id = knownVariantId }, cancellationToken);
                     if (!byId.IsSuccess) return Interrupted(index, byId.Error!, byId.RateLimit);
-                    if (!byId.Value!.RootElement.TryGetProperty("productVariant", out var found) || found.ValueKind != JsonValueKind.Object)
+                    if (!byId.Value.TryGetProperty("productVariant", out var found) || found.ValueKind != JsonValueKind.Object)
                     {
                         results.Add(new(barcode, false, null, "SHOPIFY_VARIANT_NOT_FOUND", false, "REJECTED"));
                         continue;
@@ -88,7 +88,7 @@ public sealed partial class ShopifyHttpClient
                 {
                     var lookup = await QueryAsync(shop, "query($query:String!){productVariants(first:2,query:$query){nodes{" + PriceInventoryVariantFields + "}}}", new { query = $"barcode:\"{EscapeSearch(barcode)}\"" }, cancellationToken);
                     if (!lookup.IsSuccess) return Interrupted(index, lookup.Error!, lookup.RateLimit);
-                    var variants = lookup.Value!.RootElement.GetProperty("productVariants").GetProperty("nodes");
+                    var variants = lookup.Value.GetProperty("productVariants").GetProperty("nodes");
                     if (variants.GetArrayLength() != 1)
                     {
                         results.Add(new(barcode, false, null, variants.GetArrayLength() == 0 ? "SHOPIFY_VARIANT_NOT_FOUND" : "SHOPIFY_BARCODE_AMBIGUOUS", false, "REJECTED"));
@@ -131,14 +131,14 @@ public sealed partial class ShopifyHttpClient
                 {
                     var priceMutation = await QueryAsync(shop, "mutation($productId:ID!,$variants:[ProductVariantsBulkInput!]!){productVariantsBulkUpdate(productId:$productId,variants:$variants){userErrors{field message}}}", new { productId, variants = new[] { new { id = variantId, price = salePrice!.Value.ToString("0.00##", CultureInfo.InvariantCulture), compareAtPrice = listPrice!.Value > salePrice.Value ? listPrice.Value.ToString("0.00##", CultureInfo.InvariantCulture) : null } } }, cancellationToken);
                     if (!priceMutation.IsSuccess) return Interrupted(index, priceMutation.Error!, priceMutation.RateLimit);
-                    if (HasUserErrors(priceMutation.Value!.RootElement.GetProperty("productVariantsBulkUpdate"), out var priceError))
+                    if (HasUserErrors(priceMutation.Value.GetProperty("productVariantsBulkUpdate"), out var priceError))
                         priceRefusal = priceError;
                 }
                 var stockMutation = await SetAvailableQuantityAsync(shop, context, barcode, inventoryItemId, locationId, (int)quantity.Value, compareQuantity, cancellationToken);
                 if (!stockMutation.IsSuccess)
                     return Interrupted(index, stockMutation.Error!, stockMutation.RateLimit,
                         priced ? new RemoteOperationLine(barcode, false, variantId, PriceOnlyAppliedCode, true, PriceOnlyAppliedStatus) : null);
-                if (HasUserErrors(stockMutation.Value!.RootElement.GetProperty("inventorySetQuantities"), out var stockError))
+                if (HasUserErrors(stockMutation.Value.GetProperty("inventorySetQuantities"), out var stockError))
                 {
                     results.Add(new(barcode, false, null, "SHOPIFY_INVENTORY_REJECTED", false, stockError));
                     continue;
@@ -188,7 +188,7 @@ public sealed partial class ShopifyHttpClient
     // effect key is applied once and a stock that moved in between is refused.
     internal const string InventorySetQuantitiesMutation = "mutation($input:InventorySetQuantitiesInput!,$idempotencyKey:String!){inventorySetQuantities(input:$input) @idempotent(key:$idempotencyKey){userErrors{field message}}}";
 
-    internal Task<AdapterResult<JsonDocument>> SetAvailableQuantityAsync(ShopifyRequestContext shop, AdapterContext context, string barcode, string inventoryItemId, string locationId, int quantity, int compareQuantity, CancellationToken cancellationToken)
+    internal Task<AdapterResult<JsonElement>> SetAvailableQuantityAsync(ShopifyRequestContext shop, AdapterContext context, string barcode, string inventoryItemId, string locationId, int quantity, int compareQuantity, CancellationToken cancellationToken)
     {
         var effect = string.IsNullOrWhiteSpace(context.IdempotencyKey) ? Guid.NewGuid().ToString("N") : context.IdempotencyKey;
         var key = IdempotencyKey($"{effect}:{barcode}:inventory");

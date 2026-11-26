@@ -44,7 +44,12 @@ public static class PazaramaOrderMapper
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data)) return null;
         if (data.ValueKind == JsonValueKind.Array) return data;
-        if (data.ValueKind == JsonValueKind.Null) return JsonDocument.Parse("[]").RootElement.Clone();
+        if (data.ValueKind == JsonValueKind.Null)
+        {
+            // The clone outlives the parsed document, which is given back at once.
+            using var empty = JsonDocument.Parse("[]");
+            return empty.RootElement.Clone();
+        }
         if (data.ValueKind != JsonValueKind.Object) return null;
         foreach (var name in new[] { "items", "orders", "orderList", "data" })
             if (data.TryGetProperty(name, out var inner) && inner.ValueKind == JsonValueKind.Array) return inner;

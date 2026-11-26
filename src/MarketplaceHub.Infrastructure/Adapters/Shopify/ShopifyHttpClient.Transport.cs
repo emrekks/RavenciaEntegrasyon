@@ -19,7 +19,7 @@ public sealed partial class ShopifyHttpClient
         TransportErrorWait = null
     };
 
-    private async Task<AdapterResult<JsonDocument>> QueryAsync(ShopifyRequestContext context, string query, object? variables = null, CancellationToken cancellationToken = default)
+    private async Task<AdapterResult<JsonElement>> QueryAsync(ShopifyRequestContext context, string query, object? variables = null, CancellationToken cancellationToken = default)
     {
         var endpoint = new Uri($"https://{context.Shop}.myshopify.com/admin/api/{context.ApiVersion}/graphql.json");
         using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new StringContent(JsonSerializer.Serialize(new { query, variables }), Encoding.UTF8, "application/json") };
@@ -34,11 +34,11 @@ public sealed partial class ShopifyHttpClient
                 logger.LogWarning(exception, "Shopify GraphQL isteği başarısız. Shop: {Shop}", context.Shop);
             else if (transportError.Code == "SHOPIFY_TIMEOUT")
                 logger.LogWarning("Shopify GraphQL isteği zaman aşımına uğradı. Shop: {Shop}", context.Shop);
-            return Failure<JsonDocument>(transportError);
+            return Failure<JsonElement>(transportError);
         }
         var response = exchange.Response!;
         // The panel's own open circuit refused it: never sent, so never an outcome-unknown write.
-        if (LocalCircuitResponse.Refusal(response, "SHOPIFY", "Shopify") is { } localCircuit) return Failure<JsonDocument>(localCircuit);
+        if (LocalCircuitResponse.Refusal(response, "SHOPIFY", "Shopify") is { } localCircuit) return Failure<JsonElement>(localCircuit);
         var raw = exchange.Body;
         // An error answer may be an HTML page (a 502 or 503 from Shopify's edge); it is classed by its
         // status instead of failing as unreadable JSON.
@@ -50,7 +50,7 @@ public sealed partial class ShopifyHttpClient
         catch (JsonException)
         {
             var requestId = response.Headers.TryGetValues("X-Request-ID", out var ids) ? ids.FirstOrDefault() : null;
-            return Failure<JsonDocument>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_RESPONSE_NOT_JSON", "Shopify başarılı yanıtı JSON değil; yanıt okunamadı.", (int)HttpStatusCode.BadGateway, null, requestId));
+            return Failure<JsonElement>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_RESPONSE_NOT_JSON", "Shopify başarılı yanıtı JSON değil; yanıt okunamadı.", (int)HttpStatusCode.BadGateway, null, requestId));
         }
         using var document = parsed;
         var rate = document is null ? null : ReadRateLimit(document);
@@ -67,13 +67,13 @@ public sealed partial class ShopifyHttpClient
             if (response.StatusCode == HttpStatusCode.Unauthorized && context.ExpiresAt != DateTimeOffset.MaxValue)
                 authentication.Forget(context.Connection.Id);
             var retryAfter = RetryAfterHeader.Delay(response.Headers.RetryAfter, timeProvider.GetUtcNow());
-            return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
+            return Failure<JsonElement>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
         }
         if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)
-            return Failure<JsonDocument>(graphQlError, rate);
+            return Failure<JsonElement>(graphQlError, rate);
         if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
         {
-            return Failure<JsonDocument>(new(
+            return Failure<JsonElement>(new(
                 AdapterErrorClass.ContractViolation,
                 "SHOPIFY_GRAPHQL_CONTRACT_INVALID",
                 "Shopify GraphQL yanıtı beklenen veri alanını içermiyor.",
@@ -86,7 +86,7 @@ public sealed partial class ShopifyHttpClient
         // `data` object. Keep the adapter contract flat so the catalog,
         // order and connection checks can consume the queried fields
         // consistently.
-        return AdapterResult<JsonDocument>.Success(JsonDocument.Parse(data.GetRawText()), rate);
+        return AdapterResult<JsonElement>.Success(data.Clone(), rate);
     }
     internal static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) =>
         MarketplaceErrorRules.GatewayBlocked(status, body, "Shopify", "SHOPIFY", remoteRequestId) ?? MapHttpStatus(status, retryAfter, remoteRequestId);
